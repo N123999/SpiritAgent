@@ -19,18 +19,25 @@ use std::{
 mod model_registry;
 mod llm_client;
 mod logging;
+mod tool_runtime;
 mod ui;
 use llm_client::{
-    LlmMessage, StreamEvent, compact_history_manual, compact_summary_text, stream_openai_compatible,
+    LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message,
+    compact_history_manual, compact_summary_text, is_context_overflow_error, start_tool_agent_state,
+    stream_assistant_from_messages, stream_openai_compatible, tool_agent_next_step,
 };
 use model_registry::{
     AppConfig, DEFAULT_API_BASE, ModelProfile, config_file_path, has_model_api_key, keyring_entry,
     load_config, remove_model_api_key, save_config, save_model_api_key,
 };
+use tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget};
 
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
 const STREAM_STALL_TIMEOUT: Duration = Duration::from_secs(20);
+const TOOL_MEMORY_PREFIX: &str = "[TOOL_MEMORY]";
+const TOOL_MEMORY_MAX_ENTRIES: usize = 24;
+const TOOL_MEMORY_SNIPPET_CHARS: usize = 1200;
 
 #[derive(Parser)]
 #[command(name = "spirit-agent")]
@@ -216,9 +223,30 @@ pub(crate) struct App {
     pending_started_at: Option<Instant>,
     pending_last_event_at: Option<Instant>,
     stream_chunk_counter: usize,
+    pending_user_turn: Option<String>,
+    tool_runtime: ToolRuntime,
+    pending_tool_approval: Option<PendingToolApproval>,
+    pending_tool_agent_step: Option<Receiver<Result<ToolAgentStepResult, String>>>,
     mouse_capture_enabled: bool,
     mouse_capture_requested: Option<bool>,
     should_quit: bool,
+}
+
+struct PendingToolApproval {
+    request: ToolRequest,
+    trust_target: Option<TrustTarget>,
+    continuation: Option<ToolApprovalContinuation>,
+}
+
+struct ToolApprovalContinuation {
+    state: ToolAgentState,
+    tool_call_id: String,
+    tool_name: String,
+}
+
+struct ToolAgentStepResult {
+    state: ToolAgentState,
+    step: ToolAgentStep,
 }
 
 impl App {
@@ -241,6 +269,9 @@ impl App {
             "/api-base show".to_string(),
             "/api-base set <url>".to_string(),
             "/compact".to_string(),
+            "/tool shell <command>".to_string(),
+            "/tool read <path> [start] [end]".to_string(),
+            "/tool search <query>".to_string(),
         ];
         Self {
             input: String::new(),
@@ -266,6 +297,10 @@ impl App {
             pending_started_at: None,
             pending_last_event_at: None,
             stream_chunk_counter: 0,
+            pending_user_turn: None,
+            tool_runtime: ToolRuntime::new(),
+            pending_tool_approval: None,
+            pending_tool_agent_step: None,
             mouse_capture_enabled: false,
             mouse_capture_requested: None,
             should_quit: false,
@@ -489,13 +524,25 @@ impl App {
             return;
         }
 
+        if self.pending_tool_approval.is_some() {
+            self.scroll_history_to_bottom();
+            self.messages.push(ChatMessage {
+                role: MessageRole::User,
+                content: message.clone(),
+            });
+            self.handle_tool_approval_input(&message);
+            self.set_input(String::new());
+            self.refresh_suggestions();
+            return;
+        }
+
         // Sending a new message should always bring the viewport back to live bottom.
         self.scroll_history_to_bottom();
 
-        if self.pending_response.is_some() {
+        if self.pending_response.is_some() || self.pending_tool_agent_step.is_some() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: "上一条回复仍在生成中，请稍候。".to_string(),
+                content: "上一条回复仍在处理中，请稍候。".to_string(),
             });
             return;
         }
@@ -508,15 +555,252 @@ impl App {
         if message.starts_with('/') {
             self.handle_slash_command(&message);
         } else {
+            self.pending_user_turn = Some(message.clone());
             self.llm_history.push(LlmMessage {
                 role: "user",
                 content: message.clone(),
             });
-            self.start_background_llm_request(message);
+            let state = start_tool_agent_state(&self.llm_history, &message);
+            self.start_tool_agent_step_async(state);
         }
 
         self.set_input(String::new());
         self.refresh_suggestions();
+    }
+
+    fn handle_tool_approval_input(&mut self, message: &str) {
+        let decision = message.trim().to_lowercase();
+        let Some(pending) = self.pending_tool_approval.take() else {
+            return;
+        };
+
+        match decision.as_str() {
+            "y" => self.execute_tool_request_with_continuation(&pending.request, pending.continuation),
+            "n" => {
+                if let Some(mut cont) = pending.continuation {
+                    append_tool_result_message(
+                        &mut cont.state,
+                        &cont.tool_call_id,
+                        "[denied by user] tool call rejected by user approval policy",
+                    );
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "已拒绝模型工具调用: {}。将继续让模型在无该工具条件下完成任务。",
+                            cont.tool_name
+                        ),
+                    });
+                    self.start_tool_agent_step_async(cont.state);
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: "已拒绝本次工具调用。".to_string(),
+                    });
+                }
+            }
+            "t" => {
+                if let Some(target) = pending.trust_target {
+                    if let Err(err) = self.tool_runtime.trust(&target) {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("信任规则保存失败: {}", err),
+                        });
+                    } else {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: "已加入信任白名单并持久化。".to_string(),
+                        });
+                    }
+                }
+                self.execute_tool_request_with_continuation(&pending.request, pending.continuation);
+            }
+            _ => {
+                // Any non y/n/t input is interpreted as user guidance:
+                // deny the tool call and continue the dialogue with this new user instruction.
+                if let Some(mut cont) = pending.continuation {
+                    append_tool_result_message(
+                        &mut cont.state,
+                        &cont.tool_call_id,
+                        "[denied by user] tool call rejected by user guidance",
+                    );
+                    cont.state
+                        .messages
+                        .push(serde_json::json!({"role": "user", "content": message}));
+
+                    self.llm_history.push(LlmMessage {
+                        role: "user",
+                        content: message.to_string(),
+                    });
+                    self.pending_user_turn = Some(message.to_string());
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content:
+                            "已按你的输入拒绝本次高风险工具调用，并将该输入作为新指令继续处理。"
+                                .to_string(),
+                    });
+                    self.start_tool_agent_step_async(cont.state);
+                    return;
+                }
+
+                self.llm_history.push(LlmMessage {
+                    role: "user",
+                    content: message.to_string(),
+                });
+                self.pending_user_turn = Some(message.to_string());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content:
+                        "已拒绝本次高风险工具调用，并将该输入作为新指令继续处理。".to_string(),
+                });
+
+                let state = start_tool_agent_state(&self.llm_history, message);
+                self.start_tool_agent_step_async(state);
+            }
+        }
+    }
+
+    fn start_tool_agent_step_async(&mut self, state: ToolAgentState) {
+        let cfg = self.config.clone();
+        let (tx, rx) = mpsc::channel::<Result<ToolAgentStepResult, String>>();
+
+        thread::spawn(move || {
+            let mut state = state;
+            let tools = ToolRuntime::tool_definitions_json();
+            let result = tool_agent_next_step(&cfg, &mut state, &tools)
+                .map(|step| ToolAgentStepResult { state, step })
+                .map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+
+        self.pending_tool_agent_step = Some(rx);
+    }
+
+    fn poll_pending_tool_agent_step(&mut self) {
+        let Some(rx) = &self.pending_tool_agent_step else {
+            return;
+        };
+
+        match rx.try_recv() {
+            Ok(Ok(ToolAgentStepResult { mut state, step })) => {
+                self.pending_tool_agent_step = None;
+                match step {
+                    ToolAgentStep::FinalResponseReady => {
+                        self.start_background_final_stream(state.messages);
+                    }
+                    ToolAgentStep::ToolCall(call) => {
+                        let request = match ToolRuntime::request_from_function_call(
+                            &call.name,
+                            &call.arguments,
+                        ) {
+                            Ok(r) => r,
+                            Err(err) => {
+                                append_tool_result_message(
+                                    &mut state,
+                                    &call.id,
+                                    &format!("[tool schema error] {}", err),
+                                );
+                                self.start_tool_agent_step_async(state);
+                                return;
+                            }
+                        };
+
+                        match self.tool_runtime.authorize(&request) {
+                            Ok(AuthorizationDecision::Allowed) => {
+                                let tool_output = match self.tool_runtime.execute(&request) {
+                                    Ok(result) => {
+                                        self.persist_tool_memory(&request, &result);
+                                        self.messages.push(ChatMessage {
+                                            role: MessageRole::Agent,
+                                            content: format_tool_ui_message(
+                                                &request,
+                                                &call.name,
+                                                &result,
+                                            ),
+                                        });
+                                        result
+                                    }
+                                    Err(err) => {
+                                        let e = format!("[tool error] {}", err);
+                                        self.messages.push(ChatMessage {
+                                            role: MessageRole::Agent,
+                                            content: format!("模型工具调用执行失败: {}", err),
+                                        });
+                                        e
+                                    }
+                                };
+                                append_tool_result_message(&mut state, &call.id, &tool_output);
+                                self.start_tool_agent_step_async(state);
+                            }
+                            Ok(AuthorizationDecision::NeedApproval {
+                                prompt,
+                                trust_target,
+                            }) => {
+                                self.pending_tool_approval = Some(PendingToolApproval {
+                                    request,
+                                    trust_target,
+                                    continuation: Some(ToolApprovalContinuation {
+                                        state,
+                                        tool_call_id: call.id,
+                                        tool_name: call.name,
+                                    }),
+                                });
+                                self.messages.push(ChatMessage {
+                                    role: MessageRole::Agent,
+                                    content: prompt,
+                                });
+                            }
+                            Err(err) => {
+                                append_tool_result_message(
+                                    &mut state,
+                                    &call.id,
+                                    &format!("[authorization error] {}", err),
+                                );
+                                self.start_tool_agent_step_async(state);
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(Err(err)) => {
+                self.pending_tool_agent_step = None;
+                if self.try_auto_compact_and_retry(&err) {
+                    return;
+                }
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("LLM 调用失败: {}", err),
+                });
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.pending_tool_agent_step = None;
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "LLM 后台任务异常中断。".to_string(),
+                });
+            }
+        }
+    }
+
+    fn start_background_final_stream(&mut self, messages: Vec<serde_json::Value>) {
+        let cfg = self.config.clone();
+        let (tx, rx) = mpsc::channel::<StreamEvent>();
+
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: String::new(),
+        });
+        self.pending_assistant_msg_index = Some(self.messages.len() - 1);
+        self.pending_response = Some(rx);
+
+        let now = Instant::now();
+        self.pending_started_at = Some(now);
+        self.pending_last_event_at = Some(now);
+        self.stream_chunk_counter = 0;
+
+        thread::spawn(move || {
+            stream_assistant_from_messages(&cfg, &messages, &tx);
+        });
     }
 
     fn start_background_llm_request(&mut self, user_message: String) {
@@ -549,6 +833,7 @@ impl App {
         };
 
         let mut completed = false;
+        let mut assistant_done = false;
         let mut processed = 0usize;
 
         loop {
@@ -614,10 +899,25 @@ impl App {
                             .map(|s| s.elapsed().as_millis())
                             .unwrap_or(0)
                     ));
+                    assistant_done = true;
                     break;
                 }
                 Ok(StreamEvent::Error(err)) => {
                     self.pending_last_event_at = Some(Instant::now());
+                    if self.try_auto_compact_and_retry(&err) {
+                        if let Some(idx) = self.pending_assistant_msg_index {
+                            if let Some(msg) = self.messages.get_mut(idx)
+                                && msg.content.trim().is_empty()
+                            {
+                                msg.content =
+                                    "检测到上下文超限，已自动压缩并重试当前请求。".to_string();
+                            }
+                        }
+                        completed = true;
+                        logging::log_event(&format!("stream overflow -> auto compact retry: {}", err));
+                        break;
+                    }
+
                     if let Some(idx) = self.pending_assistant_msg_index {
                         if let Some(msg) = self.messages.get_mut(idx) {
                             if msg.content.trim().is_empty() {
@@ -658,6 +958,9 @@ impl App {
             self.pending_started_at = None;
             self.pending_last_event_at = None;
             self.stream_chunk_counter = 0;
+            if assistant_done {
+                self.pending_user_turn = None;
+            }
         }
     }
 
@@ -726,7 +1029,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n\n说明:\n- 当模型返回上下文超限错误时，会自动压缩最旧历史并重试。\n- /compact 可手动触发压缩（仅压缩模型上下文，UI 历史仍保留）。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -749,6 +1052,9 @@ impl App {
             }
             "/compact" => {
                 self.handle_compact_slash();
+            }
+            "/tool" => {
+                self.handle_tool_slash(message);
             }
             _ => {
                 self.messages.push(ChatMessage {
@@ -985,6 +1291,239 @@ impl App {
             }
         }
     }
+
+    fn handle_tool_slash(&mut self, message: &str) {
+        if self.pending_tool_approval.is_some() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "当前有待确认的高风险工具调用。请先输入 y / n / t。".to_string(),
+            });
+            return;
+        }
+
+        let request = match self.tool_runtime.parse_tool_command(message) {
+            Ok(req) => req,
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("工具命令解析失败: {}", err),
+                });
+                return;
+            }
+        };
+
+        match self.tool_runtime.authorize(&request) {
+            Ok(AuthorizationDecision::Allowed) => {
+                self.execute_tool_request(&request);
+            }
+            Ok(AuthorizationDecision::NeedApproval {
+                prompt,
+                trust_target,
+            }) => {
+                self.pending_tool_approval = Some(PendingToolApproval {
+                    request,
+                    trust_target,
+                    continuation: None,
+                });
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: prompt,
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("工具权限检查失败: {}", err),
+                });
+            }
+        }
+    }
+
+    fn execute_tool_request(&mut self, request: &ToolRequest) {
+        match self.tool_runtime.execute(request) {
+            Ok(output) => {
+                self.persist_tool_memory(request, &output);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format_tool_ui_message(request, "manual", &output),
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("工具执行失败: {}", err),
+                });
+            }
+        }
+    }
+
+    fn execute_tool_request_with_continuation(
+        &mut self,
+        request: &ToolRequest,
+        continuation: Option<ToolApprovalContinuation>,
+    ) {
+        match continuation {
+            Some(mut cont) => {
+                let output = match self.tool_runtime.execute(request) {
+                    Ok(result) => {
+                        self.persist_tool_memory(request, &result);
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format_tool_ui_message(request, &cont.tool_name, &result),
+                        });
+                        result
+                    }
+                    Err(err) => {
+                        let e = format!("[tool error] {}", err);
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("模型工具调用执行失败: {}", err),
+                        });
+                        e
+                    }
+                };
+
+                append_tool_result_message(&mut cont.state, &cont.tool_call_id, &output);
+                self.start_tool_agent_step_async(cont.state);
+            }
+            None => self.execute_tool_request(request),
+        }
+    }
+
+    fn persist_tool_memory(&mut self, request: &ToolRequest, output: &str) {
+        let request_desc = match request {
+            ToolRequest::ReadFile {
+                path,
+                start_line,
+                end_line,
+            } => format!(
+                "read_file path={} start={} end={}",
+                path,
+                start_line
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "1".to_string()),
+                end_line
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "default".to_string())
+            ),
+            ToolRequest::Search { query } => format!("search_files query={}", query),
+            ToolRequest::Shell { command } => format!("run_shell_command command={}", command),
+        };
+
+        let entry = format!(
+            "{}\nrequest: {}\nresult_snippet:\n{}",
+            TOOL_MEMORY_PREFIX,
+            request_desc,
+            truncate_for_preview(output, TOOL_MEMORY_SNIPPET_CHARS)
+        );
+
+        self.llm_history.push(LlmMessage {
+            role: "system",
+            content: entry,
+        });
+        self.prune_tool_memories();
+    }
+
+    fn prune_tool_memories(&mut self) {
+        let mut seen = 0usize;
+        let total_tool_memories = self
+            .llm_history
+            .iter()
+            .filter(|m| m.role == "system" && m.content.starts_with(TOOL_MEMORY_PREFIX))
+            .count();
+
+        if total_tool_memories <= TOOL_MEMORY_MAX_ENTRIES {
+            return;
+        }
+
+        let remove_count = total_tool_memories - TOOL_MEMORY_MAX_ENTRIES;
+        self.llm_history.retain(|m| {
+            if m.role == "system" && m.content.starts_with(TOOL_MEMORY_PREFIX) {
+                seen += 1;
+                return seen > remove_count;
+            }
+            true
+        });
+    }
+
+    fn try_auto_compact_and_retry(&mut self, err: &str) -> bool {
+        if !is_context_overflow_error(err) {
+            return false;
+        }
+
+        let Some(user_turn) = self.pending_user_turn.clone() else {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("检测到上下文超限，但缺少可重试的用户轮次。原始错误: {}", err),
+            });
+            return false;
+        };
+
+        match compact_history_manual(&self.config, &mut self.llm_history) {
+            Ok(result) => {
+                if result.dropped_messages == 0 {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "检测到上下文超限，但历史已无法继续压缩。原始错误: {}",
+                            err
+                        ),
+                    });
+                    return false;
+                }
+
+                let summary_preview = compact_summary_text(&self.llm_history)
+                    .map(|s| truncate_for_preview(&s, 500))
+                    .unwrap_or_else(|| "<无摘要内容>".to_string());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "检测到上下文超限，已自动压缩并重试：{} -> {}（压缩 {} 条）。\n\n压缩摘要预览:\n{}",
+                        result.before_len,
+                        result.after_len,
+                        result.dropped_messages,
+                        summary_preview
+                    ),
+                });
+
+                let state = start_tool_agent_state(&self.llm_history, &user_turn);
+                self.start_tool_agent_step_async(state);
+                true
+            }
+            Err(compact_err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "上下文超限且自动压缩失败: {}\n原始错误: {}",
+                        compact_err, err
+                    ),
+                });
+                false
+            }
+        }
+    }
+}
+
+fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) -> String {
+    match request {
+        ToolRequest::ReadFile {
+            path,
+            start_line,
+            end_line,
+        } => {
+            let start = start_line.unwrap_or(1);
+            let end = end_line
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "default".to_string());
+            format!("[tool] 阅读文件 {} {} - {}", path, start, end)
+        }
+        ToolRequest::Search { .. } => output.to_string(),
+        _ => format!(
+            "[tool] {} 执行完成。\n{}",
+            tool_name,
+            truncate_for_preview(output, 1200)
+        ),
+    }
 }
 
 fn truncate_for_preview(text: &str, max_chars: usize) -> String {
@@ -1214,6 +1753,7 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         }
 
         app.poll_pending_response();
+        app.poll_pending_tool_agent_step();
         app.handle_stream_stall_timeout();
         terminal.draw(|frame| ui::draw_ui(frame, &app))?;
 
@@ -1321,6 +1861,17 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
             .into_iter()
             .filter(|cmd| cmd.starts_with(q))
             .collect();
+    }
+
+    if q == "/tool" || q.starts_with("/tool ") {
+        return vec![
+            "/tool shell <command>",
+            "/tool read <path> [start] [end]",
+            "/tool search <query>",
+        ]
+        .into_iter()
+        .filter(|cmd| cmd.starts_with(q))
+        .collect();
     }
 
     Vec::new()

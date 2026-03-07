@@ -13,6 +13,7 @@ const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
+const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的工具调用代理。你可以通过 function calling 使用工具: run_shell_command, read_file, search_files。规则: 1) 优先使用工具获取事实，不要编造。2) run_shell_command 是高风险，用户可能拒绝；被拒绝后需给出替代方案。3) search_files 仅允许工作目录内搜索，不要请求外部搜索。4) 需要读取文件时优先工作目录路径。5) 输出要简洁、可执行。";
 
 #[derive(Clone)]
 pub struct LlmMessage {
@@ -28,6 +29,288 @@ pub enum StreamEvent {
     },
     Done,
     Error(String),
+}
+
+#[derive(Clone)]
+pub struct ToolCallRequest {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+pub enum ToolAgentStep {
+    ToolCall(ToolCallRequest),
+    FinalResponseReady,
+}
+
+pub struct ToolAgentState {
+    pub messages: Vec<Value>,
+    pub steps: usize,
+}
+
+pub fn start_tool_agent_state(history: &[LlmMessage], user_input: &str) -> ToolAgentState {
+    let mut messages = vec![json!({
+        "role": "system",
+        "content": TOOL_AGENT_SYSTEM_PROMPT
+    })];
+
+    messages.extend(
+        history
+            .iter()
+            .map(|m| json!({"role": m.role, "content": m.content})),
+    );
+
+    let need_append_user = messages
+        .last()
+        .map(|m| {
+            m.get("role").and_then(Value::as_str) != Some("user")
+                || m.get("content").and_then(Value::as_str) != Some(user_input)
+        })
+        .unwrap_or(true);
+
+    if need_append_user {
+        messages.push(json!({"role": "user", "content": user_input}));
+    }
+
+    ToolAgentState { messages, steps: 0 }
+}
+
+pub fn append_tool_result_message(state: &mut ToolAgentState, tool_call_id: &str, content: &str) {
+    state.messages.push(json!({
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": content
+    }));
+}
+
+pub fn tool_agent_next_step(
+    cfg: &AppConfig,
+    state: &mut ToolAgentState,
+    tools: &Value,
+) -> Result<ToolAgentStep> {
+    state.steps = state.steps.saturating_add(1);
+
+    let active = cfg
+        .active_model_profile()
+        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
+
+    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
+        format!(
+            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
+            active.name,
+            active.name,
+            ENV_API_KEY
+        )
+    })?;
+
+    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
+    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+
+    let payload = json!({
+        "model": active.name,
+        "messages": state.messages,
+        "stream": false,
+        "tools": tools,
+        "tool_choice": "auto",
+        "temperature": 0.2
+    });
+
+    let client = Client::new();
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&payload)
+        .send()
+        .with_context(|| format!("请求失败: {}", url))?;
+
+    let status = resp.status();
+    let body = resp.text().context("读取工具调用响应失败")?;
+    if !status.is_success() {
+        return Err(anyhow!("HTTP {}: {}", status, body));
+    }
+
+    let v: Value = serde_json::from_str(&body).context("解析工具调用响应 JSON 失败")?;
+    let message = v
+        .pointer("/choices/0/message")
+        .cloned()
+        .ok_or_else(|| anyhow!("响应缺少 choices[0].message"))?;
+
+    if let Some(arr) = message.get("tool_calls").and_then(Value::as_array)
+        && let Some(first) = arr.first()
+    {
+        state.messages.push(message.clone());
+
+        let id = first
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("tool_call")
+            .to_string();
+        let name = first
+            .pointer("/function/name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("tool call 缺少 function.name"))?
+            .to_string();
+        let arguments = first
+            .pointer("/function/arguments")
+            .and_then(Value::as_str)
+            .unwrap_or("{}")
+            .to_string();
+
+        return Ok(ToolAgentStep::ToolCall(ToolCallRequest {
+            id,
+            name,
+            arguments,
+        }));
+    }
+
+    if let Some(content) = message.get("content").and_then(Value::as_str)
+        && let Some(dsml_call) = parse_dsml_tool_call(content)
+    {
+        // Some providers emit function calls inside text tags instead of tool_calls.
+        // Convert them into a canonical assistant tool_call message to keep follow-up tool
+        // result messages valid in the chat history.
+        state.messages.push(json!({
+            "role": "assistant",
+            "content": Value::Null,
+            "tool_calls": [
+                {
+                    "id": dsml_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": dsml_call.name,
+                        "arguments": dsml_call.arguments,
+                    }
+                }
+            ]
+        }));
+        return Ok(ToolAgentStep::ToolCall(dsml_call));
+    }
+
+    Ok(ToolAgentStep::FinalResponseReady)
+}
+
+pub fn stream_assistant_from_messages(
+    cfg: &AppConfig,
+    messages: &[Value],
+    tx: &Sender<StreamEvent>,
+) {
+    let result = stream_assistant_from_messages_inner(cfg, messages, tx);
+    if let Err(err) = result {
+        let _ = tx.send(StreamEvent::Error(err.to_string()));
+    }
+}
+
+fn stream_assistant_from_messages_inner(
+    cfg: &AppConfig,
+    messages: &[Value],
+    tx: &Sender<StreamEvent>,
+) -> Result<()> {
+    let active = cfg
+        .active_model_profile()
+        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
+
+    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
+        format!(
+            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
+            active.name,
+            active.name,
+            ENV_API_KEY
+        )
+    })?;
+
+    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
+    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+
+    let payload = json!({
+        "model": active.name,
+        "messages": messages,
+        "stream": true,
+        "temperature": 0.2,
+    });
+
+    let client = Client::new();
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&payload)
+        .send()
+        .with_context(|| format!("请求失败: {}", url))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().unwrap_or_else(|_| "<empty body>".to_string());
+        return Err(anyhow!("HTTP {}: {}", status, body));
+    }
+
+    let mut reader = BufReader::new(resp);
+    let mut line = String::new();
+    let mut seen_chunk = false;
+    let mut raw_preview: Vec<String> = Vec::new();
+
+    loop {
+        line.clear();
+        let read = reader.read_line(&mut line).context("读取流式响应失败")?;
+        if read == 0 {
+            break;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        push_preview_line(&mut raw_preview, trimmed);
+        let Some(data) = trimmed.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+
+        if data == "[DONE]" {
+            break;
+        }
+
+        let v: Value = serde_json::from_str(data)
+            .with_context(|| format!("解析 SSE JSON 失败: {}", truncate_chars(data, 320)))?;
+
+        if let Some(err_msg) = extract_provider_stream_error(&v) {
+            return Err(anyhow!(err_msg));
+        }
+
+        if let Some(content) = v
+            .pointer("/choices/0/delta/content")
+            .and_then(Value::as_str)
+        {
+            if !content.is_empty() {
+                seen_chunk = true;
+                let _ = tx.send(StreamEvent::Chunk(content.to_string()));
+            }
+            continue;
+        }
+
+        if let Some(content) = v
+            .pointer("/choices/0/message/content")
+            .and_then(Value::as_str)
+        {
+            if !content.is_empty() {
+                seen_chunk = true;
+                let _ = tx.send(StreamEvent::Chunk(content.to_string()));
+            }
+        }
+    }
+
+    if !seen_chunk {
+        let preview = if raw_preview.is_empty() {
+            "<empty stream body>".to_string()
+        } else {
+            raw_preview.join("\n")
+        };
+        return Err(anyhow!(
+            "流式响应没有返回任何文本片段。原始响应预览:\n{}",
+            preview
+        ));
+    }
+
+    let _ = tx.send(StreamEvent::Done);
+    Ok(())
 }
 
 pub fn stream_openai_compatible(
@@ -477,5 +760,68 @@ fn extract_provider_stream_error(v: &Value) -> Option<String> {
         "{} type={} http_code={} request_id={} message={}",
         readable, err_type, http_code, request_id, err_message
     ))
+}
+
+fn parse_dsml_tool_call(content: &str) -> Option<ToolCallRequest> {
+    let normalized = content.replace('｜', "|");
+    let invoke_tag = "<|DSML|invoke";
+    let invoke_start = normalized.find(invoke_tag)?;
+    let invoke_end_rel = normalized[invoke_start..].find("</|DSML|invoke>")?;
+    let invoke_end = invoke_start + invoke_end_rel + "</|DSML|invoke>".len();
+    let invoke_block = &normalized[invoke_start..invoke_end];
+
+    let name = extract_attr_value(invoke_block, "name")?;
+
+    let mut params = serde_json::Map::new();
+    let mut cursor = 0usize;
+    let param_open = "<|DSML|parameter";
+    let param_close = "</|DSML|parameter>";
+    while let Some(open_rel) = invoke_block[cursor..].find(param_open) {
+        let open = cursor + open_rel;
+        let close_rel = invoke_block[open..].find(param_close)?;
+        let close = open + close_rel + param_close.len();
+        let block = &invoke_block[open..close];
+
+        let key = extract_attr_value(block, "name")?;
+        let is_string = extract_attr_value(block, "string")
+            .map(|v| v != "false")
+            .unwrap_or(true);
+        let value = extract_inner_text(block).trim().to_string();
+
+        let json_value = if is_string {
+            Value::String(value)
+        } else if let Ok(v) = value.parse::<i64>() {
+            json!(v)
+        } else if let Ok(v) = value.parse::<f64>() {
+            json!(v)
+        } else if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") {
+            json!(value.eq_ignore_ascii_case("true"))
+        } else {
+            Value::String(value)
+        };
+
+        params.insert(key, json_value);
+        cursor = close;
+    }
+
+    Some(ToolCallRequest {
+        id: format!("dsml_{}", name),
+        name,
+        arguments: Value::Object(params).to_string(),
+    })
+}
+
+fn extract_attr_value(block: &str, key: &str) -> Option<String> {
+    let pattern = format!("{}=\"", key);
+    let start = block.find(&pattern)? + pattern.len();
+    let rest = &block[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn extract_inner_text(block: &str) -> String {
+    let start = block.find('>').map(|i| i + 1).unwrap_or(0);
+    let end = block.rfind("</").unwrap_or(block.len());
+    block[start..end].to_string()
 }
 
