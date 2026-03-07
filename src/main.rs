@@ -14,18 +14,21 @@ use std::{
     env, io,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 mod model_registry;
 mod llm_client;
+mod logging;
 mod ui;
-use llm_client::{LlmMessage, query_openai_compatible};
+use llm_client::{LlmMessage, StreamEvent, stream_openai_compatible};
 use model_registry::{
     AppConfig, DEFAULT_API_BASE, ModelProfile, config_file_path, has_model_api_key, keyring_entry,
     load_config, remove_model_api_key, save_config, save_model_api_key,
 };
 
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
+const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
+const STREAM_STALL_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Parser)]
 #[command(name = "spirit-agent")]
@@ -134,6 +137,7 @@ enum KeyAction {
 }
 
 fn main() -> Result<()> {
+    logging::init_logging();
     let cli = Cli::parse();
 
     if cli.verbose {
@@ -205,7 +209,11 @@ pub(crate) struct App {
     pub(crate) model_picker_active: bool,
     pub(crate) model_picker_index: usize,
     pub(crate) history_offset_from_bottom: usize,
-    pub(crate) pending_response: Option<Receiver<Result<String, String>>>,
+    pub(crate) pending_response: Option<Receiver<StreamEvent>>,
+    pub(crate) pending_assistant_msg_index: Option<usize>,
+    pending_started_at: Option<Instant>,
+    pending_last_event_at: Option<Instant>,
+    stream_chunk_counter: usize,
     mouse_capture_enabled: bool,
     mouse_capture_requested: Option<bool>,
     should_quit: bool,
@@ -251,6 +259,10 @@ impl App {
             model_picker_index: 0,
             history_offset_from_bottom: 0,
             pending_response: None,
+            pending_assistant_msg_index: None,
+            pending_started_at: None,
+            pending_last_event_at: None,
+            stream_chunk_counter: 0,
             mouse_capture_enabled: false,
             mouse_capture_requested: None,
             should_quit: false,
@@ -474,6 +486,9 @@ impl App {
             return;
         }
 
+        // Sending a new message should always bring the viewport back to live bottom.
+        self.scroll_history_to_bottom();
+
         if self.pending_response.is_some() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
@@ -513,15 +528,25 @@ impl App {
             .into_iter()
             .rev()
             .collect::<Vec<_>>();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel::<StreamEvent>();
+
+        // Insert an empty assistant bubble so stream chunks can render immediately.
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: String::new(),
+        });
+        self.pending_assistant_msg_index = Some(self.messages.len() - 1);
 
         thread::spawn(move || {
-            let result = query_openai_compatible(&cfg, &history, &user_message)
-                .map_err(|e| e.to_string());
-            let _ = tx.send(result);
+            stream_openai_compatible(&cfg, &history, &user_message, &tx);
         });
 
         self.pending_response = Some(rx);
+        let now = Instant::now();
+        self.pending_started_at = Some(now);
+        self.pending_last_event_at = Some(now);
+        self.stream_chunk_counter = 0;
+        logging::log_event("stream started");
     }
 
     fn poll_pending_response(&mut self) {
@@ -529,36 +554,129 @@ impl App {
             return;
         };
 
-        match rx.try_recv() {
-            Ok(Ok(reply)) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: reply,
-                });
-                if let Some(last) = self.messages.last() {
-                    self.llm_history.push(LlmMessage {
-                        role: "assistant",
-                        content: last.content.clone(),
-                    });
+        let mut completed = false;
+        let mut processed = 0usize;
+
+        loop {
+            if processed >= STREAM_EVENT_BUDGET_PER_TICK {
+                break;
+            }
+
+            match rx.try_recv() {
+                Ok(StreamEvent::Chunk(chunk)) => {
+                    self.pending_last_event_at = Some(Instant::now());
+                    self.stream_chunk_counter = self.stream_chunk_counter.saturating_add(1);
+                    if let Some(idx) = self.pending_assistant_msg_index {
+                        if let Some(msg) = self.messages.get_mut(idx) {
+                            msg.content.push_str(&chunk);
+                        }
+                    }
+
+                    if self.stream_chunk_counter % 100 == 0 {
+                        logging::log_event(&format!(
+                            "stream chunks={} offset={} input_len={}",
+                            self.stream_chunk_counter,
+                            self.history_offset_from_bottom,
+                            self.input.chars().count()
+                        ));
+                    }
+
+                    processed += 1;
                 }
-                self.pending_response = None;
+                Ok(StreamEvent::Done) => {
+                    self.pending_last_event_at = Some(Instant::now());
+                    if let Some(idx) = self.pending_assistant_msg_index {
+                        if let Some(msg) = self.messages.get(idx) {
+                            self.llm_history.push(LlmMessage {
+                                role: "assistant",
+                                content: msg.content.clone(),
+                            });
+                        }
+                    }
+                    completed = true;
+                    logging::log_event(&format!(
+                        "stream done chunks={} elapsed_ms={}",
+                        self.stream_chunk_counter,
+                        self.pending_started_at
+                            .map(|s| s.elapsed().as_millis())
+                            .unwrap_or(0)
+                    ));
+                    break;
+                }
+                Ok(StreamEvent::Error(err)) => {
+                    self.pending_last_event_at = Some(Instant::now());
+                    if let Some(idx) = self.pending_assistant_msg_index {
+                        if let Some(msg) = self.messages.get_mut(idx) {
+                            if msg.content.trim().is_empty() {
+                                msg.content = format!("LLM 调用失败: {}", err);
+                            } else {
+                                msg.content.push_str(&format!("\n\n[Error] {}", err));
+                            }
+                        }
+                    } else {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("LLM 调用失败: {}", err),
+                        });
+                    }
+                    completed = true;
+                    logging::log_event(&format!("stream error: {}", err));
+                    break;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    if let Some(idx) = self.pending_assistant_msg_index {
+                        if let Some(msg) = self.messages.get_mut(idx) {
+                            if msg.content.trim().is_empty() {
+                                msg.content = "LLM 请求线程异常中断。".to_string();
+                            }
+                        }
+                    }
+                    completed = true;
+                    logging::log_event("stream disconnected");
+                    break;
+                }
+                Err(TryRecvError::Empty) => break,
             }
-            Ok(Err(err)) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("LLM 调用失败: {}", err),
-                });
-                self.pending_response = None;
-            }
-            Err(TryRecvError::Disconnected) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "LLM 请求线程异常中断。".to_string(),
-                });
-                self.pending_response = None;
-            }
-            Err(TryRecvError::Empty) => {}
         }
+
+        if completed {
+            self.pending_response = None;
+            self.pending_assistant_msg_index = None;
+            self.pending_started_at = None;
+            self.pending_last_event_at = None;
+            self.stream_chunk_counter = 0;
+        }
+    }
+
+    fn handle_stream_stall_timeout(&mut self) {
+        if self.pending_response.is_none() {
+            return;
+        }
+
+        let Some(last_event) = self.pending_last_event_at else {
+            return;
+        };
+
+        if last_event.elapsed() < STREAM_STALL_TIMEOUT {
+            return;
+        }
+
+        if let Some(idx) = self.pending_assistant_msg_index {
+            if let Some(msg) = self.messages.get_mut(idx) {
+                if msg.content.trim().is_empty() {
+                    msg.content = "流式响应超时，连接已中断。".to_string();
+                } else {
+                    msg.content.push_str("\n\n[stream timeout] 响应长时间无数据，已自动停止等待。");
+                }
+            }
+        }
+
+        self.pending_response = None;
+        self.pending_assistant_msg_index = None;
+        self.pending_started_at = None;
+        self.pending_last_event_at = None;
+        self.stream_chunk_counter = 0;
+        logging::log_event("stream timeout -> force close");
     }
 
     fn scroll_history_up(&mut self, lines: usize) {
@@ -1034,6 +1152,7 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         }
 
         app.poll_pending_response();
+        app.handle_stream_stall_timeout();
         terminal.draw(|frame| ui::draw_ui(frame, &app))?;
 
         if event::poll(Duration::from_millis(100))? {

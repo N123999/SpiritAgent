@@ -8,9 +8,17 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use std::{cell::RefCell, collections::HashMap};
 use unicode_width::UnicodeWidthChar;
 
 use crate::{App, ChatMessage, MessageRole};
+
+const MAX_RENDERED_MESSAGES: usize = 180;
+
+thread_local! {
+    static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
+        RefCell::new(HashMap::new());
+}
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
     let show_model_picker = app.model_picker_active;
@@ -59,7 +67,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
     let history_lines = build_history_lines(app);
     let history_view_height = chunks[1].height.saturating_sub(2) as usize;
     let history_view_width = chunks[1].width.saturating_sub(2) as usize;
-    let total_visual_lines = estimate_visual_lines(app, history_view_width.max(1));
+    let total_visual_lines = estimate_visual_lines(&history_lines, history_view_width.max(1));
     let max_scroll = total_visual_lines.saturating_sub(history_view_height);
     let history_scroll = max_scroll.saturating_sub(app.history_offset_from_bottom);
     let history = Paragraph::new(history_lines)
@@ -140,33 +148,42 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
 
 fn build_history_lines(app: &App) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
+    let (visible_messages, skipped, start_index) = visible_messages(app);
 
-    for msg in &app.messages {
+    if skipped > 0 {
+        lines.push(Line::from(vec![
+            Span::styled("... ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("已折叠更早的 {} 条消息", skipped),
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+            ),
+        ]));
+    }
+
+    for (idx, msg) in visible_messages.iter().enumerate() {
+        let _global_idx = start_index + idx;
         lines.extend(render_message_lines(msg));
     }
 
     lines
 }
 
-fn estimate_visual_lines(app: &App, content_width: usize) -> usize {
+fn estimate_visual_lines(lines: &[Line<'static>], content_width: usize) -> usize {
     let mut total = 0usize;
 
-    for msg in &app.messages {
-        let rendered = render_message_lines(msg);
-        for line in rendered {
-            let line_width = line
-                .spans
-                .iter()
-                .map(|s| {
-                    s.content
-                        .chars()
-                        .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
-                        .sum::<usize>()
-                })
-                .sum::<usize>();
-            let wrapped = (line_width.max(1) + content_width - 1) / content_width;
-            total += wrapped.max(1);
-        }
+    for line in lines {
+        let line_width = line
+            .spans
+            .iter()
+            .map(|s| {
+                s.content
+                    .chars()
+                    .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+                    .sum::<usize>()
+            })
+            .sum::<usize>();
+        let wrapped = (line_width.max(1) + content_width - 1) / content_width;
+        total += wrapped.max(1);
     }
 
     total
@@ -221,17 +238,31 @@ fn plain_text_lines(text: &str) -> Vec<Vec<Span<'static>>> {
 }
 
 fn markdown_lines(text: &str) -> Vec<Vec<Span<'static>>> {
-    let arena = Arena::new();
-    let root = parse_document(&arena, text, &markdown_options());
+    MARKDOWN_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(hit) = cache.get(text) {
+            return hit.clone();
+        }
 
-    let mut builder = MdBuilder::new();
-    render_markdown_node(
-        root,
-        &mut builder,
-        Style::default().fg(Color::White),
-        0,
-    );
-    builder.into_lines()
+        let arena = Arena::new();
+        let root = parse_document(&arena, text, &markdown_options());
+
+        let mut builder = MdBuilder::new();
+        render_markdown_node(
+            root,
+            &mut builder,
+            Style::default().fg(Color::White),
+            0,
+        );
+        let parsed = builder.into_lines();
+
+        // Keep cache bounded so long sessions won't grow unbounded memory.
+        if cache.len() > 512 {
+            cache.clear();
+        }
+        cache.insert(text.to_string(), parsed.clone());
+        parsed
+    })
 }
 
 fn markdown_options() -> Options<'static> {
@@ -396,6 +427,15 @@ impl MdBuilder {
             self.lines
         }
     }
+}
+
+fn visible_messages(app: &App) -> (&[ChatMessage], usize, usize) {
+    if app.messages.len() <= MAX_RENDERED_MESSAGES {
+        return (&app.messages, 0, 0);
+    }
+
+    let start = app.messages.len() - MAX_RENDERED_MESSAGES;
+    (&app.messages[start..], start, start)
 }
 
 fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
