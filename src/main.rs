@@ -9,28 +9,23 @@ use crossterm::{
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
 };
-use reqwest::blocking::Client;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::{
-    env, fs, io,
-    path::{Path, PathBuf},
+    env, io,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread,
     time::Duration,
 };
-use unicode_width::UnicodeWidthChar;
+mod model_registry;
+mod llm_client;
+mod ui;
+use llm_client::{LlmMessage, query_openai_compatible};
+use model_registry::{
+    AppConfig, DEFAULT_API_BASE, ModelProfile, config_file_path, has_model_api_key, keyring_entry,
+    load_config, remove_model_api_key, save_config, save_model_api_key,
+};
 
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
-const ENV_API_BASE: &str = "SPIRIT_API_BASE";
-const DEFAULT_API_BASE: &str = "https://api.openai.com/v1";
-const KEYRING_SERVICE: &str = "SpiritAgent";
-const KEYRING_ACCOUNT_API_KEY: &str = "openai_api_key";
 
 #[derive(Parser)]
 #[command(name = "spirit-agent")]
@@ -138,55 +133,6 @@ enum KeyAction {
     Status,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ModelProfile {
-    name: String,
-    api_base: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AppConfig {
-    models: Vec<ModelProfile>,
-    active_model: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LegacyAppConfig {
-    api_base: String,
-    models: Vec<String>,
-    active_model: String,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            models: vec![ModelProfile {
-                name: "gpt-4o-mini".to_string(),
-                api_base: DEFAULT_API_BASE.to_string(),
-            }],
-            active_model: "gpt-4o-mini".to_string(),
-        }
-    }
-}
-
-impl AppConfig {
-    fn active_model_profile(&self) -> Option<&ModelProfile> {
-        self.models.iter().find(|m| m.name == self.active_model)
-    }
-
-    fn active_model_profile_mut(&mut self) -> Option<&mut ModelProfile> {
-        self.models.iter_mut().find(|m| m.name == self.active_model)
-    }
-
-    fn has_model(&self, name: &str) -> bool {
-        self.models.iter().any(|m| m.name == name)
-    }
-
-    fn add_model(&mut self, profile: ModelProfile) {
-        self.models.push(profile);
-    }
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -237,35 +183,29 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-struct ChatMessage {
-    role: MessageRole,
-    content: String,
+pub(crate) struct ChatMessage {
+    pub(crate) role: MessageRole,
+    pub(crate) content: String,
 }
 
-#[derive(Clone)]
-struct LlmMessage {
-    role: &'static str,
-    content: String,
-}
-
-enum MessageRole {
+pub(crate) enum MessageRole {
     User,
     Agent,
 }
 
-struct App {
-    input: String,
-    input_cursor: usize,
-    messages: Vec<ChatMessage>,
+pub(crate) struct App {
+    pub(crate) input: String,
+    pub(crate) input_cursor: usize,
+    pub(crate) messages: Vec<ChatMessage>,
     llm_history: Vec<LlmMessage>,
-    config: AppConfig,
+    pub(crate) config: AppConfig,
     slash_commands: Vec<String>,
-    slash_suggestions: Vec<String>,
-    selected_suggestion: usize,
-    model_picker_active: bool,
-    model_picker_index: usize,
-    history_offset_from_bottom: usize,
-    pending_response: Option<Receiver<Result<String, String>>>,
+    pub(crate) slash_suggestions: Vec<String>,
+    pub(crate) selected_suggestion: usize,
+    pub(crate) model_picker_active: bool,
+    pub(crate) model_picker_index: usize,
+    pub(crate) history_offset_from_bottom: usize,
+    pub(crate) pending_response: Option<Receiver<Result<String, String>>>,
     mouse_capture_enabled: bool,
     mouse_capture_requested: Option<bool>,
     should_quit: bool,
@@ -1001,215 +941,6 @@ fn handle_config_cli(action: ConfigAction) -> Result<()> {
     Ok(())
 }
 
-fn config_file_path() -> PathBuf {
-    if let Ok(appdata) = env::var("APPDATA") {
-        return PathBuf::from(appdata)
-            .join("SpiritAgent")
-            .join("config.json");
-    }
-
-    if let Ok(home) = env::var("USERPROFILE") {
-        return PathBuf::from(home)
-            .join(".spirit-agent")
-            .join("config.json");
-    }
-
-    PathBuf::from(".spirit-agent.config.json")
-}
-
-fn load_config() -> Result<AppConfig> {
-    let path = config_file_path();
-    if !Path::new(&path).exists() {
-        let cfg = AppConfig::default();
-        save_config(&cfg)?;
-        return Ok(cfg);
-    }
-
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("读取配置失败: {}", path.display()))?;
-
-    if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
-        normalize_config(&mut cfg);
-        return Ok(cfg);
-    }
-
-    let legacy: LegacyAppConfig = serde_json::from_str(&content)
-        .with_context(|| format!("解析配置失败: {}", path.display()))?;
-    let mut migrated = AppConfig {
-        models: legacy
-            .models
-            .into_iter()
-            .map(|name| ModelProfile {
-                name,
-                api_base: legacy.api_base.clone(),
-            })
-            .collect(),
-        active_model: legacy.active_model,
-    };
-    normalize_config(&mut migrated);
-    save_config(&migrated)?;
-    Ok(migrated)
-}
-
-fn save_config(cfg: &AppConfig) -> Result<()> {
-    let path = config_file_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("创建配置目录失败: {}", parent.display()))?;
-    }
-
-    let content = serde_json::to_string_pretty(cfg)?;
-    fs::write(&path, content).with_context(|| format!("写入配置失败: {}", path.display()))?;
-    Ok(())
-}
-
-fn normalize_config(cfg: &mut AppConfig) {
-    if cfg.models.is_empty() {
-        *cfg = AppConfig::default();
-        return;
-    }
-
-    if !cfg.models.iter().any(|m| m.name == cfg.active_model) {
-        cfg.active_model = cfg.models[0].name.clone();
-    }
-
-    for model in &mut cfg.models {
-        if model.api_base.trim().is_empty() {
-            model.api_base = DEFAULT_API_BASE.to_string();
-        }
-    }
-}
-
-fn query_openai_compatible(
-    cfg: &AppConfig,
-    history: &[LlmMessage],
-    user_input: &str,
-) -> Result<String> {
-    let active = cfg
-        .active_model_profile()
-        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
-
-    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
-        format!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
-            active.name,
-            active.name,
-            ENV_API_KEY
-        )
-    })?;
-
-    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
-
-    let mut messages = history
-        .iter()
-        .map(|m| json!({ "role": m.role, "content": m.content }))
-        .collect::<Vec<_>>();
-
-    if messages.is_empty() || messages.last().and_then(|v| v.get("content")).and_then(Value::as_str) != Some(user_input) {
-        messages.push(json!({ "role": "user", "content": user_input }));
-    }
-
-    let payload = json!({
-        "model": active.name,
-        "messages": messages
-    });
-
-    let client = Client::new();
-    let resp = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&payload)
-        .send()
-        .with_context(|| format!("请求失败: {}", url))?;
-
-    let status = resp.status();
-    let body = resp.text().context("读取响应失败")?;
-
-    if !status.is_success() {
-        return Err(anyhow!("HTTP {}: {}", status, body));
-    }
-
-    let v: Value = serde_json::from_str(&body).context("解析响应 JSON 失败")?;
-    let content = v
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|arr| arr.first())
-        .and_then(|first| first.get("message"))
-        .and_then(|msg| msg.get("content"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("响应中缺少 choices[0].message.content"))?;
-
-    Ok(content.to_string())
-}
-
-fn keyring_entry() -> Result<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_API_KEY)
-        .context("初始化 keyring 条目失败")
-}
-
-fn keyring_entry_for_account(account: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, account)
-        .with_context(|| format!("初始化 keyring 条目失败: {}", account))
-}
-
-fn model_key_account(model_name: &str) -> String {
-    format!("model::{}", model_name)
-}
-
-fn save_model_api_key(model_name: &str, api_key: &str) -> Result<()> {
-    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
-    entry
-        .set_password(api_key.trim())
-        .with_context(|| format!("保存模型 {} 的 API Key 失败", model_name))
-}
-
-fn remove_model_api_key(model_name: &str) -> Result<()> {
-    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
-    match entry.delete_password() {
-        Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(err) => Err(anyhow!("删除模型 {} 的 API Key 失败: {}", model_name, err)),
-    }
-}
-
-fn has_model_api_key(model_name: &str) -> Result<bool> {
-    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
-    match entry.get_password() {
-        Ok(v) => Ok(!v.trim().is_empty()),
-        Err(keyring::Error::NoEntry) => Ok(false),
-        Err(err) => Err(anyhow!("读取模型 {} 的 API Key 失败: {}", model_name, err)),
-    }
-}
-
-fn resolve_api_key_for_model(model_name: &str) -> Result<String> {
-    if let Ok(value) = env::var(ENV_API_KEY) {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
-        }
-    }
-
-    if let Ok(value) = load_model_api_key_from_keyring(model_name) {
-        return Ok(value);
-    }
-
-    load_api_key_from_keyring()
-}
-
-fn load_api_key_from_keyring() -> Result<String> {
-    let entry = keyring_entry()?;
-    entry
-        .get_password()
-        .context("读取 keyring 中的 API Key 失败")
-}
-
-fn load_model_api_key_from_keyring(model_name: &str) -> Result<String> {
-    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
-    entry
-        .get_password()
-        .with_context(|| format!("读取模型 {} 的 API Key 失败", model_name))
-}
-
 fn handle_key_cli(action: KeyAction) -> Result<()> {
     match action {
         KeyAction::Set { value } => {
@@ -1303,7 +1034,7 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         }
 
         app.poll_pending_response();
-        terminal.draw(|frame| draw_ui(frame, &app))?;
+        terminal.draw(|frame| ui::draw_ui(frame, &app))?;
 
         if event::poll(Duration::from_millis(100))? {
             let evt = event::read()?;
@@ -1387,278 +1118,6 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
-    let show_model_picker = app.model_picker_active;
-    let show_suggestions = app.input.starts_with('/') && !show_model_picker;
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(if show_model_picker {
-            vec![
-                Constraint::Length(8),
-                Constraint::Min(5),
-                Constraint::Length(3),
-                Constraint::Length(7),
-                Constraint::Length(1),
-            ]
-        } else if show_suggestions {
-            vec![
-                Constraint::Length(8),
-                Constraint::Min(5),
-                Constraint::Length(3),
-                Constraint::Length(5),
-                Constraint::Length(1),
-            ]
-        } else {
-            vec![
-                Constraint::Length(8),
-                Constraint::Min(6),
-                Constraint::Length(3),
-                Constraint::Length(1),
-            ]
-        })
-        .split(frame.area());
-
-    let logo = Paragraph::new(vec![
-        Line::from(" ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗"),
-        Line::from(" ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝"),
-        Line::from(" ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   "),
-        Line::from(" ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   "),
-        Line::from(" ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   "),
-        Line::from(" ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   "),
-    ])
-    .block(Block::default().borders(Borders::ALL).title("SpiritAgent"))
-    .style(Style::default().fg(Color::Cyan));
-    frame.render_widget(logo, chunks[0]);
-
-    let history_lines = build_history_lines(app);
-    let history_view_height = chunks[1].height.saturating_sub(2) as usize;
-    let history_view_width = chunks[1].width.saturating_sub(2) as usize;
-    let total_visual_lines = estimate_visual_lines(app, history_view_width.max(1));
-    let max_scroll = total_visual_lines.saturating_sub(history_view_height);
-    let history_scroll = max_scroll.saturating_sub(app.history_offset_from_bottom);
-    let history = Paragraph::new(history_lines)
-        .block(Block::default().borders(Borders::ALL).title("Conversation"))
-        .scroll((history_scroll as u16, 0))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(history, chunks[1]);
-
-    let input = Paragraph::new(app.input.as_str())
-        .block(Block::default().borders(Borders::ALL).title("Input"))
-        .style(Style::default().fg(Color::Yellow));
-    frame.render_widget(input, chunks[2]);
-
-    if !show_model_picker {
-        // Use terminal display width so CJK/full-width characters keep cursor aligned.
-        let max_cursor_offset = chunks[2].width.saturating_sub(3) as usize;
-        let cursor_visual_col = app
-            .input
-            .chars()
-            .take(app.input_cursor)
-            .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
-            .sum::<usize>();
-        let cursor_offset = cursor_visual_col.min(max_cursor_offset);
-        let cursor_x = chunks[2].x + 1 + cursor_offset as u16;
-        let cursor_y = chunks[2].y + 1;
-        frame.set_cursor_position((cursor_x, cursor_y));
-    }
-
-    if show_model_picker {
-        let picker_lines = build_model_picker_lines(app, 5);
-        let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("Model Picker"))
-            .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[3]);
-    } else if show_suggestions {
-        let suggestions = build_suggestion_lines(app, 3);
-        let suggestions_widget = Paragraph::new(suggestions)
-            .block(Block::default().borders(Borders::ALL).title("Slash Commands"))
-            .wrap(Wrap { trim: true });
-        frame.render_widget(suggestions_widget, chunks[3]);
-    }
-
-    let help = if show_model_picker {
-        Paragraph::new(Line::from(vec![
-            Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" choose  |  "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" confirm  |  "),
-            Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" cancel  |  "),
-            Span::styled("Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" quit"),
-        ]))
-    } else {
-        Paragraph::new(Line::from(vec![
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(if app.pending_response.is_some() {
-                " wait  |  "
-            } else {
-                " send  |  "
-            }),
-            Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" complete  |  "),
-            Span::styled("PgUp/PgDn", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" scroll  |  "),
-            Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" pick  |  "),
-            Span::styled("/model", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" picker  |  "),
-            Span::styled("Esc / Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" quit"),
-        ]))
-    };
-    let help_idx = if show_suggestions { 4 } else { 3 };
-    let help_idx = if show_model_picker { 4 } else { help_idx };
-    frame.render_widget(help, chunks[help_idx]);
-}
-
-fn build_history_lines(app: &App) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    for msg in &app.messages {
-        let (prefix, color) = match msg.role {
-            MessageRole::User => ("You", Color::Green),
-            MessageRole::Agent => ("Spirit", Color::Cyan),
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{}> ", prefix),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(msg.content.clone()),
-        ]));
-    }
-
-    lines
-}
-
-fn estimate_visual_lines(app: &App, content_width: usize) -> usize {
-    let mut total = 0usize;
-
-    for msg in &app.messages {
-        let prefix = match msg.role {
-            MessageRole::User => "You> ",
-            MessageRole::Agent => "Spirit> ",
-        };
-
-        let mut logical_lines = msg.content.split('\n').peekable();
-        let mut is_first = true;
-        while let Some(line) = logical_lines.next() {
-            let prefix_width = if is_first {
-                prefix
-                    .chars()
-                    .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
-                    .sum::<usize>()
-            } else {
-                0
-            };
-
-            let line_width = line
-                .chars()
-                .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
-                .sum::<usize>();
-
-            let wrapped = ((prefix_width + line_width).max(1) + content_width - 1) / content_width;
-            total += wrapped.max(1);
-            is_first = false;
-
-            // Preserve explicit trailing newline as an extra blank line.
-            if logical_lines.peek().is_some() && line.is_empty() {
-                total += 1;
-            }
-        }
-    }
-
-    total
-}
-
-fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
-    if !app.input.starts_with('/') {
-        return vec![Line::from("输入 / 触发命令补全")];
-    }
-
-    if app.slash_suggestions.is_empty() {
-        return vec![Line::from("没有匹配的命令")];
-    }
-
-    let selected = app.selected_suggestion;
-    let total = app.slash_suggestions.len();
-    let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
-    let end = (start + window).min(total);
-
-    let mut lines = Vec::new();
-    for idx in start..end {
-        let cmd = &app.slash_suggestions[idx];
-        let is_selected = idx == selected;
-        let marker = if is_selected { "> " } else { "  " };
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        lines.push(Line::from(Span::styled(
-            format!("{}{}", marker, cmd),
-            style,
-        )));
-    }
-
-    lines
-}
-
-fn build_model_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
-    if app.config.models.is_empty() {
-        return vec![Line::from(
-            "暂无模型，先用 /model add <name> <api_base> <api_key> 添加",
-        )];
-    }
-
-    let selected = app.model_picker_index.min(app.config.models.len().saturating_sub(1));
-    let total = app.config.models.len();
-    let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
-    let end = (start + window).min(total);
-
-    let mut lines = Vec::new();
-    for idx in start..end {
-        let model = &app.config.models[idx];
-        let is_selected = idx == selected;
-        let is_active = model.name == app.config.active_model;
-
-        let marker = if is_selected { "> " } else { "  " };
-        let active_suffix = if is_active { "  (current)" } else { "" };
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-        } else if is_active {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        lines.push(Line::from(Span::styled(
-            format!("{}{} ({}){}", marker, model.name, model.api_base, active_suffix),
-            style,
-        )));
-    }
-
-    lines
 }
 
 fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
