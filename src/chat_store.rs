@@ -25,11 +25,13 @@ struct StoredChatMessage {
 struct StoredLlmMessage {
     role: String,
     content: String,
+    #[serde(default)]
+    image_paths: Vec<String>,
 }
 
 pub struct LoadedChat {
     pub messages: Vec<(String, String)>,
-    pub llm_history: Vec<(String, String)>,
+    pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
 pub fn chat_dir_path() -> PathBuf {
@@ -65,7 +67,7 @@ pub fn list_chat_files() -> Result<Vec<PathBuf>> {
 pub fn save_chat(
     path_arg: Option<&str>,
     messages: &[(String, String)],
-    llm_history: &[(String, String)],
+    llm_history: &[(String, String, Vec<String>)],
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
     if let Some(parent) = path.parent() {
@@ -87,9 +89,10 @@ pub fn save_chat(
             .collect(),
         llm_history: llm_history
             .iter()
-            .map(|(role, content)| StoredLlmMessage {
+            .map(|(role, content, image_paths)| StoredLlmMessage {
                 role: role.clone(),
                 content: content.clone(),
+                image_paths: image_paths.clone(),
             })
             .collect(),
     };
@@ -115,7 +118,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
         llm_history: parsed
             .llm_history
             .into_iter()
-            .map(|m| (m.role, m.content))
+            .map(|m| (m.role, m.content, m.image_paths))
             .collect(),
     })
 }

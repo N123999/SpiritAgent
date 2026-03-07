@@ -23,7 +23,8 @@ thread_local! {
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
     let show_model_picker = app.model_picker_active;
     let show_chat_picker = app.chat_picker_active;
-    let show_picker = show_model_picker || show_chat_picker;
+    let show_image_picker = app.image_picker_active;
+    let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker;
 
     let chunks = Layout::default()
@@ -110,6 +111,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
             .block(Block::default().borders(Borders::ALL).title("Chat Picker"))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[3]);
+    } else if show_image_picker {
+        let picker_lines = build_image_picker_lines(app, 5);
+        let picker_widget = Paragraph::new(picker_lines)
+            .block(Block::default().borders(Borders::ALL).title("Image Picker"))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(picker_widget, chunks[3]);
     } else if show_suggestions {
         let suggestions = build_suggestion_lines(app, 3);
         let suggestions_widget = Paragraph::new(suggestions)
@@ -146,6 +153,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
             Span::styled("/model", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" picker  |  "),
             Span::styled("/chat", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" picker  |  "),
+            Span::styled("/image pick", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" picker  |  "),
             Span::styled("Esc / Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" quit"),
@@ -577,6 +586,41 @@ fn build_chat_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     for idx in start..end {
         let name = &app.chat_picker_files[idx];
+        let is_selected = idx == selected;
+        let marker = if is_selected { "> " } else { "  " };
+        let style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(Span::styled(format!("{}{}", marker, name), style)));
+    }
+
+    lines
+}
+
+fn build_image_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
+    if app.image_picker_files.is_empty() {
+        return vec![Line::from("当前目录暂无可选图片")];
+    }
+
+    let selected = app
+        .image_picker_index
+        .min(app.image_picker_files.len().saturating_sub(1));
+    let total = app.image_picker_files.len();
+    let window = max_items.max(1);
+    let start = if selected + 1 > window {
+        selected + 1 - window
+    } else {
+        0
+    };
+    let end = (start + window).min(total);
+
+    let mut lines = Vec::new();
+    for idx in start..end {
+        let name = &app.image_picker_files[idx];
         let is_selected = idx == selected;
         let marker = if is_selected { "> " } else { "  " };
         let style = if is_selected {

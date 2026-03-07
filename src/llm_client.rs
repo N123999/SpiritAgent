@@ -1,12 +1,16 @@
 use anyhow::{Context, Result, anyhow};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::{
     env,
+    fs,
     io::{BufRead, BufReader},
+    path::Path,
     sync::mpsc::Sender,
 };
 
+use crate::logging;
 use crate::model_registry::{AppConfig, resolve_api_key_for_model};
 
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
@@ -19,6 +23,7 @@ const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的工具调用代理
 pub struct LlmMessage {
     pub role: &'static str,
     pub content: String,
+    pub image_paths: Vec<String>,
 }
 
 pub enum StreamEvent {
@@ -55,18 +60,11 @@ pub fn start_tool_agent_state(history: &[LlmMessage], user_input: &str) -> ToolA
         "content": TOOL_AGENT_SYSTEM_PROMPT
     })];
 
-    messages.extend(
-        history
-            .iter()
-            .map(|m| json!({"role": m.role, "content": m.content})),
-    );
+    messages.extend(history.iter().map(llm_message_to_json));
 
     let need_append_user = messages
         .last()
-        .map(|m| {
-            m.get("role").and_then(Value::as_str) != Some("user")
-                || m.get("content").and_then(Value::as_str) != Some(user_input)
-        })
+        .map(|m| m.get("role").and_then(Value::as_str) != Some("user"))
         .unwrap_or(true);
 
     if need_append_user {
@@ -122,7 +120,7 @@ pub fn tool_agent_next_step(
         .bearer_auth(api_key)
         .json(&payload)
         .send()
-        .with_context(|| format!("请求失败: {}", url))?;
+        .map_err(|err| request_send_error("工具调用请求", &url, &err))?;
 
     let status = resp.status();
     let body = resp.text().context("读取工具调用响应失败")?;
@@ -221,6 +219,18 @@ fn stream_assistant_from_messages_inner(
 
     let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let stats = image_payload_stats(messages);
+    logging::log_event(&format!(
+        "stream request: model={} url={} messages={} image_parts={} data_urls={} file_urls={} http_urls={} max_image_url_chars={}",
+        active.name,
+        truncate_chars(&url, 160),
+        messages.len(),
+        stats.total_image_parts,
+        stats.data_url_parts,
+        stats.file_url_parts,
+        stats.http_url_parts,
+        stats.max_image_url_chars
+    ));
 
     let payload = json!({
         "model": active.name,
@@ -235,11 +245,16 @@ fn stream_assistant_from_messages_inner(
         .bearer_auth(api_key)
         .json(&payload)
         .send()
-        .with_context(|| format!("请求失败: {}", url))?;
+        .map_err(|err| request_send_error("流式请求", &url, &err))?;
 
     let status = resp.status();
     if !status.is_success() {
         let body = resp.text().unwrap_or_else(|_| "<empty body>".to_string());
+        logging::log_event(&format!(
+            "stream http error: status={} body_preview={}",
+            status,
+            truncate_chars(&body, 600)
+        ));
         return Err(anyhow!("HTTP {}: {}", status, body));
     }
 
@@ -311,6 +326,10 @@ fn stream_assistant_from_messages_inner(
         } else {
             raw_preview.join("\n")
         };
+        logging::log_event(&format!(
+            "stream no text chunks: preview={} ",
+            truncate_chars(&preview, 600)
+        ));
         return Err(anyhow!(
             "流式响应没有返回任何文本片段。原始响应预览:\n{}",
             preview
@@ -459,7 +478,7 @@ fn stream_once(
         .bearer_auth(api_key)
         .json(&payload)
         .send()
-        .with_context(|| format!("请求失败: {}", url))?;
+        .map_err(|err| request_send_error("流式请求", &url, &err))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -627,7 +646,7 @@ fn summarize_messages(
         .bearer_auth(api_key)
         .json(&payload)
         .send()
-        .with_context(|| format!("压缩请求失败: {}", url))?;
+        .map_err(|err| request_send_error("压缩请求", &url, &err))?;
 
     let status = resp.status();
     let body = resp.text().context("读取压缩响应失败")?;
@@ -647,10 +666,7 @@ fn summarize_messages(
 }
 
 fn chat_payload(model: &str, history: &[LlmMessage], user_input: &str, stream: bool) -> Value {
-    let mut messages = history
-        .iter()
-        .map(|m| json!({ "role": m.role, "content": m.content }))
-        .collect::<Vec<_>>();
+    let mut messages = history.iter().map(llm_message_to_json).collect::<Vec<_>>();
 
     if messages.is_empty()
         || messages
@@ -673,6 +689,7 @@ fn compact_summary_message(summary: String) -> LlmMessage {
     LlmMessage {
         role: "system",
         content: format!("{}\n{}", COMPACT_SUMMARY_PREFIX, summary.trim()),
+        image_paths: vec![],
     }
 }
 
@@ -692,6 +709,202 @@ fn extract_compact_summary(history: &[LlmMessage]) -> Option<String> {
 
 fn is_compact_summary_message(msg: &LlmMessage) -> bool {
     msg.role == "system" && msg.content.starts_with(COMPACT_SUMMARY_PREFIX)
+}
+
+fn llm_message_to_json(msg: &LlmMessage) -> Value {
+    if msg.role == "user" && !msg.image_paths.is_empty() {
+        logging::log_event(&format!(
+            "building multimodal payload: role=user images={} text_chars={}",
+            msg.image_paths.len(),
+            msg.content.chars().count()
+        ));
+
+        let mut parts = Vec::new();
+        if !msg.content.trim().is_empty() {
+            parts.push(json!({ "type": "text", "text": msg.content }));
+        }
+
+        for path in &msg.image_paths {
+            let image_url = path_to_image_url(path);
+            parts.push(json!({
+                "type": "image_url",
+                "image_url": { "url": image_url }
+            }));
+        }
+
+        if parts.is_empty() {
+            return json!({ "role": msg.role, "content": "" });
+        }
+
+        return json!({ "role": msg.role, "content": parts });
+    }
+
+    json!({ "role": msg.role, "content": msg.content })
+}
+
+fn path_to_image_url(path: &str) -> String {
+    let normalized = path.trim();
+    if normalized.starts_with("http://") || normalized.starts_with("https://") {
+        logging::log_event(&format!("image source passthrough: {}", truncate_chars(normalized, 180)));
+        return normalized.to_string();
+    }
+
+    if normalized.starts_with("data:") {
+        logging::log_event(&format!("image source already data URL: {}", truncate_chars(normalized, 80)));
+        return normalized.to_string();
+    }
+
+    if normalized.starts_with("file://") {
+        logging::log_event(&format!(
+            "image source is file:// URI (passthrough): {}",
+            truncate_chars(normalized, 180)
+        ));
+        return normalized.to_string();
+    }
+
+    let base = Path::new(normalized);
+    let abs = if base.is_absolute() {
+        base.to_path_buf()
+    } else {
+        env::current_dir()
+            .map(|cwd| cwd.join(base))
+            .unwrap_or_else(|_| base.to_path_buf())
+    };
+
+    let abs_display = abs.to_string_lossy().to_string();
+    let mime = guess_image_mime_from_path(&abs);
+
+    match fs::read(&abs) {
+        Ok(bytes) => {
+            let encoded = BASE64_STANDARD.encode(&bytes);
+            let prefix = bytes_prefix_hex(&bytes, 12);
+            logging::log_event(&format!(
+                "image encode ok: path={} mime={} bytes={} b64_chars={} header_hex={}",
+                truncate_chars(&abs_display, 220),
+                mime,
+                bytes.len(),
+                encoded.len(),
+                prefix
+            ));
+            format!("data:{};base64,{}", mime, encoded)
+        }
+        Err(err) => {
+            let fallback = to_file_url(&abs);
+            logging::log_event(&format!(
+                "image encode failed: path={} mime={} err={} -> fallback={}",
+                truncate_chars(&abs_display, 220),
+                mime,
+                err,
+                truncate_chars(&fallback, 180)
+            ));
+            fallback
+        }
+    }
+}
+
+fn to_file_url(abs: &Path) -> String {
+    let normalized_abs = abs.to_string_lossy().replace('\\', "/");
+    if normalized_abs.starts_with('/') {
+        format!("file://{}", normalized_abs)
+    } else {
+        format!("file:///{}", normalized_abs)
+    }
+}
+
+fn guess_image_mime_from_path(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("bmp") => "image/bmp",
+        _ => "application/octet-stream",
+    }
+}
+
+fn bytes_prefix_hex(bytes: &[u8], max_len: usize) -> String {
+    let mut out = String::new();
+    for b in bytes.iter().take(max_len) {
+        out.push_str(&format!("{:02X}", b));
+    }
+    out
+}
+
+#[derive(Default)]
+struct ImagePayloadStats {
+    total_image_parts: usize,
+    data_url_parts: usize,
+    file_url_parts: usize,
+    http_url_parts: usize,
+    max_image_url_chars: usize,
+}
+
+fn image_payload_stats(messages: &[Value]) -> ImagePayloadStats {
+    let mut stats = ImagePayloadStats::default();
+
+    for message in messages {
+        let Some(parts) = message.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+
+        for part in parts {
+            if part.get("type").and_then(Value::as_str) != Some("image_url") {
+                continue;
+            }
+
+            let Some(url) = part
+                .get("image_url")
+                .and_then(|v| v.get("url"))
+                .and_then(Value::as_str)
+            else {
+                continue;
+            };
+
+            stats.total_image_parts = stats.total_image_parts.saturating_add(1);
+            stats.max_image_url_chars = stats.max_image_url_chars.max(url.chars().count());
+
+            if url.starts_with("data:") {
+                stats.data_url_parts = stats.data_url_parts.saturating_add(1);
+            } else if url.starts_with("file://") {
+                stats.file_url_parts = stats.file_url_parts.saturating_add(1);
+            } else if url.starts_with("http://") || url.starts_with("https://") {
+                stats.http_url_parts = stats.http_url_parts.saturating_add(1);
+            }
+        }
+    }
+
+    stats
+}
+
+fn request_send_error(stage: &str, url: &str, err: &reqwest::Error) -> anyhow::Error {
+    let kind = if err.is_timeout() {
+        "timeout"
+    } else if err.is_connect() {
+        "connect"
+    } else if err.is_request() {
+        "request"
+    } else if err.is_body() {
+        "body"
+    } else if err.is_decode() {
+        "decode"
+    } else {
+        "network"
+    };
+
+    let message = format!(
+        "{}失败: {} (kind={}; detail={})",
+        stage,
+        truncate_chars(url, 180),
+        kind,
+        truncate_chars(&err.to_string(), 500)
+    );
+    logging::log_event(&format!("{}", message));
+    anyhow!(message)
 }
 
 fn truncate_chars(text: &str, max_chars: usize) -> String {

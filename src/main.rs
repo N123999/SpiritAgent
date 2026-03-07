@@ -11,7 +11,8 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
 };
 use std::{
-    env, io,
+    env, fs, io,
+    path::Path,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread,
     time::{Duration, Instant},
@@ -222,6 +223,9 @@ pub(crate) struct App {
     pub(crate) chat_picker_active: bool,
     pub(crate) chat_picker_index: usize,
     pub(crate) chat_picker_files: Vec<String>,
+    pub(crate) image_picker_active: bool,
+    pub(crate) image_picker_index: usize,
+    pub(crate) image_picker_files: Vec<String>,
     pub(crate) history_offset_from_bottom: usize,
     pub(crate) pending_response: Option<Receiver<StreamEvent>>,
     pub(crate) pending_assistant_msg_index: Option<usize>,
@@ -229,6 +233,7 @@ pub(crate) struct App {
     pending_last_event_at: Option<Instant>,
     stream_chunk_counter: usize,
     pending_user_turn: Option<String>,
+    pending_image_paths: Vec<String>,
     thinking_spinner_index: usize,
     thinking_text: String,
     tool_runtime: ToolRuntime,
@@ -280,6 +285,9 @@ impl App {
             "/chat save".to_string(),
             "/chat save <path>".to_string(),
             "/chat load <file>".to_string(),
+            "/image <path> [prompt]".to_string(),
+            "/image pick".to_string(),
+            "/image clear".to_string(),
             "/tool shell <command>".to_string(),
             "/tool read <path> [start] [end]".to_string(),
             "/tool search <query>".to_string(),
@@ -305,6 +313,9 @@ impl App {
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
+            image_picker_active: false,
+            image_picker_index: 0,
+            image_picker_files: vec![],
             history_offset_from_bottom: 0,
             pending_response: None,
             pending_assistant_msg_index: None,
@@ -312,6 +323,7 @@ impl App {
             pending_last_event_at: None,
             stream_chunk_counter: 0,
             pending_user_turn: None,
+            pending_image_paths: vec![],
             thinking_spinner_index: 0,
             thinking_text: String::new(),
             tool_runtime: ToolRuntime::new(),
@@ -530,6 +542,76 @@ impl App {
         self.load_chat_by_path(&selected);
     }
 
+    fn open_image_picker(&mut self) {
+        match list_local_image_files() {
+            Ok(files) => {
+                if files.is_empty() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content:
+                            "当前目录未发现图片文件。可直接用 /image <path> 添加绝对或相对路径。"
+                                .to_string(),
+                    });
+                    return;
+                }
+
+                self.image_picker_files = files;
+                self.image_picker_index = 0;
+                self.image_picker_active = true;
+                self.model_picker_active = false;
+                self.chat_picker_active = false;
+                self.set_input(String::new());
+                self.refresh_suggestions();
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取图片列表失败: {}", err),
+                });
+            }
+        }
+    }
+
+    fn cancel_image_picker(&mut self) {
+        self.image_picker_active = false;
+    }
+
+    fn select_next_image(&mut self) {
+        if self.image_picker_files.is_empty() {
+            return;
+        }
+        self.image_picker_index = (self.image_picker_index + 1) % self.image_picker_files.len();
+    }
+
+    fn select_prev_image(&mut self) {
+        if self.image_picker_files.is_empty() {
+            return;
+        }
+        if self.image_picker_index == 0 {
+            self.image_picker_index = self.image_picker_files.len() - 1;
+        } else {
+            self.image_picker_index -= 1;
+        }
+    }
+
+    fn confirm_image_picker(&mut self) {
+        let Some(selected) = self.image_picker_files.get(self.image_picker_index).cloned() else {
+            self.image_picker_active = false;
+            return;
+        };
+
+        self.image_picker_active = false;
+        self.pending_image_paths.push(selected.clone());
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: format!(
+                "已添加图片到待发送队列（{} 张）: {}",
+                self.pending_image_paths.len(),
+                selected
+            ),
+        });
+    }
+
     fn current_slash_query(&self) -> Option<&str> {
         if !self.input.starts_with('/') {
             return None;
@@ -624,26 +706,40 @@ impl App {
             return;
         }
 
+        let mut user_content = message.clone();
+        if !message.starts_with('/') && !self.pending_image_paths.is_empty() {
+            user_content.push_str(&format!(
+                "\n[attached images: {}]",
+                self.pending_image_paths.join(", ")
+            ));
+        }
+
         self.messages.push(ChatMessage {
             role: MessageRole::User,
-            content: message.clone(),
+            content: user_content,
         });
 
         if message.starts_with('/') {
             self.handle_slash_command(&message);
         } else {
-            self.pending_user_turn = Some(message.clone());
-            self.thinking_spinner_index = 0;
-            self.llm_history.push(LlmMessage {
-                role: "user",
-                content: message.clone(),
-            });
-            let state = start_tool_agent_state(&self.llm_history, &message);
-            self.start_tool_agent_step_async(state);
+            self.send_user_turn(message.clone(), None);
         }
 
         self.set_input(String::new());
         self.refresh_suggestions();
+    }
+
+    fn send_user_turn(&mut self, text: String, explicit_images: Option<Vec<String>>) {
+        let images = explicit_images.unwrap_or_else(|| std::mem::take(&mut self.pending_image_paths));
+        self.pending_user_turn = Some(text.clone());
+        self.thinking_spinner_index = 0;
+        self.llm_history.push(LlmMessage {
+            role: "user",
+            content: text.clone(),
+            image_paths: images,
+        });
+        let state = start_tool_agent_state(&self.llm_history, &text);
+        self.start_tool_agent_step_async(state);
     }
 
     fn handle_tool_approval_input(&mut self, message: &str) {
@@ -708,6 +804,7 @@ impl App {
                     self.llm_history.push(LlmMessage {
                         role: "user",
                         content: message.to_string(),
+                        image_paths: vec![],
                     });
                     self.pending_user_turn = Some(message.to_string());
                     self.messages.push(ChatMessage {
@@ -723,6 +820,7 @@ impl App {
                 self.llm_history.push(LlmMessage {
                     role: "user",
                     content: message.to_string(),
+                    image_paths: vec![],
                 });
                 self.pending_user_turn = Some(message.to_string());
                 self.messages.push(ChatMessage {
@@ -843,6 +941,9 @@ impl App {
             }
             Ok(Err(err)) => {
                 self.pending_tool_agent_step = None;
+                if self.try_fallback_to_text_only_and_retry(&err) {
+                    return;
+                }
                 if self.try_auto_compact_and_retry(&err) {
                     return;
                 }
@@ -1010,6 +1111,7 @@ impl App {
                             self.llm_history.push(LlmMessage {
                                 role: "assistant",
                                 content: msg.content.clone(),
+                                image_paths: vec![],
                             });
                         }
                     }
@@ -1027,6 +1129,24 @@ impl App {
                 }
                 Ok(StreamEvent::Error(err)) => {
                     self.pending_last_event_at = Some(Instant::now());
+                    if self.try_fallback_to_text_only_and_retry(&err) {
+                        if let Some(idx) = self.pending_assistant_msg_index {
+                            if let Some(msg) = self.messages.get_mut(idx)
+                                && msg.content.trim().is_empty()
+                            {
+                                msg.content =
+                                    "当前模型不支持图片输入，已自动去除图片并重试。".to_string();
+                            }
+                        }
+                        completed = true;
+                        self.thinking_text.clear();
+                        logging::log_event(&format!(
+                            "stream vision unsupported -> auto text-only retry: {}",
+                            err
+                        ));
+                        break;
+                    }
+
                     if self.try_auto_compact_and_retry(&err) {
                         if let Some(idx) = self.pending_assistant_msg_index {
                             if let Some(msg) = self.messages.get_mut(idx)
@@ -1156,7 +1276,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -1182,6 +1302,9 @@ impl App {
             }
             "/chat" => {
                 self.handle_chat_slash(message);
+            }
+            "/image" => {
+                self.handle_image_slash(message);
             }
             "/tool" => {
                 self.handle_tool_slash(message);
@@ -1458,6 +1581,91 @@ impl App {
         });
     }
 
+    fn handle_image_slash(&mut self, message: &str) {
+        let tail = message
+            .strip_prefix("/image")
+            .map(str::trim)
+            .unwrap_or("");
+
+        if tail.is_empty() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content:
+                    "用法: /image <path> [prompt] | /image pick | /image clear。若不带 prompt，会把图片加入待发送队列。"
+                        .to_string(),
+            });
+            return;
+        }
+
+        if tail == "clear" {
+            let cleared = self.pending_image_paths.len();
+            self.pending_image_paths.clear();
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("已清空待发送图片队列（{} 张）。", cleared),
+            });
+            return;
+        }
+
+        if tail == "pick" {
+            self.open_image_picker();
+            return;
+        }
+
+        let (raw_path, prompt) = parse_image_path_and_prompt(tail);
+
+        if raw_path.is_empty() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "用法: /image <path> [prompt]".to_string(),
+            });
+            return;
+        }
+
+        if !is_supported_image_path(raw_path) {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "仅支持图片文件: .png .jpg .jpeg .webp .gif .bmp".to_string(),
+            });
+            return;
+        }
+
+        if !Path::new(raw_path).exists() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("图片不存在: {}", raw_path),
+            });
+            return;
+        }
+
+        if !prompt.is_empty() {
+            if self.pending_response.is_some() || self.pending_tool_agent_step.is_some() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "上一条回复仍在处理中，请稍候。".to_string(),
+                });
+                return;
+            }
+
+            self.scroll_history_to_bottom();
+            self.messages.push(ChatMessage {
+                role: MessageRole::User,
+                content: format!("{}\n[attached image] {}", prompt, raw_path),
+            });
+            self.send_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
+            return;
+        }
+
+        self.pending_image_paths.push(raw_path.to_string());
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: format!(
+                "已添加图片到待发送队列（{} 张）。下一条普通消息会自动携带这些图片。",
+                self.pending_image_paths.len()
+            ),
+        });
+    }
+
     fn save_current_chat(&mut self, path: Option<&str>) {
         let messages = self
             .messages
@@ -1476,7 +1684,7 @@ impl App {
         let llm = self
             .llm_history
             .iter()
-            .map(|m| (m.role.to_string(), m.content.clone()))
+            .map(|m| (m.role.to_string(), m.content.clone(), m.image_paths.clone()))
             .collect::<Vec<_>>();
 
         match save_chat(path, &messages, &llm) {
@@ -1521,7 +1729,7 @@ impl App {
                 self.llm_history = loaded
                     .llm_history
                     .into_iter()
-                    .map(|(role, content)| LlmMessage {
+                    .map(|(role, content, image_paths)| LlmMessage {
                         role: if role == "assistant" {
                             "assistant"
                         } else if role == "system" {
@@ -1530,6 +1738,7 @@ impl App {
                             "user"
                         },
                         content,
+                        image_paths,
                     })
                     .collect();
 
@@ -1676,6 +1885,7 @@ impl App {
         self.llm_history.push(LlmMessage {
             role: "system",
             content: entry,
+            image_paths: vec![],
         });
         self.prune_tool_memories();
     }
@@ -1757,6 +1967,52 @@ impl App {
                 false
             }
         }
+    }
+
+    fn try_fallback_to_text_only_and_retry(&mut self, err: &str) -> bool {
+        if !is_vision_unsupported_error(err) {
+            return false;
+        }
+
+        let mut dropped = 0usize;
+        let mut user_turn = self.pending_user_turn.clone();
+
+        if let Some(last_user) = self
+            .llm_history
+            .iter_mut()
+            .rev()
+            .find(|m| m.role == "user" && !m.image_paths.is_empty())
+        {
+            dropped = last_user.image_paths.len();
+            if user_turn.is_none() {
+                user_turn = Some(last_user.content.clone());
+            }
+            last_user.image_paths.clear();
+        }
+
+        if dropped == 0 {
+            return false;
+        }
+
+        let Some(turn) = user_turn else {
+            return false;
+        };
+
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: format!(
+                "当前模型/接口不支持图像输入，已自动降级为文本重试（忽略 {} 张图片）。",
+                dropped
+            ),
+        });
+        logging::log_event(&format!(
+            "vision fallback -> retry as text-only, dropped_images={}, err={}",
+            dropped, err
+        ));
+
+        let state = start_tool_agent_state(&self.llm_history, &turn);
+        self.start_tool_agent_step_async(state);
+        true
     }
 }
 
@@ -2064,6 +2320,20 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
                 continue;
             }
 
+            if app.image_picker_active {
+                match key.code {
+                    KeyCode::Esc => app.cancel_image_picker(),
+                    KeyCode::Up => app.select_prev_image(),
+                    KeyCode::Down => app.select_next_image(),
+                    KeyCode::Enter => app.confirm_image_picker(),
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.should_quit = true;
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
             let slash_mode = app.is_slash_mode_active() && !app.slash_suggestions.is_empty();
 
             match key.code {
@@ -2141,6 +2411,13 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
             .collect();
     }
 
+    if q == "/image" || q.starts_with("/image ") {
+        return vec!["/image <path> [prompt]", "/image pick", "/image clear"]
+            .into_iter()
+            .filter(|cmd| cmd.starts_with(q))
+            .collect();
+    }
+
     if q == "/tool" || q.starts_with("/tool ") {
         return vec![
             "/tool shell <command>",
@@ -2153,4 +2430,108 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
     }
 
     Vec::new()
+}
+
+fn parse_image_path_and_prompt(input: &str) -> (&str, &str) {
+    let tail = input.trim();
+    if tail.is_empty() {
+        return ("", "");
+    }
+
+    if let Some(quote) = tail.chars().next().filter(|c| *c == '"' || *c == '\'') {
+        let rest = &tail[quote.len_utf8()..];
+        if let Some(end) = rest.find(quote) {
+            let path = rest[..end].trim();
+            let prompt = rest[end + quote.len_utf8()..].trim();
+            return (path, prompt);
+        }
+    }
+
+    // Unquoted form: pick the shortest prefix that already looks like an image path.
+    // This keeps prompt parsing intact while allowing spaces in file paths.
+    for (idx, ch) in tail.char_indices() {
+        if !ch.is_whitespace() {
+            continue;
+        }
+
+        let candidate = tail[..idx].trim_end();
+        if is_supported_image_path(candidate) {
+            return (candidate, tail[idx..].trim_start());
+        }
+    }
+
+    if is_supported_image_path(tail) {
+        return (tail, "");
+    }
+
+    let mut parts = tail.splitn(2, ' ');
+    let raw_path = parts.next().unwrap_or("").trim();
+    let prompt = parts.next().map(str::trim).unwrap_or("");
+    (raw_path, prompt)
+}
+
+fn is_supported_image_path(path: &str) -> bool {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase());
+
+    matches!(
+        ext.as_deref(),
+        Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("gif") | Some("bmp")
+    )
+}
+
+fn is_vision_unsupported_error(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    let mentions_image = e.contains("image")
+        || e.contains("vision")
+        || e.contains("multimodal")
+        || e.contains("content[1]")
+        || e.contains("image_url")
+        || e.contains("invalid_image")
+        || e.contains("base64");
+    let mentions_unsupported = e.contains("not support")
+        || e.contains("unsupported")
+        || e.contains("invalid")
+        || e.contains("unknown")
+        || e.contains("not allowed")
+        || e.contains("must be string")
+        || e.contains("failed to process")
+        || e.contains("cannot process")
+        || e.contains("decode");
+
+    mentions_image && mentions_unsupported
+}
+
+fn list_local_image_files() -> Result<Vec<String>> {
+    let cwd = env::current_dir().context("读取当前目录失败")?;
+    let mut files = Vec::new();
+
+    for entry in fs::read_dir(&cwd).context("遍历当前目录失败")? {
+        let entry = entry.context("读取目录项失败")?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(path_str) = path.to_str() else {
+            continue;
+        };
+
+        if !is_supported_image_path(path_str) {
+            continue;
+        }
+
+        let display = path
+            .strip_prefix(&cwd)
+            .ok()
+            .and_then(|p| p.to_str())
+            .unwrap_or(path_str)
+            .to_string();
+        files.push(display);
+    }
+
+    files.sort_by_key(|s| s.to_ascii_lowercase());
+    Ok(files)
 }
