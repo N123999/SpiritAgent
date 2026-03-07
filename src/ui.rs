@@ -185,6 +185,18 @@ fn build_history_lines(app: &App) -> Vec<Line<'static>> {
                     .add_modifier(Modifier::ITALIC),
             ),
         ]));
+
+        if let Some(thinking) = app.thinking_content_text() {
+            for segment in thinking.lines() {
+                lines.push(Line::from(vec![
+                    Span::styled("    ", Style::default()),
+                    Span::styled(
+                        segment.to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+        }
     }
 
     lines

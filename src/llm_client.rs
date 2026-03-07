@@ -22,6 +22,7 @@ pub struct LlmMessage {
 }
 
 pub enum StreamEvent {
+    ThinkingChunk(String),
     Chunk(String),
     HistoryCompacted {
         new_history: Vec<LlmMessage>,
@@ -275,6 +276,13 @@ fn stream_assistant_from_messages_inner(
             return Err(anyhow!(err_msg));
         }
 
+        if let Some(thinking) = extract_reasoning_delta(&v)
+            && !thinking.is_empty()
+        {
+            let _ = tx.send(StreamEvent::ThinkingChunk(thinking));
+            continue;
+        }
+
         if let Some(content) = v
             .pointer("/choices/0/delta/content")
             .and_then(Value::as_str)
@@ -490,6 +498,13 @@ fn stream_once(
 
         if let Some(err_msg) = extract_provider_stream_error(&v) {
             return Err(anyhow!(err_msg));
+        }
+
+        if let Some(thinking) = extract_reasoning_delta(&v)
+            && !thinking.is_empty()
+        {
+            let _ = tx.send(StreamEvent::ThinkingChunk(thinking));
+            continue;
         }
 
         if let Some(content) = v
@@ -760,6 +775,31 @@ fn extract_provider_stream_error(v: &Value) -> Option<String> {
         "{} type={} http_code={} request_id={} message={}",
         readable, err_type, http_code, request_id, err_message
     ))
+}
+
+fn extract_reasoning_delta(v: &Value) -> Option<String> {
+    if let Some(s) = v
+        .pointer("/choices/0/delta/reasoning_content")
+        .and_then(Value::as_str)
+    {
+        return Some(s.to_string());
+    }
+
+    if let Some(s) = v
+        .pointer("/choices/0/delta/reasoning")
+        .and_then(Value::as_str)
+    {
+        return Some(s.to_string());
+    }
+
+    if let Some(s) = v
+        .pointer("/choices/0/message/reasoning_content")
+        .and_then(Value::as_str)
+    {
+        return Some(s.to_string());
+    }
+
+    None
 }
 
 fn parse_dsml_tool_call(content: &str) -> Option<ToolCallRequest> {

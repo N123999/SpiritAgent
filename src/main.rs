@@ -230,6 +230,7 @@ pub(crate) struct App {
     stream_chunk_counter: usize,
     pending_user_turn: Option<String>,
     thinking_spinner_index: usize,
+    thinking_text: String,
     tool_runtime: ToolRuntime,
     pending_tool_approval: Option<PendingToolApproval>,
     pending_tool_agent_step: Option<Receiver<Result<ToolAgentStepResult, String>>>,
@@ -312,6 +313,7 @@ impl App {
             stream_chunk_counter: 0,
             pending_user_turn: None,
             thinking_spinner_index: 0,
+            thinking_text: String::new(),
             tool_runtime: ToolRuntime::new(),
             pending_tool_approval: None,
             pending_tool_agent_step: None,
@@ -739,6 +741,7 @@ impl App {
         let cfg = self.config.clone();
         let (tx, rx) = mpsc::channel::<Result<ToolAgentStepResult, String>>();
         self.thinking_spinner_index = 0;
+        self.thinking_text.clear();
 
         thread::spawn(move || {
             let mut state = state;
@@ -863,6 +866,7 @@ impl App {
         let cfg = self.config.clone();
         let (tx, rx) = mpsc::channel::<StreamEvent>();
         self.thinking_spinner_index = 0;
+        self.thinking_text.clear();
 
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
@@ -886,6 +890,7 @@ impl App {
         let history = self.llm_history.clone();
         let (tx, rx) = mpsc::channel::<StreamEvent>();
         self.thinking_spinner_index = 0;
+        self.thinking_text.clear();
 
         // Insert an empty assistant bubble so stream chunks can render immediately.
         self.messages.push(ChatMessage {
@@ -932,6 +937,13 @@ impl App {
         Some(format!("{} Thinking...", frame))
     }
 
+    pub(crate) fn thinking_content_text(&self) -> Option<&str> {
+        if !self.is_busy() || self.thinking_text.trim().is_empty() {
+            return None;
+        }
+        Some(self.thinking_text.as_str())
+    }
+
     fn poll_pending_response(&mut self) {
         let Some(rx) = &self.pending_response else {
             return;
@@ -947,6 +959,11 @@ impl App {
             }
 
             match rx.try_recv() {
+                Ok(StreamEvent::ThinkingChunk(thinking)) => {
+                    self.pending_last_event_at = Some(Instant::now());
+                    self.thinking_text.push_str(&thinking);
+                    processed += 1;
+                }
                 Ok(StreamEvent::Chunk(chunk)) => {
                     self.pending_last_event_at = Some(Instant::now());
                     self.stream_chunk_counter = self.stream_chunk_counter.saturating_add(1);
@@ -1005,6 +1022,7 @@ impl App {
                             .unwrap_or(0)
                     ));
                     assistant_done = true;
+                    self.thinking_text.clear();
                     break;
                 }
                 Ok(StreamEvent::Error(err)) => {
@@ -1019,6 +1037,7 @@ impl App {
                             }
                         }
                         completed = true;
+                        self.thinking_text.clear();
                         logging::log_event(&format!("stream overflow -> auto compact retry: {}", err));
                         break;
                     }
@@ -1038,6 +1057,7 @@ impl App {
                         });
                     }
                     completed = true;
+                    self.thinking_text.clear();
                     logging::log_event(&format!("stream error: {}", err));
                     break;
                 }
@@ -1050,6 +1070,7 @@ impl App {
                         }
                     }
                     completed = true;
+                    self.thinking_text.clear();
                     logging::log_event("stream disconnected");
                     break;
                 }
@@ -1097,6 +1118,7 @@ impl App {
         self.pending_started_at = None;
         self.pending_last_event_at = None;
         self.stream_chunk_counter = 0;
+        self.thinking_text.clear();
         logging::log_event("stream timeout -> force close");
     }
 
