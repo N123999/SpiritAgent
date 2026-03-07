@@ -1,8 +1,9 @@
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind},
     execute,
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
@@ -13,7 +14,23 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use std::{io, time::Duration};
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+    sync::mpsc::{self, Receiver, TryRecvError},
+    thread,
+    time::Duration,
+};
+use unicode_width::UnicodeWidthChar;
+
+const ENV_API_KEY: &str = "SPIRIT_API_KEY";
+const ENV_API_BASE: &str = "SPIRIT_API_BASE";
+const DEFAULT_API_BASE: &str = "https://api.openai.com/v1";
+const KEYRING_SERVICE: &str = "SpiritAgent";
+const KEYRING_ACCOUNT_API_KEY: &str = "openai_api_key";
 
 #[derive(Parser)]
 #[command(name = "spirit-agent")]
@@ -43,6 +60,16 @@ enum Commands {
     },
     /// 交互模式
     Interactive,
+    /// 模型管理
+    Model {
+        #[command(subcommand)]
+        action: ModelAction,
+    },
+    /// 配置管理
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -63,6 +90,101 @@ enum ScheduleAction {
         /// 任务名称
         name: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ModelAction {
+    /// 列出模型
+    List,
+    /// 添加模型（包含端点和密钥）
+    Add {
+        name: String,
+        #[arg(long)]
+        api_base: Option<String>,
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// 删除模型
+    Remove { name: String },
+    /// 切换当前模型
+    Use { name: String },
+    /// 显示当前模型
+    Current,
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// 查看配置
+    Show,
+    /// 设置 API Base URL
+    SetBase { url: String },
+    /// API Key 管理（系统安全凭据）
+    Key {
+        #[command(subcommand)]
+        action: KeyAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum KeyAction {
+    /// 写入 API Key（不提供参数时会安全输入）
+    Set {
+        /// API Key（可选，建议留空后按提示输入）
+        value: Option<String>,
+    },
+    /// 删除已保存 API Key
+    Remove,
+    /// 查看 API Key 状态
+    Status,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModelProfile {
+    name: String,
+    api_base: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppConfig {
+    models: Vec<ModelProfile>,
+    active_model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LegacyAppConfig {
+    api_base: String,
+    models: Vec<String>,
+    active_model: String,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            models: vec![ModelProfile {
+                name: "gpt-4o-mini".to_string(),
+                api_base: DEFAULT_API_BASE.to_string(),
+            }],
+            active_model: "gpt-4o-mini".to_string(),
+        }
+    }
+}
+
+impl AppConfig {
+    fn active_model_profile(&self) -> Option<&ModelProfile> {
+        self.models.iter().find(|m| m.name == self.active_model)
+    }
+
+    fn active_model_profile_mut(&mut self) -> Option<&mut ModelProfile> {
+        self.models.iter_mut().find(|m| m.name == self.active_model)
+    }
+
+    fn has_model(&self, name: &str) -> bool {
+        self.models.iter().any(|m| m.name == name)
+    }
+
+    fn add_model(&mut self, profile: ModelProfile) {
+        self.models.push(profile);
+    }
 }
 
 fn main() -> Result<()> {
@@ -101,6 +223,12 @@ fn main() -> Result<()> {
         Some(Commands::Interactive) => {
             run_tui()?;
         }
+        Some(Commands::Model { action }) => {
+            handle_model_cli(action)?;
+        }
+        Some(Commands::Config { action }) => {
+            handle_config_cli(action)?;
+        }
         None => {
             run_tui()?;
         }
@@ -114,6 +242,12 @@ struct ChatMessage {
     content: String,
 }
 
+#[derive(Clone)]
+struct LlmMessage {
+    role: &'static str,
+    content: String,
+}
+
 enum MessageRole {
     User,
     Agent,
@@ -121,40 +255,224 @@ enum MessageRole {
 
 struct App {
     input: String,
+    input_cursor: usize,
     messages: Vec<ChatMessage>,
-    slash_commands: Vec<&'static str>,
-    slash_suggestions: Vec<&'static str>,
+    llm_history: Vec<LlmMessage>,
+    config: AppConfig,
+    slash_commands: Vec<String>,
+    slash_suggestions: Vec<String>,
     selected_suggestion: usize,
+    model_picker_active: bool,
+    model_picker_index: usize,
+    history_offset_from_bottom: usize,
+    pending_response: Option<Receiver<Result<String, String>>>,
+    mouse_capture_enabled: bool,
+    mouse_capture_requested: Option<bool>,
     should_quit: bool,
 }
 
 impl App {
     fn new() -> Self {
-        let slash_commands = vec!["/help", "/clear", "/quit", "/exit"];
+        let config = load_config().unwrap_or_else(|_| AppConfig::default());
+        let slash_commands = vec![
+            "/help".to_string(),
+            "/clear".to_string(),
+            "/quit".to_string(),
+            "/exit".to_string(),
+            "/mouse".to_string(),
+            "/mouse on".to_string(),
+            "/mouse off".to_string(),
+            "/model".to_string(),
+            "/model list".to_string(),
+            "/model use <name>".to_string(),
+            "/model add <name> <api_base> <api_key>".to_string(),
+            "/model remove <name>".to_string(),
+            "/api-base".to_string(),
+            "/api-base show".to_string(),
+            "/api-base set <url>".to_string(),
+        ];
         Self {
             input: String::new(),
+            input_cursor: 0,
             messages: vec![ChatMessage {
                 role: MessageRole::Agent,
                 content:
-                    "欢迎来到 SpiritAgent。输入内容并按 Enter 发送，输入 /help 查看指令。".to_string(),
+                    format!(
+                        "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送；输入 /help 查看指令。",
+                        config.active_model
+                    ),
             }],
-            slash_suggestions: slash_commands.clone(),
+            llm_history: vec![],
+            config,
+            slash_suggestions: vec![],
             slash_commands,
             selected_suggestion: 0,
+            model_picker_active: false,
+            model_picker_index: 0,
+            history_offset_from_bottom: 0,
+            pending_response: None,
+            mouse_capture_enabled: false,
+            mouse_capture_requested: None,
             should_quit: false,
         }
     }
 
+    fn request_mouse_capture(&mut self, enabled: bool) {
+        self.mouse_capture_requested = Some(enabled);
+    }
+
+    fn take_mouse_capture_request(&mut self) -> Option<bool> {
+        self.mouse_capture_requested.take()
+    }
+
+    fn open_model_picker(&mut self) {
+        if self.config.models.is_empty() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "当前没有可选模型，请先 /model add <name> <api_base> <api_key>。"
+                    .to_string(),
+            });
+            return;
+        }
+
+        self.model_picker_index = self
+            .config
+            .models
+            .iter()
+            .position(|m| m.name == self.config.active_model)
+            .unwrap_or(0);
+        self.model_picker_active = true;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    fn input_len_chars(&self) -> usize {
+        self.input.chars().count()
+    }
+
+    fn clamp_cursor(&mut self) {
+        self.input_cursor = self.input_cursor.min(self.input_len_chars());
+    }
+
+    fn cursor_byte_index(&self) -> usize {
+        if self.input_cursor == 0 {
+            return 0;
+        }
+
+        self.input
+            .char_indices()
+            .nth(self.input_cursor)
+            .map(|(idx, _)| idx)
+            .unwrap_or(self.input.len())
+    }
+
+    fn set_input(&mut self, value: String) {
+        self.input = value;
+        self.input_cursor = self.input_len_chars();
+    }
+
+    fn move_cursor_left(&mut self) {
+        if self.input_cursor > 0 {
+            self.input_cursor -= 1;
+        }
+    }
+
+    fn move_cursor_right(&mut self) {
+        let len = self.input_len_chars();
+        if self.input_cursor < len {
+            self.input_cursor += 1;
+        }
+    }
+
+    fn move_cursor_home(&mut self) {
+        self.input_cursor = 0;
+    }
+
+    fn move_cursor_end(&mut self) {
+        self.input_cursor = self.input_len_chars();
+    }
+
+    fn insert_char_at_cursor(&mut self, ch: char) {
+        let idx = self.cursor_byte_index();
+        self.input.insert(idx, ch);
+        self.input_cursor += 1;
+    }
+
+    fn backspace_at_cursor(&mut self) {
+        if self.input_cursor == 0 {
+            return;
+        }
+        self.move_cursor_left();
+        let idx = self.cursor_byte_index();
+        self.input.remove(idx);
+    }
+
+    fn delete_at_cursor(&mut self) {
+        if self.input_cursor >= self.input_len_chars() {
+            return;
+        }
+        let idx = self.cursor_byte_index();
+        self.input.remove(idx);
+    }
+
+    fn cancel_model_picker(&mut self) {
+        self.model_picker_active = false;
+    }
+
+    fn select_next_model(&mut self) {
+        if self.config.models.is_empty() {
+            return;
+        }
+        self.model_picker_index = (self.model_picker_index + 1) % self.config.models.len();
+    }
+
+    fn select_prev_model(&mut self) {
+        if self.config.models.is_empty() {
+            return;
+        }
+        if self.model_picker_index == 0 {
+            self.model_picker_index = self.config.models.len() - 1;
+        } else {
+            self.model_picker_index -= 1;
+        }
+    }
+
+    fn confirm_model_picker(&mut self) {
+        let Some(selected) = self
+            .config
+            .models
+            .get(self.model_picker_index)
+            .map(|m| m.name.clone())
+        else {
+            self.model_picker_active = false;
+            return;
+        };
+
+        self.config.active_model = selected.clone();
+        if let Err(err) = save_config(&self.config) {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("模型切换成功但保存失败: {}", err),
+            });
+        } else {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("已切换当前模型为: {}", selected),
+            });
+        }
+        self.model_picker_active = false;
+    }
+
     fn current_slash_query(&self) -> Option<&str> {
-        if !self.input.starts_with('/') || self.input.contains(' ') {
+        if !self.input.starts_with('/') {
             return None;
         }
 
-        Some(&self.input)
+        Some(self.input.trim_end())
     }
 
     fn refresh_suggestions(&mut self) {
-        let Some(query) = self.current_slash_query() else {
+        let Some(query) = self.current_slash_query().map(ToString::to_string) else {
             self.slash_suggestions.clear();
             self.selected_suggestion = 0;
             return;
@@ -163,9 +481,16 @@ impl App {
         self.slash_suggestions = self
             .slash_commands
             .iter()
-            .copied()
-            .filter(|cmd| cmd.starts_with(query))
+            .filter(|cmd| cmd.starts_with(&query))
+            .cloned()
             .collect();
+
+        if self.slash_suggestions.is_empty() {
+            self.slash_suggestions = contextual_slash_suggestions(query)
+                .into_iter()
+                .map(ToString::to_string)
+                .collect();
+        }
 
         if self.selected_suggestion >= self.slash_suggestions.len() {
             self.selected_suggestion = 0;
@@ -194,7 +519,7 @@ impl App {
 
     fn apply_selected_suggestion(&mut self) {
         if let Some(selected) = self.slash_suggestions.get(self.selected_suggestion) {
-            self.input = (*selected).to_string();
+            self.set_input(selected.to_string());
             self.refresh_suggestions();
         }
     }
@@ -209,41 +534,741 @@ impl App {
             return;
         }
 
+        if self.pending_response.is_some() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "上一条回复仍在生成中，请稍候。".to_string(),
+            });
+            return;
+        }
+
         self.messages.push(ChatMessage {
             role: MessageRole::User,
             content: message.clone(),
         });
 
-        if message == "/quit" || message == "/exit" {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: "收到，SpiritAgent 即将退出。".to_string(),
-            });
-            self.should_quit = true;
-        } else if message == "/help" {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: "可用指令: /help, /quit, /clear".to_string(),
-            });
-        } else if message == "/clear" {
-            self.messages.clear();
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: "对话历史已清空。".to_string(),
-            });
+        if message.starts_with('/') {
+            self.handle_slash_command(&message);
         } else {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!(
-                    "已收到: \"{}\"。\n下一步可以接入真实 LLM、工具调用、任务编排和 CI/CD 执行。",
-                    message
-                ),
+            self.llm_history.push(LlmMessage {
+                role: "user",
+                content: message.clone(),
             });
+            self.start_background_llm_request(message);
         }
 
-        self.input.clear();
+        self.set_input(String::new());
         self.refresh_suggestions();
     }
+
+    fn start_background_llm_request(&mut self, user_message: String) {
+        let cfg = self.config.clone();
+        let history = self
+            .llm_history
+            .iter()
+            .rev()
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>();
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let result = query_openai_compatible(&cfg, &history, &user_message)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+
+        self.pending_response = Some(rx);
+    }
+
+    fn poll_pending_response(&mut self) {
+        let Some(rx) = &self.pending_response else {
+            return;
+        };
+
+        match rx.try_recv() {
+            Ok(Ok(reply)) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: reply,
+                });
+                if let Some(last) = self.messages.last() {
+                    self.llm_history.push(LlmMessage {
+                        role: "assistant",
+                        content: last.content.clone(),
+                    });
+                }
+                self.pending_response = None;
+            }
+            Ok(Err(err)) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("LLM 调用失败: {}", err),
+                });
+                self.pending_response = None;
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "LLM 请求线程异常中断。".to_string(),
+                });
+                self.pending_response = None;
+            }
+            Err(TryRecvError::Empty) => {}
+        }
+    }
+
+    fn scroll_history_up(&mut self, lines: usize) {
+        self.history_offset_from_bottom = self.history_offset_from_bottom.saturating_add(lines);
+    }
+
+    fn scroll_history_down(&mut self, lines: usize) {
+        self.history_offset_from_bottom = self.history_offset_from_bottom.saturating_sub(lines);
+    }
+
+    fn scroll_history_to_top(&mut self) {
+        self.history_offset_from_bottom = usize::MAX;
+    }
+
+    fn scroll_history_to_bottom(&mut self) {
+        self.history_offset_from_bottom = 0;
+    }
+
+    fn handle_slash_command(&mut self, message: &str) {
+        let parts: Vec<&str> = message.split_whitespace().collect();
+        let Some(cmd) = parts.first().copied() else {
+            return;
+        };
+
+        match cmd {
+            "/quit" | "/exit" => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "收到，SpiritAgent 即将退出。".to_string(),
+                });
+                self.should_quit = true;
+            }
+            "/help" => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        ENV_API_KEY
+                    ),
+                });
+            }
+            "/clear" => {
+                self.messages.clear();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "对话历史已清空。".to_string(),
+                });
+            }
+            "/model" => {
+                self.handle_model_slash(&parts[1..]);
+            }
+            "/mouse" => {
+                self.handle_mouse_slash(&parts[1..]);
+            }
+            "/api-base" => {
+                self.handle_api_base_slash(&parts[1..]);
+            }
+            _ => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "未知斜杠命令，输入 /help 查看可用指令。".to_string(),
+                });
+            }
+        }
+    }
+
+    fn handle_mouse_slash(&mut self, args: &[&str]) {
+        match args {
+            [] => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "鼠标模式当前: {}。/mouse on 开启滚轮，/mouse off 关闭以便终端拖拽复制。",
+                        if self.mouse_capture_enabled {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    ),
+                });
+            }
+            ["on"] => {
+                self.request_mouse_capture(true);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "已开启鼠标滚轮模式（终端拖拽复制可能受限）。".to_string(),
+                });
+            }
+            ["off"] => {
+                self.request_mouse_capture(false);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "已关闭鼠标捕获（可恢复终端拖拽复制）。".to_string(),
+                });
+            }
+            _ => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "用法: /mouse [on|off]".to_string(),
+                });
+            }
+        }
+    }
+
+    fn handle_model_slash(&mut self, args: &[&str]) {
+        match args {
+            [] => {
+                self.open_model_picker();
+            }
+            ["list"] => {
+                let list = self
+                    .config
+                    .models
+                    .iter()
+                    .map(|m| format!("{} ({})", m.name, m.api_base))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("当前模型: {}\n模型列表: {}", self.config.active_model, list),
+                });
+            }
+            ["use", model] => {
+                if !self.config.has_model(model) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "模型不存在: {}，先用 /model add {} <api_base> <api_key>",
+                            model, model
+                        ),
+                    });
+                    return;
+                }
+                self.config.active_model = (*model).to_string();
+                if let Err(err) = save_config(&self.config) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("切换成功但保存失败: {}", err),
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("已切换当前模型为: {}", model),
+                    });
+                }
+            }
+            ["add", model, api_base, api_key] => {
+                if self.config.has_model(model) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("模型已存在: {}", model),
+                    });
+                    return;
+                }
+
+                self.config.add_model(ModelProfile {
+                    name: (*model).to_string(),
+                    api_base: (*api_base).to_string(),
+                });
+                if let Err(err) = save_model_api_key(model, api_key) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("模型已添加，但密钥保存失败: {}", err),
+                    });
+                    return;
+                }
+
+                if let Err(err) = save_config(&self.config) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("添加成功但保存失败: {}", err),
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("已添加模型: {} (api_base: {})", model, api_base),
+                    });
+                }
+            }
+            ["remove", model] => {
+                if *model == self.config.active_model {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: "不能删除当前使用中的模型，请先 /model use 切换。".to_string(),
+                    });
+                    return;
+                }
+
+                let before = self.config.models.len();
+                self.config.models.retain(|m| m.name != *model);
+                if self.config.models.len() == before {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("模型不存在: {}", model),
+                    });
+                    return;
+                }
+
+                if let Err(err) = save_config(&self.config) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("删除成功但保存失败: {}", err),
+                    });
+                } else {
+                    let _ = remove_model_api_key(model);
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("已删除模型: {}", model),
+                    });
+                }
+            }
+            _ => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content:
+                        "用法: /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]"
+                            .to_string(),
+                });
+            }
+        }
+    }
+
+    fn handle_api_base_slash(&mut self, args: &[&str]) {
+        match args {
+            [] | ["show"] => {
+                let current_base = self
+                    .config
+                    .active_model_profile()
+                    .map(|m| m.api_base.as_str())
+                    .unwrap_or(DEFAULT_API_BASE);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("当前 API Base: {}", current_base),
+                });
+            }
+            ["set", url] => {
+                if let Some(active) = self.config.active_model_profile_mut() {
+                    active.api_base = (*url).to_string();
+                }
+                if let Err(err) = save_config(&self.config) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("设置成功但保存失败: {}", err),
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("已更新 API Base: {}", url),
+                    });
+                }
+            }
+            _ => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "用法: /api-base [show|set <url>]".to_string(),
+                });
+            }
+        }
+    }
+}
+
+fn handle_model_cli(action: ModelAction) -> Result<()> {
+    let mut cfg = load_config()?;
+
+    match action {
+        ModelAction::List => {
+            println!("当前模型: {}", cfg.active_model);
+            println!("模型列表:");
+            for model in &cfg.models {
+                let key_saved = has_model_api_key(&model.name).unwrap_or(false);
+                println!(
+                    "  - {}\n    api_base: {}\n    key: {}",
+                    model.name,
+                    model.api_base,
+                    if key_saved { "已保存" } else { "未保存" }
+                );
+            }
+        }
+        ModelAction::Add {
+            name,
+            api_base,
+            key,
+        } => {
+            if cfg.has_model(&name) {
+                println!("模型已存在: {}", name);
+            } else {
+                let api_base = api_base.unwrap_or_else(|| DEFAULT_API_BASE.to_string());
+                let key_value = match key {
+                    Some(v) => v,
+                    None => rpassword::prompt_password("请输入该模型 API Key: ")
+                        .context("读取 API Key 输入失败")?,
+                };
+                if key_value.trim().is_empty() {
+                    return Err(anyhow!("API Key 不能为空"));
+                }
+
+                cfg.add_model(ModelProfile {
+                    name: name.clone(),
+                    api_base: api_base.clone(),
+                });
+                save_model_api_key(&name, &key_value)?;
+                save_config(&cfg)?;
+                println!("已添加模型: {}", name);
+                println!("api_base: {}", api_base);
+            }
+        }
+        ModelAction::Remove { name } => {
+            if name == cfg.active_model {
+                return Err(anyhow!("不能删除当前模型，请先切换到其他模型"));
+            }
+            let before = cfg.models.len();
+            cfg.models.retain(|m| m.name != name);
+            if cfg.models.len() == before {
+                println!("模型不存在: {}", name);
+            } else {
+                save_config(&cfg)?;
+                let _ = remove_model_api_key(&name);
+                println!("已删除模型: {}", name);
+            }
+        }
+        ModelAction::Use { name } => {
+            if !cfg.has_model(&name) {
+                return Err(anyhow!("模型不存在，请先添加: {}", name));
+            }
+            cfg.active_model = name.clone();
+            save_config(&cfg)?;
+            println!("已切换当前模型为: {}", name);
+        }
+        ModelAction::Current => {
+            println!("当前模型: {}", cfg.active_model);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_config_cli(action: ConfigAction) -> Result<()> {
+    let mut cfg = load_config()?;
+
+    match action {
+        ConfigAction::Show => {
+            println!("配置文件: {}", config_file_path().display());
+            println!("active_model: {}", cfg.active_model);
+            println!("models:");
+            for model in &cfg.models {
+                let key_saved = has_model_api_key(&model.name).unwrap_or(false);
+                println!(
+                    "  - {} (api_base: {}, key: {})",
+                    model.name,
+                    model.api_base,
+                    if key_saved { "已保存" } else { "未保存" }
+                );
+            }
+            println!("环境变量 {}: {}", ENV_API_KEY, if env::var(ENV_API_KEY).is_ok() { "已设置" } else { "未设置" });
+            let keyring_saved = match keyring_entry() {
+                Ok(entry) => entry
+                    .get_password()
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false),
+                Err(_) => false,
+            };
+            println!(
+                "系统安全凭据(keyring): {}",
+                if keyring_saved { "已保存" } else { "未保存" }
+            );
+            println!("API Key 读取优先级: {} > keyring", ENV_API_KEY);
+        }
+        ConfigAction::SetBase { url } => {
+            if let Some(active) = cfg.active_model_profile_mut() {
+                active.api_base = url.clone();
+            }
+            save_config(&cfg)?;
+            println!("已更新当前模型 API Base: {}", url);
+        }
+        ConfigAction::Key { action } => {
+            handle_key_cli(action)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn config_file_path() -> PathBuf {
+    if let Ok(appdata) = env::var("APPDATA") {
+        return PathBuf::from(appdata)
+            .join("SpiritAgent")
+            .join("config.json");
+    }
+
+    if let Ok(home) = env::var("USERPROFILE") {
+        return PathBuf::from(home)
+            .join(".spirit-agent")
+            .join("config.json");
+    }
+
+    PathBuf::from(".spirit-agent.config.json")
+}
+
+fn load_config() -> Result<AppConfig> {
+    let path = config_file_path();
+    if !Path::new(&path).exists() {
+        let cfg = AppConfig::default();
+        save_config(&cfg)?;
+        return Ok(cfg);
+    }
+
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("读取配置失败: {}", path.display()))?;
+
+    if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
+        normalize_config(&mut cfg);
+        return Ok(cfg);
+    }
+
+    let legacy: LegacyAppConfig = serde_json::from_str(&content)
+        .with_context(|| format!("解析配置失败: {}", path.display()))?;
+    let mut migrated = AppConfig {
+        models: legacy
+            .models
+            .into_iter()
+            .map(|name| ModelProfile {
+                name,
+                api_base: legacy.api_base.clone(),
+            })
+            .collect(),
+        active_model: legacy.active_model,
+    };
+    normalize_config(&mut migrated);
+    save_config(&migrated)?;
+    Ok(migrated)
+}
+
+fn save_config(cfg: &AppConfig) -> Result<()> {
+    let path = config_file_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("创建配置目录失败: {}", parent.display()))?;
+    }
+
+    let content = serde_json::to_string_pretty(cfg)?;
+    fs::write(&path, content).with_context(|| format!("写入配置失败: {}", path.display()))?;
+    Ok(())
+}
+
+fn normalize_config(cfg: &mut AppConfig) {
+    if cfg.models.is_empty() {
+        *cfg = AppConfig::default();
+        return;
+    }
+
+    if !cfg.models.iter().any(|m| m.name == cfg.active_model) {
+        cfg.active_model = cfg.models[0].name.clone();
+    }
+
+    for model in &mut cfg.models {
+        if model.api_base.trim().is_empty() {
+            model.api_base = DEFAULT_API_BASE.to_string();
+        }
+    }
+}
+
+fn query_openai_compatible(
+    cfg: &AppConfig,
+    history: &[LlmMessage],
+    user_input: &str,
+) -> Result<String> {
+    let active = cfg
+        .active_model_profile()
+        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
+
+    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
+        format!(
+            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
+            active.name,
+            active.name,
+            ENV_API_KEY
+        )
+    })?;
+
+    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
+    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+
+    let mut messages = history
+        .iter()
+        .map(|m| json!({ "role": m.role, "content": m.content }))
+        .collect::<Vec<_>>();
+
+    if messages.is_empty() || messages.last().and_then(|v| v.get("content")).and_then(Value::as_str) != Some(user_input) {
+        messages.push(json!({ "role": "user", "content": user_input }));
+    }
+
+    let payload = json!({
+        "model": active.name,
+        "messages": messages
+    });
+
+    let client = Client::new();
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&payload)
+        .send()
+        .with_context(|| format!("请求失败: {}", url))?;
+
+    let status = resp.status();
+    let body = resp.text().context("读取响应失败")?;
+
+    if !status.is_success() {
+        return Err(anyhow!("HTTP {}: {}", status, body));
+    }
+
+    let v: Value = serde_json::from_str(&body).context("解析响应 JSON 失败")?;
+    let content = v
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+        .and_then(|first| first.get("message"))
+        .and_then(|msg| msg.get("content"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("响应中缺少 choices[0].message.content"))?;
+
+    Ok(content.to_string())
+}
+
+fn keyring_entry() -> Result<keyring::Entry> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_API_KEY)
+        .context("初始化 keyring 条目失败")
+}
+
+fn keyring_entry_for_account(account: &str) -> Result<keyring::Entry> {
+    keyring::Entry::new(KEYRING_SERVICE, account)
+        .with_context(|| format!("初始化 keyring 条目失败: {}", account))
+}
+
+fn model_key_account(model_name: &str) -> String {
+    format!("model::{}", model_name)
+}
+
+fn save_model_api_key(model_name: &str, api_key: &str) -> Result<()> {
+    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
+    entry
+        .set_password(api_key.trim())
+        .with_context(|| format!("保存模型 {} 的 API Key 失败", model_name))
+}
+
+fn remove_model_api_key(model_name: &str) -> Result<()> {
+    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
+    match entry.delete_password() {
+        Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(err) => Err(anyhow!("删除模型 {} 的 API Key 失败: {}", model_name, err)),
+    }
+}
+
+fn has_model_api_key(model_name: &str) -> Result<bool> {
+    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
+    match entry.get_password() {
+        Ok(v) => Ok(!v.trim().is_empty()),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(err) => Err(anyhow!("读取模型 {} 的 API Key 失败: {}", model_name, err)),
+    }
+}
+
+fn resolve_api_key_for_model(model_name: &str) -> Result<String> {
+    if let Ok(value) = env::var(ENV_API_KEY) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+
+    if let Ok(value) = load_model_api_key_from_keyring(model_name) {
+        return Ok(value);
+    }
+
+    load_api_key_from_keyring()
+}
+
+fn load_api_key_from_keyring() -> Result<String> {
+    let entry = keyring_entry()?;
+    entry
+        .get_password()
+        .context("读取 keyring 中的 API Key 失败")
+}
+
+fn load_model_api_key_from_keyring(model_name: &str) -> Result<String> {
+    let entry = keyring_entry_for_account(&model_key_account(model_name))?;
+    entry
+        .get_password()
+        .with_context(|| format!("读取模型 {} 的 API Key 失败", model_name))
+}
+
+fn handle_key_cli(action: KeyAction) -> Result<()> {
+    match action {
+        KeyAction::Set { value } => {
+            let key = match value {
+                Some(v) => v,
+                None => rpassword::prompt_password("请输入 API Key: ")
+                    .context("读取 API Key 输入失败")?,
+            };
+
+            if key.trim().is_empty() {
+                return Err(anyhow!("API Key 不能为空"));
+            }
+
+            let entry = keyring_entry()?;
+            entry
+                .set_password(key.trim())
+                .context("写入 keyring 失败")?;
+            println!("已写入 API Key 到系统安全凭据。{}
+优先级仍为环境变量 > keyring。", ENV_API_KEY);
+        }
+        KeyAction::Remove => {
+            let entry = keyring_entry()?;
+            match entry.delete_password() {
+                Ok(_) => println!("已删除 keyring 中保存的 API Key。"),
+                Err(keyring::Error::NoEntry) => println!("keyring 中没有已保存的 API Key。"),
+                Err(err) => return Err(anyhow!("删除 keyring API Key 失败: {}", err)),
+            }
+        }
+        KeyAction::Status => {
+            let env_set = env::var(ENV_API_KEY)
+                .ok()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+
+            let keyring_set = match keyring_entry() {
+                Ok(entry) => match entry.get_password() {
+                    Ok(v) => !v.trim().is_empty(),
+                    Err(keyring::Error::NoEntry) => false,
+                    Err(err) => {
+                        println!("keyring 状态读取失败: {}", err);
+                        false
+                    }
+                },
+                Err(err) => {
+                    println!("keyring 初始化失败: {}", err);
+                    false
+                }
+            };
+
+            println!("{}: {}", ENV_API_KEY, if env_set { "已设置" } else { "未设置" });
+            println!(
+                "系统安全凭据(keyring): {}",
+                if keyring_set { "已保存" } else { "未保存" }
+            );
+            println!("当前读取优先级: {} > keyring", ENV_API_KEY);
+        }
+    }
+
+    Ok(())
 }
 
 fn run_tui() -> Result<()> {
@@ -257,25 +1282,62 @@ fn run_tui() -> Result<()> {
     let run_result = run_app(&mut terminal);
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
 
     run_result
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<()> {
+fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
     let mut app = App::new();
     app.refresh_suggestions();
 
     while !app.should_quit {
+        if let Some(enable_mouse) = app.take_mouse_capture_request() {
+            if enable_mouse {
+                execute!(terminal.backend_mut(), EnableMouseCapture)?;
+            } else {
+                execute!(terminal.backend_mut(), DisableMouseCapture)?;
+            }
+            app.mouse_capture_enabled = enable_mouse;
+        }
+
+        app.poll_pending_response();
         terminal.draw(|frame| draw_ui(frame, &app))?;
 
         if event::poll(Duration::from_millis(100))? {
-            let Event::Key(key) = event::read()? else {
+            let evt = event::read()?;
+
+            if let Event::Mouse(mouse) = &evt {
+                if app.mouse_capture_enabled {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => app.scroll_history_up(3),
+                        MouseEventKind::ScrollDown => app.scroll_history_down(3),
+                        _ => {}
+                    }
+                }
+                continue;
+            }
+
+            let Event::Key(key) = evt else {
                 continue;
             };
 
             if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                continue;
+            }
+
+            if app.model_picker_active {
+                match key.code {
+                    KeyCode::Esc => app.cancel_model_picker(),
+                    KeyCode::Up => app.select_prev_model(),
+                    KeyCode::Down => app.select_next_model(),
+                    KeyCode::Enter => app.confirm_model_picker(),
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.should_quit = true;
+                    }
+                    _ => {}
+                }
                 continue;
             }
 
@@ -289,14 +1351,33 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<()> {
                 KeyCode::Up if slash_mode => app.select_prev_suggestion(),
                 KeyCode::Down if slash_mode => app.select_next_suggestion(),
                 KeyCode::Tab if slash_mode => app.apply_selected_suggestion(),
+                KeyCode::PageUp => app.scroll_history_up(8),
+                KeyCode::PageDown => app.scroll_history_down(8),
+                KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.scroll_history_to_top();
+                }
+                KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.scroll_history_to_bottom();
+                }
+                KeyCode::Left => app.move_cursor_left(),
+                KeyCode::Right => app.move_cursor_right(),
+                KeyCode::Home => app.move_cursor_home(),
+                KeyCode::End => app.move_cursor_end(),
                 KeyCode::Enter => app.submit_input(),
                 KeyCode::Backspace => {
-                    app.input.pop();
+                    app.backspace_at_cursor();
+                    app.clamp_cursor();
+                    app.refresh_suggestions();
+                }
+                KeyCode::Delete => {
+                    app.delete_at_cursor();
+                    app.clamp_cursor();
                     app.refresh_suggestions();
                 }
                 KeyCode::Char(ch) => {
                     if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                        app.input.push(ch);
+                        app.insert_char_at_cursor(ch);
+                        app.clamp_cursor();
                         app.refresh_suggestions();
                     }
                 }
@@ -309,11 +1390,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> Result<()> {
 }
 
 fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
-    let show_suggestions = app.input.starts_with('/');
+    let show_model_picker = app.model_picker_active;
+    let show_suggestions = app.input.starts_with('/') && !show_model_picker;
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(if show_suggestions {
+        .constraints(if show_model_picker {
+            vec![
+                Constraint::Length(8),
+                Constraint::Min(5),
+                Constraint::Length(3),
+                Constraint::Length(7),
+                Constraint::Length(1),
+            ]
+        } else if show_suggestions {
             vec![
                 Constraint::Length(8),
                 Constraint::Min(5),
@@ -343,9 +1433,15 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
     .style(Style::default().fg(Color::Cyan));
     frame.render_widget(logo, chunks[0]);
 
-    let history_lines = build_history_lines(app, chunks[1].height.saturating_sub(2) as usize);
+    let history_lines = build_history_lines(app);
+    let history_view_height = chunks[1].height.saturating_sub(2) as usize;
+    let history_view_width = chunks[1].width.saturating_sub(2) as usize;
+    let total_visual_lines = estimate_visual_lines(app, history_view_width.max(1));
+    let max_scroll = total_visual_lines.saturating_sub(history_view_height);
+    let history_scroll = max_scroll.saturating_sub(app.history_offset_from_bottom);
     let history = Paragraph::new(history_lines)
         .block(Block::default().borders(Borders::ALL).title("Conversation"))
+        .scroll((history_scroll as u16, 0))
         .wrap(Wrap { trim: false });
     frame.render_widget(history, chunks[1]);
 
@@ -354,7 +1450,28 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         .style(Style::default().fg(Color::Yellow));
     frame.render_widget(input, chunks[2]);
 
-    if show_suggestions {
+    if !show_model_picker {
+        // Use terminal display width so CJK/full-width characters keep cursor aligned.
+        let max_cursor_offset = chunks[2].width.saturating_sub(3) as usize;
+        let cursor_visual_col = app
+            .input
+            .chars()
+            .take(app.input_cursor)
+            .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+            .sum::<usize>();
+        let cursor_offset = cursor_visual_col.min(max_cursor_offset);
+        let cursor_x = chunks[2].x + 1 + cursor_offset as u16;
+        let cursor_y = chunks[2].y + 1;
+        frame.set_cursor_position((cursor_x, cursor_y));
+    }
+
+    if show_model_picker {
+        let picker_lines = build_model_picker_lines(app, 5);
+        let picker_widget = Paragraph::new(picker_lines)
+            .block(Block::default().borders(Borders::ALL).title("Model Picker"))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(picker_widget, chunks[3]);
+    } else if show_suggestions {
         let suggestions = build_suggestion_lines(app, 3);
         let suggestions_widget = Paragraph::new(suggestions)
             .block(Block::default().borders(Borders::ALL).title("Slash Commands"))
@@ -362,21 +1479,43 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         frame.render_widget(suggestions_widget, chunks[3]);
     }
 
-    let help = Paragraph::new(Line::from(vec![
-        Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" send  |  "),
-        Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" complete  |  "),
-        Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" pick  |  "),
-        Span::styled("Esc / Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" quit"),
-    ]));
+    let help = if show_model_picker {
+        Paragraph::new(Line::from(vec![
+            Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" choose  |  "),
+            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" confirm  |  "),
+            Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" cancel  |  "),
+            Span::styled("Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" quit"),
+        ]))
+    } else {
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(if app.pending_response.is_some() {
+                " wait  |  "
+            } else {
+                " send  |  "
+            }),
+            Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" complete  |  "),
+            Span::styled("PgUp/PgDn", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" scroll  |  "),
+            Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" pick  |  "),
+            Span::styled("/model", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" picker  |  "),
+            Span::styled("Esc / Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" quit"),
+        ]))
+    };
     let help_idx = if show_suggestions { 4 } else { 3 };
+    let help_idx = if show_model_picker { 4 } else { help_idx };
     frame.render_widget(help, chunks[help_idx]);
 }
 
-fn build_history_lines(app: &App, max_lines: usize) -> Vec<Line<'static>> {
+fn build_history_lines(app: &App) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     for msg in &app.messages {
@@ -394,11 +1533,47 @@ fn build_history_lines(app: &App, max_lines: usize) -> Vec<Line<'static>> {
         ]));
     }
 
-    if lines.len() > max_lines && max_lines > 0 {
-        lines.split_off(lines.len() - max_lines)
-    } else {
-        lines
+    lines
+}
+
+fn estimate_visual_lines(app: &App, content_width: usize) -> usize {
+    let mut total = 0usize;
+
+    for msg in &app.messages {
+        let prefix = match msg.role {
+            MessageRole::User => "You> ",
+            MessageRole::Agent => "Spirit> ",
+        };
+
+        let mut logical_lines = msg.content.split('\n').peekable();
+        let mut is_first = true;
+        while let Some(line) = logical_lines.next() {
+            let prefix_width = if is_first {
+                prefix
+                    .chars()
+                    .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+                    .sum::<usize>()
+            } else {
+                0
+            };
+
+            let line_width = line
+                .chars()
+                .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+                .sum::<usize>();
+
+            let wrapped = ((prefix_width + line_width).max(1) + content_width - 1) / content_width;
+            total += wrapped.max(1);
+            is_first = false;
+
+            // Preserve explicit trailing newline as an extra blank line.
+            if logical_lines.peek().is_some() && line.is_empty() {
+                total += 1;
+            }
+        }
     }
+
+    total
 }
 
 fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
@@ -422,7 +1597,7 @@ fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
 
     let mut lines = Vec::new();
     for idx in start..end {
-        let cmd = app.slash_suggestions[idx];
+        let cmd = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
         let marker = if is_selected { "> " } else { "  " };
         let style = if is_selected {
@@ -440,4 +1615,73 @@ fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
     }
 
     lines
+}
+
+fn build_model_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
+    if app.config.models.is_empty() {
+        return vec![Line::from(
+            "暂无模型，先用 /model add <name> <api_base> <api_key> 添加",
+        )];
+    }
+
+    let selected = app.model_picker_index.min(app.config.models.len().saturating_sub(1));
+    let total = app.config.models.len();
+    let window = max_items.max(1);
+    let start = if selected + 1 > window {
+        selected + 1 - window
+    } else {
+        0
+    };
+    let end = (start + window).min(total);
+
+    let mut lines = Vec::new();
+    for idx in start..end {
+        let model = &app.config.models[idx];
+        let is_selected = idx == selected;
+        let is_active = model.name == app.config.active_model;
+
+        let marker = if is_selected { "> " } else { "  " };
+        let active_suffix = if is_active { "  (current)" } else { "" };
+        let style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else if is_active {
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        lines.push(Line::from(Span::styled(
+            format!("{}{} ({}){}", marker, model.name, model.api_base, active_suffix),
+            style,
+        )));
+    }
+
+    lines
+}
+
+fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
+    let q = query.trim_end();
+
+    if q == "/model" || q.starts_with("/model ") {
+        return vec![
+            "/model list",
+            "/model use <name>",
+            "/model add <name> <api_base> <api_key>",
+            "/model remove <name>",
+        ]
+        .into_iter()
+        .filter(|cmd| cmd.starts_with(q))
+        .collect();
+    }
+
+    if q == "/api-base" || q.starts_with("/api-base ") {
+        return vec!["/api-base show", "/api-base set <url>"]
+            .into_iter()
+            .filter(|cmd| cmd.starts_with(q))
+            .collect();
+    }
+
+    Vec::new()
 }
