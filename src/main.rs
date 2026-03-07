@@ -20,7 +20,9 @@ mod model_registry;
 mod llm_client;
 mod logging;
 mod ui;
-use llm_client::{LlmMessage, StreamEvent, stream_openai_compatible};
+use llm_client::{
+    LlmMessage, StreamEvent, compact_history_manual, compact_summary_text, stream_openai_compatible,
+};
 use model_registry::{
     AppConfig, DEFAULT_API_BASE, ModelProfile, config_file_path, has_model_api_key, keyring_entry,
     load_config, remove_model_api_key, save_config, save_model_api_key,
@@ -238,6 +240,7 @@ impl App {
             "/api-base".to_string(),
             "/api-base show".to_string(),
             "/api-base set <url>".to_string(),
+            "/compact".to_string(),
         ];
         Self {
             input: String::new(),
@@ -518,16 +521,7 @@ impl App {
 
     fn start_background_llm_request(&mut self, user_message: String) {
         let cfg = self.config.clone();
-        let history = self
-            .llm_history
-            .iter()
-            .rev()
-            .take(20)
-            .cloned()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
+        let history = self.llm_history.clone();
         let (tx, rx) = mpsc::channel::<StreamEvent>();
 
         // Insert an empty assistant bubble so stream chunks can render immediately.
@@ -581,6 +575,25 @@ impl App {
                         ));
                     }
 
+                    processed += 1;
+                }
+                Ok(StreamEvent::HistoryCompacted {
+                    new_history,
+                    dropped_messages,
+                }) => {
+                    self.pending_last_event_at = Some(Instant::now());
+                    self.llm_history = new_history;
+                    let summary_preview = compact_summary_text(&self.llm_history)
+                        .map(|s| truncate_for_preview(&s, 400))
+                        .unwrap_or_else(|| "<无摘要内容>".to_string());
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "检测到上下文超限，已调用模型生成/更新压缩摘要并重试（本轮合并 {} 条历史消息）。\n\n压缩摘要预览:\n{}",
+                            dropped_messages,
+                            summary_preview
+                        ),
+                    });
                     processed += 1;
                 }
                 Ok(StreamEvent::Done) => {
@@ -713,7 +726,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n\n说明:\n- 当模型返回上下文超限错误时，会自动压缩最旧历史并重试。\n- /compact 可手动触发压缩（仅压缩模型上下文，UI 历史仍保留）。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -733,6 +746,9 @@ impl App {
             }
             "/api-base" => {
                 self.handle_api_base_slash(&parts[1..]);
+            }
+            "/compact" => {
+                self.handle_compact_slash();
             }
             _ => {
                 self.messages.push(ChatMessage {
@@ -936,6 +952,50 @@ impl App {
             }
         }
     }
+
+    fn handle_compact_slash(&mut self) {
+        match compact_history_manual(&self.config, &mut self.llm_history) {
+            Ok(result) => {
+                if result.dropped_messages == 0 {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: "当前可压缩历史较少，已跳过压缩。".to_string(),
+                    });
+                } else {
+                    let summary_preview = compact_summary_text(&self.llm_history)
+                        .map(|s| truncate_for_preview(&s, 600))
+                        .unwrap_or_else(|| "<无摘要内容>".to_string());
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "压缩完成：上下文消息 {} -> {}，已全量压缩为摘要并合并 {} 条历史消息（UI 历史保留不变）。\n\n压缩摘要预览:\n{}",
+                            result.before_len,
+                            result.after_len,
+                            result.dropped_messages,
+                            summary_preview
+                        ),
+                    });
+                }
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("压缩失败: {}", err),
+                });
+            }
+        }
+    }
+}
+
+fn truncate_for_preview(text: &str, max_chars: usize) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return text.to_string();
+    }
+
+    let mut out = chars.into_iter().take(max_chars).collect::<String>();
+    out.push_str("...<预览已截断>");
+    out
 }
 
 fn handle_model_cli(action: ModelAction) -> Result<()> {
