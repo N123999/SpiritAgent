@@ -20,6 +20,7 @@ mod model_registry;
 mod llm_client;
 mod logging;
 mod tool_runtime;
+mod chat_store;
 mod ui;
 use llm_client::{
     LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message,
@@ -31,6 +32,7 @@ use model_registry::{
     load_config, remove_model_api_key, save_config, save_model_api_key,
 };
 use tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget};
+use chat_store::{display_name as chat_display_name, list_chat_files, load_chat, save_chat};
 
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
@@ -217,6 +219,9 @@ pub(crate) struct App {
     pub(crate) selected_suggestion: usize,
     pub(crate) model_picker_active: bool,
     pub(crate) model_picker_index: usize,
+    pub(crate) chat_picker_active: bool,
+    pub(crate) chat_picker_index: usize,
+    pub(crate) chat_picker_files: Vec<String>,
     pub(crate) history_offset_from_bottom: usize,
     pub(crate) pending_response: Option<Receiver<StreamEvent>>,
     pub(crate) pending_assistant_msg_index: Option<usize>,
@@ -269,6 +274,10 @@ impl App {
             "/api-base show".to_string(),
             "/api-base set <url>".to_string(),
             "/compact".to_string(),
+            "/chat".to_string(),
+            "/chat save".to_string(),
+            "/chat save <path>".to_string(),
+            "/chat load <file>".to_string(),
             "/tool shell <command>".to_string(),
             "/tool read <path> [start] [end]".to_string(),
             "/tool search <query>".to_string(),
@@ -291,6 +300,9 @@ impl App {
             selected_suggestion: 0,
             model_picker_active: false,
             model_picker_index: 0,
+            chat_picker_active: false,
+            chat_picker_index: 0,
+            chat_picker_files: vec![],
             history_offset_from_bottom: 0,
             pending_response: None,
             pending_assistant_msg_index: None,
@@ -451,6 +463,67 @@ impl App {
             });
         }
         self.model_picker_active = false;
+    }
+
+    fn open_chat_picker(&mut self) {
+        match list_chat_files() {
+            Ok(files) => {
+                if files.is_empty() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: "没有已保存对话。可先使用 /chat save 保存当前会话。".to_string(),
+                    });
+                    return;
+                }
+
+                self.chat_picker_files = files
+                    .iter()
+                    .map(|p| chat_display_name(p.as_path()))
+                    .collect();
+                self.chat_picker_index = 0;
+                self.chat_picker_active = true;
+                self.model_picker_active = false;
+                self.set_input(String::new());
+                self.refresh_suggestions();
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取会话列表失败: {}", err),
+                });
+            }
+        }
+    }
+
+    fn cancel_chat_picker(&mut self) {
+        self.chat_picker_active = false;
+    }
+
+    fn select_next_chat(&mut self) {
+        if self.chat_picker_files.is_empty() {
+            return;
+        }
+        self.chat_picker_index = (self.chat_picker_index + 1) % self.chat_picker_files.len();
+    }
+
+    fn select_prev_chat(&mut self) {
+        if self.chat_picker_files.is_empty() {
+            return;
+        }
+        if self.chat_picker_index == 0 {
+            self.chat_picker_index = self.chat_picker_files.len() - 1;
+        } else {
+            self.chat_picker_index -= 1;
+        }
+    }
+
+    fn confirm_chat_picker(&mut self) {
+        let Some(selected) = self.chat_picker_files.get(self.chat_picker_index).cloned() else {
+            self.chat_picker_active = false;
+            return;
+        };
+        self.chat_picker_active = false;
+        self.load_chat_by_path(&selected);
     }
 
     fn current_slash_query(&self) -> Option<&str> {
@@ -1029,7 +1102,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -1052,6 +1125,9 @@ impl App {
             }
             "/compact" => {
                 self.handle_compact_slash();
+            }
+            "/chat" => {
+                self.handle_chat_slash(message);
             }
             "/tool" => {
                 self.handle_tool_slash(message);
@@ -1287,6 +1363,132 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("压缩失败: {}", err),
+                });
+            }
+        }
+    }
+
+    fn handle_chat_slash(&mut self, message: &str) {
+        let tail = message.strip_prefix("/chat").map(str::trim).unwrap_or("");
+        if tail.is_empty() {
+            self.open_chat_picker();
+            return;
+        }
+
+        if tail == "save" {
+            self.save_current_chat(None);
+            return;
+        }
+
+        if let Some(path) = tail.strip_prefix("save ") {
+            self.save_current_chat(Some(path.trim()));
+            return;
+        }
+
+        if let Some(path) = tail.strip_prefix("load ") {
+            self.load_chat_by_path(path.trim());
+            return;
+        }
+
+        if tail == "load" {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "用法: /chat load <file>".to_string(),
+            });
+            return;
+        }
+
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: "用法: /chat [save [path]|load <file>]".to_string(),
+        });
+    }
+
+    fn save_current_chat(&mut self, path: Option<&str>) {
+        let messages = self
+            .messages
+            .iter()
+            .map(|m| {
+                (
+                    match m.role {
+                        MessageRole::User => "user".to_string(),
+                        MessageRole::Agent => "assistant".to_string(),
+                    },
+                    m.content.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let llm = self
+            .llm_history
+            .iter()
+            .map(|m| (m.role.to_string(), m.content.clone()))
+            .collect::<Vec<_>>();
+
+        match save_chat(path, &messages, &llm) {
+            Ok(saved_path) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("会话已保存: {}", saved_path.display()),
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("保存会话失败: {}", err),
+                });
+            }
+        }
+    }
+
+    fn load_chat_by_path(&mut self, path: &str) {
+        match load_chat(path) {
+            Ok(loaded) => {
+                let mut msgs = Vec::new();
+                for (role, content) in loaded.messages {
+                    let mapped_role = if role == "user" {
+                        MessageRole::User
+                    } else {
+                        MessageRole::Agent
+                    };
+                    msgs.push(ChatMessage {
+                        role: mapped_role,
+                        content,
+                    });
+                }
+                if msgs.is_empty() {
+                    msgs.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: "已加载空会话。".to_string(),
+                    });
+                }
+                self.messages = msgs;
+
+                self.llm_history = loaded
+                    .llm_history
+                    .into_iter()
+                    .map(|(role, content)| LlmMessage {
+                        role: if role == "assistant" {
+                            "assistant"
+                        } else if role == "system" {
+                            "system"
+                        } else {
+                            "user"
+                        },
+                        content,
+                    })
+                    .collect();
+
+                self.scroll_history_to_bottom();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("会话已加载: {}", path),
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("加载会话失败: {}", err),
                 });
             }
         }
@@ -1793,6 +1995,20 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
                 continue;
             }
 
+            if app.chat_picker_active {
+                match key.code {
+                    KeyCode::Esc => app.cancel_chat_picker(),
+                    KeyCode::Up => app.select_prev_chat(),
+                    KeyCode::Down => app.select_next_chat(),
+                    KeyCode::Enter => app.confirm_chat_picker(),
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.should_quit = true;
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
             let slash_mode = app.is_slash_mode_active() && !app.slash_suggestions.is_empty();
 
             match key.code {
@@ -1858,6 +2074,13 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
 
     if q == "/api-base" || q.starts_with("/api-base ") {
         return vec!["/api-base show", "/api-base set <url>"]
+            .into_iter()
+            .filter(|cmd| cmd.starts_with(q))
+            .collect();
+    }
+
+    if q == "/chat" || q.starts_with("/chat ") {
+        return vec!["/chat", "/chat save", "/chat save <path>", "/chat load <file>"]
             .into_iter()
             .filter(|cmd| cmd.starts_with(q))
             .collect();
