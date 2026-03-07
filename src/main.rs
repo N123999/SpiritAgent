@@ -1190,9 +1190,10 @@ fn run_tui() -> Result<()> {
 
     let run_result = run_app(&mut terminal);
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
-    terminal.show_cursor()?;
+    // Best-effort cleanup: never fail startup/exit just because restore commands can't run.
+    let _ = disable_raw_mode();
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture);
+    let _ = terminal.show_cursor();
 
     run_result
 }
@@ -1203,12 +1204,13 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
 
     while !app.should_quit {
         if let Some(enable_mouse) = app.take_mouse_capture_request() {
-            if enable_mouse {
+            if enable_mouse && !app.mouse_capture_enabled {
                 execute!(terminal.backend_mut(), EnableMouseCapture)?;
-            } else {
+                app.mouse_capture_enabled = true;
+            } else if !enable_mouse && app.mouse_capture_enabled {
                 execute!(terminal.backend_mut(), DisableMouseCapture)?;
+                app.mouse_capture_enabled = false;
             }
-            app.mouse_capture_enabled = enable_mouse;
         }
 
         app.poll_pending_response();

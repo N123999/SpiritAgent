@@ -179,6 +179,7 @@ fn stream_once(
     let mut reader = BufReader::new(resp);
     let mut line = String::new();
     let mut seen_chunk = false;
+    let mut raw_preview: Vec<String> = Vec::new();
 
     loop {
         line.clear();
@@ -191,6 +192,7 @@ fn stream_once(
         if trimmed.is_empty() {
             continue;
         }
+        push_preview_line(&mut raw_preview, trimmed);
         let Some(data) = trimmed.strip_prefix("data:") else {
             continue;
         };
@@ -200,7 +202,13 @@ fn stream_once(
             break;
         }
 
-        let v: Value = serde_json::from_str(data).context("解析 SSE JSON 失败")?;
+        let v: Value = serde_json::from_str(data)
+            .with_context(|| format!("解析 SSE JSON 失败: {}", truncate_chars(data, 320)))?;
+
+        if let Some(err_msg) = extract_provider_stream_error(&v) {
+            return Err(anyhow!(err_msg));
+        }
+
         if let Some(content) = v
             .pointer("/choices/0/delta/content")
             .and_then(Value::as_str)
@@ -225,7 +233,15 @@ fn stream_once(
     }
 
     if !seen_chunk {
-        return Err(anyhow!("流式响应没有返回任何文本片段"));
+        let preview = if raw_preview.is_empty() {
+            "<empty stream body>".to_string()
+        } else {
+            raw_preview.join("\n")
+        };
+        return Err(anyhow!(
+            "流式响应没有返回任何文本片段。原始响应预览:\n{}",
+            preview
+        ));
     }
 
     Ok(())
@@ -392,6 +408,17 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
     out
 }
 
+fn push_preview_line(preview: &mut Vec<String>, line: &str) {
+    const MAX_LINES: usize = 12;
+    const MAX_LINE_CHARS: usize = 280;
+
+    preview.push(truncate_chars(line, MAX_LINE_CHARS));
+    if preview.len() > MAX_LINES {
+        let overflow = preview.len() - MAX_LINES;
+        preview.drain(0..overflow);
+    }
+}
+
 fn shrink_summary_text(summary: &str) -> String {
     let min_chars = 200;
     let current_len = summary.chars().count();
@@ -414,5 +441,41 @@ pub fn is_context_overflow_error(err: &str) -> bool {
         "max context",
     ];
     hints.iter().any(|h| lower.contains(h))
+}
+
+fn extract_provider_stream_error(v: &Value) -> Option<String> {
+    let has_error_node = v.get("error").is_some();
+    let type_tag = v.get("type").and_then(Value::as_str).unwrap_or("");
+    if !has_error_node && type_tag != "error" {
+        return None;
+    }
+
+    let err_type = v
+        .pointer("/error/type")
+        .and_then(Value::as_str)
+        .unwrap_or("provider_error");
+    let err_message = v
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown provider error");
+    let http_code = v
+        .pointer("/error/http_code")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let request_id = v
+        .get("request_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+
+    let readable = match err_type {
+        "insufficient_balance_error" => "余额不足，请充值或切换有余额的模型/账号。",
+        "rate_limit_error" => "触发限流，请稍后重试或降低并发。",
+        _ => "模型服务返回错误。",
+    };
+
+    Some(format!(
+        "{} type={} http_code={} request_id={} message={}",
+        readable, err_type, http_code, request_id, err_message
+    ))
 }
 
