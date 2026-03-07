@@ -175,6 +175,18 @@ fn build_history_lines(app: &App) -> Vec<Line<'static>> {
         lines.extend(render_message_lines(msg));
     }
 
+    if let Some(status) = app.thinking_status_text() {
+        lines.push(Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled(
+                status,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::ITALIC),
+            ),
+        ]));
+    }
+
     lines
 }
 

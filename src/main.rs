@@ -229,6 +229,7 @@ pub(crate) struct App {
     pending_last_event_at: Option<Instant>,
     stream_chunk_counter: usize,
     pending_user_turn: Option<String>,
+    thinking_spinner_index: usize,
     tool_runtime: ToolRuntime,
     pending_tool_approval: Option<PendingToolApproval>,
     pending_tool_agent_step: Option<Receiver<Result<ToolAgentStepResult, String>>>,
@@ -310,6 +311,7 @@ impl App {
             pending_last_event_at: None,
             stream_chunk_counter: 0,
             pending_user_turn: None,
+            thinking_spinner_index: 0,
             tool_runtime: ToolRuntime::new(),
             pending_tool_approval: None,
             pending_tool_agent_step: None,
@@ -629,6 +631,7 @@ impl App {
             self.handle_slash_command(&message);
         } else {
             self.pending_user_turn = Some(message.clone());
+            self.thinking_spinner_index = 0;
             self.llm_history.push(LlmMessage {
                 role: "user",
                 content: message.clone(),
@@ -735,6 +738,7 @@ impl App {
     fn start_tool_agent_step_async(&mut self, state: ToolAgentState) {
         let cfg = self.config.clone();
         let (tx, rx) = mpsc::channel::<Result<ToolAgentStepResult, String>>();
+        self.thinking_spinner_index = 0;
 
         thread::spawn(move || {
             let mut state = state;
@@ -858,6 +862,7 @@ impl App {
     fn start_background_final_stream(&mut self, messages: Vec<serde_json::Value>) {
         let cfg = self.config.clone();
         let (tx, rx) = mpsc::channel::<StreamEvent>();
+        self.thinking_spinner_index = 0;
 
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
@@ -880,6 +885,7 @@ impl App {
         let cfg = self.config.clone();
         let history = self.llm_history.clone();
         let (tx, rx) = mpsc::channel::<StreamEvent>();
+        self.thinking_spinner_index = 0;
 
         // Insert an empty assistant bubble so stream chunks can render immediately.
         self.messages.push(ChatMessage {
@@ -898,6 +904,32 @@ impl App {
         self.pending_last_event_at = Some(now);
         self.stream_chunk_counter = 0;
         logging::log_event("stream started");
+    }
+
+    fn is_busy(&self) -> bool {
+        self.pending_response.is_some() || self.pending_tool_agent_step.is_some()
+    }
+
+    fn tick_thinking_spinner(&mut self) {
+        if self.is_busy() {
+            self.thinking_spinner_index = (self.thinking_spinner_index + 1) % 4;
+        } else {
+            self.thinking_spinner_index = 0;
+        }
+    }
+
+    pub(crate) fn thinking_status_text(&self) -> Option<String> {
+        if !self.is_busy() {
+            return None;
+        }
+
+        let frame = match self.thinking_spinner_index % 4 {
+            0 => '|',
+            1 => '/',
+            2 => '-',
+            _ => '\\',
+        };
+        Some(format!("{} Thinking...", frame))
     }
 
     fn poll_pending_response(&mut self) {
@@ -1957,6 +1989,7 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         app.poll_pending_response();
         app.poll_pending_tool_agent_step();
         app.handle_stream_stall_timeout();
+        app.tick_thinking_spinner();
         terminal.draw(|frame| ui::draw_ui(frame, &app))?;
 
         if event::poll(Duration::from_millis(100))? {
