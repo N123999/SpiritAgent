@@ -25,7 +25,8 @@ mod chat_store;
 mod ui;
 use llm_client::{
     LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message,
-    compact_history_manual, compact_summary_text, is_context_overflow_error, start_tool_agent_state,
+    compact_history_manual, compact_summary_text, is_context_overflow_error,
+    prepare_messages_for_final_response, start_tool_agent_state,
     stream_assistant_from_messages, stream_openai_compatible, tool_agent_next_step,
 };
 use model_registry::{
@@ -965,6 +966,7 @@ impl App {
 
     fn start_background_final_stream(&mut self, messages: Vec<serde_json::Value>) {
         let cfg = self.config.clone();
+        let messages = prepare_messages_for_final_response(&messages);
         let (tx, rx) = mpsc::channel::<StreamEvent>();
         self.thinking_spinner_index = 0;
         self.thinking_text.clear();

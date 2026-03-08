@@ -18,6 +18,7 @@ const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
 const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的工具调用代理。你可以通过 function calling 使用工具: run_shell_command, read_file, search_files, create_file, update_file, delete_file。规则: 1) 默认先直接回答用户；只有在用户明确要求执行操作、或缺少关键事实而无法可靠回答时，才调用工具。2) 对于解释、方案讨论、代码理解、头脑风暴这类请求，未收到明确执行请求时不要调用工具。3) 需要获取事实时优先使用 read_file/search_files，不要编造。4) create_file/update_file/delete_file 与 run_shell_command 都属于高风险操作，用户可能拒绝；被拒绝后要继续给出非工具方案。5) search_files 仅允许工作目录内搜索；文件写操作也仅允许工作目录内文件。6) 需要读取文件时优先工作目录路径。7) 输出要简洁、可执行。";
+const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的最终回答助手。请基于现有对话、工具结果和已确认事实，直接给用户一个自然语言答案。不要调用工具，不要输出任何 DSML/function_call/tool_calls/XML 风格标记，也不要暴露内部推理或工具协议。若前面工具已经拿到结果，就直接总结给用户。";
 
 #[derive(Clone)]
 pub struct LlmMessage {
@@ -80,6 +81,29 @@ pub fn append_tool_result_message(state: &mut ToolAgentState, tool_call_id: &str
         "tool_call_id": tool_call_id,
         "content": content
     }));
+}
+
+pub fn prepare_messages_for_final_response(messages: &[Value]) -> Vec<Value> {
+    let mut prepared = messages.to_vec();
+
+    if let Some(first) = prepared.first_mut()
+        && first.get("role").and_then(Value::as_str) == Some("system")
+    {
+        *first = json!({
+            "role": "system",
+            "content": FINAL_RESPONSE_SYSTEM_PROMPT
+        });
+        return prepared;
+    }
+
+    prepared.insert(
+        0,
+        json!({
+            "role": "system",
+            "content": FINAL_RESPONSE_SYSTEM_PROMPT
+        }),
+    );
+    prepared
 }
 
 pub fn tool_agent_next_step(
