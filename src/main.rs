@@ -1873,6 +1873,17 @@ impl App {
             ),
             ToolRequest::Search { query } => format!("search_files query={}", query),
             ToolRequest::Shell { command } => format!("run_shell_command command={}", command),
+            ToolRequest::CreateFile { path, content } => format!(
+                "create_file path={} chars={}",
+                path,
+                content.chars().count()
+            ),
+            ToolRequest::UpdateFile { path, content } => format!(
+                "update_file path={} chars={}",
+                path,
+                content.chars().count()
+            ),
+            ToolRequest::DeleteFile { path } => format!("delete_file path={}", path),
         };
 
         let entry = format!(
@@ -2030,6 +2041,9 @@ fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) 
             format!("[tool] 阅读文件 {} {} - {}", path, start, end)
         }
         ToolRequest::Search { .. } => output.to_string(),
+        ToolRequest::CreateFile { path, .. } => format!("[tool] 已创建文件 {}", path),
+        ToolRequest::UpdateFile { path, .. } => format!("[tool] 已更新文件 {}", path),
+        ToolRequest::DeleteFile { path } => format!("[tool] 已删除文件 {}", path),
         _ => format!(
             "[tool] {} 执行完成。\n{}",
             tool_name,

@@ -24,6 +24,9 @@ pub enum ToolRequest {
         end_line: Option<usize>,
     },
     Search { query: String },
+    CreateFile { path: String, content: String },
+    UpdateFile { path: String, content: String },
+    DeleteFile { path: String },
 }
 
 #[derive(Clone)]
@@ -187,6 +190,29 @@ impl ToolRuntime {
                 })
             }
             ToolRequest::Search { .. } => Ok(AuthorizationDecision::Allowed),
+            ToolRequest::CreateFile { path, content } => Ok(AuthorizationDecision::NeedApproval {
+                prompt: format!(
+                    "高风险工具调用: 创建文件\n路径: {}\n内容长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
+                    path,
+                    content.chars().count()
+                ),
+                trust_target: None,
+            }),
+            ToolRequest::UpdateFile { path, content } => Ok(AuthorizationDecision::NeedApproval {
+                prompt: format!(
+                    "高风险工具调用: 修改文件\n路径: {}\n新内容长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
+                    path,
+                    content.chars().count()
+                ),
+                trust_target: None,
+            }),
+            ToolRequest::DeleteFile { path } => Ok(AuthorizationDecision::NeedApproval {
+                prompt: format!(
+                    "高风险工具调用: 删除文件\n路径: {}\n\n输入 y 允许一次，n 拒绝。",
+                    path
+                ),
+                trust_target: None,
+            }),
         }
     }
 
@@ -223,6 +249,9 @@ impl ToolRuntime {
                 end_line,
             } => self.execute_read(path, *start_line, *end_line),
             ToolRequest::Search { query } => self.execute_search(query),
+            ToolRequest::CreateFile { path, content } => self.execute_create_file(path, content),
+            ToolRequest::UpdateFile { path, content } => self.execute_update_file(path, content),
+            ToolRequest::DeleteFile { path } => self.execute_delete_file(path),
         }
     }
 
@@ -277,6 +306,53 @@ impl ToolRuntime {
                         "additionalProperties": false
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_file",
+                    "description": "Create a new file inside the workspace. Fails if the file already exists.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" },
+                            "content": { "type": "string" }
+                        },
+                        "required": ["path", "content"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_file",
+                    "description": "Replace the full contents of an existing file inside the workspace.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" },
+                            "content": { "type": "string" }
+                        },
+                        "required": ["path", "content"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "delete_file",
+                    "description": "Delete an existing file inside the workspace.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string" }
+                        },
+                        "required": ["path"],
+                        "additionalProperties": false
+                    }
+                }
             }
         ])
     }
@@ -327,6 +403,28 @@ impl ToolRuntime {
                     .ok_or_else(|| anyhow!("search_files 缺少 query"))?;
                 Ok(ToolRequest::Search {
                     query: query.to_string(),
+                })
+            }
+            "create_file" => {
+                let path = required_string_arg(&args, "create_file", "path")?;
+                let content = required_string_arg(&args, "create_file", "content")?;
+                Ok(ToolRequest::CreateFile {
+                    path: path.to_string(),
+                    content: content.to_string(),
+                })
+            }
+            "update_file" => {
+                let path = required_string_arg(&args, "update_file", "path")?;
+                let content = required_string_arg(&args, "update_file", "content")?;
+                Ok(ToolRequest::UpdateFile {
+                    path: path.to_string(),
+                    content: content.to_string(),
+                })
+            }
+            "delete_file" => {
+                let path = required_string_arg(&args, "delete_file", "path")?;
+                Ok(ToolRequest::DeleteFile {
+                    path: path.to_string(),
                 })
             }
             _ => Err(anyhow!("未知工具名: {}", name)),
@@ -476,6 +574,44 @@ impl ToolRuntime {
         Ok(out)
     }
 
+    fn execute_create_file(&self, path: &str, content: &str) -> Result<String> {
+        let target = self.resolve_workspace_target_path(path)?;
+        if target.exists() {
+            return Err(anyhow!("文件已存在: {}", target.display()));
+        }
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("创建目录失败: {}", parent.display()))?;
+        }
+
+        fs::write(&target, content)
+            .with_context(|| format!("创建文件失败: {}", target.display()))?;
+        Ok(format!(
+            "[write]\naction: create_file\npath: {}\nchars: {}",
+            target.display(),
+            content.chars().count()
+        ))
+    }
+
+    fn execute_update_file(&self, path: &str, content: &str) -> Result<String> {
+        let target = self.resolve_existing_workspace_file(path)?;
+        fs::write(&target, content)
+            .with_context(|| format!("写入文件失败: {}", target.display()))?;
+        Ok(format!(
+            "[write]\naction: update_file\npath: {}\nchars: {}",
+            target.display(),
+            content.chars().count()
+        ))
+    }
+
+    fn execute_delete_file(&self, path: &str) -> Result<String> {
+        let target = self.resolve_existing_workspace_file(path)?;
+        fs::remove_file(&target)
+            .with_context(|| format!("删除文件失败: {}", target.display()))?;
+        Ok(format!("[write]\naction: delete_file\npath: {}", target.display()))
+    }
+
     fn resolve_existing_path(&self, input: &str) -> Result<PathBuf> {
         let raw = PathBuf::from(input);
         let joined = if raw.is_absolute() {
@@ -495,6 +631,69 @@ impl ToolRuntime {
             Err(_) => false,
         }
     }
+
+    fn resolve_workspace_target_path(&self, input: &str) -> Result<PathBuf> {
+        let raw = PathBuf::from(input.trim());
+        if input.trim().is_empty() {
+            return Err(anyhow!("path 不能为空"));
+        }
+
+        let joined = if raw.is_absolute() {
+            raw
+        } else {
+            self.workspace_root.join(raw)
+        };
+
+        let normalized = normalize_path_lossy(&joined)?;
+        let root = self
+            .workspace_root
+            .canonicalize()
+            .with_context(|| format!("工作目录无法访问: {}", self.workspace_root.display()))?;
+
+        if !normalized.starts_with(&root) {
+            return Err(anyhow!("仅允许修改工作目录内文件: {}", normalized.display()));
+        }
+
+        Ok(normalized)
+    }
+
+    fn resolve_existing_workspace_file(&self, input: &str) -> Result<PathBuf> {
+        let path = self.resolve_existing_path(input)?;
+        if !self.is_inside_workspace(&path) {
+            return Err(anyhow!("仅允许修改工作目录内文件: {}", path.display()));
+        }
+        if !path.is_file() {
+            return Err(anyhow!("目标不是文件: {}", path.display()));
+        }
+        Ok(path)
+    }
+}
+
+fn required_string_arg<'a>(args: &'a Value, tool: &str, key: &str) -> Result<&'a str> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow!("{} 缺少 {}", tool, key))
+}
+
+fn normalize_path_lossy(path: &Path) -> Result<PathBuf> {
+    if path.exists() {
+        return path
+            .canonicalize()
+            .with_context(|| format!("路径无法访问: {}", path.display()));
+    }
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("路径缺少父目录: {}", path.display()))?;
+    let parent = parent
+        .canonicalize()
+        .with_context(|| format!("父目录不存在或无法访问: {}", parent.display()))?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("路径缺少文件名: {}", path.display()))?;
+    Ok(parent.join(file_name))
 }
 
 fn decode_command_output(bytes: &[u8]) -> String {
