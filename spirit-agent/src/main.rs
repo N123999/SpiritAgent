@@ -303,6 +303,9 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.request_quit()
             }
+            KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.toggle_aux_details()
+            }
             KeyCode::Up if slash_mode => shell.select_prev_suggestion(),
             KeyCode::Down if slash_mode => shell.select_next_suggestion(),
             KeyCode::Tab if slash_mode => shell.apply_selected_suggestion(),

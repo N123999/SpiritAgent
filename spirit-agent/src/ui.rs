@@ -116,8 +116,16 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .skip(history_scroll)
         .take(history_view_height)
         .collect();
-    let history =
-        Paragraph::new(visible).block(Block::default().borders(Borders::ALL).title("Conversation"));
+    let conversation_title = if app.show_aux_details {
+        "Conversation"
+    } else {
+        "Conversation · Compact"
+    };
+    let history = Paragraph::new(visible).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(conversation_title),
+    );
     frame.render_widget(history, chunks[1]);
     shell.note_conversation_panel(
         ConversationPanelHit {
@@ -207,6 +215,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" copy conv  |  "),
+            Span::styled("Ctrl+O", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" compact  |  "),
             Span::styled("PgUp/PgDn", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" scroll  |  "),
             Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
@@ -247,7 +257,7 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
 
     for (idx, msg) in visible_messages.iter().enumerate() {
         let _global_idx = start_index + idx;
-        lines.extend(render_message_lines(msg));
+        lines.extend(render_message_lines(app, msg));
     }
 
     if let Some(status) = app.thinking_status_text() {
@@ -261,12 +271,14 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
             ),
         ]));
 
-        if let Some(thinking) = app.thinking_content_text() {
-            for segment in thinking.lines() {
-                lines.push(Line::from(vec![
-                    Span::styled("    ", Style::default()),
-                    Span::styled(segment.to_string(), Style::default().fg(Color::DarkGray)),
-                ]));
+        if app.show_aux_details {
+            if let Some(thinking) = app.thinking_content_text() {
+                for segment in thinking.lines() {
+                    lines.push(Line::from(vec![
+                        Span::styled("    ", Style::default()),
+                        Span::styled(segment.to_string(), Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
             }
         }
     }
@@ -274,14 +286,14 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     lines
 }
 
-fn render_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
+fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage) -> Vec<Line<'static>> {
     let (prefix, prefix_color) = match msg.role {
         MessageRole::User => ("You", Color::Green),
         MessageRole::Agent => ("Spirit", Color::Cyan),
     };
 
     if let Some(ref tool) = msg.tool_block {
-        return render_tool_card_lines(prefix, prefix_color, tool);
+        return render_tool_card_lines(prefix, prefix_color, tool, app.show_aux_details);
     }
 
     let content_lines = match msg.role {
@@ -331,11 +343,14 @@ fn render_tool_card_lines(
     prefix: &'static str,
     prefix_color: Color,
     tool: &ToolUiBlock,
+    show_aux_details: bool,
 ) -> Vec<Line<'static>> {
     let (phase_label, phase_color) = tool_phase_label(tool.phase);
     let rail = Style::default().fg(Color::Rgb(96, 110, 130));
     let rail_sym = "▌ ";
     let indent = "    ";
+    let expand_details = show_aux_details
+        || matches!(tool.phase, ToolUiPhase::PendingApproval | ToolUiPhase::Failed);
 
     let mut out = Vec::new();
 
@@ -404,52 +419,56 @@ fn render_tool_card_lines(
         ]));
     }
 
-    if let Some(ref args) = tool.args_excerpt {
-        if !args.trim().is_empty() {
-            out.push(Line::from(vec![
-                Span::raw(indent),
-                Span::styled(rail_sym, rail),
-                Span::styled("参数 JSON", Style::default().fg(Color::DarkGray)),
-            ]));
-            for seg in args.lines() {
+    if expand_details {
+        if let Some(ref args) = tool.args_excerpt {
+            if !args.trim().is_empty() {
                 out.push(Line::from(vec![
                     Span::raw(indent),
-                    Span::raw("  "),
                     Span::styled(rail_sym, rail),
-                    Span::styled(seg.to_string(), Style::default().fg(Color::Cyan)),
+                    Span::styled("参数 JSON", Style::default().fg(Color::DarkGray)),
                 ]));
+                for seg in args.lines() {
+                    out.push(Line::from(vec![
+                        Span::raw(indent),
+                        Span::raw("  "),
+                        Span::styled(rail_sym, rail),
+                        Span::styled(seg.to_string(), Style::default().fg(Color::Cyan)),
+                    ]));
+                }
             }
         }
     }
 
-    if let Some(ref output) = tool.output_excerpt {
-        if !output.trim().is_empty() {
-            out.push(Line::from(vec![
-                Span::raw(indent),
-                Span::styled(rail_sym, rail),
-                Span::styled("输出", Style::default().fg(Color::DarkGray)),
-            ]));
-            let lines: Vec<&str> = output.lines().take(48).collect();
-            for seg in lines.iter() {
+    if expand_details {
+        if let Some(ref output) = tool.output_excerpt {
+            if !output.trim().is_empty() {
                 out.push(Line::from(vec![
                     Span::raw(indent),
-                    Span::raw("  "),
                     Span::styled(rail_sym, rail),
-                    Span::styled((*seg).to_string(), Style::default().fg(Color::White)),
+                    Span::styled("输出", Style::default().fg(Color::DarkGray)),
                 ]));
-            }
-            let total_ln = output.lines().count();
-            if total_ln > 48 {
-                out.push(Line::from(vec![
-                    Span::raw(indent),
-                    Span::raw("  "),
-                    Span::styled(
-                        format!("… 另有 {} 行未显示", total_ln.saturating_sub(48)),
-                        Style::default()
-                            .fg(Color::DarkGray)
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ]));
+                let lines: Vec<&str> = output.lines().take(48).collect();
+                for seg in lines.iter() {
+                    out.push(Line::from(vec![
+                        Span::raw(indent),
+                        Span::raw("  "),
+                        Span::styled(rail_sym, rail),
+                        Span::styled((*seg).to_string(), Style::default().fg(Color::White)),
+                    ]));
+                }
+                let total_ln = output.lines().count();
+                if total_ln > 48 {
+                    out.push(Line::from(vec![
+                        Span::raw(indent),
+                        Span::raw("  "),
+                        Span::styled(
+                            format!("… 另有 {} 行未显示", total_ln.saturating_sub(48)),
+                            Style::default()
+                                .fg(Color::DarkGray)
+                                .add_modifier(Modifier::ITALIC),
+                        ),
+                    ]));
+                }
             }
         }
     }

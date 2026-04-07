@@ -33,6 +33,7 @@ pub struct TuiShell {
     input: String,
     input_cursor: usize,
     messages: Vec<ChatMessage>,
+    show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
     slash_commands: Vec<String>,
     slash_suggestions: Vec<String>,
@@ -110,6 +111,7 @@ impl TuiShell {
             input: String::new(),
             input_cursor: 0,
             messages: vec![welcome_message(&config.active_model)],
+            show_aux_details: true,
             pending_assistant_msg_index: None,
             slash_commands,
             slash_suggestions: vec![],
@@ -183,6 +185,7 @@ impl TuiShell {
             input_cursor: self.input_cursor,
             messages: self.messages.clone(),
             config: self.runtime.config().clone(),
+            show_aux_details: self.show_aux_details,
             slash_suggestions: self.slash_suggestions.clone(),
             selected_suggestion: self.selected_suggestion,
             model_picker_active: self.model_picker_active,
@@ -319,6 +322,10 @@ impl TuiShell {
 
     pub fn request_quit(&mut self) {
         self.should_quit = true;
+    }
+
+    pub fn toggle_aux_details(&mut self) {
+        self.show_aux_details = !self.show_aux_details;
     }
 
     pub fn is_model_picker_active(&self) -> bool {
@@ -641,7 +648,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
                 tool_block: None});
             }

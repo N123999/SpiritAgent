@@ -64,6 +64,7 @@ pub struct TuiViewModel {
     pub input_cursor: usize,
     pub messages: Vec<ChatMessage>,
     pub config: AppConfig,
+    pub show_aux_details: bool,
     pub slash_suggestions: Vec<String>,
     pub selected_suggestion: usize,
     pub model_picker_active: bool,
