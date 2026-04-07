@@ -278,9 +278,6 @@ impl App {
             "/model use <name>".to_string(),
             "/model add <name> <api_base> <api_key>".to_string(),
             "/model remove <name>".to_string(),
-            "/api-base".to_string(),
-            "/api-base show".to_string(),
-            "/api-base set <url>".to_string(),
             "/compact".to_string(),
             "/chat".to_string(),
             "/chat save".to_string(),
@@ -1278,7 +1275,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /api-base [show|set <url>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -1295,9 +1292,6 @@ impl App {
             }
             "/mouse" => {
                 self.handle_mouse_slash(&parts[1..]);
-            }
-            "/api-base" => {
-                self.handle_api_base_slash(&parts[1..]);
             }
             "/compact" => {
                 self.handle_compact_slash();
@@ -1471,44 +1465,6 @@ impl App {
                     content:
                         "用法: /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]"
                             .to_string(),
-                });
-            }
-        }
-    }
-
-    fn handle_api_base_slash(&mut self, args: &[&str]) {
-        match args {
-            [] | ["show"] => {
-                let current_base = self
-                    .config
-                    .active_model_profile()
-                    .map(|m| m.api_base.as_str())
-                    .unwrap_or(DEFAULT_API_BASE);
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("当前 API Base: {}", current_base),
-                });
-            }
-            ["set", url] => {
-                if let Some(active) = self.config.active_model_profile_mut() {
-                    active.api_base = (*url).to_string();
-                }
-                if let Err(err) = save_config(&self.config) {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("设置成功但保存失败: {}", err),
-                    });
-                } else {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("已更新 API Base: {}", url),
-                    });
-                }
-            }
-            _ => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "用法: /api-base [show|set <url>]".to_string(),
                 });
             }
         }
@@ -2418,13 +2374,6 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
         .into_iter()
         .filter(|cmd| cmd.starts_with(q))
         .collect();
-    }
-
-    if q == "/api-base" || q.starts_with("/api-base ") {
-        return vec!["/api-base show", "/api-base set <url>"]
-            .into_iter()
-            .filter(|cmd| cmd.starts_with(q))
-            .collect();
     }
 
     if q == "/chat" || q.starts_with("/chat ") {
