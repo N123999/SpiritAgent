@@ -8,11 +8,17 @@ pub mod ports;
 pub mod runtime;
 pub mod session;
 pub mod tool_runtime;
+#[cfg(feature = "tui")]
+mod word_wrap;
+#[cfg(feature = "tui")]
+pub mod conversation_select;
+#[cfg(feature = "tui")]
 pub mod tui;
 pub mod view;
 #[cfg(feature = "tui")]
 pub mod ui;
 
 pub use cli::{ConfigCommand, KeyCommand, ModelCommand, handle_config_cli, handle_model_cli};
+#[cfg(feature = "tui")]
 pub use tui::TuiShell;
 pub use view::{ChatMessage, MessageRole, TuiViewModel};

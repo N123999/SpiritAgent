@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = ["tui"]
-tui = ["dep:ratatui", "dep:crossterm", "dep:comrak", "dep:unicode-width"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:comrak", "dep:unicode-width", "dep:arboard"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -20,5 +20,11 @@ keyring = "2.3"
 rpassword = "7"
 unicode-width = { version = "0.2", optional = true }
 comrak = { version = "0.36", optional = true }
+arboard = { version = "3", optional = true }
 encoding_rs = "0.8"
 base64 = "0.22"
+
+[[bin]]
+name = "spirit-agent"
+path = "src/main.rs"
+required-features = ["tui"]

@@ -11,11 +11,23 @@ use crate::{
         DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore,
         LoggingTelemetry, OpenAiCompatibleTransport, WorkspaceToolExecutor,
     },
+    conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
     view::{ChatMessage, MessageRole, TuiViewModel},
 };
+
+/// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ConversationPanelHit {
+    pub x: u16,
+    pub y: u16,
+    pub w: u16,
+    pub h: u16,
+    pub scroll: usize,
+    pub total_lines: usize,
+}
 
 pub struct TuiShell {
     input: String,
@@ -34,8 +46,11 @@ pub struct TuiShell {
     image_picker_index: usize,
     image_picker_files: Vec<String>,
     history_offset_from_bottom: usize,
-    mouse_capture_enabled: bool,
-    mouse_capture_requested: Option<bool>,
+    conversation_sel_anchor: Option<(usize, usize)>,
+    conversation_sel_head: Option<(usize, usize)>,
+    conversation_dragging: bool,
+    conversation_panel_hit: Option<ConversationPanelHit>,
+    conversation_plain_rows: Vec<String>,
     should_quit: bool,
     runtime: AgentRuntime,
     config_store: Box<dyn ConfigStore>,
@@ -72,9 +87,6 @@ impl TuiShell {
             "/clear".to_string(),
             "/quit".to_string(),
             "/exit".to_string(),
-            "/mouse".to_string(),
-            "/mouse on".to_string(),
-            "/mouse off".to_string(),
             "/model".to_string(),
             "/model list".to_string(),
             "/model use <name>".to_string(),
@@ -113,8 +125,11 @@ impl TuiShell {
             image_picker_index: 0,
             image_picker_files: vec![],
             history_offset_from_bottom: 0,
-            mouse_capture_enabled: false,
-            mouse_capture_requested: None,
+            conversation_sel_anchor: None,
+            conversation_sel_head: None,
+            conversation_dragging: false,
+            conversation_panel_hit: None,
+            conversation_plain_rows: Vec::new(),
             should_quit: false,
             runtime,
             config_store,
@@ -184,7 +199,125 @@ impl TuiShell {
             pending_response_active: self.runtime.is_busy(),
             thinking_status: self.runtime.thinking_status_text(),
             thinking_content: self.runtime.thinking_content_text().map(ToString::to_string),
+            conversation_sel_anchor: self.conversation_sel_anchor,
+            conversation_sel_head: self.conversation_sel_head,
         }
+    }
+
+    pub fn note_conversation_panel(
+        &mut self,
+        hit: ConversationPanelHit,
+        plain_rows: Vec<String>,
+    ) {
+        self.conversation_panel_hit = Some(hit);
+        self.conversation_plain_rows = plain_rows;
+        let max_line = hit.total_lines.saturating_sub(1);
+        self.sync_conversation_selection_to_bounds(max_line);
+    }
+
+    fn sync_conversation_selection_to_bounds(&mut self, max_line: usize) {
+        let clamp = |(l, c): (usize, usize)| (l.min(max_line), c);
+        if let Some(p) = &mut self.conversation_sel_anchor {
+            *p = clamp(*p);
+        }
+        if let Some(p) = &mut self.conversation_sel_head {
+            *p = clamp(*p);
+        }
+    }
+
+    pub fn clear_conversation_selection(&mut self) {
+        self.conversation_sel_anchor = None;
+        self.conversation_sel_head = None;
+        self.conversation_dragging = false;
+    }
+
+    /// `column`, `row`：crossterm 终端坐标（与 ratatui 一致）。
+    pub fn conversation_pointer_from_mouse(
+        &self,
+        column: u16,
+        row: u16,
+    ) -> Option<(usize, usize)> {
+        let hit = self.conversation_panel_hit?;
+        if column < hit.x || column >= hit.x.saturating_add(hit.w) {
+            return None;
+        }
+        if row < hit.y || row >= hit.y.saturating_add(hit.h) {
+            return None;
+        }
+        let col = (column - hit.x) as usize;
+        let vrow = (row - hit.y) as usize;
+        let gline = hit.scroll + vrow;
+        if gline >= hit.total_lines {
+            return None;
+        }
+        Some((gline, col))
+    }
+
+    pub fn conversation_left_down(&mut self, column: u16, row: u16) {
+        let Some((line, col)) = self.conversation_pointer_from_mouse(column, row) else {
+            self.clear_conversation_selection();
+            return;
+        };
+        self.conversation_sel_anchor = Some((line, col));
+        self.conversation_sel_head = Some((line, col));
+        self.conversation_dragging = true;
+    }
+
+    pub fn conversation_left_drag(&mut self, column: u16, row: u16) {
+        if !self.conversation_dragging {
+            return;
+        }
+        let Some((line, col)) = self.conversation_pointer_from_mouse(column, row) else {
+            return;
+        };
+        self.conversation_sel_head = Some((line, col));
+    }
+
+    pub fn conversation_left_up(&mut self) {
+        self.conversation_dragging = false;
+    }
+
+    pub fn copy_conversation_selection(&mut self) -> Result<(), String> {
+        let (Some(a), Some(b)) = (self.conversation_sel_anchor, self.conversation_sel_head) else {
+            return Ok(());
+        };
+        let max_line = self.conversation_plain_rows.len().saturating_sub(1);
+        let clamp = |(l, c): (usize, usize)| (l.min(max_line), c);
+        let a = CellPointer {
+            line: clamp(a).0,
+            col: a.1,
+        };
+        let b = CellPointer {
+            line: clamp(b).0,
+            col: b.1,
+        };
+        let norm = normalize_selection(a, b);
+        let text = selection_plain_text(&self.conversation_plain_rows, norm);
+        if text.is_empty() {
+            return Ok(());
+        }
+        arboard::Clipboard::new()
+            .map_err(|e| e.to_string())?
+            .set_text(text)
+            .map_err(|e| e.to_string())?;
+        self.clear_conversation_selection();
+        Ok(())
+    }
+
+    pub(crate) fn conversation_norm_for_paint(&self, total_lines: usize) -> Option<NormRange> {
+        let (Some(a), Some(b)) = (self.conversation_sel_anchor, self.conversation_sel_head) else {
+            return None;
+        };
+        let max_line = total_lines.saturating_sub(1);
+        let a = CellPointer {
+            line: a.0.min(max_line),
+            col: a.1,
+        };
+        let b = CellPointer {
+            line: b.0.min(max_line),
+            col: b.1,
+        };
+        Some(normalize_selection(a, b))
     }
 
     pub fn should_quit(&self) -> bool {
@@ -193,22 +326,6 @@ impl TuiShell {
 
     pub fn request_quit(&mut self) {
         self.should_quit = true;
-    }
-
-    pub fn mouse_capture_enabled(&self) -> bool {
-        self.mouse_capture_enabled
-    }
-
-    pub fn set_mouse_capture_enabled(&mut self, enabled: bool) {
-        self.mouse_capture_enabled = enabled;
-    }
-
-    pub fn request_mouse_capture(&mut self, enabled: bool) {
-        self.mouse_capture_requested = Some(enabled);
-    }
-
-    pub fn take_mouse_capture_request(&mut self) -> Option<bool> {
-        self.mouse_capture_requested.take()
     }
 
     pub fn is_model_picker_active(&self) -> bool {
@@ -280,6 +397,8 @@ impl TuiShell {
         if message.is_empty() {
             return;
         }
+
+        self.clear_conversation_selection();
 
         if self.runtime.has_pending_tool_approval() {
             self.scroll_history_to_bottom();
@@ -511,7 +630,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
                 });
             }
@@ -522,7 +641,6 @@ impl TuiShell {
                 self.pending_assistant_msg_index = None;
             }
             "/model" => self.handle_model_slash(&parts[1..]),
-            "/mouse" => self.handle_mouse_slash(&parts[1..]),
             "/compact" => {
                 self.runtime.compact_history();
                 self.apply_runtime_events();
@@ -535,40 +653,6 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: "未知斜杠命令，输入 /help 查看可用指令。".to_string(),
-                });
-            }
-        }
-    }
-
-    fn handle_mouse_slash(&mut self, args: &[&str]) {
-        match args {
-            [] => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!(
-                        "鼠标模式当前: {}。/mouse on 开启滚轮，/mouse off 关闭以便终端拖拽复制。",
-                        if self.mouse_capture_enabled { "on" } else { "off" }
-                    ),
-                });
-            }
-            ["on"] => {
-                self.request_mouse_capture(true);
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "已开启鼠标滚轮模式（终端拖拽复制可能受限）。".to_string(),
-                });
-            }
-            ["off"] => {
-                self.request_mouse_capture(false);
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "已关闭鼠标捕获（可恢复终端拖拽复制）。".to_string(),
-                });
-            }
-            _ => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "用法: /mouse [on|off]".to_string(),
                 });
             }
         }

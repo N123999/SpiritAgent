@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind},
     execute,
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -13,7 +13,8 @@ use ratatui::{
 use std::{io, time::Duration};
 
 use spirit_agent::{
-    ConfigCommand, KeyCommand, ModelCommand, TuiShell, handle_config_cli, handle_model_cli, ui,
+    ConfigCommand, KeyCommand, ModelCommand, TuiShell, handle_config_cli, handle_model_cli,
+    logging, ui,
 };
 
 #[derive(Parser)]
@@ -182,24 +183,14 @@ fn run_tui() -> Result<()> {
 fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
     let mut shell = TuiShell::new();
     shell.refresh_suggestions();
+    execute!(terminal.backend_mut(), EnableMouseCapture)?;
 
     while !shell.should_quit() {
-        if let Some(enable_mouse) = shell.take_mouse_capture_request() {
-            if enable_mouse && !shell.mouse_capture_enabled() {
-                execute!(terminal.backend_mut(), EnableMouseCapture)?;
-                shell.set_mouse_capture_enabled(true);
-            } else if !enable_mouse && shell.mouse_capture_enabled() {
-                execute!(terminal.backend_mut(), DisableMouseCapture)?;
-                shell.set_mouse_capture_enabled(false);
-            }
-        }
-
         shell.poll_runtime();
         shell.handle_stream_stall_timeout();
         shell.tick();
         terminal.draw(|frame| {
-            let view = shell.view_model();
-            ui::draw_ui(frame, &view);
+            ui::draw_ui(frame, &mut shell);
         })?;
 
         if !event::poll(Duration::from_millis(100))? {
@@ -208,12 +199,24 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
 
         let evt = event::read()?;
         if let Event::Mouse(mouse) = &evt {
-            if shell.mouse_capture_enabled() {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => shell.scroll_history_up(3),
-                    MouseEventKind::ScrollDown => shell.scroll_history_down(3),
-                    _ => {}
+            match mouse.kind {
+                MouseEventKind::ScrollUp => shell.scroll_history_up(3),
+                MouseEventKind::ScrollDown => shell.scroll_history_down(3),
+                MouseEventKind::Down(MouseButton::Left) => {
+                    shell.conversation_left_down(mouse.column, mouse.row);
                 }
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    shell.conversation_left_drag(mouse.column, mouse.row);
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    shell.conversation_left_up();
+                }
+                MouseEventKind::Up(MouseButton::Right) => {
+                    if let Err(e) = shell.copy_conversation_selection() {
+                        logging::log_event(&format!("clipboard copy failed: {}", e));
+                    }
+                }
+                _ => {}
             }
             continue;
         }
@@ -272,6 +275,15 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
 
         match key.code {
             KeyCode::Esc => shell.request_quit(),
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                if let Err(e) = shell.copy_conversation_selection() {
+                    logging::log_event(&format!("clipboard copy failed: {}", e));
+                }
+            }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => shell.request_quit(),
             KeyCode::Up if slash_mode => shell.select_prev_suggestion(),
             KeyCode::Down if slash_mode => shell.select_next_suggestion(),

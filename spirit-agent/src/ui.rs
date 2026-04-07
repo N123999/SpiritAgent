@@ -11,7 +11,11 @@ use ratatui::{
 use std::{cell::RefCell, collections::HashMap};
 use unicode_width::UnicodeWidthChar;
 
-use crate::view::{ChatMessage, MessageRole, TuiViewModel};
+use crate::{
+    conversation_select::flatten_wrapped_history,
+    tui::{ConversationPanelHit, TuiShell},
+    view::{ChatMessage, MessageRole, TuiViewModel},
+};
 
 const MAX_RENDERED_MESSAGES: usize = 180;
 
@@ -20,7 +24,8 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) {
+pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
+    let app = shell.view_model();
     let show_model_picker = app.model_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
@@ -67,21 +72,40 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) {
     .style(Style::default().fg(Color::Cyan));
     frame.render_widget(logo, chunks[0]);
 
-    let history_lines = build_history_lines(app);
-    let history_view_height = chunks[1].height.saturating_sub(2) as usize;
-    let history_view_width = chunks[1].width.saturating_sub(2) as usize;
-    // Must match ratatui's WordWrapper (used by Paragraph), not a naive width/ceil estimate —
-    // otherwise scroll-to-bottom can be short by one or more visual lines.
+    let history_lines = build_history_lines(&app);
+    let inner_x = chunks[1].x.saturating_add(1);
+    let inner_y = chunks[1].y.saturating_add(1);
+    let inner_w = chunks[1].width.saturating_sub(2);
+    let inner_h = chunks[1].height.saturating_sub(2);
+    let history_view_height = inner_h as usize;
+    let w = inner_w.max(1) as u16;
     let total_visual_lines = Paragraph::new(history_lines.clone())
         .wrap(Wrap { trim: false })
-        .line_count(history_view_width.max(1) as u16) as usize;
-    let max_scroll = total_visual_lines.saturating_sub(history_view_height);
+        .line_count(w) as usize;
+    let norm = shell.conversation_norm_for_paint(total_visual_lines);
+    let (flat, plain) = flatten_wrapped_history(history_lines, w, norm);
+    debug_assert_eq!(flat.len(), total_visual_lines);
+    let max_scroll = flat.len().saturating_sub(history_view_height);
     let history_scroll = max_scroll.saturating_sub(app.history_offset_from_bottom);
-    let history = Paragraph::new(history_lines)
-        .block(Block::default().borders(Borders::ALL).title("Conversation"))
-        .scroll((history_scroll as u16, 0))
-        .wrap(Wrap { trim: false });
+    let visible: Vec<Line<'static>> = flat
+        .into_iter()
+        .skip(history_scroll)
+        .take(history_view_height)
+        .collect();
+    let history = Paragraph::new(visible)
+        .block(Block::default().borders(Borders::ALL).title("Conversation"));
     frame.render_widget(history, chunks[1]);
+    shell.note_conversation_panel(
+        ConversationPanelHit {
+            x: inner_x,
+            y: inner_y,
+            w: inner_w,
+            h: inner_h,
+            scroll: history_scroll,
+            total_lines: total_visual_lines,
+        },
+        plain,
+    );
 
     let input = Paragraph::new(app.input.as_str())
         .block(Block::default().borders(Borders::ALL).title("Input"))
@@ -104,25 +128,25 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) {
     }
 
     if show_model_picker {
-        let picker_lines = build_model_picker_lines(app, 5);
+        let picker_lines = build_model_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
             .block(Block::default().borders(Borders::ALL).title("Model Picker"))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[3]);
     } else if show_chat_picker {
-        let picker_lines = build_chat_picker_lines(app, 5);
+        let picker_lines = build_chat_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
             .block(Block::default().borders(Borders::ALL).title("Chat Picker"))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[3]);
     } else if show_image_picker {
-        let picker_lines = build_image_picker_lines(app, 5);
+        let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
             .block(Block::default().borders(Borders::ALL).title("Image Picker"))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[3]);
     } else if show_suggestions {
-        let suggestions = build_suggestion_lines(app, 3);
+        let suggestions = build_suggestion_lines(&app, 3);
         let suggestions_widget = Paragraph::new(suggestions)
             .block(Block::default().borders(Borders::ALL).title("Slash Commands"))
             .wrap(Wrap { trim: true });
@@ -150,6 +174,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) {
             }),
             Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" complete  |  "),
+            Span::styled("Ctrl+Shift+C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" copy conv  |  "),
             Span::styled("PgUp/PgDn", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" scroll  |  "),
             Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
