@@ -19,6 +19,14 @@ use crate::{
 };
 
 const MAX_RENDERED_MESSAGES: usize = 180;
+const SPIRIT_LOGO_LINES: [&str; 6] = [
+    " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
+    " ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝",
+    " ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ",
+    " ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ",
+    " ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ",
+    " ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ",
+];
 
 thread_local! {
     static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
@@ -32,6 +40,17 @@ fn conversation_logo_height(terminal_height: u16) -> u16 {
         h if h >= 19 => 6,
         _ => 5,
     }
+}
+
+fn conversation_logo_width(available_width: u16) -> u16 {
+    let logo_text_width = SPIRIT_LOGO_LINES
+        .iter()
+        .map(|line| UnicodeWidthStr::width(*line))
+        .max()
+        .unwrap_or(0);
+    let title_width = UnicodeWidthStr::width(" SpiritAgent ");
+    let desired_width = logo_text_width.max(title_width).saturating_add(2) as u16;
+    desired_width.min(available_width.max(1))
 }
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
@@ -79,29 +98,23 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         })
         .split(content_area);
 
-    let logo = Paragraph::new(vec![
-        Line::from(
-            " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
-        ),
-        Line::from(
-            " ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝",
-        ),
-        Line::from(
-            " ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ",
-        ),
-        Line::from(
-            " ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ",
-        ),
-        Line::from(
-            " ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ",
-        ),
-        Line::from(
-            " ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ",
-        ),
-    ])
+    let logo_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(conversation_logo_width(chunks[0].width)),
+            Constraint::Min(0),
+        ])
+        .split(chunks[0]);
+
+    let logo = Paragraph::new(
+        SPIRIT_LOGO_LINES
+            .iter()
+            .map(|line| Line::from(*line))
+            .collect::<Vec<_>>(),
+    )
     .block(Block::default().borders(Borders::ALL).title("SpiritAgent"))
     .style(Style::default().fg(Color::Cyan));
-    frame.render_widget(logo, chunks[0]);
+    frame.render_widget(logo, logo_chunks[0]);
 
     let history_lines = build_history_lines(&app);
     // 对话区无边框，内容与命中区域占满 chunks[1]。
