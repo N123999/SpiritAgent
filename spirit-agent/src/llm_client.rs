@@ -123,6 +123,14 @@ pub fn append_tool_result_message(state: &mut ToolAgentState, tool_call_id: &str
     }));
 }
 
+fn append_redundant_lookup_result(state: &mut ToolAgentState, tool_call_id: &str) {
+    append_tool_result_message(
+        state,
+        tool_call_id,
+        "[duplicate lookup suppressed] 同参数 read/search 已在本轮出现。请直接复用已有结果并继续，不要再次读取。",
+    );
+}
+
 /// 供 `/log` 导出：两条固定 system 文案（与各请求里 `messages` 中 system 一致）。
 pub fn llm_system_prompts_for_export() -> Value {
     json!({
@@ -220,10 +228,7 @@ fn apply_tool_agent_assistant_message(
             .to_string();
 
         if is_redundant_lookup_call(&state.messages, &name, &arguments) {
-            state.messages.push(json!({
-                "role": "system",
-                "content": "检测到重复 read/search 查询（同参数）。不要再重复读取，请基于现有信息直接给出可执行结论或实施修改。"
-            }));
+            append_redundant_lookup_result(&mut *state, &id);
             return Ok(ToolAgentStep::FinalResponseReady);
         }
 
@@ -238,10 +243,24 @@ fn apply_tool_agent_assistant_message(
         && let Some(dsml_call) = parse_dsml_tool_call(content)
     {
         if is_redundant_lookup_call(&state.messages, &dsml_call.name, &dsml_call.arguments) {
+            let tool_call_id = dsml_call.id.clone();
+            let tool_name = dsml_call.name.clone();
+            let tool_arguments = dsml_call.arguments.clone();
             state.messages.push(json!({
-                "role": "system",
-                "content": "检测到重复 read/search 查询（同参数）。不要再重复读取，请基于现有信息直接给出可执行结论或实施修改。"
+                "role": "assistant",
+                "content": Value::Null,
+                "tool_calls": [
+                    {
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": tool_arguments,
+                        }
+                    }
+                ]
             }));
+            append_redundant_lookup_result(&mut *state, &dsml_call.id);
             return Ok(ToolAgentStep::FinalResponseReady);
         }
 
@@ -1190,5 +1209,76 @@ fn extract_inner_text(block: &str) -> String {
     let start = block.find('>').map(|i| i + 1).unwrap_or(0);
     let end = block.rfind("</").unwrap_or(block.len());
     block[start..end].to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redundant_lookup_appends_synthetic_tool_response() {
+        let mut state = ToolAgentState {
+            messages: vec![
+                json!({"role": "system", "content": "你是 SpiritAgent 代理。"}),
+                json!({
+                    "role": "assistant",
+                    "content": Value::Null,
+                    "tool_calls": [
+                        {
+                            "id": "call_prev",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": "{\"path\":\"summary.md\"}",
+                            }
+                        }
+                    ]
+                }),
+                json!({
+                    "role": "tool",
+                    "tool_call_id": "call_prev",
+                    "content": "[read]\npath: summary.md",
+                }),
+            ],
+            steps: 0,
+        };
+
+        let step = apply_tool_agent_assistant_message(
+            &mut state,
+            json!({
+                "role": "assistant",
+                "content": "让我再读一次这个文档。",
+                "tool_calls": [
+                    {
+                        "id": "call_new",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"summary.md\"}",
+                        }
+                    }
+                ]
+            }),
+        )
+        .expect("redundant tool call should be converted into synthetic tool response");
+
+        assert!(matches!(step, ToolAgentStep::FinalResponseReady));
+        assert_eq!(state.messages.len(), 5);
+        assert_eq!(
+            state.messages[3]
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .and_then(|calls| calls.first())
+                .and_then(|call| call.get("id"))
+                .and_then(Value::as_str),
+            Some("call_new")
+        );
+        assert_eq!(
+            state.messages[4]
+                .get("tool_call_id")
+                .and_then(Value::as_str),
+            Some("call_new")
+        );
+    }
 }
 
