@@ -217,6 +217,10 @@ fn subtle_aux_text_style() -> Style {
     Style::default().fg(Color::Rgb(128, 128, 128))
 }
 
+fn conversation_body_text_style() -> Style {
+    Style::default().fg(Color::Rgb(170, 170, 170))
+}
+
 fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
     let footer_style = subtle_aux_text_style();
     let left_label = "SpiritAgent Preview";
@@ -475,6 +479,9 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     for (idx, msg) in visible_messages.iter().enumerate() {
         let _global_idx = start_index + idx;
         lines.extend(render_message_lines(app, msg));
+        if idx + 1 < visible_messages.len() {
+            lines.push(Line::from(""));
+        }
     }
 
     if let Some(status) = app.thinking_status_text() {
@@ -503,14 +510,24 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     lines
 }
 
+fn message_prefix_text() -> &'static str {
+    "> "
+}
+
+fn message_gutter_padding() -> &'static str {
+    "  "
+}
+
 fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage) -> Vec<Line<'static>> {
-    let (prefix, prefix_color) = match msg.role {
-        MessageRole::User => ("You", Color::Green),
-        MessageRole::Agent => ("Spirit", Color::Cyan),
+    let prefix_style = match msg.role {
+        MessageRole::User => conversation_body_text_style(),
+        MessageRole::Agent => Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
     };
 
     if let Some(ref tool) = msg.tool_block {
-        return render_tool_card_lines(prefix, prefix_color, tool, app.show_aux_details);
+        return render_tool_card_lines(prefix_style, tool, app.show_aux_details);
     }
 
     let content_lines = match msg.role {
@@ -521,25 +538,18 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage) -> Vec<Line<'stat
     let mut out = Vec::new();
     let mut iter = content_lines.into_iter();
     if let Some(first) = iter.next() {
-        let mut spans = vec![Span::styled(
-            format!("{}> ", prefix),
-            Style::default()
-                .fg(prefix_color)
-                .add_modifier(Modifier::BOLD),
-        )];
+        let mut spans = vec![Span::styled(message_prefix_text(), prefix_style)];
         spans.extend(first);
         out.push(Line::from(spans));
     } else {
         out.push(Line::from(vec![Span::styled(
-            format!("{}> ", prefix),
-            Style::default()
-                .fg(prefix_color)
-                .add_modifier(Modifier::BOLD),
+            message_prefix_text(),
+            prefix_style,
         )]));
     }
 
     for line in iter {
-        let mut spans = vec![Span::raw("    ")];
+        let mut spans = vec![Span::raw(message_gutter_padding())];
         spans.extend(line);
         out.push(Line::from(spans));
     }
@@ -557,27 +567,21 @@ fn tool_phase_label(phase: ToolUiPhase) -> (&'static str, Color) {
 }
 
 fn render_tool_card_lines(
-    prefix: &'static str,
-    prefix_color: Color,
+    prefix_style: Style,
     tool: &ToolUiBlock,
     show_aux_details: bool,
 ) -> Vec<Line<'static>> {
     let (phase_label, phase_color) = tool_phase_label(tool.phase);
     let rail = Style::default().fg(Color::Rgb(96, 110, 130));
     let rail_sym = "▌ ";
-    let indent = "    ";
+    let indent = message_gutter_padding();
     let expand_details = show_aux_details
         || matches!(tool.phase, ToolUiPhase::PendingApproval | ToolUiPhase::Failed);
 
     let mut out = Vec::new();
 
     let mut title_spans = vec![
-        Span::styled(
-            format!("{}> ", prefix),
-            Style::default()
-                .fg(prefix_color)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(message_prefix_text(), prefix_style),
         Span::styled(
             "[tool] ",
             Style::default()
@@ -587,7 +591,7 @@ fn render_tool_card_lines(
         Span::styled(
             tool.tool_name.clone(),
             Style::default()
-                .fg(Color::White)
+                .fg(Color::Rgb(170, 170, 170))
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" · "),
@@ -620,7 +624,7 @@ fn render_tool_card_lines(
         Span::styled(
             tool.headline.clone(),
             Style::default()
-                .fg(Color::White)
+                .fg(Color::Rgb(170, 170, 170))
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
@@ -670,7 +674,7 @@ fn render_tool_card_lines(
                         Span::raw(indent),
                         Span::raw("  "),
                         Span::styled(rail_sym, rail),
-                        Span::styled((*seg).to_string(), Style::default().fg(Color::White)),
+                        Span::styled((*seg).to_string(), conversation_body_text_style()),
                     ]));
                 }
                 let total_ln = output.lines().count();
@@ -696,7 +700,10 @@ fn render_tool_card_lines(
 fn plain_text_lines(text: &str) -> Vec<Vec<Span<'static>>> {
     let mut lines = Vec::new();
     for part in text.split('\n') {
-        lines.push(vec![Span::raw(part.to_string())]);
+        lines.push(vec![Span::styled(
+            part.to_string(),
+            conversation_body_text_style(),
+        )]);
     }
     if lines.is_empty() {
         vec![vec![]]
@@ -716,7 +723,7 @@ fn markdown_lines(text: &str) -> Vec<Vec<Span<'static>>> {
         let root = parse_document(&arena, text, &markdown_options());
 
         let mut builder = MdBuilder::new();
-        render_markdown_node(root, &mut builder, Style::default().fg(Color::White), 0);
+        render_markdown_node(root, &mut builder, conversation_body_text_style(), 0);
         let parsed = builder.into_lines();
 
         // Keep cache bounded so long sessions won't grow unbounded memory.
