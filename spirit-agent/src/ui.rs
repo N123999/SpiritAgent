@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use std::{cell::RefCell, collections::HashMap, path::Path};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -35,16 +35,22 @@ fn conversation_logo_height(terminal_height: u16) -> u16 {
 }
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
+    let root_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(frame.area());
+    let content_area = root_chunks[0];
+
     let app = shell.view_model();
     let show_model_picker = app.model_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker;
-    let input_inner_width = frame.area().width.saturating_sub(2) as usize;
+    let input_inner_width = content_area.width.saturating_sub(2) as usize;
     let input_height = input_block_height(&app, input_inner_width);
 
-    let logo_h = conversation_logo_height(frame.area().height);
+    let logo_h = conversation_logo_height(content_area.height);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_picker {
@@ -71,7 +77,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Constraint::Length(1),
             ]
         })
-        .split(frame.area());
+        .split(content_area);
 
     let logo = Paragraph::new(vec![
         Line::from(
@@ -182,54 +188,73 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         frame.render_widget(suggestions_widget, chunks[3]);
     }
 
-    let help = if show_picker {
-        Paragraph::new(Line::from(vec![
-            Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" choose  |  "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" confirm  |  "),
-            Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" cancel  |  "),
-            Span::styled("Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" quit"),
-        ]))
-    } else {
-        Paragraph::new(Line::from(vec![
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(if app.pending_response_active {
-                " wait  |  "
-            } else {
-                " send  |  "
-            }),
-            Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" complete  |  "),
-            Span::styled(
-                "Ctrl+Shift+C",
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" copy conv  |  "),
-            Span::styled("Ctrl+O", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" compact  |  "),
-            Span::styled("PgUp/PgDn", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" scroll  |  "),
-            Span::styled("Up/Down", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" pick  |  "),
-            Span::styled("/model", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" picker  |  "),
-            Span::styled("/chat", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" picker  |  "),
-            Span::styled("/image pick", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" picker  |  "),
-            Span::styled(
-                "Esc / Ctrl+C",
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" quit"),
-        ]))
-    };
     let help_idx = if show_suggestions { 4 } else { 3 };
     let help_idx = if show_picker { 4 } else { help_idx };
-    frame.render_widget(help, chunks[help_idx]);
+    let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
+    frame.render_widget(footer, chunks[help_idx]);
+    frame.render_widget(Clear, root_chunks[1]);
+}
+
+fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
+    let footer_style = Style::default().fg(Color::Rgb(128, 128, 128));
+    let left_label = "SpiritAgent Preview";
+    let right_label = app.config.active_model.as_str();
+    let side_padding = if width >= 12 {
+        2
+    } else if width >= 6 {
+        1
+    } else {
+        0
+    };
+
+    if width == 0 {
+        return Line::from(Vec::<Span<'static>>::new());
+    }
+
+    let content_width = width.saturating_sub(side_padding * 2);
+    if content_width == 0 {
+        return Line::from(Span::styled(" ".repeat(width), footer_style));
+    }
+
+    let right_width = UnicodeWidthStr::width(right_label);
+    if right_width >= content_width {
+        let text = truncate_to_width(right_label, content_width);
+        let used_width = UnicodeWidthStr::width(text.as_str());
+        return Line::from(vec![
+            Span::styled(" ".repeat(side_padding), footer_style),
+            Span::styled(text, footer_style),
+            Span::styled(
+                " ".repeat(width.saturating_sub(side_padding + used_width)),
+                footer_style,
+            ),
+        ]);
+    }
+
+    let max_left_width = content_width.saturating_sub(right_width + 1);
+    let left_text = truncate_to_width(left_label, max_left_width.max(1));
+    let left_width = UnicodeWidthStr::width(left_text.as_str());
+
+    if left_width + 1 > content_width.saturating_sub(right_width) {
+        let text = truncate_to_width(right_label, content_width);
+        let used_width = UnicodeWidthStr::width(text.as_str());
+        return Line::from(vec![
+            Span::styled(" ".repeat(side_padding), footer_style),
+            Span::styled(text, footer_style),
+            Span::styled(
+                " ".repeat(width.saturating_sub(side_padding + used_width)),
+                footer_style,
+            ),
+        ]);
+    }
+
+    let gap = content_width.saturating_sub(left_width + right_width);
+    Line::from(vec![
+        Span::styled(" ".repeat(side_padding), footer_style),
+        Span::styled(left_text, footer_style),
+        Span::styled(" ".repeat(gap), footer_style),
+        Span::styled(right_label.to_string(), footer_style),
+        Span::styled(" ".repeat(side_padding), footer_style),
+    ])
 }
 
 fn input_block_height(app: &TuiViewModel, max_width: usize) -> u16 {
