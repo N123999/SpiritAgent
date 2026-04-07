@@ -194,7 +194,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[3]);
     } else if show_suggestions {
-        let suggestions = build_suggestion_lines(&app, SLASH_SUGGESTION_VISIBLE_ITEMS);
+        let suggestions = build_suggestion_lines(
+            &app,
+            SLASH_SUGGESTION_VISIBLE_ITEMS,
+            chunks[3].width.saturating_sub(2) as usize,
+        );
         let suggestions_widget = Paragraph::new(suggestions)
             .block(
                 Block::default()
@@ -910,7 +914,7 @@ fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
     (&app.messages[start..], start, start)
 }
 
-fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
+fn build_suggestion_lines(app: &TuiViewModel, max_items: usize, max_width: usize) -> Vec<Line<'static>> {
     let default_style = subtle_aux_text_style();
     let selected_style = Style::default().fg(Color::White);
 
@@ -931,18 +935,54 @@ fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'sta
         0
     };
     let end = (start + window).min(total);
+    let visible_commands = &app.slash_suggestions[start..end];
+    let command_column_width = visible_commands
+        .iter()
+        .map(|cmd| UnicodeWidthStr::width(format!("  {}", cmd).as_str()))
+        .max()
+        .unwrap_or(0);
+    let description_gap = if max_width >= 40 {
+        4
+    } else if max_width >= 24 {
+        3
+    } else {
+        2
+    };
 
     let mut lines = Vec::new();
     for idx in start..end {
         let cmd = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
-        let style = if is_selected {
+        let command_style = if is_selected {
             selected_style
         } else {
             default_style
         };
+        let command_text = format!("  {}", cmd);
+        let summary = suggestion_summary(cmd);
 
-        lines.push(Line::from(Span::styled(format!("  {}", cmd), style)));
+        if summary.is_empty() || max_width == 0 {
+            lines.push(Line::from(Span::styled(command_text, command_style)));
+            continue;
+        }
+
+        let command_width = UnicodeWidthStr::width(command_text.as_str());
+        let summary_width = max_width.saturating_sub(command_column_width + description_gap);
+        if summary_width == 0 {
+            lines.push(Line::from(Span::styled(command_text, command_style)));
+            continue;
+        }
+
+        let spacing = command_column_width
+            .saturating_sub(command_width)
+            .saturating_add(description_gap);
+        let summary_text = truncate_to_width(summary, summary_width);
+
+        lines.push(Line::from(vec![
+            Span::styled(command_text, command_style),
+            Span::styled(" ".repeat(spacing), default_style),
+            Span::styled(summary_text, default_style),
+        ]));
     }
 
     if total == 1 {
@@ -956,6 +996,22 @@ fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'sta
     }
 
     lines
+}
+
+fn suggestion_summary(command: &str) -> &'static str {
+    match command {
+        "/help" => "查看可用命令与说明",
+        "/clear" => "清空当前会话显示",
+        "/quit" => "退出 SpiritAgent",
+        "/exit" => "退出 SpiritAgent",
+        "/model" => "查看、切换或管理模型",
+        "/compact" => "压缩上下文历史",
+        "/chat" => "保存、加载或选择会话",
+        "/image" => "添加、清空或选择图片",
+        "/tool" => "执行文件或 shell 工具",
+        "/log" => "打开或导出日志",
+        _ => "",
+    }
 }
 
 fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
