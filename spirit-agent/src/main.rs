@@ -1,10 +1,17 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind},
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
+        KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags, MouseButton,
+        MouseEventKind,
+    },
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+        supports_keyboard_enhancement,
+    },
 };
 use ratatui::{
     Terminal,
@@ -15,6 +22,11 @@ use std::{io, time::Duration};
 use spirit_agent::{
     ConfigCommand, KeyCommand, ModelCommand, TuiShell, handle_config_cli, handle_model_cli,
     logging, ui,
+};
+
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, VK_LSHIFT, VK_RSHIFT,
 };
 
 #[derive(Parser)]
@@ -178,14 +190,41 @@ fn run_tui() -> Result<()> {
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+    let supports_keyboard_enhancement = matches!(supports_keyboard_enhancement(), Ok(true));
+    logging::log_event(&format!(
+        "[keyboard] supports_keyboard_enhancement={} platform=windows",
+        supports_keyboard_enhancement
+    ));
+
+    if supports_keyboard_enhancement {
+        execute!(
+            terminal.backend_mut(),
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+            )
+        )?;
+    }
+
     let run_result = run_app(&mut terminal);
 
     let _ = disable_raw_mode();
-    let _ = execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    );
+    if supports_keyboard_enhancement {
+        let _ = execute!(
+            terminal.backend_mut(),
+            PopKeyboardEnhancementFlags,
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        );
+    } else {
+        let _ = execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        );
+    }
     let _ = terminal.show_cursor();
     run_result
 }
@@ -288,6 +327,9 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
 
         let slash_mode =
             shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
+        let should_insert_newline =
+            matches!(key.code, KeyCode::Enter) && enter_should_insert_newline(key.modifiers);
+        maybe_log_key_event(&key, should_insert_newline);
 
         match key.code {
             KeyCode::Esc => shell.request_quit(),
@@ -321,6 +363,11 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
             KeyCode::Right => shell.move_cursor_right(),
             KeyCode::Home => shell.move_cursor_home(),
             KeyCode::End => shell.move_cursor_end(),
+            KeyCode::Enter if should_insert_newline => {
+                shell.insert_newline_at_cursor();
+                shell.clamp_cursor();
+                shell.refresh_suggestions();
+            }
             KeyCode::Enter => shell.submit_input(),
             KeyCode::Backspace => {
                 shell.backspace_at_cursor();
@@ -344,4 +391,38 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn enter_should_insert_newline(modifiers: KeyModifiers) -> bool {
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        return false;
+    }
+
+    shift_pressed_fallback() || modifiers.contains(KeyModifiers::SHIFT)
+}
+
+fn maybe_log_key_event(key: &crossterm::event::KeyEvent, should_insert_newline: bool) {
+    if !matches!(key.code, KeyCode::Enter | KeyCode::Char('\\')) {
+        return;
+    }
+
+    logging::log_event(&format!(
+        "[keyboard] key={:?} shift_fallback={} insert_newline={}",
+        key,
+        shift_pressed_fallback(),
+        should_insert_newline
+    ));
+}
+
+#[cfg(target_os = "windows")]
+fn shift_pressed_fallback() -> bool {
+    unsafe {
+        (GetAsyncKeyState(VK_LSHIFT as i32) as u16 & 0x8000) != 0
+            || (GetAsyncKeyState(VK_RSHIFT as i32) as u16 & 0x8000) != 0
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn shift_pressed_fallback() -> bool {
+    false
 }

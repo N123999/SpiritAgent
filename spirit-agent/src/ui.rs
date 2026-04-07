@@ -41,7 +41,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_image_picker = app.image_picker_active;
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker;
-    let input_height = input_block_height(&app);
+    let input_inner_width = frame.area().width.saturating_sub(2) as usize;
+    let input_height = input_block_height(&app, input_inner_width);
 
     let logo_h = conversation_logo_height(frame.area().height);
     let chunks = Layout::default()
@@ -132,7 +133,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         plain,
     );
 
-    let input_cursor_row = input_cursor_row(&app);
+    let (input_cursor_row, input_cursor_col) =
+        input_cursor_position(&app, chunks[2].width.saturating_sub(2) as usize);
     let input = Paragraph::new(build_input_lines(
         &app,
         chunks[2].width.saturating_sub(2) as usize,
@@ -144,13 +146,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     if !show_picker {
         // Use terminal display width so CJK/full-width characters keep cursor aligned.
         let max_cursor_offset = chunks[2].width.saturating_sub(3) as usize;
-        let cursor_visual_col = app
-            .input
-            .chars()
-            .take(app.input_cursor)
-            .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
-            .sum::<usize>();
-        let cursor_offset = cursor_visual_col.min(max_cursor_offset);
+        let cursor_offset = input_cursor_col.min(max_cursor_offset as u16) as usize;
         let cursor_x = chunks[2].x + 1 + cursor_offset as u16;
         let cursor_y = chunks[2].y + 1 + input_cursor_row;
         frame.set_cursor_position((cursor_x, cursor_y));
@@ -236,12 +232,20 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     frame.render_widget(help, chunks[help_idx]);
 }
 
-fn input_block_height(app: &TuiViewModel) -> u16 {
-    if app.pending_image_paths.is_empty() { 3 } else { 5 }
+fn input_block_height(app: &TuiViewModel, max_width: usize) -> u16 {
+    let content_lines = pending_image_header_line_count(app)
+        .saturating_add(input_visual_line_count(&app.input, max_width))
+        .max(1);
+    content_lines.saturating_add(2) as u16
 }
 
-fn input_cursor_row(app: &TuiViewModel) -> u16 {
-    if app.pending_image_paths.is_empty() { 0 } else { 2 }
+fn input_cursor_position(app: &TuiViewModel, max_width: usize) -> (u16, u16) {
+    let prefix: String = app.input.chars().take(app.input_cursor).collect();
+    let (row, col) = wrapped_text_cursor_position(&prefix, max_width);
+    (
+        pending_image_header_line_count(app).saturating_add(row) as u16,
+        col as u16,
+    )
 }
 
 fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
@@ -266,12 +270,64 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
         )));
     }
 
-    lines.push(Line::from(Span::styled(
-        app.input.clone(),
-        Style::default().fg(Color::White),
-    )));
+    let logical_lines: Vec<&str> = if app.input.is_empty() {
+        vec![""]
+    } else {
+        app.input.split('\n').collect()
+    };
+    for line in logical_lines {
+        lines.push(Line::from(Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::White),
+        )));
+    }
 
     lines
+}
+
+fn pending_image_header_line_count(app: &TuiViewModel) -> usize {
+    if app.pending_image_paths.is_empty() { 0 } else { 2 }
+}
+
+fn input_visual_line_count(text: &str, max_width: usize) -> usize {
+    wrapped_text_cursor_position(text, max_width).0.saturating_add(1)
+}
+
+fn wrapped_text_cursor_position(text: &str, max_width: usize) -> (usize, usize) {
+    let mut total_rows = 0usize;
+    let mut lines = text.split('\n').peekable();
+    while let Some(line) = lines.next() {
+        let (row, col) = wrapped_single_line_cursor_position(line, max_width);
+        if lines.peek().is_none() {
+            return (total_rows.saturating_add(row), col);
+        }
+        total_rows = total_rows.saturating_add(row.saturating_add(1));
+    }
+    (total_rows, 0)
+}
+
+fn wrapped_single_line_cursor_position(line: &str, max_width: usize) -> (usize, usize) {
+    let width = max_width.max(1);
+    let mut row = 0usize;
+    let mut col = 0usize;
+
+    for ch in line.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if ch_width == 0 {
+            continue;
+        }
+        if col > 0 && col + ch_width > width {
+            row += 1;
+            col = 0;
+        }
+        col += ch_width;
+        if col >= width {
+            row += col / width;
+            col %= width;
+        }
+    }
+
+    (row, col)
 }
 
 fn summarize_pending_images(paths: &[String], max_width: usize) -> String {

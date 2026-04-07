@@ -375,6 +375,10 @@ impl TuiShell {
         self.input_cursor += 1;
     }
 
+    pub fn insert_newline_at_cursor(&mut self) {
+        self.insert_char_at_cursor('\n');
+    }
+
     pub fn backspace_at_cursor(&mut self) {
         if self.input_cursor == 0 {
             return;
@@ -397,8 +401,9 @@ impl TuiShell {
     }
 
     pub fn submit_input(&mut self) {
-        let message = self.input.trim().to_string();
-        if message.is_empty() {
+        let raw_message = self.input.clone();
+        let trimmed_message = raw_message.trim();
+        if trimmed_message.is_empty() {
             return;
         }
 
@@ -408,10 +413,10 @@ impl TuiShell {
             self.scroll_history_to_bottom();
             self.messages.push(ChatMessage {
                 role: MessageRole::User,
-                content: message.clone(),
+                content: trimmed_message.to_string(),
                 tool_block: None,
             });
-            self.runtime.respond_to_pending_tool_approval(&message);
+            self.runtime.respond_to_pending_tool_approval(trimmed_message);
             self.apply_runtime_events();
             self.set_input(String::new());
             self.refresh_suggestions();
@@ -429,8 +434,8 @@ impl TuiShell {
             return;
         }
 
-        let mut user_content = message.clone();
-        if !message.starts_with('/') && !self.runtime.session().pending_image_paths().is_empty() {
+        let mut user_content = raw_message.clone();
+        if !trimmed_message.starts_with('/') && !self.runtime.session().pending_image_paths().is_empty() {
             user_content.push_str(&format!(
                 "\n[attached images: {}]",
                 self.runtime.session().pending_image_paths().join(", ")
@@ -443,10 +448,10 @@ impl TuiShell {
             tool_block: None,
         });
 
-        if message.starts_with('/') {
-            self.handle_slash_command(&message);
+        if trimmed_message.starts_with('/') {
+            self.handle_slash_command(trimmed_message);
         } else {
-            self.runtime.submit_user_turn(message.clone(), None);
+            self.runtime.submit_user_turn(raw_message, None);
             self.apply_runtime_events();
         }
 
@@ -1289,7 +1294,7 @@ impl TuiShell {
     }
 
     fn current_slash_query(&self) -> Option<&str> {
-        if !self.input.starts_with('/') {
+        if !self.input.starts_with('/') || self.input.contains('\n') {
             return None;
         }
         Some(self.input.trim_end())
@@ -1320,7 +1325,7 @@ fn welcome_message(active_model: &str) -> ChatMessage {
     ChatMessage {
         role: MessageRole::Agent,
         content: format!(
-            "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送；输入 /help 查看指令。",
+            "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。",
             active_model
         ),
         tool_block: None,

@@ -24,6 +24,9 @@ arboard = { version = "3", optional = true }
 encoding_rs = "0.8"
 base64 = "0.22"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+
 [[bin]]
 name = "spirit-agent"
 path = "src/main.rs"
