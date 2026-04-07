@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
-        KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags, MouseButton,
-        MouseEventKind,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste,
+        EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        KeyboardEnhancementFlags, MouseButton, MouseEventKind,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{
@@ -23,6 +23,8 @@ use spirit_agent::{
     ConfigCommand, KeyCommand, ModelCommand, TuiShell, handle_config_cli, handle_model_cli,
     logging, ui,
 };
+
+const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
@@ -208,6 +210,8 @@ fn run_tui() -> Result<()> {
         )?;
     }
 
+    execute!(terminal.backend_mut(), EnableBracketedPaste)?;
+
     let run_result = run_app(&mut terminal);
 
     let _ = disable_raw_mode();
@@ -215,12 +219,14 @@ fn run_tui() -> Result<()> {
         let _ = execute!(
             terminal.backend_mut(),
             PopKeyboardEnhancementFlags,
+            DisableBracketedPaste,
             LeaveAlternateScreen,
             DisableMouseCapture
         );
     } else {
         let _ = execute!(
             terminal.backend_mut(),
+            DisableBracketedPaste,
             LeaveAlternateScreen,
             DisableMouseCapture
         );
@@ -246,151 +252,222 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
             continue;
         }
 
-        let evt = event::read()?;
-        // 集成终端偶发尺寸与缓冲区不同步；显式进入下一轮 draw 可减少 “只剩半屏/输入框消失” 直至手动 resize 才恢复的现象。
-        if matches!(evt, Event::Resize(_, _)) {
-            continue;
+        let mut events = vec![event::read()?];
+        while events.len() < MAX_EVENT_BATCH_PER_TICK && event::poll(Duration::from_millis(0))? {
+            events.push(event::read()?);
         }
 
-        if let Event::Mouse(mouse) = &evt {
-            match mouse.kind {
-                MouseEventKind::ScrollUp => shell.scroll_history_up(3),
-                MouseEventKind::ScrollDown => shell.scroll_history_down(3),
-                MouseEventKind::Down(MouseButton::Left) => {
-                    shell.conversation_left_down(mouse.column, mouse.row);
-                }
-                MouseEventKind::Drag(MouseButton::Left) => {
-                    shell.conversation_left_drag(mouse.column, mouse.row);
-                }
-                MouseEventKind::Up(MouseButton::Left) => {
-                    shell.conversation_left_up();
-                }
-                MouseEventKind::Up(MouseButton::Right) => {
-                    if let Err(e) = shell.copy_conversation_selection() {
-                        logging::log_event(&format!("clipboard copy failed: {}", e));
+        process_event_batch(&mut shell, events);
+    }
+
+    Ok(())
+}
+
+fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
+    let mut pending_text = String::new();
+    let mut bracketed_paste_chars = 0usize;
+    let mut bracketed_paste_lines = 0usize;
+
+    for evt in events {
+        match evt {
+            Event::Resize(_, _) => continue,
+            Event::Mouse(mouse) => {
+                flush_pending_text(shell, &mut pending_text);
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => shell.scroll_history_up(3),
+                    MouseEventKind::ScrollDown => shell.scroll_history_down(3),
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        shell.conversation_left_down(mouse.column, mouse.row);
                     }
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        let Event::Key(key) = evt else {
-            continue;
-        };
-
-        if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
-            continue;
-        }
-
-        if shell.is_model_picker_active() {
-            match key.code {
-                KeyCode::Esc => shell.cancel_model_picker(),
-                KeyCode::Up => shell.select_prev_model(),
-                KeyCode::Down => shell.select_next_model(),
-                KeyCode::Enter => shell.confirm_model_picker(),
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    shell.request_quit();
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        if shell.is_chat_picker_active() {
-            match key.code {
-                KeyCode::Esc => shell.cancel_chat_picker(),
-                KeyCode::Up => shell.select_prev_chat(),
-                KeyCode::Down => shell.select_next_chat(),
-                KeyCode::Enter => shell.confirm_chat_picker(),
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    shell.request_quit();
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        if shell.is_image_picker_active() {
-            match key.code {
-                KeyCode::Esc => shell.cancel_image_picker(),
-                KeyCode::Up => shell.select_prev_image(),
-                KeyCode::Down => shell.select_next_image(),
-                KeyCode::Enter => shell.confirm_image_picker(),
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    shell.request_quit();
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        let slash_mode =
-            shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
-        let should_insert_newline =
-            matches!(key.code, KeyCode::Enter) && enter_should_insert_newline(key.modifiers);
-        maybe_log_key_event(&key, should_insert_newline);
-
-        match key.code {
-            KeyCode::Esc => shell.request_quit(),
-            KeyCode::Char(ch)
-                if ch.eq_ignore_ascii_case(&'c')
-                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                if let Err(e) = shell.copy_conversation_selection() {
-                    logging::log_event(&format!("clipboard copy failed: {}", e));
+                    MouseEventKind::Drag(MouseButton::Left) => {
+                        shell.conversation_left_drag(mouse.column, mouse.row);
+                    }
+                    MouseEventKind::Up(MouseButton::Left) => {
+                        shell.conversation_left_up();
+                    }
+                    MouseEventKind::Up(MouseButton::Right) => {
+                        if let Err(e) = shell.copy_conversation_selection() {
+                            logging::log_event(&format!("clipboard copy failed: {}", e));
+                        }
+                    }
+                    _ => {}
                 }
             }
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.request_quit()
-            }
-            KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.toggle_aux_details()
-            }
-            KeyCode::Up if slash_mode => shell.select_prev_suggestion(),
-            KeyCode::Down if slash_mode => shell.select_next_suggestion(),
-            KeyCode::Tab if slash_mode => shell.apply_selected_suggestion(),
-            KeyCode::PageUp => shell.scroll_history_up(8),
-            KeyCode::PageDown => shell.scroll_history_down(8),
-            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.scroll_history_to_top()
-            }
-            KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.scroll_history_to_bottom()
-            }
-            KeyCode::Left => shell.move_cursor_left(),
-            KeyCode::Right => shell.move_cursor_right(),
-            KeyCode::Home => shell.move_cursor_home(),
-            KeyCode::End => shell.move_cursor_end(),
-            KeyCode::Enter if should_insert_newline => {
-                shell.insert_newline_at_cursor();
-                shell.clamp_cursor();
-                shell.refresh_suggestions();
-            }
-            KeyCode::Enter => shell.submit_input(),
-            KeyCode::Backspace => {
-                shell.backspace_at_cursor();
-                shell.clamp_cursor();
-                shell.refresh_suggestions();
-            }
-            KeyCode::Delete => {
-                shell.delete_at_cursor();
-                shell.clamp_cursor();
-                shell.refresh_suggestions();
-            }
-            KeyCode::Char(ch) => {
-                if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                    shell.insert_char_at_cursor(ch);
-                    shell.clamp_cursor();
-                    shell.refresh_suggestions();
+            Event::Paste(text) => {
+                if shell.is_model_picker_active()
+                    || shell.is_chat_picker_active()
+                    || shell.is_image_picker_active()
+                {
+                    continue;
                 }
+                let normalized = normalize_pasted_text(&text);
+                bracketed_paste_chars += normalized.chars().count();
+                bracketed_paste_lines += normalized.lines().count().max(1);
+                pending_text.push_str(&normalized);
+            }
+            Event::Key(key) => {
+                if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                    continue;
+                }
+
+                if !shell.is_model_picker_active()
+                    && !shell.is_chat_picker_active()
+                    && !shell.is_image_picker_active()
+                    && let Some(ch) = batched_text_char(&key)
+                {
+                    pending_text.push(ch);
+                    continue;
+                }
+
+                flush_pending_text(shell, &mut pending_text);
+                process_key_event(shell, key);
             }
             _ => {}
         }
     }
 
-    Ok(())
+    flush_pending_text(shell, &mut pending_text);
+    if bracketed_paste_chars > 0 {
+        logging::log_event(&format!(
+            "[paste] chars={} lines={}",
+            bracketed_paste_chars,
+            bracketed_paste_lines.max(1)
+        ));
+    }
+}
+
+fn flush_pending_text(shell: &mut TuiShell, pending_text: &mut String) {
+    if pending_text.is_empty() {
+        return;
+    }
+
+    shell.insert_text_at_cursor(pending_text);
+    shell.clamp_cursor();
+    shell.refresh_suggestions();
+    pending_text.clear();
+}
+
+fn batched_text_char(key: &crossterm::event::KeyEvent) -> Option<char> {
+    match key.code {
+        KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => Some(ch),
+        _ => None,
+    }
+}
+
+fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
+    if shell.is_model_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_model_picker(),
+            KeyCode::Up => shell.select_prev_model(),
+            KeyCode::Down => shell.select_next_model(),
+            KeyCode::Enter => shell.confirm_model_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_chat_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_chat_picker(),
+            KeyCode::Up => shell.select_prev_chat(),
+            KeyCode::Down => shell.select_next_chat(),
+            KeyCode::Enter => shell.confirm_chat_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_image_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_image_picker(),
+            KeyCode::Up => shell.select_prev_image(),
+            KeyCode::Down => shell.select_next_image(),
+            KeyCode::Enter => shell.confirm_image_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    let slash_mode =
+        shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
+    let should_insert_newline =
+        matches!(key.code, KeyCode::Enter) && enter_should_insert_newline(key.modifiers);
+    maybe_log_key_event(&key, should_insert_newline);
+
+    match key.code {
+        KeyCode::Esc => shell.request_quit(),
+        KeyCode::Char(ch)
+            if ch.eq_ignore_ascii_case(&'c')
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+                && key.modifiers.contains(KeyModifiers::SHIFT) =>
+        {
+            if let Err(e) = shell.copy_conversation_selection() {
+                logging::log_event(&format!("clipboard copy failed: {}", e));
+            }
+        }
+        KeyCode::Char(ch)
+            if ch.eq_ignore_ascii_case(&'v')
+                && key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            if let Err(e) = shell.paste_from_clipboard() {
+                logging::log_event(&format!("clipboard paste failed: {}", e));
+            }
+        }
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            shell.request_quit()
+        }
+        KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            shell.toggle_aux_details()
+        }
+        KeyCode::Up if slash_mode => shell.select_prev_suggestion(),
+        KeyCode::Down if slash_mode => shell.select_next_suggestion(),
+        KeyCode::Tab if slash_mode => shell.apply_selected_suggestion(),
+        KeyCode::PageUp => shell.scroll_history_up(8),
+        KeyCode::PageDown => shell.scroll_history_down(8),
+        KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            shell.scroll_history_to_top()
+        }
+        KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            shell.scroll_history_to_bottom()
+        }
+        KeyCode::Left => shell.move_cursor_left(),
+        KeyCode::Right => shell.move_cursor_right(),
+        KeyCode::Home => shell.move_cursor_home(),
+        KeyCode::End => shell.move_cursor_end(),
+        KeyCode::Enter if should_insert_newline => {
+            shell.insert_newline_at_cursor();
+            shell.clamp_cursor();
+            shell.refresh_suggestions();
+        }
+        KeyCode::Enter => shell.submit_input(),
+        KeyCode::Backspace => {
+            shell.backspace_at_cursor();
+            shell.clamp_cursor();
+            shell.refresh_suggestions();
+        }
+        KeyCode::Delete => {
+            shell.delete_at_cursor();
+            shell.clamp_cursor();
+            shell.refresh_suggestions();
+        }
+        KeyCode::Char(ch) => {
+            if !key.modifiers.contains(KeyModifiers::CONTROL) {
+                shell.insert_char_at_cursor(ch);
+                shell.clamp_cursor();
+                shell.refresh_suggestions();
+            }
+        }
+        _ => {}
+    }
 }
 
 fn enter_should_insert_newline(modifiers: KeyModifiers) -> bool {
@@ -412,6 +489,10 @@ fn maybe_log_key_event(key: &crossterm::event::KeyEvent, should_insert_newline: 
         shift_pressed_fallback(),
         should_insert_newline
     ));
+}
+
+fn normalize_pasted_text(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 #[cfg(target_os = "windows")]

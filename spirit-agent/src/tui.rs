@@ -375,6 +375,28 @@ impl TuiShell {
         self.input_cursor += 1;
     }
 
+    pub fn insert_text_at_cursor(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        let idx = self.cursor_byte_index();
+        self.input.insert_str(idx, text);
+        self.input_cursor += text.chars().count();
+    }
+
+    pub fn paste_from_clipboard(&mut self) -> Result<(), String> {
+        let text = arboard::Clipboard::new()
+            .map_err(|e| e.to_string())?
+            .get_text()
+            .map_err(|e| e.to_string())?;
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        self.insert_text_at_cursor(&normalized);
+        self.clamp_cursor();
+        self.refresh_suggestions();
+        Ok(())
+    }
+
     pub fn insert_newline_at_cursor(&mut self) {
         self.insert_char_at_cursor('\n');
     }
