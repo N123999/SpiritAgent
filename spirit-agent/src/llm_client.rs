@@ -751,6 +751,12 @@ fn is_compact_summary_message(msg: &LlmMessage) -> bool {
     msg.role == "system" && msg.content.starts_with(COMPACT_SUMMARY_PREFIX)
 }
 
+/// 将当前会话的 `llm_history` 转为与发往 LLM 的工具轮请求中「历史部分」一致的
+/// OpenAI Chat `messages` 元素（由 `llm_message_to_json` 生成；多模态用户消息含 data URL）。
+pub(crate) fn llm_history_as_api_messages(history: &[LlmMessage]) -> Vec<Value> {
+    history.iter().map(llm_message_to_json).collect()
+}
+
 fn llm_message_to_json(msg: &LlmMessage) -> Value {
     if msg.role == "user" && !msg.image_paths.is_empty() {
         logging::log_event(&format!(

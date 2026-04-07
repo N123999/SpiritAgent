@@ -15,7 +15,7 @@ use std::{
     path::Path,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 mod model_registry;
 mod llm_client;
@@ -26,7 +26,7 @@ mod ui;
 use llm_client::{
     LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message,
     compact_history_manual, compact_summary_text, is_context_overflow_error,
-    prepare_messages_for_final_response, start_tool_agent_state,
+    llm_history_as_api_messages, prepare_messages_for_final_response, start_tool_agent_state,
     stream_assistant_from_messages, stream_openai_compatible, tool_agent_next_step,
 };
 use model_registry::{
@@ -289,6 +289,9 @@ impl App {
             "/tool shell <command>".to_string(),
             "/tool read <path> [start] [end]".to_string(),
             "/tool search <query>".to_string(),
+            "/log".to_string(),
+            "/log export".to_string(),
+            "/log session export".to_string(),
         ];
         Self {
             input: String::new(),
@@ -1275,7 +1278,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出当前会话 LLM 侧历史（OpenAPI messages 形态）到系统临时目录，便于排查模型问题。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -1304,6 +1307,9 @@ impl App {
             }
             "/tool" => {
                 self.handle_tool_slash(message);
+            }
+            "/log" => {
+                self.handle_log_slash(&parts[1..]);
             }
             _ => {
                 self.messages.push(ChatMessage {
@@ -1350,6 +1356,77 @@ impl App {
                 });
             }
         }
+    }
+
+    fn handle_log_slash(&mut self, args: &[&str]) {
+        let export = match args {
+            [] | ["export"] | ["session", "export"] => true,
+            _ => false,
+        };
+        if !export {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content:
+                    "用法: /log（默认）、/log export 或 /log session export — 导出当前会话 LLM 侧完整历史到系统临时目录。"
+                        .to_string(),
+            });
+            return;
+        }
+
+        match self.export_llm_history_json_to_temp() {
+            Ok(path) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("已导出 LLM 对话历史（与工具轮请求中拼接的历史 messages 一致）:\n{}", path.display()),
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("导出失败: {}", err),
+                });
+            }
+        }
+    }
+
+    /// 将 `llm_history` 转为与 API 一致的 `messages` 后写入临时目录 JSON（UTF-8）。
+    fn export_llm_history_json_to_temp(&self) -> Result<std::path::PathBuf, String> {
+        let messages = llm_history_as_api_messages(&self.llm_history);
+        let active_model = self.config.active_model.clone();
+        let api_base = env::var("SPIRIT_API_BASE").unwrap_or_else(|_| {
+            self.config
+                .active_model_profile()
+                .map(|m| m.api_base.clone())
+                .unwrap_or_else(|| DEFAULT_API_BASE.to_string())
+        });
+        let working_directory = env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "<unknown>".to_string());
+        let exported_at_unix_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        let export = serde_json::json!({
+            "export_version": 1,
+            "exported_at_unix_secs": exported_at_unix_secs,
+            "active_model": active_model,
+            "api_base": api_base,
+            "working_directory": working_directory,
+            "note": "messages 由内存中的 llm_history 经 llm_message_to_json 生成，与每次工具轮 chat/completions 请求里、在 system 与当轮 user 之前拼接的对话历史一致（含多模态时的 data URL）。不含当轮进行中的 tool_calls/tool 往返及最终流式回答请求的完整载荷。",
+            "message_count": messages.len(),
+            "messages": messages,
+        });
+
+        let json =
+            serde_json::to_string_pretty(&export).map_err(|e| format!("序列化 JSON 失败: {}", e))?;
+
+        let path = env::temp_dir().join(format!(
+            "spirit-agent-llm-export-{exported_at_unix_secs}-{}.json",
+            std::process::id()
+        ));
+        fs::write(&path, json).map_err(|e| format!("写入文件失败: {}", e))?;
+        Ok(path)
     }
 
     fn handle_model_slash(&mut self, args: &[&str]) {
@@ -2399,6 +2476,13 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
         .into_iter()
         .filter(|cmd| cmd.starts_with(q))
         .collect();
+    }
+
+    if q == "/log" || q.starts_with("/log ") {
+        return vec!["/log", "/log export", "/log session export"]
+            .into_iter()
+            .filter(|cmd| cmd.starts_with(q))
+            .collect();
     }
 
     Vec::new()
