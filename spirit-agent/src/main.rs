@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind},
-    execute,
     event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
@@ -73,15 +73,21 @@ enum ModelAction {
         #[arg(long)]
         key: Option<String>,
     },
-    Remove { name: String },
-    Use { name: String },
+    Remove {
+        name: String,
+    },
+    Use {
+        name: String,
+    },
     Current,
 }
 
 #[derive(Subcommand)]
 enum ConfigAction {
     Show,
-    SetBase { url: String },
+    SetBase {
+        url: String,
+    },
     Key {
         #[command(subcommand)]
         action: KeyAction,
@@ -175,7 +181,11 @@ fn run_tui() -> Result<()> {
     let run_result = run_app(&mut terminal);
 
     let _ = disable_raw_mode();
-    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture);
+    let _ = execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    );
     let _ = terminal.show_cursor();
     run_result
 }
@@ -198,6 +208,11 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         }
 
         let evt = event::read()?;
+        // 集成终端偶发尺寸与缓冲区不同步；显式进入下一轮 draw 可减少 “只剩半屏/输入框消失” 直至手动 resize 才恢复的现象。
+        if matches!(evt, Event::Resize(_, _)) {
+            continue;
+        }
+
         if let Event::Mouse(mouse) = &evt {
             match mouse.kind {
                 MouseEventKind::ScrollUp => shell.scroll_history_up(3),
@@ -271,7 +286,8 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
             continue;
         }
 
-        let slash_mode = shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
+        let slash_mode =
+            shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
 
         match key.code {
             KeyCode::Esc => shell.request_quit(),
@@ -284,14 +300,20 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
                     logging::log_event(&format!("clipboard copy failed: {}", e));
                 }
             }
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => shell.request_quit(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit()
+            }
             KeyCode::Up if slash_mode => shell.select_prev_suggestion(),
             KeyCode::Down if slash_mode => shell.select_next_suggestion(),
             KeyCode::Tab if slash_mode => shell.apply_selected_suggestion(),
             KeyCode::PageUp => shell.scroll_history_up(8),
             KeyCode::PageDown => shell.scroll_history_down(8),
-            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => shell.scroll_history_to_top(),
-            KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => shell.scroll_history_to_bottom(),
+            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.scroll_history_to_top()
+            }
+            KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.scroll_history_to_bottom()
+            }
             KeyCode::Left => shell.move_cursor_left(),
             KeyCode::Right => shell.move_cursor_right(),
             KeyCode::Home => shell.move_cursor_home(),

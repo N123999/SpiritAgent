@@ -484,6 +484,12 @@ impl TuiShell {
         self.history_offset_from_bottom = 0;
     }
 
+    /// 在对话折行高度变化后，避免 “贴底偏移” 超出范围导致布局/滚动错位（偶现整屏错乱，resize 后恢复）。
+    pub(crate) fn clamp_history_scroll(&mut self, max_scroll: usize) -> usize {
+        self.history_offset_from_bottom = self.history_offset_from_bottom.min(max_scroll);
+        self.history_offset_from_bottom
+    }
+
     pub fn cancel_model_picker(&mut self) {
         self.model_picker_active = false;
     }

@@ -25,6 +25,15 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
+/// Logo 区高度：小终端缩小顶栏，避免把对话区挤成 0 高导致整屏只剩零碎文字。
+fn conversation_logo_height(terminal_height: u16) -> u16 {
+    match terminal_height {
+        h if h >= 24 => 8,
+        h if h >= 19 => 6,
+        _ => 5,
+    }
+}
+
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let app = shell.view_model();
     let show_model_picker = app.model_picker_active;
@@ -33,11 +42,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker;
 
+    let logo_h = conversation_logo_height(frame.area().height);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_picker {
             vec![
-                Constraint::Length(8),
+                Constraint::Length(logo_h),
                 Constraint::Min(5),
                 Constraint::Length(3),
                 Constraint::Length(7),
@@ -45,7 +55,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             ]
         } else if show_suggestions {
             vec![
-                Constraint::Length(8),
+                Constraint::Length(logo_h),
                 Constraint::Min(5),
                 Constraint::Length(3),
                 Constraint::Length(5),
@@ -53,8 +63,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             ]
         } else {
             vec![
-                Constraint::Length(8),
-                Constraint::Min(6),
+                Constraint::Length(logo_h),
+                Constraint::Min(4),
                 Constraint::Length(3),
                 Constraint::Length(1),
             ]
@@ -92,14 +102,15 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let inner_h = chunks[1].height.saturating_sub(2);
     let history_view_height = inner_h as usize;
     let w = inner_w.max(1) as u16;
-    let total_visual_lines = Paragraph::new(history_lines.clone())
-        .wrap(Wrap { trim: false })
-        .line_count(w) as usize;
+    // 以 WordWrapper 折行为准，避免 Paragraph::line_count 与自定义折行在少数宽度/CJK 下不一致导致滚动错位。
+    let (flat_measure, _) = flatten_wrapped_history(history_lines.clone(), w, None);
+    let total_visual_lines = flat_measure.len();
     let norm = shell.conversation_norm_for_paint(total_visual_lines);
     let (flat, plain) = flatten_wrapped_history(history_lines, w, norm);
     debug_assert_eq!(flat.len(), total_visual_lines);
     let max_scroll = flat.len().saturating_sub(history_view_height);
-    let history_scroll = max_scroll.saturating_sub(app.history_offset_from_bottom);
+    let offset_bottom = shell.clamp_history_scroll(max_scroll);
+    let history_scroll = max_scroll.saturating_sub(offset_bottom);
     let visible: Vec<Line<'static>> = flat
         .into_iter()
         .skip(history_scroll)

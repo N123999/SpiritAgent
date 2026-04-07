@@ -17,20 +17,29 @@ const MAX_READ_LINES_DEFAULT: usize = 200;
 
 #[derive(Clone)]
 pub enum ToolRequest {
-    Shell { command: String },
+    Shell {
+        command: String,
+    },
     ReadFile {
         path: String,
         start_line: Option<usize>,
         end_line: Option<usize>,
     },
-    Search { query: String },
-    CreateFile { path: String, content: String },
+    Search {
+        query: String,
+    },
+    CreateFile {
+        path: String,
+        content: String,
+    },
     UpdateFile {
         path: String,
         old_text: String,
         new_text: String,
     },
-    DeleteFile { path: String },
+    DeleteFile {
+        path: String,
+    },
 }
 
 #[derive(Clone)]
@@ -57,6 +66,39 @@ pub struct ToolRuntime {
     workspace_root: PathBuf,
     permission_store_path: PathBuf,
     permissions: ToolPermissionStore,
+}
+
+fn append_shell_section(out: &mut String, title: &str, body: &str, empty_placeholder: &str) {
+    use std::fmt::Write;
+    let _ = write!(out, "── {} ──\n", title);
+    if body.trim().is_empty() {
+        let _ = writeln!(out, "{}", empty_placeholder);
+    } else {
+        out.push_str(body);
+        if !body.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    out.push('\n');
+}
+
+/// 供模型与 TUI 共用的 shell 结果正文（取代 [shell]/[stdout] 标签堆叠）。
+fn format_shell_tool_transcript(
+    workspace: &str,
+    command: &str,
+    exit_code: i32,
+    stdout: &str,
+    stderr: &str,
+) -> String {
+    use std::fmt::Write;
+    let mut s = String::new();
+    let _ = writeln!(s, "工作目录  {}", workspace);
+    let _ = writeln!(s, "命令      {}", command);
+    let _ = writeln!(s, "退出码    {}", exit_code);
+    s.push('\n');
+    append_shell_section(&mut s, "标准输出", stdout, "（无输出）");
+    append_shell_section(&mut s, "标准错误", stderr, "（无输出）");
+    s
 }
 
 impl ToolRuntime {
@@ -92,10 +134,7 @@ impl ToolRuntime {
 
         match sub {
             "shell" => {
-                let cmd = raw
-                    .strip_prefix("shell")
-                    .map(str::trim)
-                    .unwrap_or("");
+                let cmd = raw.strip_prefix("shell").map(str::trim).unwrap_or("");
                 if cmd.is_empty() {
                     return Err(anyhow!("用法: /tool shell <command>"));
                 }
@@ -136,10 +175,7 @@ impl ToolRuntime {
                 })
             }
             "search" => {
-                let q = raw
-                    .strip_prefix("search")
-                    .map(str::trim)
-                    .unwrap_or("");
+                let q = raw.strip_prefix("search").map(str::trim).unwrap_or("");
                 if q.is_empty() {
                     return Err(anyhow!("用法: /tool search <query>"));
                 }
@@ -157,7 +193,12 @@ impl ToolRuntime {
     pub fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
         match request {
             ToolRequest::Shell { command } => {
-                if self.permissions.trusted_shell_commands.iter().any(|c| c == command) {
+                if self
+                    .permissions
+                    .trusted_shell_commands
+                    .iter()
+                    .any(|c| c == command)
+                {
                     return Ok(AuthorizationDecision::Allowed);
                 }
 
@@ -228,7 +269,12 @@ impl ToolRuntime {
     pub fn trust(&mut self, target: &TrustTarget) -> Result<()> {
         match target {
             TrustTarget::ShellCommand(cmd) => {
-                if !self.permissions.trusted_shell_commands.iter().any(|c| c == cmd) {
+                if !self
+                    .permissions
+                    .trusted_shell_commands
+                    .iter()
+                    .any(|c| c == cmd)
+                {
                     self.permissions.trusted_shell_commands.push(cmd.clone());
                 }
             }
@@ -462,15 +508,15 @@ impl ToolRuntime {
                 .with_context(|| format!("执行命令失败: {}", command))?
         };
 
-            let stdout = decode_command_output(&output.stdout);
-            let stderr = decode_command_output(&output.stderr);
-        let mut combined = format!(
-            "[shell]\nworkspace: {}\ncommand: {}\nexit_code: {}\n\n[stdout]\n{}\n\n[stderr]\n{}",
-            self.workspace_root.display(),
+        let stdout = decode_command_output(&output.stdout);
+        let stderr = decode_command_output(&output.stderr);
+        let code = output.status.code().unwrap_or(-1);
+        let mut combined = format_shell_tool_transcript(
+            &self.workspace_root.display().to_string(),
             command,
-            output.status.code().unwrap_or(-1),
-            stdout,
-            stderr
+            code,
+            &stdout,
+            &stderr,
         );
 
         if combined.chars().count() > MAX_COMMAND_OUTPUT_CHARS {
@@ -506,7 +552,12 @@ impl ToolRuntime {
         let s = start.min(max_line);
         let e = end.min(max_line);
 
-        let mut out = format!("[read]\npath: {}\nrange: {}-{}\n\n", canonical.display(), s, e);
+        let mut out = format!(
+            "[read]\npath: {}\nrange: {}-{}\n\n",
+            canonical.display(),
+            s,
+            e
+        );
         for idx in s..=e {
             if let Some(line) = lines.get(idx - 1) {
                 out.push_str(&format!("{:>6} | {}\n", idx, line));
@@ -642,9 +693,11 @@ impl ToolRuntime {
 
     fn execute_delete_file(&self, path: &str) -> Result<String> {
         let target = self.resolve_existing_workspace_file(path)?;
-        fs::remove_file(&target)
-            .with_context(|| format!("删除文件失败: {}", target.display()))?;
-        Ok(format!("[write]\naction: delete_file\npath: {}", target.display()))
+        fs::remove_file(&target).with_context(|| format!("删除文件失败: {}", target.display()))?;
+        Ok(format!(
+            "[write]\naction: delete_file\npath: {}",
+            target.display()
+        ))
     }
 
     fn resolve_existing_path(&self, input: &str) -> Result<PathBuf> {
@@ -686,7 +739,10 @@ impl ToolRuntime {
             .with_context(|| format!("工作目录无法访问: {}", self.workspace_root.display()))?;
 
         if !normalized.starts_with(&root) {
-            return Err(anyhow!("仅允许修改工作目录内文件: {}", normalized.display()));
+            return Err(anyhow!(
+                "仅允许修改工作目录内文件: {}",
+                normalized.display()
+            ));
         }
 
         Ok(normalized)
