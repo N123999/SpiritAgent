@@ -8,8 +8,8 @@ use std::{
 
 use crate::{
     adapters::{
-        DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore,
-        LoggingTelemetry, OpenAiCompatibleTransport, WorkspaceToolExecutor,
+        DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore, LoggingTelemetry,
+        OpenAiCompatibleTransport, WorkspaceToolExecutor,
     },
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
@@ -66,9 +66,7 @@ impl TuiShell {
         let telemetry = Arc::new(LoggingTelemetry);
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
-        let config = config_store
-            .load()
-            .unwrap_or_else(|_| AppConfig::default());
+        let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
         let llm_transport = Box::new(OpenAiCompatibleTransport::new(
             Arc::clone(&secret_store),
             telemetry,
@@ -198,17 +196,16 @@ impl TuiShell {
             history_offset_from_bottom: self.history_offset_from_bottom,
             pending_response_active: self.runtime.is_busy(),
             thinking_status: self.runtime.thinking_status_text(),
-            thinking_content: self.runtime.thinking_content_text().map(ToString::to_string),
+            thinking_content: self
+                .runtime
+                .thinking_content_text()
+                .map(ToString::to_string),
             conversation_sel_anchor: self.conversation_sel_anchor,
             conversation_sel_head: self.conversation_sel_head,
         }
     }
 
-    pub fn note_conversation_panel(
-        &mut self,
-        hit: ConversationPanelHit,
-        plain_rows: Vec<String>,
-    ) {
+    pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
         self.conversation_panel_hit = Some(hit);
         self.conversation_plain_rows = plain_rows;
         let max_line = hit.total_lines.saturating_sub(1);
@@ -232,11 +229,7 @@ impl TuiShell {
     }
 
     /// `column`, `row`：crossterm 终端坐标（与 ratatui 一致）。
-    pub fn conversation_pointer_from_mouse(
-        &self,
-        column: u16,
-        row: u16,
-    ) -> Option<(usize, usize)> {
+    pub fn conversation_pointer_from_mouse(&self, column: u16, row: u16) -> Option<(usize, usize)> {
         let hit = self.conversation_panel_hit?;
         if column < hit.x || column >= hit.x.saturating_add(hit.w) {
             return None;
@@ -405,6 +398,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::User,
                 content: message.clone(),
+                tool_block: None,
             });
             self.runtime.respond_to_pending_tool_approval(&message);
             self.apply_runtime_events();
@@ -419,6 +413,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: "上一条回复仍在处理中，请稍候。".to_string(),
+                tool_block: None,
             });
             return;
         }
@@ -434,6 +429,7 @@ impl TuiShell {
         self.messages.push(ChatMessage {
             role: MessageRole::User,
             content: user_content,
+            tool_block: None,
         });
 
         if message.starts_with('/') {
@@ -496,7 +492,8 @@ impl TuiShell {
         if self.runtime.config().models.is_empty() {
             return;
         }
-        self.model_picker_index = (self.model_picker_index + 1) % self.runtime.config().models.len();
+        self.model_picker_index =
+            (self.model_picker_index + 1) % self.runtime.config().models.len();
     }
 
     pub fn select_prev_model(&mut self) {
@@ -528,12 +525,14 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: format!("模型切换成功但保存失败: {}", err),
+                tool_block: None,
             });
         } else {
             self.runtime.replace_config(config);
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: format!("已切换当前模型为: {}", selected),
+                tool_block: None,
             });
         }
         self.model_picker_active = false;
@@ -593,7 +592,11 @@ impl TuiShell {
     }
 
     pub fn confirm_image_picker(&mut self) {
-        let Some(selected) = self.image_picker_files.get(self.image_picker_index).cloned() else {
+        let Some(selected) = self
+            .image_picker_files
+            .get(self.image_picker_index)
+            .cloned()
+        else {
             self.image_picker_active = false;
             return;
         };
@@ -609,6 +612,7 @@ impl TuiShell {
                 self.runtime.session().pending_image_paths().len(),
                 selected
             ),
+            tool_block: None,
         });
     }
 
@@ -623,6 +627,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: "收到，SpiritAgent 即将退出。".to_string(),
+                    tool_block: None,
                 });
                 self.should_quit = true;
             }
@@ -632,7 +637,7 @@ impl TuiShell {
                     content: format!(
                         "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
-                });
+                tool_block: None});
             }
             "/clear" => {
                 self.messages.clear();
@@ -653,6 +658,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: "未知斜杠命令，输入 /help 查看可用指令。".to_string(),
+                    tool_block: None,
                 });
             }
         }
@@ -672,7 +678,12 @@ impl TuiShell {
                     .join(", ");
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("当前模型: {}\n模型列表: {}", self.runtime.config().active_model, list),
+                    content: format!(
+                        "当前模型: {}\n模型列表: {}",
+                        self.runtime.config().active_model,
+                        list
+                    ),
+                    tool_block: None,
                 });
             }
             ["use", model] => {
@@ -684,6 +695,7 @@ impl TuiShell {
                             "模型不存在: {}，先用 /model add {} <api_base> <api_key>",
                             model, model
                         ),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -692,12 +704,14 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("切换成功但保存失败: {}", err),
+                        tool_block: None,
                     });
                 } else {
                     self.runtime.replace_config(config);
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("已切换当前模型为: {}", model),
+                        tool_block: None,
                     });
                 }
             }
@@ -707,6 +721,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("模型已存在: {}", model),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -719,6 +734,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("模型已添加，但密钥保存失败: {}", err),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -726,12 +742,14 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("添加成功但保存失败: {}", err),
+                        tool_block: None,
                     });
                 } else {
                     self.runtime.replace_config(config);
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("已添加模型: {} (api_base: {})", model, api_base),
+                        tool_block: None,
                     });
                 }
             }
@@ -741,6 +759,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: "不能删除当前使用中的模型，请先 /model use 切换。".to_string(),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -750,6 +769,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("模型不存在: {}", model),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -757,6 +777,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("删除成功但保存失败: {}", err),
+                        tool_block: None,
                     });
                 } else {
                     let _ = self.secret_store.remove_model_api_key(model);
@@ -764,6 +785,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("已删除模型: {}", model),
+                        tool_block: None,
                     });
                 }
             }
@@ -773,7 +795,7 @@ impl TuiShell {
                     content:
                         "用法: /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]"
                             .to_string(),
-                });
+                tool_block: None});
             }
         }
     }
@@ -800,20 +822,19 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: "用法: /chat load <file>".to_string(),
+                tool_block: None,
             });
             return;
         }
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
             content: "用法: /chat [save [path]|load <file>]".to_string(),
+            tool_block: None,
         });
     }
 
     fn handle_image_slash(&mut self, message: &str) {
-        let tail = message
-            .strip_prefix("/image")
-            .map(str::trim)
-            .unwrap_or("");
+        let tail = message.strip_prefix("/image").map(str::trim).unwrap_or("");
 
         if tail.is_empty() {
             self.messages.push(ChatMessage {
@@ -821,7 +842,7 @@ impl TuiShell {
                 content:
                     "用法: /image <path> [prompt] | /image pick | /image clear。若不带 prompt，会把图片加入待发送队列。"
                         .to_string(),
-            });
+                tool_block: None});
             return;
         }
 
@@ -830,6 +851,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: format!("已清空待发送图片队列（{} 张）。", cleared),
+                tool_block: None,
             });
             return;
         }
@@ -844,6 +866,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: "用法: /image <path> [prompt]".to_string(),
+                tool_block: None,
             });
             return;
         }
@@ -851,6 +874,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: "仅支持图片文件: .png .jpg .jpeg .webp .gif .bmp".to_string(),
+                tool_block: None,
             });
             return;
         }
@@ -858,6 +882,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: format!("图片不存在: {}", raw_path),
+                tool_block: None,
             });
             return;
         }
@@ -867,6 +892,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: "上一条回复仍在处理中，请稍候。".to_string(),
+                    tool_block: None,
                 });
                 return;
             }
@@ -874,6 +900,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::User,
                 content: format!("{}\n[attached image] {}", prompt, raw_path),
+                tool_block: None,
             });
             self.runtime
                 .submit_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
@@ -890,6 +917,7 @@ impl TuiShell {
                 "已添加图片到待发送队列（{} 张）。下一条普通消息会自动携带这些图片。",
                 self.runtime.session().pending_image_paths().len()
             ),
+            tool_block: None,
         });
     }
 
@@ -898,6 +926,7 @@ impl TuiShell {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: "当前有待确认的高风险工具调用。请先输入 y / n / t。".to_string(),
+                tool_block: None,
             });
             return;
         }
@@ -913,7 +942,7 @@ impl TuiShell {
                 content:
                     "用法: /log（默认）、/log export 或 /log session export — 导出当前会话 LLM 侧完整历史到系统临时目录。"
                         .to_string(),
-            });
+                tool_block: None});
             return;
         }
 
@@ -925,12 +954,13 @@ impl TuiShell {
                         "已导出：llm_history、完整 API 请求轨迹（含 tools 与 system）、system 全文:\n{}",
                         path.display()
                     ),
-                });
+                tool_block: None});
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("导出失败: {}", err),
+                    tool_block: None,
                 });
             }
         }
@@ -980,6 +1010,7 @@ impl TuiShell {
                 role: MessageRole::Agent,
                 content: "当前没有可选模型，请先 /model add <name> <api_base> <api_key>。"
                     .to_string(),
+                tool_block: None,
             });
             return;
         }
@@ -1003,6 +1034,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: "没有已保存对话。可先使用 /chat save 保存当前会话。".to_string(),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -1017,6 +1049,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("读取会话列表失败: {}", err),
+                    tool_block: None,
                 });
             }
         }
@@ -1031,6 +1064,7 @@ impl TuiShell {
                         content:
                             "当前目录未发现图片文件。可直接用 /image <path> 添加绝对或相对路径。"
                                 .to_string(),
+                        tool_block: None,
                     });
                     return;
                 }
@@ -1046,6 +1080,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("读取图片列表失败: {}", err),
+                    tool_block: None,
                 });
             }
         }
@@ -1071,12 +1106,14 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("会话已保存: {}", saved_path.display()),
+                    tool_block: None,
                 });
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("保存会话失败: {}", err),
+                    tool_block: None,
                 });
             }
         }
@@ -1094,12 +1131,14 @@ impl TuiShell {
                             MessageRole::Agent
                         },
                         content: content.clone(),
+                        tool_block: None,
                     });
                 }
                 if msgs.is_empty() {
                     msgs.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: "已加载空会话。".to_string(),
+                        tool_block: None,
                     });
                 }
                 self.messages = msgs;
@@ -1108,12 +1147,14 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("会话已加载: {}", path),
+                    tool_block: None,
                 });
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("加载会话失败: {}", err),
+                    tool_block: None,
                 });
             }
         }
@@ -1124,10 +1165,8 @@ impl TuiShell {
             match event {
                 RuntimeEvent::PushMessage(msg) => self.messages.push(msg),
                 RuntimeEvent::BeginAssistantResponse => {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: String::new(),
-                    });
+                    self.messages
+                        .push(ChatMessage::new(MessageRole::Agent, String::new()));
                     self.pending_assistant_msg_index = Some(self.messages.len() - 1);
                 }
                 RuntimeEvent::AssistantChunk(chunk) => {
@@ -1141,12 +1180,11 @@ impl TuiShell {
                     if let Some(idx) = self.pending_assistant_msg_index {
                         if let Some(msg) = self.messages.get_mut(idx) {
                             msg.content = content;
+                            msg.tool_block = None;
                         }
                     } else {
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::Agent,
-                            content,
-                        });
+                        self.messages
+                            .push(ChatMessage::new(MessageRole::Agent, content));
                     }
                 }
                 RuntimeEvent::AssistantResponseCompleted => {
@@ -1198,6 +1236,7 @@ fn welcome_message(active_model: &str) -> ChatMessage {
             "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送；输入 /help 查看指令。",
             active_model
         ),
+        tool_block: None,
     }
 }
 
@@ -1217,10 +1256,15 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
     }
 
     if q == "/chat" || q.starts_with("/chat ") {
-        return vec!["/chat", "/chat save", "/chat save <path>", "/chat load <file>"]
-            .into_iter()
-            .filter(|cmd| cmd.starts_with(q))
-            .collect();
+        return vec![
+            "/chat",
+            "/chat save",
+            "/chat save <path>",
+            "/chat load <file>",
+        ]
+        .into_iter()
+        .filter(|cmd| cmd.starts_with(q))
+        .collect();
     }
 
     if q == "/image" || q.starts_with("/image ") {

@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::{
     llm_client::{StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message},
@@ -13,7 +13,7 @@ use crate::{
     ports::{LlmTransport, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor},
     session::SessionModel,
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
-    view::{ChatMessage, MessageRole},
+    view::{ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase},
 };
 
 const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
@@ -205,7 +205,9 @@ impl AgentRuntime {
         };
 
         match decision.as_str() {
-            "y" => self.execute_tool_request_with_continuation(&pending.request, pending.continuation),
+            "y" => {
+                self.execute_tool_request_with_continuation(&pending.request, pending.continuation)
+            }
             "n" => {
                 if let Some(mut cont) = pending.continuation {
                     append_tool_result_message(
@@ -271,6 +273,7 @@ impl AgentRuntime {
             }
         };
 
+        let manual_tool_name = openapi_tool_name(&request);
         match self.tool_executor.authorize(&request) {
             Ok(AuthorizationDecision::Allowed) => self.execute_tool_request(&request),
             Ok(AuthorizationDecision::NeedApproval {
@@ -282,7 +285,10 @@ impl AgentRuntime {
                     trust_target,
                     continuation: None,
                 });
-                self.push_agent_message(prompt);
+                self.push_agent_tool(
+                    prompt.clone(),
+                    tool_approval_block(manual_tool_name, None, &prompt),
+                );
             }
             Err(err) => {
                 self.push_agent_message(format!("工具权限检查失败: {}", err));
@@ -343,10 +349,11 @@ impl AgentRuntime {
         self.thinking_spinner_index = 0;
         self.thinking_text.clear();
         self.pending_assistant_text.clear();
-        match self
-            .llm_transport
-            .start_tool_agent_round(&self.config, state, self.tool_executor.tool_definitions_json())
-        {
+        match self.llm_transport.start_tool_agent_round(
+            &self.config,
+            state,
+            self.tool_executor.tool_definitions_json(),
+        ) {
             Ok(StartedToolAgentRound {
                 stream_rx,
                 result_rx,
@@ -413,17 +420,28 @@ impl AgentRuntime {
                                 let tool_output = match self.tool_executor.execute(&request) {
                                     Ok(result) => {
                                         self.session.persist_tool_memory(&request, &result);
-                                        self.push_agent_message(format_tool_ui_message(
-                                            &request, &call.name, &result,
-                                        ));
+                                        self.push_agent_tool(
+                                            format_tool_ui_message(&request, &call.name, &result),
+                                            build_tool_result_block(
+                                                &request,
+                                                &call.name,
+                                                Some(&call.id),
+                                                &result,
+                                            ),
+                                        );
                                         result
                                     }
                                     Err(err) => {
                                         let e = format!("[tool error] {}", err);
-                                        self.push_agent_message(format!(
-                                            "模型工具调用执行失败: {}",
-                                            err
-                                        ));
+                                        self.push_agent_tool(
+                                            format!("模型工具调用执行失败: {}", err),
+                                            tool_failed_block(
+                                                &call.name,
+                                                Some(&call.id),
+                                                "模型工具调用执行失败",
+                                                &err.to_string(),
+                                            ),
+                                        );
                                         e
                                     }
                                 };
@@ -434,6 +452,8 @@ impl AgentRuntime {
                                 prompt,
                                 trust_target,
                             }) => {
+                                let approval_ui =
+                                    tool_approval_block(&call.name, Some(&call.id), &prompt);
                                 self.pending_tool_approval = Some(PendingToolApproval {
                                     request,
                                     trust_target,
@@ -443,7 +463,7 @@ impl AgentRuntime {
                                         tool_name: call.name,
                                     }),
                                 });
-                                self.push_agent_message(prompt);
+                                self.push_agent_tool(prompt.clone(), approval_ui);
                             }
                             Err(err) => {
                                 append_tool_result_message(
@@ -536,7 +556,8 @@ impl AgentRuntime {
                 }
                 Ok(StreamEvent::Error(err)) => {
                     self.pending_last_event_at = Some(Instant::now());
-                    if let Some(state) = self.try_fallback_to_text_only_and_build_retry_state(&err) {
+                    if let Some(state) = self.try_fallback_to_text_only_and_build_retry_state(&err)
+                    {
                         if self.pending_assistant_text.trim().is_empty() {
                             self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
                                 "当前模型不支持图片输入，已自动去除图片并重试。".to_string(),
@@ -565,10 +586,11 @@ impl AgentRuntime {
                     }
 
                     if self.pending_assistant_text.trim().is_empty() {
-                        self.events.push_back(RuntimeEvent::ReplacePendingAssistant(format!(
-                            "LLM 调用失败: {}",
-                            err
-                        )));
+                        self.events
+                            .push_back(RuntimeEvent::ReplacePendingAssistant(format!(
+                                "LLM 调用失败: {}",
+                                err
+                            )));
                     } else {
                         let suffix = format!("\n\n[Error] {}", err);
                         self.pending_assistant_text.push_str(&suffix);
@@ -614,9 +636,22 @@ impl AgentRuntime {
         match self.tool_executor.execute(request) {
             Ok(output) => {
                 self.session.persist_tool_memory(request, &output);
-                self.push_agent_message(format_tool_ui_message(request, "manual", &output));
+                self.push_agent_tool(
+                    format_tool_ui_message(request, "manual", &output),
+                    build_tool_result_block(request, "manual", None, &output),
+                );
             }
-            Err(err) => self.push_agent_message(format!("工具执行失败: {}", err)),
+            Err(err) => {
+                self.push_agent_tool(
+                    format!("工具执行失败: {}", err),
+                    tool_failed_block(
+                        openapi_tool_name(request),
+                        None,
+                        "工具执行失败",
+                        &err.to_string(),
+                    ),
+                );
+            }
         }
     }
 
@@ -630,16 +665,28 @@ impl AgentRuntime {
                 let output = match self.tool_executor.execute(request) {
                     Ok(result) => {
                         self.session.persist_tool_memory(request, &result);
-                        self.push_agent_message(format_tool_ui_message(
-                            request,
-                            &cont.tool_name,
-                            &result,
-                        ));
+                        self.push_agent_tool(
+                            format_tool_ui_message(request, &cont.tool_name, &result),
+                            build_tool_result_block(
+                                request,
+                                &cont.tool_name,
+                                Some(&cont.tool_call_id),
+                                &result,
+                            ),
+                        );
                         result
                     }
                     Err(err) => {
                         let e = format!("[tool error] {}", err);
-                        self.push_agent_message(format!("模型工具调用执行失败: {}", err));
+                        self.push_agent_tool(
+                            format!("模型工具调用执行失败: {}", err),
+                            tool_failed_block(
+                                &cont.tool_name,
+                                Some(&cont.tool_call_id),
+                                "模型工具调用执行失败",
+                                &err.to_string(),
+                            ),
+                        );
                         e
                     }
                 };
@@ -751,10 +798,169 @@ impl AgentRuntime {
     }
 
     fn push_agent_message<S: Into<String>>(&mut self, content: S) {
-        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage {
-            role: MessageRole::Agent,
-            content: content.into(),
-        }));
+        self.events
+            .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                MessageRole::Agent,
+                content,
+            )));
+    }
+
+    fn push_agent_tool(&mut self, content: String, block: ToolUiBlock) {
+        self.events
+            .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                content,
+                block,
+            )));
+    }
+}
+
+fn openapi_tool_name(request: &ToolRequest) -> &'static str {
+    match request {
+        ToolRequest::Shell { .. } => "run_shell_command",
+        ToolRequest::ReadFile { .. } => "read_file",
+        ToolRequest::Search { .. } => "search_files",
+        ToolRequest::CreateFile { .. } => "create_file",
+        ToolRequest::UpdateFile { .. } => "update_file",
+        ToolRequest::DeleteFile { .. } => "delete_file",
+    }
+}
+
+fn tool_request_args_excerpt(request: &ToolRequest) -> String {
+    let v = match request {
+        ToolRequest::Shell { command } => json!({ "command": command }),
+        ToolRequest::ReadFile {
+            path,
+            start_line,
+            end_line,
+        } => json!({ "path": path, "start_line": start_line, "end_line": end_line }),
+        ToolRequest::Search { query } => json!({ "query": query }),
+        ToolRequest::CreateFile { path, content } => {
+            json!({ "path": path, "content_chars": content.chars().count() })
+        }
+        ToolRequest::UpdateFile {
+            path,
+            old_text,
+            new_text,
+        } => json!({
+            "path": path,
+            "old_text_chars": old_text.chars().count(),
+            "new_text_chars": new_text.chars().count(),
+        }),
+        ToolRequest::DeleteFile { path } => json!({ "path": path }),
+    };
+    serde_json::to_string_pretty(&v).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn truncate_output_for_tool_ui(text: &str, max_chars: usize) -> String {
+    truncate_for_preview(text, max_chars)
+}
+
+fn tool_approval_block(tool_name: &str, tool_call_id: Option<&str>, prompt: &str) -> ToolUiBlock {
+    let detail_lines: Vec<String> = prompt.lines().map(|l| l.to_string()).collect();
+    ToolUiBlock {
+        tool_call_id: tool_call_id.map(String::from),
+        tool_name: tool_name.to_string(),
+        phase: ToolUiPhase::PendingApproval,
+        headline: "待确认".to_string(),
+        detail_lines,
+        args_excerpt: None,
+        output_excerpt: None,
+    }
+}
+
+fn tool_failed_block(
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+    summary: &str,
+    err: &str,
+) -> ToolUiBlock {
+    ToolUiBlock {
+        tool_call_id: tool_call_id.map(String::from),
+        tool_name: tool_name.to_string(),
+        phase: ToolUiPhase::Failed,
+        headline: summary.to_string(),
+        detail_lines: Vec::new(),
+        args_excerpt: None,
+        output_excerpt: Some(truncate_output_for_tool_ui(err, 2000)),
+    }
+}
+
+fn build_tool_result_block(
+    request: &ToolRequest,
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+    output: &str,
+) -> ToolUiBlock {
+    let args_excerpt = tool_request_args_excerpt(request);
+    match request {
+        ToolRequest::ReadFile {
+            path,
+            start_line,
+            end_line,
+        } => {
+            let start = start_line.unwrap_or(1);
+            let end = end_line
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "default".to_string());
+            ToolUiBlock {
+                tool_call_id: tool_call_id.map(String::from),
+                tool_name: tool_name.to_string(),
+                phase: ToolUiPhase::Succeeded,
+                headline: "已读取文件片段".to_string(),
+                detail_lines: vec![
+                    format!("路径: {}", path),
+                    format!("行范围: {} - {}", start, end),
+                ],
+                args_excerpt: Some(args_excerpt),
+                output_excerpt: None,
+            }
+        }
+        ToolRequest::Search { query } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "搜索完成".to_string(),
+            detail_lines: vec![format!("查询: {}", query)],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+        },
+        ToolRequest::CreateFile { path, .. } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "已创建文件".to_string(),
+            detail_lines: vec![format!("路径: {}", path)],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: None,
+        },
+        ToolRequest::UpdateFile { path, .. } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "已更新文件".to_string(),
+            detail_lines: vec![format!("路径: {}", path)],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: None,
+        },
+        ToolRequest::DeleteFile { path } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "已删除文件".to_string(),
+            detail_lines: vec![format!("路径: {}", path)],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: None,
+        },
+        ToolRequest::Shell { command } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "命令已执行".to_string(),
+            detail_lines: vec![format!("命令: {}", command)],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+        },
     }
 }
 

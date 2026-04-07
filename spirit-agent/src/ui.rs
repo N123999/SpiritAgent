@@ -1,6 +1,7 @@
 use comrak::{
-    Arena, Options, parse_document,
+    Arena, Options,
     nodes::{AstNode, ListType, NodeValue},
+    parse_document,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -14,7 +15,7 @@ use unicode_width::UnicodeWidthChar;
 use crate::{
     conversation_select::flatten_wrapped_history,
     tui::{ConversationPanelHit, TuiShell},
-    view::{ChatMessage, MessageRole, TuiViewModel},
+    view::{ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase, TuiViewModel},
 };
 
 const MAX_RENDERED_MESSAGES: usize = 180;
@@ -61,12 +62,24 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .split(frame.area());
 
     let logo = Paragraph::new(vec![
-        Line::from(" ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗"),
-        Line::from(" ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝"),
-        Line::from(" ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   "),
-        Line::from(" ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   "),
-        Line::from(" ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   "),
-        Line::from(" ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   "),
+        Line::from(
+            " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
+        ),
+        Line::from(
+            " ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝",
+        ),
+        Line::from(
+            " ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ",
+        ),
+        Line::from(
+            " ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ",
+        ),
+        Line::from(
+            " ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ",
+        ),
+        Line::from(
+            " ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ",
+        ),
     ])
     .block(Block::default().borders(Borders::ALL).title("SpiritAgent"))
     .style(Style::default().fg(Color::Cyan));
@@ -92,8 +105,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .skip(history_scroll)
         .take(history_view_height)
         .collect();
-    let history = Paragraph::new(visible)
-        .block(Block::default().borders(Borders::ALL).title("Conversation"));
+    let history =
+        Paragraph::new(visible).block(Block::default().borders(Borders::ALL).title("Conversation"));
     frame.render_widget(history, chunks[1]);
     shell.note_conversation_panel(
         ConversationPanelHit {
@@ -148,7 +161,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     } else if show_suggestions {
         let suggestions = build_suggestion_lines(&app, 3);
         let suggestions_widget = Paragraph::new(suggestions)
-            .block(Block::default().borders(Borders::ALL).title("Slash Commands"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Slash Commands"),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(suggestions_widget, chunks[3]);
     }
@@ -174,7 +191,10 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             }),
             Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" complete  |  "),
-            Span::styled("Ctrl+Shift+C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Ctrl+Shift+C",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" copy conv  |  "),
             Span::styled("PgUp/PgDn", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" scroll  |  "),
@@ -186,7 +206,10 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             Span::raw(" picker  |  "),
             Span::styled("/image pick", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" picker  |  "),
-            Span::styled("Esc / Ctrl+C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Esc / Ctrl+C",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" quit"),
         ]))
     };
@@ -204,7 +227,9 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
             Span::styled("... ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 format!("已折叠更早的 {} 条消息", skipped),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
             ),
         ]));
     }
@@ -229,10 +254,7 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
             for segment in thinking.lines() {
                 lines.push(Line::from(vec![
                     Span::styled("    ", Style::default()),
-                    Span::styled(
-                        segment.to_string(),
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    Span::styled(segment.to_string(), Style::default().fg(Color::DarkGray)),
                 ]));
             }
         }
@@ -247,6 +269,10 @@ fn render_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
         MessageRole::Agent => ("Spirit", Color::Cyan),
     };
 
+    if let Some(ref tool) = msg.tool_block {
+        return render_tool_card_lines(prefix, prefix_color, tool);
+    }
+
     let content_lines = match msg.role {
         MessageRole::User => plain_text_lines(&msg.content),
         MessageRole::Agent => markdown_lines(&msg.content),
@@ -257,14 +283,18 @@ fn render_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
     if let Some(first) = iter.next() {
         let mut spans = vec![Span::styled(
             format!("{}> ", prefix),
-            Style::default().fg(prefix_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(prefix_color)
+                .add_modifier(Modifier::BOLD),
         )];
         spans.extend(first);
         out.push(Line::from(spans));
     } else {
         out.push(Line::from(vec![Span::styled(
             format!("{}> ", prefix),
-            Style::default().fg(prefix_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(prefix_color)
+                .add_modifier(Modifier::BOLD),
         )]));
     }
 
@@ -272,6 +302,145 @@ fn render_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
         let mut spans = vec![Span::raw("    ")];
         spans.extend(line);
         out.push(Line::from(spans));
+    }
+
+    out
+}
+
+fn tool_phase_label(phase: ToolUiPhase) -> (&'static str, Color) {
+    match phase {
+        ToolUiPhase::PendingApproval => ("待确认", Color::Yellow),
+        ToolUiPhase::Running => ("执行中", Color::Yellow),
+        ToolUiPhase::Succeeded => ("成功", Color::Green),
+        ToolUiPhase::Failed => ("失败", Color::Red),
+    }
+}
+
+fn render_tool_card_lines(
+    prefix: &'static str,
+    prefix_color: Color,
+    tool: &ToolUiBlock,
+) -> Vec<Line<'static>> {
+    let (phase_label, phase_color) = tool_phase_label(tool.phase);
+    let rail = Style::default().fg(Color::Rgb(96, 110, 130));
+    let rail_sym = "▌ ";
+    let indent = "    ";
+
+    let mut out = Vec::new();
+
+    let mut title_spans = vec![
+        Span::styled(
+            format!("{}> ", prefix),
+            Style::default()
+                .fg(prefix_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "[tool] ",
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            tool.tool_name.clone(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" · "),
+        Span::styled(
+            phase_label.to_string(),
+            Style::default()
+                .fg(phase_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if let Some(ref id) = tool.tool_call_id {
+        let short = if id.chars().count() > 14 {
+            let mut t = id.chars().take(14).collect::<String>();
+            t.push('…');
+            t
+        } else {
+            id.clone()
+        };
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(
+            format!("({})", short),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    out.push(Line::from(title_spans));
+
+    out.push(Line::from(vec![
+        Span::raw(indent),
+        Span::styled(rail_sym, rail),
+        Span::styled(
+            tool.headline.clone(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    for line in &tool.detail_lines {
+        if line.is_empty() {
+            continue;
+        }
+        out.push(Line::from(vec![
+            Span::raw(indent),
+            Span::styled(rail_sym, rail),
+            Span::styled(line.clone(), Style::default().fg(Color::Rgb(190, 195, 205))),
+        ]));
+    }
+
+    if let Some(ref args) = tool.args_excerpt {
+        if !args.trim().is_empty() {
+            out.push(Line::from(vec![
+                Span::raw(indent),
+                Span::styled(rail_sym, rail),
+                Span::styled("参数 JSON", Style::default().fg(Color::DarkGray)),
+            ]));
+            for seg in args.lines() {
+                out.push(Line::from(vec![
+                    Span::raw(indent),
+                    Span::raw("  "),
+                    Span::styled(rail_sym, rail),
+                    Span::styled(seg.to_string(), Style::default().fg(Color::Cyan)),
+                ]));
+            }
+        }
+    }
+
+    if let Some(ref output) = tool.output_excerpt {
+        if !output.trim().is_empty() {
+            out.push(Line::from(vec![
+                Span::raw(indent),
+                Span::styled(rail_sym, rail),
+                Span::styled("输出", Style::default().fg(Color::DarkGray)),
+            ]));
+            let lines: Vec<&str> = output.lines().take(48).collect();
+            for seg in lines.iter() {
+                out.push(Line::from(vec![
+                    Span::raw(indent),
+                    Span::raw("  "),
+                    Span::styled(rail_sym, rail),
+                    Span::styled((*seg).to_string(), Style::default().fg(Color::White)),
+                ]));
+            }
+            let total_ln = output.lines().count();
+            if total_ln > 48 {
+                out.push(Line::from(vec![
+                    Span::raw(indent),
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("… 另有 {} 行未显示", total_ln.saturating_sub(48)),
+                        Style::default()
+                            .fg(Color::DarkGray)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                ]));
+            }
+        }
     }
 
     out
@@ -300,12 +469,7 @@ fn markdown_lines(text: &str) -> Vec<Vec<Span<'static>>> {
         let root = parse_document(&arena, text, &markdown_options());
 
         let mut builder = MdBuilder::new();
-        render_markdown_node(
-            root,
-            &mut builder,
-            Style::default().fg(Color::White),
-            0,
-        );
+        render_markdown_node(root, &mut builder, Style::default().fg(Color::White), 0);
         let parsed = builder.into_lines();
 
         // Keep cache bounded so long sessions won't grow unbounded memory.
@@ -418,7 +582,9 @@ fn render_markdown_node<'a>(
                 builder.push_span(Span::raw(indent));
                 builder.push_span(Span::styled(
                     marker,
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 ));
                 render_markdown_node(item, builder, style, list_depth + 1);
                 builder.new_line();
@@ -538,7 +704,9 @@ fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
         )];
     }
 
-    let selected = app.model_picker_index.min(app.config.models.len().saturating_sub(1));
+    let selected = app
+        .model_picker_index
+        .min(app.config.models.len().saturating_sub(1));
     let total = app.config.models.len();
     let window = max_items.max(1);
     let start = if selected + 1 > window {
@@ -561,13 +729,18 @@ fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else if is_active {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
 
         lines.push(Line::from(Span::styled(
-            format!("{}{} ({}){}", marker, model.name, model.api_base, active_suffix),
+            format!(
+                "{}{} ({}){}",
+                marker, model.name, model.api_base, active_suffix
+            ),
             style,
         )));
     }
@@ -604,7 +777,10 @@ fn build_chat_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'st
         } else {
             Style::default().fg(Color::White)
         };
-        lines.push(Line::from(Span::styled(format!("{}{}", marker, name), style)));
+        lines.push(Line::from(Span::styled(
+            format!("{}{}", marker, name),
+            style,
+        )));
     }
 
     lines
@@ -639,7 +815,10 @@ fn build_image_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
         } else {
             Style::default().fg(Color::White)
         };
-        lines.push(Line::from(Span::styled(format!("{}{}", marker, name), style)));
+        lines.push(Line::from(Span::styled(
+            format!("{}{}", marker, name),
+            style,
+        )));
     }
 
     lines

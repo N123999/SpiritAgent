@@ -1,9 +1,55 @@
 use crate::model_registry::AppConfig;
 
+/// 工具卡片在对话里的生命周期阶段（用于 TUI 着色与标签）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolUiPhase {
+    PendingApproval,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+/// 结构化工具调用展示块；`content` 仍保留纯文本副本供存档与导出。
+#[derive(Clone, Debug)]
+pub struct ToolUiBlock {
+    pub tool_call_id: Option<String>,
+    pub tool_name: String,
+    pub phase: ToolUiPhase,
+    pub headline: String,
+    pub detail_lines: Vec<String>,
+    /// 可选：参数的紧凑 JSON（多行），TUI 内单独着色。
+    pub args_excerpt: Option<String>,
+    /// 可选：输出摘要（已截断）。
+    pub output_excerpt: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
+    pub tool_block: Option<ToolUiBlock>,
+}
+
+impl ChatMessage {
+    pub fn new(role: MessageRole, content: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: content.into(),
+            tool_block: None,
+        }
+    }
+
+    pub fn with_tool_block(
+        role: MessageRole,
+        content: impl Into<String>,
+        tool_block: ToolUiBlock,
+    ) -> Self {
+        Self {
+            role,
+            content: content.into(),
+            tool_block: Some(tool_block),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
