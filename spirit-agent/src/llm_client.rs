@@ -35,6 +35,7 @@ pub struct ResolvedLlmConfig {
 
 pub enum StreamEvent {
     ThinkingChunk(String),
+    ToolProgress(String),
     Chunk(String),
     HistoryCompacted {
         new_history: Vec<LlmMessage>,
@@ -392,6 +393,7 @@ pub fn stream_tool_agent_round(
     let mut saw_model_output = false;
     let mut raw_preview: Vec<String> = Vec::new();
     let mut last_finish_message: Option<Value> = None;
+    let mut last_tool_progress: Option<String> = None;
 
     loop {
         line.clear();
@@ -434,6 +436,12 @@ pub fn stream_tool_agent_round(
         {
             tool_acc.apply_deltas(tc_arr.as_slice());
             saw_model_output = true;
+            if let Some(progress) = tool_progress_preview(&tool_acc)
+                && last_tool_progress.as_deref() != Some(progress.as_str())
+            {
+                last_tool_progress = Some(progress.clone());
+                let _ = stream_tx.send(StreamEvent::ToolProgress(progress));
+            }
         }
 
         if let Some(content) = v
@@ -1170,6 +1178,29 @@ fn parse_dsml_tool_call(content: &str) -> Option<ToolCallRequest> {
         name,
         arguments: Value::Object(params).to_string(),
     })
+}
+
+fn tool_progress_preview(tool_acc: &ToolCallStreamAccumulator) -> Option<String> {
+    let first = tool_acc.as_tool_calls_array()?.into_iter().next()?;
+    let name = first.pointer("/function/name").and_then(Value::as_str)?;
+    let arguments = first
+        .pointer("/function/arguments")
+        .and_then(Value::as_str)
+        .unwrap_or("{}");
+
+    let line_hint = serde_json::from_str::<Value>(arguments)
+        .ok()
+        .and_then(|args| {
+            args.get("content")
+                .or_else(|| args.get("new_text"))
+                .and_then(Value::as_str)
+                .map(|text| text.lines().count())
+        });
+
+    match line_hint {
+        Some(lines) if lines > 0 => Some(format!("准备调用工具: {}（约 {} 行内容）", name, lines)),
+        _ => Some(format!("准备调用工具: {}", name)),
+    }
 }
 
 fn is_redundant_lookup_call(messages: &[Value], name: &str, arguments: &str) -> bool {

@@ -160,6 +160,12 @@ impl AgentRuntime {
             return;
         }
 
+        // Tool-agent rounds may legitimately stream no text for a while and only
+        // yield a tool call decision at the end. Do not surface a fake text-stream timeout.
+        if self.pending_tool_agent_step.is_some() {
+            return;
+        }
+
         let Some(last_event) = self.pending_last_event_at else {
             return;
         };
@@ -513,6 +519,11 @@ impl AgentRuntime {
                 Ok(StreamEvent::ThinkingChunk(thinking)) => {
                     self.pending_last_event_at = Some(Instant::now());
                     self.thinking_text.push_str(&thinking);
+                    processed += 1;
+                }
+                Ok(StreamEvent::ToolProgress(progress)) => {
+                    self.pending_last_event_at = Some(Instant::now());
+                    self.thinking_text = progress;
                     processed += 1;
                 }
                 Ok(StreamEvent::Chunk(chunk)) => {
