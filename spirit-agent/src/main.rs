@@ -1880,10 +1880,15 @@ impl App {
                 path,
                 content.chars().count()
             ),
-            ToolRequest::UpdateFile { path, content } => format!(
-                "update_file path={} chars={}",
+            ToolRequest::UpdateFile {
                 path,
-                content.chars().count()
+                old_text,
+                new_text,
+            } => format!(
+                "update_file path={} old_chars={} new_chars={}",
+                path,
+                old_text.chars().count(),
+                new_text.chars().count()
             ),
             ToolRequest::DeleteFile { path } => format!("delete_file path={}", path),
         };
@@ -2044,7 +2049,9 @@ fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) 
         }
         ToolRequest::Search { .. } => output.to_string(),
         ToolRequest::CreateFile { path, .. } => format!("[tool] 已创建文件 {}", path),
-        ToolRequest::UpdateFile { path, .. } => format!("[tool] 已更新文件 {}", path),
+        ToolRequest::UpdateFile { path, .. } => {
+            format!("[tool] 已按精确片段替换更新文件 {}", path)
+        }
         ToolRequest::DeleteFile { path } => format!("[tool] 已删除文件 {}", path),
         _ => format!(
             "[tool] {} 执行完成。\n{}",

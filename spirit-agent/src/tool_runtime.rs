@@ -25,7 +25,11 @@ pub enum ToolRequest {
     },
     Search { query: String },
     CreateFile { path: String, content: String },
-    UpdateFile { path: String, content: String },
+    UpdateFile {
+        path: String,
+        old_text: String,
+        new_text: String,
+    },
     DeleteFile { path: String },
 }
 
@@ -198,11 +202,16 @@ impl ToolRuntime {
                 ),
                 trust_target: None,
             }),
-            ToolRequest::UpdateFile { path, content } => Ok(AuthorizationDecision::NeedApproval {
+            ToolRequest::UpdateFile {
+                path,
+                old_text,
+                new_text,
+            } => Ok(AuthorizationDecision::NeedApproval {
                 prompt: format!(
-                    "高风险工具调用: 修改文件\n路径: {}\n新内容长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
+                    "高风险工具调用: 修改文件（精确替换）\n路径: {}\n旧文本长度: {} 字符\n新文本长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
                     path,
-                    content.chars().count()
+                    old_text.chars().count(),
+                    new_text.chars().count()
                 ),
                 trust_target: None,
             }),
@@ -250,7 +259,11 @@ impl ToolRuntime {
             } => self.execute_read(path, *start_line, *end_line),
             ToolRequest::Search { query } => self.execute_search(query),
             ToolRequest::CreateFile { path, content } => self.execute_create_file(path, content),
-            ToolRequest::UpdateFile { path, content } => self.execute_update_file(path, content),
+            ToolRequest::UpdateFile {
+                path,
+                old_text,
+                new_text,
+            } => self.execute_update_file(path, old_text, new_text),
             ToolRequest::DeleteFile { path } => self.execute_delete_file(path),
         }
     }
@@ -327,14 +340,15 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "update_file",
-                    "description": "Replace the full contents of an existing file inside the workspace.",
+                    "description": "Update an existing file by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "path": { "type": "string" },
-                            "content": { "type": "string" }
+                            "old_text": { "type": "string" },
+                            "new_text": { "type": "string" }
                         },
-                        "required": ["path", "content"],
+                        "required": ["path", "old_text", "new_text"],
                         "additionalProperties": false
                     }
                 }
@@ -415,10 +429,12 @@ impl ToolRuntime {
             }
             "update_file" => {
                 let path = required_string_arg(&args, "update_file", "path")?;
-                let content = required_string_arg(&args, "update_file", "content")?;
+                let old_text = required_string_arg(&args, "update_file", "old_text")?;
+                let new_text = required_string_arg(&args, "update_file", "new_text")?;
                 Ok(ToolRequest::UpdateFile {
                     path: path.to_string(),
-                    content: content.to_string(),
+                    old_text: old_text.to_string(),
+                    new_text: new_text.to_string(),
                 })
             }
             "delete_file" => {
@@ -594,14 +610,33 @@ impl ToolRuntime {
         ))
     }
 
-    fn execute_update_file(&self, path: &str, content: &str) -> Result<String> {
+    fn execute_update_file(&self, path: &str, old_text: &str, new_text: &str) -> Result<String> {
+        if old_text.is_empty() {
+            return Err(anyhow!("update_file 的 old_text 不能为空"));
+        }
+
         let target = self.resolve_existing_workspace_file(path)?;
-        fs::write(&target, content)
+        let source = fs::read_to_string(&target)
+            .with_context(|| format!("读取文件失败: {}", target.display()))?;
+        let occurrences = source.match_indices(old_text).count();
+        if occurrences == 0 {
+            return Err(anyhow!("update_file 失败：old_text 未匹配到目标文件内容"));
+        }
+        if occurrences > 1 {
+            return Err(anyhow!(
+                "update_file 失败：old_text 命中 {} 处，请提供更精确片段",
+                occurrences
+            ));
+        }
+
+        let updated = source.replacen(old_text, new_text, 1);
+        fs::write(&target, updated)
             .with_context(|| format!("写入文件失败: {}", target.display()))?;
         Ok(format!(
-            "[write]\naction: update_file\npath: {}\nchars: {}",
+            "[write]\naction: update_file\npath: {}\nreplaced_once: true\nold_chars: {}\nnew_chars: {}",
             target.display(),
-            content.chars().count()
+            old_text.chars().count(),
+            new_text.chars().count()
         ))
     }
 

@@ -17,7 +17,7 @@ const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
-const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的工具调用代理。你可以通过 function calling 使用工具: run_shell_command, read_file, search_files, create_file, update_file, delete_file。规则: 1) 默认先直接回答用户；只有在用户明确要求执行操作、或缺少关键事实而无法可靠回答时，才调用工具。2) 对于解释、方案讨论、代码理解、头脑风暴这类请求，未收到明确执行请求时不要调用工具。3) 需要获取事实时优先使用 read_file/search_files，不要编造。4) create_file/update_file/delete_file 与 run_shell_command 都属于高风险操作，用户可能拒绝；被拒绝后要继续给出非工具方案。5) search_files 仅允许工作目录内搜索；文件写操作也仅允许工作目录内文件。6) 需要读取文件时优先工作目录路径。7) 输出要简洁、可执行。";
+const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的工具调用代理。你可以通过 function calling 使用工具: run_shell_command, read_file, search_files, create_file, update_file, delete_file。规则: 1) 默认先直接回答用户；只有在用户明确要求执行操作、或缺少关键事实而无法可靠回答时，才调用工具。2) 对于解释、方案讨论、代码理解、头脑风暴这类请求，未收到明确执行请求时不要调用工具。3) 需要获取事实时优先使用 read_file/search_files，不要编造。4) create_file/update_file/delete_file 与 run_shell_command 都属于高风险操作，用户可能拒绝；被拒绝后要继续给出非工具方案。5) search_files 仅允许工作目录内搜索；文件写操作也仅允许工作目录内文件。6) update_file 必须提供精确 old_text 与 new_text，只做一次片段替换；禁止把整文件重写为摘要或局部内容。7) 修改文件前应先 read_file 确认目标片段并尽量保持改动最小。8) 严禁反复读取同一文件的小片段；读到能回答或能改动时应立即停止工具调用并给出结论或执行变更。9) 输出要简洁、可执行。";
 const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的最终回答助手。请基于现有对话、工具结果和已确认事实，直接给用户一个自然语言答案。不要调用工具，不要输出任何 DSML/function_call/tool_calls/XML 风格标记，也不要暴露内部推理或工具协议。若前面工具已经拿到结果，就直接总结给用户。";
 
 #[derive(Clone)]
@@ -179,6 +179,14 @@ pub fn tool_agent_next_step(
             .unwrap_or("{}")
             .to_string();
 
+        if is_redundant_lookup_call(&state.messages, &name, &arguments) {
+            state.messages.push(json!({
+                "role": "system",
+                "content": "检测到重复 read/search 查询（同参数）。不要再重复读取，请基于现有信息直接给出可执行结论或实施修改。"
+            }));
+            return Ok(ToolAgentStep::FinalResponseReady);
+        }
+
         return Ok(ToolAgentStep::ToolCall(ToolCallRequest {
             id,
             name,
@@ -189,6 +197,14 @@ pub fn tool_agent_next_step(
     if let Some(content) = message.get("content").and_then(Value::as_str)
         && let Some(dsml_call) = parse_dsml_tool_call(content)
     {
+        if is_redundant_lookup_call(&state.messages, &dsml_call.name, &dsml_call.arguments) {
+            state.messages.push(json!({
+                "role": "system",
+                "content": "检测到重复 read/search 查询（同参数）。不要再重复读取，请基于现有信息直接给出可执行结论或实施修改。"
+            }));
+            return Ok(ToolAgentStep::FinalResponseReady);
+        }
+
         // Some providers emit function calls inside text tags instead of tool_calls.
         // Convert them into a canonical assistant tool_call message to keep follow-up tool
         // result messages valid in the chat history.
@@ -1086,6 +1102,32 @@ fn parse_dsml_tool_call(content: &str) -> Option<ToolCallRequest> {
         name,
         arguments: Value::Object(params).to_string(),
     })
+}
+
+fn is_redundant_lookup_call(messages: &[Value], name: &str, arguments: &str) -> bool {
+    if name != "read_file" && name != "search_files" {
+        return false;
+    }
+
+    let normalized_args = normalize_json_string(arguments);
+    messages
+        .iter()
+        .filter_map(|m| m.get("tool_calls").and_then(Value::as_array))
+        .flat_map(|arr| arr.iter())
+        .any(|call| {
+            let call_name = call.pointer("/function/name").and_then(Value::as_str);
+            let call_args = call.pointer("/function/arguments").and_then(Value::as_str);
+            if call_name != Some(name) {
+                return false;
+            }
+            normalize_json_string(call_args.unwrap_or("{}")) == normalized_args
+        })
+}
+
+fn normalize_json_string(input: &str) -> String {
+    serde_json::from_str::<Value>(input)
+        .map(|v| v.to_string())
+        .unwrap_or_else(|_| input.trim().to_string())
 }
 
 fn extract_attr_value(block: &str, key: &str) -> Option<String> {
