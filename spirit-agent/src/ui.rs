@@ -96,10 +96,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     frame.render_widget(logo, chunks[0]);
 
     let history_lines = build_history_lines(&app);
-    let inner_x = chunks[1].x.saturating_add(1);
-    let inner_y = chunks[1].y.saturating_add(1);
-    let inner_w = chunks[1].width.saturating_sub(2);
-    let inner_h = chunks[1].height.saturating_sub(2);
+    // 对话区无边框，内容与命中区域占满 chunks[1]。
+    let inner_x = chunks[1].x;
+    let inner_y = chunks[1].y;
+    let inner_w = chunks[1].width.max(1);
+    let inner_h = chunks[1].height.max(1);
     let history_view_height = inner_h as usize;
     let w = inner_w.max(1) as u16;
     // 以 WordWrapper 折行为准，避免 Paragraph::line_count 与自定义折行在少数宽度/CJK 下不一致导致滚动错位。
@@ -116,16 +117,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .skip(history_scroll)
         .take(history_view_height)
         .collect();
-    let conversation_title = if app.show_aux_details {
-        "Conversation"
-    } else {
-        "Conversation · Compact"
-    };
-    let history = Paragraph::new(visible).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(conversation_title),
-    );
+    let history = Paragraph::new(visible);
     frame.render_widget(history, chunks[1]);
     shell.note_conversation_panel(
         ConversationPanelHit {
