@@ -90,25 +90,11 @@ impl TuiShell {
             "/quit".to_string(),
             "/exit".to_string(),
             "/model".to_string(),
-            "/model list".to_string(),
-            "/model use <name>".to_string(),
-            "/model add <name> <api_base> <api_key>".to_string(),
-            "/model remove <name>".to_string(),
             "/compact".to_string(),
             "/chat".to_string(),
-            "/chat save".to_string(),
-            "/chat save <path>".to_string(),
-            "/chat load <file>".to_string(),
-            "/image <path> [prompt]".to_string(),
-            "/image pick".to_string(),
-            "/image clear".to_string(),
-            "/tool shell <command>".to_string(),
-            "/tool list <absolute-dir>".to_string(),
-            "/tool read <path> [start] [end]".to_string(),
-            "/tool search <query>".to_string(),
+            "/image".to_string(),
+            "/tool".to_string(),
             "/log".to_string(),
-            "/log export".to_string(),
-            "/log session export".to_string(),
         ];
 
         Self {
@@ -502,7 +488,7 @@ impl TuiShell {
 
     pub fn apply_selected_suggestion(&mut self) {
         if let Some(selected) = self.slash_suggestions.get(self.selected_suggestion) {
-            self.set_input(selected.to_string());
+            self.set_input(slash_suggestion_apply_value(selected));
             self.refresh_suggestions();
         }
     }
@@ -731,13 +717,20 @@ impl TuiShell {
                     tool_block: None,
                 });
             }
+            ["use"] => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "用法: `/model use <name>`".to_string(),
+                    tool_block: None,
+                });
+            }
             ["use", model] => {
                 let mut config = self.runtime.config().clone();
                 if !config.has_model(model) {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!(
-                            "模型不存在: {}，先用 /model add {} <api_base> <api_key>",
+                            "模型不存在: {}，先用 `/model add {} <api_base> <api_key>`",
                             model, model
                         ),
                         tool_block: None,
@@ -759,6 +752,13 @@ impl TuiShell {
                         tool_block: None,
                     });
                 }
+            }
+            ["add"] | ["add", _] | ["add", _, _] => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "用法: `/model add <name> <api_base> <api_key>`".to_string(),
+                    tool_block: None,
+                });
             }
             ["add", model, api_base, api_key] => {
                 let mut config = self.runtime.config().clone();
@@ -798,12 +798,20 @@ impl TuiShell {
                     });
                 }
             }
+            ["remove"] => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "用法: `/model remove <name>`".to_string(),
+                    tool_block: None,
+                });
+            }
             ["remove", model] => {
                 let mut config = self.runtime.config().clone();
                 if *model == config.active_model {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: "不能删除当前使用中的模型，请先 /model use 切换。".to_string(),
+                        content: "不能删除当前使用中的模型，请先 `/model use <name>` 切换。"
+                            .to_string(),
                         tool_block: None,
                     });
                     return;
@@ -837,10 +845,9 @@ impl TuiShell {
             _ => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content:
-                        "用法: /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]"
-                            .to_string(),
-                tool_block: None});
+                    content: "用法:\n- `/model list`\n- `/model use <name>`\n- `/model add <name> <api_base> <api_key>`\n- `/model remove <name>`".to_string(),
+                    tool_block: None,
+                });
             }
         }
     }
@@ -1359,56 +1366,33 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
     let q = query.trim_end();
 
     if q == "/model" || q.starts_with("/model ") {
-        return vec![
-            "/model list",
-            "/model use <name>",
-            "/model add <name> <api_base> <api_key>",
-            "/model remove <name>",
-        ]
-        .into_iter()
-        .filter(|cmd| cmd.starts_with(q))
-        .collect();
+        return vec!["/model"];
     }
 
     if q == "/chat" || q.starts_with("/chat ") {
-        return vec![
-            "/chat",
-            "/chat save",
-            "/chat save <path>",
-            "/chat load <file>",
-        ]
-        .into_iter()
-        .filter(|cmd| cmd.starts_with(q))
-        .collect();
+        return vec!["/chat"];
     }
 
     if q == "/image" || q.starts_with("/image ") {
-        return vec!["/image <path> [prompt]", "/image pick", "/image clear"]
-            .into_iter()
-            .filter(|cmd| cmd.starts_with(q))
-            .collect();
+        return vec!["/image"];
     }
 
     if q == "/tool" || q.starts_with("/tool ") {
-        return vec![
-            "/tool shell <command>",
-            "/tool list <absolute-dir>",
-            "/tool read <path> [start] [end]",
-            "/tool search <query>",
-        ]
-        .into_iter()
-        .filter(|cmd| cmd.starts_with(q))
-        .collect();
+        return vec!["/tool"];
     }
 
     if q == "/log" || q.starts_with("/log ") {
-        return vec!["/log", "/log export", "/log session export"]
-            .into_iter()
-            .filter(|cmd| cmd.starts_with(q))
-            .collect();
+        return vec!["/log"];
     }
 
     Vec::new()
+}
+
+fn slash_suggestion_apply_value(selected: &str) -> String {
+    match selected {
+        "/model" | "/chat" | "/image" | "/tool" | "/log" => format!("{} ", selected),
+        _ => selected.to_string(),
+    }
 }
 
 fn parse_image_path_and_prompt(input: &str) -> (&str, &str) {

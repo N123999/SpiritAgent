@@ -938,7 +938,55 @@ fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'sta
         lines.push(Line::from(Span::styled(format!("  {}", cmd), style)));
     }
 
+    if total == 1 {
+        let details = suggestion_usage_lines(app.slash_suggestions[selected].as_str());
+        if !details.is_empty() {
+            lines.push(Line::from(Span::styled("", default_style)));
+            for detail in details {
+                lines.push(Line::from(Span::styled(detail, default_style)));
+            }
+        }
+    }
+
     lines
+}
+
+fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
+    match command {
+        "/model" => vec![
+            "  Usage",
+            "    /model list",
+            "    /model use <name>",
+            "    /model add <name> <api_base> <api_key>",
+            "    /model remove <name>",
+        ],
+        "/chat" => vec![
+            "  Usage",
+            "    /chat",
+            "    /chat save [path]",
+            "    /chat load <file>",
+        ],
+        "/image" => vec![
+            "  Usage",
+            "    /image <path> [prompt]",
+            "    /image pick",
+            "    /image clear",
+        ],
+        "/tool" => vec![
+            "  Usage",
+            "    /tool shell <command>",
+            "    /tool list <absolute-dir>",
+            "    /tool read <path> [start] [end]",
+            "    /tool search <query>",
+        ],
+        "/log" => vec![
+            "  Usage",
+            "    /log",
+            "    /log export",
+            "    /log session export",
+        ],
+        _ => Vec::new(),
+    }
 }
 
 fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
