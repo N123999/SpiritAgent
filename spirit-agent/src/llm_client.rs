@@ -83,6 +83,14 @@ pub fn append_tool_result_message(state: &mut ToolAgentState, tool_call_id: &str
     }));
 }
 
+/// 供 `/log` 导出：两条固定 system 文案（与各请求里 `messages` 中 system 一致）。
+pub(crate) fn llm_system_prompts_for_export() -> Value {
+    json!({
+        "tool_agent": TOOL_AGENT_SYSTEM_PROMPT,
+        "final_response": FINAL_RESPONSE_SYSTEM_PROMPT,
+    })
+}
+
 pub fn prepare_messages_for_final_response(messages: &[Value]) -> Vec<Value> {
     let mut prepared = messages.to_vec();
 
@@ -110,6 +118,7 @@ pub fn tool_agent_next_step(
     cfg: &AppConfig,
     state: &mut ToolAgentState,
     tools: &Value,
+    request_trace: Option<&mut Vec<Value>>,
 ) -> Result<ToolAgentStep> {
     state.steps = state.steps.saturating_add(1);
 
@@ -128,6 +137,19 @@ pub fn tool_agent_next_step(
 
     let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+
+    if let Some(t) = request_trace {
+        t.push(json!({
+            "kind": "tool_agent_chat_completions",
+            "step_index": state.steps,
+            "stream": false,
+            "model": active.name,
+            "temperature": 0.2,
+            "tool_choice": "auto",
+            "messages": state.messages.clone(),
+            "tools": tools.clone(),
+        }));
+    }
 
     let payload = json!({
         "model": active.name,

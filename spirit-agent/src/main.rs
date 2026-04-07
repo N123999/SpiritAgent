@@ -26,8 +26,9 @@ mod ui;
 use llm_client::{
     LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message,
     compact_history_manual, compact_summary_text, is_context_overflow_error,
-    llm_history_as_api_messages, prepare_messages_for_final_response, start_tool_agent_state,
-    stream_assistant_from_messages, stream_openai_compatible, tool_agent_next_step,
+    llm_history_as_api_messages, llm_system_prompts_for_export, prepare_messages_for_final_response,
+    start_tool_agent_state, stream_assistant_from_messages, stream_openai_compatible,
+    tool_agent_next_step,
 };
 use model_registry::{
     AppConfig, DEFAULT_API_BASE, ModelProfile, config_file_path, has_model_api_key, keyring_entry,
@@ -213,8 +214,10 @@ pub(crate) enum MessageRole {
 pub(crate) struct App {
     pub(crate) input: String,
     pub(crate) input_cursor: usize,
-    pub(crate) messages: Vec<ChatMessage>,
+    pub(crate)     messages: Vec<ChatMessage>,
     llm_history: Vec<LlmMessage>,
+    /// 本会话内每次发往 LLM 的 chat/completions 请求快照（工具轮 + 最终流式），供 `/log` 导出。
+    llm_api_trace: Vec<serde_json::Value>,
     pub(crate) config: AppConfig,
     slash_commands: Vec<String>,
     pub(crate) slash_suggestions: Vec<String>,
@@ -260,6 +263,7 @@ struct ToolApprovalContinuation {
 struct ToolAgentStepResult {
     state: ToolAgentState,
     step: ToolAgentStep,
+    request_trace: Vec<serde_json::Value>,
 }
 
 impl App {
@@ -305,6 +309,7 @@ impl App {
                     ),
             }],
             llm_history: vec![],
+            llm_api_trace: vec![],
             config,
             slash_suggestions: vec![],
             slash_commands,
@@ -845,9 +850,19 @@ impl App {
         thread::spawn(move || {
             let mut state = state;
             let tools = ToolRuntime::tool_definitions_json();
-            let result = tool_agent_next_step(&cfg, &mut state, &tools)
-                .map(|step| ToolAgentStepResult { state, step })
-                .map_err(|e| e.to_string());
+            let mut request_trace = Vec::new();
+            let result = tool_agent_next_step(
+                &cfg,
+                &mut state,
+                &tools,
+                Some(&mut request_trace),
+            )
+            .map(|step| ToolAgentStepResult {
+                state,
+                step,
+                request_trace,
+            })
+            .map_err(|e| e.to_string());
             let _ = tx.send(result);
         });
 
@@ -860,8 +875,13 @@ impl App {
         };
 
         match rx.try_recv() {
-            Ok(Ok(ToolAgentStepResult { mut state, step })) => {
+            Ok(Ok(ToolAgentStepResult {
+                mut state,
+                step,
+                mut request_trace,
+            })) => {
                 self.pending_tool_agent_step = None;
+                self.llm_api_trace.append(&mut request_trace);
                 match step {
                     ToolAgentStep::FinalResponseReady => {
                         self.start_background_final_stream(state.messages);
@@ -966,7 +986,15 @@ impl App {
 
     fn start_background_final_stream(&mut self, messages: Vec<serde_json::Value>) {
         let cfg = self.config.clone();
-        let messages = prepare_messages_for_final_response(&messages);
+        let prepared = prepare_messages_for_final_response(&messages);
+        let stream_model = cfg.active_model.clone();
+        self.llm_api_trace.push(serde_json::json!({
+            "kind": "final_response_stream_chat_completions",
+            "stream": true,
+            "model": stream_model,
+            "temperature": 0.2,
+            "messages": prepared.clone(),
+        }));
         let (tx, rx) = mpsc::channel::<StreamEvent>();
         self.thinking_spinner_index = 0;
         self.thinking_text.clear();
@@ -984,7 +1012,7 @@ impl App {
         self.stream_chunk_counter = 0;
 
         thread::spawn(move || {
-            stream_assistant_from_messages(&cfg, &messages, &tx);
+            stream_assistant_from_messages(&cfg, &prepared, &tx);
         });
     }
 
@@ -1278,7 +1306,7 @@ impl App {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出当前会话 LLM 侧历史（OpenAPI messages 形态）到系统临时目录，便于排查模型问题。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /mouse [on|off]\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n\nAPI Key 来源优先级: {} > 模型专属 keyring > 全局 keyring。",
                         ENV_API_KEY
                     ),
                 });
@@ -1377,7 +1405,10 @@ impl App {
             Ok(path) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("已导出 LLM 对话历史（与工具轮请求中拼接的历史 messages 一致）:\n{}", path.display()),
+                    content: format!(
+                        "已导出：llm_history、完整 API 请求轨迹（含 tools 与 system）、system 全文:\n{}",
+                        path.display()
+                    ),
                 });
             }
             Err(err) => {
@@ -1407,15 +1438,19 @@ impl App {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
+        let api_trace = self.llm_api_trace.clone();
         let export = serde_json::json!({
-            "export_version": 1,
+            "export_version": 2,
             "exported_at_unix_secs": exported_at_unix_secs,
             "active_model": active_model,
             "api_base": api_base,
             "working_directory": working_directory,
-            "note": "messages 由内存中的 llm_history 经 llm_message_to_json 生成，与每次工具轮 chat/completions 请求里、在 system 与当轮 user 之前拼接的对话历史一致（含多模态时的 data URL）。不含当轮进行中的 tool_calls/tool 往返及最终流式回答请求的完整载荷。",
+            "system_prompts": llm_system_prompts_for_export(),
+            "note": "messages: 内存 llm_history 的 API 形态（多模态为 data URL）。api_request_trace: 本会话内按时间顺序的每次 chat/completions 请求体快照——tool_agent_chat_completions 含完整 messages（首条为工具轮 system）、tools、tool_choice；同一用户轮可能有多条（多步工具）。final_response_stream_chat_completions 为最终自然语言流式请求的 messages（含 final_response system）。system_prompts 为两条固定 system 全文，便于对照 trace 中的首条 system。",
             "message_count": messages.len(),
             "messages": messages,
+            "api_request_trace_count": api_trace.len(),
+            "api_request_trace": api_trace,
         });
 
         let json =
@@ -1776,6 +1811,8 @@ impl App {
                         image_paths,
                     })
                     .collect();
+
+                self.llm_api_trace.clear();
 
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
