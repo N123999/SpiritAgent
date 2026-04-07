@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use std::{
     env, fs,
+    fs::OpenOptions,
     path::Path,
+    process::Command,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -16,6 +18,7 @@ use crate::{
     ports::{AppPaths, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
     view::{ChatMessage, MessageRole, TuiViewModel},
+    logging,
 };
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
@@ -648,7 +651,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认导出 llm_history、本会话内每次发往 LLM 的请求快照（含 tools、完整 messages 与 system）及固定 system 全文，便于排查模型与工具行为。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
                 tool_block: None});
             }
@@ -948,35 +951,105 @@ impl TuiShell {
     }
 
     fn handle_log_slash(&mut self, args: &[&str]) {
-        let export = matches!(args, [] | ["export"] | ["session", "export"]);
-        if !export {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content:
-                    "用法: /log（默认）、/log export 或 /log session export — 导出当前会话 LLM 侧完整历史到系统临时目录。"
-                        .to_string(),
-                tool_block: None});
-            return;
-        }
-
-        match self.export_llm_history_json_to_temp() {
-            Ok(path) => {
+        match args {
+            [] => match self.open_cli_log_file() {
+                Ok(path) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("已打开当前 CLI 日志:\n{}", path.display()),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("打开 CLI 日志失败: {}", err),
+                        tool_block: None,
+                    });
+                }
+            },
+            ["export"] => match self.export_cli_log_to_temp() {
+                Ok(path) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("已导出当前 CLI 日志快照:\n{}", path.display()),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("导出 CLI 日志失败: {}", err),
+                        tool_block: None,
+                    });
+                }
+            },
+            ["session", "export"] => match self.export_llm_history_json_to_temp() {
+                Ok(path) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "已导出：llm_history、完整 API 请求轨迹（含 tools 与 system）、system 全文:\n{}",
+                            path.display()
+                        ),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("导出会话日志失败: {}", err),
+                        tool_block: None,
+                    });
+                }
+            },
+            _ => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!(
-                        "已导出：llm_history、完整 API 请求轨迹（含 tools 与 system）、system 全文:\n{}",
-                        path.display()
-                    ),
-                tool_block: None});
-            }
-            Err(err) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("导出失败: {}", err),
+                    content:
+                        "用法: /log 打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出当前会话 LLM 侧完整历史。"
+                            .to_string(),
                     tool_block: None,
                 });
             }
         }
+    }
+
+    fn open_cli_log_file(&self) -> Result<std::path::PathBuf> {
+        let path = self.ensure_cli_log_file()?;
+        logging::log_event(&format!("[cli-log] open path={}", path.display()));
+        open_path_in_os(&path)?;
+        Ok(path)
+    }
+
+    fn export_cli_log_to_temp(&self) -> Result<std::path::PathBuf> {
+        let source = self.ensure_cli_log_file()?;
+        let exported_at_unix_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let target = env::temp_dir().join(format!(
+            "spirit-agent-cli-log-{exported_at_unix_secs}-{}.log",
+            std::process::id()
+        ));
+        fs::copy(&source, &target)
+            .with_context(|| format!("导出 CLI 日志失败: {} -> {}", source.display(), target.display()))?;
+        logging::log_event(&format!(
+            "[cli-log] export source={} target={}",
+            source.display(),
+            target.display()
+        ));
+        Ok(target)
+    }
+
+    fn ensure_cli_log_file(&self) -> Result<std::path::PathBuf> {
+        let path = self.app_paths.log_file();
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .with_context(|| format!("无法创建或访问 CLI 日志文件: {}", path.display()))?;
+        Ok(path)
     }
 
     fn export_llm_history_json_to_temp(&self) -> Result<std::path::PathBuf> {
@@ -1376,4 +1449,42 @@ fn list_local_image_files() -> Result<Vec<String>> {
 
     files.sort_by_key(|s| s.to_ascii_lowercase());
     Ok(files)
+}
+
+fn open_path_in_os(path: &Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .arg("/C")
+            .arg("start")
+            .arg("")
+            .arg(path.as_os_str())
+            .spawn()
+            .with_context(|| format!("调用系统打开日志失败: {}", path.display()))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .spawn()
+            .with_context(|| format!("调用系统打开日志失败: {}", path.display()))?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .with_context(|| format!("调用系统打开日志失败: {}", path.display()))?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err(anyhow::anyhow!(
+        "当前平台暂不支持自动打开日志文件: {}",
+        path.display()
+    ))
 }

@@ -68,7 +68,7 @@ impl AppPaths for DefaultAppPaths {
     }
 
     fn log_file(&self) -> PathBuf {
-        env::temp_dir().join("spirit-agent.log")
+        logging::log_file_path()
     }
 }
 

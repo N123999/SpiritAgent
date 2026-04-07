@@ -3,6 +3,7 @@ use std::{
     env,
     fs::OpenOptions,
     io::Write,
+    path::PathBuf,
     sync::{Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -13,8 +14,12 @@ const ENV_LOG_HTTP_BODY: &str = "SPIRIT_LOG_HTTP_BODY";
 
 static LOG_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
+pub fn log_file_path() -> PathBuf {
+    env::temp_dir().join("spirit-agent.log")
+}
+
 pub fn init_logging() {
-    let path = env::temp_dir().join("spirit-agent.log");
+    let path = log_file_path();
     if let Ok(file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = LOG_FILE.set(Mutex::new(file));
         log_event("logging initialized");

@@ -9,12 +9,15 @@ use std::{
     process::Command,
 };
 
+use crate::logging;
+
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
 const MAX_COMMAND_OUTPUT_CHARS: usize = 16_000;
 const MAX_SEARCH_RESULTS: usize = 80;
 const MAX_SEARCH_MATCHES_PER_FILE: usize = 3;
 const MAX_SEARCH_FILE_BYTES: u64 = 1_000_000;
 const MAX_READ_LINES_DEFAULT: usize = 200;
+const UPDATE_FILE_LOG_PREVIEW_CHARS: usize = 180;
 
 #[derive(Clone)]
 pub enum ToolRequest {
@@ -690,13 +693,95 @@ impl ToolRuntime {
         let target = self.resolve_existing_workspace_file(path)?;
         let source = fs::read_to_string(&target)
             .with_context(|| format!("读取文件失败: {}", target.display()))?;
+        logging::log_event(&format!(
+            "[tool:update_file] start path={} source_chars={} source_lines={} source_line_endings={} old_chars={} old_lines={} old_line_endings={} new_chars={} new_lines={} new_line_endings={} old_preview={} new_preview={}",
+            target.display(),
+            source.chars().count(),
+            source.lines().count(),
+            line_ending_style(&source),
+            old_text.chars().count(),
+            old_text.lines().count(),
+            line_ending_style(old_text),
+            new_text.chars().count(),
+            new_text.lines().count(),
+            line_ending_style(new_text),
+            escaped_preview(old_text, UPDATE_FILE_LOG_PREVIEW_CHARS),
+            escaped_preview(new_text, UPDATE_FILE_LOG_PREVIEW_CHARS)
+        ));
         let occurrences = source.match_indices(old_text).count();
         if occurrences == 0 {
-            return Err(anyhow!("update_file 失败：old_text 未匹配到目标文件内容"));
+            let normalized_source = normalize_line_endings(&source);
+            let normalized_old = normalize_line_endings(old_text);
+            let normalized_hits = normalized_source.match_indices(&normalized_old).count();
+            let trimmed_old = old_text.trim();
+            let trimmed_hits = if trimmed_old.is_empty() {
+                0
+            } else {
+                source.match_indices(trimmed_old).count()
+            };
+            let first_line = first_non_empty_line(old_text).unwrap_or("");
+            let last_line = last_non_empty_line(old_text).unwrap_or("");
+            let first_line_hits = if first_line.is_empty() {
+                0
+            } else {
+                source.match_indices(first_line).count()
+            };
+            let last_line_hits = if last_line.is_empty() {
+                0
+            } else {
+                source.match_indices(last_line).count()
+            };
+            logging::log_event(&format!(
+                "[tool:update_file] exact_match=0 path={} normalized_newline_hits={} trimmed_hits={} first_line_hits={} last_line_hits={} first_line={} last_line={}",
+                target.display(),
+                normalized_hits,
+                trimmed_hits,
+                first_line_hits,
+                last_line_hits,
+                escaped_preview(first_line, UPDATE_FILE_LOG_PREVIEW_CHARS / 2),
+                escaped_preview(last_line, UPDATE_FILE_LOG_PREVIEW_CHARS / 2)
+            ));
+
+            if normalized_hits == 1 {
+                if let Some((updated, matched_line_endings, replacement_line_endings)) =
+                    replace_single_match_allowing_newline_differences(&source, old_text, new_text)
+                {
+                    fs::write(&target, updated)
+                        .with_context(|| format!("写入文件失败: {}", target.display()))?;
+                    logging::log_event(&format!(
+                        "[tool:update_file] success path={} match_mode=normalized_newlines matched_line_endings={} replacement_line_endings={} old_chars={} new_chars={}",
+                        target.display(),
+                        matched_line_endings,
+                        replacement_line_endings,
+                        old_text.chars().count(),
+                        new_text.chars().count()
+                    ));
+                    return Ok(format!(
+                        "[write]\naction: update_file\npath: {}\nreplaced_once: true\nmatch_mode: normalized_newlines\nold_chars: {}\nnew_chars: {}",
+                        target.display(),
+                        old_text.chars().count(),
+                        new_text.chars().count()
+                    ));
+                }
+                logging::log_event(&format!(
+                    "[tool:update_file] normalized_newline_match_detected_but_mapping_failed path={}",
+                    target.display()
+                ));
+            }
+
+            return Err(anyhow!(
+                "update_file 失败：old_text 未匹配到目标文件内容（详情已写入 CLI 日志，可用 /log 查看）"
+            ));
         }
         if occurrences > 1 {
+            logging::log_event(&format!(
+                "[tool:update_file] ambiguous_match path={} exact_hits={} old_preview={}",
+                target.display(),
+                occurrences,
+                escaped_preview(old_text, UPDATE_FILE_LOG_PREVIEW_CHARS)
+            ));
             return Err(anyhow!(
-                "update_file 失败：old_text 命中 {} 处，请提供更精确片段",
+                "update_file 失败：old_text 命中 {} 处，请提供更精确片段（详情已写入 CLI 日志，可用 /log 查看）",
                 occurrences
             ));
         }
@@ -704,6 +789,12 @@ impl ToolRuntime {
         let updated = source.replacen(old_text, new_text, 1);
         fs::write(&target, updated)
             .with_context(|| format!("写入文件失败: {}", target.display()))?;
+        logging::log_event(&format!(
+            "[tool:update_file] success path={} exact_hits=1 old_chars={} new_chars={}",
+            target.display(),
+            old_text.chars().count(),
+            new_text.chars().count()
+        ));
         Ok(format!(
             "[write]\naction: update_file\npath: {}\nreplaced_once: true\nold_chars: {}\nnew_chars: {}",
             target.display(),
@@ -859,7 +950,122 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
         }
         out.push(ch);
     }
+
     out
+}
+
+fn escaped_preview(text: &str, max_chars: usize) -> String {
+    let escaped: String = text.chars().flat_map(|ch| ch.escape_default()).collect();
+    let preview = truncate_chars(&escaped, max_chars);
+    if escaped.chars().count() > max_chars {
+        format!("{}...", preview)
+    } else {
+        preview
+    }
+}
+
+fn normalize_line_endings(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn line_ending_style(text: &str) -> &'static str {
+    let has_crlf = text.contains("\r\n");
+    let normalized = text.replace("\r\n", "");
+    let has_lf = normalized.contains('\n');
+    let has_cr = normalized.contains('\r');
+    match (has_crlf, has_lf, has_cr) {
+        (false, false, false) => "none",
+        (true, false, false) => "crlf",
+        (false, true, false) => "lf",
+        (false, false, true) => "cr",
+        _ => "mixed",
+    }
+}
+
+fn first_non_empty_line(text: &str) -> Option<&str> {
+    text.lines().find(|line| !line.trim().is_empty())
+}
+
+fn last_non_empty_line(text: &str) -> Option<&str> {
+    text.lines().rev().find(|line| !line.trim().is_empty())
+}
+
+fn replace_single_match_allowing_newline_differences(
+    source: &str,
+    old_text: &str,
+    new_text: &str,
+) -> Option<(String, &'static str, &'static str)> {
+    let normalized_source = normalize_line_endings(source);
+    let normalized_old = normalize_line_endings(old_text);
+    let mut matches = normalized_source.match_indices(&normalized_old);
+    let (normalized_start, _) = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+
+    let mapping = normalized_byte_offsets_to_source_byte_offsets(source);
+    let normalized_end = normalized_start + normalized_old.len();
+    let source_start = *mapping.get(normalized_start)?;
+    let source_end = *mapping.get(normalized_end)?;
+    let matched_slice = source.get(source_start..source_end)?;
+    let preferred_line_endings = preferred_line_ending_style(matched_slice, source);
+    let replacement = rewrite_line_endings(new_text, preferred_line_endings);
+    let replacement_line_endings = line_ending_style(&replacement);
+
+    let mut updated = String::with_capacity(
+        source.len() - matched_slice.len() + replacement.len(),
+    );
+    updated.push_str(&source[..source_start]);
+    updated.push_str(&replacement);
+    updated.push_str(&source[source_end..]);
+    Some((updated, line_ending_style(matched_slice), replacement_line_endings))
+}
+
+fn normalized_byte_offsets_to_source_byte_offsets(source: &str) -> Vec<usize> {
+    let bytes = source.as_bytes();
+    let mut mapping = Vec::with_capacity(bytes.len() + 1);
+    mapping.push(0);
+
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\r' if index + 1 < bytes.len() && bytes[index + 1] == b'\n' => {
+                mapping.push(index + 2);
+                index += 2;
+            }
+            b'\r' => {
+                mapping.push(index + 1);
+                index += 1;
+            }
+            _ => {
+                mapping.push(index + 1);
+                index += 1;
+            }
+        }
+    }
+
+    mapping
+}
+
+fn preferred_line_ending_style<'a>(matched_slice: &'a str, source: &'a str) -> &'static str {
+    match line_ending_style(matched_slice) {
+        "none" | "mixed" => match line_ending_style(source) {
+            "crlf" => "crlf",
+            "lf" => "lf",
+            "cr" => "cr",
+            _ => "lf",
+        },
+        style => style,
+    }
+}
+
+fn rewrite_line_endings(text: &str, target_style: &str) -> String {
+    let normalized = normalize_line_endings(text);
+    match target_style {
+        "crlf" => normalized.replace("\n", "\r\n"),
+        "cr" => normalized.replace('\n', "\r"),
+        _ => normalized,
+    }
 }
 
 fn permissions_file_path() -> PathBuf {
@@ -899,4 +1105,32 @@ fn save_permissions(path: &Path, store: &ToolPermissionStore) -> Result<()> {
     let content = serde_json::to_string_pretty(store)?;
     fs::write(path, content).with_context(|| format!("写入权限文件失败: {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalized_newline_replacement_preserves_crlf_and_utf8() {
+        let source = "头一行\r\n头二行\r\n尾行\r\n";
+        let old_text = "头一行\n头二行\n";
+        let new_text = "头一行\n插入行\n头二行\n";
+
+        let (updated, matched_line_endings, replacement_line_endings) =
+            replace_single_match_allowing_newline_differences(source, old_text, new_text)
+                .expect("should replace with normalized newlines");
+
+        assert_eq!(matched_line_endings, "crlf");
+        assert_eq!(replacement_line_endings, "crlf");
+        assert_eq!(updated, "头一行\r\n插入行\r\n头二行\r\n尾行\r\n");
+    }
+
+    #[test]
+    fn normalized_newline_replacement_requires_unique_match() {
+        let source = "alpha\r\nbeta\r\nalpha\r\nbeta\r\n";
+        let old_text = "alpha\nbeta\n";
+
+        assert!(replace_single_match_allowing_newline_differences(source, old_text, "z").is_none());
+    }
 }
