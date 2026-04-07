@@ -185,7 +185,7 @@ impl WorkspaceToolExecutor {
 
 impl ToolExecutor for WorkspaceToolExecutor {
     fn tool_definitions_json(&self) -> Value {
-        ToolRuntime::tool_definitions_json()
+        self.inner.tool_definitions_json()
     }
 
     fn parse_command(&self, message: &str) -> Result<ToolRequest> {

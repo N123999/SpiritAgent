@@ -9,6 +9,15 @@ use std::{
     process::Command,
 };
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
+    System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    },
+};
+
 use crate::logging;
 
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
@@ -17,12 +26,16 @@ const MAX_SEARCH_RESULTS: usize = 80;
 const MAX_SEARCH_MATCHES_PER_FILE: usize = 3;
 const MAX_SEARCH_FILE_BYTES: u64 = 1_000_000;
 const MAX_READ_LINES_DEFAULT: usize = 200;
+const MAX_DIRECTORY_LIST_RESULTS: usize = 4_000;
 const UPDATE_FILE_LOG_PREVIEW_CHARS: usize = 180;
 
 #[derive(Clone)]
 pub enum ToolRequest {
     Shell {
         command: String,
+    },
+    ListDirectory {
+        path: String,
     },
     ReadFile {
         path: String,
@@ -70,6 +83,21 @@ pub struct ToolRuntime {
     workspace_root: PathBuf,
     permission_store_path: PathBuf,
     permissions: ToolPermissionStore,
+    shell_context: ShellContext,
+}
+
+#[derive(Clone, Copy)]
+enum ShellKind {
+    Cmd,
+    PowerShell,
+    Posix,
+}
+
+#[derive(Clone)]
+struct ShellContext {
+    display_name: String,
+    executable: String,
+    kind: ShellKind,
 }
 
 fn append_shell_section(out: &mut String, title: &str, body: &str, empty_placeholder: &str) {
@@ -88,6 +116,7 @@ fn append_shell_section(out: &mut String, title: &str, body: &str, empty_placeho
 
 /// 供模型与 TUI 共用的 shell 结果正文（取代 [shell]/[stdout] 标签堆叠）。
 fn format_shell_tool_transcript(
+    shell_name: &str,
     workspace: &str,
     command: &str,
     exit_code: i32,
@@ -96,6 +125,7 @@ fn format_shell_tool_transcript(
 ) -> String {
     use std::fmt::Write;
     let mut s = String::new();
+    let _ = writeln!(s, "终端      {}", shell_name);
     let _ = writeln!(s, "工作目录  {}", workspace);
     let _ = writeln!(s, "命令      {}", command);
     let _ = writeln!(s, "退出码    {}", exit_code);
@@ -110,11 +140,13 @@ impl ToolRuntime {
         let workspace_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let permission_store_path = permissions_file_path();
         let permissions = load_permissions(&permission_store_path).unwrap_or_default();
+        let shell_context = ShellContext::detect();
 
         Self {
             workspace_root,
             permission_store_path,
             permissions,
+            shell_context,
         }
     }
 
@@ -126,7 +158,7 @@ impl ToolRuntime {
 
         if raw.is_empty() {
             return Err(anyhow!(
-                "用法:\n/tool shell <command>\n/tool read <path> [start] [end]\n/tool search <query>"
+                "用法:\n/tool shell <command>\n/tool list <absolute-dir>\n/tool read <path> [start] [end]\n/tool search <query>"
             ));
         }
 
@@ -144,6 +176,14 @@ impl ToolRuntime {
                 }
                 Ok(ToolRequest::Shell {
                     command: cmd.to_string(),
+                })
+            }
+            "list" => {
+                if tokens.len() < 2 {
+                    return Err(anyhow!("用法: /tool list <absolute-dir>"));
+                }
+                Ok(ToolRequest::ListDirectory {
+                    path: tokens[1].clone(),
                 })
             }
             "read" => {
@@ -188,7 +228,7 @@ impl ToolRuntime {
                 })
             }
             _ => Err(anyhow!(
-                "未知 /tool 子命令: {}\n可用: shell | read | search",
+                "未知 /tool 子命令: {}\n可用: shell | list | read | search",
                 sub
             )),
         }
@@ -208,35 +248,20 @@ impl ToolRuntime {
 
                 Ok(AuthorizationDecision::NeedApproval {
                     prompt: format!(
-                        "高风险工具调用: shell\n命令: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
+                        "高风险工具调用: shell\n终端: {}\n命令: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
+                        self.shell_context.display_name,
                         command
                     ),
                     trust_target: Some(TrustTarget::ShellCommand(command.clone())),
                 })
             }
+            ToolRequest::ListDirectory { path } => {
+                let canonical = self.resolve_existing_absolute_directory(path)?;
+                Ok(self.authorize_external_read_path(&canonical, "遍历工作目录外目录"))
+            }
             ToolRequest::ReadFile { path, .. } => {
                 let canonical = self.resolve_existing_path(path)?;
-                if self.is_inside_workspace(&canonical) {
-                    return Ok(AuthorizationDecision::Allowed);
-                }
-
-                let canonical_text = canonical.display().to_string();
-                if self
-                    .permissions
-                    .trusted_external_read_paths
-                    .iter()
-                    .any(|p| p == &canonical_text)
-                {
-                    return Ok(AuthorizationDecision::Allowed);
-                }
-
-                Ok(AuthorizationDecision::NeedApproval {
-                    prompt: format!(
-                        "高风险工具调用: 读取工作目录外文件\n路径: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
-                        canonical_text
-                    ),
-                    trust_target: Some(TrustTarget::ExternalReadPath(canonical_text)),
-                })
+                Ok(self.authorize_external_read_path(&canonical, "读取工作目录外文件"))
             }
             ToolRequest::Search { .. } => Ok(AuthorizationDecision::Allowed),
             ToolRequest::CreateFile { path, content } => Ok(AuthorizationDecision::NeedApproval {
@@ -302,6 +327,7 @@ impl ToolRuntime {
     pub fn execute(&self, request: &ToolRequest) -> Result<String> {
         match request {
             ToolRequest::Shell { command } => self.execute_shell(command),
+            ToolRequest::ListDirectory { path } => self.execute_list_directory(path),
             ToolRequest::ReadFile {
                 path,
                 start_line,
@@ -318,22 +344,40 @@ impl ToolRuntime {
         }
     }
 
-    pub fn tool_definitions_json() -> Value {
+    pub fn tool_definitions_json(&self) -> Value {
         json!([
             {
                 "type": "function",
                 "function": {
                     "name": "run_shell_command",
-                    "description": "Execute a shell command in the workspace directory. This is high risk and may require user approval.",
+                    "description": self.shell_context.tool_description(),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "command": {
                                 "type": "string",
-                                "description": "The shell command to execute."
+                                "description": self.shell_context.command_parameter_description()
                             }
                         },
                         "required": ["command"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_directory_files",
+                    "description": "List all files recursively under one directory. The input path must be an absolute directory path. Use this instead of shell ls, dir, or find when you only need a directory inventory.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Absolute directory path to enumerate recursively. Returns file paths only."
+                            }
+                        },
+                        "required": ["path"],
                         "additionalProperties": false
                     }
                 }
@@ -370,7 +414,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "search_files",
-                    "description": "Search text in files under the workspace directory only.",
+                    "description": "Search text in files under the workspace directory only. Use list_directory_files when you need a directory inventory instead of shell ls or dir.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -448,6 +492,17 @@ impl ToolRuntime {
                     command: command.to_string(),
                 })
             }
+            "list_directory_files" => {
+                let path = args
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| anyhow!("list_directory_files 缺少 path"))?;
+                Ok(ToolRequest::ListDirectory {
+                    path: path.to_string(),
+                })
+            }
             "read_file" => {
                 let path = args
                     .get("path")
@@ -509,24 +564,29 @@ impl ToolRuntime {
     }
 
     fn execute_shell(&self, command: &str) -> Result<String> {
-        let output = if cfg!(target_os = "windows") {
-            Command::new("cmd")
+        let output = match self.shell_context.kind {
+            ShellKind::Cmd => Command::new(&self.shell_context.executable)
                 .args(["/C", &format!("chcp 65001 >nul & {}", command)])
                 .current_dir(&self.workspace_root)
                 .output()
-                .with_context(|| format!("执行命令失败: {}", command))?
-        } else {
-            Command::new("sh")
+                .with_context(|| format!("执行命令失败: {}", command))?,
+            ShellKind::PowerShell => Command::new(&self.shell_context.executable)
+                .args(["-NoLogo", "-NoProfile", "-Command", command])
+                .current_dir(&self.workspace_root)
+                .output()
+                .with_context(|| format!("执行命令失败: {}", command))?,
+            ShellKind::Posix => Command::new(&self.shell_context.executable)
                 .args(["-lc", command])
                 .current_dir(&self.workspace_root)
                 .output()
-                .with_context(|| format!("执行命令失败: {}", command))?
+                .with_context(|| format!("执行命令失败: {}", command))?,
         };
 
         let stdout = decode_command_output(&output.stdout);
         let stderr = decode_command_output(&output.stderr);
         let code = output.status.code().unwrap_or(-1);
         let mut combined = format_shell_tool_transcript(
+            &self.shell_context.display_name,
             &self.workspace_root.display().to_string(),
             command,
             code,
@@ -540,6 +600,90 @@ impl ToolRuntime {
         }
 
         Ok(combined)
+    }
+
+    fn execute_list_directory(&self, path: &str) -> Result<String> {
+        let root = self.resolve_existing_absolute_directory(path)?;
+        let mut directories = vec![root.clone()];
+        let mut files = Vec::new();
+        let mut skipped_dirs = 0usize;
+        let mut skipped_symlinks = 0usize;
+        let mut truncated = false;
+
+        while let Some(dir) = directories.pop() {
+            let entries = match fs::read_dir(&dir) {
+                Ok(v) => v,
+                Err(_) => {
+                    skipped_dirs += 1;
+                    continue;
+                }
+            };
+
+            let mut child_dirs = Vec::new();
+            let mut child_files = Vec::new();
+
+            for entry in entries.flatten() {
+                let file_type = match entry.file_type() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let entry_path = entry.path();
+
+                if file_type.is_symlink() {
+                    skipped_symlinks += 1;
+                } else if file_type.is_dir() {
+                    child_dirs.push(entry_path);
+                } else if file_type.is_file() {
+                    child_files.push(entry_path);
+                }
+            }
+
+            child_dirs.sort();
+            child_files.sort();
+
+            for file in child_files {
+                files.push(file);
+                if files.len() >= MAX_DIRECTORY_LIST_RESULTS {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            if truncated {
+                break;
+            }
+
+            for child_dir in child_dirs.into_iter().rev() {
+                directories.push(child_dir);
+            }
+        }
+
+        let mut out = format!(
+            "[list]\npath: {}\nfiles: {}\ntruncated: {}\nskipped_dirs: {}\nskipped_symlinks: {}\n\n",
+            root.display(),
+            files.len(),
+            if truncated { "true" } else { "false" },
+            skipped_dirs,
+            skipped_symlinks,
+        );
+
+        if files.is_empty() {
+            out.push_str("（未找到文件）");
+        } else {
+            out.push_str("files\n");
+            for file in files {
+                out.push_str(&format!("{}\n", file.display()));
+            }
+        }
+
+        if truncated {
+            out.push_str(&format!(
+                "\n...<结果已截断，最多列出 {} 个文件>",
+                MAX_DIRECTORY_LIST_RESULTS
+            ));
+        }
+
+        Ok(out)
     }
 
     fn execute_read(
@@ -823,6 +967,35 @@ impl ToolRuntime {
         ))
     }
 
+    fn authorize_external_read_path(
+        &self,
+        canonical: &Path,
+        prompt_title: &str,
+    ) -> AuthorizationDecision {
+        if self.is_inside_workspace(canonical) {
+            return AuthorizationDecision::Allowed;
+        }
+
+        let canonical_text = canonical.display().to_string();
+        if self
+            .permissions
+            .trusted_external_read_paths
+            .iter()
+            .any(|p| p == &canonical_text)
+        {
+            return AuthorizationDecision::Allowed;
+        }
+
+        AuthorizationDecision::NeedApproval {
+            prompt: format!(
+                "高风险工具调用: {}\n路径: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
+                prompt_title,
+                canonical_text
+            ),
+            trust_target: Some(TrustTarget::ExternalReadPath(canonical_text)),
+        }
+    }
+
     fn resolve_existing_path(&self, input: &str) -> Result<PathBuf> {
         let raw = PathBuf::from(input);
         let joined = if raw.is_absolute() {
@@ -834,6 +1007,29 @@ impl ToolRuntime {
         joined
             .canonicalize()
             .with_context(|| format!("路径不存在或无法访问: {}", joined.display()))
+    }
+
+    fn resolve_existing_absolute_directory(&self, input: &str) -> Result<PathBuf> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!("path 不能为空"));
+        }
+
+        let raw = PathBuf::from(trimmed);
+        if !raw.is_absolute() {
+            return Err(anyhow!(
+                "list_directory_files 仅接受 absolute path: {}",
+                trimmed
+            ));
+        }
+
+        let canonical = raw
+            .canonicalize()
+            .with_context(|| format!("路径不存在或无法访问: {}", raw.display()))?;
+        if !canonical.is_dir() {
+            return Err(anyhow!("目标不是目录: {}", canonical.display()));
+        }
+        Ok(canonical)
     }
 
     fn is_inside_workspace(&self, path: &Path) -> bool {
@@ -889,6 +1085,169 @@ fn required_string_arg<'a>(args: &'a Value, tool: &str, key: &str) -> Result<&'a
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("{} 缺少 {}", tool, key))
+}
+
+impl ShellContext {
+    fn detect() -> Self {
+        #[cfg(target_os = "windows")]
+        {
+            return detect_windows_shell_context();
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            detect_posix_shell_context()
+        }
+    }
+
+    fn tool_description(&self) -> String {
+        format!(
+            "Execute a shell command in the workspace directory using the current shell: {}. Do not assume Bash or generic Unix syntax unless this shell is actually POSIX compatible. This is high risk and may require user approval.",
+            self.display_name
+        )
+    }
+
+    fn command_parameter_description(&self) -> String {
+        match self.kind {
+            ShellKind::Cmd => format!(
+                "The command to execute in {}. Prefer cmd.exe syntax such as dir, type, where, findstr, and cd. Do not assume Bash commands like find, ls, grep, or cat.",
+                self.display_name
+            ),
+            ShellKind::PowerShell => format!(
+                "The command to execute in {}. Prefer PowerShell syntax such as Get-ChildItem, Select-String, Get-Content, Set-Location, and Test-Path. Do not assume Bash-only syntax.",
+                self.display_name
+            ),
+            ShellKind::Posix => format!(
+                "The command to execute in {}. Prefer POSIX shell syntax such as ls, find, grep, cat, pwd, and cd.",
+                self.display_name
+            ),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_posix_shell_context() -> ShellContext {
+    let shell_path = env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
+    let shell_name = Path::new(&shell_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("sh")
+        .to_string();
+
+    ShellContext {
+        display_name: format!("POSIX shell ({})", shell_name),
+        executable: shell_path,
+        kind: ShellKind::Posix,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn detect_windows_shell_context() -> ShellContext {
+    let parent_name = detect_windows_parent_process_name().unwrap_or_default();
+    let parent_lower = parent_name.to_ascii_lowercase();
+
+    match parent_lower.as_str() {
+        "pwsh.exe" | "pwsh" => ShellContext {
+            display_name: "PowerShell (pwsh)".to_string(),
+            executable: "pwsh".to_string(),
+            kind: ShellKind::PowerShell,
+        },
+        "powershell.exe" | "powershell" => ShellContext {
+            display_name: "Windows PowerShell".to_string(),
+            executable: "powershell".to_string(),
+            kind: ShellKind::PowerShell,
+        },
+        "bash.exe" | "bash" | "sh.exe" | "sh" | "zsh.exe" | "zsh" => ShellContext {
+            display_name: format!("POSIX shell ({})", strip_windows_exe_suffix(&parent_name)),
+            executable: strip_windows_exe_suffix(&parent_name).to_string(),
+            kind: ShellKind::Posix,
+        },
+        "cmd.exe" | "cmd" => ShellContext {
+            display_name: "Command Prompt (cmd.exe)".to_string(),
+            executable: env::var("ComSpec").unwrap_or_else(|_| "cmd".to_string()),
+            kind: ShellKind::Cmd,
+        },
+        _ if env::var_os("PSModulePath").is_some() && env::var_os("PROMPT").is_none() => {
+            ShellContext {
+                display_name: "Windows PowerShell".to_string(),
+                executable: "powershell".to_string(),
+                kind: ShellKind::PowerShell,
+            }
+        }
+        _ => ShellContext {
+            display_name: "Command Prompt (cmd.exe)".to_string(),
+            executable: env::var("ComSpec").unwrap_or_else(|_| "cmd".to_string()),
+            kind: ShellKind::Cmd,
+        },
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn strip_windows_exe_suffix(name: &str) -> &str {
+    name.strip_suffix(".exe")
+        .or_else(|| name.strip_suffix(".EXE"))
+        .unwrap_or(name)
+}
+
+#[cfg(target_os = "windows")]
+fn detect_windows_parent_process_name() -> Option<String> {
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return None;
+        }
+
+        let result = find_parent_process_name(snapshot, std::process::id());
+        let _ = CloseHandle(snapshot);
+        result
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn find_parent_process_name(snapshot: HANDLE, current_pid: u32) -> Option<String> {
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+    if unsafe { Process32FirstW(snapshot, &mut entry) } == 0 {
+        return None;
+    }
+
+    let mut parent_pid = None;
+    loop {
+        if entry.th32ProcessID == current_pid {
+            parent_pid = Some(entry.th32ParentProcessID);
+            break;
+        }
+
+        if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
+            break;
+        }
+    }
+
+    let parent_pid = parent_pid?;
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    if unsafe { Process32FirstW(snapshot, &mut entry) } == 0 {
+        return None;
+    }
+
+    loop {
+        if entry.th32ProcessID == parent_pid {
+            return Some(wide_process_name_to_string(&entry.szExeFile));
+        }
+
+        if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
+            break;
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn wide_process_name_to_string(name: &[u16]) -> String {
+    let len = name.iter().position(|ch| *ch == 0).unwrap_or(name.len());
+    String::from_utf16_lossy(&name[..len])
 }
 
 fn normalize_path_lossy(path: &Path) -> Result<PathBuf> {

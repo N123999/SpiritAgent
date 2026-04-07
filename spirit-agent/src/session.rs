@@ -98,6 +98,9 @@ impl SessionModel {
 
     pub fn persist_tool_memory(&mut self, request: &ToolRequest, output: &str) {
         let request_desc = match request {
+            ToolRequest::ListDirectory { path } => {
+                format!("list_directory_files path={}", path)
+            }
             ToolRequest::ReadFile {
                 path,
                 start_line,

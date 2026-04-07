@@ -103,6 +103,7 @@ impl TuiShell {
             "/image pick".to_string(),
             "/image clear".to_string(),
             "/tool shell <command>".to_string(),
+            "/tool list <absolute-dir>".to_string(),
             "/tool read <path> [start] [end]".to_string(),
             "/tool search <query>".to_string(),
             "/log".to_string(),
@@ -679,7 +680,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件需要审批（y/n/t）。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /chat\n- /chat save [path]\n- /chat load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool list <absolute-dir>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令会按当前真实 shell 执行，不再默认按 Bash/Unix 语义理解。\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件或遍历工作目录外目录需要审批（y/n/t）。\n- /tool list 递归列出一个绝对路径目录下的全部文件。\n- /tool search 仅搜索工作目录内文件。\n- /chat 打开会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
                 tool_block: None});
             }
@@ -1391,6 +1392,7 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
     if q == "/tool" || q.starts_with("/tool ") {
         return vec![
             "/tool shell <command>",
+            "/tool list <absolute-dir>",
             "/tool read <path> [start] [end]",
             "/tool search <query>",
         ]

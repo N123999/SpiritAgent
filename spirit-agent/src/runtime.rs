@@ -829,6 +829,7 @@ impl AgentRuntime {
 fn openapi_tool_name(request: &ToolRequest) -> &'static str {
     match request {
         ToolRequest::Shell { .. } => "run_shell_command",
+        ToolRequest::ListDirectory { .. } => "list_directory_files",
         ToolRequest::ReadFile { .. } => "read_file",
         ToolRequest::Search { .. } => "search_files",
         ToolRequest::CreateFile { .. } => "create_file",
@@ -840,6 +841,7 @@ fn openapi_tool_name(request: &ToolRequest) -> &'static str {
 fn tool_request_args_excerpt(request: &ToolRequest) -> String {
     let v = match request {
         ToolRequest::Shell { command } => json!({ "command": command }),
+        ToolRequest::ListDirectory { path } => json!({ "path": path }),
         ToolRequest::ReadFile {
             path,
             start_line,
@@ -905,6 +907,15 @@ fn build_tool_result_block(
 ) -> ToolUiBlock {
     let args_excerpt = tool_request_args_excerpt(request);
     match request {
+        ToolRequest::ListDirectory { path } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "目录文件已列出".to_string(),
+            detail_lines: vec![format!("路径: {}", path)],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+        },
         ToolRequest::ReadFile {
             path,
             start_line,
@@ -977,6 +988,7 @@ fn build_tool_result_block(
 
 fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) -> String {
     match request {
+        ToolRequest::ListDirectory { path } => format!("[tool] 已列出目录下文件 {}", path),
         ToolRequest::ReadFile {
             path,
             start_line,
