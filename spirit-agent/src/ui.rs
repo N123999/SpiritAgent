@@ -70,7 +70,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) {
     let history_lines = build_history_lines(app);
     let history_view_height = chunks[1].height.saturating_sub(2) as usize;
     let history_view_width = chunks[1].width.saturating_sub(2) as usize;
-    let total_visual_lines = estimate_visual_lines(&history_lines, history_view_width.max(1));
+    // Must match ratatui's WordWrapper (used by Paragraph), not a naive width/ceil estimate —
+    // otherwise scroll-to-bottom can be short by one or more visual lines.
+    let total_visual_lines = Paragraph::new(history_lines.clone())
+        .wrap(Wrap { trim: false })
+        .line_count(history_view_width.max(1) as u16) as usize;
     let max_scroll = total_visual_lines.saturating_sub(history_view_height);
     let history_scroll = max_scroll.saturating_sub(app.history_offset_from_bottom);
     let history = Paragraph::new(history_lines)
@@ -209,27 +213,6 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     }
 
     lines
-}
-
-fn estimate_visual_lines(lines: &[Line<'static>], content_width: usize) -> usize {
-    let mut total = 0usize;
-
-    for line in lines {
-        let line_width = line
-            .spans
-            .iter()
-            .map(|s| {
-                s.content
-                    .chars()
-                    .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
-                    .sum::<usize>()
-            })
-            .sum::<usize>();
-        let wrapped = (line_width.max(1) + content_width - 1) / content_width;
-        total += wrapped.max(1);
-    }
-
-    total
 }
 
 fn render_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
