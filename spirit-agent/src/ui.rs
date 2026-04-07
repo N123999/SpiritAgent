@@ -9,8 +9,8 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use std::{cell::RefCell, collections::HashMap};
-use unicode_width::UnicodeWidthChar;
+use std::{cell::RefCell, collections::HashMap, path::Path};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     conversation_select::flatten_wrapped_history,
@@ -41,6 +41,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_image_picker = app.image_picker_active;
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker;
+    let input_height = input_block_height(&app);
 
     let logo_h = conversation_logo_height(frame.area().height);
     let chunks = Layout::default()
@@ -49,7 +50,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             vec![
                 Constraint::Length(logo_h),
                 Constraint::Min(5),
-                Constraint::Length(3),
+                Constraint::Length(input_height),
                 Constraint::Length(7),
                 Constraint::Length(1),
             ]
@@ -57,7 +58,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             vec![
                 Constraint::Length(logo_h),
                 Constraint::Min(5),
-                Constraint::Length(3),
+                Constraint::Length(input_height),
                 Constraint::Length(5),
                 Constraint::Length(1),
             ]
@@ -65,7 +66,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             vec![
                 Constraint::Length(logo_h),
                 Constraint::Min(4),
-                Constraint::Length(3),
+                Constraint::Length(input_height),
                 Constraint::Length(1),
             ]
         })
@@ -131,9 +132,13 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         plain,
     );
 
-    let input = Paragraph::new(app.input.as_str())
+    let input_cursor_row = input_cursor_row(&app);
+    let input = Paragraph::new(build_input_lines(
+        &app,
+        chunks[2].width.saturating_sub(2) as usize,
+    ))
         .block(Block::default().borders(Borders::ALL).title("Input"))
-        .style(Style::default().fg(Color::Yellow));
+        .wrap(Wrap { trim: false });
     frame.render_widget(input, chunks[2]);
 
     if !show_picker {
@@ -147,7 +152,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             .sum::<usize>();
         let cursor_offset = cursor_visual_col.min(max_cursor_offset);
         let cursor_x = chunks[2].x + 1 + cursor_offset as u16;
-        let cursor_y = chunks[2].y + 1;
+        let cursor_y = chunks[2].y + 1 + input_cursor_row;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 
@@ -229,6 +234,123 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let help_idx = if show_suggestions { 4 } else { 3 };
     let help_idx = if show_picker { 4 } else { help_idx };
     frame.render_widget(help, chunks[help_idx]);
+}
+
+fn input_block_height(app: &TuiViewModel) -> u16 {
+    if app.pending_image_paths.is_empty() { 3 } else { 5 }
+}
+
+fn input_cursor_row(app: &TuiViewModel) -> u16 {
+    if app.pending_image_paths.is_empty() { 0 } else { 2 }
+}
+
+fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    if !app.pending_image_paths.is_empty() {
+        let count = app.pending_image_paths.len();
+        let summary = format!(
+            "Picked {} image{}  |  /image clear",
+            count,
+            if count == 1 { "" } else { "s" }
+        );
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(&summary, max_width),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(Span::styled(
+            summarize_pending_images(&app.pending_image_paths, max_width),
+            Style::default().fg(Color::Cyan),
+        )));
+    }
+
+    lines.push(Line::from(Span::styled(
+        app.input.clone(),
+        Style::default().fg(Color::White),
+    )));
+
+    lines
+}
+
+fn summarize_pending_images(paths: &[String], max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let mut parts = Vec::new();
+    for path in paths {
+        let name = file_name_for_display(path);
+        parts.push(format!("[img] {}", truncate_to_width(&name, 18)));
+    }
+
+    let mut line = String::new();
+    let mut remaining = parts.len();
+    for part in parts {
+        let candidate = if line.is_empty() {
+            part.clone()
+        } else {
+            format!("{}  {}", line, part)
+        };
+        if UnicodeWidthStr::width(candidate.as_str()) > max_width {
+            break;
+        }
+        line = candidate;
+        remaining = remaining.saturating_sub(1);
+    }
+
+    if line.is_empty() {
+        return truncate_to_width("[img] ...", max_width);
+    }
+
+    if remaining > 0 {
+        let suffix = format!("  +{}", remaining);
+        let combined = format!("{}{}", line, suffix);
+        if UnicodeWidthStr::width(combined.as_str()) <= max_width {
+            combined
+        } else {
+            truncate_to_width(&line, max_width)
+        }
+    } else {
+        line
+    }
+}
+
+fn file_name_for_display(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn truncate_to_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let text_width = UnicodeWidthStr::width(text);
+    if text_width <= max_width {
+        return text.to_string();
+    }
+
+    if max_width == 1 {
+        return "…".to_string();
+    }
+
+    let mut out = String::new();
+    let mut used = 0usize;
+    for ch in text.chars() {
+        let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used + width + 1 > max_width {
+            break;
+        }
+        out.push(ch);
+        used += width;
+    }
+    out.push('…');
+    out
 }
 
 fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {

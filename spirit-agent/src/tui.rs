@@ -186,6 +186,7 @@ impl TuiShell {
         TuiViewModel {
             input: self.input.clone(),
             input_cursor: self.input_cursor,
+            pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
             messages: self.messages.clone(),
             config: self.runtime.config().clone(),
             show_aux_details: self.show_aux_details,
