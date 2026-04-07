@@ -209,8 +209,6 @@ fn apply_tool_agent_assistant_message(
     if let Some(arr) = message.get("tool_calls").and_then(Value::as_array)
         && let Some(first) = arr.first()
     {
-        state.messages.push(message.clone());
-
         let id = first
             .get("id")
             .and_then(Value::as_str)
@@ -227,7 +225,10 @@ fn apply_tool_agent_assistant_message(
             .unwrap_or("{}")
             .to_string();
 
-        if is_redundant_lookup_call(&state.messages, &name, &arguments) {
+        let is_redundant = is_redundant_lookup_call(&state.messages, &name, &arguments);
+        state.messages.push(message.clone());
+
+        if is_redundant {
             append_redundant_lookup_result(&mut *state, &id);
             return Ok(ToolAgentStep::FinalResponseReady);
         }
@@ -1278,6 +1279,55 @@ mod tests {
                 .get("tool_call_id")
                 .and_then(Value::as_str),
             Some("call_new")
+        );
+    }
+
+    #[test]
+    fn openai_non_redundant_tool_call_is_recorded_and_returned() {
+        let mut state = ToolAgentState {
+            messages: vec![json!({"role": "system", "content": "你是 SpiritAgent 代理。"})],
+            steps: 0,
+        };
+
+        let step = apply_tool_agent_assistant_message(
+            &mut state,
+            json!({
+                "role": "assistant",
+                "content": "我先读一下这个文件。",
+                "tool_calls": [
+                    {
+                        "id": "call_openai",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"summary.md\"}",
+                        }
+                    }
+                ]
+            }),
+        )
+        .expect("openai style tool call should parse");
+
+        match step {
+            ToolAgentStep::ToolCall(call) => {
+                assert_eq!(call.id, "call_openai");
+                assert_eq!(call.name, "read_file");
+                assert_eq!(call.arguments, "{\"path\":\"summary.md\"}");
+            }
+            ToolAgentStep::FinalResponseReady => {
+                panic!("non-redundant openai tool call should not be treated as redundant");
+            }
+        }
+
+        assert_eq!(state.messages.len(), 2);
+        assert_eq!(
+            state.messages[1]
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .and_then(|calls| calls.first())
+                .and_then(|call| call.get("id"))
+                .and_then(Value::as_str),
+            Some("call_openai")
         );
     }
 }
