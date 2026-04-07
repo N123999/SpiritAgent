@@ -12,6 +12,7 @@ use std::{
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
 const MAX_COMMAND_OUTPUT_CHARS: usize = 16_000;
 const MAX_SEARCH_RESULTS: usize = 80;
+const MAX_SEARCH_MATCHES_PER_FILE: usize = 3;
 const MAX_SEARCH_FILE_BYTES: u64 = 1_000_000;
 const MAX_READ_LINES_DEFAULT: usize = 200;
 
@@ -575,6 +576,7 @@ impl ToolRuntime {
 
         let needle_lower = needle.to_lowercase();
         let mut files = BTreeSet::new();
+        let mut hits = Vec::new();
         let mut stack = vec![self.workspace_root.clone()];
 
         while let Some(dir) = stack.pop() {
@@ -612,20 +614,35 @@ impl ToolRuntime {
                     Err(_) => continue,
                 };
 
-                for line in text.lines() {
+                let rel = path.strip_prefix(&self.workspace_root).unwrap_or(&path);
+                let rel_display = rel.display().to_string();
+                let mut file_match_count = 0usize;
+                for (line_idx, line) in text.lines().enumerate() {
                     if line.to_lowercase().contains(&needle_lower) {
-                        let rel = path.strip_prefix(&self.workspace_root).unwrap_or(&path);
-                        files.insert(rel.display().to_string());
-                        break;
+                        files.insert(rel_display.clone());
+                        if hits.len() < MAX_SEARCH_RESULTS
+                            && file_match_count < MAX_SEARCH_MATCHES_PER_FILE
+                        {
+                            hits.push(format!(
+                                "{}:{} | {}",
+                                rel_display,
+                                line_idx + 1,
+                                truncate_chars(line.trim(), 180)
+                            ));
+                        }
+                        file_match_count += 1;
+                        if file_match_count >= MAX_SEARCH_MATCHES_PER_FILE {
+                            break;
+                        }
                     }
                 }
 
-                if files.len() >= MAX_SEARCH_RESULTS {
+                if hits.len() >= MAX_SEARCH_RESULTS {
                     break;
                 }
             }
 
-            if files.len() >= MAX_SEARCH_RESULTS {
+            if hits.len() >= MAX_SEARCH_RESULTS {
                 break;
             }
         }
@@ -634,7 +651,11 @@ impl ToolRuntime {
             return Ok(format!("[tool] 搜索: {}\n未搜索到文件", query));
         }
 
-        let mut out = format!("[tool] 搜索: {}\n搜索到文件\n", query);
+        let mut out = format!("[tool] 搜索: {}\n命中片段\n", query);
+        for hit in &hits {
+            out.push_str(&format!("{}\n", hit));
+        }
+        out.push_str("\n涉及文件\n");
         for file in files {
             out.push_str(&format!("{}\n", file));
         }
