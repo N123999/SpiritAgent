@@ -19,6 +19,8 @@ use crate::{
 };
 
 const MAX_RENDERED_MESSAGES: usize = 180;
+const SLASH_SUGGESTION_VISIBLE_ITEMS: usize = 10;
+const SLASH_SUGGESTION_BLOCK_HEIGHT: u16 = 12;
 const SPIRIT_LOGO_LINES: [&str; 6] = [
     " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
     " ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝",
@@ -54,18 +56,21 @@ fn conversation_logo_width(available_width: u16) -> u16 {
 }
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
-    let root_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
-        .split(frame.area());
-    let content_area = root_chunks[0];
-
     let app = shell.view_model();
     let show_model_picker = app.model_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker;
+    let root_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(if show_suggestions {
+            vec![Constraint::Min(0)]
+        } else {
+            vec![Constraint::Min(0), Constraint::Length(1)]
+        })
+        .split(frame.area());
+    let content_area = root_chunks[0];
     let input_inner_width = content_area.width.saturating_sub(2) as usize;
     let input_height = input_block_height(&app, input_inner_width);
 
@@ -85,8 +90,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Constraint::Length(logo_h),
                 Constraint::Min(5),
                 Constraint::Length(input_height),
-                Constraint::Length(5),
-                Constraint::Length(1),
+                Constraint::Length(SLASH_SUGGESTION_BLOCK_HEIGHT),
             ]
         } else {
             vec![
@@ -190,7 +194,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[3]);
     } else if show_suggestions {
-        let suggestions = build_suggestion_lines(&app, 3);
+        let suggestions = build_suggestion_lines(&app, SLASH_SUGGESTION_VISIBLE_ITEMS);
         let suggestions_widget = Paragraph::new(suggestions)
             .block(
                 Block::default()
@@ -201,15 +205,20 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         frame.render_widget(suggestions_widget, chunks[3]);
     }
 
-    let help_idx = if show_suggestions { 4 } else { 3 };
-    let help_idx = if show_picker { 4 } else { help_idx };
-    let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
-    frame.render_widget(footer, chunks[help_idx]);
-    frame.render_widget(Clear, root_chunks[1]);
+    if !show_suggestions {
+        let help_idx = if show_picker { 4 } else { 3 };
+        let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
+        frame.render_widget(footer, chunks[help_idx]);
+        frame.render_widget(Clear, root_chunks[1]);
+    }
+}
+
+fn subtle_aux_text_style() -> Style {
+    Style::default().fg(Color::Rgb(128, 128, 128))
 }
 
 fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
-    let footer_style = Style::default().fg(Color::Rgb(128, 128, 128));
+    let footer_style = subtle_aux_text_style();
     let left_label = "SpiritAgent Preview";
     let right_label = app.config.active_model.as_str();
     let side_padding = if width >= 12 {
@@ -895,12 +904,15 @@ fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
 }
 
 fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
+    let default_style = subtle_aux_text_style();
+    let selected_style = Style::default().fg(Color::White);
+
     if !app.input.starts_with('/') {
-        return vec![Line::from("输入 / 触发命令补全")];
+        return vec![Line::from(Span::styled("输入 / 触发命令补全", default_style))];
     }
 
     if app.slash_suggestions.is_empty() {
-        return vec![Line::from("没有匹配的命令")];
+        return vec![Line::from(Span::styled("没有匹配的命令", default_style))];
     }
 
     let selected = app.selected_suggestion;
@@ -917,19 +929,13 @@ fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'sta
     for idx in start..end {
         let cmd = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
-        let marker = if is_selected { "> " } else { "  " };
         let style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+            selected_style
         } else {
-            Style::default().fg(Color::White)
+            default_style
         };
 
-        lines.push(Line::from(Span::styled(
-            format!("{}{}", marker, cmd),
-            style,
-        )));
+        lines.push(Line::from(Span::styled(format!("  {}", cmd), style)));
     }
 
     lines
