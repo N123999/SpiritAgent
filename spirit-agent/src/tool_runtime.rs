@@ -342,13 +342,24 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "read_file",
-                    "description": "Read file contents. Files inside workspace are allowed directly, outside files may require user approval.",
+                    "description": "Read file contents. Files inside workspace are allowed directly, outside files may require user approval. Prefer reading larger chunks around 200 lines per call by default unless the user asked for a narrow range or you already know the exact lines you need.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "path": { "type": "string" },
-                            "start_line": { "type": "integer", "minimum": 1 },
-                            "end_line": { "type": "integer", "minimum": 1 }
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to read."
+                            },
+                            "start_line": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "1-based inclusive start line. When reading without an exact target, prefer broad windows such as 1, 201, 401 instead of tiny 50-line slices."
+                            },
+                            "end_line": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "1-based inclusive end line. If omitted, the tool returns up to about 200 lines from start_line by default; when choosing ranges yourself, prefer about 200 lines unless a narrower range is clearly needed."
+                            }
                         },
                         "required": ["path"],
                         "additionalProperties": false
