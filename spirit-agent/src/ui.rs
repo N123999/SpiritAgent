@@ -11,7 +11,7 @@ use ratatui::{
 use std::{cell::RefCell, collections::HashMap};
 use unicode_width::UnicodeWidthChar;
 
-use crate::{App, ChatMessage, MessageRole};
+use crate::view::{ChatMessage, MessageRole, TuiViewModel};
 
 const MAX_RENDERED_MESSAGES: usize = 180;
 
@@ -20,7 +20,7 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
+pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) {
     let show_model_picker = app.model_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
@@ -139,7 +139,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
     } else {
         Paragraph::new(Line::from(vec![
             Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(if app.pending_response.is_some() {
+            Span::raw(if app.pending_response_active {
                 " wait  |  "
             } else {
                 " send  |  "
@@ -165,7 +165,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(help, chunks[help_idx]);
 }
 
-fn build_history_lines(app: &App) -> Vec<Line<'static>> {
+fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let (visible_messages, skipped, start_index) = visible_messages(app);
 
@@ -472,7 +472,7 @@ impl MdBuilder {
     }
 }
 
-fn visible_messages(app: &App) -> (&[ChatMessage], usize, usize) {
+fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
     if app.messages.len() <= MAX_RENDERED_MESSAGES {
         return (&app.messages, 0, 0);
     }
@@ -481,7 +481,7 @@ fn visible_messages(app: &App) -> (&[ChatMessage], usize, usize) {
     (&app.messages[start..], start, start)
 }
 
-fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
+fn build_suggestion_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if !app.input.starts_with('/') {
         return vec![Line::from("输入 / 触发命令补全")];
     }
@@ -522,7 +522,7 @@ fn build_suggestion_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
     lines
 }
 
-fn build_model_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
+fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if app.config.models.is_empty() {
         return vec![Line::from(
             "暂无模型，先用 /model add <name> <api_base> <api_key> 添加",
@@ -566,7 +566,7 @@ fn build_model_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
     lines
 }
 
-fn build_chat_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
+fn build_chat_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if app.chat_picker_files.is_empty() {
         return vec![Line::from("暂无已保存对话")];
     }
@@ -601,7 +601,7 @@ fn build_chat_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
     lines
 }
 
-fn build_image_picker_lines(app: &App, max_items: usize) -> Vec<Line<'static>> {
+fn build_image_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if app.image_picker_files.is_empty() {
         return vec![Line::from("当前目录暂无可选图片")];
     }

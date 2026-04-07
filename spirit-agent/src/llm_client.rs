@@ -4,18 +4,14 @@ use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    env,
     fs,
     io::{BufRead, BufReader},
-    path::Path,
+    path::{Path, PathBuf},
     sync::mpsc::Sender,
 };
 
-use crate::logging;
-use crate::model_registry::{AppConfig, resolve_api_key_for_model};
+use crate::ports::Telemetry;
 
-const ENV_API_KEY: &str = "SPIRIT_API_KEY";
-const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
 /// 测试用极简 system（工具 schema 仍随请求下发）。
@@ -27,6 +23,14 @@ pub struct LlmMessage {
     pub role: &'static str,
     pub content: String,
     pub image_paths: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct ResolvedLlmConfig {
+    pub model: String,
+    pub api_base: String,
+    pub api_key: String,
+    pub workspace_root: PathBuf,
 }
 
 pub enum StreamEvent {
@@ -88,6 +92,7 @@ pub fn start_tool_agent_state(
     history: &[LlmMessage],
     user_input: &str,
     tools: &Value,
+    asset_root: &Path,
 ) -> ToolAgentState {
     let system_text =
         format!("{}{}", TOOL_AGENT_SYSTEM_PROMPT, tool_names_block_for_system_prompt(tools));
@@ -96,7 +101,7 @@ pub fn start_tool_agent_state(
         "content": system_text
     })];
 
-    messages.extend(history.iter().map(llm_message_to_json));
+    messages.extend(history.iter().map(|msg| llm_message_to_json(msg, asset_root)));
 
     let need_append_user = messages
         .last()
@@ -119,7 +124,7 @@ pub fn append_tool_result_message(state: &mut ToolAgentState, tool_call_id: &str
 }
 
 /// 供 `/log` 导出：两条固定 system 文案（与各请求里 `messages` 中 system 一致）。
-pub(crate) fn llm_system_prompts_for_export() -> Value {
+pub fn llm_system_prompts_for_export() -> Value {
     json!({
         "tool_agent": TOOL_AGENT_SYSTEM_PROMPT,
         "final_response": FINAL_RESPONSE_SYSTEM_PROMPT,
@@ -303,36 +308,22 @@ fn build_assistant_message_from_stream_buffers(
 
 /// 工具代理单轮：**一次** `stream=true` 的 chat/completions（含 tools），真实 SSE 输出到 `stream_tx`。
 pub fn stream_tool_agent_round(
-    cfg: &AppConfig,
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
     state: &mut ToolAgentState,
     tools: &Value,
     stream_tx: &Sender<StreamEvent>,
     request_trace: Option<&mut Vec<Value>>,
 ) -> Result<ToolAgentStep> {
     state.steps = state.steps.saturating_add(1);
-
-    let active = cfg
-        .active_model_profile()
-        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
-
-    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
-        format!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
-            active.name,
-            active.name,
-            ENV_API_KEY
-        )
-    })?;
-
-    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let url = format!("{}/chat/completions", cfg.api_base.trim_end_matches('/'));
 
     if let Some(t) = request_trace {
         t.push(json!({
             "kind": "tool_agent_chat_completions",
             "step_index": state.steps,
             "stream": true,
-            "model": active.name,
+            "model": cfg.model,
             "temperature": 0.2,
             "tool_choice": "auto",
             "messages": state.messages.clone(),
@@ -341,16 +332,16 @@ pub fn stream_tool_agent_round(
     }
 
     let stats = image_payload_stats(&state.messages);
-    logging::log_event(&format!(
+    telemetry.log_event(&format!(
         "tool_agent stream: model={} url={} messages={} image_parts={}",
-        active.name,
+        cfg.model,
         truncate_chars(&url, 160),
         state.messages.len(),
         stats.total_image_parts,
     ));
 
     let payload = json!({
-        "model": active.name,
+        "model": cfg.model,
         "messages": &state.messages,
         "stream": true,
         "tools": tools,
@@ -358,15 +349,15 @@ pub fn stream_tool_agent_round(
         "temperature": 0.2
     });
 
-    logging::log_json_http_body("POST_chat_completions_tool_agent_stream", &payload);
+    telemetry.log_json_http_body("POST_chat_completions_tool_agent_stream", &payload);
 
     let client = Client::new();
     let resp = client
         .post(&url)
-        .bearer_auth(api_key)
+        .bearer_auth(&cfg.api_key)
         .json(&payload)
         .send()
-        .map_err(|err| request_send_error("工具流式请求", &url, &err))?;
+        .map_err(|err| request_send_error("工具流式请求", &url, telemetry, &err))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -471,12 +462,13 @@ pub fn stream_tool_agent_round(
 }
 
 pub fn stream_openai_compatible(
-    cfg: &AppConfig,
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
     history: &[LlmMessage],
     user_input: &str,
     tx: &Sender<StreamEvent>,
 ) {
-    let result = stream_openai_compatible_inner(cfg, history, user_input, tx);
+    let result = stream_openai_compatible_inner(cfg, telemetry, history, user_input, tx);
     if let Err(err) = result {
         let _ = tx.send(StreamEvent::Error(err.to_string()));
     }
@@ -488,7 +480,11 @@ pub struct CompactResult {
     pub after_len: usize,
 }
 
-pub fn compact_history_manual(cfg: &AppConfig, history: &mut Vec<LlmMessage>) -> Result<CompactResult> {
+pub fn compact_history_manual(
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
+    history: &mut Vec<LlmMessage>,
+) -> Result<CompactResult> {
     let before = history.len();
     if history.is_empty() {
         return Ok(CompactResult {
@@ -514,7 +510,8 @@ pub fn compact_history_manual(cfg: &AppConfig, history: &mut Vec<LlmMessage>) ->
         });
     }
 
-    let merged_summary = summarize_messages(cfg, existing_summary.as_deref(), &all_non_summary)
+    let merged_summary =
+        summarize_messages(cfg, telemetry, existing_summary.as_deref(), &all_non_summary)
         .context("手动压缩失败：无法生成摘要")?;
 
     let compacted = vec![compact_summary_message(merged_summary)];
@@ -533,7 +530,8 @@ pub fn compact_summary_text(history: &[LlmMessage]) -> Option<String> {
 }
 
 fn stream_openai_compatible_inner(
-    cfg: &AppConfig,
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
     history: &[LlmMessage],
     user_input: &str,
     tx: &Sender<StreamEvent>,
@@ -542,7 +540,7 @@ fn stream_openai_compatible_inner(
     let mut compact_round = 0usize;
 
     loop {
-        match stream_once(cfg, &working_history, user_input, tx) {
+        match stream_once(cfg, telemetry, &working_history, user_input, tx) {
             Ok(()) => {
                 let _ = tx.send(StreamEvent::Done);
                 return Ok(());
@@ -561,7 +559,7 @@ fn stream_openai_compatible_inner(
                     ));
                 }
 
-                let dropped = compact_oldest_once(cfg, &mut working_history)
+                let dropped = compact_oldest_once(cfg, telemetry, &mut working_history)
                     .with_context(|| format!("第 {} 轮自动压缩失败", compact_round))?;
                 if dropped == 0 {
                     return Err(anyhow!(
@@ -580,35 +578,22 @@ fn stream_openai_compatible_inner(
 }
 
 fn stream_once(
-    cfg: &AppConfig,
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
     history: &[LlmMessage],
     user_input: &str,
     tx: &Sender<StreamEvent>,
 ) -> Result<()> {
-    let active = cfg
-        .active_model_profile()
-        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
-
-    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
-        format!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
-            active.name,
-            active.name,
-            ENV_API_KEY
-        )
-    })?;
-
-    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
-    let payload = chat_payload(&active.name, history, user_input, true);
+    let url = format!("{}/chat/completions", cfg.api_base.trim_end_matches('/'));
+    let payload = chat_payload(&cfg.model, &cfg.workspace_root, history, user_input, true);
 
     let client = Client::new();
     let resp = client
         .post(&url)
-        .bearer_auth(api_key)
+        .bearer_auth(&cfg.api_key)
         .json(&payload)
         .send()
-        .map_err(|err| request_send_error("流式请求", &url, &err))?;
+        .map_err(|err| request_send_error("流式请求", &url, telemetry, &err))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -694,7 +679,11 @@ fn stream_once(
     Ok(())
 }
 
-fn compact_oldest_once(cfg: &AppConfig, history: &mut Vec<LlmMessage>) -> Result<usize> {
+fn compact_oldest_once(
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
+    history: &mut Vec<LlmMessage>,
+) -> Result<usize> {
     let existing_summary = extract_compact_summary(history);
     let all_non_summary = history
         .iter()
@@ -704,7 +693,8 @@ fn compact_oldest_once(cfg: &AppConfig, history: &mut Vec<LlmMessage>) -> Result
         .collect::<Vec<_>>();
 
     if !all_non_summary.is_empty() {
-        let merged_summary = summarize_messages(cfg, existing_summary.as_deref(), &all_non_summary)
+        let merged_summary =
+            summarize_messages(cfg, telemetry, existing_summary.as_deref(), &all_non_summary)
             .context("自动压缩失败：摘要模型调用失败")?;
         *history = vec![compact_summary_message(merged_summary)];
         return Ok(all_non_summary.len());
@@ -724,25 +714,12 @@ fn compact_oldest_once(cfg: &AppConfig, history: &mut Vec<LlmMessage>) -> Result
 }
 
 fn summarize_messages(
-    cfg: &AppConfig,
+    cfg: &ResolvedLlmConfig,
+    telemetry: &dyn Telemetry,
     existing_summary: Option<&str>,
     msgs_to_merge: &[LlmMessage],
 ) -> Result<String> {
-    let active = cfg
-        .active_model_profile()
-        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
-
-    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
-        format!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
-            active.name,
-            active.name,
-            ENV_API_KEY
-        )
-    })?;
-
-    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let url = format!("{}/chat/completions", cfg.api_base.trim_end_matches('/'));
 
     let existing_part = existing_summary
         .map(|s| truncate_chars(s, 6000))
@@ -761,7 +738,7 @@ fn summarize_messages(
     );
 
     let payload = json!({
-        "model": active.name,
+        "model": cfg.model,
         "messages": [
             {"role": "system", "content": "你是严谨的上下文压缩助手。"},
             {"role": "user", "content": compact_prompt}
@@ -773,10 +750,10 @@ fn summarize_messages(
     let client = Client::new();
     let resp = client
         .post(&url)
-        .bearer_auth(api_key)
+        .bearer_auth(&cfg.api_key)
         .json(&payload)
         .send()
-        .map_err(|err| request_send_error("压缩请求", &url, &err))?;
+        .map_err(|err| request_send_error("压缩请求", &url, telemetry, &err))?;
 
     let status = resp.status();
     let body = resp.text().context("读取压缩响应失败")?;
@@ -795,8 +772,17 @@ fn summarize_messages(
     Ok(summary.to_string())
 }
 
-fn chat_payload(model: &str, history: &[LlmMessage], user_input: &str, stream: bool) -> Value {
-    let mut messages = history.iter().map(llm_message_to_json).collect::<Vec<_>>();
+fn chat_payload(
+    model: &str,
+    asset_root: &Path,
+    history: &[LlmMessage],
+    user_input: &str,
+    stream: bool,
+) -> Value {
+    let mut messages = history
+        .iter()
+        .map(|msg| llm_message_to_json(msg, asset_root))
+        .collect::<Vec<_>>();
 
     if messages.is_empty()
         || messages
@@ -843,25 +829,22 @@ fn is_compact_summary_message(msg: &LlmMessage) -> bool {
 
 /// 将当前会话的 `llm_history` 转为与发往 LLM 的工具轮请求中「历史部分」一致的
 /// OpenAI Chat `messages` 元素（由 `llm_message_to_json` 生成；多模态用户消息含 data URL）。
-pub(crate) fn llm_history_as_api_messages(history: &[LlmMessage]) -> Vec<Value> {
-    history.iter().map(llm_message_to_json).collect()
+pub fn llm_history_as_api_messages(history: &[LlmMessage], asset_root: &Path) -> Vec<Value> {
+    history
+        .iter()
+        .map(|msg| llm_message_to_json(msg, asset_root))
+        .collect()
 }
 
-fn llm_message_to_json(msg: &LlmMessage) -> Value {
+fn llm_message_to_json(msg: &LlmMessage, asset_root: &Path) -> Value {
     if msg.role == "user" && !msg.image_paths.is_empty() {
-        logging::log_event(&format!(
-            "building multimodal payload: role=user images={} text_chars={}",
-            msg.image_paths.len(),
-            msg.content.chars().count()
-        ));
-
         let mut parts = Vec::new();
         if !msg.content.trim().is_empty() {
             parts.push(json!({ "type": "text", "text": msg.content }));
         }
 
         for path in &msg.image_paths {
-            let image_url = path_to_image_url(path);
+            let image_url = path_to_image_url(path, asset_root);
             parts.push(json!({
                 "type": "image_url",
                 "image_url": { "url": image_url }
@@ -878,23 +861,17 @@ fn llm_message_to_json(msg: &LlmMessage) -> Value {
     json!({ "role": msg.role, "content": msg.content })
 }
 
-fn path_to_image_url(path: &str) -> String {
+fn path_to_image_url(path: &str, asset_root: &Path) -> String {
     let normalized = path.trim();
     if normalized.starts_with("http://") || normalized.starts_with("https://") {
-        logging::log_event(&format!("image source passthrough: {}", truncate_chars(normalized, 180)));
         return normalized.to_string();
     }
 
     if normalized.starts_with("data:") {
-        logging::log_event(&format!("image source already data URL: {}", truncate_chars(normalized, 80)));
         return normalized.to_string();
     }
 
     if normalized.starts_with("file://") {
-        logging::log_event(&format!(
-            "image source is file:// URI (passthrough): {}",
-            truncate_chars(normalized, 180)
-        ));
         return normalized.to_string();
     }
 
@@ -902,39 +879,17 @@ fn path_to_image_url(path: &str) -> String {
     let abs = if base.is_absolute() {
         base.to_path_buf()
     } else {
-        env::current_dir()
-            .map(|cwd| cwd.join(base))
-            .unwrap_or_else(|_| base.to_path_buf())
+        asset_root.join(base)
     };
 
-    let abs_display = abs.to_string_lossy().to_string();
     let mime = guess_image_mime_from_path(&abs);
 
     match fs::read(&abs) {
         Ok(bytes) => {
             let encoded = BASE64_STANDARD.encode(&bytes);
-            let prefix = bytes_prefix_hex(&bytes, 12);
-            logging::log_event(&format!(
-                "image encode ok: path={} mime={} bytes={} b64_chars={} header_hex={}",
-                truncate_chars(&abs_display, 220),
-                mime,
-                bytes.len(),
-                encoded.len(),
-                prefix
-            ));
             format!("data:{};base64,{}", mime, encoded)
         }
-        Err(err) => {
-            let fallback = to_file_url(&abs);
-            logging::log_event(&format!(
-                "image encode failed: path={} mime={} err={} -> fallback={}",
-                truncate_chars(&abs_display, 220),
-                mime,
-                err,
-                truncate_chars(&fallback, 180)
-            ));
-            fallback
-        }
+        Err(_) => to_file_url(&abs),
     }
 }
 
@@ -961,14 +916,6 @@ fn guess_image_mime_from_path(path: &Path) -> &'static str {
         Some("bmp") => "image/bmp",
         _ => "application/octet-stream",
     }
-}
-
-fn bytes_prefix_hex(bytes: &[u8], max_len: usize) -> String {
-    let mut out = String::new();
-    for b in bytes.iter().take(max_len) {
-        out.push_str(&format!("{:02X}", b));
-    }
-    out
 }
 
 #[derive(Default)]
@@ -1017,7 +964,12 @@ fn image_payload_stats(messages: &[Value]) -> ImagePayloadStats {
     stats
 }
 
-fn request_send_error(stage: &str, url: &str, err: &reqwest::Error) -> anyhow::Error {
+fn request_send_error(
+    stage: &str,
+    url: &str,
+    telemetry: &dyn Telemetry,
+    err: &reqwest::Error,
+) -> anyhow::Error {
     let kind = if err.is_timeout() {
         "timeout"
     } else if err.is_connect() {
@@ -1039,7 +991,7 @@ fn request_send_error(stage: &str, url: &str, err: &reqwest::Error) -> anyhow::E
         kind,
         truncate_chars(&err.to_string(), 500)
     );
-    logging::log_event(&format!("{}", message));
+    telemetry.log_event(&message);
     anyhow!(message)
 }
 
