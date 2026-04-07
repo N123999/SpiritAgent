@@ -3,6 +3,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     env,
     fs,
     io::{BufRead, BufReader},
@@ -17,8 +18,9 @@ const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
-const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的工具调用代理。你可以通过 function calling 使用工具: run_shell_command, read_file, search_files, create_file, update_file, delete_file。规则: 1) 默认先直接回答用户；只有在用户明确要求执行操作、或缺少关键事实而无法可靠回答时，才调用工具。2) 对于解释、方案讨论、代码理解、头脑风暴这类请求，未收到明确执行请求时不要调用工具。3) 需要获取事实时优先使用 read_file/search_files，不要编造。4) create_file/update_file/delete_file 与 run_shell_command 都属于高风险操作，用户可能拒绝；被拒绝后要继续给出非工具方案。5) search_files 仅允许工作目录内搜索；文件写操作也仅允许工作目录内文件。6) update_file 必须提供精确 old_text 与 new_text，只做一次片段替换；禁止把整文件重写为摘要或局部内容。7) 修改文件前应先 read_file 确认目标片段并尽量保持改动最小。8) 严禁反复读取同一文件的小片段；读到能回答或能改动时应立即停止工具调用并给出结论或执行变更。9) 输出要简洁、可执行。";
-const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 SpiritAgent 的最终回答助手。请基于现有对话、工具结果和已确认事实，直接给用户一个自然语言答案。不要调用工具，不要输出任何 DSML/function_call/tool_calls/XML 风格标记，也不要暴露内部推理或工具协议。若前面工具已经拿到结果，就直接总结给用户。";
+/// 测试用极简 system（工具 schema 仍随请求下发）。
+const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 代理。";
+const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 SpiritAgent 代理。";
 
 #[derive(Clone)]
 pub struct LlmMessage {
@@ -55,10 +57,43 @@ pub struct ToolAgentState {
     pub steps: usize,
 }
 
-pub fn start_tool_agent_state(history: &[LlmMessage], user_input: &str) -> ToolAgentState {
+/// 把当前请求的 `tools` 里的 **function.name** 写进 system 正文，避免模型只在「JSON 并列字段」里看到 tools、
+/// 却在自然语言里编造「联网搜索」等与 schema 无关的能力（provider/模型侧对 tools 的接地不一致时尤其明显）。
+fn tool_names_block_for_system_prompt(tools: &Value) -> String {
+    let Some(arr) = tools.as_array() else {
+        return String::new();
+    };
+    let names: Vec<&str> = arr
+        .iter()
+        .filter_map(|t| {
+            t.get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(Value::as_str)
+        })
+        .collect();
+    if names.is_empty() {
+        return String::new();
+    }
+    let bullets = names
+        .iter()
+        .map(|n| format!("- `{}`", n))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "\n\n本回合 API 已注册的 function 名称如下（仅能通过 function calling 按名调用；**禁止**在回复中捏造其它工具名或未提供的能力，例如「联网搜索」「上传 PDF」等）：\n{bullets}"
+    )
+}
+
+pub fn start_tool_agent_state(
+    history: &[LlmMessage],
+    user_input: &str,
+    tools: &Value,
+) -> ToolAgentState {
+    let system_text =
+        format!("{}{}", TOOL_AGENT_SYSTEM_PROMPT, tool_names_block_for_system_prompt(tools));
     let mut messages = vec![json!({
         "role": "system",
-        "content": TOOL_AGENT_SYSTEM_PROMPT
+        "content": system_text
     })];
 
     messages.extend(history.iter().map(llm_message_to_json));
@@ -91,95 +126,73 @@ pub(crate) fn llm_system_prompts_for_export() -> Value {
     })
 }
 
-pub fn prepare_messages_for_final_response(messages: &[Value]) -> Vec<Value> {
-    let mut prepared = messages.to_vec();
-
-    if let Some(first) = prepared.first_mut()
-        && first.get("role").and_then(Value::as_str) == Some("system")
-    {
-        *first = json!({
-            "role": "system",
-            "content": FINAL_RESPONSE_SYSTEM_PROMPT
-        });
-        return prepared;
-    }
-
-    prepared.insert(
-        0,
-        json!({
-            "role": "system",
-            "content": FINAL_RESPONSE_SYSTEM_PROMPT
-        }),
-    );
-    prepared
+#[derive(Default)]
+struct ToolCallStreamAccumulator {
+    /// OpenAI 流式 tool_calls 按 index 槽位合并
+    slots: BTreeMap<u64, serde_json::Map<String, Value>>,
 }
 
-pub fn tool_agent_next_step(
-    cfg: &AppConfig,
+impl ToolCallStreamAccumulator {
+    fn apply_deltas(&mut self, deltas: &[Value]) {
+        for part in deltas {
+            let idx = part.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
+            let slot = self.slots.entry(idx).or_default();
+            if let Some(id) = part.get("id").and_then(Value::as_str) {
+                slot.insert("id".to_string(), json!(id));
+            }
+            if let Some(t) = part.get("type").and_then(Value::as_str) {
+                slot.insert("type".to_string(), json!(t));
+            }
+            if let Some(df) = part.get("function").and_then(|v| v.as_object()) {
+                let func = slot
+                    .entry("function".to_string())
+                    .or_insert_with(|| json!({}))
+                    .as_object_mut()
+                    .expect("function map");
+                if let Some(name) = df.get("name").and_then(Value::as_str) {
+                    func.insert("name".to_string(), json!(name));
+                }
+                if let Some(Value::String(piece)) = df.get("arguments") {
+                    let cur = func
+                        .get("arguments")
+                        .and_then(|a| a.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    func.insert(
+                        "arguments".to_string(),
+                        Value::String(format!("{cur}{piece}")),
+                    );
+                } else if let Some(arg) = df.get("arguments") {
+                    func.insert("arguments".to_string(), arg.clone());
+                }
+            }
+        }
+    }
+
+    fn as_tool_calls_array(&self) -> Option<Vec<Value>> {
+        if self.slots.is_empty() {
+            return None;
+        }
+        let mut out: Vec<(u64, Value)> = self
+            .slots
+            .iter()
+            .map(|(i, m)| (*i, Value::Object(m.clone())))
+            .collect();
+        out.sort_by_key(|(i, _)| *i);
+        let arr: Vec<Value> = out.into_iter().map(|(_, v)| v).collect();
+        if arr.is_empty() {
+            None
+        } else {
+            Some(arr)
+        }
+    }
+}
+
+/// 将一轮 chat/completions 的 assistant `message` 并入 state，并解析下一步（工具 / 结束）。
+fn apply_tool_agent_assistant_message(
     state: &mut ToolAgentState,
-    tools: &Value,
-    request_trace: Option<&mut Vec<Value>>,
+    message: Value,
 ) -> Result<ToolAgentStep> {
-    state.steps = state.steps.saturating_add(1);
-
-    let active = cfg
-        .active_model_profile()
-        .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
-
-    let api_key = resolve_api_key_for_model(&active.name).with_context(|| {
-        format!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
-            active.name,
-            active.name,
-            ENV_API_KEY
-        )
-    })?;
-
-    let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
-
-    if let Some(t) = request_trace {
-        t.push(json!({
-            "kind": "tool_agent_chat_completions",
-            "step_index": state.steps,
-            "stream": false,
-            "model": active.name,
-            "temperature": 0.2,
-            "tool_choice": "auto",
-            "messages": state.messages.clone(),
-            "tools": tools.clone(),
-        }));
-    }
-
-    let payload = json!({
-        "model": active.name,
-        "messages": state.messages,
-        "stream": false,
-        "tools": tools,
-        "tool_choice": "auto",
-        "temperature": 0.2
-    });
-
-    let client = Client::new();
-    let resp = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&payload)
-        .send()
-        .map_err(|err| request_send_error("工具调用请求", &url, &err))?;
-
-    let status = resp.status();
-    let body = resp.text().context("读取工具调用响应失败")?;
-    if !status.is_success() {
-        return Err(anyhow!("HTTP {}: {}", status, body));
-    }
-
-    let v: Value = serde_json::from_str(&body).context("解析工具调用响应 JSON 失败")?;
-    let message = v
-        .pointer("/choices/0/message")
-        .cloned()
-        .ok_or_else(|| anyhow!("响应缺少 choices[0].message"))?;
-
     if let Some(arr) = message.get("tool_calls").and_then(Value::as_array)
         && let Some(first) = arr.first()
     {
@@ -227,9 +240,6 @@ pub fn tool_agent_next_step(
             return Ok(ToolAgentStep::FinalResponseReady);
         }
 
-        // Some providers emit function calls inside text tags instead of tool_calls.
-        // Convert them into a canonical assistant tool_call message to keep follow-up tool
-        // result messages valid in the chat history.
         state.messages.push(json!({
             "role": "assistant",
             "content": Value::Null,
@@ -247,25 +257,60 @@ pub fn tool_agent_next_step(
         return Ok(ToolAgentStep::ToolCall(dsml_call));
     }
 
+    let has_tool_calls = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .map(|a| !a.is_empty())
+        .unwrap_or(false);
+    if !has_tool_calls {
+        if let Some(Value::String(s)) = message.get("content") {
+            if !s.trim().is_empty() {
+                state.messages.push(message);
+                return Ok(ToolAgentStep::FinalResponseReady);
+            }
+        }
+    }
+
     Ok(ToolAgentStep::FinalResponseReady)
 }
 
-pub fn stream_assistant_from_messages(
-    cfg: &AppConfig,
-    messages: &[Value],
-    tx: &Sender<StreamEvent>,
-) {
-    let result = stream_assistant_from_messages_inner(cfg, messages, tx);
-    if let Err(err) = result {
-        let _ = tx.send(StreamEvent::Error(err.to_string()));
+fn build_assistant_message_from_stream_buffers(
+    content_buf: &str,
+    tool_acc: &ToolCallStreamAccumulator,
+) -> Result<Value> {
+    if let Some(tc) = tool_acc.as_tool_calls_array() {
+        let content_val = if content_buf.trim().is_empty() {
+            Value::Null
+        } else {
+            Value::String(content_buf.to_string())
+        };
+        return Ok(json!({
+            "role": "assistant",
+            "content": content_val,
+            "tool_calls": tc,
+        }));
     }
+    if !content_buf.trim().is_empty() {
+        return Ok(json!({
+            "role": "assistant",
+            "content": content_buf,
+        }));
+    }
+    Err(anyhow!(
+        "流式响应结束：无文本片段且无 tool_calls，无法继续本轮"
+    ))
 }
 
-fn stream_assistant_from_messages_inner(
+/// 工具代理单轮：**一次** `stream=true` 的 chat/completions（含 tools），真实 SSE 输出到 `stream_tx`。
+pub fn stream_tool_agent_round(
     cfg: &AppConfig,
-    messages: &[Value],
-    tx: &Sender<StreamEvent>,
-) -> Result<()> {
+    state: &mut ToolAgentState,
+    tools: &Value,
+    stream_tx: &Sender<StreamEvent>,
+    request_trace: Option<&mut Vec<Value>>,
+) -> Result<ToolAgentStep> {
+    state.steps = state.steps.saturating_add(1);
+
     let active = cfg
         .active_model_profile()
         .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
@@ -281,25 +326,39 @@ fn stream_assistant_from_messages_inner(
 
     let base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
-    let stats = image_payload_stats(messages);
+
+    if let Some(t) = request_trace {
+        t.push(json!({
+            "kind": "tool_agent_chat_completions",
+            "step_index": state.steps,
+            "stream": true,
+            "model": active.name,
+            "temperature": 0.2,
+            "tool_choice": "auto",
+            "messages": state.messages.clone(),
+            "tools": tools.clone(),
+        }));
+    }
+
+    let stats = image_payload_stats(&state.messages);
     logging::log_event(&format!(
-        "stream request: model={} url={} messages={} image_parts={} data_urls={} file_urls={} http_urls={} max_image_url_chars={}",
+        "tool_agent stream: model={} url={} messages={} image_parts={}",
         active.name,
         truncate_chars(&url, 160),
-        messages.len(),
+        state.messages.len(),
         stats.total_image_parts,
-        stats.data_url_parts,
-        stats.file_url_parts,
-        stats.http_url_parts,
-        stats.max_image_url_chars
     ));
 
     let payload = json!({
         "model": active.name,
-        "messages": messages,
+        "messages": &state.messages,
         "stream": true,
-        "temperature": 0.2,
+        "tools": tools,
+        "tool_choice": "auto",
+        "temperature": 0.2
     });
+
+    logging::log_json_http_body("POST_chat_completions_tool_agent_stream", &payload);
 
     let client = Client::new();
     let resp = client
@@ -307,23 +366,21 @@ fn stream_assistant_from_messages_inner(
         .bearer_auth(api_key)
         .json(&payload)
         .send()
-        .map_err(|err| request_send_error("流式请求", &url, &err))?;
+        .map_err(|err| request_send_error("工具流式请求", &url, &err))?;
 
     let status = resp.status();
     if !status.is_success() {
         let body = resp.text().unwrap_or_else(|_| "<empty body>".to_string());
-        logging::log_event(&format!(
-            "stream http error: status={} body_preview={}",
-            status,
-            truncate_chars(&body, 600)
-        ));
         return Err(anyhow!("HTTP {}: {}", status, body));
     }
 
     let mut reader = BufReader::new(resp);
     let mut line = String::new();
-    let mut seen_chunk = false;
+    let mut content_buf = String::new();
+    let mut tool_acc = ToolCallStreamAccumulator::default();
+    let mut saw_model_output = false;
     let mut raw_preview: Vec<String> = Vec::new();
+    let mut last_finish_message: Option<Value> = None;
 
     loop {
         line.clear();
@@ -356,8 +413,16 @@ fn stream_assistant_from_messages_inner(
         if let Some(thinking) = extract_reasoning_delta(&v)
             && !thinking.is_empty()
         {
-            let _ = tx.send(StreamEvent::ThinkingChunk(thinking));
+            let _ = stream_tx.send(StreamEvent::ThinkingChunk(thinking));
             continue;
+        }
+
+        if let Some(tc_arr) = v
+            .pointer("/choices/0/delta/tool_calls")
+            .and_then(Value::as_array)
+        {
+            tool_acc.apply_deltas(tc_arr.as_slice());
+            saw_model_output = true;
         }
 
         if let Some(content) = v
@@ -365,41 +430,44 @@ fn stream_assistant_from_messages_inner(
             .and_then(Value::as_str)
         {
             if !content.is_empty() {
-                seen_chunk = true;
-                let _ = tx.send(StreamEvent::Chunk(content.to_string()));
+                saw_model_output = true;
+                content_buf.push_str(content);
+                let _ = stream_tx.send(StreamEvent::Chunk(content.to_string()));
             }
-            continue;
         }
 
-        if let Some(content) = v
-            .pointer("/choices/0/message/content")
-            .and_then(Value::as_str)
-        {
-            if !content.is_empty() {
-                seen_chunk = true;
-                let _ = tx.send(StreamEvent::Chunk(content.to_string()));
+        if let Some(msg) = v.pointer("/choices/0/message").cloned() {
+            let has_tc = msg.get("tool_calls").and_then(Value::as_array).map(|a| !a.is_empty()).unwrap_or(false);
+            let has_txt = msg
+                .get("content")
+                .and_then(|c| c.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if has_tc || has_txt {
+                last_finish_message = Some(msg);
+                saw_model_output = true;
             }
         }
     }
 
-    if !seen_chunk {
+    if !saw_model_output {
         let preview = if raw_preview.is_empty() {
             "<empty stream body>".to_string()
         } else {
             raw_preview.join("\n")
         };
-        logging::log_event(&format!(
-            "stream no text chunks: preview={} ",
-            truncate_chars(&preview, 600)
-        ));
         return Err(anyhow!(
-            "流式响应没有返回任何文本片段。原始响应预览:\n{}",
-            preview
+            "流式响应无任何 delta（无 content / tool_calls）。预览:\n{}",
+            truncate_chars(&preview, 600)
         ));
     }
 
-    let _ = tx.send(StreamEvent::Done);
-    Ok(())
+    let message = if let Some(m) = last_finish_message {
+        m
+    } else {
+        build_assistant_message_from_stream_buffers(&content_buf, &tool_acc)?
+    };
+    apply_tool_agent_assistant_message(state, message)
 }
 
 pub fn stream_openai_compatible(

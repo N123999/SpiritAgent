@@ -26,9 +26,8 @@ mod ui;
 use llm_client::{
     LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message,
     compact_history_manual, compact_summary_text, is_context_overflow_error,
-    llm_history_as_api_messages, llm_system_prompts_for_export, prepare_messages_for_final_response,
-    start_tool_agent_state, stream_assistant_from_messages, stream_openai_compatible,
-    tool_agent_next_step,
+    llm_history_as_api_messages, llm_system_prompts_for_export, start_tool_agent_state,
+    stream_openai_compatible, stream_tool_agent_round,
 };
 use model_registry::{
     AppConfig, DEFAULT_API_BASE, ModelProfile, config_file_path, has_model_api_key, keyring_entry,
@@ -744,7 +743,7 @@ impl App {
             content: text.clone(),
             image_paths: images,
         });
-        let state = start_tool_agent_state(&self.llm_history, &text);
+        let state = self.make_tool_agent_state(&text);
         self.start_tool_agent_step_async(state);
     }
 
@@ -835,38 +834,65 @@ impl App {
                         "已拒绝本次高风险工具调用，并将该输入作为新指令继续处理。".to_string(),
                 });
 
-                let state = start_tool_agent_state(&self.llm_history, message);
+                let state = self.make_tool_agent_state(message);
                 self.start_tool_agent_step_async(state);
             }
         }
     }
 
+    fn make_tool_agent_state(&self, user_input: &str) -> ToolAgentState {
+        let tools = ToolRuntime::tool_definitions_json();
+        start_tool_agent_state(&self.llm_history, user_input, &tools)
+    }
+
     fn start_tool_agent_step_async(&mut self, state: ToolAgentState) {
         let cfg = self.config.clone();
-        let (tx, rx) = mpsc::channel::<Result<ToolAgentStepResult, String>>();
+        let (stream_tx, stream_rx) = mpsc::channel::<StreamEvent>();
+        let (result_tx, result_rx) = mpsc::channel::<Result<ToolAgentStepResult, String>>();
+
         self.thinking_spinner_index = 0;
         self.thinking_text.clear();
+
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: String::new(),
+        });
+        self.pending_assistant_msg_index = Some(self.messages.len() - 1);
+        self.pending_response = Some(stream_rx);
+        self.pending_tool_agent_step = Some(result_rx);
+
+        let now = Instant::now();
+        self.pending_started_at = Some(now);
+        self.pending_last_event_at = Some(now);
+        self.stream_chunk_counter = 0;
 
         thread::spawn(move || {
             let mut state = state;
             let tools = ToolRuntime::tool_definitions_json();
             let mut request_trace = Vec::new();
-            let result = tool_agent_next_step(
+            let outcome = stream_tool_agent_round(
                 &cfg,
                 &mut state,
                 &tools,
+                &stream_tx,
                 Some(&mut request_trace),
-            )
-            .map(|step| ToolAgentStepResult {
-                state,
-                step,
-                request_trace,
-            })
-            .map_err(|e| e.to_string());
-            let _ = tx.send(result);
+            );
+            match outcome {
+                Ok(step) => {
+                    let _ = stream_tx.send(StreamEvent::Done);
+                    let _ = result_tx.send(Ok(ToolAgentStepResult {
+                        state,
+                        step,
+                        request_trace: request_trace,
+                    }));
+                }
+                Err(e) => {
+                    let _ = stream_tx.send(StreamEvent::Error(e.to_string()));
+                    let _ = stream_tx.send(StreamEvent::Done);
+                    let _ = result_tx.send(Err(e.to_string()));
+                }
+            }
         });
-
-        self.pending_tool_agent_step = Some(rx);
     }
 
     fn poll_pending_tool_agent_step(&mut self) {
@@ -884,7 +910,18 @@ impl App {
                 self.llm_api_trace.append(&mut request_trace);
                 match step {
                     ToolAgentStep::FinalResponseReady => {
-                        self.start_background_final_stream(state.messages);
+                        let last_is_assistant_with_body = state.messages.last().is_some_and(|m| {
+                            m.get("role").and_then(|r| r.as_str()) == Some("assistant")
+                                && m.get("content")
+                                    .and_then(|c| c.as_str())
+                                    .is_some_and(|s| !s.trim().is_empty())
+                        });
+                        if last_is_assistant_with_body {
+                            self.pending_user_turn = None;
+                        } else {
+                            // 例如重复 read/search 拦截后仅插入 system：需同一轮内再请求模型
+                            self.start_tool_agent_step_async(state);
+                        }
                     }
                     ToolAgentStep::ToolCall(call) => {
                         let request = match ToolRuntime::request_from_function_call(
@@ -982,38 +1019,6 @@ impl App {
                 });
             }
         }
-    }
-
-    fn start_background_final_stream(&mut self, messages: Vec<serde_json::Value>) {
-        let cfg = self.config.clone();
-        let prepared = prepare_messages_for_final_response(&messages);
-        let stream_model = cfg.active_model.clone();
-        self.llm_api_trace.push(serde_json::json!({
-            "kind": "final_response_stream_chat_completions",
-            "stream": true,
-            "model": stream_model,
-            "temperature": 0.2,
-            "messages": prepared.clone(),
-        }));
-        let (tx, rx) = mpsc::channel::<StreamEvent>();
-        self.thinking_spinner_index = 0;
-        self.thinking_text.clear();
-
-        self.messages.push(ChatMessage {
-            role: MessageRole::Agent,
-            content: String::new(),
-        });
-        self.pending_assistant_msg_index = Some(self.messages.len() - 1);
-        self.pending_response = Some(rx);
-
-        let now = Instant::now();
-        self.pending_started_at = Some(now);
-        self.pending_last_event_at = Some(now);
-        self.stream_chunk_counter = 0;
-
-        thread::spawn(move || {
-            stream_assistant_from_messages(&cfg, &prepared, &tx);
-        });
     }
 
     fn start_background_llm_request(&mut self, user_message: String) {
@@ -1138,11 +1143,16 @@ impl App {
                     self.pending_last_event_at = Some(Instant::now());
                     if let Some(idx) = self.pending_assistant_msg_index {
                         if let Some(msg) = self.messages.get(idx) {
-                            self.llm_history.push(LlmMessage {
-                                role: "assistant",
-                                content: msg.content.clone(),
-                                image_paths: vec![],
-                            });
+                            if msg.content.trim().is_empty() {
+                                self.messages.remove(idx);
+                            } else {
+                                self.llm_history.push(LlmMessage {
+                                    role: "assistant",
+                                    content: msg.content.clone(),
+                                    image_paths: vec![],
+                                });
+                                assistant_done = true;
+                            }
                         }
                     }
                     completed = true;
@@ -1153,7 +1163,6 @@ impl App {
                             .map(|s| s.elapsed().as_millis())
                             .unwrap_or(0)
                     ));
-                    assistant_done = true;
                     self.thinking_text.clear();
                     break;
                 }
@@ -1446,7 +1455,7 @@ impl App {
             "api_base": api_base,
             "working_directory": working_directory,
             "system_prompts": llm_system_prompts_for_export(),
-            "note": "messages: 内存 llm_history 的 API 形态（多模态为 data URL）。api_request_trace: 本会话内按时间顺序的每次 chat/completions 请求体快照——tool_agent_chat_completions 含完整 messages（首条为工具轮 system）、tools、tool_choice；同一用户轮可能有多条（多步工具）。final_response_stream_chat_completions 为最终自然语言流式请求的 messages（含 final_response system）。system_prompts 为两条固定 system 全文，便于对照 trace 中的首条 system。",
+            "note": "messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP）。不再有单独的 final 润色请求。system_prompts 中 final_response 字段仅作元数据兼容，当前对话流已不单独使用。",
             "message_count": messages.len(),
             "messages": messages,
             "api_request_trace_count": api_trace.len(),
@@ -2040,7 +2049,7 @@ impl App {
                     ),
                 });
 
-                let state = start_tool_agent_state(&self.llm_history, &user_turn);
+                let state = self.make_tool_agent_state(&user_turn);
                 self.start_tool_agent_step_async(state);
                 true
             }
@@ -2098,7 +2107,7 @@ impl App {
             dropped, err
         ));
 
-        let state = start_tool_agent_state(&self.llm_history, &turn);
+        let state = self.make_tool_agent_state(&turn);
         self.start_tool_agent_step_async(state);
         true
     }
