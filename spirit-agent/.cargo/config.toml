@@ -1,0 +1,6 @@
+# 部分终端（如 Cursor）会在进程环境里注入 CC=zig，导致 ring、onig_sys 等
+# 用 cc-rs 编译时把 zig 当成 cl 用而失败。此处强制覆盖为空，cc-rs 会把空
+# 变量视为未设置，从而回退到 Windows 上正常的 MSVC 探测。
+[env]
+CC = { value = "", force = true }
+CXX = { value = "", force = true }
