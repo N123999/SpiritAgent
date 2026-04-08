@@ -316,6 +316,31 @@ impl TuiShell {
         self.should_quit = true;
     }
 
+    pub(crate) fn push_agent_message(&mut self, content: impl Into<String>) {
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: content.into(),
+            tool_block: None,
+        });
+    }
+
+    pub(crate) fn clear_chat_for_slash(&mut self) {
+        self.messages.clear();
+        self.assistant_aux_by_message.clear();
+        let mcp_status = self.runtime.mcp_status_snapshot();
+        self.messages.push(welcome_message(
+            &self.runtime.config().active_model,
+            &mcp_status.welcome_line(),
+        ));
+        self.last_mcp_status_revision = mcp_status.revision;
+        self.pending_assistant_msg_index = None;
+    }
+
+    pub(crate) fn compact_history_for_slash(&mut self) {
+        self.runtime.compact_history();
+        self.apply_runtime_events();
+    }
+
     pub fn toggle_aux_details(&mut self) {
         self.show_aux_details = !self.show_aux_details;
     }
@@ -877,58 +902,10 @@ impl TuiShell {
     }
 
     fn handle_slash_command(&mut self, message: &str) {
-        let parts: Vec<&str> = message.split_whitespace().collect();
-        let Some(cmd) = parts.first().copied() else {
-            return;
-        };
-
-        match cmd {
-            "/quit" | "/exit" => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "收到，SpiritAgent 即将退出。".to_string(),
-                    tool_block: None,
-                });
-                self.should_quit = true;
-            }
-            "/help" => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消；文本框内 Shift+Enter 换行）。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server 名。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
-                    tool_block: None,
-                });
-            }
-            "/clear" => {
-                self.messages.clear();
-                self.assistant_aux_by_message.clear();
-                let mcp_status = self.runtime.mcp_status_snapshot();
-                self.messages.push(welcome_message(
-                    &self.runtime.config().active_model,
-                    &mcp_status.welcome_line(),
-                ));
-                self.last_mcp_status_revision = mcp_status.revision;
-                self.pending_assistant_msg_index = None;
-            }
-            "/model" => self.handle_model_slash(&parts[1..]),
-            "/compact" => {
-                self.runtime.compact_history();
-                self.apply_runtime_events();
-            }
-            "/sessions" => self.handle_sessions_slash(message),
-            "/image" => self.handle_image_slash(message),
-            "/mcp" => self.handle_mcp_slash(message),
-            "/log" => self.handle_log_slash(&parts[1..]),
-            _ => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "未知斜杠命令，输入 /help 查看可用指令。".to_string(),
-                    tool_block: None,
-                });
-            }
-        }
+        slash::handle_command(self, message);
     }
 
-    fn handle_model_slash(&mut self, args: &[&str]) {
+    pub(crate) fn handle_model_slash(&mut self, args: &[&str]) {
         match args {
             [] => self.open_model_picker(),
             ["list"] => {
@@ -1085,7 +1062,7 @@ impl TuiShell {
         }
     }
 
-    fn handle_sessions_slash(&mut self, message: &str) {
+    pub(crate) fn handle_sessions_slash(&mut self, message: &str) {
         let tail = message
             .strip_prefix("/sessions")
             .map(str::trim)
@@ -1121,7 +1098,7 @@ impl TuiShell {
         });
     }
 
-    fn handle_image_slash(&mut self, message: &str) {
+    pub(crate) fn handle_image_slash(&mut self, message: &str) {
         let tail = message.strip_prefix("/image").map(str::trim).unwrap_or("");
 
         if tail.is_empty() {
@@ -1209,7 +1186,7 @@ impl TuiShell {
         });
     }
 
-    fn handle_log_slash(&mut self, args: &[&str]) {
+    pub(crate) fn handle_log_slash(&mut self, args: &[&str]) {
         match args {
             [] => match self.open_cli_log_file() {
                 Ok(path) => {
@@ -1274,7 +1251,7 @@ impl TuiShell {
         }
     }
 
-    fn handle_mcp_slash(&mut self, message: &str) {
+    pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
         let tail = message.strip_prefix("/mcp").map(str::trim).unwrap_or("");
 
         if tail.is_empty() || tail == "list" {
