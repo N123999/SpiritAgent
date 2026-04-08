@@ -153,7 +153,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     } else if show_chat_picker {
         let picker_lines = build_chat_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("Chat Picker"))
+            .block(Block::default().borders(Borders::ALL).title("Sessions"))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_image_picker {
@@ -1080,7 +1080,7 @@ fn suggestion_summary(command: &str) -> &'static str {
         "/exit" => "退出 SpiritAgent",
         "/model" => "查看、切换或管理模型",
         "/compact" => "压缩上下文历史",
-        "/chat" => "保存、加载或选择会话",
+        "/sessions" => "保存、加载或选择会话",
         "/image" => "添加、清空或选择图片",
         "/tool" => "执行文件或 shell 工具",
         "/log" => "打开或导出日志",
@@ -1097,11 +1097,11 @@ fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
             "    /model add <name> <api_base> <api_key>",
             "    /model remove <name>",
         ],
-        "/chat" => vec![
+        "/sessions" => vec![
             "  Usage",
-            "    /chat",
-            "    /chat save [path]",
-            "    /chat load <file>",
+            "    /sessions",
+            "    /sessions save [path]",
+            "    /sessions load <file>",
         ],
         "/image" => vec![
             "  Usage",

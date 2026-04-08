@@ -143,7 +143,7 @@ fn resolve_save_path(path_arg: Option<&str>) -> Result<PathBuf> {
 fn resolve_load_path(path_arg: &str) -> Result<PathBuf> {
     let trimmed = path_arg.trim();
     if trimmed.is_empty() {
-        return Err(anyhow!("/chat load 需要文件名或路径"));
+        return Err(anyhow!("/sessions load 需要文件名或路径"));
     }
 
     let raw = PathBuf::from(trimmed);
