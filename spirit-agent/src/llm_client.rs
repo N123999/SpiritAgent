@@ -513,6 +513,7 @@ pub fn compact_history_manual(
     cfg: &ResolvedLlmConfig,
     telemetry: &dyn Telemetry,
     history: &mut Vec<LlmMessage>,
+    progress_tx: Option<&Sender<String>>,
 ) -> Result<CompactResult> {
     let before = history.len();
     if history.is_empty() {
@@ -540,7 +541,13 @@ pub fn compact_history_manual(
     }
 
     let merged_summary =
-        summarize_messages(cfg, telemetry, existing_summary.as_deref(), &all_non_summary)
+        summarize_messages(
+            cfg,
+            telemetry,
+            existing_summary.as_deref(),
+            &all_non_summary,
+            progress_tx,
+        )
         .context("手动压缩失败：无法生成摘要")?;
 
     let compacted = vec![compact_summary_message(merged_summary)];
@@ -723,7 +730,7 @@ fn compact_oldest_once(
 
     if !all_non_summary.is_empty() {
         let merged_summary =
-            summarize_messages(cfg, telemetry, existing_summary.as_deref(), &all_non_summary)
+            summarize_messages(cfg, telemetry, existing_summary.as_deref(), &all_non_summary, None)
             .context("自动压缩失败：摘要模型调用失败")?;
         *history = vec![compact_summary_message(merged_summary)];
         return Ok(all_non_summary.len());
@@ -747,6 +754,7 @@ fn summarize_messages(
     telemetry: &dyn Telemetry,
     existing_summary: Option<&str>,
     msgs_to_merge: &[LlmMessage],
+    progress_tx: Option<&Sender<String>>,
 ) -> Result<String> {
     let url = format!("{}/chat/completions", cfg.api_base.trim_end_matches('/'));
 
@@ -772,7 +780,7 @@ fn summarize_messages(
             {"role": "system", "content": "你是严谨的上下文压缩助手。"},
             {"role": "user", "content": compact_prompt}
         ],
-        "stream": false,
+        "stream": progress_tx.is_some(),
         "temperature": 0.2
     });
 
@@ -785,10 +793,84 @@ fn summarize_messages(
         .map_err(|err| request_send_error("压缩请求", &url, telemetry, &err))?;
 
     let status = resp.status();
-    let body = resp.text().context("读取压缩响应失败")?;
     if !status.is_success() {
+        let body = resp.text().context("读取压缩响应失败")?;
         return Err(anyhow!("HTTP {}: {}", status, body));
     }
+
+    if let Some(progress_tx) = progress_tx {
+        let mut reader = BufReader::new(resp);
+        let mut line = String::new();
+        let mut summary = String::new();
+        let mut raw_preview: Vec<String> = Vec::new();
+
+        loop {
+            line.clear();
+            let read = reader.read_line(&mut line).context("读取压缩流失败")?;
+            if read == 0 {
+                break;
+            }
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            push_preview_line(&mut raw_preview, trimmed);
+            let Some(data) = trimmed.strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+
+            if data == "[DONE]" {
+                break;
+            }
+
+            let v: Value = serde_json::from_str(data)
+                .with_context(|| format!("解析压缩 SSE JSON 失败: {}", truncate_chars(data, 320)))?;
+
+            if let Some(err_msg) = extract_provider_stream_error(&v) {
+                return Err(anyhow!(err_msg));
+            }
+
+            if let Some(content) = v
+                .pointer("/choices/0/delta/content")
+                .and_then(Value::as_str)
+            {
+                if !content.is_empty() {
+                    summary.push_str(content);
+                    let _ = progress_tx.send(content.to_string());
+                }
+                continue;
+            }
+
+            if let Some(content) = v
+                .pointer("/choices/0/message/content")
+                .and_then(Value::as_str)
+            {
+                if !content.is_empty() {
+                    summary.push_str(content);
+                    let _ = progress_tx.send(content.to_string());
+                }
+            }
+        }
+
+        let trimmed = summary.trim();
+        if trimmed.is_empty() {
+            let preview = if raw_preview.is_empty() {
+                "<empty stream body>".to_string()
+            } else {
+                raw_preview.join("\n")
+            };
+            return Err(anyhow!(
+                "压缩流没有返回任何摘要文本。原始响应预览:\n{}",
+                truncate_chars(&preview, 600)
+            ));
+        }
+
+        return Ok(trimmed.to_string());
+    }
+
+    let body = resp.text().context("读取压缩响应失败")?;
 
     let v: Value = serde_json::from_str(&body).context("解析压缩响应 JSON 失败")?;
     let summary = v

@@ -162,7 +162,7 @@ impl ChatRepository for JsonChatRepository {
         chat_store::save_chat(
             path,
             &archive.messages,
-            &archive.assistant_thinking,
+            &archive.assistant_aux,
             &archive.llm_history,
         )
     }
@@ -171,7 +171,7 @@ impl ChatRepository for JsonChatRepository {
         let loaded = chat_store::load_chat(path)?;
         Ok(ChatArchive {
             messages: loaded.messages,
-            assistant_thinking: loaded.assistant_thinking,
+            assistant_aux: loaded.assistant_aux,
             llm_history: loaded.llm_history,
         })
     }
@@ -327,9 +327,10 @@ impl LlmTransport for OpenAiCompatibleTransport {
         &self,
         config: &AppConfig,
         history: &mut Vec<LlmMessage>,
+        progress_tx: Option<&std::sync::mpsc::Sender<String>>,
     ) -> Result<llm_client::CompactResult> {
         let resolved = self.resolve_model_config(config)?;
-        llm_client::compact_history_manual(&resolved, self.telemetry.as_ref(), history)
+        llm_client::compact_history_manual(&resolved, self.telemetry.as_ref(), history, progress_tx)
     }
 
     fn compact_summary_text(&self, history: &[LlmMessage]) -> Option<String> {

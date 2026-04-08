@@ -14,7 +14,7 @@ use crate::{
     ports::{LlmTransport, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor},
     session::SessionModel,
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
-    view::{ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase},
+    view::{AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase},
 };
 
 const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
@@ -29,6 +29,7 @@ pub enum RuntimeEvent {
     PushMessage(ChatMessage),
     BeginAssistantResponse,
     UpdatePendingAssistantThinking(String),
+    UpdatePendingAssistantCompaction(String),
     AssistantChunk(String),
     ReplacePendingAssistant(String),
     AssistantResponseCompleted,
@@ -64,6 +65,7 @@ enum HistoryCompactionContinuation {
 }
 
 struct PendingHistoryCompaction {
+    progress_rx: Receiver<String>,
     result_rx: Receiver<anyhow::Result<CompletedHistoryCompaction>>,
     continuation: HistoryCompactionContinuation,
 }
@@ -78,6 +80,7 @@ pub struct AgentRuntime {
     pending_tool_agent_step: Option<Receiver<anyhow::Result<ToolAgentRoundResult>>>,
     pending_tool_agent_state: Option<ToolAgentState>,
     pending_history_compaction: Option<PendingHistoryCompaction>,
+    reuse_pending_assistant_on_next_round: bool,
     pending_started_at: Option<Instant>,
     pending_last_event_at: Option<Instant>,
     stream_chunk_counter: usize,
@@ -85,6 +88,7 @@ pub struct AgentRuntime {
     pending_tool_approval: Option<PendingToolApproval>,
     thinking_spinner_index: usize,
     thinking_text: String,
+    compaction_text: String,
     events: VecDeque<RuntimeEvent>,
 }
 
@@ -105,6 +109,7 @@ impl AgentRuntime {
             pending_tool_agent_step: None,
             pending_tool_agent_state: None,
             pending_history_compaction: None,
+            reuse_pending_assistant_on_next_round: false,
             pending_started_at: None,
             pending_last_event_at: None,
             stream_chunk_counter: 0,
@@ -112,6 +117,7 @@ impl AgentRuntime {
             pending_tool_approval: None,
             thinking_spinner_index: 0,
             thinking_text: String::new(),
+            compaction_text: String::new(),
             events: VecDeque::new(),
         }
     }
@@ -155,25 +161,25 @@ impl AgentRuntime {
         self.events.drain(..).collect()
     }
 
-    pub fn thinking_status_text(&self) -> Option<String> {
-        if !self.is_busy() {
-            return None;
-        }
-
+    pub fn pending_aux_state(&self) -> Option<PendingAssistantAux> {
+        let kind = self.current_aux_kind()?;
         let frame = match self.thinking_spinner_index % 4 {
             0 => '|',
             1 => '/',
             2 => '-',
             _ => '\\',
         };
-        Some(format!("{} Thinking...", frame))
-    }
+        let status_text = match kind {
+            AssistantAuxKind::Thinking => format!("{} Thinking...", frame),
+            AssistantAuxKind::Compressing => format!("{} Compressing...", frame),
+        };
+        let detail_text = self.current_aux_text().map(ToString::to_string);
 
-    pub fn thinking_content_text(&self) -> Option<&str> {
-        if !self.is_busy() || self.thinking_text.trim().is_empty() {
-            return None;
-        }
-        Some(self.thinking_text.as_str())
+        Some(PendingAssistantAux {
+            kind,
+            status_text,
+            detail_text,
+        })
     }
 
     pub fn tick_thinking_spinner(&mut self) {
@@ -227,6 +233,9 @@ impl AgentRuntime {
         self.stream_chunk_counter = 0;
         self.pending_assistant_text.clear();
         self.thinking_text.clear();
+        self.compaction_text.clear();
+        self.pending_tool_agent_state = None;
+        self.reuse_pending_assistant_on_next_round = false;
         self.events
             .push_back(RuntimeEvent::AssistantResponseCompleted);
     }
@@ -338,12 +347,13 @@ impl AgentRuntime {
     }
 
     pub fn compact_history(&mut self) {
-        if self.pending_history_compaction.is_some() {
+        if self.is_busy() {
             self.push_agent_message("当前已有压缩任务在后台进行，请稍候。");
             return;
         }
 
-        self.push_agent_message("正在后台压缩上下文...");
+        self.compaction_text.clear();
+        self.events.push_back(RuntimeEvent::BeginAssistantResponse);
         self.start_history_compaction(HistoryCompactionContinuation::Manual);
     }
 
@@ -354,11 +364,13 @@ impl AgentRuntime {
         self.pending_tool_agent_step = None;
         self.pending_tool_agent_state = None;
         self.pending_history_compaction = None;
+        self.reuse_pending_assistant_on_next_round = false;
         self.pending_started_at = None;
         self.pending_last_event_at = None;
         self.stream_chunk_counter = 0;
         self.pending_assistant_text.clear();
         self.thinking_text.clear();
+        self.compaction_text.clear();
     }
 
     fn make_tool_agent_state(&self, user_input: &str) -> ToolAgentState {
@@ -374,6 +386,7 @@ impl AgentRuntime {
     fn start_tool_agent_step_async(&mut self, state: ToolAgentState) {
         self.thinking_spinner_index = 0;
         self.thinking_text.clear();
+        self.compaction_text.clear();
         self.pending_assistant_text.clear();
         self.pending_tool_agent_state = Some(state.clone());
         match self.llm_transport.start_tool_agent_round(
@@ -391,7 +404,11 @@ impl AgentRuntime {
                 self.pending_started_at = Some(now);
                 self.pending_last_event_at = Some(now);
                 self.stream_chunk_counter = 0;
-                self.events.push_back(RuntimeEvent::BeginAssistantResponse);
+                if self.reuse_pending_assistant_on_next_round {
+                    self.reuse_pending_assistant_on_next_round = false;
+                } else {
+                    self.events.push_back(RuntimeEvent::BeginAssistantResponse);
+                }
             }
             Err(err) => {
                 self.pending_tool_agent_state = None;
@@ -531,22 +548,47 @@ impl AgentRuntime {
             return;
         };
 
+        loop {
+            match pending.progress_rx.try_recv() {
+                Ok(chunk) => {
+                    self.compaction_text.push_str(&chunk);
+                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantCompaction(
+                        self.compaction_text.clone(),
+                    ));
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+
         match pending.result_rx.try_recv() {
             Ok(Ok(compacted)) => {
                 *self.session.llm_history_mut() = compacted.compacted_history;
+                if self.compaction_text.trim().is_empty()
+                    && !compacted.summary_preview.trim().is_empty()
+                {
+                    self.compaction_text = compacted.summary_preview.clone();
+                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantCompaction(
+                        self.compaction_text.clone(),
+                    ));
+                }
                 match pending.continuation {
                     HistoryCompactionContinuation::Manual => {
                         if compacted.result.dropped_messages == 0 {
-                            self.push_agent_message("当前可压缩历史较少，已跳过压缩。");
+                            self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
+                                "当前可压缩历史较少，已跳过压缩。".to_string(),
+                            ));
                         } else {
-                            self.push_agent_message(format!(
-                                "压缩完成：上下文消息 {} -> {}，已全量压缩为摘要并合并 {} 条历史消息（UI 历史保留不变）。\n\n压缩摘要预览:\n{}",
+                            self.events.push_back(RuntimeEvent::ReplacePendingAssistant(format!(
+                                "压缩完成：上下文消息 {} -> {}，已合并 {} 条历史消息。",
                                 compacted.result.before_len,
                                 compacted.result.after_len,
                                 compacted.result.dropped_messages,
-                                truncate_for_preview(&compacted.summary_preview, 600)
-                            ));
+                            )));
                         }
+                        self.events
+                            .push_back(RuntimeEvent::AssistantResponseCompleted);
+                        self.compaction_text.clear();
                     }
                     HistoryCompactionContinuation::AutoRetry {
                         retry_state,
@@ -555,11 +597,19 @@ impl AgentRuntime {
                         original_error,
                     } => {
                         if compacted.result.dropped_messages == 0 && !tool_truncation_applied {
-                            self.push_agent_message(format!(
-                                "检测到上下文超限，但历史已无法继续压缩。原始错误: {}",
-                                original_error
+                            self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
+                                format!(
+                                    "检测到上下文超限，但历史已无法继续压缩。原始错误: {}",
+                                    original_error
+                                ),
                             ));
+                            self.events
+                                .push_back(RuntimeEvent::AssistantResponseCompleted);
+                            self.compaction_text.clear();
+                            self.reuse_pending_assistant_on_next_round = false;
+                            self.pending_tool_agent_state = None;
                         } else {
+                            self.reuse_pending_assistant_on_next_round = true;
                             let next_state = if compacted.result.dropped_messages == 0 {
                                 retry_state
                             } else {
@@ -572,13 +622,25 @@ impl AgentRuntime {
             }
             Ok(Err(err)) => match pending.continuation {
                 HistoryCompactionContinuation::Manual => {
-                    self.push_agent_message(format!("压缩失败: {}", err));
+                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
+                        format!("压缩失败: {}", err),
+                    ));
+                    self.events
+                        .push_back(RuntimeEvent::AssistantResponseCompleted);
+                    self.compaction_text.clear();
                 }
                 HistoryCompactionContinuation::AutoRetry { original_error, .. } => {
-                    self.push_agent_message(format!(
-                        "上下文超限且自动压缩失败: {}\n原始错误: {}",
-                        err, original_error
+                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
+                        format!(
+                            "上下文超限且自动压缩失败: {}\n原始错误: {}",
+                            err, original_error
+                        ),
                     ));
+                    self.events
+                        .push_back(RuntimeEvent::AssistantResponseCompleted);
+                    self.compaction_text.clear();
+                    self.reuse_pending_assistant_on_next_round = false;
+                    self.pending_tool_agent_state = None;
                 }
             },
             Err(TryRecvError::Empty) => {
@@ -586,13 +648,25 @@ impl AgentRuntime {
             }
             Err(TryRecvError::Disconnected) => match pending.continuation {
                 HistoryCompactionContinuation::Manual => {
-                    self.push_agent_message("压缩后台任务异常中断。");
+                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
+                        "压缩后台任务异常中断。".to_string(),
+                    ));
+                    self.events
+                        .push_back(RuntimeEvent::AssistantResponseCompleted);
+                    self.compaction_text.clear();
                 }
                 HistoryCompactionContinuation::AutoRetry { original_error, .. } => {
-                    self.push_agent_message(format!(
-                        "上下文超限且自动压缩任务异常中断。原始错误: {}",
-                        original_error
+                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
+                        format!(
+                            "上下文超限且自动压缩任务异常中断。原始错误: {}",
+                            original_error
+                        ),
                     ));
+                    self.events
+                        .push_back(RuntimeEvent::AssistantResponseCompleted);
+                    self.compaction_text.clear();
+                    self.reuse_pending_assistant_on_next_round = false;
+                    self.pending_tool_agent_state = None;
                 }
             },
         }
@@ -686,11 +760,10 @@ impl AgentRuntime {
                     }
 
                     if self.try_auto_compact_and_retry(&err) {
-                        if self.pending_assistant_text.trim().is_empty() {
-                            self.events.push_back(RuntimeEvent::RemovePendingAssistant);
+                        if !self.pending_assistant_text.trim().is_empty() {
+                            self.events
+                                .push_back(RuntimeEvent::ReplacePendingAssistant(String::new()));
                         }
-                        self.events
-                            .push_back(RuntimeEvent::AssistantResponseCompleted);
                         completed = true;
                         self.thinking_text.clear();
                         break;
@@ -853,14 +926,6 @@ impl AgentRuntime {
             .unwrap_or_else(|| self.make_tool_agent_state(&user_turn));
         let tool_truncation_applied = truncate_tool_messages_for_retry(&mut retry_state);
 
-        if tool_truncation_applied {
-            self.push_agent_message(
-                "检测到上下文超限，已先截断超长工具输出，再在后台压缩历史并自动重试当前请求。",
-            );
-        } else {
-            self.push_agent_message("检测到上下文超限，正在后台压缩历史并自动重试当前请求。");
-        }
-
         self.start_history_compaction(HistoryCompactionContinuation::AutoRetry {
             retry_state,
             tool_truncation_applied,
@@ -937,12 +1002,14 @@ impl AgentRuntime {
         let llm_transport = Arc::clone(&self.llm_transport);
         let config = self.config.clone();
         let mut history = self.session.llm_history().to_vec();
+        self.compaction_text.clear();
+        let (progress_tx, progress_rx) = mpsc::channel::<String>();
         let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<CompletedHistoryCompaction>>();
 
         thread::spawn(move || {
             truncate_tool_memories_for_retry(&mut history);
             let outcome = llm_transport
-                .compact_history_manual(&config, &mut history)
+                .compact_history_manual(&config, &mut history, Some(&progress_tx))
                 .map(|result| CompletedHistoryCompaction {
                     result,
                     summary_preview: llm_transport
@@ -954,6 +1021,7 @@ impl AgentRuntime {
         });
 
         self.pending_history_compaction = Some(PendingHistoryCompaction {
+            progress_rx,
             result_rx,
             continuation,
         });
@@ -979,6 +1047,28 @@ impl AgentRuntime {
         }
 
         retry_state
+    }
+
+    fn current_aux_kind(&self) -> Option<AssistantAuxKind> {
+        if self.pending_history_compaction.is_some() {
+            return Some(AssistantAuxKind::Compressing);
+        }
+        if self.pending_response.is_some() || self.pending_tool_agent_step.is_some() {
+            return Some(AssistantAuxKind::Thinking);
+        }
+        None
+    }
+
+    fn current_aux_text(&self) -> Option<&str> {
+        match self.current_aux_kind()? {
+            AssistantAuxKind::Thinking if !self.thinking_text.trim().is_empty() => {
+                Some(self.thinking_text.as_str())
+            }
+            AssistantAuxKind::Compressing if !self.compaction_text.trim().is_empty() => {
+                Some(self.compaction_text.as_str())
+            }
+            _ => None,
+        }
     }
 }
 

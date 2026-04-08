@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::{
     llm_client::LlmMessage,
-    ports::ChatArchive,
+    ports::{AssistantAuxArchiveEntry, ChatArchive},
     tool_runtime::ToolRequest,
 };
 
@@ -173,11 +173,11 @@ impl SessionModel {
     pub fn to_archive(
         &self,
         messages: &[(String, String)],
-        assistant_thinking: &[(usize, String)],
+        assistant_aux: &[AssistantAuxArchiveEntry],
     ) -> ChatArchive {
         ChatArchive {
             messages: messages.to_vec(),
-            assistant_thinking: assistant_thinking.to_vec(),
+            assistant_aux: assistant_aux.to_vec(),
             llm_history: self
                 .llm_history
                 .iter()

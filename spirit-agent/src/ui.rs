@@ -15,7 +15,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::{
     conversation_select::flatten_wrapped_history,
     tui::{ConversationPanelHit, TuiShell},
-    view::{ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase, TuiViewModel},
+    view::{AssistantAuxKind, ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase, TuiViewModel},
 };
 
 const MAX_RENDERED_MESSAGES: usize = 180;
@@ -510,10 +510,10 @@ fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
 fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
     let mut lines = build_history_logo_lines(max_width);
     let (visible_messages, skipped, start_index) = visible_messages(app);
-    let has_pending_thinking = app.thinking_status_text().is_some() || app.thinking_content_text().is_some();
+    let has_pending_aux = app.pending_aux_state().is_some();
     let mut rendered_messages: Vec<Vec<Line<'static>>> = Vec::new();
 
-    if !lines.is_empty() && (!visible_messages.is_empty() || has_pending_thinking) {
+    if !lines.is_empty() && (!visible_messages.is_empty() || has_pending_aux) {
         lines.push(Line::from(""));
     }
 
@@ -567,8 +567,7 @@ fn should_hide_pending_assistant_placeholder(
         && msg.role == MessageRole::Agent
         && msg.tool_block.is_none()
         && msg.content.trim().is_empty()
-        && app.thinking_status_text().is_none()
-        && app.thinking_content_text().is_none()
+        && app.pending_aux_state().is_none()
 }
 
 fn message_prefix_text() -> &'static str {
@@ -581,6 +580,37 @@ fn message_gutter_padding() -> &'static str {
 
 fn assistant_message_prefix_style() -> Style {
     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+}
+
+fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
+    match kind {
+        AssistantAuxKind::Thinking => Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::ITALIC),
+        AssistantAuxKind::Compressing => assistant_message_prefix_style()
+            .add_modifier(Modifier::ITALIC),
+    }
+}
+
+fn assistant_aux_title(kind: AssistantAuxKind) -> &'static str {
+    match kind {
+        AssistantAuxKind::Thinking => "思考内容",
+        AssistantAuxKind::Compressing => "压缩摘要",
+    }
+}
+
+fn assistant_aux_title_style(kind: AssistantAuxKind) -> Style {
+    match kind {
+        AssistantAuxKind::Thinking => Style::default().fg(Color::DarkGray),
+        AssistantAuxKind::Compressing => subtle_aux_text_style(),
+    }
+}
+
+fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
+    match kind {
+        AssistantAuxKind::Thinking => Style::default().fg(Color::DarkGray),
+        AssistantAuxKind::Compressing => subtle_aux_text_style(),
+    }
 }
 
 fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: usize) -> Vec<Line<'static>> {
@@ -606,17 +636,13 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: us
     };
 
     let mut out = Vec::new();
-    let thinking_status = if is_pending_assistant {
-        app.thinking_status_text()
+    let pending_aux = if is_pending_assistant {
+        app.pending_aux_state()
     } else {
         None
     };
-    let thinking_content = if msg.role == MessageRole::Agent && app.show_aux_details {
-        if is_pending_assistant {
-            app.thinking_content_text()
-        } else {
-            app.thinking_for_message(message_index)
-        }
+    let stored_aux = if msg.role == MessageRole::Agent && app.show_aux_details {
+        app.assistant_aux_for_message(message_index)
     } else {
         None
     };
@@ -633,21 +659,53 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: us
         out.push(Line::from(spans));
     };
 
-    if let Some(ref status) = thinking_status {
-        push_message_line(vec![Span::styled(
-            status.clone(),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::ITALIC),
-        )]);
+    if let Some(stored_aux) = stored_aux {
+        let should_render_stored_compaction = stored_aux.compaction.as_ref().is_some_and(|value| !value.trim().is_empty())
+            && !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing);
+        if should_render_stored_compaction {
+            push_message_line(vec![Span::styled(
+                assistant_aux_title(AssistantAuxKind::Compressing),
+                assistant_aux_title_style(AssistantAuxKind::Compressing),
+            )]);
+            for segment in stored_aux.compaction.as_deref().unwrap_or_default().lines() {
+                push_message_line(vec![Span::styled(
+                    segment.to_string(),
+                    assistant_aux_body_style(AssistantAuxKind::Compressing),
+                )]);
+            }
+        }
+
+        let should_render_stored_thinking = pending_aux.is_none()
+            && stored_aux.thinking.as_ref().is_some_and(|value| !value.trim().is_empty());
+        if should_render_stored_thinking {
+            if should_render_stored_compaction {
+                push_message_line(vec![Span::styled(
+                    assistant_aux_title(AssistantAuxKind::Thinking),
+                    assistant_aux_title_style(AssistantAuxKind::Thinking),
+                )]);
+            }
+            for segment in stored_aux.thinking.as_deref().unwrap_or_default().lines() {
+                push_message_line(vec![Span::styled(
+                    segment.to_string(),
+                    assistant_aux_body_style(AssistantAuxKind::Thinking),
+                )]);
+            }
+        }
     }
 
-    if let Some(thinking) = thinking_content {
-        for segment in thinking.lines() {
-            push_message_line(vec![Span::styled(
-                segment.to_string(),
-                Style::default().fg(Color::DarkGray),
-            )]);
+    if let Some(pending_aux) = pending_aux {
+        push_message_line(vec![Span::styled(
+            pending_aux.status_text.clone(),
+            pending_aux_status_style(pending_aux.kind),
+        )]);
+
+        if let Some(detail_text) = pending_aux.detail_text.as_deref() {
+            for segment in detail_text.lines() {
+                push_message_line(vec![Span::styled(
+                    segment.to_string(),
+                    assistant_aux_body_style(pending_aux.kind),
+                )]);
+            }
         }
     }
 

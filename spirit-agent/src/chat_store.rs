@@ -13,6 +13,8 @@ struct ChatFile {
     saved_at_unix_ms: u128,
     messages: Vec<StoredChatMessage>,
     #[serde(default)]
+    assistant_aux: Vec<StoredAssistantAux>,
+    #[serde(default)]
     assistant_thinking: Vec<StoredAssistantThinking>,
     llm_history: Vec<StoredLlmMessage>,
 }
@@ -30,6 +32,15 @@ struct StoredAssistantThinking {
 }
 
 #[derive(Serialize, Deserialize)]
+struct StoredAssistantAux {
+    message_index: usize,
+    #[serde(default)]
+    thinking: Option<String>,
+    #[serde(default)]
+    compaction: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
 struct StoredLlmMessage {
     role: String,
     content: String,
@@ -39,7 +50,7 @@ struct StoredLlmMessage {
 
 pub struct LoadedChat {
     pub messages: Vec<(String, String)>,
-    pub assistant_thinking: Vec<(usize, String)>,
+    pub assistant_aux: Vec<crate::ports::AssistantAuxArchiveEntry>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
@@ -76,7 +87,7 @@ pub fn list_chat_files() -> Result<Vec<PathBuf>> {
 pub fn save_chat(
     path_arg: Option<&str>,
     messages: &[(String, String)],
-    assistant_thinking: &[(usize, String)],
+    assistant_aux: &[crate::ports::AssistantAuxArchiveEntry],
     llm_history: &[(String, String, Vec<String>)],
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
@@ -97,11 +108,21 @@ pub fn save_chat(
                 content: content.clone(),
             })
             .collect(),
-        assistant_thinking: assistant_thinking
+        assistant_aux: assistant_aux
             .iter()
-            .map(|(message_index, content)| StoredAssistantThinking {
-                message_index: *message_index,
-                content: content.clone(),
+            .map(|entry| StoredAssistantAux {
+                message_index: entry.message_index,
+                thinking: entry.thinking.clone(),
+                compaction: entry.compaction.clone(),
+            })
+            .collect(),
+        assistant_thinking: assistant_aux
+            .iter()
+            .filter_map(|entry| {
+                entry.thinking.as_ref().map(|thinking| StoredAssistantThinking {
+                    message_index: entry.message_index,
+                    content: thinking.clone(),
+                })
             })
             .collect(),
         llm_history: llm_history
@@ -132,12 +153,38 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
             .into_iter()
             .map(|m| (m.role, m.content))
             .collect(),
-        assistant_thinking: parsed
-            .assistant_thinking
-            .into_iter()
-            .filter(|entry| !entry.content.trim().is_empty())
-            .map(|entry| (entry.message_index, entry.content))
-            .collect(),
+        assistant_aux: if parsed.assistant_aux.is_empty() {
+            parsed
+                .assistant_thinking
+                .into_iter()
+                .filter(|entry| !entry.content.trim().is_empty())
+                .map(|entry| crate::ports::AssistantAuxArchiveEntry {
+                    message_index: entry.message_index,
+                    thinking: Some(entry.content),
+                    compaction: None,
+                })
+                .collect()
+        } else {
+            parsed
+                .assistant_aux
+                .into_iter()
+                .filter(|entry| {
+                    entry
+                        .thinking
+                        .as_ref()
+                        .is_some_and(|value| !value.trim().is_empty())
+                        || entry
+                            .compaction
+                            .as_ref()
+                            .is_some_and(|value| !value.trim().is_empty())
+                })
+                .map(|entry| crate::ports::AssistantAuxArchiveEntry {
+                    message_index: entry.message_index,
+                    thinking: entry.thinking.filter(|value| !value.trim().is_empty()),
+                    compaction: entry.compaction.filter(|value| !value.trim().is_empty()),
+                })
+                .collect()
+        },
         llm_history: parsed
             .llm_history
             .into_iter()

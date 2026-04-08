@@ -12,9 +12,16 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+pub struct AssistantAuxArchiveEntry {
+    pub message_index: usize,
+    pub thinking: Option<String>,
+    pub compaction: Option<String>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ChatArchive {
     pub messages: Vec<(String, String)>,
-    pub assistant_thinking: Vec<(usize, String)>,
+    pub assistant_aux: Vec<AssistantAuxArchiveEntry>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
@@ -84,6 +91,7 @@ pub trait LlmTransport: Send + Sync {
         &self,
         config: &AppConfig,
         history: &mut Vec<LlmMessage>,
+        progress_tx: Option<&std::sync::mpsc::Sender<String>>,
     ) -> Result<CompactResult>;
 
     fn compact_summary_text(&self, history: &[LlmMessage]) -> Option<String>;

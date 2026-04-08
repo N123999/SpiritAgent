@@ -2,6 +2,25 @@ use std::collections::HashMap;
 
 use crate::model_registry::AppConfig;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AssistantAuxKind {
+    Thinking,
+    Compressing,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AssistantAuxData {
+    pub thinking: Option<String>,
+    pub compaction: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PendingAssistantAux {
+    pub kind: AssistantAuxKind,
+    pub status_text: String,
+    pub detail_text: Option<String>,
+}
+
 /// 工具卡片在对话里的生命周期阶段（用于 TUI 着色与标签）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolUiPhase {
@@ -66,7 +85,7 @@ pub struct TuiViewModel {
     pub input_cursor: usize,
     pub pending_image_paths: Vec<String>,
     pub messages: Vec<ChatMessage>,
-    pub assistant_thinking_by_message: HashMap<usize, String>,
+    pub assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     pub config: AppConfig,
     pub show_aux_details: bool,
     pub slash_suggestions: Vec<String>,
@@ -82,29 +101,22 @@ pub struct TuiViewModel {
     pub history_offset_from_bottom: usize,
     pub pending_response_active: bool,
     pub pending_assistant_msg_index: Option<usize>,
-    pub thinking_status: Option<String>,
-    pub thinking_content: Option<String>,
+    pub pending_aux: Option<PendingAssistantAux>,
     /// 对话区选区：折行后的全局行号 + 显示列（与 WordWrapper 一致）。
     pub conversation_sel_anchor: Option<(usize, usize)>,
     pub conversation_sel_head: Option<(usize, usize)>,
 }
 
 impl TuiViewModel {
-    pub fn thinking_for_message(&self, message_index: usize) -> Option<&str> {
-        self.assistant_thinking_by_message
-            .get(&message_index)
-            .map(String::as_str)
+    pub fn assistant_aux_for_message(&self, message_index: usize) -> Option<&AssistantAuxData> {
+        self.assistant_aux_by_message.get(&message_index)
     }
 
     pub fn is_pending_assistant_message(&self, message_index: usize) -> bool {
         self.pending_response_active && self.pending_assistant_msg_index == Some(message_index)
     }
 
-    pub fn thinking_status_text(&self) -> Option<String> {
-        self.thinking_status.clone()
-    }
-
-    pub fn thinking_content_text(&self) -> Option<&str> {
-        self.thinking_content.as_deref()
+    pub fn pending_aux_state(&self) -> Option<&PendingAssistantAux> {
+        self.pending_aux.as_ref()
     }
 }
