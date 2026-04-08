@@ -916,7 +916,7 @@ impl TuiShell {
             "/help" => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server 名。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
+                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消；文本框内 Shift+Enter 换行）。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server 名。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
                     tool_block: None,
                 });
             }
@@ -1308,7 +1308,8 @@ impl TuiShell {
             self.open_mcp_add_form();
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: "已打开 MCP 添加表单。填写完成后按 Ctrl+S 保存，Esc 取消。".to_string(),
+                content: "已打开 MCP 添加表单。填写完成后按 Enter 保存，Esc 取消；在文本框里 Shift+Enter 可换行（多行环境变量等）。"
+                    .to_string(),
                 tool_block: None,
             });
             return;
@@ -1593,7 +1594,7 @@ impl TuiShell {
     fn push_mcp_usage(&mut self) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
+            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消；文本字段中 Shift+Enter 可换行。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
             tool_block: None,
         });
     }
@@ -2213,7 +2214,8 @@ fn new_mcp_add_form() -> BottomFormView {
             },
         ],
         selected_field: MCP_ADD_FIELD_NAME,
-        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Ctrl+S 保存  Esc 取消".to_string(),
+        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Enter 保存  Shift+Enter 换行  Esc 取消"
+            .to_string(),
     };
     sync_mcp_add_form_fields(&mut form);
     form

@@ -489,12 +489,10 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             KeyCode::Right => shell.bottom_form_move_right(),
             KeyCode::Home => shell.bottom_form_move_home(),
             KeyCode::End => shell.bottom_form_move_end(),
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.save_bottom_form()
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                shell.bottom_form_insert_char('\n');
             }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.save_bottom_form()
-            }
+            KeyCode::Enter => shell.save_bottom_form(),
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'v')
                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
