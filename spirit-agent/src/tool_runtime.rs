@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use encoding_rs::GBK;
+use reqwest::{Url, blocking::Client, header};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -7,6 +8,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
+    time::Duration,
 };
 
 #[cfg(target_os = "windows")]
@@ -27,12 +29,18 @@ const MAX_SEARCH_MATCHES_PER_FILE: usize = 3;
 const MAX_SEARCH_FILE_BYTES: u64 = 1_000_000;
 const MAX_READ_LINES_DEFAULT: usize = 200;
 const MAX_DIRECTORY_LIST_RESULTS: usize = 4_000;
+const MAX_WEB_FETCH_OUTPUT_CHARS: usize = 24_000;
+const WEB_FETCH_TIMEOUT_SECS: u64 = 20;
+const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 const UPDATE_FILE_LOG_PREVIEW_CHARS: usize = 180;
 
 #[derive(Clone)]
 pub enum ToolRequest {
     Shell {
         command: String,
+    },
+    WebFetch {
+        url: String,
     },
     ListDirectory {
         path: String,
@@ -158,7 +166,7 @@ impl ToolRuntime {
 
         if raw.is_empty() {
             return Err(anyhow!(
-                "用法:\n/tool shell <command>\n/tool list <absolute-dir>\n/tool read <path> [start] [end]\n/tool search <query>"
+                "用法:\n/tool shell <command>\n/tool web <url>\n/tool list <absolute-dir>\n/tool read <path> [start] [end]\n/tool search <query>"
             ));
         }
 
@@ -176,6 +184,14 @@ impl ToolRuntime {
                 }
                 Ok(ToolRequest::Shell {
                     command: cmd.to_string(),
+                })
+            }
+            "web" => {
+                if tokens.len() < 2 {
+                    return Err(anyhow!("用法: /tool web <url>"));
+                }
+                Ok(ToolRequest::WebFetch {
+                    url: tokens[1].clone(),
                 })
             }
             "list" => {
@@ -228,7 +244,7 @@ impl ToolRuntime {
                 })
             }
             _ => Err(anyhow!(
-                "未知 /tool 子命令: {}\n可用: shell | list | read | search",
+                "未知 /tool 子命令: {}\n可用: shell | web | list | read | search",
                 sub
             )),
         }
@@ -255,6 +271,7 @@ impl ToolRuntime {
                     trust_target: Some(TrustTarget::ShellCommand(command.clone())),
                 })
             }
+            ToolRequest::WebFetch { .. } => Ok(AuthorizationDecision::Allowed),
             ToolRequest::ListDirectory { path } => {
                 let canonical = self.resolve_existing_absolute_directory(path)?;
                 Ok(self.authorize_external_read_path(&canonical, "遍历工作目录外目录"))
@@ -327,6 +344,7 @@ impl ToolRuntime {
     pub fn execute(&self, request: &ToolRequest) -> Result<String> {
         match request {
             ToolRequest::Shell { command } => self.execute_shell(command),
+            ToolRequest::WebFetch { url } => self.execute_web_fetch(url),
             ToolRequest::ListDirectory { path } => self.execute_list_directory(path),
             ToolRequest::ReadFile {
                 path,
@@ -360,6 +378,24 @@ impl ToolRuntime {
                             }
                         },
                         "required": ["command"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_fetch",
+                    "description": "Fetch the content of a web page over HTTP or HTTPS using a standard desktop browser User-Agent. Provide one absolute URL and the tool returns the page text content.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "Absolute http or https URL to fetch."
+                            }
+                        },
+                        "required": ["url"],
                         "additionalProperties": false
                     }
                 }
@@ -492,6 +528,17 @@ impl ToolRuntime {
                     command: command.to_string(),
                 })
             }
+            "web_fetch" => {
+                let url = args
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| anyhow!("web_fetch 缺少 url"))?;
+                Ok(ToolRequest::WebFetch {
+                    url: url.to_string(),
+                })
+            }
             "list_directory_files" => {
                 let path = args
                     .get("path")
@@ -600,6 +647,64 @@ impl ToolRuntime {
         }
 
         Ok(combined)
+    }
+
+    fn execute_web_fetch(&self, url: &str) -> Result<String> {
+        let parsed_url = parse_web_fetch_url(url)?;
+        let client = Client::builder()
+            .timeout(Duration::from_secs(WEB_FETCH_TIMEOUT_SECS))
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .build()
+            .context("创建 web_fetch HTTP 客户端失败")?;
+
+        let response = client
+            .get(parsed_url.clone())
+            .header(header::USER_AGENT, BROWSER_USER_AGENT)
+            .header(
+                header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+            )
+            .header(header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9,en;q=0.8")
+            .send()
+            .with_context(|| format!("抓取网页失败: {}", parsed_url))?;
+
+        let status = response.status();
+        let final_url = response.url().clone();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let raw = response
+            .text()
+            .with_context(|| format!("读取网页内容失败: {}", final_url))?;
+
+        let extracted = extract_web_text(&raw, &content_type);
+        let normalized = normalize_web_text(&extracted);
+        let preview = truncate_chars(&normalized, MAX_WEB_FETCH_OUTPUT_CHARS);
+
+        Ok(format!(
+            "[web]\nurl: {}\nfinal_url: {}\nstatus: {}\ncontent_type: {}\nuser_agent: {}\ncontent_chars: {}\ntruncated: {}\n\ncontent\n{}{}",
+            parsed_url,
+            final_url,
+            status,
+            content_type,
+            BROWSER_USER_AGENT,
+            normalized.chars().count(),
+            if normalized.chars().count() > MAX_WEB_FETCH_OUTPUT_CHARS {
+                "true"
+            } else {
+                "false"
+            },
+            preview,
+            if normalized.chars().count() > MAX_WEB_FETCH_OUTPUT_CHARS {
+                "\n\n...<网页内容已截断>"
+            } else {
+                ""
+            }
+        ))
     }
 
     fn execute_list_directory(&self, path: &str) -> Result<String> {
@@ -1085,6 +1190,57 @@ fn required_string_arg<'a>(args: &'a Value, tool: &str, key: &str) -> Result<&'a
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("{} 缺少 {}", tool, key))
+}
+
+fn parse_web_fetch_url(url: &str) -> Result<Url> {
+    let parsed = Url::parse(url).with_context(|| format!("非法 URL: {}", url))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(parsed),
+        other => Err(anyhow!("web_fetch 仅支持 http/https，当前 scheme: {}", other)),
+    }
+}
+
+fn extract_web_text(raw: &str, content_type: &str) -> String {
+    let content_type = content_type.to_ascii_lowercase();
+    if content_type.contains("html") || looks_like_html(raw) {
+        return html2text::from_read(raw.as_bytes(), 100).unwrap_or_else(|_| raw.to_string());
+    }
+    raw.to_string()
+}
+
+fn looks_like_html(raw: &str) -> bool {
+    let prefix = raw.chars().take(512).collect::<String>().to_ascii_lowercase();
+    prefix.contains("<html")
+        || prefix.contains("<!doctype html")
+        || prefix.contains("<body")
+        || prefix.contains("<head")
+}
+
+fn normalize_web_text(text: &str) -> String {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut out = Vec::new();
+    let mut blank_run = 0usize;
+
+    for line in normalized.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            blank_run += 1;
+            if blank_run <= 1 {
+                out.push(String::new());
+            }
+            continue;
+        }
+
+        blank_run = 0;
+        out.push(trimmed.trim_matches('\u{feff}').to_string());
+    }
+
+    let result = out.join("\n").trim().to_string();
+    if result.is_empty() {
+        "（网页内容为空）".to_string()
+    } else {
+        result
+    }
 }
 
 impl ShellContext {

@@ -98,6 +98,7 @@ impl SessionModel {
 
     pub fn persist_tool_memory(&mut self, request: &ToolRequest, output: &str) {
         let request_desc = match request {
+            ToolRequest::WebFetch { url } => format!("web_fetch url={}", url),
             ToolRequest::ListDirectory { path } => {
                 format!("list_directory_files path={}", path)
             }

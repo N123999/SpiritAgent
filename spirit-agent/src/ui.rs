@@ -1065,6 +1065,7 @@ fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
         "/tool" => vec![
             "  Usage",
             "    /tool shell <command>",
+            "    /tool web <url>",
             "    /tool list <absolute-dir>",
             "    /tool read <path> [start] [end]",
             "    /tool search <query>",
