@@ -1082,7 +1082,6 @@ fn suggestion_summary(command: &str) -> &'static str {
         "/compact" => "压缩上下文历史",
         "/sessions" => "保存、加载或选择会话",
         "/image" => "添加、清空或选择图片",
-        "/tool" => "执行文件或 shell 工具",
         "/log" => "打开或导出日志",
         _ => "",
     }
@@ -1108,14 +1107,6 @@ fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
             "    /image <path> [prompt]",
             "    /image pick",
             "    /image clear",
-        ],
-        "/tool" => vec![
-            "  Usage",
-            "    /tool shell <command>",
-            "    /tool web <url>",
-            "    /tool list <absolute-dir>",
-            "    /tool read <path> [start] [end]",
-            "    /tool search <query>",
         ],
         "/log" => vec![
             "  Usage",

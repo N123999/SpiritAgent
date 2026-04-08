@@ -93,7 +93,6 @@ impl TuiShell {
             "/compact".to_string(),
             "/sessions".to_string(),
             "/image".to_string(),
-            "/tool".to_string(),
             "/log".to_string(),
         ];
 
@@ -666,7 +665,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /tool shell <command>\n- /tool web <url>\n- /tool list <absolute-dir>\n- /tool read <path> [start] [end]\n- /tool search <query>\n- /log（或 /log export、/log session export）\n\n说明:\n- shell 命令会按当前真实 shell 执行，不再默认按 Bash/Unix 语义理解。\n- web_fetch 会用标准桌面浏览器 UA 抓取网页内容。\n- shell 命令执行统一需要审批（y/n/t）。\n- 读取工作目录外文件或遍历工作目录外目录需要审批（y/n/t）。\n- /tool web 抓取 http/https 网页文本内容。\n- /tool list 递归列出一个绝对路径目录下的全部文件。\n- /tool search 仅搜索工作目录内文件。\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
                 tool_block: None});
             }
@@ -683,7 +682,6 @@ impl TuiShell {
             }
             "/sessions" => self.handle_sessions_slash(message),
             "/image" => self.handle_image_slash(message),
-            "/tool" => self.handle_tool_slash(message),
             "/log" => self.handle_log_slash(&parts[1..]),
             _ => {
                 self.messages.push(ChatMessage {
@@ -971,19 +969,6 @@ impl TuiShell {
             ),
             tool_block: None,
         });
-    }
-
-    fn handle_tool_slash(&mut self, message: &str) {
-        if self.runtime.has_pending_tool_approval() {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: "当前有待确认的高风险工具调用。请先输入 y / n / t。".to_string(),
-                tool_block: None,
-            });
-            return;
-        }
-        self.runtime.execute_manual_tool_command(message);
-        self.apply_runtime_events();
     }
 
     fn handle_log_slash(&mut self, args: &[&str]) {
@@ -1382,10 +1367,6 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
         return vec!["/image"];
     }
 
-    if q == "/tool" || q.starts_with("/tool ") {
-        return vec!["/tool"];
-    }
-
     if q == "/log" || q.starts_with("/log ") {
         return vec!["/log"];
     }
@@ -1395,7 +1376,7 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
 
 fn slash_suggestion_apply_value(selected: &str) -> String {
     match selected {
-        "/model" | "/sessions" | "/image" | "/tool" | "/log" => format!("{} ", selected),
+        "/model" | "/sessions" | "/image" | "/log" => format!("{} ", selected),
         _ => selected.to_string(),
     }
 }
