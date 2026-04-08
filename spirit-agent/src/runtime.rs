@@ -20,7 +20,7 @@ use crate::{
     mcp::McpServerConfig,
     mcp_manager::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
-        McpServerInspection,
+        McpManager, McpServerInspection,
     },
     model_registry::AppConfig,
     ports::{
@@ -86,6 +86,13 @@ struct PendingHistoryCompaction {
     continuation: HistoryCompactionContinuation,
 }
 
+struct PendingMcpToolExecution {
+    request: ToolRequest,
+    ui_tool_name: String,
+    continuation: Option<ToolApprovalContinuation>,
+    result_rx: Receiver<anyhow::Result<String>>,
+}
+
 pub struct AgentRuntime {
     session: SessionModel,
     config: AppConfig,
@@ -96,6 +103,7 @@ pub struct AgentRuntime {
     pending_tool_agent_step: Option<Receiver<anyhow::Result<ToolAgentRoundResult>>>,
     pending_tool_agent_state: Option<ToolAgentState>,
     pending_history_compaction: Option<PendingHistoryCompaction>,
+    pending_mcp_tool_execution: Option<PendingMcpToolExecution>,
     reuse_pending_assistant_on_next_round: bool,
     pending_started_at: Option<Instant>,
     pending_last_event_at: Option<Instant>,
@@ -127,6 +135,7 @@ impl AgentRuntime {
             pending_tool_agent_step: None,
             pending_tool_agent_state: None,
             pending_history_compaction: None,
+            pending_mcp_tool_execution: None,
             reuse_pending_assistant_on_next_round: false,
             pending_started_at: None,
             pending_last_event_at: None,
@@ -177,6 +186,7 @@ impl AgentRuntime {
         self.pending_response.is_some()
             || self.pending_tool_agent_step.is_some()
             || self.pending_history_compaction.is_some()
+            || self.pending_mcp_tool_execution.is_some()
     }
 
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
@@ -216,6 +226,7 @@ impl AgentRuntime {
         self.poll_pending_response();
         self.poll_pending_tool_agent_step();
         self.poll_pending_history_compaction();
+        self.poll_pending_mcp_tool_execution();
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
@@ -510,6 +521,7 @@ impl AgentRuntime {
         self.pending_tool_agent_step = None;
         self.pending_tool_agent_state = None;
         self.pending_history_compaction = None;
+        self.pending_mcp_tool_execution = None;
         self.reuse_pending_assistant_on_next_round = false;
         self.pending_started_at = None;
         self.pending_last_event_at = None;
@@ -976,6 +988,11 @@ impl AgentRuntime {
     }
 
     fn execute_tool_request(&mut self, request: &ToolRequest) {
+        if matches!(request, ToolRequest::McpTool { .. }) {
+            self.start_mcp_tool_execution(request.clone(), None, "manual".to_string());
+            return;
+        }
+
         match self.tool_executor.execute(request) {
             Ok(output) => {
                 self.session.persist_tool_memory(request, &output);
@@ -995,6 +1012,136 @@ impl AgentRuntime {
                     ),
                 );
             }
+        }
+    }
+
+    fn start_mcp_tool_execution(
+        &mut self,
+        request: ToolRequest,
+        continuation: Option<ToolApprovalContinuation>,
+        ui_tool_name: String,
+    ) {
+        let workspace_root = self.workspace_root.clone();
+        let request_for_worker = request.clone();
+        let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<String>>();
+
+        thread::spawn(move || {
+            let outcome = execute_mcp_tool_request_sync(&workspace_root, &request_for_worker);
+            let _ = result_tx.send(outcome);
+        });
+
+        self.pending_mcp_tool_execution = Some(PendingMcpToolExecution {
+            request,
+            ui_tool_name,
+            continuation,
+            result_rx,
+        });
+    }
+
+    fn poll_pending_mcp_tool_execution(&mut self) {
+        let Some(pending) = self.pending_mcp_tool_execution.take() else {
+            return;
+        };
+
+        let PendingMcpToolExecution {
+            request,
+            ui_tool_name,
+            continuation,
+            result_rx,
+        } = pending;
+
+        match result_rx.try_recv() {
+            Ok(Ok(output)) => {
+                self.session.persist_tool_memory(&request, &output);
+                match continuation {
+                    Some(mut cont) => {
+                        self.push_agent_tool(
+                            format_tool_ui_message(&request, &cont.tool_name, &output),
+                            build_tool_result_block(
+                                &request,
+                                &cont.tool_name,
+                                Some(&cont.tool_call_id),
+                                &output,
+                            ),
+                        );
+                        append_tool_result_message(&mut cont.state, &cont.tool_call_id, &output);
+                        self.start_tool_agent_step_async(cont.state);
+                    }
+                    None => {
+                        self.push_agent_tool(
+                            format_tool_ui_message(&request, &ui_tool_name, &output),
+                            build_tool_result_block(
+                                &request,
+                                &ui_tool_name,
+                                None,
+                                &output,
+                            ),
+                        );
+                    }
+                }
+            }
+            Ok(Err(err)) => match continuation {
+                Some(mut cont) => {
+                    let e = format!("[tool error] {}", err);
+                    self.push_agent_tool(
+                        format!("模型工具调用执行失败: {}", err),
+                        tool_failed_block(
+                            &cont.tool_name,
+                            Some(&cont.tool_call_id),
+                            "模型工具调用执行失败",
+                            &err.to_string(),
+                        ),
+                    );
+                    append_tool_result_message(&mut cont.state, &cont.tool_call_id, &e);
+                    self.start_tool_agent_step_async(cont.state);
+                }
+                None => {
+                    self.push_agent_tool(
+                        format!("工具执行失败: {}", err),
+                        tool_failed_block(
+                            &ui_tool_name,
+                            None,
+                            "工具执行失败",
+                            &err.to_string(),
+                        ),
+                    );
+                }
+            },
+            Err(TryRecvError::Empty) => {
+                self.pending_mcp_tool_execution = Some(PendingMcpToolExecution {
+                    request,
+                    ui_tool_name,
+                    continuation,
+                    result_rx,
+                });
+            }
+            Err(TryRecvError::Disconnected) => match continuation {
+                Some(mut cont) => {
+                    let e = "[tool error] MCP 工具后台任务异常中断。".to_string();
+                    self.push_agent_tool(
+                        "模型工具调用执行失败: MCP 工具后台任务异常中断。".to_string(),
+                        tool_failed_block(
+                            &cont.tool_name,
+                            Some(&cont.tool_call_id),
+                            "模型工具调用执行失败",
+                            "MCP 工具后台任务异常中断。",
+                        ),
+                    );
+                    append_tool_result_message(&mut cont.state, &cont.tool_call_id, &e);
+                    self.start_tool_agent_step_async(cont.state);
+                }
+                None => {
+                    self.push_agent_tool(
+                        "工具执行失败: MCP 工具后台任务异常中断。".to_string(),
+                        tool_failed_block(
+                            &ui_tool_name,
+                            None,
+                            "工具执行失败",
+                            "MCP 工具后台任务异常中断。",
+                        ),
+                    );
+                }
+            },
         }
     }
 
@@ -1029,7 +1176,14 @@ impl AgentRuntime {
         continuation: Option<ToolApprovalContinuation>,
     ) {
         match continuation {
-            Some(mut cont) => {
+            Some(cont) => {
+                if matches!(request, ToolRequest::McpTool { .. }) {
+                    let ui_tool_name = cont.tool_name.clone();
+                    self.start_mcp_tool_execution(request.clone(), Some(cont), ui_tool_name);
+                    return;
+                }
+
+                let mut cont = cont;
                 let output = match self.tool_executor.execute(request) {
                     Ok(result) => {
                         self.session.persist_tool_memory(request, &result);
@@ -1229,6 +1383,26 @@ impl AgentRuntime {
             _ => None,
         }
     }
+}
+
+fn execute_mcp_tool_request_sync(workspace_root: &PathBuf, request: &ToolRequest) -> Result<String> {
+    let ToolRequest::McpTool {
+        server,
+        tool_name,
+        arguments,
+        ..
+    } = request
+    else {
+        return Err(anyhow!("后台 MCP 工具执行收到非 MCP 请求"));
+    };
+
+    let arguments = match arguments {
+        Value::Object(map) => Some(map.clone()),
+        Value::Null => None,
+        _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
+    };
+    let value = McpManager::load(workspace_root.clone())?.call_tool(server, tool_name, arguments)?;
+    Ok(serde_json::to_string_pretty(&value)?)
 }
 
 fn truncate_tool_messages_for_retry(state: &mut ToolAgentState) -> bool {
