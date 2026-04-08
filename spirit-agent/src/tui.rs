@@ -73,7 +73,7 @@ impl TuiShell {
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
         let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
-        let llm_transport = Box::new(OpenAiCompatibleTransport::new(
+        let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
             Arc::clone(&secret_store),
             telemetry,
             app_paths.as_ref(),

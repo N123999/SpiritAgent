@@ -1,14 +1,15 @@
 use std::{
     collections::VecDeque,
     path::PathBuf,
-    sync::mpsc::{Receiver, TryRecvError},
+    sync::{Arc, mpsc::{self, Receiver, TryRecvError}},
+    thread,
     time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
 
 use crate::{
-    llm_client::{StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message},
+    llm_client::{CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message},
     model_registry::AppConfig,
     ports::{LlmTransport, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor},
     session::SessionModel,
@@ -18,6 +19,11 @@ use crate::{
 
 const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
 const STREAM_STALL_TIMEOUT: Duration = Duration::from_secs(20);
+const TOOL_OUTPUT_RETRY_MAX_CHARS: usize = 12_000;
+const TOOL_MEMORY_RETRY_MAX_CHARS: usize = 4_000;
+const TOOL_TRUNCATION_HEAD_RATIO_NUM: usize = 2;
+const TOOL_TRUNCATION_HEAD_RATIO_DEN: usize = 3;
+const TOOL_MEMORY_PREFIX: &str = "[TOOL_MEMORY]";
 
 pub enum RuntimeEvent {
     PushMessage(ChatMessage),
@@ -41,14 +47,37 @@ struct ToolApprovalContinuation {
     tool_name: String,
 }
 
+struct CompletedHistoryCompaction {
+    result: CompactResult,
+    compacted_history: Vec<LlmMessage>,
+    summary_preview: String,
+}
+
+enum HistoryCompactionContinuation {
+    Manual,
+    AutoRetry {
+        retry_state: ToolAgentState,
+        tool_truncation_applied: bool,
+        user_turn: String,
+        original_error: String,
+    },
+}
+
+struct PendingHistoryCompaction {
+    result_rx: Receiver<anyhow::Result<CompletedHistoryCompaction>>,
+    continuation: HistoryCompactionContinuation,
+}
+
 pub struct AgentRuntime {
     session: SessionModel,
     config: AppConfig,
-    llm_transport: Box<dyn LlmTransport>,
+    llm_transport: Arc<dyn LlmTransport>,
     tool_executor: Box<dyn ToolExecutor>,
     workspace_root: PathBuf,
     pending_response: Option<Receiver<StreamEvent>>,
     pending_tool_agent_step: Option<Receiver<anyhow::Result<ToolAgentRoundResult>>>,
+    pending_tool_agent_state: Option<ToolAgentState>,
+    pending_history_compaction: Option<PendingHistoryCompaction>,
     pending_started_at: Option<Instant>,
     pending_last_event_at: Option<Instant>,
     stream_chunk_counter: usize,
@@ -62,7 +91,7 @@ pub struct AgentRuntime {
 impl AgentRuntime {
     pub fn new(
         config: AppConfig,
-        llm_transport: Box<dyn LlmTransport>,
+        llm_transport: Arc<dyn LlmTransport>,
         tool_executor: Box<dyn ToolExecutor>,
         workspace_root: PathBuf,
     ) -> Self {
@@ -74,6 +103,8 @@ impl AgentRuntime {
             workspace_root,
             pending_response: None,
             pending_tool_agent_step: None,
+            pending_tool_agent_state: None,
+            pending_history_compaction: None,
             pending_started_at: None,
             pending_last_event_at: None,
             stream_chunk_counter: 0,
@@ -115,7 +146,9 @@ impl AgentRuntime {
     }
 
     pub fn is_busy(&self) -> bool {
-        self.pending_response.is_some() || self.pending_tool_agent_step.is_some()
+        self.pending_response.is_some()
+            || self.pending_tool_agent_step.is_some()
+            || self.pending_history_compaction.is_some()
     }
 
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
@@ -154,6 +187,7 @@ impl AgentRuntime {
     pub fn poll(&mut self) {
         self.poll_pending_response();
         self.poll_pending_tool_agent_step();
+        self.poll_pending_history_compaction();
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
@@ -304,30 +338,13 @@ impl AgentRuntime {
     }
 
     pub fn compact_history(&mut self) {
-        match self
-            .llm_transport
-            .compact_history_manual(&self.config, self.session.llm_history_mut())
-        {
-            Ok(result) => {
-                if result.dropped_messages == 0 {
-                    self.push_agent_message("当前可压缩历史较少，已跳过压缩。");
-                } else {
-                    let summary_preview = self
-                        .llm_transport
-                        .compact_summary_text(self.session.llm_history())
-                        .map(|s| truncate_for_preview(&s, 600))
-                        .unwrap_or_else(|| "<无摘要内容>".to_string());
-                    self.push_agent_message(format!(
-                        "压缩完成：上下文消息 {} -> {}，已全量压缩为摘要并合并 {} 条历史消息（UI 历史保留不变）。\n\n压缩摘要预览:\n{}",
-                        result.before_len,
-                        result.after_len,
-                        result.dropped_messages,
-                        summary_preview
-                    ));
-                }
-            }
-            Err(err) => self.push_agent_message(format!("压缩失败: {}", err)),
+        if self.pending_history_compaction.is_some() {
+            self.push_agent_message("当前已有压缩任务在后台进行，请稍候。");
+            return;
         }
+
+        self.push_agent_message("正在后台压缩上下文...");
+        self.start_history_compaction(HistoryCompactionContinuation::Manual);
     }
 
     pub fn replace_session_from_archive(&mut self, archive: &crate::ports::ChatArchive) {
@@ -335,6 +352,8 @@ impl AgentRuntime {
         self.pending_tool_approval = None;
         self.pending_response = None;
         self.pending_tool_agent_step = None;
+        self.pending_tool_agent_state = None;
+        self.pending_history_compaction = None;
         self.pending_started_at = None;
         self.pending_last_event_at = None;
         self.stream_chunk_counter = 0;
@@ -356,6 +375,7 @@ impl AgentRuntime {
         self.thinking_spinner_index = 0;
         self.thinking_text.clear();
         self.pending_assistant_text.clear();
+        self.pending_tool_agent_state = Some(state.clone());
         match self.llm_transport.start_tool_agent_round(
             &self.config,
             state,
@@ -374,6 +394,7 @@ impl AgentRuntime {
                 self.events.push_back(RuntimeEvent::BeginAssistantResponse);
             }
             Err(err) => {
+                self.pending_tool_agent_state = None;
                 self.push_agent_message(format!("LLM 调用失败: {}", err));
             }
         }
@@ -390,6 +411,7 @@ impl AgentRuntime {
                 step,
                 mut request_trace,
             })) => {
+                self.pending_tool_agent_state = None;
                 self.session.append_api_trace(&mut request_trace);
                 match step {
                     ToolAgentStep::FinalResponseReady => {
@@ -491,14 +513,88 @@ impl AgentRuntime {
                 if self.try_auto_compact_and_retry(&err.to_string()) {
                     return;
                 }
+                self.pending_tool_agent_state = None;
                 self.push_agent_message(format!("LLM 调用失败: {}", err));
             }
             Err(TryRecvError::Empty) => {
                 self.pending_tool_agent_step = Some(rx);
             }
             Err(TryRecvError::Disconnected) => {
+                self.pending_tool_agent_state = None;
                 self.push_agent_message("LLM 后台任务异常中断。");
             }
+        }
+    }
+
+    fn poll_pending_history_compaction(&mut self) {
+        let Some(pending) = self.pending_history_compaction.take() else {
+            return;
+        };
+
+        match pending.result_rx.try_recv() {
+            Ok(Ok(compacted)) => {
+                *self.session.llm_history_mut() = compacted.compacted_history;
+                match pending.continuation {
+                    HistoryCompactionContinuation::Manual => {
+                        if compacted.result.dropped_messages == 0 {
+                            self.push_agent_message("当前可压缩历史较少，已跳过压缩。");
+                        } else {
+                            self.push_agent_message(format!(
+                                "压缩完成：上下文消息 {} -> {}，已全量压缩为摘要并合并 {} 条历史消息（UI 历史保留不变）。\n\n压缩摘要预览:\n{}",
+                                compacted.result.before_len,
+                                compacted.result.after_len,
+                                compacted.result.dropped_messages,
+                                truncate_for_preview(&compacted.summary_preview, 600)
+                            ));
+                        }
+                    }
+                    HistoryCompactionContinuation::AutoRetry {
+                        retry_state,
+                        tool_truncation_applied,
+                        user_turn,
+                        original_error,
+                    } => {
+                        if compacted.result.dropped_messages == 0 && !tool_truncation_applied {
+                            self.push_agent_message(format!(
+                                "检测到上下文超限，但历史已无法继续压缩。原始错误: {}",
+                                original_error
+                            ));
+                        } else {
+                            let next_state = if compacted.result.dropped_messages == 0 {
+                                retry_state
+                            } else {
+                                self.rebuild_retry_state_after_compaction(&user_turn, retry_state)
+                            };
+                            self.start_tool_agent_step_async(next_state);
+                        }
+                    }
+                }
+            }
+            Ok(Err(err)) => match pending.continuation {
+                HistoryCompactionContinuation::Manual => {
+                    self.push_agent_message(format!("压缩失败: {}", err));
+                }
+                HistoryCompactionContinuation::AutoRetry { original_error, .. } => {
+                    self.push_agent_message(format!(
+                        "上下文超限且自动压缩失败: {}\n原始错误: {}",
+                        err, original_error
+                    ));
+                }
+            },
+            Err(TryRecvError::Empty) => {
+                self.pending_history_compaction = Some(pending);
+            }
+            Err(TryRecvError::Disconnected) => match pending.continuation {
+                HistoryCompactionContinuation::Manual => {
+                    self.push_agent_message("压缩后台任务异常中断。");
+                }
+                HistoryCompactionContinuation::AutoRetry { original_error, .. } => {
+                    self.push_agent_message(format!(
+                        "上下文超限且自动压缩任务异常中断。原始错误: {}",
+                        original_error
+                    ));
+                }
+            },
         }
     }
 
@@ -589,17 +685,14 @@ impl AgentRuntime {
                         break;
                     }
 
-                    if let Some(state) = self.try_auto_compact_and_build_retry_state(&err) {
+                    if self.try_auto_compact_and_retry(&err) {
                         if self.pending_assistant_text.trim().is_empty() {
-                            self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
-                                "检测到上下文超限，已自动压缩并重试当前请求。".to_string(),
-                            ));
+                            self.events.push_back(RuntimeEvent::RemovePendingAssistant);
                         }
                         self.events
                             .push_back(RuntimeEvent::AssistantResponseCompleted);
                         completed = true;
                         self.thinking_text.clear();
-                        retry_state = Some(state);
                         break;
                     }
 
@@ -742,56 +835,39 @@ impl AgentRuntime {
     }
 
     fn try_auto_compact_and_retry(&mut self, err: &str) -> bool {
-        if let Some(state) = self.try_auto_compact_and_build_retry_state(err) {
-            self.start_tool_agent_step_async(state);
+        if !self.llm_transport.is_context_overflow_error(err) {
+            return false;
+        }
+
+        let Some(user_turn) = self.session.pending_user_turn().map(|s| s.to_string()) else {
+            return false;
+        };
+
+        if self.pending_history_compaction.is_some() {
             return true;
         }
-        false
-    }
 
-    fn try_auto_compact_and_build_retry_state(&mut self, err: &str) -> Option<ToolAgentState> {
-        if !self.llm_transport.is_context_overflow_error(err) {
-            return None;
+        let mut retry_state = self
+            .pending_tool_agent_state
+            .clone()
+            .unwrap_or_else(|| self.make_tool_agent_state(&user_turn));
+        let tool_truncation_applied = truncate_tool_messages_for_retry(&mut retry_state);
+
+        if tool_truncation_applied {
+            self.push_agent_message(
+                "检测到上下文超限，已先截断超长工具输出，再在后台压缩历史并自动重试当前请求。",
+            );
+        } else {
+            self.push_agent_message("检测到上下文超限，正在后台压缩历史并自动重试当前请求。");
         }
 
-        let user_turn = self.session.pending_user_turn()?.to_string();
-
-        match self
-            .llm_transport
-            .compact_history_manual(&self.config, self.session.llm_history_mut())
-        {
-            Ok(result) => {
-                if result.dropped_messages == 0 {
-                    self.push_agent_message(format!(
-                        "检测到上下文超限，但历史已无法继续压缩。原始错误: {}",
-                        err
-                    ));
-                    return None;
-                }
-
-                let summary_preview = self
-                    .llm_transport
-                    .compact_summary_text(self.session.llm_history())
-                    .map(|s| truncate_for_preview(&s, 500))
-                    .unwrap_or_else(|| "<无摘要内容>".to_string());
-                self.push_agent_message(format!(
-                    "检测到上下文超限，已自动压缩并重试：{} -> {}（压缩 {} 条）。\n\n压缩摘要预览:\n{}",
-                    result.before_len,
-                    result.after_len,
-                    result.dropped_messages,
-                    summary_preview
-                ));
-
-                Some(self.make_tool_agent_state(&user_turn))
-            }
-            Err(compact_err) => {
-                self.push_agent_message(format!(
-                    "上下文超限且自动压缩失败: {}\n原始错误: {}",
-                    compact_err, err
-                ));
-                None
-            }
-        }
+        self.start_history_compaction(HistoryCompactionContinuation::AutoRetry {
+            retry_state,
+            tool_truncation_applied,
+            user_turn,
+            original_error: err.to_string(),
+        });
+        true
     }
 
     fn try_fallback_to_text_only_and_retry(&mut self, err: &str) -> bool {
@@ -856,6 +932,144 @@ impl AgentRuntime {
                 block,
             )));
     }
+
+    fn start_history_compaction(&mut self, continuation: HistoryCompactionContinuation) {
+        let llm_transport = Arc::clone(&self.llm_transport);
+        let config = self.config.clone();
+        let mut history = self.session.llm_history().to_vec();
+        let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<CompletedHistoryCompaction>>();
+
+        thread::spawn(move || {
+            truncate_tool_memories_for_retry(&mut history);
+            let outcome = llm_transport
+                .compact_history_manual(&config, &mut history)
+                .map(|result| CompletedHistoryCompaction {
+                    result,
+                    summary_preview: llm_transport
+                        .compact_summary_text(&history)
+                        .unwrap_or_else(|| "<无摘要内容>".to_string()),
+                    compacted_history: history,
+                });
+            let _ = result_tx.send(outcome);
+        });
+
+        self.pending_history_compaction = Some(PendingHistoryCompaction {
+            result_rx,
+            continuation,
+        });
+        self.thinking_spinner_index = 0;
+    }
+
+    fn rebuild_retry_state_after_compaction(
+        &self,
+        user_turn: &str,
+        retry_state: ToolAgentState,
+    ) -> ToolAgentState {
+        let mut rebuilt = self.make_tool_agent_state(user_turn);
+        rebuilt.steps = retry_state.steps;
+
+        if let Some(user_index) = retry_state.messages.iter().rposition(|message| {
+            message.get("role").and_then(Value::as_str) == Some("user")
+                && message.get("content").and_then(Value::as_str) == Some(user_turn)
+        }) {
+            rebuilt
+                .messages
+                .extend(retry_state.messages.into_iter().skip(user_index + 1));
+            return rebuilt;
+        }
+
+        retry_state
+    }
+}
+
+fn truncate_tool_messages_for_retry(state: &mut ToolAgentState) -> bool {
+    let mut changed = false;
+
+    for message in &mut state.messages {
+        let role = message.get("role").and_then(Value::as_str);
+        let Some(content) = message.get("content").and_then(Value::as_str) else {
+            continue;
+        };
+
+        let replacement = match role {
+            Some("tool") => build_context_retry_excerpt(
+                content,
+                TOOL_OUTPUT_RETRY_MAX_CHARS,
+                "[tool output truncated for context retry]",
+            ),
+            Some("system") if content.starts_with(TOOL_MEMORY_PREFIX) => build_context_retry_excerpt(
+                content,
+                TOOL_MEMORY_RETRY_MAX_CHARS,
+                "[tool memory truncated for context retry]",
+            ),
+            _ => None,
+        };
+
+        if let Some(new_content) = replacement {
+            if let Some(obj) = message.as_object_mut() {
+                obj.insert("content".to_string(), Value::String(new_content));
+                changed = true;
+            }
+        }
+    }
+
+    changed
+}
+
+fn truncate_tool_memories_for_retry(history: &mut [LlmMessage]) -> bool {
+    let mut changed = false;
+
+    for message in history.iter_mut() {
+        if message.role == "system" && message.content.starts_with(TOOL_MEMORY_PREFIX) {
+            if let Some(new_content) = build_context_retry_excerpt(
+                &message.content,
+                TOOL_MEMORY_RETRY_MAX_CHARS,
+                "[tool memory truncated for context retry]",
+            ) {
+                message.content = new_content;
+                changed = true;
+            }
+        }
+    }
+
+    changed
+}
+
+fn build_context_retry_excerpt(text: &str, max_chars: usize, label: &str) -> Option<String> {
+    let total_chars = text.chars().count();
+    if total_chars <= max_chars {
+        return None;
+    }
+
+    let total_lines = text.lines().count();
+    let overhead = label.chars().count() + 160;
+    let usable = max_chars.saturating_sub(overhead).max(256);
+    let head_chars = usable * TOOL_TRUNCATION_HEAD_RATIO_NUM / TOOL_TRUNCATION_HEAD_RATIO_DEN;
+    let tail_chars = usable.saturating_sub(head_chars);
+    let head = take_first_chars(text, head_chars);
+    let tail = take_last_chars(text, tail_chars);
+    let omitted_chars = total_chars.saturating_sub(head.chars().count() + tail.chars().count());
+
+    Some(format!(
+        "{label}\noriginal_chars: {total_chars}\noriginal_lines: {total_lines}\nkept_head_chars: {}\nkept_tail_chars: {}\n\n<head>\n{}\n\n<omitted {} chars>\n\n<tail>\n{}",
+        head.chars().count(),
+        tail.chars().count(),
+        head,
+        omitted_chars,
+        tail,
+    ))
+}
+
+fn take_first_chars(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
+}
+
+fn take_last_chars(text: &str, max_chars: usize) -> String {
+    let total_chars = text.chars().count();
+    if total_chars <= max_chars {
+        return text.to_string();
+    }
+    text.chars().skip(total_chars - max_chars).collect()
 }
 
 fn openapi_tool_name(request: &ToolRequest) -> &'static str {

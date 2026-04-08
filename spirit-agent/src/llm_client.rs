@@ -57,6 +57,7 @@ pub enum ToolAgentStep {
     FinalResponseReady,
 }
 
+#[derive(Clone)]
 pub struct ToolAgentState {
     pub messages: Vec<Value>,
     pub steps: usize,
