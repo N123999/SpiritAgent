@@ -20,8 +20,8 @@ use ratatui::{
 use std::{io, time::Duration};
 
 use spirit_agent::{
-    ConfigCommand, KeyCommand, ModelCommand, TuiShell, handle_config_cli, handle_model_cli,
-    logging, ui,
+    ConfigCommand, KeyCommand, McpCommand, ModelCommand, TuiShell, handle_config_cli,
+    handle_mcp_cli, handle_model_cli, logging, mcp::McpConfigScope, ui,
 };
 
 const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
@@ -61,6 +61,10 @@ enum Commands {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
     },
 }
 
@@ -115,6 +119,24 @@ enum KeyAction {
     Status,
 }
 
+#[derive(Subcommand)]
+enum McpAction {
+    List,
+    Show,
+    Init {
+        #[arg(long, value_enum, default_value_t = McpScopeArg::Workspace)]
+        scope: McpScopeArg,
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum McpScopeArg {
+    User,
+    Workspace,
+}
+
 fn main() -> Result<()> {
     spirit_agent::logging::init_logging();
     let cli = Cli::parse();
@@ -143,6 +165,7 @@ fn main() -> Result<()> {
         Some(Commands::Interactive) => run_tui()?,
         Some(Commands::Model { action }) => handle_model_cli(into_model_command(action))?,
         Some(Commands::Config { action }) => handle_config_cli(into_config_command(action))?,
+        Some(Commands::Mcp { action }) => handle_mcp_cli(into_mcp_command(action))?,
         None => run_tui()?,
     }
 
@@ -182,6 +205,20 @@ fn into_key_command(action: KeyAction) -> KeyCommand {
         KeyAction::Set { value } => KeyCommand::Set { value },
         KeyAction::Remove => KeyCommand::Remove,
         KeyAction::Status => KeyCommand::Status,
+    }
+}
+
+fn into_mcp_command(action: McpAction) -> McpCommand {
+    match action {
+        McpAction::List => McpCommand::List,
+        McpAction::Show => McpCommand::Show,
+        McpAction::Init { scope, force } => McpCommand::Init {
+            scope: match scope {
+                McpScopeArg::User => McpConfigScope::User,
+                McpScopeArg::Workspace => McpConfigScope::Workspace,
+            },
+            force,
+        },
     }
 }
 

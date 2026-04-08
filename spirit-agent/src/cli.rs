@@ -3,6 +3,8 @@ use std::env;
 
 use crate::{
     adapters::{DefaultAppPaths, JsonConfigStore, KeyringSecretStore},
+    mcp::{McpConfigScope, example_github_mcp_config, load_merged_mcp_config, save_mcp_config},
+    mcp_manager::McpManager,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, ConfigStore, SecretStore},
 };
@@ -41,6 +43,15 @@ pub enum KeyCommand {
     },
     Remove,
     Status,
+}
+
+pub enum McpCommand {
+    List,
+    Show,
+    Init {
+        scope: McpConfigScope,
+        force: bool,
+    },
 }
 
 pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
@@ -167,6 +178,69 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
             println!("已更新当前模型 API Base: {}", url);
         }
         ConfigCommand::Key { action } => handle_key_cli(action, &secret_store)?,
+    }
+
+    Ok(())
+}
+
+pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
+    let app_paths = DefaultAppPaths::new();
+    let workspace_root = app_paths.workspace_root();
+
+    match action {
+        McpCommand::List => {
+            let manager = McpManager::load(workspace_root.clone())?;
+            let mut servers = manager.servers();
+
+            println!("工作区: {}", manager.workspace_root().display());
+            println!("用户级 MCP 配置: {}", manager.user_config_path().display());
+            println!("工作区 MCP 配置: {}", manager.workspace_config_path().display());
+
+            if servers.len() == 0 {
+                println!("未配置任何 MCP server。可先执行 `spirit-agent mcp init --scope workspace` 生成模板。\n");
+                println!("提示: 首个模板会生成 GitHub MCP 的 stdio 配置，并使用环境变量 GITHUB_PERSONAL_ACCESS_TOKEN。" );
+                return Ok(());
+            }
+
+            println!("MCP servers:");
+            for server in servers.by_ref() {
+                println!(
+                    "  - {}\n    display: {}\n    source: {}\n    state: {}\n    trusted: {}\n    capabilities: {}\n    transport: {}",
+                    server.name,
+                    server.display_name,
+                    server.source,
+                    server.state.label(),
+                    if server.trusted { "yes" } else { "no" },
+                    server.capability_summary(),
+                    server.transport_summary(),
+                );
+            }
+        }
+        McpCommand::Show => {
+            let loaded = load_merged_mcp_config(&workspace_root)?;
+
+            println!("工作区: {}", workspace_root.display());
+            println!("用户级 MCP 配置: {}", loaded.user_path.display());
+            println!("工作区 MCP 配置: {}", loaded.workspace_path.display());
+            println!();
+            println!("用户级 server 数量: {}", loaded.user_config.servers.len());
+            println!("工作区 server 数量: {}", loaded.workspace_config.servers.len());
+            println!("合并后 server 数量: {}", loaded.merged.servers.len());
+            println!();
+            println!("合并后 MCP 配置:");
+            println!("{}", serde_json::to_string_pretty(&loaded.merged)?);
+        }
+        McpCommand::Init { scope, force } => {
+            let path = match scope {
+                McpConfigScope::User => crate::mcp::user_mcp_config_path(),
+                McpConfigScope::Workspace => crate::mcp::workspace_mcp_config_path(&workspace_root),
+            };
+
+            save_mcp_config(&path, &example_github_mcp_config(), force)?;
+            println!("已生成 MCP 配置模板: {}", path.display());
+            println!("模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit-agent mcp list` 检查配置。"
+            );
+        }
     }
 
     Ok(())

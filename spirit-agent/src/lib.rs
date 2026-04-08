@@ -5,6 +5,8 @@ pub mod cli;
 pub mod conversation_select;
 pub mod llm_client;
 pub mod logging;
+pub mod mcp;
+pub mod mcp_manager;
 pub mod model_registry;
 pub mod ports;
 pub mod runtime;
@@ -18,7 +20,10 @@ pub mod view;
 #[cfg(feature = "tui")]
 mod word_wrap;
 
-pub use cli::{ConfigCommand, KeyCommand, ModelCommand, handle_config_cli, handle_model_cli};
+pub use cli::{
+	ConfigCommand, KeyCommand, McpCommand, ModelCommand, handle_config_cli, handle_mcp_cli,
+	handle_model_cli,
+};
 #[cfg(feature = "tui")]
 pub use tui::TuiShell;
 pub use view::{ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase, TuiViewModel};
