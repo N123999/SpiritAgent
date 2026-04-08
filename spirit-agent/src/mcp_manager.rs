@@ -2,11 +2,14 @@ use anyhow::{Context, Result, anyhow};
 use rmcp::{
     ServiceExt,
     model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams},
-    transport::{ConfigureCommandExt, TokioChildProcess},
+    transport::{
+        ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess,
+        streamable_http_client::StreamableHttpClientTransportConfig,
+    },
 };
 use serde_json::{Map, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     env,
     path::{Path, PathBuf},
     process::Stdio,
@@ -17,6 +20,7 @@ use tokio::{
     process::{ChildStderr, Command},
     runtime::Builder as RuntimeBuilder,
 };
+use reqwest::header::{HeaderName, HeaderValue};
 
 use crate::mcp::{
     LoadedMcpConfig, McpCapabilityToggles, McpServerConfig, McpTransportConfig,
@@ -197,7 +201,7 @@ impl McpManager {
         let server = self.require_connectable_server(name)?.clone();
         let workspace_root = self.workspace_root.clone();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let peer_info = client
                 .peer_info()
                 .cloned()
@@ -273,7 +277,7 @@ impl McpManager {
         let server = self.require_connectable_server(name)?.clone();
         let workspace_root = self.workspace_root.clone();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let peer_info = client
                 .peer_info()
                 .cloned()
@@ -303,7 +307,7 @@ impl McpManager {
         let server = self.require_connectable_server(name)?.clone();
         let workspace_root = self.workspace_root.clone();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let peer_info = client
                 .peer_info()
                 .cloned()
@@ -335,7 +339,7 @@ impl McpManager {
         let server = self.require_connectable_server(name)?.clone();
         let workspace_root = self.workspace_root.clone();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let peer_info = client
                 .peer_info()
                 .cloned()
@@ -376,7 +380,7 @@ impl McpManager {
         let workspace_root = self.workspace_root.clone();
         let uri = uri.to_string();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let result = client
                 .read_resource(ReadResourceRequestParams::new(uri))
                 .await
@@ -396,7 +400,7 @@ impl McpManager {
         let workspace_root = self.workspace_root.clone();
         let tool_name = tool_name.to_string();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let mut request = CallToolRequestParams::new(tool_name);
             if let Some(args) = arguments {
                 request = request.with_arguments(args);
@@ -417,7 +421,7 @@ impl McpManager {
         let workspace_root = self.workspace_root.clone();
         let prompt_name = prompt_name.to_string();
         self.block_on(async move {
-            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let client = connect_client(&workspace_root, &server).await?;
             let mut request = GetPromptRequestParams::new(prompt_name);
             if let Some(args) = arguments {
                 request = request.with_arguments(args);
@@ -485,18 +489,57 @@ fn build_managed_server(
     }
 }
 
-async fn connect_stdio_client(
+async fn connect_client(
     workspace_root: &Path,
     server: &ManagedMcpServer,
 ) -> Result<rmcp::service::RunningService<rmcp::RoleClient, ()>> {
     let timeout = timeout_for_server(server);
     tokio::time::timeout(timeout, async {
-        let transport = build_stdio_transport(workspace_root, server)?;
-        let client = ().serve(transport).await.context("初始化 MCP 会话失败")?;
-        Ok(client)
+        match &server.transport {
+            McpTransportConfig::Stdio { .. } => {
+                let transport = build_stdio_transport(workspace_root, server)?;
+                let client = ().serve(transport).await.context("初始化 MCP 会话失败")?;
+                Ok(client)
+            }
+            McpTransportConfig::Http { .. } => {
+                let config = build_streamable_http_config(server)?;
+                let transport = StreamableHttpClientTransport::from_config(config);
+                let client = ().serve(transport).await.context("初始化 MCP 会话失败")?;
+                Ok(client)
+            }
+        }
     })
     .await
     .map_err(|_| anyhow!("连接 MCP server 超时（{} ms）: {}", timeout.as_millis(), server.name))?
+}
+
+fn build_streamable_http_config(
+    server: &ManagedMcpServer,
+) -> Result<StreamableHttpClientTransportConfig> {
+    let McpTransportConfig::Http { url, headers, .. } = &server.transport else {
+        return Err(anyhow!(
+            "当前仅支持 HTTP MCP server，{} 使用的是非 HTTP transport",
+            server.name
+        ));
+    };
+
+    let custom_headers = resolve_http_headers(headers)?;
+    Ok(StreamableHttpClientTransportConfig::with_uri(url.clone()).custom_headers(custom_headers))
+}
+
+fn resolve_http_headers(
+    headers: &BTreeMap<String, String>,
+) -> Result<HashMap<HeaderName, HeaderValue>> {
+    resolve_env_map(headers)?
+        .into_iter()
+        .map(|(name, value)| {
+            let header_name = HeaderName::from_bytes(name.as_bytes())
+                .map_err(|err| anyhow!("非法 HTTP header 名 {}: {}", name, err))?;
+            let header_value = HeaderValue::from_str(&value)
+                .map_err(|err| anyhow!("非法 HTTP header 值 {}: {}", name, err))?;
+            Ok((header_name, header_value))
+        })
+        .collect()
 }
 
 fn build_stdio_transport(workspace_root: &Path, server: &ManagedMcpServer) -> Result<TokioChildProcess> {
@@ -509,7 +552,7 @@ fn build_stdio_transport(workspace_root: &Path, server: &ManagedMcpServer) -> Re
     } = &server.transport
     else {
         return Err(anyhow!(
-            "当前仅支持 stdio MCP server，{} 使用的是非 stdio transport",
+            "build_stdio_transport 仅适用于 stdio transport，{} 使用的是非 stdio transport",
             server.name
         ));
     };
@@ -682,5 +725,20 @@ mod tests {
         let workspace = PathBuf::from("C:/workspace/spirit-agent");
         let resolved = resolve_stdio_cwd(&workspace, Some("tools/github"));
         assert_eq!(resolved, PathBuf::from("C:/workspace/spirit-agent/tools/github"));
+    }
+
+    #[test]
+    fn resolve_http_headers_supports_env_and_custom_values() {
+        let mut raw = BTreeMap::new();
+        raw.insert("x-api-key".to_string(), "${env:PATH}".to_string());
+        raw.insert("x-client".to_string(), "spirit-agent".to_string());
+
+        let headers = resolve_http_headers(&raw).expect("headers resolve");
+
+        assert!(headers.contains_key(&HeaderName::from_static("x-api-key")));
+        assert_eq!(
+            headers.get(&HeaderName::from_static("x-client")),
+            Some(&HeaderValue::from_static("spirit-agent"))
+        );
     }
 }
