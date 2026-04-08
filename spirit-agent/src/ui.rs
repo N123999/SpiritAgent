@@ -35,15 +35,6 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-/// Logo 区高度：小终端缩小顶栏，避免把对话区挤成 0 高导致整屏只剩零碎文字。
-fn conversation_logo_height(terminal_height: u16) -> u16 {
-    match terminal_height {
-        h if h >= 24 => 8,
-        h if h >= 19 => 6,
-        _ => 5,
-    }
-}
-
 fn conversation_logo_width(available_width: u16) -> u16 {
     let logo_text_width = SPIRIT_LOGO_LINES
         .iter()
@@ -74,12 +65,10 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let input_inner_width = content_area.width.saturating_sub(2) as usize;
     let input_height = input_block_height(&app, input_inner_width);
 
-    let logo_h = conversation_logo_height(content_area.height);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_picker {
             vec![
-                Constraint::Length(logo_h),
                 Constraint::Min(5),
                 Constraint::Length(input_height),
                 Constraint::Length(7),
@@ -87,14 +76,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             ]
         } else if show_suggestions {
             vec![
-                Constraint::Length(logo_h),
                 Constraint::Min(5),
                 Constraint::Length(input_height),
                 Constraint::Length(SLASH_SUGGESTION_BLOCK_HEIGHT),
             ]
         } else {
             vec![
-                Constraint::Length(logo_h),
                 Constraint::Min(4),
                 Constraint::Length(input_height),
                 Constraint::Length(1),
@@ -102,30 +89,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         })
         .split(content_area);
 
-    let logo_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(conversation_logo_width(chunks[0].width)),
-            Constraint::Min(0),
-        ])
-        .split(chunks[0]);
-
-    let logo = Paragraph::new(
-        SPIRIT_LOGO_LINES
-            .iter()
-            .map(|line| Line::from(*line))
-            .collect::<Vec<_>>(),
-    )
-    .block(Block::default().borders(Borders::ALL).title("SpiritAgent"))
-    .style(Style::default().fg(Color::Cyan));
-    frame.render_widget(logo, logo_chunks[0]);
-
-    let history_lines = build_history_lines(&app);
-    // 对话区无边框，内容与命中区域占满 chunks[1]。
-    let inner_x = chunks[1].x;
-    let inner_y = chunks[1].y;
-    let inner_w = chunks[1].width.max(1);
-    let inner_h = chunks[1].height.max(1);
+    let history_lines = build_history_lines(&app, chunks[0].width.saturating_sub(1) as usize);
+    // 对话区无边框，内容与命中区域占满 chunks[0]。
+    let inner_x = chunks[0].x;
+    let inner_y = chunks[0].y;
+    let inner_w = chunks[0].width.max(1);
+    let inner_h = chunks[0].height.max(1);
     let history_view_height = inner_h as usize;
     let w = inner_w.max(1) as u16;
     // 以 WordWrapper 折行为准，避免 Paragraph::line_count 与自定义折行在少数宽度/CJK 下不一致导致滚动错位。
@@ -143,7 +112,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .take(history_view_height)
         .collect();
     let history = Paragraph::new(visible);
-    frame.render_widget(history, chunks[1]);
+    frame.render_widget(history, chunks[0]);
     shell.note_conversation_panel(
         ConversationPanelHit {
             x: inner_x,
@@ -157,21 +126,21 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     );
 
     let (input_cursor_row, input_cursor_col) =
-        input_cursor_position(&app, chunks[2].width.saturating_sub(2) as usize);
+        input_cursor_position(&app, chunks[1].width.saturating_sub(2) as usize);
     let input = Paragraph::new(build_input_lines(
         &app,
-        chunks[2].width.saturating_sub(2) as usize,
+        chunks[1].width.saturating_sub(2) as usize,
     ))
         .block(Block::default().borders(Borders::ALL).title("Input"))
         .wrap(Wrap { trim: false });
-    frame.render_widget(input, chunks[2]);
+    frame.render_widget(input, chunks[1]);
 
     if !show_picker {
         // Use terminal display width so CJK/full-width characters keep cursor aligned.
-        let max_cursor_offset = chunks[2].width.saturating_sub(3) as usize;
+        let max_cursor_offset = chunks[1].width.saturating_sub(3) as usize;
         let cursor_offset = input_cursor_col.min(max_cursor_offset as u16) as usize;
-        let cursor_x = chunks[2].x + 1 + cursor_offset as u16;
-        let cursor_y = chunks[2].y + 1 + input_cursor_row;
+        let cursor_x = chunks[1].x + 1 + cursor_offset as u16;
+        let cursor_y = chunks[1].y + 1 + input_cursor_row;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 
@@ -180,24 +149,24 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         let picker_widget = Paragraph::new(picker_lines)
             .block(Block::default().borders(Borders::ALL).title("Model Picker"))
             .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[3]);
+        frame.render_widget(picker_widget, chunks[2]);
     } else if show_chat_picker {
         let picker_lines = build_chat_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
             .block(Block::default().borders(Borders::ALL).title("Chat Picker"))
             .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[3]);
+        frame.render_widget(picker_widget, chunks[2]);
     } else if show_image_picker {
         let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
             .block(Block::default().borders(Borders::ALL).title("Image Picker"))
             .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[3]);
+        frame.render_widget(picker_widget, chunks[2]);
     } else if show_suggestions {
         let suggestions = build_suggestion_lines(
             &app,
             SLASH_SUGGESTION_VISIBLE_ITEMS,
-            chunks[3].width.saturating_sub(2) as usize,
+            chunks[2].width.saturating_sub(2) as usize,
         );
         let suggestions_widget = Paragraph::new(suggestions)
             .block(
@@ -206,11 +175,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                     .title("Slash Commands"),
             )
             .wrap(Wrap { trim: true });
-        frame.render_widget(suggestions_widget, chunks[3]);
+        frame.render_widget(suggestions_widget, chunks[2]);
     }
 
     if !show_suggestions {
-        let help_idx = if show_picker { 4 } else { 3 };
+        let help_idx = if show_picker { 3 } else { 2 };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
         frame.render_widget(Clear, root_chunks[1]);
@@ -464,10 +433,88 @@ fn truncate_to_width(text: &str, max_width: usize) -> String {
     out
 }
 
-fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+fn clip_to_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let mut out = String::new();
+    let mut used = 0usize;
+    for ch in text.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used + ch_width > max_width {
+            break;
+        }
+        used += ch_width;
+        out.push(ch);
+    }
+    out
+}
+
+fn pad_right_to_width(text: &str, width: usize) -> String {
+    let used = UnicodeWidthStr::width(text);
+    if used >= width {
+        return text.to_string();
+    }
+    format!("{}{}", text, " ".repeat(width - used))
+}
+
+fn build_logo_top_border(inner_width: usize, title: &str) -> String {
+    if inner_width == 0 {
+        return String::new();
+    }
+
+    let title_width = UnicodeWidthStr::width(title);
+    if title_width >= inner_width {
+        return format!("┌{}┐", "─".repeat(inner_width));
+    }
+
+    format!("┌{}{}┐", title, "─".repeat(inner_width - title_width))
+}
+
+fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
+    if max_width < 4 {
+        return Vec::new();
+    }
+
+    let banner_width = conversation_logo_width(max_width as u16) as usize;
+    if banner_width < 4 {
+        return Vec::new();
+    }
+
+    let inner_width = banner_width.saturating_sub(2);
+    let logo_style = Style::default().fg(Color::Cyan);
+    let mut lines = Vec::with_capacity(SPIRIT_LOGO_LINES.len() + 2);
+
+    lines.push(Line::from(Span::styled(
+        build_logo_top_border(inner_width, "SpiritAgent"),
+        logo_style,
+    )));
+
+    for logo_line in SPIRIT_LOGO_LINES {
+        let clipped = clip_to_width(logo_line, inner_width);
+        let padded = pad_right_to_width(&clipped, inner_width);
+        lines.push(Line::from(Span::styled(
+            format!("│{}│", padded),
+            logo_style,
+        )));
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!("└{}┘", "─".repeat(inner_width)),
+        logo_style,
+    )));
+    lines
+}
+
+fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
+    let mut lines = build_history_logo_lines(max_width);
     let (visible_messages, skipped, start_index) = visible_messages(app);
     let thinking_status = app.thinking_status_text();
+
+    if !lines.is_empty() && (!visible_messages.is_empty() || thinking_status.is_some()) {
+        lines.push(Line::from(""));
+    }
 
     if skipped > 0 {
         lines.push(Line::from(vec![
