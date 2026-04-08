@@ -431,6 +431,17 @@ pub fn stream_tool_agent_round(
             continue;
         }
 
+        if let Some(content) = v
+            .pointer("/choices/0/delta/content")
+            .and_then(Value::as_str)
+        {
+            if !content.is_empty() {
+                saw_model_output = true;
+                content_buf.push_str(content);
+                let _ = stream_tx.send(StreamEvent::Chunk(content.to_string()));
+            }
+        }
+
         if let Some(tc_arr) = v
             .pointer("/choices/0/delta/tool_calls")
             .and_then(Value::as_array)
@@ -442,17 +453,6 @@ pub fn stream_tool_agent_round(
             {
                 last_tool_progress = Some(progress.clone());
                 let _ = stream_tx.send(StreamEvent::ToolProgress(progress));
-            }
-        }
-
-        if let Some(content) = v
-            .pointer("/choices/0/delta/content")
-            .and_then(Value::as_str)
-        {
-            if !content.is_empty() {
-                saw_model_output = true;
-                content_buf.push_str(content);
-                let _ = stream_tx.send(StreamEvent::Chunk(content.to_string()));
             }
         }
 

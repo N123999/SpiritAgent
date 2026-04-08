@@ -18,7 +18,7 @@ use crate::{
     tui::{ConversationPanelHit, TuiShell},
     view::{
         AssistantAuxKind, BottomFormFieldEditorView, BottomFormView, ChatMessage, MessageRole,
-        ToolUiBlock, ToolUiPhase, TuiViewModel,
+        PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
 
@@ -711,6 +711,48 @@ fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
     }
 }
 
+fn is_tool_progress_only_text(text: &str) -> bool {
+    let mut saw_line = false;
+    for segment in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        saw_line = true;
+        if !segment.starts_with("准备调用工具:") {
+            return false;
+        }
+    }
+    saw_line
+}
+
+fn should_render_aux_after_message_body(text: Option<&str>, has_message_body: bool) -> bool {
+    has_message_body && text.is_some_and(is_tool_progress_only_text)
+}
+
+fn render_aux_text_lines(
+    push_message_line: &mut impl FnMut(Vec<Span<'static>>),
+    kind: AssistantAuxKind,
+    text: &str,
+) {
+    for segment in text.lines() {
+        push_message_line(vec![Span::styled(
+            segment.to_string(),
+            assistant_aux_body_style(kind),
+        )]);
+    }
+}
+
+fn render_pending_aux_lines(
+    push_message_line: &mut impl FnMut(Vec<Span<'static>>),
+    pending_aux: &PendingAssistantAux,
+) {
+    push_message_line(vec![Span::styled(
+        pending_aux.status_text.clone(),
+        pending_aux_status_style(pending_aux.kind),
+    )]);
+
+    if let Some(detail_text) = pending_aux.detail_text.as_deref() {
+        render_aux_text_lines(push_message_line, pending_aux.kind, detail_text);
+    }
+}
+
 fn render_message_lines(
     app: &TuiViewModel,
     msg: &ChatMessage,
@@ -749,6 +791,22 @@ fn render_message_lines(
     } else {
         None
     };
+    let stored_compaction_text = stored_aux
+        .and_then(|aux| aux.compaction.as_deref())
+        .filter(|value| !value.trim().is_empty())
+        .filter(|_| !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing));
+    let stored_thinking_text = if pending_aux.is_none() {
+        stored_aux
+            .and_then(|aux| aux.thinking.as_deref())
+            .filter(|value| !value.trim().is_empty())
+    } else {
+        None
+    };
+    let render_stored_thinking_after_body =
+        should_render_aux_after_message_body(stored_thinking_text, has_message_body);
+    let render_pending_aux_after_body = pending_aux.is_some_and(|aux| {
+        should_render_aux_after_message_body(aux.detail_text.as_deref(), has_message_body)
+    });
 
     let mut has_rendered_visible_line = false;
     let mut push_message_line = |content_spans: Vec<Span<'static>>| {
@@ -762,59 +820,33 @@ fn render_message_lines(
         out.push(Line::from(spans));
     };
 
-    if let Some(stored_aux) = stored_aux {
-        let should_render_stored_compaction = stored_aux
-            .compaction
-            .as_ref()
-            .is_some_and(|value| !value.trim().is_empty())
-            && !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing);
-        if should_render_stored_compaction {
+    if let Some(compaction_text) = stored_compaction_text {
             push_message_line(vec![Span::styled(
                 assistant_aux_title(AssistantAuxKind::Compressing),
                 assistant_aux_title_style(AssistantAuxKind::Compressing),
             )]);
-            for segment in stored_aux.compaction.as_deref().unwrap_or_default().lines() {
-                push_message_line(vec![Span::styled(
-                    segment.to_string(),
-                    assistant_aux_body_style(AssistantAuxKind::Compressing),
-                )]);
-            }
-        }
+            render_aux_text_lines(
+                &mut push_message_line,
+                AssistantAuxKind::Compressing,
+                compaction_text,
+            );
+    }
 
-        let should_render_stored_thinking = pending_aux.is_none()
-            && stored_aux
-                .thinking
-                .as_ref()
-                .is_some_and(|value| !value.trim().is_empty());
-        if should_render_stored_thinking {
-            if should_render_stored_compaction {
+    if let Some(thinking_text) = stored_thinking_text {
+        if !render_stored_thinking_after_body {
+            if stored_compaction_text.is_some() {
                 push_message_line(vec![Span::styled(
                     assistant_aux_title(AssistantAuxKind::Thinking),
                     assistant_aux_title_style(AssistantAuxKind::Thinking),
                 )]);
             }
-            for segment in stored_aux.thinking.as_deref().unwrap_or_default().lines() {
-                push_message_line(vec![Span::styled(
-                    segment.to_string(),
-                    assistant_aux_body_style(AssistantAuxKind::Thinking),
-                )]);
-            }
+            render_aux_text_lines(&mut push_message_line, AssistantAuxKind::Thinking, thinking_text);
         }
     }
 
     if let Some(pending_aux) = pending_aux {
-        push_message_line(vec![Span::styled(
-            pending_aux.status_text.clone(),
-            pending_aux_status_style(pending_aux.kind),
-        )]);
-
-        if let Some(detail_text) = pending_aux.detail_text.as_deref() {
-            for segment in detail_text.lines() {
-                push_message_line(vec![Span::styled(
-                    segment.to_string(),
-                    assistant_aux_body_style(pending_aux.kind),
-                )]);
-            }
+        if !render_pending_aux_after_body {
+            render_pending_aux_lines(&mut push_message_line, pending_aux);
         }
     }
 
@@ -827,6 +859,18 @@ fn render_message_lines(
 
     for line in iter {
         push_message_line(line);
+    }
+
+    if let Some(thinking_text) = stored_thinking_text {
+        if render_stored_thinking_after_body {
+            render_aux_text_lines(&mut push_message_line, AssistantAuxKind::Thinking, thinking_text);
+        }
+    }
+
+    if let Some(pending_aux) = pending_aux {
+        if render_pending_aux_after_body {
+            render_pending_aux_lines(&mut push_message_line, pending_aux);
+        }
     }
 
     out
@@ -1662,5 +1706,107 @@ fn inset_rect(area: Rect, horizontal: u16, vertical: u16) -> Rect {
         y: area.y.saturating_add(vertical.min(area.height)),
         width: area.width.saturating_sub(double_h),
         height: area.height.saturating_sub(double_v),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{model_registry::AppConfig, view::AssistantAuxData};
+
+    fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
+        lines
+            .into_iter()
+            .map(|line| {
+                line.spans
+                    .into_iter()
+                    .map(|span| span.content.into_owned())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    fn build_view_model(message: ChatMessage) -> TuiViewModel {
+        TuiViewModel {
+            input: String::new(),
+            input_cursor: 0,
+            pending_image_paths: vec![],
+            pending_mcp_resources: vec![],
+            messages: vec![message],
+            assistant_aux_by_message: HashMap::new(),
+            config: AppConfig::default(),
+            show_aux_details: true,
+            slash_suggestions: vec![],
+            selected_suggestion: 0,
+            model_picker_active: false,
+            model_picker_index: 0,
+            chat_picker_active: false,
+            chat_picker_index: 0,
+            chat_picker_files: vec![],
+            image_picker_active: false,
+            image_picker_index: 0,
+            image_picker_files: vec![],
+            bottom_form: None,
+            history_offset_from_bottom: 0,
+            pending_response_active: false,
+            pending_assistant_msg_index: None,
+            pending_aux: None,
+            conversation_sel_anchor: None,
+            conversation_sel_head: None,
+        }
+    }
+
+    #[test]
+    fn stored_tool_progress_renders_after_agent_message_body() {
+        let mut app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "我来帮您执行这个命令。",
+        ));
+        app.assistant_aux_by_message.insert(
+            0,
+            AssistantAuxData {
+                thinking: Some("准备调用工具: run_shell_command".to_string()),
+                compaction: None,
+            },
+        );
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+        let body_idx = lines
+            .iter()
+            .position(|line| line.contains("我来帮您执行这个命令。"))
+            .expect("body line exists");
+        let tool_idx = lines
+            .iter()
+            .position(|line| line.contains("准备调用工具: run_shell_command"))
+            .expect("tool progress line exists");
+
+        assert!(body_idx < tool_idx);
+    }
+
+    #[test]
+    fn real_thinking_stays_before_agent_message_body() {
+        let mut app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "我来帮您执行这个命令。",
+        ));
+        app.assistant_aux_by_message.insert(
+            0,
+            AssistantAuxData {
+                thinking: Some("先检查命令参数是否安全。".to_string()),
+                compaction: None,
+            },
+        );
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+        let thinking_idx = lines
+            .iter()
+            .position(|line| line.contains("先检查命令参数是否安全。"))
+            .expect("thinking line exists");
+        let body_idx = lines
+            .iter()
+            .position(|line| line.contains("我来帮您执行这个命令。"))
+            .expect("body line exists");
+
+        assert!(thinking_idx < body_idx);
     }
 }
