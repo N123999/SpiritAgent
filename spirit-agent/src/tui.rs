@@ -20,6 +20,7 @@ use crate::{
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
+    shell::slash,
     view::{
         AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
         ChatMessage, MessageRole, TuiViewModel,
@@ -99,18 +100,7 @@ impl TuiShell {
         );
         let initial_mcp_status = runtime.mcp_status_snapshot();
 
-        let slash_commands = vec![
-            "/help".to_string(),
-            "/clear".to_string(),
-            "/quit".to_string(),
-            "/exit".to_string(),
-            "/model".to_string(),
-            "/compact".to_string(),
-            "/sessions".to_string(),
-            "/image".to_string(),
-            "/mcp".to_string(),
-            "/log".to_string(),
-        ];
+        let slash_commands = slash::default_commands();
 
         Self {
             input: String::new(),
@@ -157,19 +147,7 @@ impl TuiShell {
             return;
         };
 
-        self.slash_suggestions = self
-            .slash_commands
-            .iter()
-            .filter(|cmd| cmd.starts_with(&query))
-            .cloned()
-            .collect();
-
-        if self.slash_suggestions.is_empty() {
-            self.slash_suggestions = contextual_slash_suggestions(query)
-                .into_iter()
-                .map(ToString::to_string)
-                .collect();
-        }
+        self.slash_suggestions = slash::compute_suggestions(&query, &self.slash_commands);
 
         if self.selected_suggestion >= self.slash_suggestions.len() {
             self.selected_suggestion = 0;
@@ -531,7 +509,7 @@ impl TuiShell {
 
     pub fn apply_selected_suggestion(&mut self) {
         if let Some(selected) = self.slash_suggestions.get(self.selected_suggestion) {
-            self.set_input(slash_suggestion_apply_value(selected));
+            self.set_input(slash::apply_value(selected));
             self.refresh_suggestions();
         }
     }
@@ -2093,10 +2071,7 @@ impl TuiShell {
     }
 
     fn current_slash_query(&self) -> Option<&str> {
-        if !self.input.starts_with('/') || self.input.contains('\n') {
-            return None;
-        }
-        Some(self.input.trim_end())
+        slash::current_query(&self.input)
     }
 
     fn input_len_chars(&self) -> usize {
@@ -2133,44 +2108,6 @@ fn welcome_message_text(active_model: &str, mcp_status_line: &str) -> String {
         "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。\n{}",
         active_model, mcp_status_line
     )
-}
-
-fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
-    let q = query.trim_end();
-
-    if q == "/model" || q.starts_with("/model ") {
-        return vec!["/model"];
-    }
-
-    if q == "/sessions" || q.starts_with("/sessions ") {
-        return vec![
-            "/sessions",
-            "/sessions save",
-            "/sessions save <path>",
-            "/sessions load <file>",
-        ];
-    }
-
-    if q == "/image" || q.starts_with("/image ") {
-        return vec!["/image"];
-    }
-
-    if q == "/mcp" || q.starts_with("/mcp ") {
-        return vec!["/mcp"];
-    }
-
-    if q == "/log" || q.starts_with("/log ") {
-        return vec!["/log"];
-    }
-
-    Vec::new()
-}
-
-fn slash_suggestion_apply_value(selected: &str) -> String {
-    match selected {
-        "/model" | "/sessions" | "/image" | "/mcp" | "/log" => format!("{} ", selected),
-        _ => selected.to_string(),
-    }
 }
 
 fn new_mcp_add_form() -> BottomFormView {
