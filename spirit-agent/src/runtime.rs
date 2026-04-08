@@ -630,6 +630,19 @@ impl AgentRuntime {
 
                         match self.tool_executor.authorize(&request) {
                             Ok(AuthorizationDecision::Allowed) => {
+                                if matches!(request, ToolRequest::McpTool { .. }) {
+                                    self.start_mcp_tool_execution(
+                                        request,
+                                        Some(ToolApprovalContinuation {
+                                            state,
+                                            tool_call_id: call.id,
+                                            tool_name: call.name.clone(),
+                                        }),
+                                        call.name,
+                                    );
+                                    return;
+                                }
+
                                 let tool_output = match self.tool_executor.execute(&request) {
                                     Ok(result) => {
                                         self.session.persist_tool_memory(&request, &result);
@@ -1366,7 +1379,10 @@ impl AgentRuntime {
         if self.pending_history_compaction.is_some() {
             return Some(AssistantAuxKind::Compressing);
         }
-        if self.pending_response.is_some() || self.pending_tool_agent_step.is_some() {
+        if self.pending_response.is_some()
+            || self.pending_tool_agent_step.is_some()
+            || self.pending_mcp_tool_execution.is_some()
+        {
             return Some(AssistantAuxKind::Thinking);
         }
         None
