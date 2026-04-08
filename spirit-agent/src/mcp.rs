@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::logging;
+
 const MCP_CONFIG_FILE_NAME: &str = "mcp.json";
 const APP_DATA_DIR_NAME: &str = "SpiritAgent";
 const WORKSPACE_MCP_DIR_NAME: &str = "workspaces";
@@ -200,19 +202,71 @@ pub fn add_mcp_server(
 }
 
 pub fn resolve_env_value(value: &str) -> Result<String> {
-    if let Some(var_name) = value
-        .strip_prefix("${env:")
-        .and_then(|rest| rest.strip_suffix('}'))
-    {
+    resolve_env_placeholders(value, resolve_single_env_value)
+}
+
+fn resolve_env_placeholders(
+    value: &str,
+    mut resolver: impl FnMut(&str) -> Result<String>,
+) -> Result<String> {
+    let mut rendered = String::with_capacity(value.len());
+    let mut remaining = value;
+
+    while let Some(start) = remaining.find("${env:") {
+        rendered.push_str(&remaining[..start]);
+        let placeholder = &remaining[start + 6..];
+        let end = placeholder
+            .find('}')
+            .ok_or_else(|| anyhow!("非法环境变量占位符: {}", value))?;
+        let var_name = &placeholder[..end];
         if var_name.trim().is_empty() {
             return Err(anyhow!("非法环境变量占位符: {}", value));
         }
 
-        return env::var(var_name)
-            .with_context(|| format!("缺少环境变量 {}（来自 MCP 配置）", var_name));
+        rendered.push_str(&resolver(var_name)?);
+        remaining = &placeholder[end + 1..];
     }
 
-    Ok(value.to_string())
+    rendered.push_str(remaining);
+    Ok(rendered)
+}
+
+fn resolve_single_env_value(var_name: &str) -> Result<String> {
+    if let Ok(resolved) = env::var(var_name) {
+        return Ok(resolved);
+    }
+
+    #[cfg(windows)]
+    if let Some(resolved) = resolve_windows_persisted_env(var_name) {
+        logging::log_event(&format!(
+            "[mcp] env placeholder {} resolved from Windows persisted environment",
+            var_name
+        ));
+        return Ok(resolved);
+    }
+
+    Err(anyhow!("缺少环境变量 {}（来自 MCP 配置）", var_name))
+}
+
+#[cfg(windows)]
+fn resolve_windows_persisted_env(var_name: &str) -> Option<String> {
+    use winreg::{
+        RegKey,
+        enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
+    };
+
+    let user_env = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Environment")
+        .ok()
+        .and_then(|key| key.get_value::<String, _>(var_name).ok());
+    if user_env.is_some() {
+        return user_env;
+    }
+
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment")
+        .ok()
+        .and_then(|key| key.get_value::<String, _>(var_name).ok())
 }
 
 pub fn resolve_env_map(env_map: &BTreeMap<String, String>) -> Result<BTreeMap<String, String>> {
@@ -348,6 +402,30 @@ mod tests {
 
         let path_value = resolve_env_value("${env:PATH}").expect("PATH should exist");
         assert!(!path_value.trim().is_empty());
+    }
+
+    #[test]
+    fn resolve_env_value_supports_inline_placeholders() {
+        let rendered = resolve_env_placeholders(
+            "Authorization: Bearer ${env:GITHUB_TOKEN}",
+            |name| match name {
+                "GITHUB_TOKEN" => Ok("token123".to_string()),
+                other => Err(anyhow!("unexpected env variable: {}", other)),
+            },
+        )
+        .expect("inline placeholder resolves");
+
+        assert_eq!(rendered, "Authorization: Bearer token123");
+    }
+
+    #[test]
+    fn resolve_env_value_rejects_unclosed_placeholder() {
+        let err = resolve_env_placeholders("Bearer ${env:GITHUB_TOKEN", |_| {
+            Ok("ignored".to_string())
+        })
+        .expect_err("unclosed placeholder should fail");
+
+        assert!(err.to_string().contains("非法环境变量占位符"));
     }
 
     #[test]

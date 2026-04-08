@@ -28,6 +28,7 @@ rmcp = { version = "1.3.0", default-features = false, features = ["client", "req
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Input_KeyboardAndMouse"] }
+winreg = "0.52"
 
 [[bin]]
 name = "spirit-agent"
