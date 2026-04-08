@@ -13,7 +13,7 @@ use crate::{
     chat_store,
     llm_client::{self, LlmMessage, ResolvedLlmConfig},
     logging,
-    mcp::set_server_trusted,
+    mcp::{add_mcp_server_preset, set_server_trusted},
     mcp_manager::{McpManager, McpServerRuntimeState},
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
@@ -21,7 +21,8 @@ use crate::{
     },
     ports::{
         AppPaths, ChatArchive, ChatRepository, ConfigStore, LlmTransport, SecretStore,
-        StartedToolAgentRound, Telemetry, ToolAgentRoundResult, ToolExecutor,
+        McpStatusSnapshot, McpStatusState, StartedToolAgentRound, Telemetry,
+        ToolAgentRoundResult, ToolExecutor,
     },
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
 };
@@ -187,7 +188,7 @@ impl ChatRepository for JsonChatRepository {
 pub struct WorkspaceToolExecutor {
     inner: ToolRuntime,
     workspace_root: PathBuf,
-    mcp_catalog: Mutex<McpToolCatalog>,
+    mcp_state: Arc<Mutex<McpSharedState>>,
 }
 
 #[derive(Clone)]
@@ -203,13 +204,24 @@ struct McpToolCatalog {
     routes: BTreeMap<String, McpFunctionRoute>,
 }
 
+#[derive(Default)]
+struct McpSharedState {
+    catalog: McpToolCatalog,
+    status: McpStatusSnapshot,
+    refresh_in_flight: bool,
+}
+
 impl WorkspaceToolExecutor {
     pub fn new() -> Self {
         let workspace_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             inner: ToolRuntime::new(),
+            mcp_state: Arc::new(Mutex::new(McpSharedState {
+                catalog: McpToolCatalog::default(),
+                status: initial_mcp_status(&workspace_root),
+                refresh_in_flight: false,
+            })),
             workspace_root,
-            mcp_catalog: Mutex::new(McpToolCatalog::default()),
         }
     }
 
@@ -217,66 +229,6 @@ impl WorkspaceToolExecutor {
         McpManager::load(self.workspace_root.clone())
     }
 
-    fn refresh_mcp_catalog(&self) -> Result<()> {
-        let manager = self.load_mcp_manager()?;
-        let servers = manager.servers().cloned().collect::<Vec<_>>();
-        let mut definitions = Vec::new();
-        let mut routes = BTreeMap::new();
-
-        for server in servers {
-            if server.state != McpServerRuntimeState::Ready || !server.capabilities.tools {
-                continue;
-            }
-
-            match manager.list_tools(&server.name) {
-                Ok(tools) => {
-                    for tool in tools {
-                        let function_name = synthetic_mcp_function_name(&server.name, &tool.name);
-                        let description = tool.description.clone().unwrap_or_else(|| {
-                            format!(
-                                "MCP tool `{}` from server `{}`.",
-                                tool.name, server.display_name
-                            )
-                        });
-                        let parameters = if tool.input_schema.is_object() {
-                            tool.input_schema.clone()
-                        } else {
-                            json!({
-                                "type": "object",
-                                "additionalProperties": true,
-                            })
-                        };
-
-                        definitions.push(json!({
-                            "type": "function",
-                            "function": {
-                                "name": function_name,
-                                "description": format!("[MCP {}] {}", server.display_name, description),
-                                "parameters": parameters,
-                            }
-                        }));
-                        routes.insert(
-                            function_name,
-                            McpFunctionRoute {
-                                server: server.name.clone(),
-                                display_name: server.display_name.clone(),
-                                tool_name: tool.name,
-                            },
-                        );
-                    }
-                }
-                Err(err) => {
-                    logging::log_event(&format!(
-                        "[mcp] refresh tool catalog failed for server {}: {}",
-                        server.name, err
-                    ));
-                }
-            }
-        }
-
-        *lock_catalog(&self.mcp_catalog) = McpToolCatalog { definitions, routes };
-        Ok(())
-    }
 }
 
 impl ToolExecutor for WorkspaceToolExecutor {
@@ -288,12 +240,8 @@ impl ToolExecutor for WorkspaceToolExecutor {
             .cloned()
             .unwrap_or_default();
 
-        if let Err(err) = self.refresh_mcp_catalog() {
-            logging::log_event(&format!("[mcp] refresh tool catalog failed: {}", err));
-        }
-
-        let catalog = lock_catalog(&self.mcp_catalog);
-        definitions.extend(catalog.definitions.clone());
+        let state = lock_mcp_state(&self.mcp_state);
+        definitions.extend(state.catalog.definitions.clone());
         Value::Array(definitions)
     }
 
@@ -306,11 +254,8 @@ impl ToolExecutor for WorkspaceToolExecutor {
             return Ok(request);
         }
 
-        if let Err(err) = self.refresh_mcp_catalog() {
-            logging::log_event(&format!("[mcp] refresh before function call failed: {}", err));
-        }
-
-        let route = lock_catalog(&self.mcp_catalog)
+        let route = lock_mcp_state(&self.mcp_state)
+            .catalog
             .routes
             .get(name)
             .cloned()
@@ -368,9 +313,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
         match target {
             TrustTarget::McpServer(name) => {
                 set_server_trusted(&self.workspace_root, name, true)?;
-                if let Err(err) = self.refresh_mcp_catalog() {
-                    logging::log_event(&format!("[mcp] refresh after trust failed: {}", err));
-                }
+                self.start_mcp_background_refresh();
                 Ok(())
             }
             _ => self.inner.trust(target),
@@ -395,6 +338,31 @@ impl ToolExecutor for WorkspaceToolExecutor {
             }
             _ => self.inner.execute(request),
         }
+    }
+
+    fn start_mcp_background_refresh(&self) {
+        spawn_mcp_catalog_refresh(Arc::clone(&self.mcp_state), self.workspace_root.clone());
+    }
+
+    fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
+        lock_mcp_state(&self.mcp_state).status.clone()
+    }
+
+    fn add_mcp_server_preset(&mut self, preset: &str) -> Result<String> {
+        let (path, server_name) = add_mcp_server_preset(&self.workspace_root, preset)?;
+        self.start_mcp_background_refresh();
+
+        let mut summary = format!(
+            "已添加 MCP preset: {}\n配置文件: {}",
+            server_name,
+            path.display()
+        );
+        if server_name == "github" {
+            summary.push_str(
+                "\n请确保已设置环境变量 GITHUB_PERSONAL_ACCESS_TOKEN，然后重新打开或继续使用 /mcp inspect github。",
+            );
+        }
+        Ok(summary)
     }
 
     fn list_mcp_servers(&self) -> Result<Vec<crate::mcp_manager::ManagedMcpServer>> {
@@ -434,11 +402,156 @@ impl ToolExecutor for WorkspaceToolExecutor {
     }
 }
 
-fn lock_catalog(catalog: &Mutex<McpToolCatalog>) -> std::sync::MutexGuard<'_, McpToolCatalog> {
-    match catalog.lock() {
+fn lock_mcp_state(state: &Arc<Mutex<McpSharedState>>) -> std::sync::MutexGuard<'_, McpSharedState> {
+    match state.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     }
+}
+
+fn initial_mcp_status(workspace_root: &PathBuf) -> McpStatusSnapshot {
+    match McpManager::load(workspace_root.clone()) {
+        Ok(manager) => McpStatusSnapshot {
+            revision: 0,
+            state: McpStatusState::Loading,
+            configured_servers: manager.servers().len(),
+            loaded_servers: 0,
+            cached_tools: 0,
+            last_error: None,
+        },
+        Err(err) => McpStatusSnapshot {
+            revision: 0,
+            state: McpStatusState::Error,
+            configured_servers: 0,
+            loaded_servers: 0,
+            cached_tools: 0,
+            last_error: Some(err.to_string()),
+        },
+    }
+}
+
+fn spawn_mcp_catalog_refresh(state: Arc<Mutex<McpSharedState>>, workspace_root: PathBuf) {
+    {
+        let mut guard = lock_mcp_state(&state);
+        if guard.refresh_in_flight {
+            return;
+        }
+        guard.refresh_in_flight = true;
+        guard.status.state = McpStatusState::Loading;
+        guard.status.revision = guard.status.revision.saturating_add(1);
+    }
+
+    thread::spawn(move || {
+        let result = build_mcp_catalog_snapshot(&workspace_root);
+        let mut guard = lock_mcp_state(&state);
+        guard.refresh_in_flight = false;
+
+        match result {
+            Ok((catalog, mut status)) => {
+                status.revision = guard.status.revision.saturating_add(1);
+                guard.catalog = catalog;
+                guard.status = status;
+            }
+            Err(err) => {
+                guard.catalog = McpToolCatalog::default();
+                guard.status = McpStatusSnapshot {
+                    revision: guard.status.revision.saturating_add(1),
+                    state: McpStatusState::Error,
+                    configured_servers: guard.status.configured_servers,
+                    loaded_servers: 0,
+                    cached_tools: 0,
+                    last_error: Some(err.to_string()),
+                };
+                logging::log_event(&format!("[mcp] background refresh failed: {}", err));
+            }
+        }
+    });
+}
+
+fn build_mcp_catalog_snapshot(workspace_root: &PathBuf) -> Result<(McpToolCatalog, McpStatusSnapshot)> {
+    let manager = McpManager::load(workspace_root.clone())?;
+    let servers = manager.servers().cloned().collect::<Vec<_>>();
+    let configured_servers = servers.len();
+    let mut loaded_servers = 0usize;
+    let mut cached_tools = 0usize;
+    let mut definitions = Vec::new();
+    let mut routes = BTreeMap::new();
+    let mut first_error = None;
+
+    for server in servers {
+        if server.state != McpServerRuntimeState::Ready {
+            continue;
+        }
+
+        loaded_servers += 1;
+        if !server.capabilities.tools {
+            continue;
+        }
+
+        match manager.list_tools(&server.name) {
+            Ok(tools) => {
+                cached_tools += tools.len();
+                for tool in tools {
+                    let function_name = synthetic_mcp_function_name(&server.name, &tool.name);
+                    let description = tool.description.clone().unwrap_or_else(|| {
+                        format!(
+                            "MCP tool `{}` from server `{}`.",
+                            tool.name, server.display_name
+                        )
+                    });
+                    let parameters = if tool.input_schema.is_object() {
+                        tool.input_schema.clone()
+                    } else {
+                        json!({
+                            "type": "object",
+                            "additionalProperties": true,
+                        })
+                    };
+
+                    definitions.push(json!({
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "description": format!("[MCP {}] {}", server.display_name, description),
+                            "parameters": parameters,
+                        }
+                    }));
+                    routes.insert(
+                        function_name,
+                        McpFunctionRoute {
+                            server: server.name.clone(),
+                            display_name: server.display_name.clone(),
+                            tool_name: tool.name,
+                        },
+                    );
+                }
+            }
+            Err(err) => {
+                logging::log_event(&format!(
+                    "[mcp] preload tools failed for server {}: {}",
+                    server.name, err
+                ));
+                if first_error.is_none() {
+                    first_error = Some(err.to_string());
+                }
+            }
+        }
+    }
+
+    let status = McpStatusSnapshot {
+        revision: 0,
+        state: if first_error.is_some() {
+            McpStatusState::Error
+        } else {
+            McpStatusState::Ready
+        },
+        configured_servers,
+        loaded_servers,
+        cached_tools,
+        last_error: first_error,
+    };
+
+    Ok((McpToolCatalog { definitions, routes }, status))
 }
 
 fn parse_optional_json_object(input: Option<&str>) -> Result<Option<Map<String, Value>>> {

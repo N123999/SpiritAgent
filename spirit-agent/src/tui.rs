@@ -40,6 +40,7 @@ pub struct TuiShell {
     assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
+    last_mcp_status_revision: u64,
     slash_commands: Vec<String>,
     slash_suggestions: Vec<String>,
     selected_suggestion: usize,
@@ -85,6 +86,7 @@ impl TuiShell {
             tool_executor,
             app_paths.workspace_root(),
         );
+        let initial_mcp_status = runtime.mcp_status_snapshot();
 
         let slash_commands = vec![
             "/help".to_string(),
@@ -102,10 +104,14 @@ impl TuiShell {
         Self {
             input: String::new(),
             input_cursor: 0,
-            messages: vec![welcome_message(&config.active_model)],
+            messages: vec![welcome_message(
+                &config.active_model,
+                &initial_mcp_status.welcome_line(),
+            )],
             assistant_aux_by_message: HashMap::new(),
             show_aux_details: true,
             pending_assistant_msg_index: None,
+            last_mcp_status_revision: initial_mcp_status.revision,
             slash_commands,
             slash_suggestions: vec![],
             selected_suggestion: 0,
@@ -161,11 +167,13 @@ impl TuiShell {
     pub fn poll_runtime(&mut self) {
         self.runtime.poll();
         self.apply_runtime_events();
+        self.sync_welcome_mcp_status();
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
         self.runtime.handle_stream_stall_timeout();
         self.apply_runtime_events();
+        self.sync_welcome_mcp_status();
     }
 
     pub fn tick(&mut self) {
@@ -678,15 +686,19 @@ impl TuiShell {
             "/help" => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp list|inspect|tools|tool call|resources|resource attach|resource clear|prompts|prompt apply\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp resource attach 会把 MCP resource 加入下一条普通消息的上下文。\n- /mcp prompt apply 会把 prompt messages 直接送入下一轮请求。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
+                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp add 支持快速写入 github / everything 预设。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server 名。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
                     tool_block: None,
                 });
             }
             "/clear" => {
                 self.messages.clear();
                 self.assistant_aux_by_message.clear();
-                self.messages
-                    .push(welcome_message(&self.runtime.config().active_model));
+                let mcp_status = self.runtime.mcp_status_snapshot();
+                self.messages.push(welcome_message(
+                    &self.runtime.config().active_model,
+                    &mcp_status.welcome_line(),
+                ));
+                self.last_mcp_status_revision = mcp_status.revision;
                 self.pending_assistant_msg_index = None;
             }
             "/model" => self.handle_model_slash(&parts[1..]),
@@ -1055,52 +1067,47 @@ impl TuiShell {
         let tail = message.strip_prefix("/mcp").map(str::trim).unwrap_or("");
 
         if tail.is_empty() || tail == "list" {
-            match self.runtime.list_mcp_servers() {
-                Ok(servers) if servers.is_empty() => self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: "当前没有配置任何 MCP server。可先执行 `spirit-agent mcp init` 生成模板。".to_string(),
-                    tool_block: None,
-                }),
-                Ok(servers) => {
-                    let lines = servers
-                        .into_iter()
-                        .map(|server| {
-                            format!(
-                                "- {} ({})  state={}  capabilities={}  source={}",
-                                server.name,
-                                server.display_name,
-                                server.state.label(),
-                                server.capability_summary(),
-                                server.source
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
+            self.push_mcp_overview();
+            return;
+        }
+
+        if let Some(preset) = tail.strip_prefix("add ") {
+            match self.runtime.add_mcp_server_preset(preset.trim()) {
+                Ok(summary) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: format!("MCP servers:\n{}", lines),
+                        content: summary,
                         tool_block: None,
                     });
+                    self.sync_welcome_mcp_status();
                 }
                 Err(err) => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("读取 MCP server 列表失败: {}", err),
+                    content: format!("添加 MCP preset 失败: {}", err),
                     tool_block: None,
                 }),
             }
             return;
         }
 
-        if let Some(server) = tail.strip_prefix("inspect ") {
-            match self.runtime.inspect_mcp_server(server.trim()) {
+        if tail == "inspect" || tail.starts_with("inspect ") {
+            let server = if tail == "inspect" {
+                match self.resolve_default_mcp_server("inspect") {
+                    Some(server) => server,
+                    None => return,
+                }
+            } else {
+                tail.strip_prefix("inspect ").unwrap_or_default().trim().to_string()
+            };
+
+            match self.runtime.inspect_mcp_server(&server) {
                 Ok(inspection) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!(
-                            "server: {}\ndisplay: {}\nsource: {}\nprotocol: {}\npeer: {} {}\ncapabilities: tools={} resources={} prompts={}\ncounts: tools={} resources={} prompts={}",
+                            "server: {}\ndisplay: {}\nprotocol: {}\npeer: {} {}\ncapabilities: tools={} resources={} prompts={}\ncounts: tools={} resources={} prompts={}",
                             inspection.name,
                             inspection.display_name,
-                            inspection.source,
                             inspection.protocol_version,
                             inspection.server_name,
                             inspection.server_version,
@@ -1123,11 +1130,20 @@ impl TuiShell {
             return;
         }
 
-        if let Some(server) = tail.strip_prefix("tools ") {
-            match self.runtime.list_mcp_tools(server.trim()) {
+        if tail == "tools" || tail.starts_with("tools ") {
+            let server = if tail == "tools" {
+                match self.resolve_default_mcp_server("tools") {
+                    Some(server) => server,
+                    None => return,
+                }
+            } else {
+                tail.strip_prefix("tools ").unwrap_or_default().trim().to_string()
+            };
+
+            match self.runtime.list_mcp_tools(&server) {
                 Ok(tools) if tools.is_empty() => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("MCP server {} 当前没有可见 tools。", server.trim()),
+                    content: format!("MCP server {} 当前没有可见 tools。", server),
                     tool_block: None,
                 }),
                 Ok(tools) => {
@@ -1154,31 +1170,20 @@ impl TuiShell {
             return;
         }
 
-        if let Some(rest) = tail.strip_prefix("tool call ") {
-            let Some((server, rest)) = split_first_token(rest) else {
-                self.push_mcp_usage();
-                return;
+        if tail == "resources" || tail.starts_with("resources ") {
+            let server = if tail == "resources" {
+                match self.resolve_default_mcp_server("resources") {
+                    Some(server) => server,
+                    None => return,
+                }
+            } else {
+                tail.strip_prefix("resources ").unwrap_or_default().trim().to_string()
             };
-            let Some((tool, args_json)) = split_first_token(rest) else {
-                self.push_mcp_usage();
-                return;
-            };
-            match self.runtime.execute_mcp_tool(server, tool, non_empty_opt(args_json)) {
-                Ok(()) => self.apply_runtime_events(),
-                Err(err) => self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("执行 MCP tool 失败: {}", err),
-                    tool_block: None,
-                }),
-            }
-            return;
-        }
 
-        if let Some(server) = tail.strip_prefix("resources ") {
-            match self.runtime.list_mcp_resources(server.trim()) {
+            match self.runtime.list_mcp_resources(&server) {
                 Ok(resources) if resources.is_empty() => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("MCP server {} 当前没有可见 resources。", server.trim()),
+                    content: format!("MCP server {} 当前没有可见 resources。", server),
                     tool_block: None,
                 }),
                 Ok(resources) => {
@@ -1196,6 +1201,105 @@ impl TuiShell {
                 Err(err) => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("读取 MCP resources 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if tail == "prompts" || tail.starts_with("prompts ") {
+            let server = if tail == "prompts" {
+                match self.resolve_default_mcp_server("prompts") {
+                    Some(server) => server,
+                    None => return,
+                }
+            } else {
+                tail.strip_prefix("prompts ").unwrap_or_default().trim().to_string()
+            };
+
+            match self.runtime.list_mcp_prompts(&server) {
+                Ok(prompts) if prompts.is_empty() => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("MCP server {} 当前没有可见 prompts。", server),
+                    tool_block: None,
+                }),
+                Ok(prompts) => {
+                    let lines = prompts
+                        .into_iter()
+                        .map(|prompt| {
+                            let desc = prompt.description.unwrap_or_else(|| "<无描述>".to_string());
+                            format!("- {}: {}", prompt.name, desc)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("MCP prompts:\n{}", lines),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP prompts 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(rest) = tail.strip_prefix("prompt ") {
+            let tail = rest.trim();
+            let (server, rest) = match split_first_token(tail) {
+                Some((candidate_server, remainder))
+                    if self.server_exists(candidate_server) && !remainder.is_empty() =>
+                {
+                    (candidate_server.to_string(), remainder)
+                }
+                _ => {
+                    let server = match self.resolve_default_mcp_server("prompt") {
+                        Some(server) => server,
+                        None => return,
+                    };
+                    (server, tail)
+                }
+            };
+
+            let Some((prompt, args_json)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            match self.runtime.apply_mcp_prompt(&server, prompt, non_empty_opt(args_json)) {
+                Ok(summary) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: summary,
+                        tool_block: None,
+                    });
+                    self.apply_runtime_events();
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("应用 MCP prompt 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(rest) = tail.strip_prefix("tool call ") {
+            let Some((server, rest)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            let Some((tool, args_json)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            match self.runtime.execute_mcp_tool(server, tool, non_empty_opt(args_json)) {
+                Ok(()) => self.apply_runtime_events(),
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("执行 MCP tool 失败: {}", err),
                     tool_block: None,
                 }),
             }
@@ -1241,73 +1345,122 @@ impl TuiShell {
             return;
         }
 
-        if let Some(server) = tail.strip_prefix("prompts ") {
-            match self.runtime.list_mcp_prompts(server.trim()) {
-                Ok(prompts) if prompts.is_empty() => self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("MCP server {} 当前没有可见 prompts。", server.trim()),
-                    tool_block: None,
-                }),
-                Ok(prompts) => {
-                    let lines = prompts
-                        .into_iter()
-                        .map(|prompt| {
-                            let desc = prompt.description.unwrap_or_else(|| "<无描述>".to_string());
-                            format!("- {}: {}", prompt.name, desc)
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("MCP prompts:\n{}", lines),
-                        tool_block: None,
-                    });
-                }
-                Err(err) => self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("读取 MCP prompts 失败: {}", err),
-                    tool_block: None,
-                }),
-            }
-            return;
-        }
-
-        if let Some(rest) = tail.strip_prefix("prompt apply ") {
-            let Some((server, rest)) = split_first_token(rest) else {
-                self.push_mcp_usage();
-                return;
-            };
-            let Some((prompt, args_json)) = split_first_token(rest) else {
-                self.push_mcp_usage();
-                return;
-            };
-            match self.runtime.apply_mcp_prompt(server, prompt, non_empty_opt(args_json)) {
-                Ok(summary) => {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: summary,
-                        tool_block: None,
-                    });
-                    self.apply_runtime_events();
-                }
-                Err(err) => self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("应用 MCP prompt 失败: {}", err),
-                    tool_block: None,
-                }),
-            }
-            return;
-        }
-
         self.push_mcp_usage();
     }
 
     fn push_mcp_usage(&mut self) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法:\n- /mcp list\n- /mcp inspect <server>\n- /mcp tools <server>\n- /mcp tool call <server> <tool> [args_json]\n- /mcp resources <server>\n- /mcp resource attach <server> <uri>\n- /mcp resource clear\n- /mcp prompts <server>\n- /mcp prompt apply <server> <prompt> [args_json]".to_string(),
+            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add <github|everything>\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
             tool_block: None,
         });
+    }
+
+    fn push_mcp_overview(&mut self) {
+        match self.runtime.list_mcp_servers() {
+            Ok(servers) if servers.is_empty() => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "当前未配置 MCP server。可用 `/mcp add github` 或 `/mcp add everything` 快速添加。".to_string(),
+                    tool_block: None,
+                });
+            }
+            Ok(servers) => {
+                let summary = servers
+                    .into_iter()
+                    .map(|server| {
+                        format!(
+                            "- {} ({})  state={}  capabilities={}",
+                            server.name,
+                            server.display_name,
+                            server.state.label(),
+                            server.capability_summary(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "MCP 概览:\n{}\n\n常用命令:\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp add <github|everything>",
+                        summary
+                    ),
+                    tool_block: None,
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP 概览失败: {}", err),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn resolve_default_mcp_server(&mut self, purpose: &str) -> Option<String> {
+        match self.runtime.list_mcp_servers() {
+            Ok(servers) if servers.is_empty() => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "当前未配置 MCP server。可用 `/mcp add github` 或 `/mcp add everything` 快速添加。".to_string(),
+                    tool_block: None,
+                });
+                None
+            }
+            Ok(servers) if servers.len() == 1 => Some(servers[0].name.clone()),
+            Ok(servers) => {
+                let names = servers
+                    .into_iter()
+                    .map(|server| server.name)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "请为 `/mcp {}` 指定 server。可用 server: {}",
+                        purpose, names
+                    ),
+                    tool_block: None,
+                });
+                None
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP server 列表失败: {}", err),
+                    tool_block: None,
+                });
+                None
+            }
+        }
+    }
+
+    fn server_exists(&self, name: &str) -> bool {
+        self.runtime
+            .list_mcp_servers()
+            .map(|servers| servers.into_iter().any(|server| server.name == name))
+            .unwrap_or(false)
+    }
+
+    fn sync_welcome_mcp_status(&mut self) {
+        let snapshot = self.runtime.mcp_status_snapshot();
+        if snapshot.revision == self.last_mcp_status_revision {
+            return;
+        }
+        self.last_mcp_status_revision = snapshot.revision;
+
+        let Some(first_message) = self.messages.first_mut() else {
+            return;
+        };
+        if first_message.role != MessageRole::Agent || !first_message.content.starts_with("欢迎来到 SpiritAgent。") {
+            return;
+        }
+
+        first_message.content = welcome_message_text(
+            &self.runtime.config().active_model,
+            &snapshot.welcome_line(),
+        );
     }
 
     fn open_cli_log_file(&self) -> Result<std::path::PathBuf> {
@@ -1692,15 +1845,19 @@ impl TuiShell {
     }
 }
 
-fn welcome_message(active_model: &str) -> ChatMessage {
+fn welcome_message(active_model: &str, mcp_status_line: &str) -> ChatMessage {
     ChatMessage {
         role: MessageRole::Agent,
-        content: format!(
-            "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。",
-            active_model
-        ),
+        content: welcome_message_text(active_model, mcp_status_line),
         tool_block: None,
     }
+}
+
+fn welcome_message_text(active_model: &str, mcp_status_line: &str) -> String {
+    format!(
+        "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。\n{}",
+        active_model, mcp_status_line
+    )
 }
 
 fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {

@@ -16,7 +16,10 @@ use crate::{
         McpServerInspection,
     },
     model_registry::AppConfig,
-    ports::{LlmTransport, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor},
+    ports::{
+        LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundResult,
+        ToolExecutor,
+    },
     session::{PendingMcpResource, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
     view::{AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase},
@@ -104,6 +107,8 @@ impl AgentRuntime {
         tool_executor: Box<dyn ToolExecutor>,
         workspace_root: PathBuf,
     ) -> Self {
+        tool_executor.start_mcp_background_refresh();
+
         Self {
             session: SessionModel::new(),
             config,
@@ -150,6 +155,10 @@ impl AgentRuntime {
 
     pub fn llm_system_prompts_for_export(&self) -> Value {
         self.llm_transport.llm_system_prompts_for_export()
+    }
+
+    pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
+        self.tool_executor.mcp_status_snapshot()
     }
 
     pub fn has_pending_tool_approval(&self) -> bool {
@@ -328,6 +337,12 @@ impl AgentRuntime {
             prompt,
             prompt_messages.len()
         ))
+    }
+
+    pub fn add_mcp_server_preset(&mut self, preset: &str) -> Result<String> {
+        let summary = self.tool_executor.add_mcp_server_preset(preset)?;
+        self.tool_executor.start_mcp_background_refresh();
+        Ok(summary)
     }
 
     pub fn execute_mcp_tool(

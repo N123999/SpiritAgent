@@ -21,7 +21,7 @@ use std::{io, time::Duration};
 
 use spirit_agent::{
     ConfigCommand, KeyCommand, McpCommand, ModelCommand, TuiShell, handle_config_cli,
-    handle_mcp_cli, handle_model_cli, logging, mcp::McpConfigScope, ui,
+    handle_mcp_cli, handle_model_cli, logging, ui,
 };
 
 const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
@@ -124,8 +124,6 @@ enum McpAction {
     List,
     Show,
     Init {
-        #[arg(long, value_enum, default_value_t = McpScopeArg::Workspace)]
-        scope: McpScopeArg,
         #[arg(long, default_value_t = false)]
         force: bool,
     },
@@ -169,12 +167,6 @@ enum McpAction {
         #[arg(long)]
         args_json: Option<String>,
     },
-}
-
-#[derive(Clone, Copy, clap::ValueEnum)]
-enum McpScopeArg {
-    User,
-    Workspace,
 }
 
 fn main() -> Result<()> {
@@ -252,13 +244,7 @@ fn into_mcp_command(action: McpAction) -> McpCommand {
     match action {
         McpAction::List => McpCommand::List,
         McpAction::Show => McpCommand::Show,
-        McpAction::Init { scope, force } => McpCommand::Init {
-            scope: match scope {
-                McpScopeArg::User => McpConfigScope::User,
-                McpScopeArg::Workspace => McpConfigScope::Workspace,
-            },
-            force,
-        },
+        McpAction::Init { force } => McpCommand::Init { force },
         McpAction::Trust { name } => McpCommand::Trust { name },
         McpAction::Untrust { name } => McpCommand::Untrust { name },
         McpAction::Enable { name } => McpCommand::Enable { name },

@@ -1242,6 +1242,7 @@ fn suggestion_summary(command: &str) -> &'static str {
         "/compact" => "压缩上下文历史",
         "/sessions" => "保存、加载或选择会话",
         "/image" => "添加、清空或选择图片",
+        "/mcp" => "查看、添加或浏览 MCP 服务器能力",
         "/log" => "打开或导出日志",
         _ => "",
     }
@@ -1267,6 +1268,19 @@ fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
             "    /image <path> [prompt]",
             "    /image pick",
             "    /image clear",
+        ],
+        "/mcp" => vec![
+            "  Usage",
+            "    /mcp",
+            "    /mcp list",
+            "    /mcp add <github|everything>",
+            "    /mcp inspect [server]",
+            "    /mcp tools [server]",
+            "    /mcp resources [server]",
+            "    /mcp prompts [server]",
+            "    /mcp prompt [server] <prompt> [args_json]",
+            "  Note",
+            "    单一 server 场景可省略 [server]",
         ],
         "/log" => vec![
             "  Usage",

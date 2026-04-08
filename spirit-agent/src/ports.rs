@@ -29,6 +29,60 @@ pub struct ChatArchive {
     pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum McpStatusState {
+    #[default]
+    Idle,
+    Loading,
+    Ready,
+    Error,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct McpStatusSnapshot {
+    pub revision: u64,
+    pub state: McpStatusState,
+    pub configured_servers: usize,
+    pub loaded_servers: usize,
+    pub cached_tools: usize,
+    pub last_error: Option<String>,
+}
+
+impl McpStatusSnapshot {
+    pub fn welcome_line(&self) -> String {
+        match self.state {
+            McpStatusState::Idle => "MCP: 尚未开始加载。".to_string(),
+            McpStatusState::Loading => {
+                if self.configured_servers == 0 {
+                    "MCP: 未配置服务器。".to_string()
+                } else {
+                    format!("MCP: 正在后台加载 {} 个服务器...", self.configured_servers)
+                }
+            }
+            McpStatusState::Ready => {
+                if self.configured_servers == 0 {
+                    "MCP: 未配置服务器。".to_string()
+                } else {
+                    format!(
+                        "MCP: 已加载 {} 个 MCP 服务器（缓存 {} 个工具）。",
+                        self.loaded_servers, self.cached_tools
+                    )
+                }
+            }
+            McpStatusState::Error => {
+                if self.configured_servers == 0 {
+                    "MCP: 未配置服务器。".to_string()
+                } else {
+                    format!(
+                        "MCP: 已加载 {}/{} 个 MCP 服务器。",
+                        self.loaded_servers, self.configured_servers
+                    )
+                }
+            }
+        }
+    }
+}
+
 pub trait AppPaths: Send + Sync {
     fn workspace_root(&self) -> PathBuf;
     fn config_file(&self) -> PathBuf;
@@ -70,6 +124,9 @@ pub trait ToolExecutor: Send {
     fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision>;
     fn trust(&mut self, target: &TrustTarget) -> Result<()>;
     fn execute(&mut self, request: &ToolRequest) -> Result<String>;
+    fn start_mcp_background_refresh(&self);
+    fn mcp_status_snapshot(&self) -> McpStatusSnapshot;
+    fn add_mcp_server_preset(&mut self, preset: &str) -> Result<String>;
     fn list_mcp_servers(&self) -> Result<Vec<ManagedMcpServer>>;
     fn inspect_mcp_server(&self, name: &str) -> Result<McpServerInspection>;
     fn list_mcp_tools(&self, name: &str) -> Result<Vec<McpDiscoveredTool>>;

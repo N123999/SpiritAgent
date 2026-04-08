@@ -4,8 +4,8 @@ use std::env;
 use crate::{
     adapters::{DefaultAppPaths, JsonConfigStore, KeyringSecretStore},
     mcp::{
-        McpConfigScope, example_github_mcp_config, load_merged_mcp_config, save_mcp_config,
-        set_server_enabled, set_server_trusted,
+        example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
+        set_server_trusted, workspace_mcp_config_path,
     },
     mcp_manager::McpManager,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
@@ -52,7 +52,6 @@ pub enum McpCommand {
     List,
     Show,
     Init {
-        scope: McpConfigScope,
         force: bool,
     },
     Trust {
@@ -234,11 +233,10 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             let mut servers = manager.servers();
 
             println!("工作区: {}", manager.workspace_root().display());
-            println!("用户级 MCP 配置: {}", manager.user_config_path().display());
-            println!("工作区 MCP 配置: {}", manager.workspace_config_path().display());
+            println!("MCP 配置: {}", manager.config_path().display());
 
             if servers.len() == 0 {
-                println!("未配置任何 MCP server。可先执行 `spirit-agent mcp init --scope workspace` 生成模板。\n");
+                println!("未配置任何 MCP server。可先执行 `spirit-agent mcp init` 生成模板。\n");
                 println!("提示: 首个模板会生成 GitHub MCP 的 stdio 配置，并使用环境变量 GITHUB_PERSONAL_ACCESS_TOKEN。" );
                 return Ok(());
             }
@@ -246,10 +244,9 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("MCP servers:");
             for server in servers.by_ref() {
                 println!(
-                    "  - {}\n    display: {}\n    source: {}\n    state: {}\n    trusted: {}\n    capabilities: {}\n    transport: {}",
+                    "  - {}\n    display: {}\n    state: {}\n    trusted: {}\n    capabilities: {}\n    transport: {}",
                     server.name,
                     server.display_name,
-                    server.source,
                     server.state.label(),
                     if server.trusted { "yes" } else { "no" },
                     server.capability_summary(),
@@ -258,26 +255,18 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             }
         }
         McpCommand::Show => {
-            let loaded = load_merged_mcp_config(&workspace_root)?;
+            let loaded = load_mcp_config(&workspace_root)?;
 
             println!("工作区: {}", workspace_root.display());
-            println!("用户级 MCP 配置: {}", loaded.user_path.display());
-            println!("工作区 MCP 配置: {}", loaded.workspace_path.display());
+            println!("MCP 配置: {}", loaded.path.display());
             println!();
-            println!("用户级 server 数量: {}", loaded.user_config.servers.len());
-            println!("工作区 server 数量: {}", loaded.workspace_config.servers.len());
-            println!("合并后 server 数量: {}", loaded.merged.servers.len());
+            println!("server 数量: {}", loaded.config.servers.len());
             println!();
-            println!("合并后 MCP 配置:");
-            println!("{}", serde_json::to_string_pretty(&loaded.merged)?);
+            println!("MCP 配置:");
+            println!("{}", serde_json::to_string_pretty(&loaded.config)?);
         }
-        McpCommand::Init { scope, force } => {
-            let path = match scope {
-                McpConfigScope::User => crate::mcp::user_mcp_config_path(),
-                McpConfigScope::Workspace => {
-                    crate::mcp::workspace_mcp_config_path(&workspace_root)
-                }
-            };
+        McpCommand::Init { force } => {
+            let path = workspace_mcp_config_path(&workspace_root);
 
             save_mcp_config(&path, &example_github_mcp_config(), force)?;
             println!("已生成 MCP 配置模板: {}", path.display());
@@ -285,39 +274,35 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             );
         }
         McpCommand::Trust { name } => {
-            let (path, scope) = set_server_trusted(&workspace_root, &name, true)?;
+            let path = set_server_trusted(&workspace_root, &name, true)?;
             println!(
-                "已信任 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                "已信任 MCP server: {}\n配置文件: {}",
                 name,
                 path.display(),
-                scope
             );
         }
         McpCommand::Untrust { name } => {
-            let (path, scope) = set_server_trusted(&workspace_root, &name, false)?;
+            let path = set_server_trusted(&workspace_root, &name, false)?;
             println!(
-                "已取消信任 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                "已取消信任 MCP server: {}\n配置文件: {}",
                 name,
                 path.display(),
-                scope
             );
         }
         McpCommand::Enable { name } => {
-            let (path, scope) = set_server_enabled(&workspace_root, &name, true)?;
+            let path = set_server_enabled(&workspace_root, &name, true)?;
             println!(
-                "已启用 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                "已启用 MCP server: {}\n配置文件: {}",
                 name,
                 path.display(),
-                scope
             );
         }
         McpCommand::Disable { name } => {
-            let (path, scope) = set_server_enabled(&workspace_root, &name, false)?;
+            let path = set_server_enabled(&workspace_root, &name, false)?;
             println!(
-                "已禁用 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                "已禁用 MCP server: {}\n配置文件: {}",
                 name,
                 path.display(),
-                scope
             );
         }
         McpCommand::Inspect { name } => {
@@ -325,7 +310,6 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             let inspection = manager.inspect_server(&name)?;
             println!("server: {}", inspection.name);
             println!("display: {}", inspection.display_name);
-            println!("source: {}", inspection.source);
             println!("protocol_version: {}", inspection.protocol_version);
             println!("peer.name: {}", inspection.server_name);
             println!("peer.version: {}", inspection.server_version);

@@ -9,14 +9,20 @@ use std::{
     collections::BTreeMap,
     env,
     path::{Path, PathBuf},
+    process::Stdio,
     time::Duration,
 };
-use tokio::{process::Command, runtime::Builder as RuntimeBuilder};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{ChildStderr, Command},
+    runtime::Builder as RuntimeBuilder,
+};
 
 use crate::mcp::{
-    LoadedMcpConfig, McpCapabilityToggles, McpConfigScope, McpServerConfig, McpTransportConfig,
-    load_merged_mcp_config, resolve_env_map,
+    LoadedMcpConfig, McpCapabilityToggles, McpServerConfig, McpTransportConfig,
+    load_mcp_config, resolve_env_map,
 };
+use crate::logging;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpServerRuntimeState {
@@ -39,7 +45,6 @@ impl McpServerRuntimeState {
 pub struct ManagedMcpServer {
     pub name: String,
     pub display_name: String,
-    pub source: McpConfigScope,
     pub enabled: bool,
     pub trusted: bool,
     pub capabilities: McpCapabilityToggles,
@@ -73,8 +78,7 @@ impl ManagedMcpServer {
 
 pub struct McpManager {
     workspace_root: PathBuf,
-    user_config_path: PathBuf,
-    workspace_config_path: PathBuf,
+    config_path: PathBuf,
     servers: BTreeMap<String, ManagedMcpServer>,
 }
 
@@ -116,7 +120,6 @@ pub struct McpDiscoveredPrompt {
 pub struct McpServerInspection {
     pub name: String,
     pub display_name: String,
-    pub source: McpConfigScope,
     pub protocol_version: String,
     pub server_name: String,
     pub server_title: Option<String>,
@@ -140,25 +143,19 @@ pub struct McpServerInspection {
 impl McpManager {
     pub fn load(workspace_root: impl Into<PathBuf>) -> Result<Self> {
         let workspace_root = workspace_root.into();
-        let loaded = load_merged_mcp_config(&workspace_root)?;
+        let loaded = load_mcp_config(&workspace_root)?;
         Ok(Self::from_loaded_config(workspace_root, loaded))
     }
 
     pub fn from_loaded_config(workspace_root: PathBuf, loaded: LoadedMcpConfig) -> Self {
         let mut servers = BTreeMap::new();
-        for (name, config) in loaded.merged.servers {
-            let source = loaded
-                .server_sources
-                .get(&name)
-                .copied()
-                .unwrap_or(McpConfigScope::User);
-            servers.insert(name.clone(), build_managed_server(name, source, config));
+        for (name, config) in loaded.config.servers {
+            servers.insert(name.clone(), build_managed_server(name, config));
         }
 
         Self {
             workspace_root,
-            user_config_path: loaded.user_path,
-            workspace_config_path: loaded.workspace_path,
+            config_path: loaded.path,
             servers,
         }
     }
@@ -167,12 +164,8 @@ impl McpManager {
         &self.workspace_root
     }
 
-    pub fn user_config_path(&self) -> &std::path::Path {
-        &self.user_config_path
-    }
-
-    pub fn workspace_config_path(&self) -> &std::path::Path {
-        &self.workspace_config_path
+    pub fn config_path(&self) -> &std::path::Path {
+        &self.config_path
     }
 
     pub fn servers(&self) -> std::collections::btree_map::Values<'_, String, ManagedMcpServer> {
@@ -239,7 +232,6 @@ impl McpManager {
             Ok(McpServerInspection {
                 name: server.name.clone(),
                 display_name: server.display_name.clone(),
-                source: server.source,
                 protocol_version: peer_info.protocol_version.to_string(),
                 server_name: peer_info.server_info.name,
                 server_title: peer_info.server_info.title,
@@ -470,7 +462,6 @@ impl McpManager {
 
 fn build_managed_server(
     name: String,
-    source: McpConfigScope,
     config: McpServerConfig,
 ) -> ManagedMcpServer {
     let state = if !config.enabled {
@@ -486,7 +477,6 @@ fn build_managed_server(
     ManagedMcpServer {
         name,
         display_name,
-        source,
         enabled: config.enabled,
         trusted: config.trusted,
         capabilities: config.capabilities,
@@ -527,16 +517,33 @@ fn build_stdio_transport(workspace_root: &Path, server: &ManagedMcpServer) -> Re
     let resolved_env = resolve_env_map(env)?;
     let resolved_cwd = resolve_stdio_cwd(workspace_root, cwd.as_deref());
     let resolved_command = resolve_stdio_command(command)?;
-    let transport = TokioChildProcess::new(Command::new(&resolved_command).configure(|cmd| {
+    let (transport, stderr) = TokioChildProcess::builder(Command::new(&resolved_command).configure(|cmd| {
         cmd.args(args);
         cmd.current_dir(&resolved_cwd);
         if !resolved_env.is_empty() {
             cmd.envs(resolved_env.iter().map(|(key, value)| (key, value)));
         }
     }))
+    .stderr(Stdio::piped())
+    .spawn()
     .with_context(|| format!("启动 stdio MCP server 失败: {}", server.transport_summary()))?;
 
+    if let Some(stderr) = stderr {
+        tokio::spawn(drain_child_stderr(server.name.clone(), stderr));
+    }
+
     Ok(transport)
+}
+
+async fn drain_child_stderr(server_name: String, stderr: ChildStderr) {
+    let mut lines = BufReader::new(stderr).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        logging::log_event(&format!("[mcp:{}:stderr] {}", server_name, trimmed));
+    }
 }
 
 fn resolve_stdio_cwd(workspace_root: &Path, cwd: Option<&str>) -> PathBuf {
@@ -661,21 +668,13 @@ mod tests {
         );
 
         let loaded = LoadedMcpConfig {
-            user_path: PathBuf::from("user-mcp.json"),
-            workspace_path: PathBuf::from("workspace-mcp.json"),
-            user_config: McpConfigFile::default(),
-            workspace_config: McpConfigFile::default(),
-            merged,
-            server_sources: BTreeMap::from([(
-                "github".to_string(),
-                McpConfigScope::Workspace,
-            )]),
+            path: PathBuf::from("workspace-mcp.json"),
+            config: merged,
         };
         let manager = McpManager::from_loaded_config(PathBuf::from("."), loaded);
         let github = manager.get("github").expect("github exists");
 
         assert_eq!(github.state, McpServerRuntimeState::NeedsTrust);
-        assert_eq!(github.source, McpConfigScope::Workspace);
     }
 
     #[test]
