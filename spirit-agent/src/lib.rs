@@ -11,6 +11,8 @@ pub mod model_registry;
 pub mod ports;
 pub mod runtime;
 pub mod session;
+#[cfg(feature = "tui")]
+pub mod shell;
 pub mod tool_runtime;
 #[cfg(feature = "tui")]
 pub mod tui;
