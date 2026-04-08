@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::hash_map::DefaultHasher,
     collections::BTreeMap,
+    collections::hash_map::DefaultHasher,
     env, fs,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
@@ -179,27 +179,26 @@ pub fn example_github_mcp_config() -> McpConfigFile {
     McpConfigFile { servers }
 }
 
-pub fn add_mcp_server_preset(workspace_root: &Path, preset: &str) -> Result<(PathBuf, String)> {
-    let preset = preset.trim().to_ascii_lowercase();
-    let (server_name, server_config) = match preset.as_str() {
-        "github" => ("github".to_string(), github_preset_config(true)),
-        "everything" => ("everything".to_string(), everything_preset_config(true)),
-        _ => {
-            return Err(anyhow!(
-                "未知 MCP preset: {}。当前支持: github | everything",
-                preset
-            ));
-        }
-    };
+pub fn add_mcp_server(
+    workspace_root: &Path,
+    name: &str,
+    server_config: McpServerConfig,
+) -> Result<PathBuf> {
+    let server_name = name.trim();
+    if server_name.is_empty() {
+        return Err(anyhow!("MCP server 名称不能为空"));
+    }
 
     let LoadedMcpConfig { path, mut config } = load_mcp_config(workspace_root)?;
-    if config.servers.contains_key(&server_name) {
+    if config.servers.contains_key(server_name) {
         return Err(anyhow!("MCP server 已存在: {}", server_name));
     }
 
-    config.servers.insert(server_name.clone(), server_config);
+    config
+        .servers
+        .insert(server_name.to_string(), server_config);
     save_mcp_config(&path, &config, true)?;
-    Ok((path, server_name))
+    Ok(path)
 }
 
 pub fn resolve_env_value(value: &str) -> Result<String> {
@@ -225,21 +224,13 @@ pub fn resolve_env_map(env_map: &BTreeMap<String, String>) -> Result<BTreeMap<St
         .collect()
 }
 
-pub fn set_server_trusted(
-    workspace_root: &Path,
-    name: &str,
-    trusted: bool,
-) -> Result<PathBuf> {
+pub fn set_server_trusted(workspace_root: &Path, name: &str, trusted: bool) -> Result<PathBuf> {
     mutate_existing_server(workspace_root, name, |server| {
         server.trusted = trusted;
     })
 }
 
-pub fn set_server_enabled(
-    workspace_root: &Path,
-    name: &str,
-    enabled: bool,
-) -> Result<PathBuf> {
+pub fn set_server_enabled(workspace_root: &Path, name: &str, enabled: bool) -> Result<PathBuf> {
     mutate_existing_server(workspace_root, name, |server| {
         server.enabled = enabled;
     })
@@ -336,7 +327,11 @@ mod tests {
         save_mcp_config(&path, &config, true).expect("seed config file");
 
         let loaded = load_mcp_config(&workspace_root).expect("load config");
-        let server = loaded.config.servers.get("github").expect("github server exists");
+        let server = loaded
+            .config
+            .servers
+            .get("github")
+            .expect("github server exists");
 
         assert_eq!(loaded.path, path);
         assert!(!server.enabled);
@@ -356,7 +351,10 @@ mod tests {
 
     #[test]
     fn resolve_plain_and_placeholder_env_values() {
-        assert_eq!(resolve_env_value("literal").expect("literal resolves"), "literal");
+        assert_eq!(
+            resolve_env_value("literal").expect("literal resolves"),
+            "literal"
+        );
 
         let path_value = resolve_env_value("${env:PATH}").expect("PATH should exist");
         assert!(!path_value.trim().is_empty());
@@ -368,7 +366,9 @@ mod tests {
         let github = cfg.servers.get("github").expect("github config exists");
 
         match &github.transport {
-            McpTransportConfig::Stdio { command, args, env, .. } => {
+            McpTransportConfig::Stdio {
+                command, args, env, ..
+            } => {
                 assert_eq!(command, "npx");
                 assert!(args.contains(&"@modelcontextprotocol/server-github".to_string()));
                 assert_eq!(
@@ -403,9 +403,14 @@ mod tests {
         );
         save_mcp_config(&path, &config, true).expect("seed config file");
 
-        let updated_path = set_server_trusted(&workspace_root, "github", true).expect("update trust");
+        let updated_path =
+            set_server_trusted(&workspace_root, "github", true).expect("update trust");
         let updated = load_mcp_config(&workspace_root).expect("reload config");
-        let github = updated.config.servers.get("github").expect("github config exists");
+        let github = updated
+            .config
+            .servers
+            .get("github")
+            .expect("github config exists");
 
         assert_eq!(updated_path, path);
         assert!(github.trusted);
@@ -422,9 +427,10 @@ mod tests {
 
         assert!(path.starts_with(spirit_agent_data_dir()));
         assert!(path.ends_with(MCP_CONFIG_FILE_NAME));
-        assert!(path
-            .components()
-            .any(|component| component.as_os_str() == WORKSPACE_MCP_DIR_NAME));
+        assert!(
+            path.components()
+                .any(|component| component.as_os_str() == WORKSPACE_MCP_DIR_NAME)
+        );
     }
 
     fn unique_test_workspace(tag: &str) -> PathBuf {
@@ -455,25 +461,6 @@ fn github_preset_config(trusted: bool) -> McpServerConfig {
                 "@modelcontextprotocol/server-github".to_string(),
             ],
             env,
-            cwd: None,
-            timeout_ms: Some(20_000),
-        },
-    }
-}
-
-fn everything_preset_config(trusted: bool) -> McpServerConfig {
-    McpServerConfig {
-        display_name: Some("Everything MCP".to_string()),
-        enabled: true,
-        trusted,
-        capabilities: McpCapabilityToggles::default(),
-        transport: McpTransportConfig::Stdio {
-            command: "npx".to_string(),
-            args: vec![
-                "-y".to_string(),
-                "@modelcontextprotocol/server-everything".to_string(),
-            ],
-            env: BTreeMap::new(),
             cwd: None,
             timeout_ms: Some(20_000),
         },

@@ -22,6 +22,34 @@ pub struct PendingAssistantAux {
     pub detail_text: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct BottomFormView {
+    pub title: String,
+    pub fields: Vec<BottomFormFieldView>,
+    pub selected_field: usize,
+    pub footer_hint: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct BottomFormFieldView {
+    pub label: String,
+    pub help: String,
+    pub editor: BottomFormFieldEditorView,
+}
+
+#[derive(Clone, Debug)]
+pub enum BottomFormFieldEditorView {
+    Text {
+        value: String,
+        placeholder: String,
+        cursor: usize,
+    },
+    Choice {
+        options: Vec<String>,
+        selected: usize,
+    },
+}
+
 /// 工具卡片在对话里的生命周期阶段（用于 TUI 着色与标签）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolUiPhase {
@@ -100,6 +128,7 @@ pub struct TuiViewModel {
     pub image_picker_active: bool,
     pub image_picker_index: usize,
     pub image_picker_files: Vec<String>,
+    pub bottom_form: Option<BottomFormView>,
     pub history_offset_from_bottom: usize,
     pub pending_response_active: bool,
     pub pending_assistant_msg_index: Option<usize>,

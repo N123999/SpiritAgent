@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env, fs,
     fs::OpenOptions,
     path::Path,
@@ -15,12 +15,22 @@ use crate::{
         OpenAiCompatibleTransport, WorkspaceToolExecutor,
     },
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
+    logging,
+    mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
-    view::{AssistantAuxData, ChatMessage, MessageRole, TuiViewModel},
-    logging,
+    view::{
+        AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
+        ChatMessage, MessageRole, TuiViewModel,
+    },
 };
+
+const MCP_ADD_FIELD_NAME: usize = 0;
+const MCP_ADD_FIELD_TRANSPORT: usize = 1;
+const MCP_ADD_FIELD_ENDPOINT: usize = 2;
+const MCP_ADD_FIELD_METADATA: usize = 3;
+const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
 #[derive(Clone, Copy, Debug, Default)]
@@ -52,6 +62,7 @@ pub struct TuiShell {
     image_picker_active: bool,
     image_picker_index: usize,
     image_picker_files: Vec<String>,
+    bottom_form: Option<BottomFormView>,
     history_offset_from_bottom: usize,
     conversation_sel_anchor: Option<(usize, usize)>,
     conversation_sel_head: Option<(usize, usize)>,
@@ -123,6 +134,7 @@ impl TuiShell {
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],
+            bottom_form: None,
             history_offset_from_bottom: 0,
             conversation_sel_anchor: None,
             conversation_sel_head: None,
@@ -200,6 +212,7 @@ impl TuiShell {
             image_picker_active: self.image_picker_active,
             image_picker_index: self.image_picker_index,
             image_picker_files: self.image_picker_files.clone(),
+            bottom_form: self.bottom_form.clone(),
             history_offset_from_bottom: self.history_offset_from_bottom,
             pending_response_active: self.runtime.is_busy(),
             pending_assistant_msg_index: self.pending_assistant_msg_index,
@@ -341,6 +354,10 @@ impl TuiShell {
         self.image_picker_active
     }
 
+    pub fn is_bottom_form_active(&self) -> bool {
+        self.bottom_form.is_some()
+    }
+
     pub fn is_slash_mode_active(&self) -> bool {
         self.current_slash_query().is_some()
     }
@@ -435,7 +452,8 @@ impl TuiShell {
                 content: trimmed_message.to_string(),
                 tool_block: None,
             });
-            self.runtime.respond_to_pending_tool_approval(trimmed_message);
+            self.runtime
+                .respond_to_pending_tool_approval(trimmed_message);
             self.apply_runtime_events();
             self.set_input(String::new());
             self.refresh_suggestions();
@@ -454,13 +472,17 @@ impl TuiShell {
         }
 
         let mut user_content = raw_message.clone();
-        if !trimmed_message.starts_with('/') && !self.runtime.session().pending_image_paths().is_empty() {
+        if !trimmed_message.starts_with('/')
+            && !self.runtime.session().pending_image_paths().is_empty()
+        {
             user_content.push_str(&format!(
                 "\n[attached images: {}]",
                 self.runtime.session().pending_image_paths().join(", ")
             ));
         }
-        if !trimmed_message.starts_with('/') && !self.runtime.session().pending_mcp_resources().is_empty() {
+        if !trimmed_message.starts_with('/')
+            && !self.runtime.session().pending_mcp_resources().is_empty()
+        {
             let summary = self
                 .runtime
                 .session()
@@ -668,6 +690,214 @@ impl TuiShell {
         });
     }
 
+    pub fn cancel_bottom_form(&mut self) {
+        self.bottom_form = None;
+    }
+
+    pub fn select_next_bottom_form_field(&mut self) {
+        let Some(form) = self.bottom_form.as_mut() else {
+            return;
+        };
+        if form.fields.is_empty() {
+            return;
+        }
+        form.selected_field = (form.selected_field + 1) % form.fields.len();
+    }
+
+    pub fn select_prev_bottom_form_field(&mut self) {
+        let Some(form) = self.bottom_form.as_mut() else {
+            return;
+        };
+        if form.fields.is_empty() {
+            return;
+        }
+        if form.selected_field == 0 {
+            form.selected_field = form.fields.len() - 1;
+        } else {
+            form.selected_field -= 1;
+        }
+    }
+
+    pub fn bottom_form_move_left(&mut self) {
+        let Some(form) = self.bottom_form.as_mut() else {
+            return;
+        };
+        let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
+        let Some(field) = form.fields.get_mut(selected) else {
+            return;
+        };
+
+        match &mut field.editor {
+            BottomFormFieldEditorView::Text { value, cursor, .. } => {
+                *cursor = (*cursor).min(value.chars().count());
+                if *cursor > 0 {
+                    *cursor -= 1;
+                }
+            }
+            BottomFormFieldEditorView::Choice { options, selected } => {
+                if options.is_empty() {
+                    return;
+                }
+                if *selected == 0 {
+                    *selected = options.len() - 1;
+                } else {
+                    *selected -= 1;
+                }
+                sync_mcp_add_form_fields(form);
+            }
+        }
+    }
+
+    pub fn bottom_form_move_right(&mut self) {
+        let Some(form) = self.bottom_form.as_mut() else {
+            return;
+        };
+        let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
+        let Some(field) = form.fields.get_mut(selected) else {
+            return;
+        };
+
+        match &mut field.editor {
+            BottomFormFieldEditorView::Text { value, cursor, .. } => {
+                *cursor = (*cursor + 1).min(value.chars().count());
+            }
+            BottomFormFieldEditorView::Choice { options, selected } => {
+                if options.is_empty() {
+                    return;
+                }
+                *selected = (*selected + 1) % options.len();
+                sync_mcp_add_form_fields(form);
+            }
+        }
+    }
+
+    pub fn bottom_form_move_home(&mut self) {
+        let Some(BottomFormFieldEditorView::Text { cursor, .. }) =
+            self.selected_bottom_form_editor_mut()
+        else {
+            return;
+        };
+        *cursor = 0;
+    }
+
+    pub fn bottom_form_move_end(&mut self) {
+        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
+            self.selected_bottom_form_editor_mut()
+        else {
+            return;
+        };
+        *cursor = value.chars().count();
+    }
+
+    pub fn bottom_form_insert_char(&mut self, ch: char) {
+        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
+            self.selected_bottom_form_editor_mut()
+        else {
+            return;
+        };
+        let idx = char_cursor_to_byte_index(value, *cursor);
+        value.insert(idx, ch);
+        *cursor += 1;
+    }
+
+    pub fn bottom_form_insert_text(&mut self, text: &str) {
+        let normalized = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
+        if normalized.is_empty() {
+            return;
+        }
+
+        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
+            self.selected_bottom_form_editor_mut()
+        else {
+            return;
+        };
+        let idx = char_cursor_to_byte_index(value, *cursor);
+        value.insert_str(idx, &normalized);
+        *cursor += normalized.chars().count();
+    }
+
+    pub fn bottom_form_backspace(&mut self) {
+        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
+            self.selected_bottom_form_editor_mut()
+        else {
+            return;
+        };
+        if *cursor == 0 {
+            return;
+        }
+        let end = char_cursor_to_byte_index(value, *cursor);
+        let start = char_cursor_to_byte_index(value, cursor.saturating_sub(1));
+        value.replace_range(start..end, "");
+        *cursor -= 1;
+    }
+
+    pub fn bottom_form_delete(&mut self) {
+        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
+            self.selected_bottom_form_editor_mut()
+        else {
+            return;
+        };
+        if *cursor >= value.chars().count() {
+            return;
+        }
+        let start = char_cursor_to_byte_index(value, *cursor);
+        let end = char_cursor_to_byte_index(value, cursor.saturating_add(1));
+        value.replace_range(start..end, "");
+    }
+
+    pub fn paste_bottom_form_from_clipboard(&mut self) -> Result<(), String> {
+        let text = arboard::Clipboard::new()
+            .map_err(|e| e.to_string())?
+            .get_text()
+            .map_err(|e| e.to_string())?;
+        self.bottom_form_insert_text(&text);
+        Ok(())
+    }
+
+    pub fn save_bottom_form(&mut self) {
+        let Some(form) = self.bottom_form.as_ref() else {
+            return;
+        };
+
+        match mcp_add_form_to_config(form) {
+            Ok((server_name, config)) => match self.runtime.add_mcp_server(&server_name, config) {
+                Ok(path) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "已添加 MCP server: {}\n配置文件: {}",
+                            server_name,
+                            path.display()
+                        ),
+                        tool_block: None,
+                    });
+                    self.bottom_form = None;
+                    self.sync_welcome_mcp_status();
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("添加 MCP server 失败: {}", err),
+                        tool_block: None,
+                    });
+                }
+            },
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("添加 MCP server 失败: {}", err),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn selected_bottom_form_editor_mut(&mut self) -> Option<&mut BottomFormFieldEditorView> {
+        let form = self.bottom_form.as_mut()?;
+        let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
+        form.fields.get_mut(selected).map(|field| &mut field.editor)
+    }
+
     fn handle_slash_command(&mut self, message: &str) {
         let parts: Vec<&str> = message.split_whitespace().collect();
         let Some(cmd) = parts.first().copied() else {
@@ -686,7 +916,7 @@ impl TuiShell {
             "/help" => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp add 支持快速写入 github / everything 预设。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server 名。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
+                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server 名。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
                     tool_block: None,
                 });
             }
@@ -878,7 +1108,10 @@ impl TuiShell {
     }
 
     fn handle_sessions_slash(&mut self, message: &str) {
-        let tail = message.strip_prefix("/sessions").map(str::trim).unwrap_or("");
+        let tail = message
+            .strip_prefix("/sessions")
+            .map(str::trim)
+            .unwrap_or("");
         if tail.is_empty() {
             self.open_chat_picker();
             return;
@@ -1071,22 +1304,13 @@ impl TuiShell {
             return;
         }
 
-        if let Some(preset) = tail.strip_prefix("add ") {
-            match self.runtime.add_mcp_server_preset(preset.trim()) {
-                Ok(summary) => {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: summary,
-                        tool_block: None,
-                    });
-                    self.sync_welcome_mcp_status();
-                }
-                Err(err) => self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: format!("添加 MCP preset 失败: {}", err),
-                    tool_block: None,
-                }),
-            }
+        if tail == "add" {
+            self.open_mcp_add_form();
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: "已打开 MCP 添加表单。填写完成后按 Ctrl+S 保存，Esc 取消。".to_string(),
+                tool_block: None,
+            });
             return;
         }
 
@@ -1097,7 +1321,10 @@ impl TuiShell {
                     None => return,
                 }
             } else {
-                tail.strip_prefix("inspect ").unwrap_or_default().trim().to_string()
+                tail.strip_prefix("inspect ")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string()
             };
 
             match self.runtime.inspect_mcp_server(&server) {
@@ -1137,7 +1364,10 @@ impl TuiShell {
                     None => return,
                 }
             } else {
-                tail.strip_prefix("tools ").unwrap_or_default().trim().to_string()
+                tail.strip_prefix("tools ")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string()
             };
 
             match self.runtime.list_mcp_tools(&server) {
@@ -1177,7 +1407,10 @@ impl TuiShell {
                     None => return,
                 }
             } else {
-                tail.strip_prefix("resources ").unwrap_or_default().trim().to_string()
+                tail.strip_prefix("resources ")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string()
             };
 
             match self.runtime.list_mcp_resources(&server) {
@@ -1214,7 +1447,10 @@ impl TuiShell {
                     None => return,
                 }
             } else {
-                tail.strip_prefix("prompts ").unwrap_or_default().trim().to_string()
+                tail.strip_prefix("prompts ")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string()
             };
 
             match self.runtime.list_mcp_prompts(&server) {
@@ -1268,7 +1504,10 @@ impl TuiShell {
                 self.push_mcp_usage();
                 return;
             };
-            match self.runtime.apply_mcp_prompt(&server, prompt, non_empty_opt(args_json)) {
+            match self
+                .runtime
+                .apply_mcp_prompt(&server, prompt, non_empty_opt(args_json))
+            {
                 Ok(summary) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
@@ -1295,7 +1534,10 @@ impl TuiShell {
                 self.push_mcp_usage();
                 return;
             };
-            match self.runtime.execute_mcp_tool(server, tool, non_empty_opt(args_json)) {
+            match self
+                .runtime
+                .execute_mcp_tool(server, tool, non_empty_opt(args_json))
+            {
                 Ok(()) => self.apply_runtime_events(),
                 Err(err) => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
@@ -1351,7 +1593,7 @@ impl TuiShell {
     fn push_mcp_usage(&mut self) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add <github|everything>\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
+            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
             tool_block: None,
         });
     }
@@ -1361,7 +1603,8 @@ impl TuiShell {
             Ok(servers) if servers.is_empty() => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "当前未配置 MCP server。可用 `/mcp add github` 或 `/mcp add everything` 快速添加。".to_string(),
+                    content: "当前未配置 MCP server。可用 `/mcp add` 打开表单进行添加。"
+                        .to_string(),
                     tool_block: None,
                 });
             }
@@ -1382,7 +1625,7 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "MCP 概览:\n{}\n\n常用命令:\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp add <github|everything>",
+                        "MCP 概览:\n{}\n\n常用命令:\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp add",
                         summary
                     ),
                     tool_block: None,
@@ -1403,7 +1646,8 @@ impl TuiShell {
             Ok(servers) if servers.is_empty() => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "当前未配置 MCP server。可用 `/mcp add github` 或 `/mcp add everything` 快速添加。".to_string(),
+                    content: "当前未配置 MCP server。可用 `/mcp add` 打开表单进行添加。"
+                        .to_string(),
                     tool_block: None,
                 });
                 None
@@ -1453,7 +1697,9 @@ impl TuiShell {
         let Some(first_message) = self.messages.first_mut() else {
             return;
         };
-        if first_message.role != MessageRole::Agent || !first_message.content.starts_with("欢迎来到 SpiritAgent。") {
+        if first_message.role != MessageRole::Agent
+            || !first_message.content.starts_with("欢迎来到 SpiritAgent。")
+        {
             return;
         }
 
@@ -1480,8 +1726,13 @@ impl TuiShell {
             "spirit-agent-cli-log-{exported_at_unix_secs}-{}.log",
             std::process::id()
         ));
-        fs::copy(&source, &target)
-            .with_context(|| format!("导出 CLI 日志失败: {} -> {}", source.display(), target.display()))?;
+        fs::copy(&source, &target).with_context(|| {
+            format!(
+                "导出 CLI 日志失败: {} -> {}",
+                source.display(),
+                target.display()
+            )
+        })?;
         logging::log_event(&format!(
             "[cli-log] export source={} target={}",
             source.display(),
@@ -1557,6 +1808,9 @@ impl TuiShell {
             .position(|m| m.name == self.runtime.config().active_model)
             .unwrap_or(0);
         self.model_picker_active = true;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.bottom_form = None;
         self.set_input(String::new());
         self.refresh_suggestions();
     }
@@ -1567,7 +1821,8 @@ impl TuiShell {
                 if files.is_empty() {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: "没有已保存会话。可先使用 /sessions save 保存当前会话。".to_string(),
+                        content: "没有已保存会话。可先使用 /sessions save 保存当前会话。"
+                            .to_string(),
                         tool_block: None,
                     });
                     return;
@@ -1576,6 +1831,8 @@ impl TuiShell {
                 self.chat_picker_index = 0;
                 self.chat_picker_active = true;
                 self.model_picker_active = false;
+                self.image_picker_active = false;
+                self.bottom_form = None;
                 self.set_input(String::new());
                 self.refresh_suggestions();
             }
@@ -1607,6 +1864,7 @@ impl TuiShell {
                 self.image_picker_active = true;
                 self.model_picker_active = false;
                 self.chat_picker_active = false;
+                self.bottom_form = None;
                 self.set_input(String::new());
                 self.refresh_suggestions();
             }
@@ -1618,6 +1876,15 @@ impl TuiShell {
                 });
             }
         }
+    }
+
+    fn open_mcp_add_form(&mut self) {
+        self.bottom_form = Some(new_mcp_add_form());
+        self.model_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
     }
 
     fn save_current_chat(&mut self, path: Option<&str>) {
@@ -1638,8 +1905,14 @@ impl TuiShell {
             .assistant_aux_by_message
             .iter()
             .filter_map(|(idx, aux)| {
-                let thinking = aux.thinking.clone().filter(|value| !value.trim().is_empty());
-                let compaction = aux.compaction.clone().filter(|value| !value.trim().is_empty());
+                let thinking = aux
+                    .thinking
+                    .clone()
+                    .filter(|value| !value.trim().is_empty());
+                let compaction = aux
+                    .compaction
+                    .clone()
+                    .filter(|value| !value.trim().is_empty());
                 if thinking.is_none() && compaction.is_none() {
                     None
                 } else {
@@ -1652,10 +1925,7 @@ impl TuiShell {
             })
             .collect::<Vec<_>>();
         assistant_aux.sort_by_key(|entry| entry.message_index);
-        let archive = self
-            .runtime
-            .session()
-            .to_archive(&messages, &assistant_aux);
+        let archive = self.runtime.session().to_archive(&messages, &assistant_aux);
         match self.chat_repository.save(path, &archive) {
             Ok(saved_path) => {
                 self.messages.push(ChatMessage {
@@ -1701,8 +1971,14 @@ impl TuiShell {
                     .assistant_aux
                     .iter()
                     .filter_map(|entry| {
-                        let thinking = entry.thinking.clone().filter(|value| !value.trim().is_empty());
-                        let compaction = entry.compaction.clone().filter(|value| !value.trim().is_empty());
+                        let thinking = entry
+                            .thinking
+                            .clone()
+                            .filter(|value| !value.trim().is_empty());
+                        let compaction = entry
+                            .compaction
+                            .clone()
+                            .filter(|value| !value.trim().is_empty());
                         if thinking.is_none() && compaction.is_none() {
                             None
                         } else {
@@ -1795,10 +2071,8 @@ impl TuiShell {
                 }
                 RuntimeEvent::RemovePendingAssistant => {
                     if let Some(idx) = self.pending_assistant_msg_index.take() {
-                        let has_persisted_aux = self
-                            .assistant_aux_by_message
-                            .get(&idx)
-                            .is_some_and(|aux| {
+                        let has_persisted_aux =
+                            self.assistant_aux_by_message.get(&idx).is_some_and(|aux| {
                                 aux.thinking
                                     .as_ref()
                                     .is_some_and(|value| !value.trim().is_empty())
@@ -1896,6 +2170,270 @@ fn slash_suggestion_apply_value(selected: &str) -> String {
         "/model" | "/sessions" | "/image" | "/mcp" | "/log" => format!("{} ", selected),
         _ => selected.to_string(),
     }
+}
+
+fn new_mcp_add_form() -> BottomFormView {
+    let mut form = BottomFormView {
+        title: "Add MCP Server".to_string(),
+        fields: vec![
+            BottomFormFieldView {
+                label: "名称".to_string(),
+                help: "用于 /mcp 命令引用；建议只用字母、数字、-、_。".to_string(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: "例如 github".to_string(),
+                    cursor: 0,
+                },
+            },
+            BottomFormFieldView {
+                label: "类型".to_string(),
+                help: "左右键切换传输方式。".to_string(),
+                editor: BottomFormFieldEditorView::Choice {
+                    options: vec!["STDIO".to_string(), "HTTP".to_string()],
+                    selected: 0,
+                },
+            },
+            BottomFormFieldView {
+                label: "命令".to_string(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: String::new(),
+                    cursor: 0,
+                },
+            },
+            BottomFormFieldView {
+                label: "环境变量".to_string(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: String::new(),
+                    cursor: 0,
+                },
+            },
+        ],
+        selected_field: MCP_ADD_FIELD_NAME,
+        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Ctrl+S 保存  Esc 取消".to_string(),
+    };
+    sync_mcp_add_form_fields(&mut form);
+    form
+}
+
+fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
+    let is_http = matches!(
+        selected_transport_kind(form),
+        Some(McpAddTransportKind::Http)
+    );
+
+    if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_ENDPOINT) {
+        if is_http {
+            field.label = "URL".to_string();
+            field.help =
+                "填写 Streamable HTTP endpoint，例如 https://example.com/mcp。".to_string();
+            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
+                *placeholder = "https://example.com/mcp".to_string();
+            }
+        } else {
+            field.label = "命令".to_string();
+            field.help =
+                "填写启动命令，可包含参数，例如 npx -y @modelcontextprotocol/server-github。"
+                    .to_string();
+            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
+                *placeholder = "npx -y @modelcontextprotocol/server-github".to_string();
+            }
+        }
+    }
+
+    if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_METADATA) {
+        if is_http {
+            field.label = "请求头".to_string();
+            field.help = "可选，格式为 KEY=VALUE; KEY2=VALUE。支持 ${env:VAR}。".to_string();
+            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
+                *placeholder = "Authorization=Bearer ${env:GITHUB_TOKEN}".to_string();
+            }
+        } else {
+            field.label = "环境变量".to_string();
+            field.help = "可选，格式为 KEY=VALUE; KEY2=VALUE。支持 ${env:VAR}。".to_string();
+            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
+                *placeholder = "GITHUB_PERSONAL_ACCESS_TOKEN=${env:GITHUB_TOKEN}".to_string();
+            }
+        }
+    }
+
+    form.selected_field = form.selected_field.min(form.fields.len().saturating_sub(1));
+}
+
+fn mcp_add_form_to_config(
+    form: &BottomFormView,
+) -> std::result::Result<(String, McpServerConfig), String> {
+    let server_name = bottom_form_text_value(form, MCP_ADD_FIELD_NAME)
+        .trim()
+        .to_string();
+    if server_name.is_empty() {
+        return Err("server 名称不能为空".to_string());
+    }
+    if server_name.chars().any(char::is_whitespace) {
+        return Err("server 名称不能包含空白字符，请使用 - 或 _".to_string());
+    }
+
+    let endpoint = bottom_form_text_value(form, MCP_ADD_FIELD_ENDPOINT)
+        .trim()
+        .to_string();
+    if endpoint.is_empty() {
+        let label = form
+            .fields
+            .get(MCP_ADD_FIELD_ENDPOINT)
+            .map(|field| field.label.as_str())
+            .unwrap_or("命令或 URL");
+        return Err(format!("{} 不能为空", label));
+    }
+
+    let metadata_text = bottom_form_text_value(form, MCP_ADD_FIELD_METADATA);
+    let transport = match selected_transport_kind(form).unwrap_or(McpAddTransportKind::Stdio) {
+        McpAddTransportKind::Stdio => {
+            let tokens = split_command_line(&endpoint)?;
+            let Some((command, args)) = tokens.split_first() else {
+                return Err("命令不能为空".to_string());
+            };
+            McpTransportConfig::Stdio {
+                command: command.clone(),
+                args: args.to_vec(),
+                env: parse_metadata_map(metadata_text, "环境变量")?,
+                cwd: None,
+                timeout_ms: Some(MCP_DEFAULT_TIMEOUT_MS),
+            }
+        }
+        McpAddTransportKind::Http => McpTransportConfig::Http {
+            url: endpoint,
+            headers: parse_metadata_map(metadata_text, "请求头")?,
+            timeout_ms: Some(MCP_DEFAULT_TIMEOUT_MS),
+        },
+    };
+
+    Ok((
+        server_name.clone(),
+        McpServerConfig {
+            display_name: Some(server_name),
+            enabled: true,
+            trusted: false,
+            capabilities: McpCapabilityToggles::default(),
+            transport,
+        },
+    ))
+}
+
+fn bottom_form_text_value(form: &BottomFormView, index: usize) -> &str {
+    match form.fields.get(index).map(|field| &field.editor) {
+        Some(BottomFormFieldEditorView::Text { value, .. }) => value.as_str(),
+        _ => "",
+    }
+}
+
+fn selected_transport_kind(form: &BottomFormView) -> Option<McpAddTransportKind> {
+    match form
+        .fields
+        .get(MCP_ADD_FIELD_TRANSPORT)
+        .map(|field| &field.editor)
+    {
+        Some(BottomFormFieldEditorView::Choice { options, selected }) => options
+            .get((*selected).min(options.len().saturating_sub(1)))
+            .map(|value| {
+                if value.eq_ignore_ascii_case("http") {
+                    McpAddTransportKind::Http
+                } else {
+                    McpAddTransportKind::Stdio
+                }
+            }),
+        _ => None,
+    }
+}
+
+fn parse_metadata_map(
+    input: &str,
+    field_label: &str,
+) -> std::result::Result<BTreeMap<String, String>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let mut result = BTreeMap::new();
+    for item in trimmed.split(';') {
+        let pair = item.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = pair.split_once('=') else {
+            return Err(format!(
+                "{} 格式错误，应为 KEY=VALUE; KEY2=VALUE",
+                field_label
+            ));
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(format!("{} 中存在空键名", field_label));
+        }
+        result.insert(key.to_string(), value.trim().to_string());
+    }
+    Ok(result)
+}
+
+fn split_command_line(input: &str) -> std::result::Result<Vec<String>, String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut chars = input.chars().peekable();
+    let mut quote: Option<char> = None;
+
+    while let Some(ch) = chars.next() {
+        match quote {
+            Some(active_quote) if ch == active_quote => {
+                quote = None;
+            }
+            Some(_) => {
+                current.push(ch);
+            }
+            None if ch == '\'' || ch == '"' => {
+                quote = Some(ch);
+            }
+            None if ch.is_whitespace() => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+                while chars.next_if(|c| c.is_whitespace()).is_some() {}
+            }
+            None => {
+                current.push(ch);
+            }
+        }
+    }
+
+    if quote.is_some() {
+        return Err("命令中存在未闭合的引号".to_string());
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    if tokens.is_empty() {
+        return Err("命令不能为空".to_string());
+    }
+    Ok(tokens)
+}
+
+fn char_cursor_to_byte_index(value: &str, cursor: usize) -> usize {
+    if cursor == 0 {
+        return 0;
+    }
+    value
+        .char_indices()
+        .nth(cursor)
+        .map(|(idx, _)| idx)
+        .unwrap_or(value.len())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum McpAddTransportKind {
+    Stdio,
+    Http,
 }
 
 fn split_first_token(input: &str) -> Option<(&str, &str)> {

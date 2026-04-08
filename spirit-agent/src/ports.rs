@@ -1,12 +1,10 @@
 use anyhow::Result;
 use serde_json::Value;
-use std::{
-    path::PathBuf,
-    sync::mpsc::Receiver,
-};
+use std::{path::PathBuf, sync::mpsc::Receiver};
 
 use crate::{
     llm_client::{CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep},
+    mcp::McpServerConfig,
     mcp_manager::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
@@ -126,19 +124,14 @@ pub trait ToolExecutor: Send {
     fn execute(&mut self, request: &ToolRequest) -> Result<String>;
     fn start_mcp_background_refresh(&self);
     fn mcp_status_snapshot(&self) -> McpStatusSnapshot;
-    fn add_mcp_server_preset(&mut self, preset: &str) -> Result<String>;
+    fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf>;
     fn list_mcp_servers(&self) -> Result<Vec<ManagedMcpServer>>;
     fn inspect_mcp_server(&self, name: &str) -> Result<McpServerInspection>;
     fn list_mcp_tools(&self, name: &str) -> Result<Vec<McpDiscoveredTool>>;
     fn list_mcp_resources(&self, name: &str) -> Result<Vec<McpDiscoveredResource>>;
     fn read_mcp_resource(&self, name: &str, uri: &str) -> Result<Value>;
     fn list_mcp_prompts(&self, name: &str) -> Result<Vec<McpDiscoveredPrompt>>;
-    fn get_mcp_prompt(
-        &self,
-        name: &str,
-        prompt: &str,
-        args_json: Option<&str>,
-    ) -> Result<Value>;
+    fn get_mcp_prompt(&self, name: &str, prompt: &str, args_json: Option<&str>) -> Result<Value>;
 }
 
 pub struct ToolAgentRoundResult {

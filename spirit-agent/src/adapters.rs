@@ -13,16 +13,16 @@ use crate::{
     chat_store,
     llm_client::{self, LlmMessage, ResolvedLlmConfig},
     logging,
-    mcp::{add_mcp_server_preset, set_server_trusted},
+    mcp::{McpServerConfig, add_mcp_server, set_server_trusted},
     mcp_manager::{McpManager, McpServerRuntimeState},
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
         remove_model_api_key, save_config, save_model_api_key,
     },
     ports::{
-        AppPaths, ChatArchive, ChatRepository, ConfigStore, LlmTransport, SecretStore,
-        McpStatusSnapshot, McpStatusState, StartedToolAgentRound, Telemetry,
-        ToolAgentRoundResult, ToolExecutor,
+        AppPaths, ChatArchive, ChatRepository, ConfigStore, LlmTransport, McpStatusSnapshot,
+        McpStatusState, SecretStore, StartedToolAgentRound, Telemetry, ToolAgentRoundResult,
+        ToolExecutor,
     },
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
 };
@@ -228,7 +228,6 @@ impl WorkspaceToolExecutor {
     fn load_mcp_manager(&self) -> Result<McpManager> {
         McpManager::load(self.workspace_root.clone())
     }
-
 }
 
 impl ToolExecutor for WorkspaceToolExecutor {
@@ -293,15 +292,13 @@ impl ToolExecutor for WorkspaceToolExecutor {
                         server,
                         server
                     )),
-                    McpServerRuntimeState::NeedsTrust => {
-                        Ok(AuthorizationDecision::NeedApproval {
-                            prompt: format!(
-                                "MCP 工具调用需要先信任 server。\nserver: {} ({})\ntool: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
-                                display_name, server, tool_name
-                            ),
-                            trust_target: Some(TrustTarget::McpServer(server.clone())),
-                        })
-                    }
+                    McpServerRuntimeState::NeedsTrust => Ok(AuthorizationDecision::NeedApproval {
+                        prompt: format!(
+                            "MCP 工具调用需要先信任 server。\nserver: {} ({})\ntool: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
+                            display_name, server, tool_name
+                        ),
+                        trust_target: Some(TrustTarget::McpServer(server.clone())),
+                    }),
                     McpServerRuntimeState::Ready => Ok(AuthorizationDecision::Allowed),
                 }
             }
@@ -333,7 +330,9 @@ impl ToolExecutor for WorkspaceToolExecutor {
                     Value::Null => None,
                     _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
                 };
-                let value = self.load_mcp_manager()?.call_tool(server, tool_name, arguments)?;
+                let value = self
+                    .load_mcp_manager()?
+                    .call_tool(server, tool_name, arguments)?;
                 Ok(serde_json::to_string_pretty(&value)?)
             }
             _ => self.inner.execute(request),
@@ -348,21 +347,10 @@ impl ToolExecutor for WorkspaceToolExecutor {
         lock_mcp_state(&self.mcp_state).status.clone()
     }
 
-    fn add_mcp_server_preset(&mut self, preset: &str) -> Result<String> {
-        let (path, server_name) = add_mcp_server_preset(&self.workspace_root, preset)?;
+    fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {
+        let path = add_mcp_server(&self.workspace_root, name, config)?;
         self.start_mcp_background_refresh();
-
-        let mut summary = format!(
-            "已添加 MCP preset: {}\n配置文件: {}",
-            server_name,
-            path.display()
-        );
-        if server_name == "github" {
-            summary.push_str(
-                "\n请确保已设置环境变量 GITHUB_PERSONAL_ACCESS_TOKEN，然后重新打开或继续使用 /mcp inspect github。",
-            );
-        }
-        Ok(summary)
+        Ok(path)
     }
 
     fn list_mcp_servers(&self) -> Result<Vec<crate::mcp_manager::ManagedMcpServer>> {
@@ -389,10 +377,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
         self.load_mcp_manager()?.read_resource(name, uri)
     }
 
-    fn list_mcp_prompts(
-        &self,
-        name: &str,
-    ) -> Result<Vec<crate::mcp_manager::McpDiscoveredPrompt>> {
+    fn list_mcp_prompts(&self, name: &str) -> Result<Vec<crate::mcp_manager::McpDiscoveredPrompt>> {
         self.load_mcp_manager()?.list_prompts(name)
     }
 
@@ -468,7 +453,9 @@ fn spawn_mcp_catalog_refresh(state: Arc<Mutex<McpSharedState>>, workspace_root: 
     });
 }
 
-fn build_mcp_catalog_snapshot(workspace_root: &PathBuf) -> Result<(McpToolCatalog, McpStatusSnapshot)> {
+fn build_mcp_catalog_snapshot(
+    workspace_root: &PathBuf,
+) -> Result<(McpToolCatalog, McpStatusSnapshot)> {
     let manager = McpManager::load(workspace_root.clone())?;
     let servers = manager.servers().cloned().collect::<Vec<_>>();
     let configured_servers = servers.len();
@@ -551,7 +538,13 @@ fn build_mcp_catalog_snapshot(workspace_root: &PathBuf) -> Result<(McpToolCatalo
         last_error: first_error,
     };
 
-    Ok((McpToolCatalog { definitions, routes }, status))
+    Ok((
+        McpToolCatalog {
+            definitions,
+            routes,
+        },
+        status,
+    ))
 }
 
 fn parse_optional_json_object(input: Option<&str>) -> Result<Option<Map<String, Value>>> {
@@ -563,13 +556,19 @@ fn parse_optional_json_object(input: Option<&str>) -> Result<Option<Map<String, 
         serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))?;
     match value {
         Value::Object(map) => Ok(Some(map)),
-        _ => Err(anyhow!("参数必须是 JSON object，例如 {{\"owner\":\"microsoft\"}}")),
+        _ => Err(anyhow!(
+            "参数必须是 JSON object，例如 {{\"owner\":\"microsoft\"}}"
+        )),
     }
 }
 
 fn synthetic_mcp_function_name(server: &str, tool: &str) -> String {
-    let server = truncate_identifier_fragment(&sanitize_identifier_fragment(server), MCP_SERVER_FRAGMENT_LIMIT);
-    let tool = truncate_identifier_fragment(&sanitize_identifier_fragment(tool), MCP_TOOL_FRAGMENT_LIMIT);
+    let server = truncate_identifier_fragment(
+        &sanitize_identifier_fragment(server),
+        MCP_SERVER_FRAGMENT_LIMIT,
+    );
+    let tool =
+        truncate_identifier_fragment(&sanitize_identifier_fragment(tool), MCP_TOOL_FRAGMENT_LIMIT);
 
     let mut hasher = DefaultHasher::new();
     server.hash(&mut hasher);

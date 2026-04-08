@@ -2,10 +2,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
     event::{
-        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste,
-        EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
-        KeyboardEnhancementFlags, MouseButton, MouseEventKind,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags, MouseButton,
+        MouseEventKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{
@@ -27,9 +26,7 @@ use spirit_agent::{
 const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_LSHIFT, VK_RSHIFT,
-};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIFT, VK_RSHIFT};
 
 #[derive(Parser)]
 #[command(name = "spirit-agent")]
@@ -431,9 +428,13 @@ fn flush_pending_text(shell: &mut TuiShell, pending_text: &mut String) {
         return;
     }
 
-    shell.insert_text_at_cursor(pending_text);
-    shell.clamp_cursor();
-    shell.refresh_suggestions();
+    if shell.is_bottom_form_active() {
+        shell.bottom_form_insert_text(pending_text);
+    } else {
+        shell.insert_text_at_cursor(pending_text);
+        shell.clamp_cursor();
+        shell.refresh_suggestions();
+    }
     pending_text.clear();
 }
 
@@ -487,6 +488,42 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
         return;
     }
 
+    if shell.is_bottom_form_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_bottom_form(),
+            KeyCode::Up => shell.select_prev_bottom_form_field(),
+            KeyCode::Down => shell.select_next_bottom_form_field(),
+            KeyCode::Left => shell.bottom_form_move_left(),
+            KeyCode::Right => shell.bottom_form_move_right(),
+            KeyCode::Home => shell.bottom_form_move_home(),
+            KeyCode::End => shell.bottom_form_move_end(),
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.save_bottom_form()
+            }
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.save_bottom_form()
+            }
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'v')
+                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                if let Err(e) = shell.paste_bottom_form_from_clipboard() {
+                    logging::log_event(&format!("clipboard paste failed: {}", e));
+                }
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            KeyCode::Backspace => shell.bottom_form_backspace(),
+            KeyCode::Delete => shell.bottom_form_delete(),
+            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.bottom_form_insert_char(ch)
+            }
+            _ => {}
+        }
+        return;
+    }
+
     let slash_mode =
         shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
     let should_insert_newline =
@@ -505,16 +542,13 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             }
         }
         KeyCode::Char(ch)
-            if ch.eq_ignore_ascii_case(&'v')
-                && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            if ch.eq_ignore_ascii_case(&'v') && key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
             if let Err(e) = shell.paste_from_clipboard() {
                 logging::log_event(&format!("clipboard paste failed: {}", e));
             }
         }
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            shell.request_quit()
-        }
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => shell.request_quit(),
         KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             shell.toggle_aux_details()
         }

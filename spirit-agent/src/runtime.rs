@@ -2,7 +2,10 @@ use anyhow::{Result, anyhow};
 use std::{
     collections::VecDeque,
     path::PathBuf,
-    sync::{Arc, mpsc::{self, Receiver, TryRecvError}},
+    sync::{
+        Arc,
+        mpsc::{self, Receiver, TryRecvError},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -10,19 +13,24 @@ use std::{
 use serde_json::{Value, json};
 
 use crate::{
-    llm_client::{CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message},
+    llm_client::{
+        CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep,
+        append_tool_result_message,
+    },
+    mcp::McpServerConfig,
     mcp_manager::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
     },
     model_registry::AppConfig,
     ports::{
-        LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundResult,
-        ToolExecutor,
+        LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor,
     },
     session::{PendingMcpResource, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
-    view::{AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase},
+    view::{
+        AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase,
+    },
 };
 
 const STREAM_EVENT_BUDGET_PER_TICK: usize = 128;
@@ -313,7 +321,9 @@ impl AgentRuntime {
             return Err(anyhow!("请先响应当前待确认的工具调用。"));
         }
 
-        let value = self.tool_executor.get_mcp_prompt(server, prompt, args_json)?;
+        let value = self
+            .tool_executor
+            .get_mcp_prompt(server, prompt, args_json)?;
         let prompt_messages = prompt_messages_from_value(&value)?;
         if prompt_messages.is_empty() {
             return Err(anyhow!("MCP prompt 未返回可用 messages"));
@@ -326,7 +336,9 @@ impl AgentRuntime {
             .map(|message| message.content.clone())
             .unwrap_or_else(|| format!("请根据已应用的 MCP prompt `{}` 继续。", prompt));
 
-        self.session.llm_history_mut().extend(prompt_messages.clone());
+        self.session
+            .llm_history_mut()
+            .extend(prompt_messages.clone());
         self.session.set_pending_user_turn(user_turn.clone());
         let state = self.make_tool_agent_state(&user_turn);
         self.start_tool_agent_step_async(state);
@@ -339,10 +351,10 @@ impl AgentRuntime {
         ))
     }
 
-    pub fn add_mcp_server_preset(&mut self, preset: &str) -> Result<String> {
-        let summary = self.tool_executor.add_mcp_server_preset(preset)?;
+    pub fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {
+        let path = self.tool_executor.add_mcp_server(name, config)?;
         self.tool_executor.start_mcp_background_refresh();
-        Ok(summary)
+        Ok(path)
     }
 
     pub fn execute_mcp_tool(
@@ -695,9 +707,10 @@ impl AgentRuntime {
             match pending.progress_rx.try_recv() {
                 Ok(chunk) => {
                     self.compaction_text.push_str(&chunk);
-                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantCompaction(
-                        self.compaction_text.clone(),
-                    ));
+                    self.events
+                        .push_back(RuntimeEvent::UpdatePendingAssistantCompaction(
+                            self.compaction_text.clone(),
+                        ));
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
@@ -711,9 +724,10 @@ impl AgentRuntime {
                     && !compacted.summary_preview.trim().is_empty()
                 {
                     self.compaction_text = compacted.summary_preview.clone();
-                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantCompaction(
-                        self.compaction_text.clone(),
-                    ));
+                    self.events
+                        .push_back(RuntimeEvent::UpdatePendingAssistantCompaction(
+                            self.compaction_text.clone(),
+                        ));
                 }
                 match pending.continuation {
                     HistoryCompactionContinuation::Manual => {
@@ -722,12 +736,13 @@ impl AgentRuntime {
                                 "当前可压缩历史较少，已跳过压缩。".to_string(),
                             ));
                         } else {
-                            self.events.push_back(RuntimeEvent::ReplacePendingAssistant(format!(
-                                "压缩完成：上下文消息 {} -> {}，已合并 {} 条历史消息。",
-                                compacted.result.before_len,
-                                compacted.result.after_len,
-                                compacted.result.dropped_messages,
-                            )));
+                            self.events
+                                .push_back(RuntimeEvent::ReplacePendingAssistant(format!(
+                                    "压缩完成：上下文消息 {} -> {}，已合并 {} 条历史消息。",
+                                    compacted.result.before_len,
+                                    compacted.result.after_len,
+                                    compacted.result.dropped_messages,
+                                )));
                         }
                         self.events
                             .push_back(RuntimeEvent::AssistantResponseCompleted);
@@ -740,12 +755,11 @@ impl AgentRuntime {
                         original_error,
                     } => {
                         if compacted.result.dropped_messages == 0 && !tool_truncation_applied {
-                            self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
-                                format!(
+                            self.events
+                                .push_back(RuntimeEvent::ReplacePendingAssistant(format!(
                                     "检测到上下文超限，但历史已无法继续压缩。原始错误: {}",
                                     original_error
-                                ),
-                            ));
+                                )));
                             self.events
                                 .push_back(RuntimeEvent::AssistantResponseCompleted);
                             self.compaction_text.clear();
@@ -765,20 +779,21 @@ impl AgentRuntime {
             }
             Ok(Err(err)) => match pending.continuation {
                 HistoryCompactionContinuation::Manual => {
-                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
-                        format!("压缩失败: {}", err),
-                    ));
+                    self.events
+                        .push_back(RuntimeEvent::ReplacePendingAssistant(format!(
+                            "压缩失败: {}",
+                            err
+                        )));
                     self.events
                         .push_back(RuntimeEvent::AssistantResponseCompleted);
                     self.compaction_text.clear();
                 }
                 HistoryCompactionContinuation::AutoRetry { original_error, .. } => {
-                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
-                        format!(
+                    self.events
+                        .push_back(RuntimeEvent::ReplacePendingAssistant(format!(
                             "上下文超限且自动压缩失败: {}\n原始错误: {}",
                             err, original_error
-                        ),
-                    ));
+                        )));
                     self.events
                         .push_back(RuntimeEvent::AssistantResponseCompleted);
                     self.compaction_text.clear();
@@ -799,12 +814,11 @@ impl AgentRuntime {
                     self.compaction_text.clear();
                 }
                 HistoryCompactionContinuation::AutoRetry { original_error, .. } => {
-                    self.events.push_back(RuntimeEvent::ReplacePendingAssistant(
-                        format!(
+                    self.events
+                        .push_back(RuntimeEvent::ReplacePendingAssistant(format!(
                             "上下文超限且自动压缩任务异常中断。原始错误: {}",
                             original_error
-                        ),
-                    ));
+                        )));
                     self.events
                         .push_back(RuntimeEvent::AssistantResponseCompleted);
                     self.compaction_text.clear();
@@ -833,17 +847,19 @@ impl AgentRuntime {
                 Ok(StreamEvent::ThinkingChunk(thinking)) => {
                     self.pending_last_event_at = Some(Instant::now());
                     self.thinking_text.push_str(&thinking);
-                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantThinking(
-                        self.thinking_text.clone(),
-                    ));
+                    self.events
+                        .push_back(RuntimeEvent::UpdatePendingAssistantThinking(
+                            self.thinking_text.clone(),
+                        ));
                     processed += 1;
                 }
                 Ok(StreamEvent::ToolProgress(progress)) => {
                     self.pending_last_event_at = Some(Instant::now());
                     self.merge_tool_progress_into_thinking(&progress);
-                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantThinking(
-                        self.thinking_text.clone(),
-                    ));
+                    self.events
+                        .push_back(RuntimeEvent::UpdatePendingAssistantThinking(
+                            self.thinking_text.clone(),
+                        ));
                     processed += 1;
                 }
                 Ok(StreamEvent::Chunk(chunk)) => {
@@ -1230,11 +1246,13 @@ fn truncate_tool_messages_for_retry(state: &mut ToolAgentState) -> bool {
                 TOOL_OUTPUT_RETRY_MAX_CHARS,
                 "[tool output truncated for context retry]",
             ),
-            Some("system") if content.starts_with(TOOL_MEMORY_PREFIX) => build_context_retry_excerpt(
-                content,
-                TOOL_MEMORY_RETRY_MAX_CHARS,
-                "[tool memory truncated for context retry]",
-            ),
+            Some("system") if content.starts_with(TOOL_MEMORY_PREFIX) => {
+                build_context_retry_excerpt(
+                    content,
+                    TOOL_MEMORY_RETRY_MAX_CHARS,
+                    "[tool memory truncated for context retry]",
+                )
+            }
             _ => None,
         };
 
@@ -1550,8 +1568,8 @@ fn parse_optional_json_value(input: Option<&str>) -> Result<Value> {
     let Some(raw) = input.map(str::trim).filter(|raw| !raw.is_empty()) else {
         return Ok(Value::Object(serde_json::Map::new()));
     };
-    let value: Value = serde_json::from_str(raw)
-        .map_err(|err| anyhow!("JSON 解析失败: {} ({})", raw, err))?;
+    let value: Value =
+        serde_json::from_str(raw).map_err(|err| anyhow!("JSON 解析失败: {} ({})", raw, err))?;
     Ok(value)
 }
 
@@ -1605,7 +1623,10 @@ fn pending_mcp_resource_from_read_result(
         }
 
         if let Some(blob) = content.get("blob").and_then(Value::as_str) {
-            rendered_sections.push(format!("[blob base64 omitted, {} chars]", blob.chars().count()));
+            rendered_sections.push(format!(
+                "[blob base64 omitted, {} chars]",
+                blob.chars().count()
+            ));
             continue;
         }
 

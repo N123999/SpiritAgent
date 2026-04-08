@@ -16,7 +16,10 @@ use crate::{
     conversation_select::flatten_wrapped_history,
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
-    view::{AssistantAuxKind, ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase, TuiViewModel},
+    view::{
+        AssistantAuxKind, BottomFormFieldEditorView, BottomFormView, ChatMessage, MessageRole,
+        ToolUiBlock, ToolUiPhase, TuiViewModel,
+    },
 };
 
 const MAX_RENDERED_MESSAGES: usize = 180;
@@ -52,8 +55,14 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_model_picker = app.model_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
+    let show_bottom_form = app.bottom_form.is_some();
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
-    let show_suggestions = app.input.starts_with('/') && !show_picker;
+    let show_suggestions = app.input.starts_with('/') && !show_picker && !show_bottom_form;
+    let bottom_form_height = app
+        .bottom_form
+        .as_ref()
+        .map(bottom_form_block_height)
+        .unwrap_or(0);
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_suggestions {
@@ -73,6 +82,13 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Constraint::Min(5),
                 Constraint::Length(input_height),
                 Constraint::Length(7),
+                Constraint::Length(1),
+            ]
+        } else if show_bottom_form {
+            vec![
+                Constraint::Min(5),
+                Constraint::Length(input_height),
+                Constraint::Length(bottom_form_height),
                 Constraint::Length(1),
             ]
         } else if show_suggestions {
@@ -132,11 +148,29 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         &app,
         chunks[1].width.saturating_sub(2) as usize,
     ))
-        .block(Block::default().borders(Borders::ALL).title("Input"))
-        .wrap(Wrap { trim: false });
+    .block(Block::default().borders(Borders::ALL).title("Input"))
+    .wrap(Wrap { trim: false });
     frame.render_widget(input, chunks[1]);
 
-    if !show_picker {
+    if show_bottom_form {
+        if let Some(form) = &app.bottom_form {
+            let render = build_bottom_form_render(form, chunks[2].width.saturating_sub(2) as usize);
+            let form_widget = Paragraph::new(render.lines)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(form.title.clone()),
+                )
+                .wrap(Wrap { trim: false });
+            frame.render_widget(form_widget, chunks[2]);
+
+            if let Some((cursor_row, cursor_col)) = render.cursor {
+                let cursor_x = chunks[2].x + 1 + cursor_col.min(chunks[2].width.saturating_sub(3));
+                let cursor_y = chunks[2].y + 1 + cursor_row.min(chunks[2].height.saturating_sub(3));
+                frame.set_cursor_position((cursor_x, cursor_y));
+            }
+        }
+    } else if !show_picker {
         // Use terminal display width so CJK/full-width characters keep cursor aligned.
         let max_cursor_offset = chunks[1].width.saturating_sub(3) as usize;
         let cursor_offset = input_cursor_col.min(max_cursor_offset as u16) as usize;
@@ -180,7 +214,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     }
 
     if !show_suggestions {
-        let help_idx = if show_picker { 3 } else { 2 };
+        let help_idx = if show_picker || show_bottom_form {
+            3
+        } else {
+            2
+        };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
         frame.render_widget(Clear, root_chunks[1]);
@@ -341,7 +379,9 @@ fn pending_input_header_line_count(app: &TuiViewModel) -> usize {
 }
 
 fn input_visual_line_count(text: &str, max_width: usize) -> usize {
-    wrapped_text_cursor_position(text, max_width).0.saturating_add(1)
+    wrapped_text_cursor_position(text, max_width)
+        .0
+        .saturating_add(1)
 }
 
 fn wrapped_text_cursor_position(text: &str, max_width: usize) -> (usize, usize) {
@@ -602,12 +642,7 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
     }
 
     for (idx, msg) in visible_messages.iter().enumerate() {
-        if should_hide_pending_assistant_placeholder(
-            app,
-            msg,
-            idx,
-            visible_messages.len(),
-        ) {
+        if should_hide_pending_assistant_placeholder(app, msg, idx, visible_messages.len()) {
             continue;
         }
         let global_idx = start_index + idx;
@@ -651,7 +686,9 @@ fn message_gutter_padding() -> &'static str {
 }
 
 fn assistant_message_prefix_style() -> Style {
-    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD)
 }
 
 fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
@@ -659,8 +696,9 @@ fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
         AssistantAuxKind::Thinking => Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::ITALIC),
-        AssistantAuxKind::Compressing => assistant_message_prefix_style()
-            .add_modifier(Modifier::ITALIC),
+        AssistantAuxKind::Compressing => {
+            assistant_message_prefix_style().add_modifier(Modifier::ITALIC)
+        }
     }
 }
 
@@ -685,7 +723,11 @@ fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
     }
 }
 
-fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: usize) -> Vec<Line<'static>> {
+fn render_message_lines(
+    app: &TuiViewModel,
+    msg: &ChatMessage,
+    message_index: usize,
+) -> Vec<Line<'static>> {
     let prefix_style = match msg.role {
         MessageRole::User => conversation_body_text_style(),
         MessageRole::Agent => assistant_message_prefix_style(),
@@ -695,7 +737,8 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: us
         return render_tool_card_lines(prefix_style, tool, app.show_aux_details);
     }
 
-    let is_pending_assistant = msg.role == MessageRole::Agent && app.is_pending_assistant_message(message_index);
+    let is_pending_assistant =
+        msg.role == MessageRole::Agent && app.is_pending_assistant_message(message_index);
 
     let has_message_body = !msg.content.trim().is_empty();
     let content_lines = if has_message_body {
@@ -732,7 +775,10 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: us
     };
 
     if let Some(stored_aux) = stored_aux {
-        let should_render_stored_compaction = stored_aux.compaction.as_ref().is_some_and(|value| !value.trim().is_empty())
+        let should_render_stored_compaction = stored_aux
+            .compaction
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty())
             && !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing);
         if should_render_stored_compaction {
             push_message_line(vec![Span::styled(
@@ -748,7 +794,10 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: us
         }
 
         let should_render_stored_thinking = pending_aux.is_none()
-            && stored_aux.thinking.as_ref().is_some_and(|value| !value.trim().is_empty());
+            && stored_aux
+                .thinking
+                .as_ref()
+                .is_some_and(|value| !value.trim().is_empty());
         if should_render_stored_thinking {
             if should_render_stored_compaction {
                 push_message_line(vec![Span::styled(
@@ -814,7 +863,10 @@ fn render_tool_card_lines(
     let rail_sym = "▌ ";
     let indent = message_gutter_padding();
     let expand_details = show_aux_details
-        || matches!(tool.phase, ToolUiPhase::PendingApproval | ToolUiPhase::Failed);
+        || matches!(
+            tool.phase,
+            ToolUiPhase::PendingApproval | ToolUiPhase::Failed
+        );
 
     let mut out = Vec::new();
 
@@ -1148,12 +1200,19 @@ fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
     (&app.messages[start..], start, start)
 }
 
-fn build_suggestion_lines(app: &TuiViewModel, max_items: usize, max_width: usize) -> Vec<Line<'static>> {
+fn build_suggestion_lines(
+    app: &TuiViewModel,
+    max_items: usize,
+    max_width: usize,
+) -> Vec<Line<'static>> {
     let default_style = subtle_aux_text_style();
     let selected_style = Style::default().fg(Color::White);
 
     if !app.input.starts_with('/') {
-        return vec![Line::from(Span::styled("输入 / 触发命令补全", default_style))];
+        return vec![Line::from(Span::styled(
+            "输入 / 触发命令补全",
+            default_style,
+        ))];
     }
 
     if app.slash_suggestions.is_empty() {
@@ -1273,14 +1332,14 @@ fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
             "  Usage",
             "    /mcp",
             "    /mcp list",
-            "    /mcp add <github|everything>",
+            "    /mcp add",
             "    /mcp inspect [server]",
             "    /mcp tools [server]",
             "    /mcp resources [server]",
             "    /mcp prompts [server]",
             "    /mcp prompt [server] <prompt> [args_json]",
             "  Note",
-            "    单一 server 场景可省略 [server]",
+            "    /mcp add 会打开底部表单；单一 server 场景可省略 [server]",
         ],
         "/log" => vec![
             "  Usage",
@@ -1417,4 +1476,105 @@ fn build_image_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
     }
 
     lines
+}
+
+fn bottom_form_block_height(form: &BottomFormView) -> u16 {
+    (form.fields.len().saturating_mul(2).saturating_add(3)) as u16
+}
+
+struct BottomFormRender {
+    lines: Vec<Line<'static>>,
+    cursor: Option<(u16, u16)>,
+}
+
+fn build_bottom_form_render(form: &BottomFormView, width: usize) -> BottomFormRender {
+    let mut lines = Vec::new();
+    let mut cursor = None;
+    let safe_width = width.max(1);
+
+    for (index, field) in form.fields.iter().enumerate() {
+        let is_selected = index == form.selected_field;
+        let marker = if is_selected { "› " } else { "  " };
+        let label_prefix = format!("{}{}: ", marker, field.label);
+        let label_width = UnicodeWidthStr::width(label_prefix.as_str());
+        let remaining_width = safe_width.saturating_sub(label_width);
+        let label_style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        match &field.editor {
+            BottomFormFieldEditorView::Text {
+                value,
+                placeholder,
+                cursor: text_cursor,
+            } => {
+                let display_value = if value.is_empty() { placeholder } else { value };
+                let value_style = if value.is_empty() {
+                    Style::default().fg(Color::DarkGray)
+                } else if is_selected {
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::REVERSED)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                let visible_value = truncate_to_width(display_value, remaining_width.max(1));
+                lines.push(Line::from(vec![
+                    Span::styled(label_prefix.clone(), label_style),
+                    Span::styled(visible_value, value_style),
+                ]));
+
+                if is_selected {
+                    let prefix_width = if value.is_empty() {
+                        0
+                    } else {
+                        UnicodeWidthStr::width(
+                            value
+                                .chars()
+                                .take(*text_cursor)
+                                .collect::<String>()
+                                .as_str(),
+                        )
+                    };
+                    cursor = Some((
+                        lines.len().saturating_sub(1) as u16,
+                        (label_width + prefix_width.min(remaining_width)) as u16,
+                    ));
+                }
+            }
+            BottomFormFieldEditorView::Choice { options, selected } => {
+                let mut spans = vec![Span::styled(label_prefix.clone(), label_style)];
+                for (option_index, option) in options.iter().enumerate() {
+                    if option_index > 0 {
+                        spans.push(Span::raw("  "));
+                    }
+                    let option_style = if option_index == *selected {
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                    } else {
+                        Style::default().fg(Color::Gray)
+                    };
+                    spans.push(Span::styled(option.clone(), option_style));
+                }
+                lines.push(Line::from(spans));
+            }
+        }
+
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(&field.help, safe_width),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    lines.push(Line::from(Span::styled(
+        truncate_to_width(&form.footer_hint, safe_width),
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    BottomFormRender { lines, cursor }
 }
