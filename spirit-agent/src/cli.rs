@@ -5,7 +5,7 @@ use crate::{
     adapters::{DefaultAppPaths, JsonConfigStore, KeyringSecretStore},
     mcp::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
-        set_server_trusted, workspace_mcp_config_path,
+        workspace_mcp_config_path,
     },
     mcp_manager::McpManager,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
@@ -53,12 +53,6 @@ pub enum McpCommand {
     Show,
     Init {
         force: bool,
-    },
-    Trust {
-        name: String,
-    },
-    Untrust {
-        name: String,
     },
     Enable {
         name: String,
@@ -244,11 +238,10 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("MCP servers:");
             for server in servers.by_ref() {
                 println!(
-                    "  - {}\n    display: {}\n    state: {}\n    trusted: {}\n    capabilities: {}\n    transport: {}",
+                    "  - {}\n    display: {}\n    state: {}\n    capabilities: {}\n    transport: {}",
                     server.name,
                     server.display_name,
                     server.state.label(),
-                    if server.trusted { "yes" } else { "no" },
                     server.capability_summary(),
                     server.transport_summary(),
                 );
@@ -271,22 +264,6 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             save_mcp_config(&path, &example_github_mcp_config(), force)?;
             println!("已生成 MCP 配置模板: {}", path.display());
             println!("模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit-agent mcp list` 检查配置。"
-            );
-        }
-        McpCommand::Trust { name } => {
-            let path = set_server_trusted(&workspace_root, &name, true)?;
-            println!(
-                "已信任 MCP server: {}\n配置文件: {}",
-                name,
-                path.display(),
-            );
-        }
-        McpCommand::Untrust { name } => {
-            let path = set_server_trusted(&workspace_root, &name, false)?;
-            println!(
-                "已取消信任 MCP server: {}\n配置文件: {}",
-                name,
-                path.display(),
             );
         }
         McpCommand::Enable { name } => {

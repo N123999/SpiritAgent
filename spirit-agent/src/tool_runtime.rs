@@ -77,7 +77,6 @@ pub enum ToolRequest {
 pub enum TrustTarget {
     ShellCommand(String),
     ExternalReadPath(String),
-    McpServer(String),
 }
 
 pub enum AuthorizationDecision {
@@ -346,9 +345,6 @@ impl ToolRuntime {
                         .push(path.clone());
                 }
             }
-                TrustTarget::McpServer(_) => {
-                    return Err(anyhow!("MCP server 信任应由 WorkspaceToolExecutor 处理"));
-                }
         }
 
         save_permissions(&self.permission_store_path, &self.permissions)

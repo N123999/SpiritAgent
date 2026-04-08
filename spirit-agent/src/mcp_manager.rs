@@ -31,7 +31,6 @@ use crate::logging;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpServerRuntimeState {
     Disabled,
-    NeedsTrust,
     Ready,
 }
 
@@ -39,7 +38,6 @@ impl McpServerRuntimeState {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Disabled => "disabled",
-            Self::NeedsTrust => "needs-trust",
             Self::Ready => "ready",
         }
     }
@@ -50,7 +48,6 @@ pub struct ManagedMcpServer {
     pub name: String,
     pub display_name: String,
     pub enabled: bool,
-    pub trusted: bool,
     pub capabilities: McpCapabilityToggles,
     pub transport: McpTransportConfig,
     pub state: McpServerRuntimeState,
@@ -186,11 +183,6 @@ impl McpManager {
         match server.state {
             McpServerRuntimeState::Disabled => Err(anyhow!(
                 "MCP server {} 已禁用，请先在 mcp.json 中启用。",
-                name
-            )),
-            McpServerRuntimeState::NeedsTrust => Err(anyhow!(
-                "MCP server {} 尚未信任，请先执行 `spirit-agent mcp trust {}`。",
-                name,
                 name
             )),
             McpServerRuntimeState::Ready => Ok(()),
@@ -454,24 +446,14 @@ impl McpManager {
                 name,
                 name
             )),
-            McpServerRuntimeState::NeedsTrust => Err(anyhow!(
-                "MCP server {} 尚未信任，请先执行 `spirit-agent mcp trust {}`。",
-                name,
-                name
-            )),
             McpServerRuntimeState::Ready => Ok(server),
         }
     }
 }
 
-fn build_managed_server(
-    name: String,
-    config: McpServerConfig,
-) -> ManagedMcpServer {
+fn build_managed_server(name: String, config: McpServerConfig) -> ManagedMcpServer {
     let state = if !config.enabled {
         McpServerRuntimeState::Disabled
-    } else if !config.trusted {
-        McpServerRuntimeState::NeedsTrust
     } else {
         McpServerRuntimeState::Ready
     };
@@ -482,7 +464,6 @@ fn build_managed_server(
         name,
         display_name,
         enabled: config.enabled,
-        trusted: config.trusted,
         capabilities: config.capabilities,
         transport: config.transport,
         state,
@@ -691,14 +672,13 @@ mod tests {
     use crate::mcp::{McpCapabilityToggles, McpConfigFile, McpServerConfig, McpTransportConfig};
 
     #[test]
-    fn manager_marks_untrusted_enabled_server_as_needs_trust() {
+    fn manager_marks_enabled_server_as_ready() {
         let mut merged = McpConfigFile::default();
         merged.servers.insert(
             "github".to_string(),
             McpServerConfig {
                 display_name: Some("GitHub MCP".to_string()),
                 enabled: true,
-                trusted: false,
                 capabilities: McpCapabilityToggles::default(),
                 transport: McpTransportConfig::Stdio {
                     command: "npx".to_string(),
@@ -717,7 +697,7 @@ mod tests {
         let manager = McpManager::from_loaded_config(PathBuf::from("."), loaded);
         let github = manager.get("github").expect("github exists");
 
-        assert_eq!(github.state, McpServerRuntimeState::NeedsTrust);
+        assert_eq!(github.state, McpServerRuntimeState::Ready);
     }
 
     #[test]

@@ -2247,7 +2247,8 @@ fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
             field.help = String::new();
             if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
                 *placeholder =
-                    "请求头，可选，例如 Authorization=Bearer ${env:GITHUB_TOKEN}".to_string();
+                    "请求头，可选，例如 Authorization: Bearer ${env:GITHUB_TOKEN}"
+                        .to_string();
             }
         } else {
             field.label = "环境变量".to_string();
@@ -2298,14 +2299,14 @@ fn mcp_add_form_to_config(
             McpTransportConfig::Stdio {
                 command: command.clone(),
                 args: args.to_vec(),
-                env: parse_metadata_map(metadata_text, "环境变量")?,
+                env: parse_metadata_map(metadata_text, MetadataFieldKind::Env)?,
                 cwd: None,
                 timeout_ms: Some(MCP_DEFAULT_TIMEOUT_MS),
             }
         }
         McpAddTransportKind::Http => McpTransportConfig::Http {
             url: endpoint,
-            headers: parse_metadata_map(metadata_text, "请求头")?,
+            headers: parse_metadata_map(metadata_text, MetadataFieldKind::Header)?,
             timeout_ms: Some(MCP_DEFAULT_TIMEOUT_MS),
         },
     };
@@ -2315,7 +2316,6 @@ fn mcp_add_form_to_config(
         McpServerConfig {
             display_name: Some(server_name),
             enabled: true,
-            trusted: false,
             capabilities: McpCapabilityToggles::default(),
             transport,
         },
@@ -2350,7 +2350,7 @@ fn selected_transport_kind(form: &BottomFormView) -> Option<McpAddTransportKind>
 
 fn parse_metadata_map(
     input: &str,
-    field_label: &str,
+    kind: MetadataFieldKind,
 ) -> std::result::Result<BTreeMap<String, String>, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -2363,19 +2363,39 @@ fn parse_metadata_map(
         if pair.is_empty() {
             continue;
         }
-        let Some((key, value)) = pair.split_once('=') else {
-            return Err(format!(
-                "{} 格式错误，应为 KEY=VALUE; KEY2=VALUE",
-                field_label
-            ));
+
+        let parsed = match kind {
+            MetadataFieldKind::Env => pair.split_once('='),
+            MetadataFieldKind::Header => pair.split_once(':').or_else(|| pair.split_once('=')),
         };
+
+        let Some((key, value)) = parsed else {
+            return Err(match kind {
+                MetadataFieldKind::Env => {
+                    "环境变量 格式错误，应为 KEY=VALUE; KEY2=VALUE".to_string()
+                }
+                MetadataFieldKind::Header => {
+                    "请求头 格式错误，应为 Header: Value; Header2: Value2".to_string()
+                }
+            });
+        };
+
         let key = key.trim();
         if key.is_empty() {
-            return Err(format!("{} 中存在空键名", field_label));
+            return Err(match kind {
+                MetadataFieldKind::Env => "环境变量 中存在空键名".to_string(),
+                MetadataFieldKind::Header => "请求头 中存在空键名".to_string(),
+            });
         }
         result.insert(key.to_string(), value.trim().to_string());
     }
     Ok(result)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MetadataFieldKind {
+    Env,
+    Header,
 }
 
 fn split_command_line(input: &str) -> std::result::Result<Vec<String>, String> {
@@ -2434,6 +2454,32 @@ fn char_cursor_to_byte_index(value: &str, cursor: usize) -> usize {
 enum McpAddTransportKind {
     Stdio,
     Http,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MetadataFieldKind, parse_metadata_map};
+
+    #[test]
+    fn parse_header_metadata_supports_colon_syntax() {
+        let parsed = parse_metadata_map(
+            "Authorization: Bearer ${env:GITHUB_TOKEN}; X-Client: spirit-agent",
+            MetadataFieldKind::Header,
+        )
+        .expect("headers parse");
+
+        assert_eq!(
+            parsed.get("Authorization"),
+            Some(&"Bearer ${env:GITHUB_TOKEN}".to_string())
+        );
+        assert_eq!(parsed.get("X-Client"), Some(&"spirit-agent".to_string()));
+    }
+
+    #[test]
+    fn parse_header_metadata_allows_empty_input() {
+        let parsed = parse_metadata_map("   ", MetadataFieldKind::Header).expect("empty ok");
+        assert!(parsed.is_empty());
+    }
 }
 
 fn split_first_token(input: &str) -> Option<(&str, &str)> {

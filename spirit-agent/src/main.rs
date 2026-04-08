@@ -124,12 +124,6 @@ enum McpAction {
         #[arg(long, default_value_t = false)]
         force: bool,
     },
-    Trust {
-        name: String,
-    },
-    Untrust {
-        name: String,
-    },
     Enable {
         name: String,
     },
@@ -242,8 +236,6 @@ fn into_mcp_command(action: McpAction) -> McpCommand {
         McpAction::List => McpCommand::List,
         McpAction::Show => McpCommand::Show,
         McpAction::Init { force } => McpCommand::Init { force },
-        McpAction::Trust { name } => McpCommand::Trust { name },
-        McpAction::Untrust { name } => McpCommand::Untrust { name },
         McpAction::Enable { name } => McpCommand::Enable { name },
         McpAction::Disable { name } => McpCommand::Disable { name },
         McpAction::Inspect { name } => McpCommand::Inspect { name },

@@ -13,7 +13,7 @@ use crate::{
     chat_store,
     llm_client::{self, LlmMessage, ResolvedLlmConfig},
     logging,
-    mcp::{McpServerConfig, add_mcp_server, set_server_trusted},
+    mcp::{McpServerConfig, add_mcp_server},
     mcp_manager::{McpManager, McpServerRuntimeState},
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
@@ -274,8 +274,6 @@ impl ToolExecutor for WorkspaceToolExecutor {
         match request {
             ToolRequest::McpTool {
                 server,
-                display_name,
-                tool_name,
                 ..
             } => {
                 let manager = self.load_mcp_manager()?;
@@ -292,13 +290,6 @@ impl ToolExecutor for WorkspaceToolExecutor {
                         server,
                         server
                     )),
-                    McpServerRuntimeState::NeedsTrust => Ok(AuthorizationDecision::NeedApproval {
-                        prompt: format!(
-                            "MCP 工具调用需要先信任 server。\nserver: {} ({})\ntool: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
-                            display_name, server, tool_name
-                        ),
-                        trust_target: Some(TrustTarget::McpServer(server.clone())),
-                    }),
                     McpServerRuntimeState::Ready => Ok(AuthorizationDecision::Allowed),
                 }
             }
@@ -307,14 +298,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
     }
 
     fn trust(&mut self, target: &TrustTarget) -> Result<()> {
-        match target {
-            TrustTarget::McpServer(name) => {
-                set_server_trusted(&self.workspace_root, name, true)?;
-                self.start_mcp_background_refresh();
-                Ok(())
-            }
-            _ => self.inner.trust(target),
-        }
+        self.inner.trust(target)
     }
 
     fn execute(&mut self, request: &ToolRequest) -> Result<String> {

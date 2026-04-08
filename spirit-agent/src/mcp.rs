@@ -31,8 +31,6 @@ pub struct McpServerConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
-    pub trusted: bool,
-    #[serde(default)]
     pub capabilities: McpCapabilityToggles,
     #[serde(flatten)]
     pub transport: McpTransportConfig,
@@ -175,7 +173,7 @@ pub fn save_mcp_config(path: &Path, config: &McpConfigFile, overwrite: bool) -> 
 
 pub fn example_github_mcp_config() -> McpConfigFile {
     let mut servers = BTreeMap::new();
-    servers.insert("github".to_string(), github_preset_config(false));
+    servers.insert("github".to_string(), github_preset_config());
     McpConfigFile { servers }
 }
 
@@ -222,12 +220,6 @@ pub fn resolve_env_map(env_map: &BTreeMap<String, String>) -> Result<BTreeMap<St
         .iter()
         .map(|(key, value)| Ok((key.clone(), resolve_env_value(value)?)))
         .collect()
-}
-
-pub fn set_server_trusted(workspace_root: &Path, name: &str, trusted: bool) -> Result<PathBuf> {
-    mutate_existing_server(workspace_root, name, |server| {
-        server.trusted = trusted;
-    })
 }
 
 pub fn set_server_enabled(workspace_root: &Path, name: &str, enabled: bool) -> Result<PathBuf> {
@@ -309,7 +301,6 @@ mod tests {
             McpServerConfig {
                 display_name: Some("GitHub MCP".to_string()),
                 enabled: false,
-                trusted: true,
                 capabilities: McpCapabilityToggles {
                     tools: true,
                     resources: false,
@@ -335,7 +326,6 @@ mod tests {
 
         assert_eq!(loaded.path, path);
         assert!(!server.enabled);
-        assert!(server.trusted);
         match &server.transport {
             McpTransportConfig::Stdio { command, args, .. } => {
                 assert_eq!(command, "uvx");
@@ -381,46 +371,6 @@ mod tests {
     }
 
     #[test]
-    fn trust_mutation_updates_workspace_config_file() {
-        let workspace_root = unique_test_workspace("trust-mutation");
-        let path = workspace_mcp_config_path(&workspace_root);
-        let mut config = McpConfigFile::default();
-        config.servers.insert(
-            "github".to_string(),
-            McpServerConfig {
-                display_name: Some("GitHub MCP".to_string()),
-                enabled: true,
-                trusted: false,
-                capabilities: McpCapabilityToggles::default(),
-                transport: McpTransportConfig::Stdio {
-                    command: "npx".to_string(),
-                    args: vec!["-y".to_string()],
-                    env: BTreeMap::new(),
-                    cwd: None,
-                    timeout_ms: None,
-                },
-            },
-        );
-        save_mcp_config(&path, &config, true).expect("seed config file");
-
-        let updated_path =
-            set_server_trusted(&workspace_root, "github", true).expect("update trust");
-        let updated = load_mcp_config(&workspace_root).expect("reload config");
-        let github = updated
-            .config
-            .servers
-            .get("github")
-            .expect("github config exists");
-
-        assert_eq!(updated_path, path);
-        assert!(github.trusted);
-
-        if let Some(parent) = path.parent() {
-            let _ = fs::remove_dir_all(parent);
-        }
-    }
-
-    #[test]
     fn workspace_config_path_lives_under_spirit_agent_data_dir() {
         let workspace_root = PathBuf::from("C:/workspace/spirit-agent");
         let path = workspace_mcp_config_path(&workspace_root);
@@ -442,7 +392,7 @@ mod tests {
     }
 }
 
-fn github_preset_config(trusted: bool) -> McpServerConfig {
+fn github_preset_config() -> McpServerConfig {
     let mut env = BTreeMap::new();
     env.insert(
         "GITHUB_PERSONAL_ACCESS_TOKEN".to_string(),
@@ -452,7 +402,6 @@ fn github_preset_config(trusted: bool) -> McpServerConfig {
     McpServerConfig {
         display_name: Some("GitHub MCP".to_string()),
         enabled: true,
-        trusted,
         capabilities: McpCapabilityToggles::default(),
         transport: McpTransportConfig::Stdio {
             command: "npx".to_string(),

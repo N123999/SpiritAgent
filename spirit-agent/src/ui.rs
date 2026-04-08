@@ -1475,7 +1475,7 @@ fn draw_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> Option<(u16, u16)> {
-    let outer_style = subtle_aux_text_style();
+    let outer_style = Style::default().fg(Color::White);
     let outer_block = Block::default()
         .borders(Borders::ALL)
         .border_style(outer_style)
