@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     env, fs,
     fs::OpenOptions,
     path::Path,
@@ -16,22 +16,12 @@ use crate::{
     },
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
     logging,
-    mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
-    shell::slash,
-    view::{
-        AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
-        ChatMessage, MessageRole, TuiViewModel,
-    },
+    shell::{bottom_form, slash},
+    view::{AssistantAuxData, BottomFormView, ChatMessage, MessageRole, TuiViewModel},
 };
-
-const MCP_ADD_FIELD_NAME: usize = 0;
-const MCP_ADD_FIELD_TRANSPORT: usize = 1;
-const MCP_ADD_FIELD_ENDPOINT: usize = 2;
-const MCP_ADD_FIELD_METADATA: usize = 3;
-const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
 #[derive(Clone, Copy, Debug, Default)]
@@ -199,7 +189,6 @@ impl TuiShell {
             conversation_sel_head: self.conversation_sel_head,
         }
     }
-
     pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
         self.conversation_panel_hit = Some(hit);
         self.conversation_plain_rows = plain_rows;
@@ -701,151 +690,70 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        if form.fields.is_empty() {
-            return;
-        }
-        form.selected_field = (form.selected_field + 1) % form.fields.len();
+        bottom_form::select_next_field(form);
     }
 
     pub fn select_prev_bottom_form_field(&mut self) {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        if form.fields.is_empty() {
-            return;
-        }
-        if form.selected_field == 0 {
-            form.selected_field = form.fields.len() - 1;
-        } else {
-            form.selected_field -= 1;
-        }
+        bottom_form::select_prev_field(form);
     }
 
     pub fn bottom_form_move_left(&mut self) {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
-        let Some(field) = form.fields.get_mut(selected) else {
-            return;
-        };
-
-        match &mut field.editor {
-            BottomFormFieldEditorView::Text { value, cursor, .. } => {
-                *cursor = (*cursor).min(value.chars().count());
-                if *cursor > 0 {
-                    *cursor -= 1;
-                }
-            }
-            BottomFormFieldEditorView::Choice { options, selected } => {
-                if options.is_empty() {
-                    return;
-                }
-                if *selected == 0 {
-                    *selected = options.len() - 1;
-                } else {
-                    *selected -= 1;
-                }
-                sync_mcp_add_form_fields(form);
-            }
-        }
+        bottom_form::move_left(form);
     }
 
     pub fn bottom_form_move_right(&mut self) {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
-        let Some(field) = form.fields.get_mut(selected) else {
-            return;
-        };
-
-        match &mut field.editor {
-            BottomFormFieldEditorView::Text { value, cursor, .. } => {
-                *cursor = (*cursor + 1).min(value.chars().count());
-            }
-            BottomFormFieldEditorView::Choice { options, selected } => {
-                if options.is_empty() {
-                    return;
-                }
-                *selected = (*selected + 1) % options.len();
-                sync_mcp_add_form_fields(form);
-            }
-        }
+        bottom_form::move_right(form);
     }
 
     pub fn bottom_form_move_home(&mut self) {
-        let Some(BottomFormFieldEditorView::Text { cursor, .. }) =
-            self.selected_bottom_form_editor_mut()
-        else {
+        let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        *cursor = 0;
+        bottom_form::move_home(form);
     }
 
     pub fn bottom_form_move_end(&mut self) {
-        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
-            self.selected_bottom_form_editor_mut()
-        else {
+        let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        *cursor = value.chars().count();
+        bottom_form::move_end(form);
     }
 
     pub fn bottom_form_insert_char(&mut self, ch: char) {
-        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
-            self.selected_bottom_form_editor_mut()
-        else {
+        let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        let idx = char_cursor_to_byte_index(value, *cursor);
-        value.insert(idx, ch);
-        *cursor += 1;
+        bottom_form::insert_char(form, ch);
     }
 
     pub fn bottom_form_insert_text(&mut self, text: &str) {
-        let normalized = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
-        if normalized.is_empty() {
-            return;
-        }
-
-        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
-            self.selected_bottom_form_editor_mut()
-        else {
+        let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        let idx = char_cursor_to_byte_index(value, *cursor);
-        value.insert_str(idx, &normalized);
-        *cursor += normalized.chars().count();
+        bottom_form::insert_text(form, text);
     }
 
     pub fn bottom_form_backspace(&mut self) {
-        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
-            self.selected_bottom_form_editor_mut()
-        else {
+        let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        if *cursor == 0 {
-            return;
-        }
-        let end = char_cursor_to_byte_index(value, *cursor);
-        let start = char_cursor_to_byte_index(value, cursor.saturating_sub(1));
-        value.replace_range(start..end, "");
-        *cursor -= 1;
+        bottom_form::backspace(form);
     }
 
     pub fn bottom_form_delete(&mut self) {
-        let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) =
-            self.selected_bottom_form_editor_mut()
-        else {
+        let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
-        if *cursor >= value.chars().count() {
-            return;
-        }
-        let start = char_cursor_to_byte_index(value, *cursor);
-        let end = char_cursor_to_byte_index(value, cursor.saturating_add(1));
-        value.replace_range(start..end, "");
+        bottom_form::delete(form);
     }
 
     pub fn paste_bottom_form_from_clipboard(&mut self) -> Result<(), String> {
@@ -862,7 +770,7 @@ impl TuiShell {
             return;
         };
 
-        match mcp_add_form_to_config(form) {
+        match bottom_form::to_config(form) {
             Ok((server_name, config)) => match self.runtime.add_mcp_server(&server_name, config) {
                 Ok(path) => {
                     self.messages.push(ChatMessage {
@@ -893,12 +801,6 @@ impl TuiShell {
                 });
             }
         }
-    }
-
-    fn selected_bottom_form_editor_mut(&mut self) -> Option<&mut BottomFormFieldEditorView> {
-        let form = self.bottom_form.as_mut()?;
-        let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
-        form.fields.get_mut(selected).map(|field| &mut field.editor)
     }
 
     fn handle_slash_command(&mut self, message: &str) {
@@ -1835,7 +1737,7 @@ impl TuiShell {
     }
 
     fn open_mcp_add_form(&mut self) {
-        self.bottom_form = Some(new_mcp_add_form());
+        self.bottom_form = Some(bottom_form::new_mcp_add_form());
         self.model_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
@@ -2085,317 +1987,6 @@ fn welcome_message_text(active_model: &str, mcp_status_line: &str) -> String {
         "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。\n{}",
         active_model, mcp_status_line
     )
-}
-
-fn new_mcp_add_form() -> BottomFormView {
-    let mut form = BottomFormView {
-        title: "Add MCP Server".to_string(),
-        fields: vec![
-            BottomFormFieldView {
-                label: "名称".to_string(),
-                help: String::new(),
-                editor: BottomFormFieldEditorView::Text {
-                    value: String::new(),
-                    placeholder: "名称，例如 github".to_string(),
-                    cursor: 0,
-                },
-            },
-            BottomFormFieldView {
-                label: "类型".to_string(),
-                help: String::new(),
-                editor: BottomFormFieldEditorView::Choice {
-                    options: vec!["STDIO".to_string(), "HTTP".to_string()],
-                    selected: 0,
-                },
-            },
-            BottomFormFieldView {
-                label: "命令".to_string(),
-                help: String::new(),
-                editor: BottomFormFieldEditorView::Text {
-                    value: String::new(),
-                    placeholder: String::new(),
-                    cursor: 0,
-                },
-            },
-            BottomFormFieldView {
-                label: "环境变量".to_string(),
-                help: String::new(),
-                editor: BottomFormFieldEditorView::Text {
-                    value: String::new(),
-                    placeholder: String::new(),
-                    cursor: 0,
-                },
-            },
-        ],
-        selected_field: MCP_ADD_FIELD_NAME,
-        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Enter 保存  Shift+Enter 换行  Esc 取消"
-            .to_string(),
-    };
-    sync_mcp_add_form_fields(&mut form);
-    form
-}
-
-fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
-    let is_http = matches!(
-        selected_transport_kind(form),
-        Some(McpAddTransportKind::Http)
-    );
-
-    if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_ENDPOINT) {
-        if is_http {
-            field.label = "URL".to_string();
-            field.help = String::new();
-            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder = "URL，例如 https://example.com/mcp".to_string();
-            }
-        } else {
-            field.label = "命令".to_string();
-            field.help = String::new();
-            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder = "命令，例如 npx -y @modelcontextprotocol/server-github".to_string();
-            }
-        }
-    }
-
-    if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_METADATA) {
-        if is_http {
-            field.label = "请求头".to_string();
-            field.help = String::new();
-            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder =
-                    "请求头，可选，例如 Authorization: Bearer ${env:GITHUB_TOKEN}"
-                        .to_string();
-            }
-        } else {
-            field.label = "环境变量".to_string();
-            field.help = String::new();
-            if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder =
-                    "环境变量，可选，例如 GITHUB_PERSONAL_ACCESS_TOKEN=${env:GITHUB_TOKEN}"
-                        .to_string();
-            }
-        }
-    }
-
-    form.selected_field = form.selected_field.min(form.fields.len().saturating_sub(1));
-}
-
-fn mcp_add_form_to_config(
-    form: &BottomFormView,
-) -> std::result::Result<(String, McpServerConfig), String> {
-    let server_name = bottom_form_text_value(form, MCP_ADD_FIELD_NAME)
-        .trim()
-        .to_string();
-    if server_name.is_empty() {
-        return Err("server 名称不能为空".to_string());
-    }
-    if server_name.chars().any(char::is_whitespace) {
-        return Err("server 名称不能包含空白字符，请使用 - 或 _".to_string());
-    }
-
-    let endpoint = bottom_form_text_value(form, MCP_ADD_FIELD_ENDPOINT)
-        .trim()
-        .to_string();
-    if endpoint.is_empty() {
-        let label = form
-            .fields
-            .get(MCP_ADD_FIELD_ENDPOINT)
-            .map(|field| field.label.as_str())
-            .unwrap_or("命令或 URL");
-        return Err(format!("{} 不能为空", label));
-    }
-
-    let metadata_text = bottom_form_text_value(form, MCP_ADD_FIELD_METADATA);
-    let transport = match selected_transport_kind(form).unwrap_or(McpAddTransportKind::Stdio) {
-        McpAddTransportKind::Stdio => {
-            let tokens = split_command_line(&endpoint)?;
-            let Some((command, args)) = tokens.split_first() else {
-                return Err("命令不能为空".to_string());
-            };
-            McpTransportConfig::Stdio {
-                command: command.clone(),
-                args: args.to_vec(),
-                env: parse_metadata_map(metadata_text, MetadataFieldKind::Env)?,
-                cwd: None,
-                timeout_ms: Some(MCP_DEFAULT_TIMEOUT_MS),
-            }
-        }
-        McpAddTransportKind::Http => McpTransportConfig::Http {
-            url: endpoint,
-            headers: parse_metadata_map(metadata_text, MetadataFieldKind::Header)?,
-            timeout_ms: Some(MCP_DEFAULT_TIMEOUT_MS),
-        },
-    };
-
-    Ok((
-        server_name.clone(),
-        McpServerConfig {
-            display_name: Some(server_name),
-            enabled: true,
-            capabilities: McpCapabilityToggles::default(),
-            transport,
-        },
-    ))
-}
-
-fn bottom_form_text_value(form: &BottomFormView, index: usize) -> &str {
-    match form.fields.get(index).map(|field| &field.editor) {
-        Some(BottomFormFieldEditorView::Text { value, .. }) => value.as_str(),
-        _ => "",
-    }
-}
-
-fn selected_transport_kind(form: &BottomFormView) -> Option<McpAddTransportKind> {
-    match form
-        .fields
-        .get(MCP_ADD_FIELD_TRANSPORT)
-        .map(|field| &field.editor)
-    {
-        Some(BottomFormFieldEditorView::Choice { options, selected }) => options
-            .get((*selected).min(options.len().saturating_sub(1)))
-            .map(|value| {
-                if value.eq_ignore_ascii_case("http") {
-                    McpAddTransportKind::Http
-                } else {
-                    McpAddTransportKind::Stdio
-                }
-            }),
-        _ => None,
-    }
-}
-
-fn parse_metadata_map(
-    input: &str,
-    kind: MetadataFieldKind,
-) -> std::result::Result<BTreeMap<String, String>, String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Ok(BTreeMap::new());
-    }
-
-    let mut result = BTreeMap::new();
-    for item in trimmed.split(';') {
-        let pair = item.trim();
-        if pair.is_empty() {
-            continue;
-        }
-
-        let parsed = match kind {
-            MetadataFieldKind::Env => pair.split_once('='),
-            MetadataFieldKind::Header => pair.split_once(':').or_else(|| pair.split_once('=')),
-        };
-
-        let Some((key, value)) = parsed else {
-            return Err(match kind {
-                MetadataFieldKind::Env => {
-                    "环境变量 格式错误，应为 KEY=VALUE; KEY2=VALUE".to_string()
-                }
-                MetadataFieldKind::Header => {
-                    "请求头 格式错误，应为 Header: Value; Header2: Value2".to_string()
-                }
-            });
-        };
-
-        let key = key.trim();
-        if key.is_empty() {
-            return Err(match kind {
-                MetadataFieldKind::Env => "环境变量 中存在空键名".to_string(),
-                MetadataFieldKind::Header => "请求头 中存在空键名".to_string(),
-            });
-        }
-        result.insert(key.to_string(), value.trim().to_string());
-    }
-    Ok(result)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MetadataFieldKind {
-    Env,
-    Header,
-}
-
-fn split_command_line(input: &str) -> std::result::Result<Vec<String>, String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut chars = input.chars().peekable();
-    let mut quote: Option<char> = None;
-
-    while let Some(ch) = chars.next() {
-        match quote {
-            Some(active_quote) if ch == active_quote => {
-                quote = None;
-            }
-            Some(_) => {
-                current.push(ch);
-            }
-            None if ch == '\'' || ch == '"' => {
-                quote = Some(ch);
-            }
-            None if ch.is_whitespace() => {
-                if !current.is_empty() {
-                    tokens.push(std::mem::take(&mut current));
-                }
-                while chars.next_if(|c| c.is_whitespace()).is_some() {}
-            }
-            None => {
-                current.push(ch);
-            }
-        }
-    }
-
-    if quote.is_some() {
-        return Err("命令中存在未闭合的引号".to_string());
-    }
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-    if tokens.is_empty() {
-        return Err("命令不能为空".to_string());
-    }
-    Ok(tokens)
-}
-
-fn char_cursor_to_byte_index(value: &str, cursor: usize) -> usize {
-    if cursor == 0 {
-        return 0;
-    }
-    value
-        .char_indices()
-        .nth(cursor)
-        .map(|(idx, _)| idx)
-        .unwrap_or(value.len())
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum McpAddTransportKind {
-    Stdio,
-    Http,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{MetadataFieldKind, parse_metadata_map};
-
-    #[test]
-    fn parse_header_metadata_supports_colon_syntax() {
-        let parsed = parse_metadata_map(
-            "Authorization: Bearer ${env:GITHUB_TOKEN}; X-Client: spirit-agent",
-            MetadataFieldKind::Header,
-        )
-        .expect("headers parse");
-
-        assert_eq!(
-            parsed.get("Authorization"),
-            Some(&"Bearer ${env:GITHUB_TOKEN}".to_string())
-        );
-        assert_eq!(parsed.get("X-Client"), Some(&"spirit-agent".to_string()));
-    }
-
-    #[test]
-    fn parse_header_metadata_allows_empty_input() {
-        let parsed = parse_metadata_map("   ", MetadataFieldKind::Header).expect("empty ok");
-        assert!(parsed.is_empty());
-    }
 }
 
 fn split_first_token(input: &str) -> Option<(&str, &str)> {
