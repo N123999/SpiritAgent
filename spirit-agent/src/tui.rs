@@ -42,9 +42,7 @@ pub struct TuiShell {
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
     last_mcp_status_revision: u64,
-    slash_commands: Vec<String>,
-    slash_suggestions: Vec<String>,
-    selected_suggestion: usize,
+    slash: slash::SlashState,
     model_picker_active: bool,
     model_picker_index: usize,
     chat_picker_active: bool,
@@ -90,8 +88,6 @@ impl TuiShell {
         );
         let initial_mcp_status = runtime.mcp_status_snapshot();
 
-        let slash_commands = slash::default_commands();
-
         Self {
             input: String::new(),
             input_cursor: 0,
@@ -103,9 +99,7 @@ impl TuiShell {
             show_aux_details: true,
             pending_assistant_msg_index: None,
             last_mcp_status_revision: initial_mcp_status.revision,
-            slash_commands,
-            slash_suggestions: vec![],
-            selected_suggestion: 0,
+            slash: slash::SlashState::new(),
             model_picker_active: false,
             model_picker_index: 0,
             chat_picker_active: false,
@@ -132,15 +126,15 @@ impl TuiShell {
 
     pub fn refresh_suggestions(&mut self) {
         let Some(query) = self.current_slash_query().map(ToString::to_string) else {
-            self.slash_suggestions.clear();
-            self.selected_suggestion = 0;
+            self.slash.suggestions.clear();
+            self.slash.selected_suggestion = 0;
             return;
         };
 
-        self.slash_suggestions = slash::compute_suggestions(&query, &self.slash_commands);
+        self.slash.suggestions = slash::compute_suggestions(&query, &self.slash.commands);
 
-        if self.selected_suggestion >= self.slash_suggestions.len() {
-            self.selected_suggestion = 0;
+        if self.slash.selected_suggestion >= self.slash.suggestions.len() {
+            self.slash.selected_suggestion = 0;
         }
     }
 
@@ -170,8 +164,8 @@ impl TuiShell {
             assistant_aux_by_message: self.assistant_aux_by_message.clone(),
             config: self.runtime.config().clone(),
             show_aux_details: self.show_aux_details,
-            slash_suggestions: self.slash_suggestions.clone(),
-            selected_suggestion: self.selected_suggestion,
+            slash_suggestions: self.slash.suggestions.clone(),
+            selected_suggestion: self.slash.selected_suggestion,
             model_picker_active: self.model_picker_active,
             model_picker_index: self.model_picker_index,
             chat_picker_active: self.chat_picker_active,
@@ -504,25 +498,26 @@ impl TuiShell {
     }
 
     pub fn select_next_suggestion(&mut self) {
-        if self.slash_suggestions.is_empty() {
+        if self.slash.suggestions.is_empty() {
             return;
         }
-        self.selected_suggestion = (self.selected_suggestion + 1) % self.slash_suggestions.len();
+        self.slash.selected_suggestion =
+            (self.slash.selected_suggestion + 1) % self.slash.suggestions.len();
     }
 
     pub fn select_prev_suggestion(&mut self) {
-        if self.slash_suggestions.is_empty() {
+        if self.slash.suggestions.is_empty() {
             return;
         }
-        if self.selected_suggestion == 0 {
-            self.selected_suggestion = self.slash_suggestions.len() - 1;
+        if self.slash.selected_suggestion == 0 {
+            self.slash.selected_suggestion = self.slash.suggestions.len() - 1;
         } else {
-            self.selected_suggestion -= 1;
+            self.slash.selected_suggestion -= 1;
         }
     }
 
     pub fn apply_selected_suggestion(&mut self) {
-        if let Some(selected) = self.slash_suggestions.get(self.selected_suggestion) {
+        if let Some(selected) = self.slash.suggestions.get(self.slash.selected_suggestion) {
             self.set_input(slash::apply_value(selected));
             self.refresh_suggestions();
         }
