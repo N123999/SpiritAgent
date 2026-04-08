@@ -422,6 +422,7 @@ fn spawn_mcp_catalog_refresh(state: Arc<Mutex<McpSharedState>>, workspace_root: 
                 guard.status = status;
             }
             Err(err) => {
+                let formatted = logging::format_error_chain(&err);
                 guard.catalog = McpToolCatalog::default();
                 guard.status = McpStatusSnapshot {
                     revision: guard.status.revision.saturating_add(1),
@@ -429,9 +430,9 @@ fn spawn_mcp_catalog_refresh(state: Arc<Mutex<McpSharedState>>, workspace_root: 
                     configured_servers: guard.status.configured_servers,
                     loaded_servers: 0,
                     cached_tools: 0,
-                    last_error: Some(err.to_string()),
+                    last_error: Some(formatted.clone()),
                 };
-                logging::log_event(&format!("[mcp] background refresh failed: {}", err));
+                logging::log_event(&format!("[mcp] background refresh failed: {}", formatted));
             }
         }
     });
@@ -498,12 +499,13 @@ fn build_mcp_catalog_snapshot(
                 }
             }
             Err(err) => {
+                let formatted = logging::format_error_chain(&err);
                 logging::log_event(&format!(
                     "[mcp] preload tools failed for server {}: {}",
-                    server.name, err
+                    server.name, formatted
                 ));
                 if first_error.is_none() {
-                    first_error = Some(err.to_string());
+                    first_error = Some(formatted);
                 }
             }
         }

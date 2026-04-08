@@ -1,3 +1,4 @@
+use anyhow::Error;
 use serde_json::Value;
 use std::{
     env,
@@ -55,6 +56,20 @@ pub fn log_json_http_body(label: &str, payload: &Value) {
     }
 }
 
+pub fn format_error_chain(err: &Error) -> String {
+    let mut chain = err.chain();
+    let Some(first) = chain.next() else {
+        return String::new();
+    };
+
+    let mut rendered = first.to_string();
+    for cause in chain {
+        rendered.push_str(" | caused by: ");
+        rendered.push_str(&cause.to_string());
+    }
+    rendered
+}
+
 pub fn log_event(message: &str) {
     let Some(lock) = LOG_FILE.get() else {
         return;
@@ -68,5 +83,19 @@ pub fn log_event(message: &str) {
     if let Ok(mut file) = lock.lock() {
         let _ = writeln!(file, "[{}] {}", ts, message);
         let _ = file.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_error_chain;
+    use anyhow::anyhow;
+
+    #[test]
+    fn format_error_chain_renders_context_and_root_cause() {
+        let err = anyhow!("root cause").context("outer context");
+        let rendered = format_error_chain(&err);
+
+        assert_eq!(rendered, "outer context | caused by: root cause");
     }
 }

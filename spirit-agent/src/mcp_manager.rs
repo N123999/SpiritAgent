@@ -479,13 +479,25 @@ async fn connect_client(
         match &server.transport {
             McpTransportConfig::Stdio { .. } => {
                 let transport = build_stdio_transport(workspace_root, server)?;
-                let client = ().serve(transport).await.context("初始化 MCP 会话失败")?;
+                let client = ().serve(transport).await.with_context(|| {
+                    format!(
+                        "初始化 MCP 会话失败: server={} transport={}",
+                        server.name,
+                        server.transport_summary()
+                    )
+                })?;
                 Ok(client)
             }
             McpTransportConfig::Http { .. } => {
                 let config = build_streamable_http_config(server)?;
                 let transport = StreamableHttpClientTransport::from_config(config);
-                let client = ().serve(transport).await.context("初始化 MCP 会话失败")?;
+                let client = ().serve(transport).await.with_context(|| {
+                    format!(
+                        "初始化 MCP 会话失败: server={} transport={}",
+                        server.name,
+                        server.transport_summary()
+                    )
+                })?;
                 Ok(client)
             }
         }
