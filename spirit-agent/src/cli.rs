@@ -5,7 +5,7 @@ use crate::{
     adapters::{DefaultAppPaths, JsonConfigStore, KeyringSecretStore},
     mcp::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
-        workspace_mcp_config_path,
+        user_mcp_config_path,
     },
     mcp_manager::McpManager,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
@@ -226,7 +226,6 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             let manager = McpManager::load(workspace_root.clone())?;
             let mut servers = manager.servers();
 
-            println!("工作区: {}", manager.workspace_root().display());
             println!("MCP 配置: {}", manager.config_path().display());
 
             if servers.len() == 0 {
@@ -250,7 +249,6 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
         McpCommand::Show => {
             let loaded = load_mcp_config(&workspace_root)?;
 
-            println!("工作区: {}", workspace_root.display());
             println!("MCP 配置: {}", loaded.path.display());
             println!();
             println!("server 数量: {}", loaded.config.servers.len());
@@ -259,7 +257,7 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&loaded.config)?);
         }
         McpCommand::Init { force } => {
-            let path = workspace_mcp_config_path(&workspace_root);
+            let path = user_mcp_config_path();
 
             save_mcp_config(&path, &example_github_mcp_config(), force)?;
             println!("已生成 MCP 配置模板: {}", path.display());

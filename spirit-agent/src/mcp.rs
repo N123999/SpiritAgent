@@ -2,9 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    collections::hash_map::DefaultHasher,
     env, fs,
-    hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
 
@@ -12,7 +10,6 @@ use crate::logging;
 
 const MCP_CONFIG_FILE_NAME: &str = "mcp.json";
 const APP_DATA_DIR_NAME: &str = "SpiritAgent";
-const WORKSPACE_MCP_DIR_NAME: &str = "workspaces";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct McpConfigFile {
@@ -143,11 +140,13 @@ pub fn spirit_agent_data_dir() -> PathBuf {
     PathBuf::from(".spirit-agent")
 }
 
+pub fn user_mcp_config_path() -> PathBuf {
+    spirit_agent_data_dir().join(MCP_CONFIG_FILE_NAME)
+}
+
 pub fn workspace_mcp_config_path(workspace_root: &Path) -> PathBuf {
-    spirit_agent_data_dir()
-        .join(WORKSPACE_MCP_DIR_NAME)
-        .join(workspace_storage_key(workspace_root))
-        .join(MCP_CONFIG_FILE_NAME)
+    let _ = workspace_root;
+    user_mcp_config_path()
 }
 
 pub fn load_mcp_config(workspace_root: &Path) -> Result<LoadedMcpConfig> {
@@ -313,42 +312,14 @@ fn default_true() -> bool {
     true
 }
 
-fn workspace_storage_key(workspace_root: &Path) -> String {
-    let mut hasher = DefaultHasher::new();
-    workspace_root.hash(&mut hasher);
-    let hash = hasher.finish();
-    let stem = workspace_root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(sanitize_path_component)
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "workspace".to_string());
-    format!("{}-{:016x}", stem, hash)
-}
-
-fn sanitize_path_component(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn load_config_reads_single_workspace_file() {
-        let workspace_root = unique_test_workspace("single-config");
-        let path = workspace_mcp_config_path(&workspace_root);
+    fn load_config_reads_single_user_file() {
+        let temp_root = unique_test_workspace("single-config");
+        let path = temp_root.join(MCP_CONFIG_FILE_NAME);
         let mut config = McpConfigFile::default();
         config.servers.insert(
             "github".to_string(),
@@ -371,14 +342,14 @@ mod tests {
         );
         save_mcp_config(&path, &config, true).expect("seed config file");
 
-        let loaded = load_mcp_config(&workspace_root).expect("load config");
+        let loaded = load_mcp_config_file(&path)
+            .expect("load config")
+            .expect("config should exist");
         let server = loaded
-            .config
             .servers
             .get("github")
             .expect("github server exists");
 
-        assert_eq!(loaded.path, path);
         assert!(!server.enabled);
         match &server.transport {
             McpTransportConfig::Stdio { command, args, .. } => {
@@ -449,16 +420,11 @@ mod tests {
     }
 
     #[test]
-    fn workspace_config_path_lives_under_spirit_agent_data_dir() {
+    fn user_config_path_lives_under_spirit_agent_data_dir() {
         let workspace_root = PathBuf::from("C:/workspace/spirit-agent");
         let path = workspace_mcp_config_path(&workspace_root);
 
-        assert!(path.starts_with(spirit_agent_data_dir()));
-        assert!(path.ends_with(MCP_CONFIG_FILE_NAME));
-        assert!(
-            path.components()
-                .any(|component| component.as_os_str() == WORKSPACE_MCP_DIR_NAME)
-        );
+        assert_eq!(path, spirit_agent_data_dir().join(MCP_CONFIG_FILE_NAME));
     }
 
     fn unique_test_workspace(tag: &str) -> PathBuf {
