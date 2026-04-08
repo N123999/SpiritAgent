@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     llm_client::LlmMessage,
@@ -10,12 +11,49 @@ const TOOL_MEMORY_PREFIX: &str = "[TOOL_MEMORY]";
 const TOOL_MEMORY_MAX_ENTRIES: usize = 24;
 const TOOL_MEMORY_SNIPPET_CHARS: usize = 1200;
 
+#[derive(Clone, Debug)]
+pub struct PendingMcpResource {
+    pub server: String,
+    pub display_name: String,
+    pub uri: String,
+    pub mime_type: Option<String>,
+    pub read_at_unix_ms: u128,
+    pub content: String,
+}
+
+impl PendingMcpResource {
+    pub fn new(
+        server: String,
+        display_name: String,
+        uri: String,
+        mime_type: Option<String>,
+        content: String,
+    ) -> Self {
+        Self {
+            server,
+            display_name,
+            uri,
+            mime_type,
+            read_at_unix_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            content,
+        }
+    }
+
+    pub fn short_label(&self) -> String {
+        format!("{} -> {}", self.server, self.uri)
+    }
+}
+
 #[derive(Default)]
 pub struct SessionModel {
     llm_history: Vec<LlmMessage>,
     llm_api_trace: Vec<Value>,
     pending_user_turn: Option<String>,
     pending_image_paths: Vec<String>,
+    pending_mcp_resources: Vec<PendingMcpResource>,
 }
 
 impl SessionModel {
@@ -28,6 +66,7 @@ impl SessionModel {
         self.llm_api_trace.clear();
         self.pending_user_turn = None;
         self.pending_image_paths.clear();
+        self.pending_mcp_resources.clear();
     }
 
     pub fn llm_history(&self) -> &[LlmMessage] {
@@ -66,6 +105,10 @@ impl SessionModel {
         &self.pending_image_paths
     }
 
+    pub fn pending_mcp_resources(&self) -> &[PendingMcpResource] {
+        &self.pending_mcp_resources
+    }
+
     pub fn add_pending_image(&mut self, path: String) {
         self.pending_image_paths.push(path);
     }
@@ -78,6 +121,28 @@ impl SessionModel {
 
     pub fn take_pending_images(&mut self) -> Vec<String> {
         std::mem::take(&mut self.pending_image_paths)
+    }
+
+    pub fn add_pending_mcp_resource(&mut self, resource: PendingMcpResource) {
+        self.pending_mcp_resources.push(resource);
+    }
+
+    pub fn clear_pending_mcp_resources(&mut self) -> usize {
+        let cleared = self.pending_mcp_resources.len();
+        self.pending_mcp_resources.clear();
+        cleared
+    }
+
+    pub fn take_pending_mcp_resources(&mut self) -> Vec<PendingMcpResource> {
+        std::mem::take(&mut self.pending_mcp_resources)
+    }
+
+    pub fn record_context_message(&mut self, role: &'static str, content: String) {
+        self.llm_history.push(LlmMessage {
+            role,
+            content,
+            image_paths: vec![],
+        });
     }
 
     pub fn record_user_turn(&mut self, text: String, images: Vec<String>) {
@@ -98,6 +163,17 @@ impl SessionModel {
 
     pub fn persist_tool_memory(&mut self, request: &ToolRequest, output: &str) {
         let request_desc = match request {
+            ToolRequest::McpTool {
+                server,
+                tool_name,
+                arguments,
+                ..
+            } => format!(
+                "mcp_tool server={} tool={} args={}",
+                server,
+                tool_name,
+                truncate_for_preview(&arguments.to_string(), 600)
+            ),
             ToolRequest::WebFetch { url } => format!("web_fetch url={}", url),
             ToolRequest::ListDirectory { path } => {
                 format!("list_directory_files path={}", path)
@@ -168,6 +244,7 @@ impl SessionModel {
         self.llm_api_trace.clear();
         self.pending_user_turn = None;
         self.pending_image_paths.clear();
+        self.pending_mcp_resources.clear();
     }
 
     pub fn to_archive(

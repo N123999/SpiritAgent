@@ -73,6 +73,11 @@ pub enum McpCommand {
     Tools {
         name: String,
     },
+    CallTool {
+        name: String,
+        tool: String,
+        args_json: Option<String>,
+    },
     Resources {
         name: String,
     },
@@ -368,6 +373,16 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
                     }
                 }
             }
+        }
+        McpCommand::CallTool {
+            name,
+            tool,
+            args_json,
+        } => {
+            let manager = McpManager::load(workspace_root)?;
+            let arguments = parse_optional_json_object(args_json.as_deref())?;
+            let value = manager.call_tool(&name, &tool, arguments)?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
         }
         McpCommand::Resources { name } => {
             let manager = McpManager::load(workspace_root)?;

@@ -95,6 +95,7 @@ impl TuiShell {
             "/compact".to_string(),
             "/sessions".to_string(),
             "/image".to_string(),
+            "/mcp".to_string(),
             "/log".to_string(),
         ];
 
@@ -176,6 +177,7 @@ impl TuiShell {
             input: self.input.clone(),
             input_cursor: self.input_cursor,
             pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
+            pending_mcp_resources: self.runtime.session().pending_mcp_resources().to_vec(),
             messages: self.messages.clone(),
             assistant_aux_by_message: self.assistant_aux_by_message.clone(),
             config: self.runtime.config().clone(),
@@ -450,6 +452,17 @@ impl TuiShell {
                 self.runtime.session().pending_image_paths().join(", ")
             ));
         }
+        if !trimmed_message.starts_with('/') && !self.runtime.session().pending_mcp_resources().is_empty() {
+            let summary = self
+                .runtime
+                .session()
+                .pending_mcp_resources()
+                .iter()
+                .map(|resource| resource.short_label())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            user_content.push_str(&format!("\n[attached mcp resources: {}]", summary));
+        }
 
         self.messages.push(ChatMessage {
             role: MessageRole::User,
@@ -665,10 +678,9 @@ impl TuiShell {
             "/help" => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
-                    ),
-                tool_block: None});
+                    content: "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp list|inspect|tools|tool call|resources|resource attach|resource clear|prompts|prompt apply\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /mcp resource attach 会把 MCP resource 加入下一条普通消息的上下文。\n- /mcp prompt apply 会把 prompt messages 直接送入下一轮请求。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。".to_string(),
+                    tool_block: None,
+                });
             }
             "/clear" => {
                 self.messages.clear();
@@ -684,6 +696,7 @@ impl TuiShell {
             }
             "/sessions" => self.handle_sessions_slash(message),
             "/image" => self.handle_image_slash(message),
+            "/mcp" => self.handle_mcp_slash(message),
             "/log" => self.handle_log_slash(&parts[1..]),
             _ => {
                 self.messages.push(ChatMessage {
@@ -1036,6 +1049,265 @@ impl TuiShell {
                 });
             }
         }
+    }
+
+    fn handle_mcp_slash(&mut self, message: &str) {
+        let tail = message.strip_prefix("/mcp").map(str::trim).unwrap_or("");
+
+        if tail.is_empty() || tail == "list" {
+            match self.runtime.list_mcp_servers() {
+                Ok(servers) if servers.is_empty() => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: "当前没有配置任何 MCP server。可先执行 `spirit-agent mcp init` 生成模板。".to_string(),
+                    tool_block: None,
+                }),
+                Ok(servers) => {
+                    let lines = servers
+                        .into_iter()
+                        .map(|server| {
+                            format!(
+                                "- {} ({})  state={}  capabilities={}  source={}",
+                                server.name,
+                                server.display_name,
+                                server.state.label(),
+                                server.capability_summary(),
+                                server.source
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("MCP servers:\n{}", lines),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP server 列表失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(server) = tail.strip_prefix("inspect ") {
+            match self.runtime.inspect_mcp_server(server.trim()) {
+                Ok(inspection) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!(
+                            "server: {}\ndisplay: {}\nsource: {}\nprotocol: {}\npeer: {} {}\ncapabilities: tools={} resources={} prompts={}\ncounts: tools={} resources={} prompts={}",
+                            inspection.name,
+                            inspection.display_name,
+                            inspection.source,
+                            inspection.protocol_version,
+                            inspection.server_name,
+                            inspection.server_version,
+                            inspection.supports_tools,
+                            inspection.supports_resources,
+                            inspection.supports_prompts,
+                            inspection.tools_count,
+                            inspection.resources_count,
+                            inspection.prompts_count,
+                        ),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("MCP inspect 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(server) = tail.strip_prefix("tools ") {
+            match self.runtime.list_mcp_tools(server.trim()) {
+                Ok(tools) if tools.is_empty() => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("MCP server {} 当前没有可见 tools。", server.trim()),
+                    tool_block: None,
+                }),
+                Ok(tools) => {
+                    let lines = tools
+                        .into_iter()
+                        .map(|tool| {
+                            let desc = tool.description.unwrap_or_else(|| "<无描述>".to_string());
+                            format!("- {}: {}", tool.name, desc)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("MCP tools:\n{}", lines),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP tools 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(rest) = tail.strip_prefix("tool call ") {
+            let Some((server, rest)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            let Some((tool, args_json)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            match self.runtime.execute_mcp_tool(server, tool, non_empty_opt(args_json)) {
+                Ok(()) => self.apply_runtime_events(),
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("执行 MCP tool 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(server) = tail.strip_prefix("resources ") {
+            match self.runtime.list_mcp_resources(server.trim()) {
+                Ok(resources) if resources.is_empty() => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("MCP server {} 当前没有可见 resources。", server.trim()),
+                    tool_block: None,
+                }),
+                Ok(resources) => {
+                    let lines = resources
+                        .into_iter()
+                        .map(|resource| format!("- {} ({})", resource.uri, resource.name))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("MCP resources:\n{}", lines),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP resources 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(rest) = tail.strip_prefix("resource attach ") {
+            let Some((server, rest)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            let uri = rest.trim();
+            if uri.is_empty() {
+                self.push_mcp_usage();
+                return;
+            }
+            match self.runtime.attach_mcp_resource(server, uri) {
+                Ok(label) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!(
+                        "已添加 MCP resource 到待发送上下文（{} 项）: {}",
+                        self.runtime.session().pending_mcp_resources().len(),
+                        label
+                    ),
+                    tool_block: None,
+                }),
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("附加 MCP resource 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if tail == "resource clear" {
+            let cleared = self.runtime.clear_pending_mcp_resources();
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("已清空待发送 MCP resource 队列（{} 项）。", cleared),
+                tool_block: None,
+            });
+            return;
+        }
+
+        if let Some(server) = tail.strip_prefix("prompts ") {
+            match self.runtime.list_mcp_prompts(server.trim()) {
+                Ok(prompts) if prompts.is_empty() => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("MCP server {} 当前没有可见 prompts。", server.trim()),
+                    tool_block: None,
+                }),
+                Ok(prompts) => {
+                    let lines = prompts
+                        .into_iter()
+                        .map(|prompt| {
+                            let desc = prompt.description.unwrap_or_else(|| "<无描述>".to_string());
+                            format!("- {}: {}", prompt.name, desc)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("MCP prompts:\n{}", lines),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取 MCP prompts 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        if let Some(rest) = tail.strip_prefix("prompt apply ") {
+            let Some((server, rest)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            let Some((prompt, args_json)) = split_first_token(rest) else {
+                self.push_mcp_usage();
+                return;
+            };
+            match self.runtime.apply_mcp_prompt(server, prompt, non_empty_opt(args_json)) {
+                Ok(summary) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: summary,
+                        tool_block: None,
+                    });
+                    self.apply_runtime_events();
+                }
+                Err(err) => self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("应用 MCP prompt 失败: {}", err),
+                    tool_block: None,
+                }),
+            }
+            return;
+        }
+
+        self.push_mcp_usage();
+    }
+
+    fn push_mcp_usage(&mut self) {
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: "用法:\n- /mcp list\n- /mcp inspect <server>\n- /mcp tools <server>\n- /mcp tool call <server> <tool> [args_json]\n- /mcp resources <server>\n- /mcp resource attach <server> <uri>\n- /mcp resource clear\n- /mcp prompts <server>\n- /mcp prompt apply <server> <prompt> [args_json]".to_string(),
+            tool_block: None,
+        });
     }
 
     fn open_cli_log_file(&self) -> Result<std::path::PathBuf> {
@@ -1451,6 +1723,10 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
         return vec!["/image"];
     }
 
+    if q == "/mcp" || q.starts_with("/mcp ") {
+        return vec!["/mcp"];
+    }
+
     if q == "/log" || q.starts_with("/log ") {
         return vec!["/log"];
     }
@@ -1460,8 +1736,34 @@ fn contextual_slash_suggestions(query: String) -> Vec<&'static str> {
 
 fn slash_suggestion_apply_value(selected: &str) -> String {
     match selected {
-        "/model" | "/sessions" | "/image" | "/log" => format!("{} ", selected),
+        "/model" | "/sessions" | "/image" | "/mcp" | "/log" => format!("{} ", selected),
         _ => selected.to_string(),
+    }
+}
+
+fn split_first_token(input: &str) -> Option<(&str, &str)> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    for (idx, ch) in trimmed.char_indices() {
+        if ch.is_whitespace() {
+            let first = &trimmed[..idx];
+            let rest = trimmed[idx..].trim();
+            return Some((first, rest));
+        }
+    }
+
+    Some((trimmed, ""))
+}
+
+fn non_empty_opt(input: &str) -> Option<&str> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
     }
 }
 

@@ -14,6 +14,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     conversation_select::flatten_wrapped_history,
+    session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
     view::{AssistantAuxKind, ChatMessage, MessageRole, ToolUiBlock, ToolUiPhase, TuiViewModel},
 };
@@ -257,7 +258,7 @@ fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
 }
 
 fn input_block_height(app: &TuiViewModel, max_width: usize) -> u16 {
-    let content_lines = pending_image_header_line_count(app)
+    let content_lines = pending_input_header_line_count(app)
         .saturating_add(input_visual_line_count(&app.input, max_width))
         .max(1);
     content_lines.saturating_add(2) as u16
@@ -267,7 +268,7 @@ fn input_cursor_position(app: &TuiViewModel, max_width: usize) -> (u16, u16) {
     let prefix: String = app.input.chars().take(app.input_cursor).collect();
     let (row, col) = wrapped_text_cursor_position(&prefix, max_width);
     (
-        pending_image_header_line_count(app).saturating_add(row) as u16,
+        pending_input_header_line_count(app).saturating_add(row) as u16,
         col as u16,
     )
 }
@@ -294,6 +295,25 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
         )));
     }
 
+    if !app.pending_mcp_resources.is_empty() {
+        let count = app.pending_mcp_resources.len();
+        let summary = format!(
+            "Attached {} MCP resource{}  |  /mcp resource clear",
+            count,
+            if count == 1 { "" } else { "s" }
+        );
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(&summary, max_width),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(Span::styled(
+            summarize_pending_mcp_resources(&app.pending_mcp_resources, max_width),
+            Style::default().fg(Color::LightYellow),
+        )));
+    }
+
     let logical_lines: Vec<&str> = if app.input.is_empty() {
         vec![""]
     } else {
@@ -309,8 +329,15 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
     lines
 }
 
-fn pending_image_header_line_count(app: &TuiViewModel) -> usize {
-    if app.pending_image_paths.is_empty() { 0 } else { 2 }
+fn pending_input_header_line_count(app: &TuiViewModel) -> usize {
+    let mut lines = 0;
+    if !app.pending_image_paths.is_empty() {
+        lines += 2;
+    }
+    if !app.pending_mcp_resources.is_empty() {
+        lines += 2;
+    }
+    lines
 }
 
 fn input_visual_line_count(text: &str, max_width: usize) -> usize {
@@ -382,6 +409,51 @@ fn summarize_pending_images(paths: &[String], max_width: usize) -> String {
 
     if line.is_empty() {
         return truncate_to_width("[img] ...", max_width);
+    }
+
+    if remaining > 0 {
+        let suffix = format!("  +{}", remaining);
+        let combined = format!("{}{}", line, suffix);
+        if UnicodeWidthStr::width(combined.as_str()) <= max_width {
+            combined
+        } else {
+            truncate_to_width(&line, max_width)
+        }
+    } else {
+        line
+    }
+}
+
+fn summarize_pending_mcp_resources(resources: &[PendingMcpResource], max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let mut parts = Vec::new();
+    for resource in resources {
+        parts.push(format!(
+            "[mcp] {}",
+            truncate_to_width(&resource.short_label(), 26)
+        ));
+    }
+
+    let mut line = String::new();
+    let mut remaining = parts.len();
+    for part in parts {
+        let candidate = if line.is_empty() {
+            part.clone()
+        } else {
+            format!("{}  {}", line, part)
+        };
+        if UnicodeWidthStr::width(candidate.as_str()) > max_width {
+            break;
+        }
+        line = candidate;
+        remaining = remaining.saturating_sub(1);
+    }
+
+    if line.is_empty() {
+        return truncate_to_width("[mcp] ...", max_width);
     }
 
     if remaining > 0 {

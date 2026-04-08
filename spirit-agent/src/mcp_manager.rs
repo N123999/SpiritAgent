@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use rmcp::{
     ServiceExt,
-    model::{GetPromptRequestParams, ReadResourceRequestParams},
+    model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams},
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
 use serde_json::{Map, Value};
@@ -83,6 +83,7 @@ pub struct McpDiscoveredTool {
     pub name: String,
     pub title: Option<String>,
     pub description: Option<String>,
+    pub input_schema: Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -192,8 +193,8 @@ impl McpManager {
             )),
             McpServerRuntimeState::NeedsTrust => Err(anyhow!(
                 "MCP server {} 尚未信任，请先执行 `spirit-agent mcp trust {}`。",
+                name,
                 name
-                ,name
             )),
             McpServerRuntimeState::Ready => Ok(()),
         }
@@ -298,6 +299,7 @@ impl McpManager {
                     name: tool.name.into_owned(),
                     title: tool.title,
                     description: tool.description.map(|d| d.into_owned()),
+                    input_schema: Value::Object(tool.input_schema.as_ref().clone()),
                 })
                 .collect();
             let _ = client.cancel().await;
@@ -387,6 +389,27 @@ impl McpManager {
                 .read_resource(ReadResourceRequestParams::new(uri))
                 .await
                 .context("读取 MCP resource 失败")?;
+            let _ = client.cancel().await;
+            Ok(serde_json::to_value(result)?)
+        })
+    }
+
+    pub fn call_tool(
+        &self,
+        name: &str,
+        tool_name: &str,
+        arguments: Option<Map<String, Value>>,
+    ) -> Result<Value> {
+        let server = self.require_connectable_server(name)?.clone();
+        let workspace_root = self.workspace_root.clone();
+        let tool_name = tool_name.to_string();
+        self.block_on(async move {
+            let client = connect_stdio_client(&workspace_root, &server).await?;
+            let mut request = CallToolRequestParams::new(tool_name);
+            if let Some(args) = arguments {
+                request = request.with_arguments(args);
+            }
+            let result = client.call_tool(request).await.context("调用 MCP tool 失败")?;
             let _ = client.cancel().await;
             Ok(serde_json::to_value(result)?)
         })

@@ -1,9 +1,11 @@
 use anyhow::{Context, Result, anyhow};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use std::{
+    collections::{BTreeMap, hash_map::DefaultHasher},
     env,
+    hash::{Hash, Hasher},
     path::PathBuf,
-    sync::{Arc, mpsc},
+    sync::{Arc, Mutex, mpsc},
     thread,
 };
 
@@ -11,6 +13,8 @@ use crate::{
     chat_store,
     llm_client::{self, LlmMessage, ResolvedLlmConfig},
     logging,
+    mcp::set_server_trusted,
+    mcp_manager::{McpManager, McpServerRuntimeState},
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
         remove_model_api_key, save_config, save_model_api_key,
@@ -25,6 +29,9 @@ use crate::{
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
+const MCP_FUNCTION_NAME_LIMIT: usize = 64;
+const MCP_SERVER_FRAGMENT_LIMIT: usize = 16;
+const MCP_TOOL_FRAGMENT_LIMIT: usize = 24;
 
 pub struct DefaultAppPaths {
     workspace_root: PathBuf,
@@ -179,19 +186,115 @@ impl ChatRepository for JsonChatRepository {
 
 pub struct WorkspaceToolExecutor {
     inner: ToolRuntime,
+    workspace_root: PathBuf,
+    mcp_catalog: Mutex<McpToolCatalog>,
+}
+
+#[derive(Clone)]
+struct McpFunctionRoute {
+    server: String,
+    display_name: String,
+    tool_name: String,
+}
+
+#[derive(Default)]
+struct McpToolCatalog {
+    definitions: Vec<Value>,
+    routes: BTreeMap<String, McpFunctionRoute>,
 }
 
 impl WorkspaceToolExecutor {
     pub fn new() -> Self {
+        let workspace_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             inner: ToolRuntime::new(),
+            workspace_root,
+            mcp_catalog: Mutex::new(McpToolCatalog::default()),
         }
+    }
+
+    fn load_mcp_manager(&self) -> Result<McpManager> {
+        McpManager::load(self.workspace_root.clone())
+    }
+
+    fn refresh_mcp_catalog(&self) -> Result<()> {
+        let manager = self.load_mcp_manager()?;
+        let servers = manager.servers().cloned().collect::<Vec<_>>();
+        let mut definitions = Vec::new();
+        let mut routes = BTreeMap::new();
+
+        for server in servers {
+            if server.state != McpServerRuntimeState::Ready || !server.capabilities.tools {
+                continue;
+            }
+
+            match manager.list_tools(&server.name) {
+                Ok(tools) => {
+                    for tool in tools {
+                        let function_name = synthetic_mcp_function_name(&server.name, &tool.name);
+                        let description = tool.description.clone().unwrap_or_else(|| {
+                            format!(
+                                "MCP tool `{}` from server `{}`.",
+                                tool.name, server.display_name
+                            )
+                        });
+                        let parameters = if tool.input_schema.is_object() {
+                            tool.input_schema.clone()
+                        } else {
+                            json!({
+                                "type": "object",
+                                "additionalProperties": true,
+                            })
+                        };
+
+                        definitions.push(json!({
+                            "type": "function",
+                            "function": {
+                                "name": function_name,
+                                "description": format!("[MCP {}] {}", server.display_name, description),
+                                "parameters": parameters,
+                            }
+                        }));
+                        routes.insert(
+                            function_name,
+                            McpFunctionRoute {
+                                server: server.name.clone(),
+                                display_name: server.display_name.clone(),
+                                tool_name: tool.name,
+                            },
+                        );
+                    }
+                }
+                Err(err) => {
+                    logging::log_event(&format!(
+                        "[mcp] refresh tool catalog failed for server {}: {}",
+                        server.name, err
+                    ));
+                }
+            }
+        }
+
+        *lock_catalog(&self.mcp_catalog) = McpToolCatalog { definitions, routes };
+        Ok(())
     }
 }
 
 impl ToolExecutor for WorkspaceToolExecutor {
     fn tool_definitions_json(&self) -> Value {
-        self.inner.tool_definitions_json()
+        let mut definitions = self
+            .inner
+            .tool_definitions_json()
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        if let Err(err) = self.refresh_mcp_catalog() {
+            logging::log_event(&format!("[mcp] refresh tool catalog failed: {}", err));
+        }
+
+        let catalog = lock_catalog(&self.mcp_catalog);
+        definitions.extend(catalog.definitions.clone());
+        Value::Array(definitions)
     }
 
     fn parse_command(&self, message: &str) -> Result<ToolRequest> {
@@ -199,20 +302,194 @@ impl ToolExecutor for WorkspaceToolExecutor {
     }
 
     fn request_from_function_call(&self, name: &str, arguments_json: &str) -> Result<ToolRequest> {
-        ToolRuntime::request_from_function_call(name, arguments_json)
+        if let Ok(request) = ToolRuntime::request_from_function_call(name, arguments_json) {
+            return Ok(request);
+        }
+
+        if let Err(err) = self.refresh_mcp_catalog() {
+            logging::log_event(&format!("[mcp] refresh before function call failed: {}", err));
+        }
+
+        let route = lock_catalog(&self.mcp_catalog)
+            .routes
+            .get(name)
+            .cloned()
+            .ok_or_else(|| anyhow!("未知工具名: {}", name))?;
+        let arguments: Value = serde_json::from_str(arguments_json)
+            .with_context(|| format!("MCP 工具参数 JSON 解析失败: {}", arguments_json))?;
+
+        Ok(ToolRequest::McpTool {
+            server: route.server,
+            display_name: route.display_name,
+            tool_name: route.tool_name,
+            arguments,
+        })
     }
 
     fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
-        self.inner.authorize(request)
+        match request {
+            ToolRequest::McpTool {
+                server,
+                display_name,
+                tool_name,
+                ..
+            } => {
+                let manager = self.load_mcp_manager()?;
+                let configured = manager
+                    .get(server)
+                    .ok_or_else(|| anyhow!("未知 MCP server: {}", server))?;
+                if !configured.capabilities.tools {
+                    return Err(anyhow!("MCP server {} 未启用 tools capability", server));
+                }
+
+                match configured.state {
+                    McpServerRuntimeState::Disabled => Err(anyhow!(
+                        "MCP server {} 已禁用，请先执行 `spirit-agent mcp enable {}`。",
+                        server,
+                        server
+                    )),
+                    McpServerRuntimeState::NeedsTrust => {
+                        Ok(AuthorizationDecision::NeedApproval {
+                            prompt: format!(
+                                "MCP 工具调用需要先信任 server。\nserver: {} ({})\ntool: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
+                                display_name, server, tool_name
+                            ),
+                            trust_target: Some(TrustTarget::McpServer(server.clone())),
+                        })
+                    }
+                    McpServerRuntimeState::Ready => Ok(AuthorizationDecision::Allowed),
+                }
+            }
+            _ => self.inner.authorize(request),
+        }
     }
 
     fn trust(&mut self, target: &TrustTarget) -> Result<()> {
-        self.inner.trust(target)
+        match target {
+            TrustTarget::McpServer(name) => {
+                set_server_trusted(&self.workspace_root, name, true)?;
+                if let Err(err) = self.refresh_mcp_catalog() {
+                    logging::log_event(&format!("[mcp] refresh after trust failed: {}", err));
+                }
+                Ok(())
+            }
+            _ => self.inner.trust(target),
+        }
     }
 
     fn execute(&mut self, request: &ToolRequest) -> Result<String> {
-        self.inner.execute(request)
+        match request {
+            ToolRequest::McpTool {
+                server,
+                tool_name,
+                arguments,
+                ..
+            } => {
+                let arguments = match arguments {
+                    Value::Object(map) => Some(map.clone()),
+                    Value::Null => None,
+                    _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
+                };
+                let value = self.load_mcp_manager()?.call_tool(server, tool_name, arguments)?;
+                Ok(serde_json::to_string_pretty(&value)?)
+            }
+            _ => self.inner.execute(request),
+        }
     }
+
+    fn list_mcp_servers(&self) -> Result<Vec<crate::mcp_manager::ManagedMcpServer>> {
+        let manager = self.load_mcp_manager()?;
+        Ok(manager.servers().cloned().collect())
+    }
+
+    fn inspect_mcp_server(&self, name: &str) -> Result<crate::mcp_manager::McpServerInspection> {
+        self.load_mcp_manager()?.inspect_server(name)
+    }
+
+    fn list_mcp_tools(&self, name: &str) -> Result<Vec<crate::mcp_manager::McpDiscoveredTool>> {
+        self.load_mcp_manager()?.list_tools(name)
+    }
+
+    fn list_mcp_resources(
+        &self,
+        name: &str,
+    ) -> Result<Vec<crate::mcp_manager::McpDiscoveredResource>> {
+        self.load_mcp_manager()?.list_resources(name)
+    }
+
+    fn read_mcp_resource(&self, name: &str, uri: &str) -> Result<Value> {
+        self.load_mcp_manager()?.read_resource(name, uri)
+    }
+
+    fn list_mcp_prompts(
+        &self,
+        name: &str,
+    ) -> Result<Vec<crate::mcp_manager::McpDiscoveredPrompt>> {
+        self.load_mcp_manager()?.list_prompts(name)
+    }
+
+    fn get_mcp_prompt(&self, name: &str, prompt: &str, args_json: Option<&str>) -> Result<Value> {
+        self.load_mcp_manager()?
+            .get_prompt(name, prompt, parse_optional_json_object(args_json)?)
+    }
+}
+
+fn lock_catalog(catalog: &Mutex<McpToolCatalog>) -> std::sync::MutexGuard<'_, McpToolCatalog> {
+    match catalog.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn parse_optional_json_object(input: Option<&str>) -> Result<Option<Map<String, Value>>> {
+    let Some(raw) = input.map(str::trim).filter(|raw| !raw.is_empty()) else {
+        return Ok(None);
+    };
+
+    let value: Value =
+        serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))?;
+    match value {
+        Value::Object(map) => Ok(Some(map)),
+        _ => Err(anyhow!("参数必须是 JSON object，例如 {{\"owner\":\"microsoft\"}}")),
+    }
+}
+
+fn synthetic_mcp_function_name(server: &str, tool: &str) -> String {
+    let server = truncate_identifier_fragment(&sanitize_identifier_fragment(server), MCP_SERVER_FRAGMENT_LIMIT);
+    let tool = truncate_identifier_fragment(&sanitize_identifier_fragment(tool), MCP_TOOL_FRAGMENT_LIMIT);
+
+    let mut hasher = DefaultHasher::new();
+    server.hash(&mut hasher);
+    tool.hash(&mut hasher);
+    let digest = hasher.finish();
+
+    let mut name = format!("mcp__{}__{}__{:08x}", server, tool, digest as u32);
+    if name.len() > MCP_FUNCTION_NAME_LIMIT {
+        name.truncate(MCP_FUNCTION_NAME_LIMIT);
+    }
+    name
+}
+
+fn sanitize_identifier_fragment(input: &str) -> String {
+    let mut out = String::new();
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        "tool".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn truncate_identifier_fragment(input: &str, max_len: usize) -> String {
+    input.chars().take(max_len).collect()
 }
 
 pub struct OpenAiCompatibleTransport {

@@ -39,6 +39,12 @@ pub enum ToolRequest {
     Shell {
         command: String,
     },
+    McpTool {
+        server: String,
+        display_name: String,
+        tool_name: String,
+        arguments: Value,
+    },
     WebFetch {
         url: String,
     },
@@ -71,6 +77,7 @@ pub enum ToolRequest {
 pub enum TrustTarget {
     ShellCommand(String),
     ExternalReadPath(String),
+    McpServer(String),
 }
 
 pub enum AuthorizationDecision {
@@ -252,6 +259,9 @@ impl ToolRuntime {
 
     pub fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
         match request {
+            ToolRequest::McpTool { .. } => Err(anyhow!(
+                "MCP 工具权限检查应由 WorkspaceToolExecutor 处理"
+            )),
             ToolRequest::Shell { command } => {
                 if self
                     .permissions
@@ -336,6 +346,9 @@ impl ToolRuntime {
                         .push(path.clone());
                 }
             }
+                TrustTarget::McpServer(_) => {
+                    return Err(anyhow!("MCP server 信任应由 WorkspaceToolExecutor 处理"));
+                }
         }
 
         save_permissions(&self.permission_store_path, &self.permissions)
@@ -343,6 +356,9 @@ impl ToolRuntime {
 
     pub fn execute(&self, request: &ToolRequest) -> Result<String> {
         match request {
+                ToolRequest::McpTool { .. } => {
+                    Err(anyhow!("MCP 工具执行应由 WorkspaceToolExecutor 处理"))
+                }
             ToolRequest::Shell { command } => self.execute_shell(command),
             ToolRequest::WebFetch { url } => self.execute_web_fetch(url),
             ToolRequest::ListDirectory { path } => self.execute_list_directory(path),

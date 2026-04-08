@@ -1,3 +1,4 @@
+use anyhow::{Result, anyhow};
 use std::{
     collections::VecDeque,
     path::PathBuf,
@@ -10,9 +11,13 @@ use serde_json::{Value, json};
 
 use crate::{
     llm_client::{CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep, append_tool_result_message},
+    mcp_manager::{
+        ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
+        McpServerInspection,
+    },
     model_registry::AppConfig,
     ports::{LlmTransport, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor},
-    session::SessionModel,
+    session::{PendingMcpResource, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
     view::{AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase},
 };
@@ -242,10 +247,124 @@ impl AgentRuntime {
 
     pub fn submit_user_turn(&mut self, text: String, explicit_images: Option<Vec<String>>) {
         let images = explicit_images.unwrap_or_else(|| self.session.take_pending_images());
+        let resources = self.session.take_pending_mcp_resources();
+        for resource in resources {
+            self.session
+                .record_context_message("system", format_pending_mcp_resource_context(&resource));
+        }
         self.session.set_pending_user_turn(text.clone());
         self.session.record_user_turn(text.clone(), images);
         let state = self.make_tool_agent_state(&text);
         self.start_tool_agent_step_async(state);
+    }
+
+    pub fn list_mcp_servers(&self) -> Result<Vec<ManagedMcpServer>> {
+        self.tool_executor.list_mcp_servers()
+    }
+
+    pub fn inspect_mcp_server(&self, name: &str) -> Result<McpServerInspection> {
+        self.tool_executor.inspect_mcp_server(name)
+    }
+
+    pub fn list_mcp_tools(&self, name: &str) -> Result<Vec<McpDiscoveredTool>> {
+        self.tool_executor.list_mcp_tools(name)
+    }
+
+    pub fn list_mcp_resources(&self, name: &str) -> Result<Vec<McpDiscoveredResource>> {
+        self.tool_executor.list_mcp_resources(name)
+    }
+
+    pub fn list_mcp_prompts(&self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
+        self.tool_executor.list_mcp_prompts(name)
+    }
+
+    pub fn attach_mcp_resource(&mut self, server: &str, uri: &str) -> Result<String> {
+        let value = self.tool_executor.read_mcp_resource(server, uri)?;
+        let display_name = self.resolve_mcp_display_name(server)?;
+        let resource = pending_mcp_resource_from_read_result(server, &display_name, uri, &value)?;
+        let label = resource.short_label();
+        self.session.add_pending_mcp_resource(resource);
+        Ok(label)
+    }
+
+    pub fn clear_pending_mcp_resources(&mut self) -> usize {
+        self.session.clear_pending_mcp_resources()
+    }
+
+    pub fn apply_mcp_prompt(
+        &mut self,
+        server: &str,
+        prompt: &str,
+        args_json: Option<&str>,
+    ) -> Result<String> {
+        if self.is_busy() {
+            return Err(anyhow!("上一条回复仍在处理中，请稍候。"));
+        }
+        if self.has_pending_tool_approval() {
+            return Err(anyhow!("请先响应当前待确认的工具调用。"));
+        }
+
+        let value = self.tool_executor.get_mcp_prompt(server, prompt, args_json)?;
+        let prompt_messages = prompt_messages_from_value(&value)?;
+        if prompt_messages.is_empty() {
+            return Err(anyhow!("MCP prompt 未返回可用 messages"));
+        }
+
+        let user_turn = prompt_messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "user" && !message.content.trim().is_empty())
+            .map(|message| message.content.clone())
+            .unwrap_or_else(|| format!("请根据已应用的 MCP prompt `{}` 继续。", prompt));
+
+        self.session.llm_history_mut().extend(prompt_messages.clone());
+        self.session.set_pending_user_turn(user_turn.clone());
+        let state = self.make_tool_agent_state(&user_turn);
+        self.start_tool_agent_step_async(state);
+
+        Ok(format!(
+            "已应用 MCP prompt: {} / {}（{} 条消息）",
+            server,
+            prompt,
+            prompt_messages.len()
+        ))
+    }
+
+    pub fn execute_mcp_tool(
+        &mut self,
+        server: &str,
+        tool_name: &str,
+        args_json: Option<&str>,
+    ) -> Result<()> {
+        let arguments = parse_optional_json_value(args_json)?;
+        let request = ToolRequest::McpTool {
+            server: server.to_string(),
+            display_name: self.resolve_mcp_display_name(server)?,
+            tool_name: tool_name.to_string(),
+            arguments,
+        };
+
+        match self.tool_executor.authorize(&request)? {
+            AuthorizationDecision::Allowed => {
+                self.execute_tool_request(&request);
+                Ok(())
+            }
+            AuthorizationDecision::NeedApproval {
+                prompt,
+                trust_target,
+            } => {
+                self.pending_tool_approval = Some(PendingToolApproval {
+                    request,
+                    trust_target,
+                    continuation: None,
+                });
+                self.push_agent_tool(
+                    prompt.clone(),
+                    tool_approval_block(tool_name, None, &prompt),
+                );
+                Ok(())
+            }
+        }
     }
 
     pub fn respond_to_pending_tool_approval(&mut self, message: &str) {
@@ -371,6 +490,15 @@ impl AgentRuntime {
         self.pending_assistant_text.clear();
         self.thinking_text.clear();
         self.compaction_text.clear();
+    }
+
+    fn resolve_mcp_display_name(&self, server: &str) -> Result<String> {
+        self.tool_executor
+            .list_mcp_servers()?
+            .into_iter()
+            .find(|item| item.name == server)
+            .map(|item| item.display_name)
+            .ok_or_else(|| anyhow!("未知 MCP server: {}", server))
     }
 
     fn make_tool_agent_state(&self, user_input: &str) -> ToolAgentState {
@@ -1165,6 +1293,7 @@ fn take_last_chars(text: &str, max_chars: usize) -> String {
 fn openapi_tool_name(request: &ToolRequest) -> &'static str {
     match request {
         ToolRequest::Shell { .. } => "run_shell_command",
+        ToolRequest::McpTool { .. } => "mcp_tool",
         ToolRequest::WebFetch { .. } => "web_fetch",
         ToolRequest::ListDirectory { .. } => "list_directory_files",
         ToolRequest::ReadFile { .. } => "read_file",
@@ -1178,6 +1307,17 @@ fn openapi_tool_name(request: &ToolRequest) -> &'static str {
 fn tool_request_args_excerpt(request: &ToolRequest) -> String {
     let v = match request {
         ToolRequest::Shell { command } => json!({ "command": command }),
+        ToolRequest::McpTool {
+            server,
+            display_name,
+            tool_name,
+            arguments,
+        } => json!({
+            "server": server,
+            "display_name": display_name,
+            "tool_name": tool_name,
+            "arguments": arguments,
+        }),
         ToolRequest::WebFetch { url } => json!({ "url": url }),
         ToolRequest::ListDirectory { path } => json!({ "path": path }),
         ToolRequest::ReadFile {
@@ -1245,6 +1385,23 @@ fn build_tool_result_block(
 ) -> ToolUiBlock {
     let args_excerpt = tool_request_args_excerpt(request);
     match request {
+        ToolRequest::McpTool {
+            server,
+            display_name,
+            tool_name: actual_tool_name,
+            ..
+        } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "MCP 工具调用完成".to_string(),
+            detail_lines: vec![
+                format!("Server: {} ({})", display_name, server),
+                format!("Tool: {}", actual_tool_name),
+            ],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+        },
         ToolRequest::WebFetch { url } => ToolUiBlock {
             tool_call_id: tool_call_id.map(String::from),
             tool_name: tool_name.to_string(),
@@ -1335,6 +1492,18 @@ fn build_tool_result_block(
 
 fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) -> String {
     match request {
+        ToolRequest::McpTool {
+            server,
+            display_name,
+            tool_name: actual_tool_name,
+            ..
+        } => format!(
+            "[tool] MCP {} ({}) / {} 执行完成。\n{}",
+            display_name,
+            server,
+            actual_tool_name,
+            truncate_for_preview(output, 1200)
+        ),
         ToolRequest::WebFetch { url } => format!("[tool] 已抓取网页 {}", url),
         ToolRequest::ListDirectory { path } => format!("[tool] 已列出目录下文件 {}", path),
         ToolRequest::ReadFile {
@@ -1360,6 +1529,135 @@ fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) 
             truncate_for_preview(output, 1200)
         ),
     }
+}
+
+fn parse_optional_json_value(input: Option<&str>) -> Result<Value> {
+    let Some(raw) = input.map(str::trim).filter(|raw| !raw.is_empty()) else {
+        return Ok(Value::Object(serde_json::Map::new()));
+    };
+    let value: Value = serde_json::from_str(raw)
+        .map_err(|err| anyhow!("JSON 解析失败: {} ({})", raw, err))?;
+    Ok(value)
+}
+
+fn format_pending_mcp_resource_context(resource: &PendingMcpResource) -> String {
+    let mime_type = resource
+        .mime_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
+    format!(
+        "[MCP_RESOURCE]\nserver: {}\ndisplay_name: {}\nuri: {}\nmime_type: {}\nread_at_unix_ms: {}\n\n{}",
+        resource.server,
+        resource.display_name,
+        resource.uri,
+        mime_type,
+        resource.read_at_unix_ms,
+        resource.content
+    )
+}
+
+fn pending_mcp_resource_from_read_result(
+    server: &str,
+    display_name: &str,
+    requested_uri: &str,
+    value: &Value,
+) -> Result<PendingMcpResource> {
+    let contents = value
+        .get("contents")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("MCP resource 返回格式异常：缺少 contents"))?;
+    if contents.is_empty() {
+        return Err(anyhow!("MCP resource 返回为空: {}", requested_uri));
+    }
+
+    let mut rendered_sections = Vec::new();
+    let mut mime_type = None;
+    let mut final_uri = requested_uri.to_string();
+    for content in contents {
+        if let Some(uri) = content.get("uri").and_then(Value::as_str) {
+            final_uri = uri.to_string();
+        }
+        if mime_type.is_none() {
+            mime_type = content
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+        }
+
+        if let Some(text) = content.get("text").and_then(Value::as_str) {
+            rendered_sections.push(text.to_string());
+            continue;
+        }
+
+        if let Some(blob) = content.get("blob").and_then(Value::as_str) {
+            rendered_sections.push(format!("[blob base64 omitted, {} chars]", blob.chars().count()));
+            continue;
+        }
+
+        rendered_sections.push(serde_json::to_string_pretty(content)?);
+    }
+
+    Ok(PendingMcpResource::new(
+        server.to_string(),
+        display_name.to_string(),
+        final_uri,
+        mime_type,
+        rendered_sections.join("\n\n---\n\n"),
+    ))
+}
+
+fn prompt_messages_from_value(value: &Value) -> Result<Vec<LlmMessage>> {
+    let messages = value
+        .get("messages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("MCP prompt 返回格式异常：缺少 messages"))?;
+
+    let mut out = Vec::new();
+    for message in messages {
+        let role = normalize_prompt_role(
+            message
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("user"),
+        );
+        let content = prompt_content_to_text(
+            message
+                .get("content")
+                .ok_or_else(|| anyhow!("MCP prompt message 缺少 content"))?,
+        )?;
+        out.push(LlmMessage {
+            role,
+            content,
+            image_paths: vec![],
+        });
+    }
+    Ok(out)
+}
+
+fn normalize_prompt_role(role: &str) -> &'static str {
+    match role {
+        "assistant" => "assistant",
+        "system" => "system",
+        _ => "user",
+    }
+}
+
+fn prompt_content_to_text(content: &Value) -> Result<String> {
+    if let Some(text) = content.as_str() {
+        return Ok(text.to_string());
+    }
+
+    if let Some(object) = content.as_object() {
+        if object.get("type").and_then(Value::as_str) == Some("text") {
+            return Ok(object
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string());
+        }
+    }
+
+    Ok(serde_json::to_string_pretty(content)?)
 }
 
 fn truncate_for_preview(text: &str, max_chars: usize) -> String {

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::model_registry::AppConfig;
+use crate::session::PendingMcpResource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AssistantAuxKind {
@@ -84,6 +85,7 @@ pub struct TuiViewModel {
     pub input: String,
     pub input_cursor: usize,
     pub pending_image_paths: Vec<String>,
+    pub pending_mcp_resources: Vec<PendingMcpResource>,
     pub messages: Vec<ChatMessage>,
     pub assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     pub config: AppConfig,

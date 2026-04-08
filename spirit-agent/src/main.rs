@@ -147,6 +147,12 @@ enum McpAction {
     Tools {
         name: String,
     },
+    CallTool {
+        name: String,
+        tool: String,
+        #[arg(long)]
+        args_json: Option<String>,
+    },
     Resources {
         name: String,
     },
@@ -259,6 +265,15 @@ fn into_mcp_command(action: McpAction) -> McpCommand {
         McpAction::Disable { name } => McpCommand::Disable { name },
         McpAction::Inspect { name } => McpCommand::Inspect { name },
         McpAction::Tools { name } => McpCommand::Tools { name },
+        McpAction::CallTool {
+            name,
+            tool,
+            args_json,
+        } => McpCommand::CallTool {
+            name,
+            tool,
+            args_json,
+        },
         McpAction::Resources { name } => McpCommand::Resources { name },
         McpAction::Prompts { name } => McpCommand::Prompts { name },
         McpAction::ReadResource { name, uri } => McpCommand::ReadResource { name, uri },
