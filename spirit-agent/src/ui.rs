@@ -467,6 +467,7 @@ fn truncate_to_width(text: &str, max_width: usize) -> String {
 fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let (visible_messages, skipped, start_index) = visible_messages(app);
+    let thinking_status = app.thinking_status_text();
 
     if skipped > 0 {
         lines.push(Line::from(vec![
@@ -481,6 +482,15 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     }
 
     for (idx, msg) in visible_messages.iter().enumerate() {
+        if should_hide_pending_assistant_placeholder(
+            app,
+            msg,
+            idx,
+            visible_messages.len(),
+            thinking_status.is_some(),
+        ) {
+            continue;
+        }
         let _global_idx = start_index + idx;
         lines.extend(render_message_lines(app, msg));
         if idx + 1 < visible_messages.len() {
@@ -488,9 +498,9 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
         }
     }
 
-    if let Some(status) = app.thinking_status_text() {
+    if let Some(status) = thinking_status {
         lines.push(Line::from(vec![
-            Span::styled("    ", Style::default()),
+            Span::styled(message_prefix_text(), assistant_message_prefix_style()),
             Span::styled(
                 status,
                 Style::default()
@@ -503,7 +513,7 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
             if let Some(thinking) = app.thinking_content_text() {
                 for segment in thinking.lines() {
                     lines.push(Line::from(vec![
-                        Span::styled("    ", Style::default()),
+                        Span::raw(message_gutter_padding()),
                         Span::styled(segment.to_string(), Style::default().fg(Color::DarkGray)),
                     ]));
                 }
@@ -514,6 +524,21 @@ fn build_history_lines(app: &TuiViewModel) -> Vec<Line<'static>> {
     lines
 }
 
+fn should_hide_pending_assistant_placeholder(
+    app: &TuiViewModel,
+    msg: &ChatMessage,
+    idx: usize,
+    total: usize,
+    has_thinking_status: bool,
+) -> bool {
+    has_thinking_status
+        && app.pending_response_active
+        && idx + 1 == total
+        && msg.role == MessageRole::Agent
+        && msg.tool_block.is_none()
+        && msg.content.trim().is_empty()
+}
+
 fn message_prefix_text() -> &'static str {
     "> "
 }
@@ -522,12 +547,14 @@ fn message_gutter_padding() -> &'static str {
     "  "
 }
 
+fn assistant_message_prefix_style() -> Style {
+    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+}
+
 fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage) -> Vec<Line<'static>> {
     let prefix_style = match msg.role {
         MessageRole::User => conversation_body_text_style(),
-        MessageRole::Agent => Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+        MessageRole::Agent => assistant_message_prefix_style(),
     };
 
     if let Some(ref tool) = msg.tool_block {
