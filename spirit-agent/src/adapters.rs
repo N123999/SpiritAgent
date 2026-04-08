@@ -159,13 +159,19 @@ impl ChatRepository for JsonChatRepository {
     }
 
     fn save(&self, path: Option<&str>, archive: &ChatArchive) -> Result<PathBuf> {
-        chat_store::save_chat(path, &archive.messages, &archive.llm_history)
+        chat_store::save_chat(
+            path,
+            &archive.messages,
+            &archive.assistant_thinking,
+            &archive.llm_history,
+        )
     }
 
     fn load(&self, path: &str) -> Result<ChatArchive> {
         let loaded = chat_store::load_chat(path)?;
         Ok(ChatArchive {
             messages: loaded.messages,
+            assistant_thinking: loaded.assistant_thinking,
             llm_history: loaded.llm_history,
         })
     }

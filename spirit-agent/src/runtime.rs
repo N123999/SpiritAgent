@@ -22,6 +22,7 @@ const STREAM_STALL_TIMEOUT: Duration = Duration::from_secs(20);
 pub enum RuntimeEvent {
     PushMessage(ChatMessage),
     BeginAssistantResponse,
+    UpdatePendingAssistantThinking(String),
     AssistantChunk(String),
     ReplacePendingAssistant(String),
     AssistantResponseCompleted,
@@ -519,11 +520,17 @@ impl AgentRuntime {
                 Ok(StreamEvent::ThinkingChunk(thinking)) => {
                     self.pending_last_event_at = Some(Instant::now());
                     self.thinking_text.push_str(&thinking);
+                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantThinking(
+                        self.thinking_text.clone(),
+                    ));
                     processed += 1;
                 }
                 Ok(StreamEvent::ToolProgress(progress)) => {
                     self.pending_last_event_at = Some(Instant::now());
-                    self.thinking_text = progress;
+                    self.merge_tool_progress_into_thinking(&progress);
+                    self.events.push_back(RuntimeEvent::UpdatePendingAssistantThinking(
+                        self.thinking_text.clone(),
+                    ));
                     processed += 1;
                 }
                 Ok(StreamEvent::Chunk(chunk)) => {
@@ -664,6 +671,31 @@ impl AgentRuntime {
                 );
             }
         }
+    }
+
+    fn merge_tool_progress_into_thinking(&mut self, progress: &str) {
+        let progress = progress.trim();
+        if progress.is_empty() {
+            return;
+        }
+
+        if self.thinking_text.trim().is_empty() {
+            self.thinking_text = progress.to_string();
+            return;
+        }
+
+        if self
+            .thinking_text
+            .lines()
+            .any(|line| line.trim() == progress)
+        {
+            return;
+        }
+
+        if !self.thinking_text.ends_with('\n') {
+            self.thinking_text.push('\n');
+        }
+        self.thinking_text.push_str(progress);
     }
 
     fn execute_tool_request_with_continuation(

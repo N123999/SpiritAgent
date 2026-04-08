@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::{
+    collections::HashMap,
     env, fs,
     fs::OpenOptions,
     path::Path,
@@ -36,6 +37,7 @@ pub struct TuiShell {
     input: String,
     input_cursor: usize,
     messages: Vec<ChatMessage>,
+    assistant_thinking_by_message: HashMap<usize, String>,
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
     slash_commands: Vec<String>,
@@ -100,6 +102,7 @@ impl TuiShell {
             input: String::new(),
             input_cursor: 0,
             messages: vec![welcome_message(&config.active_model)],
+            assistant_thinking_by_message: HashMap::new(),
             show_aux_details: true,
             pending_assistant_msg_index: None,
             slash_commands,
@@ -174,6 +177,7 @@ impl TuiShell {
             input_cursor: self.input_cursor,
             pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
             messages: self.messages.clone(),
+            assistant_thinking_by_message: self.assistant_thinking_by_message.clone(),
             config: self.runtime.config().clone(),
             show_aux_details: self.show_aux_details,
             slash_suggestions: self.slash_suggestions.clone(),
@@ -188,6 +192,7 @@ impl TuiShell {
             image_picker_files: self.image_picker_files.clone(),
             history_offset_from_bottom: self.history_offset_from_bottom,
             pending_response_active: self.runtime.is_busy(),
+            pending_assistant_msg_index: self.pending_assistant_msg_index,
             thinking_status: self.runtime.thinking_status_text(),
             thinking_content: self
                 .runtime
@@ -665,12 +670,13 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!(
-                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏（失败与待确认工具保持展开）。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+                        "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /log（或 /log export、/log session export）\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换思考内容与工具结果细节的显示/隐藏；已完成回复的思考内容也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
                     ),
                 tool_block: None});
             }
             "/clear" => {
                 self.messages.clear();
+                self.assistant_thinking_by_message.clear();
                 self.messages
                     .push(welcome_message(&self.runtime.config().active_model));
                 self.pending_assistant_msg_index = None;
@@ -1207,7 +1213,22 @@ impl TuiShell {
                 )
             })
             .collect::<Vec<_>>();
-        let archive = self.runtime.session().to_archive(&messages);
+        let mut assistant_thinking = self
+            .assistant_thinking_by_message
+            .iter()
+            .filter_map(|(idx, content)| {
+                if content.trim().is_empty() {
+                    None
+                } else {
+                    Some((*idx, content.clone()))
+                }
+            })
+            .collect::<Vec<_>>();
+        assistant_thinking.sort_by_key(|(idx, _)| *idx);
+        let archive = self
+            .runtime
+            .session()
+            .to_archive(&messages, &assistant_thinking);
         match self.chat_repository.save(path, &archive) {
             Ok(saved_path) => {
                 self.messages.push(ChatMessage {
@@ -1249,6 +1270,13 @@ impl TuiShell {
                     });
                 }
                 self.messages = msgs;
+                self.assistant_thinking_by_message = archive
+                    .assistant_thinking
+                    .iter()
+                    .filter(|(_, content)| !content.trim().is_empty())
+                    .map(|(idx, content)| (*idx, content.clone()))
+                    .collect();
+                self.pending_assistant_msg_index = None;
                 self.runtime.replace_session_from_archive(&archive);
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
@@ -1274,7 +1302,18 @@ impl TuiShell {
                 RuntimeEvent::BeginAssistantResponse => {
                     self.messages
                         .push(ChatMessage::new(MessageRole::Agent, String::new()));
-                    self.pending_assistant_msg_index = Some(self.messages.len() - 1);
+                    let idx = self.messages.len() - 1;
+                    self.assistant_thinking_by_message.remove(&idx);
+                    self.pending_assistant_msg_index = Some(idx);
+                }
+                RuntimeEvent::UpdatePendingAssistantThinking(thinking) => {
+                    if let Some(idx) = self.pending_assistant_msg_index {
+                        if thinking.trim().is_empty() {
+                            self.assistant_thinking_by_message.remove(&idx);
+                        } else {
+                            self.assistant_thinking_by_message.insert(idx, thinking);
+                        }
+                    }
                 }
                 RuntimeEvent::AssistantChunk(chunk) => {
                     if let Some(idx) = self.pending_assistant_msg_index {
@@ -1299,7 +1338,12 @@ impl TuiShell {
                 }
                 RuntimeEvent::RemovePendingAssistant => {
                     if let Some(idx) = self.pending_assistant_msg_index.take() {
-                        if idx < self.messages.len() {
+                        let has_persisted_thinking = self
+                            .assistant_thinking_by_message
+                            .get(&idx)
+                            .is_some_and(|thinking| !thinking.trim().is_empty());
+                        if !has_persisted_thinking && idx < self.messages.len() {
+                            self.assistant_thinking_by_message.remove(&idx);
                             self.messages.remove(idx);
                         }
                     }

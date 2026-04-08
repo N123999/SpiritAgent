@@ -170,9 +170,14 @@ impl SessionModel {
         self.pending_image_paths.clear();
     }
 
-    pub fn to_archive(&self, messages: &[(String, String)]) -> ChatArchive {
+    pub fn to_archive(
+        &self,
+        messages: &[(String, String)],
+        assistant_thinking: &[(usize, String)],
+    ) -> ChatArchive {
         ChatArchive {
             messages: messages.to_vec(),
+            assistant_thinking: assistant_thinking.to_vec(),
             llm_history: self
                 .llm_history
                 .iter()

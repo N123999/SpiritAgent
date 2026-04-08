@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::model_registry::AppConfig;
 
 /// 工具卡片在对话里的生命周期阶段（用于 TUI 着色与标签）。
@@ -64,6 +66,7 @@ pub struct TuiViewModel {
     pub input_cursor: usize,
     pub pending_image_paths: Vec<String>,
     pub messages: Vec<ChatMessage>,
+    pub assistant_thinking_by_message: HashMap<usize, String>,
     pub config: AppConfig,
     pub show_aux_details: bool,
     pub slash_suggestions: Vec<String>,
@@ -78,6 +81,7 @@ pub struct TuiViewModel {
     pub image_picker_files: Vec<String>,
     pub history_offset_from_bottom: usize,
     pub pending_response_active: bool,
+    pub pending_assistant_msg_index: Option<usize>,
     pub thinking_status: Option<String>,
     pub thinking_content: Option<String>,
     /// 对话区选区：折行后的全局行号 + 显示列（与 WordWrapper 一致）。
@@ -86,6 +90,16 @@ pub struct TuiViewModel {
 }
 
 impl TuiViewModel {
+    pub fn thinking_for_message(&self, message_index: usize) -> Option<&str> {
+        self.assistant_thinking_by_message
+            .get(&message_index)
+            .map(String::as_str)
+    }
+
+    pub fn is_pending_assistant_message(&self, message_index: usize) -> bool {
+        self.pending_response_active && self.pending_assistant_msg_index == Some(message_index)
+    }
+
     pub fn thinking_status_text(&self) -> Option<String> {
         self.thinking_status.clone()
     }

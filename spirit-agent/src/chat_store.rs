@@ -12,12 +12,20 @@ const CHAT_DIR_NAME: &str = "chats";
 struct ChatFile {
     saved_at_unix_ms: u128,
     messages: Vec<StoredChatMessage>,
+    #[serde(default)]
+    assistant_thinking: Vec<StoredAssistantThinking>,
     llm_history: Vec<StoredLlmMessage>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct StoredChatMessage {
     role: String,
+    content: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredAssistantThinking {
+    message_index: usize,
     content: String,
 }
 
@@ -31,6 +39,7 @@ struct StoredLlmMessage {
 
 pub struct LoadedChat {
     pub messages: Vec<(String, String)>,
+    pub assistant_thinking: Vec<(usize, String)>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
@@ -67,6 +76,7 @@ pub fn list_chat_files() -> Result<Vec<PathBuf>> {
 pub fn save_chat(
     path_arg: Option<&str>,
     messages: &[(String, String)],
+    assistant_thinking: &[(usize, String)],
     llm_history: &[(String, String, Vec<String>)],
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
@@ -84,6 +94,13 @@ pub fn save_chat(
             .iter()
             .map(|(role, content)| StoredChatMessage {
                 role: role.clone(),
+                content: content.clone(),
+            })
+            .collect(),
+        assistant_thinking: assistant_thinking
+            .iter()
+            .map(|(message_index, content)| StoredAssistantThinking {
+                message_index: *message_index,
                 content: content.clone(),
             })
             .collect(),
@@ -114,6 +131,12 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
             .messages
             .into_iter()
             .map(|m| (m.role, m.content))
+            .collect(),
+        assistant_thinking: parsed
+            .assistant_thinking
+            .into_iter()
+            .filter(|entry| !entry.content.trim().is_empty())
+            .map(|entry| (entry.message_index, entry.content))
             .collect(),
         llm_history: parsed
             .llm_history

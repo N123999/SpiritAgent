@@ -510,9 +510,10 @@ fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
 fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
     let mut lines = build_history_logo_lines(max_width);
     let (visible_messages, skipped, start_index) = visible_messages(app);
-    let thinking_status = app.thinking_status_text();
+    let has_pending_thinking = app.thinking_status_text().is_some() || app.thinking_content_text().is_some();
+    let mut rendered_messages: Vec<Vec<Line<'static>>> = Vec::new();
 
-    if !lines.is_empty() && (!visible_messages.is_empty() || thinking_status.is_some()) {
+    if !lines.is_empty() && (!visible_messages.is_empty() || has_pending_thinking) {
         lines.push(Line::from(""));
     }
 
@@ -534,37 +535,21 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
             msg,
             idx,
             visible_messages.len(),
-            thinking_status.is_some(),
         ) {
             continue;
         }
-        let _global_idx = start_index + idx;
-        lines.extend(render_message_lines(app, msg));
-        if idx + 1 < visible_messages.len() {
-            lines.push(Line::from(""));
+        let global_idx = start_index + idx;
+        let rendered = render_message_lines(app, msg, global_idx);
+        if !rendered.is_empty() {
+            rendered_messages.push(rendered);
         }
     }
 
-    if let Some(status) = thinking_status {
-        lines.push(Line::from(vec![
-            Span::styled(message_prefix_text(), assistant_message_prefix_style()),
-            Span::styled(
-                status,
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::ITALIC),
-            ),
-        ]));
-
-        if app.show_aux_details {
-            if let Some(thinking) = app.thinking_content_text() {
-                for segment in thinking.lines() {
-                    lines.push(Line::from(vec![
-                        Span::raw(message_gutter_padding()),
-                        Span::styled(segment.to_string(), Style::default().fg(Color::DarkGray)),
-                    ]));
-                }
-            }
+    let rendered_count = rendered_messages.len();
+    for (idx, message_lines) in rendered_messages.into_iter().enumerate() {
+        lines.extend(message_lines);
+        if idx + 1 < rendered_count {
+            lines.push(Line::from(""));
         }
     }
 
@@ -576,14 +561,14 @@ fn should_hide_pending_assistant_placeholder(
     msg: &ChatMessage,
     idx: usize,
     total: usize,
-    has_thinking_status: bool,
 ) -> bool {
-    has_thinking_status
-        && app.pending_response_active
+    app.pending_response_active
         && idx + 1 == total
         && msg.role == MessageRole::Agent
         && msg.tool_block.is_none()
         && msg.content.trim().is_empty()
+        && app.thinking_status_text().is_none()
+        && app.thinking_content_text().is_none()
 }
 
 fn message_prefix_text() -> &'static str {
@@ -598,7 +583,7 @@ fn assistant_message_prefix_style() -> Style {
     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
 }
 
-fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage) -> Vec<Line<'static>> {
+fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage, message_index: usize) -> Vec<Line<'static>> {
     let prefix_style = match msg.role {
         MessageRole::User => conversation_body_text_style(),
         MessageRole::Agent => assistant_message_prefix_style(),
@@ -608,28 +593,73 @@ fn render_message_lines(app: &TuiViewModel, msg: &ChatMessage) -> Vec<Line<'stat
         return render_tool_card_lines(prefix_style, tool, app.show_aux_details);
     }
 
-    let content_lines = match msg.role {
-        MessageRole::User => plain_text_lines(&msg.content),
-        MessageRole::Agent => markdown_lines(&msg.content),
+    let is_pending_assistant = msg.role == MessageRole::Agent && app.is_pending_assistant_message(message_index);
+
+    let has_message_body = !msg.content.trim().is_empty();
+    let content_lines = if has_message_body {
+        match msg.role {
+            MessageRole::User => plain_text_lines(&msg.content),
+            MessageRole::Agent => markdown_lines(&msg.content),
+        }
+    } else {
+        Vec::new()
     };
 
     let mut out = Vec::new();
+    let thinking_status = if is_pending_assistant {
+        app.thinking_status_text()
+    } else {
+        None
+    };
+    let thinking_content = if msg.role == MessageRole::Agent && app.show_aux_details {
+        if is_pending_assistant {
+            app.thinking_content_text()
+        } else {
+            app.thinking_for_message(message_index)
+        }
+    } else {
+        None
+    };
+
+    let mut has_rendered_visible_line = false;
+    let mut push_message_line = |content_spans: Vec<Span<'static>>| {
+        let mut spans = if has_rendered_visible_line {
+            vec![Span::raw(message_gutter_padding())]
+        } else {
+            has_rendered_visible_line = true;
+            vec![Span::styled(message_prefix_text(), prefix_style)]
+        };
+        spans.extend(content_spans);
+        out.push(Line::from(spans));
+    };
+
+    if let Some(ref status) = thinking_status {
+        push_message_line(vec![Span::styled(
+            status.clone(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::ITALIC),
+        )]);
+    }
+
+    if let Some(thinking) = thinking_content {
+        for segment in thinking.lines() {
+            push_message_line(vec![Span::styled(
+                segment.to_string(),
+                Style::default().fg(Color::DarkGray),
+            )]);
+        }
+    }
+
     let mut iter = content_lines.into_iter();
     if let Some(first) = iter.next() {
-        let mut spans = vec![Span::styled(message_prefix_text(), prefix_style)];
-        spans.extend(first);
-        out.push(Line::from(spans));
-    } else {
-        out.push(Line::from(vec![Span::styled(
-            message_prefix_text(),
-            prefix_style,
-        )]));
+        push_message_line(first);
+    } else if msg.role == MessageRole::User {
+        push_message_line(Vec::new());
     }
 
     for line in iter {
-        let mut spans = vec![Span::raw(message_gutter_padding())];
-        spans.extend(line);
-        out.push(Line::from(spans));
+        push_message_line(line);
     }
 
     out

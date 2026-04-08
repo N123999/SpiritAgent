@@ -14,6 +14,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct ChatArchive {
     pub messages: Vec<(String, String)>,
+    pub assistant_thinking: Vec<(usize, String)>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
