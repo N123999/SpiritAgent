@@ -129,6 +129,40 @@ enum McpAction {
         #[arg(long, default_value_t = false)]
         force: bool,
     },
+    Trust {
+        name: String,
+    },
+    Untrust {
+        name: String,
+    },
+    Enable {
+        name: String,
+    },
+    Disable {
+        name: String,
+    },
+    Inspect {
+        name: String,
+    },
+    Tools {
+        name: String,
+    },
+    Resources {
+        name: String,
+    },
+    Prompts {
+        name: String,
+    },
+    ReadResource {
+        name: String,
+        uri: String,
+    },
+    GetPrompt {
+        name: String,
+        prompt: String,
+        #[arg(long)]
+        args_json: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -218,6 +252,24 @@ fn into_mcp_command(action: McpAction) -> McpCommand {
                 McpScopeArg::Workspace => McpConfigScope::Workspace,
             },
             force,
+        },
+        McpAction::Trust { name } => McpCommand::Trust { name },
+        McpAction::Untrust { name } => McpCommand::Untrust { name },
+        McpAction::Enable { name } => McpCommand::Enable { name },
+        McpAction::Disable { name } => McpCommand::Disable { name },
+        McpAction::Inspect { name } => McpCommand::Inspect { name },
+        McpAction::Tools { name } => McpCommand::Tools { name },
+        McpAction::Resources { name } => McpCommand::Resources { name },
+        McpAction::Prompts { name } => McpCommand::Prompts { name },
+        McpAction::ReadResource { name, uri } => McpCommand::ReadResource { name, uri },
+        McpAction::GetPrompt {
+            name,
+            prompt,
+            args_json,
+        } => McpCommand::GetPrompt {
+            name,
+            prompt,
+            args_json,
         },
     }
 }

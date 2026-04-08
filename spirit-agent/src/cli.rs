@@ -3,7 +3,10 @@ use std::env;
 
 use crate::{
     adapters::{DefaultAppPaths, JsonConfigStore, KeyringSecretStore},
-    mcp::{McpConfigScope, example_github_mcp_config, load_merged_mcp_config, save_mcp_config},
+    mcp::{
+        McpConfigScope, example_github_mcp_config, load_merged_mcp_config, save_mcp_config,
+        set_server_enabled, set_server_trusted,
+    },
     mcp_manager::McpManager,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, ConfigStore, SecretStore},
@@ -51,6 +54,39 @@ pub enum McpCommand {
     Init {
         scope: McpConfigScope,
         force: bool,
+    },
+    Trust {
+        name: String,
+    },
+    Untrust {
+        name: String,
+    },
+    Enable {
+        name: String,
+    },
+    Disable {
+        name: String,
+    },
+    Inspect {
+        name: String,
+    },
+    Tools {
+        name: String,
+    },
+    Resources {
+        name: String,
+    },
+    Prompts {
+        name: String,
+    },
+    ReadResource {
+        name: String,
+        uri: String,
+    },
+    GetPrompt {
+        name: String,
+        prompt: String,
+        args_json: Option<String>,
     },
 }
 
@@ -233,7 +269,9 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
         McpCommand::Init { scope, force } => {
             let path = match scope {
                 McpConfigScope::User => crate::mcp::user_mcp_config_path(),
-                McpConfigScope::Workspace => crate::mcp::workspace_mcp_config_path(&workspace_root),
+                McpConfigScope::Workspace => {
+                    crate::mcp::workspace_mcp_config_path(&workspace_root)
+                }
             };
 
             save_mcp_config(&path, &example_github_mcp_config(), force)?;
@@ -241,9 +279,194 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit-agent mcp list` 检查配置。"
             );
         }
+        McpCommand::Trust { name } => {
+            let (path, scope) = set_server_trusted(&workspace_root, &name, true)?;
+            println!(
+                "已信任 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                name,
+                path.display(),
+                scope
+            );
+        }
+        McpCommand::Untrust { name } => {
+            let (path, scope) = set_server_trusted(&workspace_root, &name, false)?;
+            println!(
+                "已取消信任 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                name,
+                path.display(),
+                scope
+            );
+        }
+        McpCommand::Enable { name } => {
+            let (path, scope) = set_server_enabled(&workspace_root, &name, true)?;
+            println!(
+                "已启用 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                name,
+                path.display(),
+                scope
+            );
+        }
+        McpCommand::Disable { name } => {
+            let (path, scope) = set_server_enabled(&workspace_root, &name, false)?;
+            println!(
+                "已禁用 MCP server: {}\n配置文件: {}\n配置层级: {}",
+                name,
+                path.display(),
+                scope
+            );
+        }
+        McpCommand::Inspect { name } => {
+            let manager = McpManager::load(workspace_root)?;
+            let inspection = manager.inspect_server(&name)?;
+            println!("server: {}", inspection.name);
+            println!("display: {}", inspection.display_name);
+            println!("source: {}", inspection.source);
+            println!("protocol_version: {}", inspection.protocol_version);
+            println!("peer.name: {}", inspection.server_name);
+            println!("peer.version: {}", inspection.server_version);
+            if let Some(title) = inspection.server_title {
+                println!("peer.title: {}", title);
+            }
+            if let Some(description) = inspection.server_description {
+                println!("peer.description: {}", description);
+            }
+            if let Some(instructions) = inspection.instructions {
+                println!("instructions:\n{}", instructions);
+            }
+            println!("capabilities:");
+            println!("  tools: {}", yes_no(inspection.supports_tools));
+            println!("  resources: {}", yes_no(inspection.supports_resources));
+            println!("  prompts: {}", yes_no(inspection.supports_prompts));
+            println!("  logging: {}", yes_no(inspection.supports_logging));
+            println!("  completions: {}", yes_no(inspection.supports_completions));
+            println!("  tools.listChanged: {}", yes_no(inspection.tools_list_changed));
+            println!(
+                "  resources.listChanged: {}",
+                yes_no(inspection.resources_list_changed)
+            );
+            println!("  prompts.listChanged: {}", yes_no(inspection.prompts_list_changed));
+            println!("counts:");
+            println!("  tools: {}", inspection.tools_count);
+            println!("  resources: {}", inspection.resources_count);
+            println!("  resource_templates: {}", inspection.resource_templates_count);
+            println!("  prompts: {}", inspection.prompts_count);
+        }
+        McpCommand::Tools { name } => {
+            let manager = McpManager::load(workspace_root)?;
+            let tools = manager.list_tools(&name)?;
+            if tools.is_empty() {
+                println!("MCP server {} 当前没有可见 tools。", name);
+            } else {
+                println!("tools ({}):", tools.len());
+                for tool in tools {
+                    println!("  - {}", tool.name);
+                    if let Some(title) = tool.title {
+                        println!("    title: {}", title);
+                    }
+                    if let Some(description) = tool.description {
+                        println!("    description: {}", description);
+                    }
+                }
+            }
+        }
+        McpCommand::Resources { name } => {
+            let manager = McpManager::load(workspace_root)?;
+            let resources = manager.list_resources(&name)?;
+            if resources.is_empty() {
+                println!("MCP server {} 当前没有可见 resources。", name);
+            } else {
+                println!("resources ({}):", resources.len());
+                for resource in resources {
+                    println!("  - {}", resource.uri);
+                    println!("    name: {}", resource.name);
+                    if let Some(title) = resource.title {
+                        println!("    title: {}", title);
+                    }
+                    if let Some(description) = resource.description {
+                        println!("    description: {}", description);
+                    }
+                    if let Some(mime) = resource.mime_type {
+                        println!("    mime: {}", mime);
+                    }
+                    if let Some(size) = resource.size {
+                        println!("    size: {}", size);
+                    }
+                }
+            }
+        }
+        McpCommand::Prompts { name } => {
+            let manager = McpManager::load(workspace_root)?;
+            let prompts = manager.list_prompts(&name)?;
+            if prompts.is_empty() {
+                println!("MCP server {} 当前没有可见 prompts。", name);
+            } else {
+                println!("prompts ({}):", prompts.len());
+                for prompt in prompts {
+                    println!("  - {}", prompt.name);
+                    if let Some(title) = prompt.title {
+                        println!("    title: {}", title);
+                    }
+                    if let Some(description) = prompt.description {
+                        println!("    description: {}", description);
+                    }
+                    if !prompt.arguments.is_empty() {
+                        println!("    arguments:");
+                        for arg in prompt.arguments {
+                            println!(
+                                "      - {}{}",
+                                arg.name,
+                                if arg.required { " (required)" } else { "" }
+                            );
+                            if let Some(title) = arg.title {
+                                println!("        title: {}", title);
+                            }
+                            if let Some(description) = arg.description {
+                                println!("        description: {}", description);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        McpCommand::ReadResource { name, uri } => {
+            let manager = McpManager::load(workspace_root)?;
+            let value = manager.read_resource(&name, &uri)?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+        McpCommand::GetPrompt {
+            name,
+            prompt,
+            args_json,
+        } => {
+            let manager = McpManager::load(workspace_root)?;
+            let arguments = parse_optional_json_object(args_json.as_deref())?;
+            let value = manager.get_prompt(&name, &prompt, arguments)?;
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
     }
 
     Ok(())
+}
+
+fn parse_optional_json_object(input: Option<&str>) -> Result<Option<serde_json::Map<String, serde_json::Value>>> {
+    let Some(raw) = input else {
+        return Ok(None);
+    };
+
+    let value: serde_json::Value =
+        serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))?;
+    match value {
+        serde_json::Value::Object(map) => Ok(Some(map)),
+        _ => Err(anyhow!("args-json 必须是 JSON object，例如 `{{\"owner\":\"microsoft\"}}`")),
+    }
+}
+
+fn yes_no(flag: bool) -> &'static str {
+    if flag {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 fn handle_key_cli(action: KeyCommand, secret_store: &KeyringSecretStore) -> Result<()> {

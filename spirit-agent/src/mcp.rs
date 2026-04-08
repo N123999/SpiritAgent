@@ -188,6 +188,13 @@ pub fn workspace_mcp_config_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(WORKSPACE_MCP_DIR).join(MCP_CONFIG_FILE_NAME)
 }
 
+pub fn config_path_for_scope(scope: McpConfigScope, workspace_root: &Path) -> PathBuf {
+    match scope {
+        McpConfigScope::User => user_mcp_config_path(),
+        McpConfigScope::Workspace => workspace_mcp_config_path(workspace_root),
+    }
+}
+
 pub fn load_merged_mcp_config(workspace_root: &Path) -> Result<LoadedMcpConfig> {
     let user_path = user_mcp_config_path();
     let workspace_path = workspace_mcp_config_path(workspace_root);
@@ -203,6 +210,15 @@ pub fn load_merged_mcp_config(workspace_root: &Path) -> Result<LoadedMcpConfig> 
         merged,
         server_sources,
     })
+}
+
+pub fn load_mcp_config_for_scope(
+    scope: McpConfigScope,
+    workspace_root: &Path,
+) -> Result<(PathBuf, McpConfigFile)> {
+    let path = config_path_for_scope(scope, workspace_root);
+    let config = load_mcp_config_file(&path)?.unwrap_or_default();
+    Ok((path, config))
 }
 
 pub fn save_mcp_config(path: &Path, config: &McpConfigFile, overwrite: bool) -> Result<()> {
@@ -272,6 +288,47 @@ pub fn resolve_env_map(env_map: &BTreeMap<String, String>) -> Result<BTreeMap<St
         .iter()
         .map(|(key, value)| Ok((key.clone(), resolve_env_value(value)?)))
         .collect()
+}
+
+pub fn set_server_trusted(
+    workspace_root: &Path,
+    name: &str,
+    trusted: bool,
+) -> Result<(PathBuf, McpConfigScope)> {
+    mutate_existing_server(workspace_root, name, |server| {
+        server.trusted = trusted;
+    })
+}
+
+pub fn set_server_enabled(
+    workspace_root: &Path,
+    name: &str,
+    enabled: bool,
+) -> Result<(PathBuf, McpConfigScope)> {
+    mutate_existing_server(workspace_root, name, |server| {
+        server.enabled = enabled;
+    })
+}
+
+fn mutate_existing_server(
+    workspace_root: &Path,
+    name: &str,
+    mutator: impl FnOnce(&mut McpServerConfig),
+) -> Result<(PathBuf, McpConfigScope)> {
+    let loaded = load_merged_mcp_config(workspace_root)?;
+    let scope = loaded
+        .server_sources
+        .get(name)
+        .copied()
+        .ok_or_else(|| anyhow!("未找到 MCP server: {}", name))?;
+    let (path, mut config) = load_mcp_config_for_scope(scope, workspace_root)?;
+    let server = config
+        .servers
+        .get_mut(name)
+        .ok_or_else(|| anyhow!("MCP server {} 未定义在 {} 配置中", name, scope))?;
+    mutator(server);
+    save_mcp_config(&path, &config, true)?;
+    Ok((path, scope))
 }
 
 fn load_mcp_config_file(path: &Path) -> Result<Option<McpConfigFile>> {
@@ -375,5 +432,48 @@ mod tests {
             }
             other => panic!("unexpected transport: {other:?}"),
         }
+    }
+
+    #[test]
+    fn trust_mutation_updates_workspace_config_file() {
+        let workspace_root = unique_test_workspace("trust-mutation");
+        let (path, mut config) = load_mcp_config_for_scope(McpConfigScope::Workspace, &workspace_root)
+            .expect("load scope config");
+        config.servers.insert(
+            "github".to_string(),
+            McpServerConfig {
+                display_name: Some("GitHub MCP".to_string()),
+                enabled: true,
+                trusted: false,
+                capabilities: McpCapabilityToggles::default(),
+                transport: McpTransportConfig::Stdio {
+                    command: "npx".to_string(),
+                    args: vec!["-y".to_string()],
+                    env: BTreeMap::new(),
+                    cwd: None,
+                    timeout_ms: None,
+                },
+            },
+        );
+        save_mcp_config(&path, &config, true).expect("seed config file");
+
+        let (updated_path, scope) =
+            set_server_trusted(&workspace_root, "github", true).expect("update trust");
+        let (_, updated) = load_mcp_config_for_scope(scope, &workspace_root).expect("reload scope");
+        let github = updated.servers.get("github").expect("github config exists");
+
+        assert_eq!(updated_path, path);
+        assert_eq!(scope, McpConfigScope::Workspace);
+        assert!(github.trusted);
+
+        let _ = fs::remove_dir_all(workspace_root);
+    }
+
+    fn unique_test_workspace(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time ok")
+            .as_nanos();
+        std::env::temp_dir().join(format!("spirit-agent-{tag}-{nanos}"))
     }
 }
