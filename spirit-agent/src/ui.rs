@@ -4,7 +4,7 @@ use comrak::{
     parse_document,
 };
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -154,19 +154,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
 
     if show_bottom_form {
         if let Some(form) = &app.bottom_form {
-            let render = build_bottom_form_render(form, chunks[2].width.saturating_sub(2) as usize);
-            let form_widget = Paragraph::new(render.lines)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(form.title.clone()),
-                )
-                .wrap(Wrap { trim: false });
-            frame.render_widget(form_widget, chunks[2]);
-
-            if let Some((cursor_row, cursor_col)) = render.cursor {
-                let cursor_x = chunks[2].x + 1 + cursor_col.min(chunks[2].width.saturating_sub(3));
-                let cursor_y = chunks[2].y + 1 + cursor_row.min(chunks[2].height.saturating_sub(3));
+            if let Some((cursor_x, cursor_y)) = draw_bottom_form(frame, chunks[2], form) {
                 frame.set_cursor_position((cursor_x, cursor_y));
             }
         }
@@ -1479,102 +1467,200 @@ fn build_image_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
 }
 
 fn bottom_form_block_height(form: &BottomFormView) -> u16 {
-    (form.fields.len().saturating_mul(2).saturating_add(3)) as u16
+    (form.fields.len().saturating_mul(4).saturating_add(4)) as u16
 }
 
-struct BottomFormRender {
-    lines: Vec<Line<'static>>,
-    cursor: Option<(u16, u16)>,
-}
+fn draw_bottom_form(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    form: &BottomFormView,
+) -> Option<(u16, u16)> {
+    let outer_style = subtle_aux_text_style();
+    let outer_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(outer_style)
+        .title(Line::from(Span::styled(form.title.clone(), outer_style)));
+    let inner_area = outer_block.inner(area);
+    frame.render_widget(outer_block, area);
 
-fn build_bottom_form_render(form: &BottomFormView, width: usize) -> BottomFormRender {
-    let mut lines = Vec::new();
+    let content_area = inset_rect(inner_area, 2, 1);
+    if content_area.width < 3 || content_area.height == 0 {
+        return None;
+    }
+
     let mut cursor = None;
-    let safe_width = width.max(1);
-
+    let mut field_y = content_area.y;
     for (index, field) in form.fields.iter().enumerate() {
-        let is_selected = index == form.selected_field;
-        let marker = if is_selected { "› " } else { "  " };
-        let label_prefix = format!("{}{}: ", marker, field.label);
-        let label_width = UnicodeWidthStr::width(label_prefix.as_str());
-        let remaining_width = safe_width.saturating_sub(label_width);
-        let label_style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
+        let field_area = Rect {
+            x: content_area.x,
+            y: field_y,
+            width: content_area.width,
+            height: 3,
         };
 
-        match &field.editor {
+        let field_cursor = match &field.editor {
             BottomFormFieldEditorView::Text {
                 value,
                 placeholder,
-                cursor: text_cursor,
-            } => {
-                let display_value = if value.is_empty() { placeholder } else { value };
-                let value_style = if value.is_empty() {
-                    Style::default().fg(Color::DarkGray)
-                } else if is_selected {
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::REVERSED)
-                } else {
-                    Style::default().fg(Color::White)
-                };
-                let visible_value = truncate_to_width(display_value, remaining_width.max(1));
-                lines.push(Line::from(vec![
-                    Span::styled(label_prefix.clone(), label_style),
-                    Span::styled(visible_value, value_style),
-                ]));
-
-                if is_selected {
-                    let prefix_width = if value.is_empty() {
-                        0
-                    } else {
-                        UnicodeWidthStr::width(
-                            value
-                                .chars()
-                                .take(*text_cursor)
-                                .collect::<String>()
-                                .as_str(),
-                        )
-                    };
-                    cursor = Some((
-                        lines.len().saturating_sub(1) as u16,
-                        (label_width + prefix_width.min(remaining_width)) as u16,
-                    ));
-                }
-            }
+                cursor,
+            } => draw_bottom_form_text_field(
+                frame,
+                field_area,
+                value,
+                placeholder,
+                *cursor,
+                index == form.selected_field,
+            ),
             BottomFormFieldEditorView::Choice { options, selected } => {
-                let mut spans = vec![Span::styled(label_prefix.clone(), label_style)];
-                for (option_index, option) in options.iter().enumerate() {
-                    if option_index > 0 {
-                        spans.push(Span::raw("  "));
-                    }
-                    let option_style = if option_index == *selected {
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-                    } else {
-                        Style::default().fg(Color::Gray)
-                    };
-                    spans.push(Span::styled(option.clone(), option_style));
-                }
-                lines.push(Line::from(spans));
+                draw_bottom_form_choice_field(
+                    frame,
+                    field_area,
+                    &field.label,
+                    options,
+                    *selected,
+                    index == form.selected_field,
+                )
             }
+        };
+
+        if index == form.selected_field {
+            cursor = field_cursor;
         }
 
-        lines.push(Line::from(Span::styled(
-            truncate_to_width(&field.help, safe_width),
-            Style::default().fg(Color::DarkGray),
-        )));
+        field_y = field_y.saturating_add(4);
     }
 
-    lines.push(Line::from(Span::styled(
-        truncate_to_width(&form.footer_hint, safe_width),
-        Style::default().fg(Color::DarkGray),
-    )));
+    let footer_area = Rect {
+        x: content_area.x,
+        y: content_area.y + content_area.height.saturating_sub(1),
+        width: content_area.width,
+        height: 1,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            truncate_to_width(&form.footer_hint, footer_area.width as usize),
+            subtle_aux_text_style(),
+        ))),
+        footer_area,
+    );
 
-    BottomFormRender { lines, cursor }
+    cursor
+}
+
+fn draw_bottom_form_text_field(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    value: &str,
+    placeholder: &str,
+    cursor_chars: usize,
+    is_selected: bool,
+) -> Option<(u16, u16)> {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(bottom_form_field_style(is_selected));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let display_text = if value.is_empty() { placeholder } else { value };
+    let display_style = if value.is_empty() {
+        subtle_aux_text_style()
+    } else if is_selected {
+        Style::default().fg(Color::White)
+    } else {
+        subtle_aux_text_style()
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            truncate_to_width(display_text, inner.width as usize),
+            display_style,
+        ))),
+        inner,
+    );
+
+    if !is_selected {
+        return None;
+    }
+
+    let cursor_offset = UnicodeWidthStr::width(
+        value
+            .chars()
+            .take(cursor_chars)
+            .collect::<String>()
+            .as_str(),
+    )
+    .min(inner.width.saturating_sub(1) as usize) as u16;
+    Some((inner.x + cursor_offset, inner.y))
+}
+
+fn draw_bottom_form_choice_field(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    label: &str,
+    options: &[String],
+    selected: usize,
+    is_selected: bool,
+) -> Option<(u16, u16)> {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(bottom_form_field_style(is_selected));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut spans = vec![Span::styled(
+        format!("{}  ", label),
+        subtle_aux_text_style(),
+    )];
+    let safe_selected = selected.min(options.len().saturating_sub(1));
+    let mut cursor_offset = UnicodeWidthStr::width(label).saturating_add(2) as u16;
+
+    for (index, option) in options.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled("   ", subtle_aux_text_style()));
+            cursor_offset = cursor_offset.saturating_add(3);
+        }
+
+        let option_style = if is_selected && index == safe_selected {
+            Style::default().fg(Color::White)
+        } else {
+            subtle_aux_text_style()
+        };
+
+        if index < safe_selected {
+            cursor_offset =
+                cursor_offset.saturating_add(UnicodeWidthStr::width(option.as_str()) as u16);
+        }
+
+        spans.push(Span::styled(option.clone(), option_style));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), inner);
+
+    if is_selected {
+        Some((
+            inner.x + cursor_offset.min(inner.width.saturating_sub(1)),
+            inner.y,
+        ))
+    } else {
+        None
+    }
+}
+
+fn bottom_form_field_style(is_selected: bool) -> Style {
+    if is_selected {
+        Style::default().fg(Color::White)
+    } else {
+        subtle_aux_text_style()
+    }
+}
+
+fn inset_rect(area: Rect, horizontal: u16, vertical: u16) -> Rect {
+    let double_h = horizontal.saturating_mul(2);
+    let double_v = vertical.saturating_mul(2);
+    Rect {
+        x: area.x.saturating_add(horizontal.min(area.width)),
+        y: area.y.saturating_add(vertical.min(area.height)),
+        width: area.width.saturating_sub(double_h),
+        height: area.height.saturating_sub(double_v),
+    }
 }

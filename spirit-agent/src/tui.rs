@@ -2178,16 +2178,16 @@ fn new_mcp_add_form() -> BottomFormView {
         fields: vec![
             BottomFormFieldView {
                 label: "名称".to_string(),
-                help: "用于 /mcp 命令引用；建议只用字母、数字、-、_。".to_string(),
+                help: String::new(),
                 editor: BottomFormFieldEditorView::Text {
                     value: String::new(),
-                    placeholder: "例如 github".to_string(),
+                    placeholder: "名称，例如 github".to_string(),
                     cursor: 0,
                 },
             },
             BottomFormFieldView {
                 label: "类型".to_string(),
-                help: "左右键切换传输方式。".to_string(),
+                help: String::new(),
                 editor: BottomFormFieldEditorView::Choice {
                     options: vec!["STDIO".to_string(), "HTTP".to_string()],
                     selected: 0,
@@ -2228,18 +2228,15 @@ fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
     if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_ENDPOINT) {
         if is_http {
             field.label = "URL".to_string();
-            field.help =
-                "填写 Streamable HTTP endpoint，例如 https://example.com/mcp。".to_string();
+            field.help = String::new();
             if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder = "https://example.com/mcp".to_string();
+                *placeholder = "URL，例如 https://example.com/mcp".to_string();
             }
         } else {
             field.label = "命令".to_string();
-            field.help =
-                "填写启动命令，可包含参数，例如 npx -y @modelcontextprotocol/server-github。"
-                    .to_string();
+            field.help = String::new();
             if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder = "npx -y @modelcontextprotocol/server-github".to_string();
+                *placeholder = "命令，例如 npx -y @modelcontextprotocol/server-github".to_string();
             }
         }
     }
@@ -2247,15 +2244,18 @@ fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
     if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_METADATA) {
         if is_http {
             field.label = "请求头".to_string();
-            field.help = "可选，格式为 KEY=VALUE; KEY2=VALUE。支持 ${env:VAR}。".to_string();
+            field.help = String::new();
             if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder = "Authorization=Bearer ${env:GITHUB_TOKEN}".to_string();
+                *placeholder =
+                    "请求头，可选，例如 Authorization=Bearer ${env:GITHUB_TOKEN}".to_string();
             }
         } else {
             field.label = "环境变量".to_string();
-            field.help = "可选，格式为 KEY=VALUE; KEY2=VALUE。支持 ${env:VAR}。".to_string();
+            field.help = String::new();
             if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                *placeholder = "GITHUB_PERSONAL_ACCESS_TOKEN=${env:GITHUB_TOKEN}".to_string();
+                *placeholder =
+                    "环境变量，可选，例如 GITHUB_PERSONAL_ACCESS_TOKEN=${env:GITHUB_TOKEN}"
+                        .to_string();
             }
         }
     }
