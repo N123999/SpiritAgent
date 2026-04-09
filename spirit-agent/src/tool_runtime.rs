@@ -415,13 +415,13 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "list_directory_files",
-                    "description": "List all files recursively under one directory. The input path must be an absolute directory path. Use this instead of shell ls, dir, or find when you only need a directory inventory.",
+                    "description": "List all files and directories under one directory (non-recursive). The input path must be an absolute directory path. Use this instead of shell ls, dir, or find when you only need a directory inventory.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "path": {
                                 "type": "string",
-                                "description": "Absolute directory path to enumerate recursively. Returns file paths only."
+                                "description": "Absolute directory path to enumerate. Returns file and directory paths in the specified directory only (non-recursive)."
                             }
                         },
                         "required": ["path"],
@@ -720,75 +720,74 @@ impl ToolRuntime {
 
     fn execute_list_directory(&self, path: &str) -> Result<String> {
         let root = self.resolve_existing_absolute_directory(path)?;
-        let mut directories = vec![root.clone()];
         let mut files = Vec::new();
+        let mut directories = Vec::new();
         let mut skipped_dirs = 0usize;
         let mut skipped_symlinks = 0usize;
         let mut truncated = false;
 
-        while let Some(dir) = directories.pop() {
-            let entries = match fs::read_dir(&dir) {
-                Ok(v) => v,
-                Err(_) => {
-                    skipped_dirs += 1;
-                    continue;
-                }
-            };
-
-            let mut child_dirs = Vec::new();
-            let mut child_files = Vec::new();
-
-            for entry in entries.flatten() {
-                let file_type = match entry.file_type() {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let entry_path = entry.path();
-
-                if file_type.is_symlink() {
-                    skipped_symlinks += 1;
-                } else if file_type.is_dir() {
-                    child_dirs.push(entry_path);
-                } else if file_type.is_file() {
-                    child_files.push(entry_path);
-                }
+        let entries = match fs::read_dir(&root) {
+            Ok(v) => v,
+            Err(_) => {
+                skipped_dirs += 1;
+                return Ok(format!(
+                    "[list]\npath: {}\nfiles: 0\ntruncated: false\nskipped_dirs: {}\nskipped_symlinks: {}\n\n（无法读取目录）",
+                    root.display(),
+                    skipped_dirs,
+                    skipped_symlinks,
+                ));
             }
+        };
 
-            child_dirs.sort();
-            child_files.sort();
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let entry_path = entry.path();
 
-            for file in child_files {
-                files.push(file);
+            if file_type.is_symlink() {
+                skipped_symlinks += 1;
+            } else if file_type.is_dir() {
+                directories.push(entry_path);
+            } else if file_type.is_file() {
+                files.push(entry_path);
                 if files.len() >= MAX_DIRECTORY_LIST_RESULTS {
                     truncated = true;
                     break;
                 }
             }
-
-            if truncated {
-                break;
-            }
-
-            for child_dir in child_dirs.into_iter().rev() {
-                directories.push(child_dir);
-            }
         }
 
+        directories.sort();
+        files.sort();
+
         let mut out = format!(
-            "[list]\npath: {}\nfiles: {}\ntruncated: {}\nskipped_dirs: {}\nskipped_symlinks: {}\n\n",
+            "[list]\npath: {}\ndirectories: {}\nfiles: {}\ntruncated: {}\nskipped_dirs: {}\nskipped_symlinks: {}\n\n",
             root.display(),
+            directories.len(),
             files.len(),
             if truncated { "true" } else { "false" },
             skipped_dirs,
             skipped_symlinks,
         );
 
-        if files.is_empty() {
-            out.push_str("（未找到文件）");
+        if directories.is_empty() && files.is_empty() {
+            out.push_str("（目录为空）");
         } else {
-            out.push_str("files\n");
-            for file in files {
-                out.push_str(&format!("{}\n", file.display()));
+            if !directories.is_empty() {
+                out.push_str("directories\n");
+                for dir in directories {
+                    out.push_str(&format!("{}\n", dir.display()));
+                }
+                out.push_str("\n");
+            }
+
+            if !files.is_empty() {
+                out.push_str("files\n");
+                for file in files {
+                    out.push_str(&format!("{}\n", file.display()));
+                }
             }
         }
 
