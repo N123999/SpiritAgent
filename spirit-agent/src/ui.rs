@@ -18,7 +18,8 @@ use crate::{
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
     view::{
-        AssistantAuxKind, BottomFormFieldEditorView, BottomFormView, ChatMessage, MessageRole,
+        AssistantAuxKind, BottomFormFieldEditorView, BottomFormView, ChatMessage,
+        InputSuggestionKind, MessageRole,
         PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
@@ -58,7 +59,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_image_picker = app.image_picker_active;
     let show_bottom_form = app.bottom_form.is_some();
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
-    let show_suggestions = app.input.starts_with('/') && !show_picker && !show_bottom_form;
+    let show_suggestions = app.input_suggestion_kind.is_some() && !show_picker && !show_bottom_form;
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_suggestions || show_bottom_form {
@@ -202,7 +203,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Slash Commands"),
+                    .title(input_suggestion_title(&app)),
             )
             .wrap(Wrap { trim: true });
         frame.render_widget(suggestions_widget, chunks[2]);
@@ -1267,15 +1268,36 @@ fn build_suggestion_lines(
     let default_style = subtle_aux_text_style();
     let selected_style = Style::default().fg(Color::White);
 
-    if !app.input.starts_with('/') {
+    match app.input_suggestion_kind {
+        Some(InputSuggestionKind::Slash) => {}
+        Some(InputSuggestionKind::FileReference) if app.input_suggestion_loading => {
+            return vec![Line::from(Span::styled(
+                "正在索引工作区文件...",
+                default_style,
+            ))];
+        }
+        Some(InputSuggestionKind::FileReference) => {}
+        None => {
+            return vec![Line::from(Span::styled(
+                "输入 / 触发命令补全，输入 @ 触发文件引用",
+                default_style,
+            ))];
+        }
+    }
+
+    if app.slash_suggestions.is_empty() {
         return vec![Line::from(Span::styled(
-            "输入 / 触发命令补全",
+            match app.input_suggestion_kind {
+                Some(InputSuggestionKind::Slash) => "没有匹配的命令",
+                Some(InputSuggestionKind::FileReference) => "没有匹配的工作区文件",
+                None => "没有匹配项",
+            },
             default_style,
         ))];
     }
 
-    if app.slash_suggestions.is_empty() {
-        return vec![Line::from(Span::styled("没有匹配的命令", default_style))];
+    if matches!(app.input_suggestion_kind, Some(InputSuggestionKind::FileReference)) {
+        return build_file_reference_suggestion_lines(app, max_items, default_style, selected_style);
     }
 
     let selected = app.selected_suggestion;
@@ -1348,6 +1370,45 @@ fn build_suggestion_lines(
     }
 
     lines
+}
+
+fn build_file_reference_suggestion_lines(
+    app: &TuiViewModel,
+    max_items: usize,
+    default_style: Style,
+    selected_style: Style,
+) -> Vec<Line<'static>> {
+    let selected = app.selected_suggestion;
+    let total = app.slash_suggestions.len();
+    let window = max_items.max(1);
+    let start = if selected + 1 > window {
+        selected + 1 - window
+    } else {
+        0
+    };
+    let end = (start + window).min(total);
+
+    let mut lines = Vec::new();
+    for idx in start..end {
+        let path = &app.slash_suggestions[idx];
+        let is_selected = idx == selected;
+        let style = if is_selected { selected_style } else { default_style };
+        let prefix = if is_selected { "> " } else { "  " };
+        lines.push(Line::from(Span::styled(
+            format!("{}{}", prefix, path),
+            style,
+        )));
+    }
+
+    lines
+}
+
+fn input_suggestion_title(app: &TuiViewModel) -> &'static str {
+    match app.input_suggestion_kind {
+        Some(InputSuggestionKind::Slash) => "Slash Commands",
+        Some(InputSuggestionKind::FileReference) => "File References",
+        None => "Suggestions",
+    }
 }
 
 fn suggestion_summary(command: &str) -> &'static str {
@@ -1895,6 +1956,8 @@ mod tests {
             assistant_aux_by_message: HashMap::new(),
             config: AppConfig::default(),
             show_aux_details: true,
+            input_suggestion_kind: None,
+            input_suggestion_loading: false,
             slash_suggestions: vec![],
             selected_suggestion: 0,
             model_picker_active: false,

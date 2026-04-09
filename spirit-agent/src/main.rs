@@ -528,8 +528,8 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
         return;
     }
 
-    let slash_mode =
-        shell.is_slash_mode_active() && !shell.view_model().slash_suggestions.is_empty();
+    let suggestion_mode =
+        shell.is_input_suggestion_active() && !shell.view_model().slash_suggestions.is_empty();
     let should_insert_newline =
         matches!(key.code, KeyCode::Enter) && enter_should_insert_newline(key.modifiers);
     maybe_log_key_event(&key, should_insert_newline);
@@ -556,9 +556,9 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
         KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             shell.toggle_aux_details()
         }
-        KeyCode::Up if slash_mode => shell.select_prev_suggestion(),
-        KeyCode::Down if slash_mode => shell.select_next_suggestion(),
-        KeyCode::Tab if slash_mode => shell.apply_selected_suggestion(),
+        KeyCode::Up if suggestion_mode => shell.select_prev_suggestion(),
+        KeyCode::Down if suggestion_mode => shell.select_next_suggestion(),
+        KeyCode::Tab if suggestion_mode => shell.apply_selected_suggestion(),
         KeyCode::PageUp => shell.scroll_history_up(8),
         KeyCode::PageDown => shell.scroll_history_down(8),
         KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -575,6 +575,13 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             shell.insert_newline_at_cursor();
             shell.clamp_cursor();
             shell.refresh_suggestions();
+        }
+        KeyCode::Enter
+            if shell.is_file_reference_mode_active()
+                && (shell.view_model().input_suggestion_loading
+                    || !shell.view_model().slash_suggestions.is_empty()) =>
+        {
+            shell.confirm_selected_file_reference();
         }
         KeyCode::Enter => shell.submit_input(),
         KeyCode::Backspace if shell.should_exit_shell_mode_on_backspace() => {

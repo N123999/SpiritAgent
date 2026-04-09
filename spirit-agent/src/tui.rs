@@ -23,9 +23,12 @@ use crate::{
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
-    shell::{bottom_form, manual_shell, slash},
+    shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
-    view::{AssistantAuxData, BottomFormView, ChatMessage, MessageRole, TuiViewModel},
+    view::{
+        AssistantAuxData, BottomFormView, ChatMessage, InputSuggestionKind, MessageRole,
+        TuiViewModel,
+    },
 };
 
 struct PendingShellExecution {
@@ -49,6 +52,9 @@ pub struct TuiShell {
     input: String,
     input_cursor: usize,
     shell_mode_active: bool,
+    file_reference_index: Vec<String>,
+    pending_file_reference_index_rx: Option<Receiver<Vec<String>>>,
+    file_reference_indexing: bool,
     messages: Vec<ChatMessage>,
     assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     show_aux_details: bool,
@@ -94,18 +100,27 @@ impl TuiShell {
             app_paths.as_ref(),
         ));
         let tool_executor = Box::new(WorkspaceToolExecutor::new());
+        let workspace_root = app_paths.workspace_root();
         let runtime = AgentRuntime::new(
             config.clone(),
             llm_transport,
             tool_executor,
-            app_paths.workspace_root(),
+            workspace_root.clone(),
         );
         let initial_mcp_status = runtime.mcp_status_snapshot();
+        let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
+        thread::spawn(move || {
+            let files = file_reference::collect_workspace_files(&workspace_root);
+            let _ = file_index_tx.send(files);
+        });
 
         Self {
             input: String::new(),
             input_cursor: 0,
             shell_mode_active: false,
+            file_reference_index: Vec::new(),
+            pending_file_reference_index_rx: Some(file_index_rx),
+            file_reference_indexing: true,
             messages: vec![welcome_message(
                 &config.active_model,
                 &initial_mcp_status.welcome_line(),
@@ -148,6 +163,22 @@ impl TuiShell {
             return;
         }
 
+        if let Some(query) = self.current_file_reference_query() {
+            if self.file_reference_indexing {
+                self.slash.suggestions.clear();
+                self.slash.selected_suggestion = 0;
+                return;
+            }
+
+            self.slash.suggestions =
+                file_reference::compute_suggestions(&query.raw, &self.file_reference_index);
+
+            if self.slash.selected_suggestion >= self.slash.suggestions.len() {
+                self.slash.selected_suggestion = 0;
+            }
+            return;
+        }
+
         let Some(query) = self.current_slash_query().map(ToString::to_string) else {
             self.slash.suggestions.clear();
             self.slash.selected_suggestion = 0;
@@ -165,6 +196,7 @@ impl TuiShell {
         self.runtime.poll();
         self.apply_runtime_events();
         self.poll_pending_shell_executions();
+        self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
     }
 
@@ -189,6 +221,9 @@ impl TuiShell {
             assistant_aux_by_message: self.assistant_aux_by_message.clone(),
             config: self.runtime.config().clone(),
             show_aux_details: self.show_aux_details,
+            input_suggestion_kind: self.current_input_suggestion_kind(),
+            input_suggestion_loading: self.file_reference_indexing
+                && self.current_file_reference_query().is_some(),
             slash_suggestions: self.slash.suggestions.clone(),
             selected_suggestion: self.slash.selected_suggestion,
             model_picker_active: self.model_picker_active,
@@ -373,6 +408,14 @@ impl TuiShell {
         self.current_slash_query().is_some()
     }
 
+    pub fn is_file_reference_mode_active(&self) -> bool {
+        self.current_file_reference_query().is_some()
+    }
+
+    pub fn is_input_suggestion_active(&self) -> bool {
+        self.current_input_suggestion_kind().is_some()
+    }
+
     pub fn is_shell_mode_active(&self) -> bool {
         self.shell_mode_active
     }
@@ -544,7 +587,6 @@ impl TuiShell {
                 .join(" | ");
             user_content.push_str(&format!("\n[attached mcp resources: {}]", summary));
         }
-
         self.messages.push(ChatMessage {
             role: MessageRole::User,
             content: user_content,
@@ -582,8 +624,44 @@ impl TuiShell {
     }
 
     pub fn apply_selected_suggestion(&mut self) {
-        if let Some(selected) = self.slash.suggestions.get(self.slash.selected_suggestion) {
-            self.set_input(slash::apply_value(selected));
+        if let Some(selected) = self
+            .slash
+            .suggestions
+            .get(self.slash.selected_suggestion)
+            .cloned()
+        {
+            match self.current_input_suggestion_kind() {
+                Some(InputSuggestionKind::Slash) => self.set_input(slash::apply_value(&selected)),
+                Some(InputSuggestionKind::FileReference) => {
+                    if !self.replace_current_file_reference(&selected, false) {
+                        return;
+                    }
+                }
+                None => return,
+            }
+            self.refresh_suggestions();
+        }
+    }
+
+    pub fn confirm_selected_file_reference(&mut self) {
+        if !self.is_file_reference_mode_active() {
+            return;
+        }
+        if self.file_reference_indexing {
+            self.push_agent_message("工作区文件索引仍在准备中，请稍候。");
+            return;
+        }
+
+        let Some(selected) = self
+            .slash
+            .suggestions
+            .get(self.slash.selected_suggestion)
+            .cloned()
+        else {
+            return;
+        };
+
+        if self.replace_current_file_reference(&selected, true) {
             self.refresh_suggestions();
         }
     }
@@ -2008,11 +2086,28 @@ impl TuiShell {
         }
     }
 
+    fn current_input_suggestion_kind(&self) -> Option<InputSuggestionKind> {
+        if self.current_file_reference_query().is_some() {
+            return Some(InputSuggestionKind::FileReference);
+        }
+        if self.current_slash_query().is_some() {
+            return Some(InputSuggestionKind::Slash);
+        }
+        None
+    }
+
     fn current_slash_query(&self) -> Option<&str> {
         if self.shell_mode_active {
             return None;
         }
         slash::current_query(&self.input)
+    }
+
+    fn current_file_reference_query(&self) -> Option<file_reference::ActiveReferenceQuery> {
+        if self.shell_mode_active {
+            return None;
+        }
+        file_reference::current_query(&self.input, self.input_cursor)
     }
 
     fn input_len_chars(&self) -> usize {
@@ -2033,6 +2128,38 @@ impl TuiShell {
     fn set_input(&mut self, value: String) {
         self.input = value;
         self.input_cursor = self.input_len_chars();
+    }
+
+    fn replace_current_file_reference(&mut self, selected: &str, finalize: bool) -> bool {
+        let Some(query) = self.current_file_reference_query() else {
+            return false;
+        };
+        let (next_input, next_cursor) =
+            file_reference::replace_query(&self.input, &query, selected, finalize);
+        self.input = next_input;
+        self.input_cursor = next_cursor;
+        true
+    }
+
+    fn poll_file_reference_index(&mut self) {
+        let Some(result_rx) = self.pending_file_reference_index_rx.take() else {
+            return;
+        };
+
+        match result_rx.try_recv() {
+            Ok(files) => {
+                self.file_reference_index = files;
+                self.file_reference_indexing = false;
+                self.refresh_suggestions();
+            }
+            Err(TryRecvError::Empty) => {
+                self.pending_file_reference_index_rx = Some(result_rx);
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.file_reference_indexing = false;
+                self.refresh_suggestions();
+            }
+        }
     }
 
     fn next_local_shell_tool_call_id(&mut self) -> String {

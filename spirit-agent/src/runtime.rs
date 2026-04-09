@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use std::{
     collections::VecDeque,
+    fs,
     path::PathBuf,
     sync::{
         Arc,
@@ -26,7 +27,8 @@ use crate::{
     ports::{
         LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor,
     },
-    session::{PendingMcpResource, SessionModel},
+    shell::file_reference,
+    session::{PendingMcpResource, PendingWorkspaceFile, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
     view::{
         AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase,
@@ -40,6 +42,7 @@ const TOOL_MEMORY_RETRY_MAX_CHARS: usize = 4_000;
 const TOOL_TRUNCATION_HEAD_RATIO_NUM: usize = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN: usize = 3;
 const TOOL_MEMORY_PREFIX: &str = "[TOOL_MEMORY]";
+const PENDING_WORKSPACE_FILE_MAX_CHARS: usize = 24_000;
 
 pub enum RuntimeEvent {
     PushMessage(ChatMessage),
@@ -277,7 +280,12 @@ impl AgentRuntime {
 
     pub fn submit_user_turn(&mut self, text: String, explicit_images: Option<Vec<String>>) {
         let images = explicit_images.unwrap_or_else(|| self.session.take_pending_images());
+        let files = pending_workspace_files_from_input(&self.workspace_root, &text);
         let resources = self.session.take_pending_mcp_resources();
+        for file in files {
+            self.session
+                .record_context_message("system", format_pending_workspace_file_context(&file));
+        }
         for resource in resources {
             self.session
                 .record_context_message("system", format_pending_mcp_resource_context(&resource));
@@ -1817,9 +1825,73 @@ fn format_pending_mcp_resource_context(resource: &PendingMcpResource) -> String 
     )
 }
 
+fn format_pending_workspace_file_context(file: &PendingWorkspaceFile) -> String {
+    format!(
+        "[WORKSPACE_FILE]\npath: {}\nattached_at_unix_ms: {}\nchars: {}\ntruncated: {}\n\n{}",
+        file.path,
+        file.attached_at_unix_ms,
+        file.total_chars,
+        file.truncated,
+        file.content
+    )
+}
+
+fn pending_workspace_files_from_input(
+    workspace_root: &PathBuf,
+    text: &str,
+) -> Vec<PendingWorkspaceFile> {
+    file_reference::referenced_paths(text)
+        .into_iter()
+        .filter_map(|path| pending_workspace_file_from_path(workspace_root, &path).ok())
+        .collect()
+}
+
+fn pending_workspace_file_from_path(
+    workspace_root: &PathBuf,
+    path: &str,
+) -> Result<PendingWorkspaceFile> {
+    let target = workspace_root.join(path);
+    let metadata = fs::metadata(&target)
+        .map_err(|err| anyhow!("读取文件元信息失败: {} ({})", target.display(), err))?;
+    if !metadata.is_file() {
+        return Err(anyhow!("不是可引用的文件: {}", target.display()));
+    }
+
+    let bytes = fs::read(&target)
+        .map_err(|err| anyhow!("读取文件失败: {} ({})", target.display(), err))?;
+    if bytes.contains(&0) {
+        return Err(anyhow!("暂不支持引用二进制文件: {}", path));
+    }
+
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    let total_chars = text.chars().count();
+    let truncated = total_chars > PENDING_WORKSPACE_FILE_MAX_CHARS;
+    let content = if truncated {
+        let mut snippet = text
+            .chars()
+            .take(PENDING_WORKSPACE_FILE_MAX_CHARS)
+            .collect::<String>();
+        snippet.push_str("\n\n...<文件内容已截断>");
+        snippet
+    } else {
+        text
+    };
+
+    Ok(PendingWorkspaceFile::new(
+        path.replace('\\', "/"),
+        total_chars,
+        truncated,
+        content,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        env, fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn background_execution_only_covers_search_and_mcp() {
@@ -1847,6 +1919,30 @@ mod tests {
             }),
             Some("搜索中: session store".to_string())
         );
+    }
+
+    #[test]
+    fn pending_workspace_files_from_input_extracts_existing_references() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let workspace_root = env::temp_dir().join(format!("spirit-agent-runtime-{unique}"));
+        fs::create_dir_all(workspace_root.join("src")).unwrap();
+        fs::write(workspace_root.join("src/runtime.rs"), "fn main() {}\n").unwrap();
+        fs::write(workspace_root.join("README.md"), "hello\n").unwrap();
+
+        let files = pending_workspace_files_from_input(
+            &workspace_root,
+            "@src/runtime.rs 请参考 @README.md 和 @missing.rs",
+        );
+
+        assert_eq!(
+            files.iter().map(|file| file.path.as_str()).collect::<Vec<_>>(),
+            vec!["src/runtime.rs", "README.md"]
+        );
+
+        let _ = fs::remove_dir_all(workspace_root);
     }
 }
 

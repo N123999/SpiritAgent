@@ -4,6 +4,12 @@ use crate::model_registry::AppConfig;
 use crate::session::PendingMcpResource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputSuggestionKind {
+    Slash,
+    FileReference,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AssistantAuxKind {
     Thinking,
     Compressing,
@@ -119,6 +125,8 @@ pub struct TuiViewModel {
     pub assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     pub config: AppConfig,
     pub show_aux_details: bool,
+    pub input_suggestion_kind: Option<InputSuggestionKind>,
+    pub input_suggestion_loading: bool,
     pub slash_suggestions: Vec<String>,
     pub selected_suggestion: usize,
     pub model_picker_active: bool,

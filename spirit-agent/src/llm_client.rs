@@ -255,6 +255,7 @@ fn apply_tool_agent_assistant_message(
             state.messages.push(json!({
                 "role": "assistant",
                 "content": Value::Null,
+                "reasoning_content": "",
                 "tool_calls": [
                     {
                         "id": tool_call_id,
@@ -273,6 +274,7 @@ fn apply_tool_agent_assistant_message(
         state.messages.push(json!({
             "role": "assistant",
             "content": Value::Null,
+            "reasoning_content": "",
             "tool_calls": [
                 {
                     "id": dsml_call.id,
@@ -306,6 +308,7 @@ fn apply_tool_agent_assistant_message(
 
 fn build_assistant_message_from_stream_buffers(
     content_buf: &str,
+    reasoning_buf: &str,
     tool_acc: &ToolCallStreamAccumulator,
 ) -> Result<Value> {
     if let Some(tc) = tool_acc.as_tool_calls_array() {
@@ -314,21 +317,57 @@ fn build_assistant_message_from_stream_buffers(
         } else {
             Value::String(content_buf.to_string())
         };
-        return Ok(json!({
-            "role": "assistant",
-            "content": content_val,
-            "tool_calls": tc,
-        }));
+        return Ok(with_reasoning_content_if_needed(
+            json!({
+                "role": "assistant",
+                "content": content_val,
+                "tool_calls": tc,
+            }),
+            reasoning_buf,
+        ));
     }
     if !content_buf.trim().is_empty() {
-        return Ok(json!({
-            "role": "assistant",
-            "content": content_buf,
-        }));
+        return Ok(with_reasoning_content_if_needed(
+            json!({
+                "role": "assistant",
+                "content": content_buf,
+            }),
+            reasoning_buf,
+        ));
     }
     Err(anyhow!(
         "流式响应结束：无文本片段且无 tool_calls，无法继续本轮"
     ))
+}
+
+fn with_reasoning_content_if_needed(mut message: Value, reasoning_buf: &str) -> Value {
+    let has_tool_calls = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .map(|arr| !arr.is_empty())
+        .unwrap_or(false);
+
+    let Some(object) = message.as_object_mut() else {
+        return message;
+    };
+
+    if object.contains_key("reasoning_content") {
+        return message;
+    }
+
+    if !reasoning_buf.is_empty() {
+        object.insert(
+            "reasoning_content".to_string(),
+            Value::String(reasoning_buf.to_string()),
+        );
+    } else if has_tool_calls {
+        object.insert(
+            "reasoning_content".to_string(),
+            Value::String(String::new()),
+        );
+    }
+
+    message
 }
 
 /// 工具代理单轮：**一次** `stream=true` 的 chat/completions（含 tools），真实 SSE 输出到 `stream_tx`。
@@ -393,6 +432,7 @@ pub fn stream_tool_agent_round(
     let mut reader = BufReader::new(resp);
     let mut line = String::new();
     let mut content_buf = String::new();
+    let mut reasoning_buf = String::new();
     let mut tool_acc = ToolCallStreamAccumulator::default();
     let mut saw_model_output = false;
     let mut raw_preview: Vec<String> = Vec::new();
@@ -430,8 +470,8 @@ pub fn stream_tool_agent_round(
         if let Some(thinking) = extract_reasoning_delta(&v)
             && !thinking.is_empty()
         {
+            reasoning_buf.push_str(&thinking);
             let _ = stream_tx.send(StreamEvent::ThinkingChunk(thinking));
-            continue;
         }
 
         if let Some(content) = v
@@ -460,6 +500,7 @@ pub fn stream_tool_agent_round(
         }
 
         if let Some(msg) = v.pointer("/choices/0/message").cloned() {
+            let msg = with_reasoning_content_if_needed(msg, &reasoning_buf);
             let has_tc = msg
                 .get("tool_calls")
                 .and_then(Value::as_array)
@@ -492,7 +533,7 @@ pub fn stream_tool_agent_round(
     let message = if let Some(m) = last_finish_message {
         m
     } else {
-        build_assistant_message_from_stream_buffers(&content_buf, &tool_acc)?
+        build_assistant_message_from_stream_buffers(&content_buf, &reasoning_buf, &tool_acc)?
     };
     apply_tool_agent_assistant_message(state, message)
 }
@@ -680,7 +721,6 @@ fn stream_once(
             && !thinking.is_empty()
         {
             let _ = tx.send(StreamEvent::ThinkingChunk(thinking));
-            continue;
         }
 
         if let Some(content) = v
@@ -1453,6 +1493,51 @@ mod tests {
                 .and_then(|call| call.get("id"))
                 .and_then(Value::as_str),
             Some("call_openai")
+        );
+    }
+
+    #[test]
+    fn tool_call_message_from_stream_buffers_keeps_reasoning_content() {
+        let mut tool_acc = ToolCallStreamAccumulator::default();
+        tool_acc.apply_deltas(&[json!({
+            "index": 0,
+            "id": "call_openai",
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "arguments": "{\"path\":\"summary.md\"}"
+            }
+        })]);
+
+        let message =
+            build_assistant_message_from_stream_buffers("", "先检查一下文件", &tool_acc)
+                .expect("tool call message should build");
+
+        assert_eq!(
+            message.get("reasoning_content").and_then(Value::as_str),
+            Some("先检查一下文件")
+        );
+    }
+
+    #[test]
+    fn tool_call_message_without_reasoning_still_carries_empty_reasoning_content() {
+        let mut tool_acc = ToolCallStreamAccumulator::default();
+        tool_acc.apply_deltas(&[json!({
+            "index": 0,
+            "id": "call_openai",
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "arguments": "{\"path\":\"summary.md\"}"
+            }
+        })]);
+
+        let message = build_assistant_message_from_stream_buffers("", "", &tool_acc)
+            .expect("tool call message should build");
+
+        assert_eq!(
+            message.get("reasoning_content").and_then(Value::as_str),
+            Some("")
         );
     }
 }
