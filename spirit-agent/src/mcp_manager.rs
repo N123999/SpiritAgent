@@ -449,7 +449,7 @@ impl McpManager {
         let server = self.require_server(name)?;
         match server.state {
             McpServerRuntimeState::Disabled => Err(anyhow!(
-                "MCP server {} 已禁用，请先执行 `spirit-agent mcp enable {}`。",
+                "MCP server {} 已禁用，请先执行 `spirit mcp enable {}`。",
                 name,
                 name
             )),

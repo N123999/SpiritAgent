@@ -29,7 +29,7 @@ const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIFT, VK_RSHIFT};
 
 #[derive(Parser)]
-#[command(name = "spirit-agent")]
+#[command(name = "spirit")]
 #[command(about = "AI 生产力 Agent 工具", long_about = None)]
 struct Cli {
     #[arg(short, long, default_value = "false")]

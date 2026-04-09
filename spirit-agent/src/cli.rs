@@ -230,7 +230,7 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("MCP 配置: {}", manager.config_path().display());
 
             if servers.len() == 0 {
-                println!("未配置任何 MCP server。可先执行 `spirit-agent mcp init` 生成模板。\n");
+                println!("未配置任何 MCP server。可先执行 `spirit mcp init` 生成模板。\n");
                 println!(
                     "提示: 首个模板会生成 GitHub MCP 的 stdio 配置，并使用环境变量 GITHUB_PERSONAL_ACCESS_TOKEN。"
                 );
@@ -265,7 +265,7 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             save_mcp_config(&path, &example_github_mcp_config(), force)?;
             println!("已生成 MCP 配置模板: {}", path.display());
             println!(
-                "模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit-agent mcp list` 检查配置。"
+                "模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit mcp list` 检查配置。"
             );
         }
         McpCommand::Enable { name } => {

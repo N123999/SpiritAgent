@@ -35,6 +35,6 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_
 winreg = "0.52"
 
 [[bin]]
-name = "spirit-agent"
+name = "spirit"
 path = "src/main.rs"
 required-features = ["tui"]

@@ -283,7 +283,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
 
                 match configured.state {
                     McpServerRuntimeState::Disabled => Err(anyhow!(
-                        "MCP server {} 已禁用，请先执行 `spirit-agent mcp enable {}`。",
+                        "MCP server {} 已禁用，请先执行 `spirit mcp enable {}`。",
                         server,
                         server
                     )),
@@ -640,7 +640,7 @@ impl OpenAiCompatibleTransport {
             return Ok(value);
         }
         Err(anyhow!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit-agent model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
+            "未检测到模型 {} 的 API Key。可执行 `spirit model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
             model_name,
             model_name,
             ENV_API_KEY
