@@ -1,0 +1,38 @@
+# https://embarkstudios.github.io/cargo-about/cli/generate/config.html
+#
+# `accepted` is priority-ordered: for `Apache-2.0 OR MIT`, the first match wins.
+
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "MPL-2.0",
+    "OpenSSL",
+    "Unlicense",
+    "0BSD",
+]
+
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
+workarounds = [
+    "ring",
+    "rustls",
+]
+
+filter-noassertion = true

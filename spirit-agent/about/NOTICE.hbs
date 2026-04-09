@@ -1,0 +1,30 @@
+# Third-party notices
+
+## Summary
+
+{{#each overview}}
+- {{{name}}} (`{{id}}`): {{count}} crate(s)
+{{/each}}
+
+## Components
+
+{{#each crates}}
+- **{{package.name}}** {{package.version}} — {{license}}
+  - {{#if package.repository}}{{package.repository}}{{else}}https://crates.io/crates/{{package.name}}{{/if}}
+{{/each}}
+
+## License texts
+
+{{#each licenses}}
+### {{name}} ({{id}})
+
+**Used by:**
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}
+{{/each}}
+
+```
+{{{text}}}
+```
+
+{{/each}}
