@@ -30,7 +30,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIF
 
 #[derive(Parser)]
 #[command(name = "spirit")]
-#[command(about = "AI 生产力 Agent 工具", long_about = None)]
+#[command(about = "Spirit Agent — AI 生产力 Agent 工具", long_about = None)]
 struct Cli {
     #[arg(short, long, default_value = "false")]
     verbose: bool,

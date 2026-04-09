@@ -47,7 +47,7 @@ fn conversation_logo_width(available_width: u16) -> u16 {
         .map(|line| UnicodeWidthStr::width(*line))
         .max()
         .unwrap_or(0);
-    let title_width = UnicodeWidthStr::width(" SpiritAgent ");
+    let title_width = UnicodeWidthStr::width(" Spirit Agent ");
     let desired_width = logo_text_width.max(title_width).saturating_add(2) as u16;
     desired_width.min(available_width.max(1))
 }
@@ -247,7 +247,7 @@ fn input_text_style(shell_mode_active: bool) -> Style {
 
 fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
     let footer_style = subtle_aux_text_style();
-    let left_label = "SpiritAgent Preview";
+    let left_label = "Spirit Agent Preview";
     let right_label = app.config.active_model.as_str();
     let side_padding = if width >= 12 {
         2
@@ -611,7 +611,7 @@ fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::with_capacity(SPIRIT_LOGO_LINES.len() + 2);
 
     lines.push(Line::from(Span::styled(
-        build_logo_top_border(inner_width, "SpiritAgent"),
+        build_logo_top_border(inner_width, "Spirit Agent"),
         logo_style,
     )));
 
@@ -1415,8 +1415,8 @@ fn suggestion_summary(command: &str) -> &'static str {
     match command {
         "/help" => "查看可用命令与说明",
         "/clear" => "清空当前会话显示",
-        "/quit" => "退出 SpiritAgent",
-        "/exit" => "退出 SpiritAgent",
+        "/quit" => "退出 Spirit Agent",
+        "/exit" => "退出 Spirit Agent",
         "/model" => "查看、切换或管理模型",
         "/compact" => "压缩上下文历史",
         "/sessions" => "保存、加载或选择会话",

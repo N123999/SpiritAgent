@@ -1,4 +1,4 @@
-# SpiritAgent 项目指引
+# Spirit Agent 项目指引
 
 ## 代码风格
 - 优先沿用现有 Rust 风格：`anyhow::Result`、显式错误上下文、清晰的枚举分发和 `match` 结构。

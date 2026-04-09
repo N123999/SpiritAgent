@@ -15,8 +15,8 @@ use crate::ports::Telemetry;
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
 /// 测试用极简 system（工具 schema 仍随请求下发）。
-const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 SpiritAgent 代理。";
-const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 SpiritAgent 代理。";
+const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 Spirit Agent 代理。";
+const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 Spirit Agent 代理。";
 
 #[derive(Clone)]
 pub struct LlmMessage {
@@ -1385,7 +1385,7 @@ mod tests {
     fn redundant_lookup_appends_synthetic_tool_response() {
         let mut state = ToolAgentState {
             messages: vec![
-                json!({"role": "system", "content": "你是 SpiritAgent 代理。"}),
+                json!({"role": "system", "content": "你是 Spirit Agent 代理。"}),
                 json!({
                     "role": "assistant",
                     "content": Value::Null,
@@ -1450,7 +1450,7 @@ mod tests {
     #[test]
     fn openai_non_redundant_tool_call_is_recorded_and_returned() {
         let mut state = ToolAgentState {
-            messages: vec![json!({"role": "system", "content": "你是 SpiritAgent 代理。"})],
+            messages: vec![json!({"role": "system", "content": "你是 Spirit Agent 代理。"})],
             steps: 0,
         };
 

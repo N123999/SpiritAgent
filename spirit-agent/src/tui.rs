@@ -1693,7 +1693,7 @@ impl TuiShell {
             return;
         };
         if first_message.role != MessageRole::Agent
-            || !first_message.content.starts_with("欢迎来到 SpiritAgent。")
+            || !first_message.content.starts_with("欢迎来到 Spirit Agent。")
         {
             return;
         }
@@ -2258,7 +2258,7 @@ fn welcome_message(active_model: &str, mcp_status_line: &str) -> ChatMessage {
 
 fn welcome_message_text(active_model: &str, mcp_status_line: &str) -> String {
     format!(
-        "欢迎来到 SpiritAgent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。\n{}",
+        "欢迎来到 Spirit Agent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。\n{}",
         active_model, mcp_status_line
     )
 }

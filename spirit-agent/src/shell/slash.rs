@@ -110,7 +110,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
 
     match cmd {
         "/quit" | "/exit" => {
-            shell.push_agent_message("收到，SpiritAgent 即将退出。");
+            shell.push_agent_message("收到，Spirit Agent 即将退出。");
             shell.request_quit();
         }
         "/help" => shell.push_agent_message(help_text()),
