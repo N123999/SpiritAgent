@@ -83,8 +83,8 @@ pub fn load_config() -> Result<AppConfig> {
         return Ok(cfg);
     }
 
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("读取配置失败: {}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("读取配置失败: {}", path.display()))?;
 
     if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
         normalize_config(&mut cfg);
@@ -139,8 +139,7 @@ fn normalize_config(cfg: &mut AppConfig) {
 }
 
 pub fn keyring_entry() -> Result<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_API_KEY)
-        .context("初始化 keyring 条目失败")
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_API_KEY).context("初始化 keyring 条目失败")
 }
 
 fn keyring_entry_for_account(account: &str) -> Result<keyring::Entry> {
@@ -163,7 +162,11 @@ pub fn remove_model_api_key(model_name: &str) -> Result<()> {
     let entry = keyring_entry_for_account(&model_key_account(model_name))?;
     match entry.delete_password() {
         Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(err) => Err(anyhow::anyhow!("删除模型 {} 的 API Key 失败: {}", model_name, err)),
+        Err(err) => Err(anyhow::anyhow!(
+            "删除模型 {} 的 API Key 失败: {}",
+            model_name,
+            err
+        )),
     }
 }
 
@@ -172,7 +175,11 @@ pub fn has_model_api_key(model_name: &str) -> Result<bool> {
     match entry.get_password() {
         Ok(v) => Ok(!v.trim().is_empty()),
         Err(keyring::Error::NoEntry) => Ok(false),
-        Err(err) => Err(anyhow::anyhow!("读取模型 {} 的 API Key 失败: {}", model_name, err)),
+        Err(err) => Err(anyhow::anyhow!(
+            "读取模型 {} 的 API Key 失败: {}",
+            model_name,
+            err
+        )),
     }
 }
 

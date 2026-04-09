@@ -1083,12 +1083,7 @@ impl AgentRuntime {
                     None => {
                         self.push_agent_tool(
                             format_tool_ui_message(&request, &ui_tool_name, &output),
-                            build_tool_result_block(
-                                &request,
-                                &ui_tool_name,
-                                None,
-                                &output,
-                            ),
+                            build_tool_result_block(&request, &ui_tool_name, None, &output),
                         );
                     }
                 }
@@ -1111,12 +1106,7 @@ impl AgentRuntime {
                 None => {
                     self.push_agent_tool(
                         format!("工具执行失败: {}", err),
-                        tool_failed_block(
-                            &ui_tool_name,
-                            None,
-                            "工具执行失败",
-                            &err.to_string(),
-                        ),
+                        tool_failed_block(&ui_tool_name, None, "工具执行失败", &err.to_string()),
                     );
                 }
             },
@@ -1401,7 +1391,10 @@ impl AgentRuntime {
     }
 }
 
-fn execute_mcp_tool_request_sync(workspace_root: &PathBuf, request: &ToolRequest) -> Result<String> {
+fn execute_mcp_tool_request_sync(
+    workspace_root: &PathBuf,
+    request: &ToolRequest,
+) -> Result<String> {
     let ToolRequest::McpTool {
         server,
         tool_name,
@@ -1417,7 +1410,8 @@ fn execute_mcp_tool_request_sync(workspace_root: &PathBuf, request: &ToolRequest
         Value::Null => None,
         _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
     };
-    let value = McpManager::load(workspace_root.clone())?.call_tool(server, tool_name, arguments)?;
+    let value =
+        McpManager::load(workspace_root.clone())?.call_tool(server, tool_name, arguments)?;
     Ok(serde_json::to_string_pretty(&value)?)
 }
 

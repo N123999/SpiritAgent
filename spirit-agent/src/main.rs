@@ -489,7 +489,7 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             KeyCode::Right => shell.bottom_form_move_right(),
             KeyCode::Home => shell.bottom_form_move_home(),
             KeyCode::End => shell.bottom_form_move_end(),
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            KeyCode::Enter if enter_should_insert_newline(key.modifiers) => {
                 shell.bottom_form_insert_char('\n');
             }
             KeyCode::Enter => shell.save_bottom_form(),
@@ -589,7 +589,11 @@ fn enter_should_insert_newline(modifiers: KeyModifiers) -> bool {
         return false;
     }
 
-    shift_pressed_fallback() || modifiers.contains(KeyModifiers::SHIFT)
+    // Windows Terminal / ConPTY often omit SHIFT on Shift+Enter; `shift_pressed_fallback` fixes that.
+    // Some builds map Shift+Enter to Alt+Enter instead.
+    shift_pressed_fallback()
+        || modifiers.contains(KeyModifiers::SHIFT)
+        || modifiers.contains(KeyModifiers::ALT)
 }
 
 fn maybe_log_key_event(key: &crossterm::event::KeyEvent, should_insert_newline: bool) {

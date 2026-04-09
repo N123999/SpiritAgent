@@ -23,8 +23,8 @@ pub mod view;
 mod word_wrap;
 
 pub use cli::{
-	ConfigCommand, KeyCommand, McpCommand, ModelCommand, handle_config_cli, handle_mcp_cli,
-	handle_model_cli,
+    ConfigCommand, KeyCommand, McpCommand, ModelCommand, handle_config_cli, handle_mcp_cli,
+    handle_model_cli,
 };
 #[cfg(feature = "tui")]
 pub use tui::TuiShell;

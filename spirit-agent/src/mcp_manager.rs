@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use reqwest::header::{HeaderName, HeaderValue};
 use rmcp::{
     ServiceExt,
     model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams},
@@ -20,13 +21,12 @@ use tokio::{
     process::{ChildStderr, Command},
     runtime::Builder as RuntimeBuilder,
 };
-use reqwest::header::{HeaderName, HeaderValue};
 
-use crate::mcp::{
-    LoadedMcpConfig, McpCapabilityToggles, McpServerConfig, McpTransportConfig,
-    load_mcp_config, resolve_env_map,
-};
 use crate::logging;
+use crate::mcp::{
+    LoadedMcpConfig, McpCapabilityToggles, McpServerConfig, McpTransportConfig, load_mcp_config,
+    resolve_env_map,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpServerRuntimeState {
@@ -199,7 +199,8 @@ impl McpManager {
                 .cloned()
                 .ok_or_else(|| anyhow!("MCP server 未返回 initialize 结果: {}", server.name))?;
 
-            let supports_tools = server.capabilities.tools && peer_info.capabilities.tools.is_some();
+            let supports_tools =
+                server.capabilities.tools && peer_info.capabilities.tools.is_some();
             let supports_resources =
                 server.capabilities.resources && peer_info.capabilities.resources.is_some();
             let supports_prompts =
@@ -397,7 +398,10 @@ impl McpManager {
             if let Some(args) = arguments {
                 request = request.with_arguments(args);
             }
-            let result = client.call_tool(request).await.context("调用 MCP tool 失败")?;
+            let result = client
+                .call_tool(request)
+                .await
+                .context("调用 MCP tool 失败")?;
             let _ = client.cancel().await;
             Ok(serde_json::to_value(result)?)
         })
@@ -418,7 +422,10 @@ impl McpManager {
             if let Some(args) = arguments {
                 request = request.with_arguments(args);
             }
-            let result = client.get_prompt(request).await.context("读取 MCP prompt 失败")?;
+            let result = client
+                .get_prompt(request)
+                .await
+                .context("读取 MCP prompt 失败")?;
             let _ = client.cancel().await;
             Ok(serde_json::to_value(result)?)
         })
@@ -503,7 +510,13 @@ async fn connect_client(
         }
     })
     .await
-    .map_err(|_| anyhow!("连接 MCP server 超时（{} ms）: {}", timeout.as_millis(), server.name))?
+    .map_err(|_| {
+        anyhow!(
+            "连接 MCP server 超时（{} ms）: {}",
+            timeout.as_millis(),
+            server.name
+        )
+    })?
 }
 
 fn build_streamable_http_config(
@@ -535,7 +548,10 @@ fn resolve_http_headers(
         .collect()
 }
 
-fn build_stdio_transport(workspace_root: &Path, server: &ManagedMcpServer) -> Result<TokioChildProcess> {
+fn build_stdio_transport(
+    workspace_root: &Path,
+    server: &ManagedMcpServer,
+) -> Result<TokioChildProcess> {
     let McpTransportConfig::Stdio {
         command,
         args,
@@ -553,16 +569,17 @@ fn build_stdio_transport(workspace_root: &Path, server: &ManagedMcpServer) -> Re
     let resolved_env = resolve_env_map(env)?;
     let resolved_cwd = resolve_stdio_cwd(workspace_root, cwd.as_deref());
     let resolved_command = resolve_stdio_command(command)?;
-    let (transport, stderr) = TokioChildProcess::builder(Command::new(&resolved_command).configure(|cmd| {
-        cmd.args(args);
-        cmd.current_dir(&resolved_cwd);
-        if !resolved_env.is_empty() {
-            cmd.envs(resolved_env.iter().map(|(key, value)| (key, value)));
-        }
-    }))
-    .stderr(Stdio::piped())
-    .spawn()
-    .with_context(|| format!("启动 stdio MCP server 失败: {}", server.transport_summary()))?;
+    let (transport, stderr) =
+        TokioChildProcess::builder(Command::new(&resolved_command).configure(|cmd| {
+            cmd.args(args);
+            cmd.current_dir(&resolved_cwd);
+            if !resolved_env.is_empty() {
+                cmd.envs(resolved_env.iter().map(|(key, value)| (key, value)));
+            }
+        }))
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("启动 stdio MCP server 失败: {}", server.transport_summary()))?;
 
     if let Some(stderr) = stderr {
         tokio::spawn(drain_child_stderr(server.name.clone(), stderr));
@@ -671,9 +688,8 @@ fn windows_pathexts() -> Vec<String> {
 
 fn timeout_for_server(server: &ManagedMcpServer) -> Duration {
     let timeout_ms = match &server.transport {
-        McpTransportConfig::Stdio { timeout_ms, .. } | McpTransportConfig::Http { timeout_ms, .. } => {
-            timeout_ms.unwrap_or(20_000)
-        }
+        McpTransportConfig::Stdio { timeout_ms, .. }
+        | McpTransportConfig::Http { timeout_ms, .. } => timeout_ms.unwrap_or(20_000),
     };
     Duration::from_millis(timeout_ms)
 }
@@ -716,7 +732,10 @@ mod tests {
     fn resolve_relative_stdio_cwd_under_workspace() {
         let workspace = PathBuf::from("C:/workspace/spirit-agent");
         let resolved = resolve_stdio_cwd(&workspace, Some("tools/github"));
-        assert_eq!(resolved, PathBuf::from("C:/workspace/spirit-agent/tools/github"));
+        assert_eq!(
+            resolved,
+            PathBuf::from("C:/workspace/spirit-agent/tools/github")
+        );
     }
 
     #[test]

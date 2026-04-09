@@ -258,9 +258,9 @@ impl ToolRuntime {
 
     pub fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
         match request {
-            ToolRequest::McpTool { .. } => Err(anyhow!(
-                "MCP 工具权限检查应由 WorkspaceToolExecutor 处理"
-            )),
+            ToolRequest::McpTool { .. } => {
+                Err(anyhow!("MCP 工具权限检查应由 WorkspaceToolExecutor 处理"))
+            }
             ToolRequest::Shell { command } => {
                 if self
                     .permissions
@@ -274,8 +274,7 @@ impl ToolRuntime {
                 Ok(AuthorizationDecision::NeedApproval {
                     prompt: format!(
                         "高风险工具调用: shell\n终端: {}\n命令: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
-                        self.shell_context.display_name,
-                        command
+                        self.shell_context.display_name, command
                     ),
                     trust_target: Some(TrustTarget::ShellCommand(command.clone())),
                 })
@@ -352,9 +351,9 @@ impl ToolRuntime {
 
     pub fn execute(&self, request: &ToolRequest) -> Result<String> {
         match request {
-                ToolRequest::McpTool { .. } => {
-                    Err(anyhow!("MCP 工具执行应由 WorkspaceToolExecutor 处理"))
-                }
+            ToolRequest::McpTool { .. } => {
+                Err(anyhow!("MCP 工具执行应由 WorkspaceToolExecutor 处理"))
+            }
             ToolRequest::Shell { command } => self.execute_shell(command),
             ToolRequest::WebFetch { url } => self.execute_web_fetch(url),
             ToolRequest::ListDirectory { path } => self.execute_list_directory(path),
@@ -1106,8 +1105,7 @@ impl ToolRuntime {
         AuthorizationDecision::NeedApproval {
             prompt: format!(
                 "高风险工具调用: {}\n路径: {}\n\n输入 y 允许一次，n 拒绝，t 信任并持久化。",
-                prompt_title,
-                canonical_text
+                prompt_title, canonical_text
             ),
             trust_target: Some(TrustTarget::ExternalReadPath(canonical_text)),
         }
@@ -1208,7 +1206,10 @@ fn parse_web_fetch_url(url: &str) -> Result<Url> {
     let parsed = Url::parse(url).with_context(|| format!("非法 URL: {}", url))?;
     match parsed.scheme() {
         "http" | "https" => Ok(parsed),
-        other => Err(anyhow!("web_fetch 仅支持 http/https，当前 scheme: {}", other)),
+        other => Err(anyhow!(
+            "web_fetch 仅支持 http/https，当前 scheme: {}",
+            other
+        )),
     }
 }
 
@@ -1221,7 +1222,11 @@ fn extract_web_text(raw: &str, content_type: &str) -> String {
 }
 
 fn looks_like_html(raw: &str) -> bool {
-    let prefix = raw.chars().take(512).collect::<String>().to_ascii_lowercase();
+    let prefix = raw
+        .chars()
+        .take(512)
+        .collect::<String>()
+        .to_ascii_lowercase();
     prefix.contains("<html")
         || prefix.contains("<!doctype html")
         || prefix.contains("<body")
@@ -1550,13 +1555,15 @@ fn replace_single_match_allowing_newline_differences(
     let replacement = rewrite_line_endings(new_text, preferred_line_endings);
     let replacement_line_endings = line_ending_style(&replacement);
 
-    let mut updated = String::with_capacity(
-        source.len() - matched_slice.len() + replacement.len(),
-    );
+    let mut updated = String::with_capacity(source.len() - matched_slice.len() + replacement.len());
     updated.push_str(&source[..source_start]);
     updated.push_str(&replacement);
     updated.push_str(&source[source_end..]);
-    Some((updated, line_ending_style(matched_slice), replacement_line_endings))
+    Some((
+        updated,
+        line_ending_style(matched_slice),
+        replacement_line_endings,
+    ))
 }
 
 fn normalized_byte_offsets_to_source_byte_offsets(source: &str) -> Vec<usize> {

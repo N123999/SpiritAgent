@@ -96,14 +96,21 @@ pub fn start_tool_agent_state(
     tools: &Value,
     asset_root: &Path,
 ) -> ToolAgentState {
-    let system_text =
-        format!("{}{}", TOOL_AGENT_SYSTEM_PROMPT, tool_names_block_for_system_prompt(tools));
+    let system_text = format!(
+        "{}{}",
+        TOOL_AGENT_SYSTEM_PROMPT,
+        tool_names_block_for_system_prompt(tools)
+    );
     let mut messages = vec![json!({
         "role": "system",
         "content": system_text
     })];
 
-    messages.extend(history.iter().map(|msg| llm_message_to_json(msg, asset_root)));
+    messages.extend(
+        history
+            .iter()
+            .map(|msg| llm_message_to_json(msg, asset_root)),
+    );
 
     let need_append_user = messages
         .last()
@@ -195,11 +202,7 @@ impl ToolCallStreamAccumulator {
             .collect();
         out.sort_by_key(|(i, _)| *i);
         let arr: Vec<Value> = out.into_iter().map(|(_, v)| v).collect();
-        if arr.is_empty() {
-            None
-        } else {
-            Some(arr)
-        }
+        if arr.is_empty() { None } else { Some(arr) }
     }
 }
 
@@ -457,7 +460,11 @@ pub fn stream_tool_agent_round(
         }
 
         if let Some(msg) = v.pointer("/choices/0/message").cloned() {
-            let has_tc = msg.get("tool_calls").and_then(Value::as_array).map(|a| !a.is_empty()).unwrap_or(false);
+            let has_tc = msg
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(|a| !a.is_empty())
+                .unwrap_or(false);
             let has_txt = msg
                 .get("content")
                 .and_then(|c| c.as_str())
@@ -540,15 +547,14 @@ pub fn compact_history_manual(
         });
     }
 
-    let merged_summary =
-        summarize_messages(
-            cfg,
-            telemetry,
-            existing_summary.as_deref(),
-            &all_non_summary,
-            progress_tx,
-        )
-        .context("手动压缩失败：无法生成摘要")?;
+    let merged_summary = summarize_messages(
+        cfg,
+        telemetry,
+        existing_summary.as_deref(),
+        &all_non_summary,
+        progress_tx,
+    )
+    .context("手动压缩失败：无法生成摘要")?;
 
     let compacted = vec![compact_summary_message(merged_summary)];
     let dropped = before.saturating_sub(compacted.len());
@@ -729,9 +735,14 @@ fn compact_oldest_once(
         .collect::<Vec<_>>();
 
     if !all_non_summary.is_empty() {
-        let merged_summary =
-            summarize_messages(cfg, telemetry, existing_summary.as_deref(), &all_non_summary, None)
-            .context("自动压缩失败：摘要模型调用失败")?;
+        let merged_summary = summarize_messages(
+            cfg,
+            telemetry,
+            existing_summary.as_deref(),
+            &all_non_summary,
+            None,
+        )
+        .context("自动压缩失败：摘要模型调用失败")?;
         *history = vec![compact_summary_message(merged_summary)];
         return Ok(all_non_summary.len());
     }
@@ -770,8 +781,7 @@ fn summarize_messages(
 
     let compact_prompt = format!(
         "你是会话上下文压缩器。目标：把旧对话压缩成后续对话可直接复用的系统提示词。\n\n输出规则（必须严格遵守）：\n1) 仅输出压缩结果，不要解释。\n2) 结构固定为两段：\n   A. <压缩摘要>：保留任务目标、关键约束、用户偏好、已确认决策、未完成 TODO。\n   B. <最近10句对话>：按时间顺序列出最近最多10句关键对话，每句格式为 `- User: ...` 或 `- Assistant: ...`。\n3) 删除寒暄和重复，保留可执行信息。\n4) 使用简洁中文，内容可直接作为系统提示词。\n5) 总长度尽量短，建议不超过 1200 中文字符。\n\n现有压缩摘要：\n{}\n\n新增待合并内容：\n{}",
-        existing_part,
-        merged_lines
+        existing_part, merged_lines
     );
 
     let payload = json!({
@@ -825,8 +835,9 @@ fn summarize_messages(
                 break;
             }
 
-            let v: Value = serde_json::from_str(data)
-                .with_context(|| format!("解析压缩 SSE JSON 失败: {}", truncate_chars(data, 320)))?;
+            let v: Value = serde_json::from_str(data).with_context(|| {
+                format!("解析压缩 SSE JSON 失败: {}", truncate_chars(data, 320))
+            })?;
 
             if let Some(err_msg) = extract_provider_stream_error(&v) {
                 return Err(anyhow!(err_msg));
@@ -1445,4 +1456,3 @@ mod tests {
         );
     }
 }
-

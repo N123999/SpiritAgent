@@ -1160,8 +1160,7 @@ impl TuiShell {
             self.open_mcp_add_form();
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: "已打开 MCP 添加表单。填写完成后按 Enter 保存，Esc 取消；在文本框里 Shift+Enter 可换行（多行环境变量等）。"
-                    .to_string(),
+                content: "已打开 MCP 添加表单。填写完成后按 Enter 保存，Esc 取消。".to_string(),
                 tool_block: None,
             });
             return;
@@ -1446,7 +1445,7 @@ impl TuiShell {
     fn push_mcp_usage(&mut self) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消；文本字段中 Shift+Enter 可换行。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
+            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
             tool_block: None,
         });
     }

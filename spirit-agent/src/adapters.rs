@@ -272,10 +272,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
 
     fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
         match request {
-            ToolRequest::McpTool {
-                server,
-                ..
-            } => {
+            ToolRequest::McpTool { server, .. } => {
                 let manager = self.load_mcp_manager()?;
                 let configured = manager
                     .get(server)

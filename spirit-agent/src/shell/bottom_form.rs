@@ -54,8 +54,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
             },
         ],
         selected_field: MCP_ADD_FIELD_NAME,
-        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Enter 保存  Shift+Enter 换行  Esc 取消"
-            .to_string(),
+        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Enter 保存  Esc 取消".to_string(),
     };
     sync_mcp_add_form_fields(&mut form);
     form

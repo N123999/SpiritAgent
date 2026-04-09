@@ -345,10 +345,7 @@ mod tests {
         let loaded = load_mcp_config_file(&path)
             .expect("load config")
             .expect("config should exist");
-        let server = loaded
-            .servers
-            .get("github")
-            .expect("github server exists");
+        let server = loaded.servers.get("github").expect("github server exists");
 
         assert!(!server.enabled);
         match &server.transport {
@@ -391,10 +388,9 @@ mod tests {
 
     #[test]
     fn resolve_env_value_rejects_unclosed_placeholder() {
-        let err = resolve_env_placeholders("Bearer ${env:GITHUB_TOKEN", |_| {
-            Ok("ignored".to_string())
-        })
-        .expect_err("unclosed placeholder should fail");
+        let err =
+            resolve_env_placeholders("Bearer ${env:GITHUB_TOKEN", |_| Ok("ignored".to_string()))
+                .expect_err("unclosed placeholder should fail");
 
         assert!(err.to_string().contains("非法环境变量占位符"));
     }

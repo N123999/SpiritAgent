@@ -58,11 +58,6 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_bottom_form = app.bottom_form.is_some();
     let show_picker = show_model_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input.starts_with('/') && !show_picker && !show_bottom_form;
-    let bottom_form_height = app
-        .bottom_form
-        .as_ref()
-        .map(bottom_form_block_height)
-        .unwrap_or(0);
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_suggestions {
@@ -72,6 +67,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         })
         .split(frame.area());
     let content_area = root_chunks[0];
+    let bottom_form_height = app
+        .bottom_form
+        .as_ref()
+        .map(|f| bottom_form_block_height(f, content_area.width))
+        .unwrap_or(0);
     let input_inner_width = content_area.width.saturating_sub(2) as usize;
     let input_height = input_block_height(&app, input_inner_width);
 
@@ -86,7 +86,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             ]
         } else if show_bottom_form {
             vec![
-                Constraint::Min(5),
+                Constraint::Min(0),
                 Constraint::Length(input_height),
                 Constraint::Length(bottom_form_height),
                 Constraint::Length(1),
@@ -821,15 +821,15 @@ fn render_message_lines(
     };
 
     if let Some(compaction_text) = stored_compaction_text {
-            push_message_line(vec![Span::styled(
-                assistant_aux_title(AssistantAuxKind::Compressing),
-                assistant_aux_title_style(AssistantAuxKind::Compressing),
-            )]);
-            render_aux_text_lines(
-                &mut push_message_line,
-                AssistantAuxKind::Compressing,
-                compaction_text,
-            );
+        push_message_line(vec![Span::styled(
+            assistant_aux_title(AssistantAuxKind::Compressing),
+            assistant_aux_title_style(AssistantAuxKind::Compressing),
+        )]);
+        render_aux_text_lines(
+            &mut push_message_line,
+            AssistantAuxKind::Compressing,
+            compaction_text,
+        );
     }
 
     if let Some(thinking_text) = stored_thinking_text {
@@ -1510,8 +1510,144 @@ fn build_image_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
     lines
 }
 
-fn bottom_form_block_height(form: &BottomFormView) -> u16 {
-    (form.fields.len().saturating_mul(4).saturating_add(4)) as u16
+/// Matches `draw_bottom_form` → `draw_bottom_form_text_field`: outer panel width to text inner width.
+fn bottom_form_content_width(panel_width: u16) -> usize {
+    panel_width.saturating_sub(2).saturating_sub(4).max(1) as usize
+}
+
+fn bottom_form_text_inner_width(panel_width: u16) -> usize {
+    bottom_form_content_width(panel_width)
+        .saturating_sub(2)
+        .max(1)
+}
+
+fn bottom_form_text_visual_line_count(
+    value: &str,
+    placeholder: &str,
+    text_inner_w: usize,
+) -> usize {
+    build_bottom_form_text_lines(value, placeholder, text_inner_w, false)
+        .len()
+        .max(1)
+}
+
+fn bottom_form_text_field_outer_height(value: &str, placeholder: &str, text_inner_w: usize) -> u16 {
+    bottom_form_text_visual_line_count(value, placeholder, text_inner_w)
+        .max(1)
+        .saturating_add(2) as u16
+}
+
+fn bottom_form_field_outer_height(editor: &BottomFormFieldEditorView, text_inner_w: usize) -> u16 {
+    match editor {
+        BottomFormFieldEditorView::Text {
+            value, placeholder, ..
+        } => bottom_form_text_field_outer_height(value, placeholder, text_inner_w),
+        BottomFormFieldEditorView::Choice { .. } => 3,
+    }
+}
+
+fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
+    let text_inner_w = bottom_form_text_inner_width(panel_width);
+    let content_w = bottom_form_content_width(panel_width);
+    let fields_height = form
+        .fields
+        .iter()
+        .map(|field| u32::from(bottom_form_field_outer_height(&field.editor, text_inner_w)))
+        .sum::<u32>();
+    let field_gaps = form.fields.len().saturating_sub(1) as u32;
+    let footer_gap = if form.fields.is_empty() { 0 } else { 1 };
+    let footer_height = bottom_form_footer_height(&form.footer_hint, content_w) as u32;
+
+    fields_height
+        .saturating_add(field_gaps)
+        .saturating_add(footer_gap)
+        .saturating_add(footer_height)
+        .saturating_add(4) as u16
+}
+
+/// Character-wrapped visual rows for one logical line (no `\n`), aligned with `wrapped_single_line_cursor_position`.
+fn bottom_form_wrap_logical_line(line: &str, max_width: usize) -> Vec<String> {
+    let width = max_width.max(1);
+    if line.is_empty() {
+        return vec![String::new()];
+    }
+    let mut out: Vec<String> = vec![String::new()];
+    let mut col = 0usize;
+
+    for ch in line.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if ch_width == 0 {
+            continue;
+        }
+        if col > 0 && col + ch_width > width {
+            out.push(String::new());
+            col = 0;
+        }
+        out.last_mut()
+            .expect("bottom_form_wrap_logical_line")
+            .push(ch);
+        col += ch_width;
+        if col >= width {
+            let extra = col / width;
+            for _ in 0..extra {
+                out.push(String::new());
+            }
+            col %= width;
+        }
+    }
+    out
+}
+
+fn build_bottom_form_text_lines(
+    value: &str,
+    placeholder: &str,
+    max_width: usize,
+    is_selected: bool,
+) -> Vec<Line<'static>> {
+    let (text, is_placeholder) = if value.is_empty() {
+        (placeholder, true)
+    } else {
+        (value, false)
+    };
+    let style = if is_placeholder {
+        subtle_aux_text_style()
+    } else if is_selected {
+        Style::default().fg(Color::White)
+    } else {
+        subtle_aux_text_style()
+    };
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for logical in text.split('\n') {
+        for v in bottom_form_wrap_logical_line(logical, max_width) {
+            lines.push(Line::from(Span::styled(v, style)));
+        }
+    }
+    if lines.is_empty() {
+        lines.push(Line::from(Span::styled(String::new(), style)));
+    }
+    lines
+}
+
+fn build_bottom_form_footer_lines(text: &str, max_width: usize) -> Vec<Line<'static>> {
+    let style = subtle_aux_text_style();
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    for logical in text.split('\n') {
+        for visual in bottom_form_wrap_logical_line(logical, max_width) {
+            lines.push(Line::from(Span::styled(visual, style)));
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(Span::styled(String::new(), style)));
+    }
+
+    lines
+}
+
+fn bottom_form_footer_height(text: &str, max_width: usize) -> u16 {
+    build_bottom_form_footer_lines(text, max_width).len().max(1) as u16
 }
 
 fn draw_bottom_form(
@@ -1520,10 +1656,11 @@ fn draw_bottom_form(
     form: &BottomFormView,
 ) -> Option<(u16, u16)> {
     let outer_style = Style::default().fg(Color::White);
+    let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
     let outer_block = Block::default()
         .borders(Borders::ALL)
         .border_style(outer_style)
-        .title(Line::from(Span::styled(form.title.clone(), outer_style)));
+        .title(Line::from(Span::styled(title, outer_style)));
     let inner_area = outer_block.inner(area);
     frame.render_widget(outer_block, area);
 
@@ -1532,14 +1669,28 @@ fn draw_bottom_form(
         return None;
     }
 
+    let text_inner_w = bottom_form_text_inner_width(area.width);
+    let footer_lines =
+        build_bottom_form_footer_lines(&form.footer_hint, content_area.width as usize);
+    let footer_height = footer_lines.len().max(1) as u16;
+    let footer_gap = if form.fields.is_empty() { 0 } else { 1 };
+    let footer_y = content_area
+        .y
+        .saturating_add(content_area.height.saturating_sub(footer_height));
+    let fields_limit_y = footer_y.saturating_sub(footer_gap);
     let mut cursor = None;
     let mut field_y = content_area.y;
     for (index, field) in form.fields.iter().enumerate() {
+        let field_h = bottom_form_field_outer_height(&field.editor, text_inner_w);
+        let available_h = fields_limit_y.saturating_sub(field_y);
+        if available_h == 0 {
+            break;
+        }
         let field_area = Rect {
             x: content_area.x,
             y: field_y,
             width: content_area.width,
-            height: 3,
+            height: field_h.min(available_h),
         };
 
         let field_cursor = match &field.editor {
@@ -1571,22 +1722,16 @@ fn draw_bottom_form(
             cursor = field_cursor;
         }
 
-        field_y = field_y.saturating_add(4);
+        field_y = field_y.saturating_add(field_h.saturating_add(1));
     }
 
     let footer_area = Rect {
         x: content_area.x,
-        y: content_area.y + content_area.height.saturating_sub(1),
+        y: footer_y,
         width: content_area.width,
-        height: 1,
+        height: footer_height,
     };
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            truncate_to_width(&form.footer_hint, footer_area.width as usize),
-            subtle_aux_text_style(),
-        ))),
-        footer_area,
-    );
+    frame.render_widget(Paragraph::new(footer_lines), footer_area);
 
     cursor
 }
@@ -1605,36 +1750,19 @@ fn draw_bottom_form_text_field(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let display_text = if value.is_empty() { placeholder } else { value };
-    let display_style = if value.is_empty() {
-        subtle_aux_text_style()
-    } else if is_selected {
-        Style::default().fg(Color::White)
-    } else {
-        subtle_aux_text_style()
-    };
-
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            truncate_to_width(display_text, inner.width as usize),
-            display_style,
-        ))),
-        inner,
-    );
+    let lines = build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
+    frame.render_widget(Paragraph::new(lines), inner);
 
     if !is_selected {
         return None;
     }
 
-    let cursor_offset = UnicodeWidthStr::width(
-        value
-            .chars()
-            .take(cursor_chars)
-            .collect::<String>()
-            .as_str(),
-    )
-    .min(inner.width.saturating_sub(1) as usize) as u16;
-    Some((inner.x + cursor_offset, inner.y))
+    let prefix: String = value.chars().take(cursor_chars).collect();
+    let (row, col) = wrapped_text_cursor_position(&prefix, inner.width as usize);
+    Some((
+        inner.x + col.min(inner.width.saturating_sub(1) as usize) as u16,
+        inner.y + row as u16,
+    ))
 }
 
 fn draw_bottom_form_choice_field(
@@ -1712,7 +1840,10 @@ fn inset_rect(area: Rect, horizontal: u16, vertical: u16) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{model_registry::AppConfig, view::AssistantAuxData};
+    use crate::{
+        model_registry::AppConfig,
+        view::{AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView},
+    };
 
     fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
         lines
@@ -1754,6 +1885,76 @@ mod tests {
             conversation_sel_anchor: None,
             conversation_sel_head: None,
         }
+    }
+
+    fn build_bottom_form_view(value: &str, footer_hint: &str) -> BottomFormView {
+        BottomFormView {
+            title: "Add MCP Server".to_string(),
+            fields: vec![
+                BottomFormFieldView {
+                    label: "名称".to_string(),
+                    help: String::new(),
+                    editor: BottomFormFieldEditorView::Text {
+                        value: "github".to_string(),
+                        placeholder: "名称，例如 github".to_string(),
+                        cursor: 0,
+                    },
+                },
+                BottomFormFieldView {
+                    label: "类型".to_string(),
+                    help: String::new(),
+                    editor: BottomFormFieldEditorView::Choice {
+                        options: vec!["STDIO".to_string(), "HTTP".to_string()],
+                        selected: 0,
+                    },
+                },
+                BottomFormFieldView {
+                    label: "命令".to_string(),
+                    help: String::new(),
+                    editor: BottomFormFieldEditorView::Text {
+                        value: value.to_string(),
+                        placeholder: "命令，例如 npx -y @modelcontextprotocol/server-github"
+                            .to_string(),
+                        cursor: 0,
+                    },
+                },
+                BottomFormFieldView {
+                    label: "环境变量".to_string(),
+                    help: String::new(),
+                    editor: BottomFormFieldEditorView::Text {
+                        value: "GITHUB_TOKEN=demo".to_string(),
+                        placeholder: "环境变量，可选，例如 GITHUB_TOKEN=demo".to_string(),
+                        cursor: 0,
+                    },
+                },
+            ],
+            selected_field: 2,
+            footer_hint: footer_hint.to_string(),
+        }
+    }
+
+    #[test]
+    fn bottom_form_block_height_grows_for_multiline_text() {
+        let single = build_bottom_form_view(
+            "npx -y @modelcontextprotocol/server-github",
+            "Enter 保存 Esc 取消",
+        );
+        let multi = build_bottom_form_view(
+            "npx -y @modelcontextprotocol/server-github\n--stdio\n--verbose",
+            "Enter 保存 Esc 取消",
+        );
+
+        assert!(bottom_form_block_height(&multi, 80) > bottom_form_block_height(&single, 80));
+    }
+
+    #[test]
+    fn bottom_form_block_height_grows_for_wrapped_footer_hint() {
+        let form = build_bottom_form_view(
+            "npx -y @modelcontextprotocol/server-github",
+            "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Enter 保存  Shift+Enter 换行  Esc 取消",
+        );
+
+        assert!(bottom_form_block_height(&form, 28) > bottom_form_block_height(&form, 96));
     }
 
     #[test]

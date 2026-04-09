@@ -57,7 +57,11 @@ impl NormRange {
     }
 }
 
-fn grapheme_line_to_owned(line: &[StyledGrapheme<'_>], row: usize, sel: Option<NormRange>) -> Line<'static> {
+fn grapheme_line_to_owned(
+    line: &[StyledGrapheme<'_>],
+    row: usize,
+    sel: Option<NormRange>,
+) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut col = 0usize;
     for g in line {

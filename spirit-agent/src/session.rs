@@ -195,7 +195,11 @@ impl SessionModel {
             ToolRequest::Search { query } => format!("search_files query={}", query),
             ToolRequest::Shell { command } => format!("run_shell_command command={}", command),
             ToolRequest::CreateFile { path, content } => {
-                format!("create_file path={} chars={}", path, content.chars().count())
+                format!(
+                    "create_file path={} chars={}",
+                    path,
+                    content.chars().count()
+                )
             }
             ToolRequest::UpdateFile {
                 path,

@@ -32,18 +32,12 @@ pub enum ModelCommand {
 
 pub enum ConfigCommand {
     Show,
-    SetBase {
-        url: String,
-    },
-    Key {
-        action: KeyCommand,
-    },
+    SetBase { url: String },
+    Key { action: KeyCommand },
 }
 
 pub enum KeyCommand {
-    Set {
-        value: Option<String>,
-    },
+    Set { value: Option<String> },
     Remove,
     Status,
 }
@@ -200,9 +194,16 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
                 .unwrap_or(false);
             println!(
                 "系统安全凭据(keyring): {}",
-                if keyring_saved { "已保存" } else { "未保存" }
+                if keyring_saved {
+                    "已保存"
+                } else {
+                    "未保存"
+                }
             );
-            println!("API Key 读取优先级: {} > 模型专属 keyring > 全局 keyring", ENV_API_KEY);
+            println!(
+                "API Key 读取优先级: {} > 模型专属 keyring > 全局 keyring",
+                ENV_API_KEY
+            );
         }
         ConfigCommand::SetBase { url } => {
             if let Some(active) = cfg.active_model_profile_mut() {
@@ -230,7 +231,9 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
 
             if servers.len() == 0 {
                 println!("未配置任何 MCP server。可先执行 `spirit-agent mcp init` 生成模板。\n");
-                println!("提示: 首个模板会生成 GitHub MCP 的 stdio 配置，并使用环境变量 GITHUB_PERSONAL_ACCESS_TOKEN。" );
+                println!(
+                    "提示: 首个模板会生成 GitHub MCP 的 stdio 配置，并使用环境变量 GITHUB_PERSONAL_ACCESS_TOKEN。"
+                );
                 return Ok(());
             }
 
@@ -261,24 +264,17 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
 
             save_mcp_config(&path, &example_github_mcp_config(), force)?;
             println!("已生成 MCP 配置模板: {}", path.display());
-            println!("模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit-agent mcp list` 检查配置。"
+            println!(
+                "模板默认包含 GitHub MCP 的 stdio 配置。\n请通过环境变量 GITHUB_PERSONAL_ACCESS_TOKEN 注入 PAT，不要把明文凭据提交到仓库。\n随后可执行 `spirit-agent mcp list` 检查配置。"
             );
         }
         McpCommand::Enable { name } => {
             let path = set_server_enabled(&workspace_root, &name, true)?;
-            println!(
-                "已启用 MCP server: {}\n配置文件: {}",
-                name,
-                path.display(),
-            );
+            println!("已启用 MCP server: {}\n配置文件: {}", name, path.display(),);
         }
         McpCommand::Disable { name } => {
             let path = set_server_enabled(&workspace_root, &name, false)?;
-            println!(
-                "已禁用 MCP server: {}\n配置文件: {}",
-                name,
-                path.display(),
-            );
+            println!("已禁用 MCP server: {}\n配置文件: {}", name, path.display(),);
         }
         McpCommand::Inspect { name } => {
             let manager = McpManager::load(workspace_root)?;
@@ -303,16 +299,25 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("  prompts: {}", yes_no(inspection.supports_prompts));
             println!("  logging: {}", yes_no(inspection.supports_logging));
             println!("  completions: {}", yes_no(inspection.supports_completions));
-            println!("  tools.listChanged: {}", yes_no(inspection.tools_list_changed));
+            println!(
+                "  tools.listChanged: {}",
+                yes_no(inspection.tools_list_changed)
+            );
             println!(
                 "  resources.listChanged: {}",
                 yes_no(inspection.resources_list_changed)
             );
-            println!("  prompts.listChanged: {}", yes_no(inspection.prompts_list_changed));
+            println!(
+                "  prompts.listChanged: {}",
+                yes_no(inspection.prompts_list_changed)
+            );
             println!("counts:");
             println!("  tools: {}", inspection.tools_count);
             println!("  resources: {}", inspection.resources_count);
-            println!("  resource_templates: {}", inspection.resource_templates_count);
+            println!(
+                "  resource_templates: {}",
+                inspection.resource_templates_count
+            );
             println!("  prompts: {}", inspection.prompts_count);
         }
         McpCommand::Tools { name } => {
@@ -422,7 +427,9 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
     Ok(())
 }
 
-fn parse_optional_json_object(input: Option<&str>) -> Result<Option<serde_json::Map<String, serde_json::Value>>> {
+fn parse_optional_json_object(
+    input: Option<&str>,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>> {
     let Some(raw) = input else {
         return Ok(None);
     };
@@ -431,16 +438,14 @@ fn parse_optional_json_object(input: Option<&str>) -> Result<Option<serde_json::
         serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))?;
     match value {
         serde_json::Value::Object(map) => Ok(Some(map)),
-        _ => Err(anyhow!("args-json 必须是 JSON object，例如 `{{\"owner\":\"microsoft\"}}`")),
+        _ => Err(anyhow!(
+            "args-json 必须是 JSON object，例如 `{{\"owner\":\"microsoft\"}}`"
+        )),
     }
 }
 
 fn yes_no(flag: bool) -> &'static str {
-    if flag {
-        "yes"
-    } else {
-        "no"
-    }
+    if flag { "yes" } else { "no" }
 }
 
 fn handle_key_cli(action: KeyCommand, secret_store: &KeyringSecretStore) -> Result<()> {
@@ -477,12 +482,23 @@ fn handle_key_cli(action: KeyCommand, secret_store: &KeyringSecretStore) -> Resu
                 .map(|v| v.is_some())
                 .unwrap_or(false);
 
-            println!("{}: {}", ENV_API_KEY, if env_set { "已设置" } else { "未设置" });
+            println!(
+                "{}: {}",
+                ENV_API_KEY,
+                if env_set { "已设置" } else { "未设置" }
+            );
             println!(
                 "系统安全凭据(keyring): {}",
-                if keyring_set { "已保存" } else { "未保存" }
+                if keyring_set {
+                    "已保存"
+                } else {
+                    "未保存"
+                }
             );
-            println!("当前读取优先级: {} > 模型专属 keyring > 全局 keyring", ENV_API_KEY);
+            println!(
+                "当前读取优先级: {} > 模型专属 keyring > 全局 keyring",
+                ENV_API_KEY
+            );
         }
     }
 
