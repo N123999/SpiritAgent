@@ -112,6 +112,7 @@ pub enum MessageRole {
 pub struct TuiViewModel {
     pub input: String,
     pub input_cursor: usize,
+    pub shell_mode_active: bool,
     pub pending_image_paths: Vec<String>,
     pub pending_mcp_resources: Vec<PendingMcpResource>,
     pub messages: Vec<ChatMessage>,

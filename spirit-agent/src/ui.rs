@@ -14,6 +14,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     conversation_select::flatten_wrapped_history,
+    shell::manual_shell,
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
     view::{
@@ -144,11 +145,18 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
 
     let (input_cursor_row, input_cursor_col) =
         input_cursor_position(&app, chunks[1].width.saturating_sub(2) as usize);
+    let input_style = input_block_style(app.shell_mode_active);
+    let input_title = if app.shell_mode_active { "Shell" } else { "Input" };
     let input = Paragraph::new(build_input_lines(
         &app,
         chunks[1].width.saturating_sub(2) as usize,
     ))
-    .block(Block::default().borders(Borders::ALL).title("Input"))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(input_style)
+            .title(Line::from(Span::styled(input_title, input_style))),
+    )
     .wrap(Wrap { trim: false });
     frame.render_widget(input, chunks[1]);
 
@@ -219,6 +227,26 @@ fn subtle_aux_text_style() -> Style {
 
 fn conversation_body_text_style() -> Style {
     Style::default().fg(Color::Rgb(170, 170, 170))
+}
+
+fn shell_mode_input_style() -> Style {
+    Style::default().fg(Color::Rgb(184, 134, 11))
+}
+
+fn input_block_style(shell_mode_active: bool) -> Style {
+    if shell_mode_active {
+        shell_mode_input_style()
+    } else {
+        Style::default().fg(Color::White)
+    }
+}
+
+fn input_text_style(shell_mode_active: bool) -> Style {
+    if shell_mode_active {
+        shell_mode_input_style()
+    } else {
+        Style::default().fg(Color::White)
+    }
 }
 
 fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
@@ -348,7 +376,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
     for line in logical_lines {
         lines.push(Line::from(Span::styled(
             line.to_string(),
-            Style::default().fg(Color::White),
+            input_text_style(app.shell_mode_active),
         )));
     }
 
@@ -924,13 +952,17 @@ fn render_tool_card_lines(
                 .add_modifier(Modifier::BOLD),
         ),
     ];
-    if let Some(ref id) = tool.tool_call_id {
+    if let Some(ref id) = tool
+        .tool_call_id
+        .as_ref()
+        .filter(|id| !manual_shell::is_local_tool_call_id(id))
+    {
         let short = if id.chars().count() > 14 {
             let mut t = id.chars().take(14).collect::<String>();
             t.push('…');
             t
         } else {
-            id.clone()
+            id.to_string()
         };
         title_spans.push(Span::raw(" "));
         title_spans.push(Span::styled(
@@ -1861,6 +1893,7 @@ mod tests {
         TuiViewModel {
             input: String::new(),
             input_cursor: 0,
+            shell_mode_active: false,
             pending_image_paths: vec![],
             pending_mcp_resources: vec![],
             messages: vec![message],

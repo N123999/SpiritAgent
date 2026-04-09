@@ -392,6 +392,20 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
                 if !shell.is_model_picker_active()
                     && !shell.is_chat_picker_active()
                     && !shell.is_image_picker_active()
+                    && !shell.is_bottom_form_active()
+                    && pending_text.is_empty()
+                    && matches!(key.code, KeyCode::Char('!'))
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.can_enter_shell_mode()
+                {
+                    flush_pending_text(shell, &mut pending_text);
+                    shell.enter_shell_mode();
+                    continue;
+                }
+
+                if !shell.is_model_picker_active()
+                    && !shell.is_chat_picker_active()
+                    && !shell.is_image_picker_active()
                     && let Some(ch) = batched_text_char(&key)
                 {
                     pending_text.push(ch);
@@ -563,6 +577,9 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             shell.refresh_suggestions();
         }
         KeyCode::Enter => shell.submit_input(),
+        KeyCode::Backspace if shell.should_exit_shell_mode_on_backspace() => {
+            shell.exit_shell_mode();
+        }
         KeyCode::Backspace => {
             shell.backspace_at_cursor();
             shell.clamp_cursor();

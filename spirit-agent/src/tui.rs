@@ -5,7 +5,11 @@ use std::{
     fs::OpenOptions,
     path::Path,
     process::Command,
-    sync::Arc,
+    sync::{
+        Arc,
+        mpsc::{self, Receiver, TryRecvError},
+    },
+    thread,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -19,9 +23,16 @@ use crate::{
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
     runtime::{AgentRuntime, RuntimeEvent},
-    shell::{bottom_form, slash},
+    shell::{bottom_form, manual_shell, slash},
+    tool_runtime::{ToolRequest, ToolRuntime},
     view::{AssistantAuxData, BottomFormView, ChatMessage, MessageRole, TuiViewModel},
 };
+
+struct PendingShellExecution {
+    tool_call_id: String,
+    command: String,
+    result_rx: Receiver<anyhow::Result<String>>,
+}
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
 #[derive(Clone, Copy, Debug, Default)]
@@ -37,10 +48,13 @@ pub struct ConversationPanelHit {
 pub struct TuiShell {
     input: String,
     input_cursor: usize,
+    shell_mode_active: bool,
     messages: Vec<ChatMessage>,
     assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
+    next_local_shell_tool_id: usize,
+    pending_shell_executions: Vec<PendingShellExecution>,
     last_mcp_status_revision: u64,
     slash: slash::SlashState,
     model_picker_active: bool,
@@ -91,6 +105,7 @@ impl TuiShell {
         Self {
             input: String::new(),
             input_cursor: 0,
+            shell_mode_active: false,
             messages: vec![welcome_message(
                 &config.active_model,
                 &initial_mcp_status.welcome_line(),
@@ -98,6 +113,8 @@ impl TuiShell {
             assistant_aux_by_message: HashMap::new(),
             show_aux_details: true,
             pending_assistant_msg_index: None,
+            next_local_shell_tool_id: 0,
+            pending_shell_executions: Vec::new(),
             last_mcp_status_revision: initial_mcp_status.revision,
             slash: slash::SlashState::new(),
             model_picker_active: false,
@@ -125,6 +142,12 @@ impl TuiShell {
     }
 
     pub fn refresh_suggestions(&mut self) {
+        if self.shell_mode_active {
+            self.slash.suggestions.clear();
+            self.slash.selected_suggestion = 0;
+            return;
+        }
+
         let Some(query) = self.current_slash_query().map(ToString::to_string) else {
             self.slash.suggestions.clear();
             self.slash.selected_suggestion = 0;
@@ -141,6 +164,7 @@ impl TuiShell {
     pub fn poll_runtime(&mut self) {
         self.runtime.poll();
         self.apply_runtime_events();
+        self.poll_pending_shell_executions();
         self.sync_welcome_mcp_status();
     }
 
@@ -158,6 +182,7 @@ impl TuiShell {
         TuiViewModel {
             input: self.input.clone(),
             input_cursor: self.input_cursor,
+            shell_mode_active: self.shell_mode_active,
             pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
             pending_mcp_resources: self.runtime.session().pending_mcp_resources().to_vec(),
             messages: self.messages.clone(),
@@ -348,6 +373,38 @@ impl TuiShell {
         self.current_slash_query().is_some()
     }
 
+    pub fn is_shell_mode_active(&self) -> bool {
+        self.shell_mode_active
+    }
+
+    pub fn can_enter_shell_mode(&self) -> bool {
+        manual_shell::should_enter_shell_mode(
+            '!',
+            &self.input,
+            self.input_cursor,
+            self.shell_mode_active,
+        )
+    }
+
+    pub fn enter_shell_mode(&mut self) {
+        self.shell_mode_active = true;
+        self.refresh_suggestions();
+    }
+
+    pub fn should_exit_shell_mode_on_backspace(&self) -> bool {
+        manual_shell::should_exit_shell_mode_on_backspace(
+            &self.input,
+            self.input_cursor,
+            self.shell_mode_active,
+        )
+    }
+
+    pub fn exit_shell_mode(&mut self) {
+        self.shell_mode_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
     pub fn move_cursor_left(&mut self) {
         if self.input_cursor > 0 {
             self.input_cursor -= 1;
@@ -430,6 +487,14 @@ impl TuiShell {
         }
 
         self.clear_conversation_selection();
+
+        if self.shell_mode_active {
+            self.scroll_history_to_bottom();
+            self.start_manual_shell_execution(raw_message);
+            self.set_input(String::new());
+            self.refresh_suggestions();
+            return;
+        }
 
         if self.runtime.has_pending_tool_approval() {
             self.scroll_history_to_bottom();
@@ -1944,6 +2009,9 @@ impl TuiShell {
     }
 
     fn current_slash_query(&self) -> Option<&str> {
+        if self.shell_mode_active {
+            return None;
+        }
         slash::current_query(&self.input)
     }
 
@@ -1965,6 +2033,91 @@ impl TuiShell {
     fn set_input(&mut self, value: String) {
         self.input = value;
         self.input_cursor = self.input_len_chars();
+    }
+
+    fn next_local_shell_tool_call_id(&mut self) -> String {
+        let id = manual_shell::local_tool_call_id(self.next_local_shell_tool_id);
+        self.next_local_shell_tool_id += 1;
+        id
+    }
+
+    fn start_manual_shell_execution(&mut self, command: String) {
+        let tool_call_id = self.next_local_shell_tool_call_id();
+        let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<String>>();
+        let request = ToolRequest::Shell {
+            command: command.clone(),
+        };
+
+        thread::spawn(move || {
+            let runtime = ToolRuntime::new();
+            let outcome = runtime.execute(&request);
+            let _ = result_tx.send(outcome);
+        });
+
+        self.messages.push(ChatMessage::with_tool_block(
+            MessageRole::Agent,
+            String::new(),
+            manual_shell::running_block(&tool_call_id, &command),
+        ));
+        self.pending_shell_executions.push(PendingShellExecution {
+            tool_call_id,
+            command,
+            result_rx,
+        });
+    }
+
+    fn poll_pending_shell_executions(&mut self) {
+        let mut still_pending = Vec::new();
+        let pending_executions = std::mem::take(&mut self.pending_shell_executions);
+
+        for pending in pending_executions {
+            match pending.result_rx.try_recv() {
+                Ok(Ok(output)) => {
+                    let block = manual_shell::success_block(
+                        &pending.tool_call_id,
+                        &pending.command,
+                        &output,
+                    );
+                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
+                }
+                Ok(Err(err)) => {
+                    let block = manual_shell::failed_block(
+                        &pending.tool_call_id,
+                        &pending.command,
+                        &err.to_string(),
+                    );
+                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
+                }
+                Err(TryRecvError::Empty) => still_pending.push(pending),
+                Err(TryRecvError::Disconnected) => {
+                    let block = manual_shell::failed_block(
+                        &pending.tool_call_id,
+                        &pending.command,
+                        "Shell 后台任务异常中断。",
+                    );
+                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
+                }
+            }
+        }
+
+        self.pending_shell_executions = still_pending;
+    }
+
+    fn finish_pending_shell_execution(
+        &mut self,
+        tool_call_id: &str,
+        block: crate::view::ToolUiBlock,
+    ) {
+        if let Some(message) = self.messages.iter_mut().find(|message| {
+            message.tool_block.as_ref().and_then(|tool| tool.tool_call_id.as_deref())
+                == Some(tool_call_id)
+        }) {
+            message.tool_block = Some(block);
+            return;
+        }
+
+        self.messages
+            .push(ChatMessage::with_tool_block(MessageRole::Agent, String::new(), block));
     }
 }
 
