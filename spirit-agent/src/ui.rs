@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
+use rust_i18n::t;
 use std::{cell::RefCell, collections::HashMap, path::Path};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -47,7 +48,7 @@ fn conversation_logo_width(available_width: u16) -> u16 {
         .map(|line| UnicodeWidthStr::width(*line))
         .max()
         .unwrap_or(0);
-    let title_width = UnicodeWidthStr::width(" Spirit Agent ");
+    let title_width = UnicodeWidthStr::width(format!(" {} ", t!("ui.brand.title")).as_str());
     let desired_width = logo_text_width.max(title_width).saturating_add(2) as u16;
     desired_width.min(available_width.max(1))
 }
@@ -55,10 +56,12 @@ fn conversation_logo_width(available_width: u16) -> u16 {
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let app = shell.view_model();
     let show_model_picker = app.model_picker_active;
+    let show_language_picker = app.language_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_bottom_form = app.bottom_form.is_some();
-    let show_picker = show_model_picker || show_chat_picker || show_image_picker;
+    let show_picker =
+        show_model_picker || show_language_picker || show_chat_picker || show_image_picker;
     let show_suggestions = app.input_suggestion_kind.is_some() && !show_picker && !show_bottom_form;
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -146,7 +149,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let (input_cursor_row, input_cursor_col) =
         input_cursor_position(&app, chunks[1].width.saturating_sub(2) as usize);
     let input_style = input_block_style(app.shell_mode_active);
-    let input_title = if app.shell_mode_active { "Shell" } else { "Input" };
+    let input_title = if app.shell_mode_active {
+        t!("ui.input.title_shell")
+    } else {
+        t!("ui.input.title")
+    };
     let input = Paragraph::new(build_input_lines(
         &app,
         chunks[1].width.saturating_sub(2) as usize,
@@ -178,19 +185,25 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("Model Picker"))
+            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.model")))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(picker_widget, chunks[2]);
+    } else if show_language_picker {
+        let picker_lines = build_language_picker_lines(&app, 5);
+        let picker_widget = Paragraph::new(picker_lines)
+            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.language")))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_chat_picker {
         let picker_lines = build_chat_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("Sessions"))
+            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.sessions")))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_image_picker {
         let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("Image Picker"))
+            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.image")))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_suggestions {
@@ -247,7 +260,7 @@ fn input_text_style(shell_mode_active: bool) -> Style {
 
 fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
     let footer_style = subtle_aux_text_style();
-    let left_label = "Spirit Agent Preview";
+    let left_label = t!("ui.footer.preview");
     let right_label = app.config.active_model.as_str();
     let side_padding = if width >= 12 {
         2
@@ -281,7 +294,7 @@ fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
     }
 
     let max_left_width = content_width.saturating_sub(right_width + 1);
-    let left_text = truncate_to_width(left_label, max_left_width.max(1));
+    let left_text = truncate_to_width(&left_label, max_left_width.max(1));
     let left_width = UnicodeWidthStr::width(left_text.as_str());
 
     if left_width + 1 > content_width.saturating_sub(right_width) {
@@ -329,9 +342,8 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
     if !app.pending_image_paths.is_empty() {
         let count = app.pending_image_paths.len();
         let summary = format!(
-            "Picked {} image{}  |  /image clear",
-            count,
-            if count == 1 { "" } else { "s" }
+            "{}",
+            t!("ui.pending.images.summary", count = count)
         );
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
@@ -348,9 +360,8 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
     if !app.pending_mcp_resources.is_empty() {
         let count = app.pending_mcp_resources.len();
         let summary = format!(
-            "Attached {} MCP resource{}  |  /mcp resource clear",
-            count,
-            if count == 1 { "" } else { "s" }
+            "{}",
+            t!("ui.pending.mcp_resources.summary", count = count)
         );
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
@@ -611,7 +622,7 @@ fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::with_capacity(SPIRIT_LOGO_LINES.len() + 2);
 
     lines.push(Line::from(Span::styled(
-        build_logo_top_border(inner_width, "Spirit Agent"),
+        build_logo_top_border(inner_width, t!("ui.brand.title").as_ref()),
         logo_style,
     )));
 
@@ -645,7 +656,7 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
         lines.push(Line::from(vec![
             Span::styled("... ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("已折叠更早的 {} 条消息", skipped),
+                t!("ui.history.skipped_messages", count = skipped).into_owned(),
                 Style::default()
                     .fg(Color::DarkGray)
                     .add_modifier(Modifier::ITALIC),
@@ -714,10 +725,10 @@ fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
     }
 }
 
-fn assistant_aux_title(kind: AssistantAuxKind) -> &'static str {
+fn assistant_aux_title(kind: AssistantAuxKind) -> String {
     match kind {
-        AssistantAuxKind::Thinking => "思考内容",
-        AssistantAuxKind::Compressing => "压缩摘要",
+        AssistantAuxKind::Thinking => t!("ui.aux.thinking").into_owned(),
+        AssistantAuxKind::Compressing => t!("ui.aux.compacting").into_owned(),
     }
 }
 
@@ -900,12 +911,12 @@ fn render_message_lines(
     out
 }
 
-fn tool_phase_label(phase: ToolUiPhase) -> (&'static str, Color) {
+fn tool_phase_label(phase: ToolUiPhase) -> (String, Color) {
     match phase {
-        ToolUiPhase::PendingApproval => ("待确认", Color::Yellow),
-        ToolUiPhase::Running => ("执行中", Color::Yellow),
-        ToolUiPhase::Succeeded => ("成功", Color::Green),
-        ToolUiPhase::Failed => ("失败", Color::Red),
+        ToolUiPhase::PendingApproval => (t!("ui.tool.phase.pending_approval").into_owned(), Color::Yellow),
+        ToolUiPhase::Running => (t!("ui.tool.phase.running").into_owned(), Color::Yellow),
+        ToolUiPhase::Succeeded => (t!("ui.tool.phase.succeeded").into_owned(), Color::Green),
+        ToolUiPhase::Failed => (t!("ui.tool.phase.failed").into_owned(), Color::Red),
     }
 }
 
@@ -996,7 +1007,7 @@ fn render_tool_card_lines(
                 out.push(Line::from(vec![
                     Span::raw(indent),
                     Span::styled(rail_sym, rail),
-                    Span::styled("参数 JSON", Style::default().fg(Color::DarkGray)),
+                    Span::styled(t!("ui.tool.args_json").into_owned(), Style::default().fg(Color::DarkGray)),
                 ]));
                 for seg in args.lines() {
                     out.push(Line::from(vec![
@@ -1016,7 +1027,7 @@ fn render_tool_card_lines(
                 out.push(Line::from(vec![
                     Span::raw(indent),
                     Span::styled(rail_sym, rail),
-                    Span::styled("输出", Style::default().fg(Color::DarkGray)),
+                    Span::styled(t!("ui.tool.output").into_owned(), Style::default().fg(Color::DarkGray)),
                 ]));
                 let lines: Vec<&str> = output.lines().take(48).collect();
                 for seg in lines.iter() {
@@ -1033,7 +1044,8 @@ fn render_tool_card_lines(
                         Span::raw(indent),
                         Span::raw("  "),
                         Span::styled(
-                            format!("… 另有 {} 行未显示", total_ln.saturating_sub(48)),
+                            t!("ui.tool.more_lines_hidden", count = total_ln.saturating_sub(48))
+                                .into_owned(),
                             Style::default()
                                 .fg(Color::DarkGray)
                                 .add_modifier(Modifier::ITALIC),
@@ -1272,26 +1284,29 @@ fn build_suggestion_lines(
         Some(InputSuggestionKind::Slash) => {}
         Some(InputSuggestionKind::FileReference) if app.input_suggestion_loading => {
             return vec![Line::from(Span::styled(
-                "正在索引工作区文件...",
+                t!("tui.file_reference.indexing").into_owned(),
                 default_style,
             ))];
         }
         Some(InputSuggestionKind::FileReference) => {}
         None => {
             return vec![Line::from(Span::styled(
-                "输入 / 触发命令补全，输入 @ 触发文件引用",
+                t!("ui.suggestion.hint.trigger").into_owned(),
                 default_style,
             ))];
         }
     }
 
     if app.slash_suggestions.is_empty() {
+        let message = match app.input_suggestion_kind {
+            Some(InputSuggestionKind::Slash) => t!("ui.suggestion.empty.slash").into_owned(),
+            Some(InputSuggestionKind::FileReference) => {
+                t!("ui.suggestion.empty.file_reference").into_owned()
+            }
+            None => t!("ui.suggestion.empty.generic").into_owned(),
+        };
         return vec![Line::from(Span::styled(
-            match app.input_suggestion_kind {
-                Some(InputSuggestionKind::Slash) => "没有匹配的命令",
-                Some(InputSuggestionKind::FileReference) => "没有匹配的工作区文件",
-                None => "没有匹配项",
-            },
+            message,
             default_style,
         ))];
     }
@@ -1350,7 +1365,7 @@ fn build_suggestion_lines(
         let spacing = command_column_width
             .saturating_sub(command_width)
             .saturating_add(description_gap);
-        let summary_text = truncate_to_width(summary, summary_width);
+        let summary_text = truncate_to_width(&summary, summary_width);
 
         lines.push(Line::from(vec![
             Span::styled(command_text, command_style),
@@ -1403,69 +1418,77 @@ fn build_file_reference_suggestion_lines(
     lines
 }
 
-fn input_suggestion_title(app: &TuiViewModel) -> &'static str {
+fn input_suggestion_title(app: &TuiViewModel) -> String {
     match app.input_suggestion_kind {
-        Some(InputSuggestionKind::Slash) => "Slash Commands",
-        Some(InputSuggestionKind::FileReference) => "File References",
-        None => "Suggestions",
+        Some(InputSuggestionKind::Slash) => t!("ui.suggestion.title.slash").into_owned(),
+        Some(InputSuggestionKind::FileReference) => {
+            t!("ui.suggestion.title.file_reference").into_owned()
+        }
+        None => t!("ui.suggestion.title.generic").into_owned(),
     }
 }
 
-fn suggestion_summary(command: &str) -> &'static str {
+fn suggestion_summary(command: &str) -> String {
     match command {
-        "/help" => "查看可用命令与说明",
-        "/clear" => "清空当前会话显示",
-        "/quit" => "退出 Spirit Agent",
-        "/exit" => "退出 Spirit Agent",
-        "/model" => "查看、切换或管理模型",
-        "/compact" => "压缩上下文历史",
-        "/sessions" => "保存、加载或选择会话",
-        "/image" => "添加、清空或选择图片",
-        "/mcp" => "查看、添加或浏览 MCP 服务器能力",
-        "/log" => "打开或导出日志",
-        _ => "",
+        "/help" => t!("ui.suggestion.summary.help").into_owned(),
+        "/clear" => t!("ui.suggestion.summary.clear").into_owned(),
+        "/quit" | "/exit" => t!("ui.suggestion.summary.quit").into_owned(),
+        "/model" => t!("ui.suggestion.summary.model").into_owned(),
+        "/compact" => t!("ui.suggestion.summary.compact").into_owned(),
+        "/sessions" => t!("ui.suggestion.summary.sessions").into_owned(),
+        "/image" => t!("ui.suggestion.summary.image").into_owned(),
+        "/mcp" => t!("ui.suggestion.summary.mcp").into_owned(),
+        "/log" => t!("ui.suggestion.summary.log").into_owned(),
+        "/language" => t!("ui.suggestion.summary.language").into_owned(),
+        _ => String::new(),
     }
 }
 
-fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
+fn suggestion_usage_lines(command: &str) -> Vec<String> {
     match command {
         "/model" => vec![
-            "  Usage",
-            "    /model list",
-            "    /model use <name>",
-            "    /model add <name> <api_base> <api_key>",
-            "    /model remove <name>",
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /model list".to_string(),
+            "    /model use <name>".to_string(),
+            "    /model add <name> <api_base> <api_key>".to_string(),
+            "    /model remove <name>".to_string(),
         ],
         "/sessions" => vec![
-            "  Usage",
-            "    /sessions",
-            "    /sessions save [path]",
-            "    /sessions load <file>",
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /sessions".to_string(),
+            "    /sessions save [path]".to_string(),
+            "    /sessions load <file>".to_string(),
         ],
         "/image" => vec![
-            "  Usage",
-            "    /image <path> [prompt]",
-            "    /image pick",
-            "    /image clear",
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /image <path> [prompt]".to_string(),
+            "    /image pick".to_string(),
+            "    /image clear".to_string(),
         ],
         "/mcp" => vec![
-            "  Usage",
-            "    /mcp",
-            "    /mcp list",
-            "    /mcp add",
-            "    /mcp inspect [server]",
-            "    /mcp tools [server]",
-            "    /mcp resources [server]",
-            "    /mcp prompts [server]",
-            "    /mcp prompt [server] <prompt> [args_json]",
-            "  Note",
-            "    /mcp add 会打开底部表单；单一 server 场景可省略 [server]",
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /mcp".to_string(),
+            "    /mcp list".to_string(),
+            "    /mcp add".to_string(),
+            "    /mcp inspect [server]".to_string(),
+            "    /mcp tools [server]".to_string(),
+            "    /mcp resources [server]".to_string(),
+            "    /mcp prompts [server]".to_string(),
+            "    /mcp prompt [server] <prompt> [args_json]".to_string(),
+            t!("ui.suggestion.usage.note").into_owned(),
+            t!("ui.suggestion.usage.mcp_note").into_owned(),
         ],
         "/log" => vec![
-            "  Usage",
-            "    /log",
-            "    /log export",
-            "    /log session export",
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /log".to_string(),
+            "    /log export".to_string(),
+            "    /log session export".to_string(),
+        ],
+        "/language" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /language".to_string(),
+            "    /language en".to_string(),
+            "    /language zh-CN".to_string(),
         ],
         _ => Vec::new(),
     }
@@ -1473,9 +1496,7 @@ fn suggestion_usage_lines(command: &str) -> Vec<&'static str> {
 
 fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if app.config.models.is_empty() {
-        return vec![Line::from(
-            "暂无模型，先用 /model add <name> <api_base> <api_key> 添加",
-        )];
+        return vec![Line::from(t!("ui.picker.models.empty").into_owned())];
     }
 
     let selected = app
@@ -1497,7 +1518,11 @@ fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
         let is_active = model.name == app.config.active_model;
 
         let marker = if is_selected { "> " } else { "  " };
-        let active_suffix = if is_active { "  (current)" } else { "" };
+        let active_suffix = if is_active {
+            t!("ui.picker.models.current_suffix").into_owned()
+        } else {
+            String::new()
+        };
         let style = if is_selected {
             Style::default()
                 .fg(Color::Cyan)
@@ -1524,7 +1549,7 @@ fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
 
 fn build_chat_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if app.chat_picker_files.is_empty() {
-        return vec![Line::from("暂无已保存对话")];
+        return vec![Line::from(t!("ui.picker.sessions.empty").into_owned())];
     }
 
     let selected = app
@@ -1560,9 +1585,60 @@ fn build_chat_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'st
     lines
 }
 
+fn build_language_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
+    let locales = crate::locale::supported_ui_locales();
+    let selected = app
+        .language_picker_index
+        .min(locales.len().saturating_sub(1));
+    let total = locales.len();
+    let window = max_items.max(1);
+    let start = if selected + 1 > window {
+        selected + 1 - window
+    } else {
+        0
+    };
+    let end = (start + window).min(total);
+
+    let current_locale = rust_i18n::locale().to_string();
+    let mut lines = Vec::new();
+    for (idx, locale_code) in locales.iter().enumerate().take(end).skip(start) {
+        let is_selected = idx == selected;
+        let is_active = *locale_code == current_locale.as_str();
+        let marker = if is_selected { "> " } else { "  " };
+        let active_suffix = if is_active {
+            t!("ui.picker.languages.current_suffix").into_owned()
+        } else {
+            String::new()
+        };
+        let style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else if is_active {
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(Span::styled(
+            format!(
+                "{}{} ({}){}",
+                marker,
+                crate::locale::language_display_name(locale_code),
+                locale_code,
+                active_suffix
+            ),
+            style,
+        )));
+    }
+
+    lines
+}
+
 fn build_image_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     if app.image_picker_files.is_empty() {
-        return vec![Line::from("当前目录暂无可选图片")];
+        return vec![Line::from(t!("ui.picker.images.empty").into_owned())];
     }
 
     let selected = app
@@ -1962,6 +2038,8 @@ mod tests {
             selected_suggestion: 0,
             model_picker_active: false,
             model_picker_index: 0,
+            language_picker_active: false,
+            language_picker_index: 0,
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],

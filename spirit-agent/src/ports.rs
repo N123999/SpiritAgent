@@ -1,4 +1,6 @@
 use anyhow::Result;
+#[cfg(feature = "tui")]
+use rust_i18n::t;
 use serde_json::Value;
 use std::{path::PathBuf, sync::mpsc::Receiver};
 
@@ -48,6 +50,45 @@ pub struct McpStatusSnapshot {
 
 impl McpStatusSnapshot {
     pub fn welcome_line(&self) -> String {
+        #[cfg(feature = "tui")]
+        {
+            return match self.state {
+                McpStatusState::Idle => t!("mcp.status.idle").into_owned(),
+                McpStatusState::Loading => {
+                    if self.configured_servers == 0 {
+                        t!("mcp.status.unconfigured").into_owned()
+                    } else {
+                        t!("mcp.status.loading", count = self.configured_servers).into_owned()
+                    }
+                }
+                McpStatusState::Ready => {
+                    if self.configured_servers == 0 {
+                        t!("mcp.status.unconfigured").into_owned()
+                    } else {
+                        t!(
+                            "mcp.status.ready",
+                            loaded = self.loaded_servers,
+                            tools = self.cached_tools
+                        )
+                        .into_owned()
+                    }
+                }
+                McpStatusState::Error => {
+                    if self.configured_servers == 0 {
+                        t!("mcp.status.unconfigured").into_owned()
+                    } else {
+                        t!(
+                            "mcp.status.error",
+                            loaded = self.loaded_servers,
+                            configured = self.configured_servers
+                        )
+                        .into_owned()
+                    }
+                }
+            };
+        }
+
+        #[cfg(not(feature = "tui"))]
         match self.state {
             McpStatusState::Idle => "MCP: 尚未开始加载。".to_string(),
             McpStatusState::Loading => {

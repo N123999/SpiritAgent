@@ -6,7 +6,7 @@ license = "MIT"
 
 [features]
 default = ["tui"]
-tui = ["dep:ratatui", "dep:crossterm", "dep:comrak", "dep:unicode-width", "dep:arboard"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:comrak", "dep:unicode-width", "dep:arboard", "dep:rust-i18n"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -23,6 +23,7 @@ rpassword = "7"
 unicode-width = { version = "0.2", optional = true }
 comrak = { version = "0.36", optional = true }
 arboard = { version = "3", optional = true }
+rust-i18n = { version = "3", optional = true }
 encoding_rs = "0.8"
 base64 = "0.22"
 ignore = "0.4"

@@ -20,6 +20,7 @@ pub struct ModelProfile {
 pub struct AppConfig {
     pub models: Vec<ModelProfile>,
     pub active_model: String,
+    pub ui_locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ impl Default for AppConfig {
                 api_base: DEFAULT_API_BASE.to_string(),
             }],
             active_model: "gpt-4o-mini".to_string(),
+            ui_locale: None,
         }
     }
 }
@@ -103,6 +105,7 @@ pub fn load_config() -> Result<AppConfig> {
             })
             .collect(),
         active_model: legacy.active_model,
+        ui_locale: None,
     };
     normalize_config(&mut migrated);
     save_config(&migrated)?;

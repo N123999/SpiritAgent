@@ -1,6 +1,7 @@
 //! TUI manual shell mode helpers.
 
 use serde_json::json;
+use rust_i18n::t;
 
 use crate::view::{ToolUiBlock, ToolUiPhase};
 
@@ -39,8 +40,8 @@ pub(crate) fn running_block(tool_call_id: &str, command: &str) -> ToolUiBlock {
         tool_call_id: Some(tool_call_id.to_string()),
         tool_name: SHELL_TOOL_NAME.to_string(),
         phase: ToolUiPhase::Running,
-        headline: "命令执行中".to_string(),
-        detail_lines: vec![format!("命令: {}", command)],
+        headline: t!("shell.manual.running").into_owned(),
+        detail_lines: vec![t!("shell.manual.command_detail", command = command).into_owned()],
         args_excerpt: Some(args_excerpt(command)),
         output_excerpt: None,
     }
@@ -51,8 +52,8 @@ pub(crate) fn success_block(tool_call_id: &str, command: &str, output: &str) -> 
         tool_call_id: Some(tool_call_id.to_string()),
         tool_name: SHELL_TOOL_NAME.to_string(),
         phase: ToolUiPhase::Succeeded,
-        headline: "命令已执行".to_string(),
-        detail_lines: vec![format!("命令: {}", command)],
+        headline: t!("shell.manual.success").into_owned(),
+        detail_lines: vec![t!("shell.manual.command_detail", command = command).into_owned()],
         args_excerpt: Some(args_excerpt(command)),
         output_excerpt: Some(truncate_chars(output, SHELL_OUTPUT_MAX_CHARS)),
     }
@@ -63,8 +64,8 @@ pub(crate) fn failed_block(tool_call_id: &str, command: &str, error: &str) -> To
         tool_call_id: Some(tool_call_id.to_string()),
         tool_name: SHELL_TOOL_NAME.to_string(),
         phase: ToolUiPhase::Failed,
-        headline: "命令执行失败".to_string(),
-        detail_lines: vec![format!("命令: {}", command)],
+        headline: t!("shell.manual.failed").into_owned(),
+        detail_lines: vec![t!("shell.manual.command_detail", command = command).into_owned()],
         args_excerpt: Some(args_excerpt(command)),
         output_excerpt: Some(truncate_chars(error, SHELL_ERROR_MAX_CHARS)),
     }
@@ -81,7 +82,7 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
     }
 
     let mut result = text.chars().take(max_chars).collect::<String>();
-    result.push_str("\n\n...<输出已截断>");
+    result.push_str(t!("shell.manual.output_truncated").as_ref());
     result
 }
 

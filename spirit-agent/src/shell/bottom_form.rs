@@ -1,6 +1,7 @@
 //! TUI bottom-form helpers.
 
 use std::collections::BTreeMap;
+use rust_i18n::t;
 
 use crate::{
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
@@ -15,22 +16,25 @@ const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
 pub(crate) fn new_mcp_add_form() -> BottomFormView {
     let mut form = BottomFormView {
-        title: "Add MCP Server".to_string(),
+        title: t!("form.mcp.title").into_owned(),
         fields: vec![
             BottomFormFieldView {
-                label: "名称".to_string(),
+                label: t!("form.mcp.field.name.label").into_owned(),
                 help: String::new(),
                 editor: BottomFormFieldEditorView::Text {
                     value: String::new(),
-                    placeholder: "名称，例如 github".to_string(),
+                    placeholder: t!("form.mcp.field.name.placeholder").into_owned(),
                     cursor: 0,
                 },
             },
             BottomFormFieldView {
-                label: "类型".to_string(),
+                label: t!("form.mcp.field.transport.label").into_owned(),
                 help: String::new(),
                 editor: BottomFormFieldEditorView::Choice {
-                    options: vec!["STDIO".to_string(), "HTTP".to_string()],
+                    options: vec![
+                        t!("form.mcp.field.transport.stdio").into_owned(),
+                        t!("form.mcp.field.transport.http").into_owned(),
+                    ],
                     selected: 0,
                 },
             },
@@ -54,7 +58,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
             },
         ],
         selected_field: MCP_ADD_FIELD_NAME,
-        footer_hint: "↑/↓ 切换字段  ←/→ 移动光标或切换类型  Enter 保存  Esc 取消".to_string(),
+        footer_hint: t!("form.mcp.footer_hint").into_owned(),
     };
     sync_mcp_add_form_fields(&mut form);
     form
@@ -199,10 +203,10 @@ pub(crate) fn to_config(
         .trim()
         .to_string();
     if server_name.is_empty() {
-        return Err("server 名称不能为空".to_string());
+        return Err(t!("form.mcp.validation.server_name_empty").into_owned());
     }
     if server_name.chars().any(char::is_whitespace) {
-        return Err("server 名称不能包含空白字符，请使用 - 或 _".to_string());
+        return Err(t!("form.mcp.validation.server_name_whitespace").into_owned());
     }
 
     let endpoint = bottom_form_text_value(form, MCP_ADD_FIELD_ENDPOINT)
@@ -212,9 +216,9 @@ pub(crate) fn to_config(
         let label = form
             .fields
             .get(MCP_ADD_FIELD_ENDPOINT)
-            .map(|field| field.label.as_str())
-            .unwrap_or("命令或 URL");
-        return Err(format!("{} 不能为空", label));
+            .map(|field| field.label.clone())
+            .unwrap_or_else(|| t!("form.mcp.field.endpoint.fallback_label").into_owned());
+        return Err(t!("form.mcp.validation.field_required", label = label).into_owned());
     }
 
     let metadata_text = bottom_form_text_value(form, MCP_ADD_FIELD_METADATA);
@@ -222,7 +226,7 @@ pub(crate) fn to_config(
         McpAddTransportKind::Stdio => {
             let tokens = split_command_line(&endpoint)?;
             let Some((command, args)) = tokens.split_first() else {
-                return Err("命令不能为空".to_string());
+                return Err(t!("form.mcp.validation.command_empty").into_owned());
             };
             McpTransportConfig::Stdio {
                 command: command.clone(),
@@ -256,18 +260,17 @@ fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
     if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_ENDPOINT) {
         match transport {
             McpAddTransportKind::Stdio => {
-                field.label = "命令".to_string();
+                field.label = t!("form.mcp.field.endpoint.command.label").into_owned();
                 field.help = String::new();
                 if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                    *placeholder =
-                        "命令，例如 npx -y @modelcontextprotocol/server-github".to_string();
+                    *placeholder = t!("form.mcp.field.endpoint.command.placeholder").into_owned();
                 }
             }
             McpAddTransportKind::Http => {
-                field.label = "URL".to_string();
+                field.label = t!("form.mcp.field.endpoint.url.label").into_owned();
                 field.help = String::new();
                 if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                    *placeholder = "URL，例如 https://example.com/mcp".to_string();
+                    *placeholder = t!("form.mcp.field.endpoint.url.placeholder").into_owned();
                 }
             }
         }
@@ -276,20 +279,17 @@ fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
     if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_METADATA) {
         match transport {
             McpAddTransportKind::Stdio => {
-                field.label = "环境变量".to_string();
+                field.label = t!("form.mcp.field.metadata.env.label").into_owned();
                 field.help = String::new();
                 if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                    *placeholder =
-                        "环境变量，可选，例如 GITHUB_PERSONAL_ACCESS_TOKEN=${env:GITHUB_TOKEN}"
-                            .to_string();
+                    *placeholder = t!("form.mcp.field.metadata.env.placeholder").into_owned();
                 }
             }
             McpAddTransportKind::Http => {
-                field.label = "请求头".to_string();
+                field.label = t!("form.mcp.field.metadata.headers.label").into_owned();
                 field.help = String::new();
                 if let BottomFormFieldEditorView::Text { placeholder, .. } = &mut field.editor {
-                    *placeholder =
-                        "请求头，可选，例如 Authorization: Bearer ${env:GITHUB_TOKEN}".to_string();
+                    *placeholder = t!("form.mcp.field.metadata.headers.placeholder").into_owned();
                 }
             }
         }
@@ -352,20 +352,18 @@ fn parse_metadata_map(
 
         let Some((key, value)) = parsed else {
             return Err(match kind {
-                MetadataFieldKind::Env => {
-                    "环境变量 格式错误，应为 KEY=VALUE; KEY2=VALUE".to_string()
-                }
-                MetadataFieldKind::Header => {
-                    "请求头 格式错误，应为 Header: Value; Header2: Value2".to_string()
-                }
+                MetadataFieldKind::Env => t!("form.mcp.validation.env_format").into_owned(),
+                MetadataFieldKind::Header => t!("form.mcp.validation.header_format").into_owned(),
             });
         };
 
         let key = key.trim();
         if key.is_empty() {
             return Err(match kind {
-                MetadataFieldKind::Env => "环境变量 中存在空键名".to_string(),
-                MetadataFieldKind::Header => "请求头 中存在空键名".to_string(),
+                MetadataFieldKind::Env => t!("form.mcp.validation.env_empty_key").into_owned(),
+                MetadataFieldKind::Header => {
+                    t!("form.mcp.validation.header_empty_key").into_owned()
+                }
             });
         }
         result.insert(key.to_string(), value.trim().to_string());
@@ -409,13 +407,13 @@ fn split_command_line(input: &str) -> std::result::Result<Vec<String>, String> {
     }
 
     if quote.is_some() {
-        return Err("命令中存在未闭合的引号".to_string());
+        return Err(t!("form.mcp.validation.command_unclosed_quote").into_owned());
     }
     if !current.is_empty() {
         tokens.push(current);
     }
     if tokens.is_empty() {
-        return Err("命令不能为空".to_string());
+        return Err(t!("form.mcp.validation.command_empty").into_owned());
     }
     Ok(tokens)
 }
@@ -440,6 +438,7 @@ enum McpAddTransportKind {
 #[cfg(test)]
 mod tests {
     use super::{MetadataFieldKind, new_mcp_add_form, parse_metadata_map};
+    use rust_i18n::t;
 
     #[test]
     fn parse_header_metadata_supports_colon_syntax() {
@@ -466,7 +465,7 @@ mod tests {
     fn new_form_defaults_to_stdio_command_placeholders() {
         let form = new_mcp_add_form();
 
-        assert_eq!(form.fields[2].label, "命令");
-        assert_eq!(form.fields[3].label, "环境变量");
+        assert_eq!(form.fields[2].label, t!("form.mcp.field.endpoint.command.label"));
+        assert_eq!(form.fields[3].label, t!("form.mcp.field.metadata.env.label"));
     }
 }

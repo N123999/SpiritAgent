@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use rust_i18n::t;
 use std::{
     collections::HashMap,
     env, fs,
@@ -19,6 +20,7 @@ use crate::{
         OpenAiCompatibleTransport, WorkspaceToolExecutor,
     },
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
+    locale,
     logging,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
@@ -65,6 +67,8 @@ pub struct TuiShell {
     slash: slash::SlashState,
     model_picker_active: bool,
     model_picker_index: usize,
+    language_picker_active: bool,
+    language_picker_index: usize,
     chat_picker_active: bool,
     chat_picker_index: usize,
     chat_picker_files: Vec<String>,
@@ -94,6 +98,7 @@ impl TuiShell {
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
         let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
+        locale::apply_ui_locale(&config);
         let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
             Arc::clone(&secret_store),
             telemetry,
@@ -134,6 +139,8 @@ impl TuiShell {
             slash: slash::SlashState::new(),
             model_picker_active: false,
             model_picker_index: 0,
+            language_picker_active: false,
+            language_picker_index: 0,
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
@@ -228,6 +235,8 @@ impl TuiShell {
             selected_suggestion: self.slash.selected_suggestion,
             model_picker_active: self.model_picker_active,
             model_picker_index: self.model_picker_index,
+            language_picker_active: self.language_picker_active,
+            language_picker_index: self.language_picker_index,
             chat_picker_active: self.chat_picker_active,
             chat_picker_index: self.chat_picker_index,
             chat_picker_files: self.chat_picker_files.clone(),
@@ -390,6 +399,10 @@ impl TuiShell {
 
     pub fn is_model_picker_active(&self) -> bool {
         self.model_picker_active
+    }
+
+    pub fn is_language_picker_active(&self) -> bool {
+        self.language_picker_active
     }
 
     pub fn is_chat_picker_active(&self) -> bool {
@@ -559,7 +572,7 @@ impl TuiShell {
         if self.runtime.is_busy() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: "上一条回复仍在处理中，请稍候。".to_string(),
+                content: t!("tui.busy.pending_reply").into_owned(),
                 tool_block: None,
             });
             return;
@@ -569,10 +582,13 @@ impl TuiShell {
         if !trimmed_message.starts_with('/')
             && !self.runtime.session().pending_image_paths().is_empty()
         {
-            user_content.push_str(&format!(
-                "\n[attached images: {}]",
-                self.runtime.session().pending_image_paths().join(", ")
-            ));
+            user_content.push_str(
+                t!(
+                    "tui.user.attached_images",
+                    paths = self.runtime.session().pending_image_paths().join(", ")
+                )
+                .as_ref(),
+            );
         }
         if !trimmed_message.starts_with('/')
             && !self.runtime.session().pending_mcp_resources().is_empty()
@@ -585,7 +601,9 @@ impl TuiShell {
                 .map(|resource| resource.short_label())
                 .collect::<Vec<_>>()
                 .join(" | ");
-            user_content.push_str(&format!("\n[attached mcp resources: {}]", summary));
+            user_content.push_str(
+                t!("tui.user.attached_mcp_resources", summary = summary).as_ref(),
+            );
         }
         self.messages.push(ChatMessage {
             role: MessageRole::User,
@@ -648,7 +666,7 @@ impl TuiShell {
             return;
         }
         if self.file_reference_indexing {
-            self.push_agent_message("工作区文件索引仍在准备中，请稍候。");
+            self.push_agent_message(t!("tui.file_reference.indexing").into_owned());
             return;
         }
 
@@ -692,12 +710,24 @@ impl TuiShell {
         self.model_picker_active = false;
     }
 
+    pub fn cancel_language_picker(&mut self) {
+        self.language_picker_active = false;
+    }
+
     pub fn select_next_model(&mut self) {
         if self.runtime.config().models.is_empty() {
             return;
         }
         self.model_picker_index =
             (self.model_picker_index + 1) % self.runtime.config().models.len();
+    }
+
+    pub fn select_next_language(&mut self) {
+        let locales = locale::supported_ui_locales();
+        if locales.is_empty() {
+            return;
+        }
+        self.language_picker_index = (self.language_picker_index + 1) % locales.len();
     }
 
     pub fn select_prev_model(&mut self) {
@@ -708,6 +738,18 @@ impl TuiShell {
             self.model_picker_index = self.runtime.config().models.len() - 1;
         } else {
             self.model_picker_index -= 1;
+        }
+    }
+
+    pub fn select_prev_language(&mut self) {
+        let locales = locale::supported_ui_locales();
+        if locales.is_empty() {
+            return;
+        }
+        if self.language_picker_index == 0 {
+            self.language_picker_index = locales.len() - 1;
+        } else {
+            self.language_picker_index -= 1;
         }
     }
 
@@ -728,18 +770,29 @@ impl TuiShell {
         if let Err(err) = self.config_store.save(&config) {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: format!("模型切换成功但保存失败: {}", err),
+                content: t!("tui.model_picker.switch_saved_fail", err = err).into_owned(),
                 tool_block: None,
             });
         } else {
             self.runtime.replace_config(config);
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: format!("已切换当前模型为: {}", selected),
+                content: t!("tui.model_picker.switch_success", model = selected).into_owned(),
                 tool_block: None,
             });
         }
         self.model_picker_active = false;
+    }
+
+    pub fn confirm_language_picker(&mut self) {
+        let locales = locale::supported_ui_locales();
+        let Some(selected) = locales.get(self.language_picker_index).copied() else {
+            self.language_picker_active = false;
+            return;
+        };
+
+        self.switch_ui_locale(selected);
+        self.language_picker_active = false;
     }
 
     pub fn cancel_chat_picker(&mut self) {
@@ -811,11 +864,12 @@ impl TuiShell {
             .add_pending_image(selected.clone());
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: format!(
-                "已添加图片到待发送队列（{} 张）: {}",
-                self.runtime.session().pending_image_paths().len(),
-                selected
-            ),
+            content: t!(
+                "tui.image_picker.added",
+                count = self.runtime.session().pending_image_paths().len(),
+                path = selected
+            )
+            .into_owned(),
             tool_block: None,
         });
     }
@@ -913,11 +967,12 @@ impl TuiShell {
                 Ok(path) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: format!(
-                            "已添加 MCP server: {}\n配置文件: {}",
-                            server_name,
-                            path.display()
-                        ),
+                        content: t!(
+                            "tui.bottom_form.added",
+                            server = server_name,
+                            path = path.display()
+                        )
+                        .into_owned(),
                         tool_block: None,
                     });
                     self.bottom_form = None;
@@ -926,7 +981,7 @@ impl TuiShell {
                 Err(err) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: format!("添加 MCP server 失败: {}", err),
+                        content: t!("tui.bottom_form.add_failed", err = err).into_owned(),
                         tool_block: None,
                     });
                 }
@@ -934,7 +989,7 @@ impl TuiShell {
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("添加 MCP server 失败: {}", err),
+                    content: t!("tui.bottom_form.add_failed", err = err).into_owned(),
                     tool_block: None,
                 });
             }
@@ -1196,7 +1251,7 @@ impl TuiShell {
             if self.runtime.is_busy() {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "上一条回复仍在处理中，请稍候。".to_string(),
+                    content: t!("tui.busy.pending_reply").into_owned(),
                     tool_block: None,
                 });
                 return;
@@ -1204,7 +1259,7 @@ impl TuiShell {
             self.scroll_history_to_bottom();
             self.messages.push(ChatMessage {
                 role: MessageRole::User,
-                content: format!("{}\n[attached image] {}", prompt, raw_path),
+                content: t!("tui.user.attached_image", prompt = prompt, path = raw_path).into_owned(),
                 tool_block: None,
             });
             self.runtime
@@ -1218,10 +1273,11 @@ impl TuiShell {
             .add_pending_image(raw_path.to_string());
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: format!(
-                "已添加图片到待发送队列（{} 张）。下一条普通消息会自动携带这些图片。",
-                self.runtime.session().pending_image_paths().len()
-            ),
+            content: t!(
+                "tui.image_queue.added_auto_attach",
+                count = self.runtime.session().pending_image_paths().len()
+            )
+            .into_owned(),
             tool_block: None,
         });
     }
@@ -1288,6 +1344,29 @@ impl TuiShell {
                     tool_block: None,
                 });
             }
+        }
+    }
+
+    pub(crate) fn handle_language_slash(&mut self, args: &[&str]) {
+        match args {
+            [] => self.open_language_picker(),
+            [locale_code] => {
+                let Some(normalized) = locale::parse_ui_locale(locale_code) else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!(
+                            "tui.language.unsupported",
+                            locale = *locale_code,
+                            available = locale::supported_ui_locales().join(", ")
+                        )
+                        .into_owned(),
+                        tool_block: None,
+                    });
+                    return;
+                };
+                self.switch_ui_locale(&normalized);
+            }
+            _ => self.push_agent_message("用法: /language [en|zh-CN]"),
         }
     }
 
@@ -1688,20 +1767,7 @@ impl TuiShell {
             return;
         }
         self.last_mcp_status_revision = snapshot.revision;
-
-        let Some(first_message) = self.messages.first_mut() else {
-            return;
-        };
-        if first_message.role != MessageRole::Agent
-            || !first_message.content.starts_with("欢迎来到 Spirit Agent。")
-        {
-            return;
-        }
-
-        first_message.content = welcome_message_text(
-            &self.runtime.config().active_model,
-            &snapshot.welcome_line(),
-        );
+        self.refresh_welcome_message();
     }
 
     fn open_cli_log_file(&self) -> Result<std::path::PathBuf> {
@@ -1803,6 +1869,22 @@ impl TuiShell {
             .position(|m| m.name == self.runtime.config().active_model)
             .unwrap_or(0);
         self.model_picker_active = true;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.bottom_form = None;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    fn open_language_picker(&mut self) {
+        let current = locale::normalize_ui_locale(rust_i18n::locale().as_ref());
+        self.language_picker_index = locale::supported_ui_locales()
+            .iter()
+            .position(|candidate| *candidate == current)
+            .unwrap_or(0);
+        self.language_picker_active = true;
+        self.model_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.bottom_form = None;
@@ -1826,6 +1908,7 @@ impl TuiShell {
                 self.chat_picker_index = 0;
                 self.chat_picker_active = true;
                 self.model_picker_active = false;
+                self.language_picker_active = false;
                 self.image_picker_active = false;
                 self.bottom_form = None;
                 self.set_input(String::new());
@@ -1858,6 +1941,7 @@ impl TuiShell {
                 self.image_picker_index = 0;
                 self.image_picker_active = true;
                 self.model_picker_active = false;
+                self.language_picker_active = false;
                 self.chat_picker_active = false;
                 self.bottom_form = None;
                 self.set_input(String::new());
@@ -1876,10 +1960,55 @@ impl TuiShell {
     fn open_mcp_add_form(&mut self) {
         self.bottom_form = Some(bottom_form::new_mcp_add_form());
         self.model_picker_active = false;
+        self.language_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
         self.refresh_suggestions();
+    }
+
+    fn switch_ui_locale(&mut self, locale_code: &str) {
+        let normalized = locale::normalize_ui_locale(locale_code);
+        let mut config = self.runtime.config().clone();
+        config.ui_locale = Some(normalized.clone());
+        locale::apply_ui_locale(&config);
+        self.runtime.replace_config(config.clone());
+        let locale_name = locale::language_display_name(&normalized);
+
+        if let Err(err) = self.config_store.save(&config) {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!(
+                    "tui.language.switch_saved_fail",
+                    locale_name = locale_name,
+                    err = err
+                )
+                .into_owned(),
+                tool_block: None,
+            });
+        } else {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.language.switch_success", locale_name = locale_name).into_owned(),
+                tool_block: None,
+            });
+        }
+
+        self.refresh_welcome_message();
+    }
+
+    fn refresh_welcome_message(&mut self) {
+        let Some(first_message) = self.messages.first_mut() else {
+            return;
+        };
+        if first_message.role != MessageRole::Agent || !locale::is_welcome_message(&first_message.content)
+        {
+            return;
+        }
+        first_message.content = welcome_message_text(
+            &self.runtime.config().active_model,
+            &self.runtime.mcp_status_snapshot().welcome_line(),
+        );
     }
 
     fn save_current_chat(&mut self, path: Option<&str>) {
@@ -1925,14 +2054,14 @@ impl TuiShell {
             Ok(saved_path) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("会话已保存: {}", saved_path.display()),
+                    content: t!("tui.session.saved", path = saved_path.display()).into_owned(),
                     tool_block: None,
                 });
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("保存会话失败: {}", err),
+                    content: t!("tui.session.save_failed", err = err).into_owned(),
                     tool_block: None,
                 });
             }
@@ -1957,7 +2086,7 @@ impl TuiShell {
                 if msgs.is_empty() {
                     msgs.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: "已加载空会话。".to_string(),
+                        content: t!("tui.session.loaded_empty").into_owned(),
                         tool_block: None,
                     });
                 }
@@ -1992,14 +2121,14 @@ impl TuiShell {
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("会话已加载: {}", path),
+                    content: t!("tui.session.loaded", path = path).into_owned(),
                     tool_block: None,
                 });
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("加载会话失败: {}", err),
+                    content: t!("tui.session.load_failed", err = err).into_owned(),
                     tool_block: None,
                 });
             }
@@ -2220,7 +2349,7 @@ impl TuiShell {
                     let block = manual_shell::failed_block(
                         &pending.tool_call_id,
                         &pending.command,
-                        "Shell 后台任务异常中断。",
+                        t!("tui.shell.background_disconnected").as_ref(),
                     );
                     self.finish_pending_shell_execution(&pending.tool_call_id, block);
                 }
@@ -2257,10 +2386,7 @@ fn welcome_message(active_model: &str, mcp_status_line: &str) -> ChatMessage {
 }
 
 fn welcome_message_text(active_model: &str, mcp_status_line: &str) -> String {
-    format!(
-        "欢迎来到 Spirit Agent。\n当前模型: {}\n输入内容按 Enter 发送，Shift+Enter 换行；输入 /help 查看指令。\n{}",
-        active_model, mcp_status_line
-    )
+    t!("tui.welcome.body", model = active_model, mcp_status = mcp_status_line).into_owned()
 }
 
 fn split_first_token(input: &str) -> Option<(&str, &str)> {

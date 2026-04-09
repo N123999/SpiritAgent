@@ -374,6 +374,7 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
             }
             Event::Paste(text) => {
                 if shell.is_model_picker_active()
+                    || shell.is_language_picker_active()
                     || shell.is_chat_picker_active()
                     || shell.is_image_picker_active()
                 {
@@ -390,6 +391,7 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
                 }
 
                 if !shell.is_model_picker_active()
+                    && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
                     && !shell.is_image_picker_active()
                     && !shell.is_bottom_form_active()
@@ -404,6 +406,7 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
                 }
 
                 if !shell.is_model_picker_active()
+                    && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
                     && !shell.is_image_picker_active()
                     && let Some(ch) = batched_text_char(&key)
@@ -458,6 +461,20 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             KeyCode::Up => shell.select_prev_model(),
             KeyCode::Down => shell.select_next_model(),
             KeyCode::Enter => shell.confirm_model_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_language_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_language_picker(),
+            KeyCode::Up => shell.select_prev_language(),
+            KeyCode::Down => shell.select_next_language(),
+            KeyCode::Enter => shell.confirm_language_picker(),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.request_quit();
             }

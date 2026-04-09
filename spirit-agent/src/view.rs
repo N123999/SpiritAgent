@@ -131,6 +131,8 @@ pub struct TuiViewModel {
     pub selected_suggestion: usize,
     pub model_picker_active: bool,
     pub model_picker_index: usize,
+    pub language_picker_active: bool,
+    pub language_picker_index: usize,
     pub chat_picker_active: bool,
     pub chat_picker_index: usize,
     pub chat_picker_files: Vec<String>,
