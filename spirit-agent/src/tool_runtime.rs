@@ -152,6 +152,10 @@ fn format_shell_tool_transcript(
 impl ToolRuntime {
     pub fn new() -> Self {
         let workspace_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::new_for_workspace(workspace_root)
+    }
+
+    pub fn new_for_workspace(workspace_root: PathBuf) -> Self {
         let permission_store_path = permissions_file_path();
         let permissions = load_permissions(&permission_store_path).unwrap_or_default();
         let shell_context = ShellContext::detect();

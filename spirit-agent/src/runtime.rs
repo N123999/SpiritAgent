@@ -27,7 +27,7 @@ use crate::{
         LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor,
     },
     session::{PendingMcpResource, SessionModel},
-    tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
+    tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
     view::{
         AssistantAuxKind, ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase,
     },
@@ -86,7 +86,7 @@ struct PendingHistoryCompaction {
     continuation: HistoryCompactionContinuation,
 }
 
-struct PendingMcpToolExecution {
+struct PendingBackgroundToolExecution {
     request: ToolRequest,
     ui_tool_name: String,
     continuation: Option<ToolApprovalContinuation>,
@@ -103,7 +103,8 @@ pub struct AgentRuntime {
     pending_tool_agent_step: Option<Receiver<anyhow::Result<ToolAgentRoundResult>>>,
     pending_tool_agent_state: Option<ToolAgentState>,
     pending_history_compaction: Option<PendingHistoryCompaction>,
-    pending_mcp_tool_execution: Option<PendingMcpToolExecution>,
+    pending_background_tool_execution: Option<PendingBackgroundToolExecution>,
+    pending_background_tool_status: Option<String>,
     reuse_pending_assistant_on_next_round: bool,
     pending_started_at: Option<Instant>,
     pending_last_event_at: Option<Instant>,
@@ -135,7 +136,8 @@ impl AgentRuntime {
             pending_tool_agent_step: None,
             pending_tool_agent_state: None,
             pending_history_compaction: None,
-            pending_mcp_tool_execution: None,
+            pending_background_tool_execution: None,
+            pending_background_tool_status: None,
             reuse_pending_assistant_on_next_round: false,
             pending_started_at: None,
             pending_last_event_at: None,
@@ -186,7 +188,7 @@ impl AgentRuntime {
         self.pending_response.is_some()
             || self.pending_tool_agent_step.is_some()
             || self.pending_history_compaction.is_some()
-            || self.pending_mcp_tool_execution.is_some()
+            || self.pending_background_tool_execution.is_some()
     }
 
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
@@ -226,7 +228,7 @@ impl AgentRuntime {
         self.poll_pending_response();
         self.poll_pending_tool_agent_step();
         self.poll_pending_history_compaction();
-        self.poll_pending_mcp_tool_execution();
+        self.poll_pending_background_tool_execution();
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
@@ -521,7 +523,8 @@ impl AgentRuntime {
         self.pending_tool_agent_step = None;
         self.pending_tool_agent_state = None;
         self.pending_history_compaction = None;
-        self.pending_mcp_tool_execution = None;
+        self.pending_background_tool_execution = None;
+        self.pending_background_tool_status = None;
         self.reuse_pending_assistant_on_next_round = false;
         self.pending_started_at = None;
         self.pending_last_event_at = None;
@@ -630,8 +633,8 @@ impl AgentRuntime {
 
                         match self.tool_executor.authorize(&request) {
                             Ok(AuthorizationDecision::Allowed) => {
-                                if matches!(request, ToolRequest::McpTool { .. }) {
-                                    self.start_mcp_tool_execution(
+                                if should_execute_tool_in_background(&request) {
+                                    self.start_background_tool_execution(
                                         request,
                                         Some(ToolApprovalContinuation {
                                             state,
@@ -1001,8 +1004,8 @@ impl AgentRuntime {
     }
 
     fn execute_tool_request(&mut self, request: &ToolRequest) {
-        if matches!(request, ToolRequest::McpTool { .. }) {
-            self.start_mcp_tool_execution(request.clone(), None, "manual".to_string());
+        if should_execute_tool_in_background(request) {
+            self.start_background_tool_execution(request.clone(), None, "manual".to_string());
             return;
         }
 
@@ -1028,7 +1031,7 @@ impl AgentRuntime {
         }
     }
 
-    fn start_mcp_tool_execution(
+    fn start_background_tool_execution(
         &mut self,
         request: ToolRequest,
         continuation: Option<ToolApprovalContinuation>,
@@ -1039,11 +1042,12 @@ impl AgentRuntime {
         let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<String>>();
 
         thread::spawn(move || {
-            let outcome = execute_mcp_tool_request_sync(&workspace_root, &request_for_worker);
+            let outcome = execute_background_tool_request_sync(&workspace_root, &request_for_worker);
             let _ = result_tx.send(outcome);
         });
 
-        self.pending_mcp_tool_execution = Some(PendingMcpToolExecution {
+        self.pending_background_tool_status = background_tool_status_text(&request);
+        self.pending_background_tool_execution = Some(PendingBackgroundToolExecution {
             request,
             ui_tool_name,
             continuation,
@@ -1051,12 +1055,12 @@ impl AgentRuntime {
         });
     }
 
-    fn poll_pending_mcp_tool_execution(&mut self) {
-        let Some(pending) = self.pending_mcp_tool_execution.take() else {
+    fn poll_pending_background_tool_execution(&mut self) {
+        let Some(pending) = self.pending_background_tool_execution.take() else {
             return;
         };
 
-        let PendingMcpToolExecution {
+        let PendingBackgroundToolExecution {
             request,
             ui_tool_name,
             continuation,
@@ -1065,6 +1069,7 @@ impl AgentRuntime {
 
         match result_rx.try_recv() {
             Ok(Ok(output)) => {
+                self.pending_background_tool_status = None;
                 self.session.persist_tool_memory(&request, &output);
                 match continuation {
                     Some(mut cont) => {
@@ -1090,6 +1095,7 @@ impl AgentRuntime {
             }
             Ok(Err(err)) => match continuation {
                 Some(mut cont) => {
+                    self.pending_background_tool_status = None;
                     let e = format!("[tool error] {}", err);
                     self.push_agent_tool(
                         format!("模型工具调用执行失败: {}", err),
@@ -1104,6 +1110,7 @@ impl AgentRuntime {
                     self.start_tool_agent_step_async(cont.state);
                 }
                 None => {
+                    self.pending_background_tool_status = None;
                     self.push_agent_tool(
                         format!("工具执行失败: {}", err),
                         tool_failed_block(&ui_tool_name, None, "工具执行失败", &err.to_string()),
@@ -1111,7 +1118,7 @@ impl AgentRuntime {
                 }
             },
             Err(TryRecvError::Empty) => {
-                self.pending_mcp_tool_execution = Some(PendingMcpToolExecution {
+                self.pending_background_tool_execution = Some(PendingBackgroundToolExecution {
                     request,
                     ui_tool_name,
                     continuation,
@@ -1120,27 +1127,29 @@ impl AgentRuntime {
             }
             Err(TryRecvError::Disconnected) => match continuation {
                 Some(mut cont) => {
-                    let e = "[tool error] MCP 工具后台任务异常中断。".to_string();
+                    self.pending_background_tool_status = None;
+                    let e = "[tool error] 后台工具任务异常中断。".to_string();
                     self.push_agent_tool(
-                        "模型工具调用执行失败: MCP 工具后台任务异常中断。".to_string(),
+                        "模型工具调用执行失败: 后台工具任务异常中断。".to_string(),
                         tool_failed_block(
                             &cont.tool_name,
                             Some(&cont.tool_call_id),
                             "模型工具调用执行失败",
-                            "MCP 工具后台任务异常中断。",
+                            "后台工具任务异常中断。",
                         ),
                     );
                     append_tool_result_message(&mut cont.state, &cont.tool_call_id, &e);
                     self.start_tool_agent_step_async(cont.state);
                 }
                 None => {
+                    self.pending_background_tool_status = None;
                     self.push_agent_tool(
-                        "工具执行失败: MCP 工具后台任务异常中断。".to_string(),
+                        "工具执行失败: 后台工具任务异常中断。".to_string(),
                         tool_failed_block(
                             &ui_tool_name,
                             None,
                             "工具执行失败",
-                            "MCP 工具后台任务异常中断。",
+                            "后台工具任务异常中断。",
                         ),
                     );
                 }
@@ -1180,9 +1189,9 @@ impl AgentRuntime {
     ) {
         match continuation {
             Some(cont) => {
-                if matches!(request, ToolRequest::McpTool { .. }) {
+                if should_execute_tool_in_background(request) {
                     let ui_tool_name = cont.tool_name.clone();
-                    self.start_mcp_tool_execution(request.clone(), Some(cont), ui_tool_name);
+                    self.start_background_tool_execution(request.clone(), Some(cont), ui_tool_name);
                     return;
                 }
 
@@ -1371,7 +1380,7 @@ impl AgentRuntime {
         }
         if self.pending_response.is_some()
             || self.pending_tool_agent_step.is_some()
-            || self.pending_mcp_tool_execution.is_some()
+            || self.pending_background_tool_execution.is_some()
         {
             return Some(AssistantAuxKind::Thinking);
         }
@@ -1379,6 +1388,14 @@ impl AgentRuntime {
     }
 
     fn current_aux_text(&self) -> Option<&str> {
+        if let Some(status) = self
+            .pending_background_tool_status
+            .as_deref()
+            .filter(|status| !status.trim().is_empty())
+        {
+            return Some(status);
+        }
+
         match self.current_aux_kind()? {
             AssistantAuxKind::Thinking if !self.thinking_text.trim().is_empty() => {
                 Some(self.thinking_text.as_str())
@@ -1413,6 +1430,33 @@ fn execute_mcp_tool_request_sync(
     let value =
         McpManager::load(workspace_root.clone())?.call_tool(server, tool_name, arguments)?;
     Ok(serde_json::to_string_pretty(&value)?)
+}
+
+fn should_execute_tool_in_background(request: &ToolRequest) -> bool {
+    matches!(request, ToolRequest::McpTool { .. } | ToolRequest::Search { .. })
+}
+
+fn background_tool_status_text(request: &ToolRequest) -> Option<String> {
+    match request {
+        ToolRequest::Search { query } => Some(format!("搜索中: {}", query)),
+        ToolRequest::McpTool {
+            display_name,
+            tool_name,
+            ..
+        } => Some(format!("MCP 工具执行中: {} / {}", display_name, tool_name)),
+        _ => None,
+    }
+}
+
+fn execute_background_tool_request_sync(
+    workspace_root: &PathBuf,
+    request: &ToolRequest,
+) -> Result<String> {
+    match request {
+        ToolRequest::McpTool { .. } => execute_mcp_tool_request_sync(workspace_root, request),
+        ToolRequest::Search { .. } => ToolRuntime::new_for_workspace(workspace_root.clone()).execute(request),
+        _ => Err(anyhow!("后台工具执行收到不支持的请求")),
+    }
 }
 
 fn truncate_tool_messages_for_retry(state: &mut ToolAgentState) -> bool {
@@ -1771,6 +1815,39 @@ fn format_pending_mcp_resource_context(resource: &PendingMcpResource) -> String 
         resource.read_at_unix_ms,
         resource.content
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn background_execution_only_covers_search_and_mcp() {
+        assert!(should_execute_tool_in_background(&ToolRequest::Search {
+            query: "foo".to_string(),
+        }));
+        assert!(should_execute_tool_in_background(&ToolRequest::McpTool {
+            server: "demo".to_string(),
+            display_name: "Demo".to_string(),
+            tool_name: "find".to_string(),
+            arguments: Value::Null,
+        }));
+        assert!(!should_execute_tool_in_background(&ToolRequest::ReadFile {
+            path: "src/main.rs".to_string(),
+            start_line: Some(1),
+            end_line: Some(10),
+        }));
+    }
+
+    #[test]
+    fn search_background_status_mentions_query() {
+        assert_eq!(
+            background_tool_status_text(&ToolRequest::Search {
+                query: "session store".to_string(),
+            }),
+            Some("搜索中: session store".to_string())
+        );
+    }
 }
 
 fn pending_mcp_resource_from_read_result(
