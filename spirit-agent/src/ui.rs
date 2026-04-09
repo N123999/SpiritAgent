@@ -61,7 +61,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_suggestions = app.input.starts_with('/') && !show_picker && !show_bottom_form;
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(if show_suggestions {
+        .constraints(if show_suggestions || show_bottom_form {
             vec![Constraint::Min(0)]
         } else {
             vec![Constraint::Min(0), Constraint::Length(1)]
@@ -90,7 +90,6 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Constraint::Min(0),
                 Constraint::Length(input_height),
                 Constraint::Length(bottom_form_height),
-                Constraint::Length(1),
             ]
         } else if show_suggestions {
             vec![
@@ -209,12 +208,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         frame.render_widget(suggestions_widget, chunks[2]);
     }
 
-    if !show_suggestions {
-        let help_idx = if show_picker || show_bottom_form {
-            3
-        } else {
-            2
-        };
+    if !show_suggestions && !show_bottom_form {
+        let help_idx = if show_picker { 3 } else { 2 };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
         frame.render_widget(Clear, root_chunks[1]);
