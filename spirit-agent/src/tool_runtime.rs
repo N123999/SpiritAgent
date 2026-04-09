@@ -1,5 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use encoding_rs::GBK;
+use grep_regex::RegexMatcherBuilder;
+use grep_searcher::{Searcher, sinks::UTF8};
+use ignore::{DirEntry, WalkBuilder};
 use reqwest::{Url, blocking::Client, header};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -851,72 +854,61 @@ impl ToolRuntime {
             return Err(anyhow!("search query 不能为空"));
         }
 
-        let needle_lower = needle.to_lowercase();
+        let matcher = RegexMatcherBuilder::new()
+            .fixed_strings(true)
+            .case_insensitive(true)
+            .build(needle)
+            .map_err(|err| anyhow!("构建搜索模式失败: {}", err))?;
         let mut files = BTreeSet::new();
         let mut hits = Vec::new();
-        let mut stack = vec![self.workspace_root.clone()];
+        let mut walker = WalkBuilder::new(&self.workspace_root);
+        walker
+            .current_dir(&self.workspace_root)
+            .hidden(false)
+            .require_git(false)
+            .max_filesize(Some(MAX_SEARCH_FILE_BYTES))
+            .filter_entry(Self::search_entry_allowed);
 
-        while let Some(dir) = stack.pop() {
-            let entries = match fs::read_dir(&dir) {
-                Ok(v) => v,
+        for entry in walker.build() {
+            let entry = match entry {
+                Ok(entry) => entry,
                 Err(_) => continue,
             };
 
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if !entry.file_type().is_some_and(|file_type| file_type.is_file()) {
+                continue;
+            }
 
-                if path.is_dir() {
-                    if name == ".git" || name == "target" || name == "node_modules" {
-                        continue;
+            let path = entry.path();
+            let rel = path.strip_prefix(&self.workspace_root).unwrap_or(path);
+            let rel_display = rel.display().to_string();
+            let mut file_match_count = 0usize;
+
+            let search_result = Searcher::new().search_path(
+                &matcher,
+                path,
+                UTF8(|line_number, line| {
+                    files.insert(rel_display.clone());
+
+                    if hits.len() < MAX_SEARCH_RESULTS
+                        && file_match_count < MAX_SEARCH_MATCHES_PER_FILE
+                    {
+                        hits.push(format!(
+                            "{}:{} | {}",
+                            rel_display,
+                            line_number,
+                            truncate_chars(Self::normalize_search_line(line), 180)
+                        ));
                     }
-                    stack.push(path);
-                    continue;
-                }
 
-                if !path.is_file() {
-                    continue;
-                }
+                    file_match_count += 1;
+                    Ok(hits.len() < MAX_SEARCH_RESULTS
+                        && file_match_count < MAX_SEARCH_MATCHES_PER_FILE)
+                }),
+            );
 
-                let meta = match entry.metadata() {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                if meta.len() > MAX_SEARCH_FILE_BYTES {
-                    continue;
-                }
-
-                let text = match fs::read_to_string(&path) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-
-                let rel = path.strip_prefix(&self.workspace_root).unwrap_or(&path);
-                let rel_display = rel.display().to_string();
-                let mut file_match_count = 0usize;
-                for (line_idx, line) in text.lines().enumerate() {
-                    if line.to_lowercase().contains(&needle_lower) {
-                        files.insert(rel_display.clone());
-                        if hits.len() < MAX_SEARCH_RESULTS
-                            && file_match_count < MAX_SEARCH_MATCHES_PER_FILE
-                        {
-                            hits.push(format!(
-                                "{}:{} | {}",
-                                rel_display,
-                                line_idx + 1,
-                                truncate_chars(line.trim(), 180)
-                            ));
-                        }
-                        file_match_count += 1;
-                        if file_match_count >= MAX_SEARCH_MATCHES_PER_FILE {
-                            break;
-                        }
-                    }
-                }
-
-                if hits.len() >= MAX_SEARCH_RESULTS {
-                    break;
-                }
+            if search_result.is_err() {
+                continue;
             }
 
             if hits.len() >= MAX_SEARCH_RESULTS {
@@ -938,6 +930,22 @@ impl ToolRuntime {
         }
         Ok(out)
     }
+
+fn search_entry_allowed(entry: &DirEntry) -> bool {
+    if !entry.file_type().is_some_and(|file_type| file_type.is_dir()) {
+        return true;
+    }
+
+    let Some(name) = entry.file_name().to_str() else {
+        return true;
+    };
+
+    !matches!(name, ".git" | "target" | "node_modules")
+}
+
+fn normalize_search_line(line: &str) -> &str {
+    line.trim_end_matches(['\r', '\n']).trim()
+}
 
     fn execute_create_file(&self, path: &str, content: &str) -> Result<String> {
         let target = self.resolve_workspace_target_path(path)?;
@@ -1658,6 +1666,11 @@ fn save_permissions(path: &Path, store: &ToolPermissionStore) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn normalized_newline_replacement_preserves_crlf_and_utf8() {
@@ -1680,5 +1693,49 @@ mod tests {
         let old_text = "alpha\nbeta\n";
 
         assert!(replace_single_match_allowing_newline_differences(source, old_text, "z").is_none());
+    }
+
+    #[test]
+    fn execute_search_is_case_insensitive_and_respects_ignores() {
+        let workspace = make_temp_workspace("search-ripgrep");
+        fs::create_dir_all(workspace.join("src")).expect("create src dir");
+        fs::create_dir_all(workspace.join("target")).expect("create target dir");
+        fs::create_dir_all(workspace.join("ignored-dir")).expect("create ignored dir");
+        fs::write(workspace.join(".gitignore"), "ignored-dir/\n").expect("write gitignore");
+        fs::write(workspace.join("src").join("app.txt"), "Needle in source\n").expect("write source file");
+        fs::write(workspace.join("target").join("generated.txt"), "Needle in target\n")
+            .expect("write target file");
+        fs::write(workspace.join("ignored-dir").join("skip.txt"), "Needle in ignored dir\n")
+            .expect("write ignored file");
+
+        let result = ToolRuntime::new_for_workspace(workspace.clone())
+            .execute_search("needle")
+            .expect("search should succeed");
+
+        let expected_src = PathBuf::from("src").join("app.txt").display().to_string();
+        let expected_target = PathBuf::from("target")
+            .join("generated.txt")
+            .display()
+            .to_string();
+        let expected_ignored = PathBuf::from("ignored-dir")
+            .join("skip.txt")
+            .display()
+            .to_string();
+
+        assert!(result.contains(&expected_src));
+        assert!(!result.contains(&expected_target));
+        assert!(!result.contains(&expected_ignored));
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    fn make_temp_workspace(prefix: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("spirit-agent-{prefix}-{stamp}"));
+        fs::create_dir_all(&path).expect("create temp workspace");
+        path
     }
 }
