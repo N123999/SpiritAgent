@@ -181,9 +181,14 @@ pub struct ToolAgentRoundResult {
     pub request_trace: Vec<Value>,
 }
 
+pub enum ToolAgentRoundCompletion {
+    Success(ToolAgentRoundResult),
+    Failure { error: String, request_trace: Vec<Value> },
+}
+
 pub struct StartedToolAgentRound {
     pub stream_rx: Receiver<StreamEvent>,
-    pub result_rx: Receiver<Result<ToolAgentRoundResult>>,
+    pub result_rx: Receiver<ToolAgentRoundCompletion>,
 }
 
 pub trait LlmTransport: Send + Sync {

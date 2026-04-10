@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use crate::{
     llm_client::{
         CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep,
+        ToolCallRequest,
         append_tool_result_message,
     },
     mcp::McpServerConfig,
@@ -25,7 +26,8 @@ use crate::{
     },
     model_registry::AppConfig,
     ports::{
-        LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundResult, ToolExecutor,
+        LlmTransport, McpStatusSnapshot, StartedToolAgentRound, ToolAgentRoundCompletion,
+        ToolAgentRoundResult, ToolExecutor,
     },
     shell::file_reference,
     session::{PendingMcpResource, PendingWorkspaceFile, SessionModel},
@@ -65,6 +67,7 @@ struct ToolApprovalContinuation {
     state: ToolAgentState,
     tool_call_id: String,
     tool_name: String,
+    remaining_tool_calls: Vec<ToolCallRequest>,
 }
 
 struct CompletedHistoryCompaction {
@@ -103,7 +106,7 @@ pub struct AgentRuntime {
     tool_executor: Box<dyn ToolExecutor>,
     workspace_root: PathBuf,
     pending_response: Option<Receiver<StreamEvent>>,
-    pending_tool_agent_step: Option<Receiver<anyhow::Result<ToolAgentRoundResult>>>,
+    pending_tool_agent_step: Option<Receiver<ToolAgentRoundCompletion>>,
     pending_tool_agent_state: Option<ToolAgentState>,
     pending_history_compaction: Option<PendingHistoryCompaction>,
     pending_background_tool_execution: Option<PendingBackgroundToolExecution>,
@@ -436,7 +439,7 @@ impl AgentRuntime {
                         "已拒绝模型工具调用: {}。将继续让模型在无该工具条件下完成任务。",
                         cont.tool_name
                     ));
-                    self.start_tool_agent_step_async(cont.state);
+                    self.process_tool_agent_tool_calls(cont.state, cont.remaining_tool_calls);
                 } else {
                     self.push_agent_message("已拒绝本次工具调用。");
                 }
@@ -599,8 +602,8 @@ impl AgentRuntime {
         };
 
         match rx.try_recv() {
-            Ok(Ok(ToolAgentRoundResult {
-                mut state,
+            Ok(ToolAgentRoundCompletion::Success(ToolAgentRoundResult {
+                state,
                 step,
                 mut request_trace,
             })) => {
@@ -620,107 +623,24 @@ impl AgentRuntime {
                             self.start_tool_agent_step_async(state);
                         }
                     }
-                    ToolAgentStep::ToolCall(call) => {
-                        let request = match self
-                            .tool_executor
-                            .request_from_function_call(&call.name, &call.arguments)
-                        {
-                            Ok(r) => r,
-                            Err(err) => {
-                                append_tool_result_message(
-                                    &mut state,
-                                    &call.id,
-                                    &format!("[tool schema error] {}", err),
-                                );
-                                self.start_tool_agent_step_async(state);
-                                return;
-                            }
-                        };
-
-                        match self.tool_executor.authorize(&request) {
-                            Ok(AuthorizationDecision::Allowed) => {
-                                if should_execute_tool_in_background(&request) {
-                                    self.start_background_tool_execution(
-                                        request,
-                                        Some(ToolApprovalContinuation {
-                                            state,
-                                            tool_call_id: call.id,
-                                            tool_name: call.name.clone(),
-                                        }),
-                                        call.name,
-                                    );
-                                    return;
-                                }
-
-                                let tool_output = match self.tool_executor.execute(&request) {
-                                    Ok(result) => {
-                                        self.session.persist_tool_memory(&request, &result);
-                                        self.push_agent_tool(
-                                            format_tool_ui_message(&request, &call.name, &result),
-                                            build_tool_result_block(
-                                                &request,
-                                                &call.name,
-                                                Some(&call.id),
-                                                &result,
-                                            ),
-                                        );
-                                        result
-                                    }
-                                    Err(err) => {
-                                        let e = format!("[tool error] {}", err);
-                                        self.push_agent_tool(
-                                            format!("模型工具调用执行失败: {}", err),
-                                            tool_failed_block(
-                                                &call.name,
-                                                Some(&call.id),
-                                                "模型工具调用执行失败",
-                                                &err.to_string(),
-                                            ),
-                                        );
-                                        e
-                                    }
-                                };
-                                append_tool_result_message(&mut state, &call.id, &tool_output);
-                                self.start_tool_agent_step_async(state);
-                            }
-                            Ok(AuthorizationDecision::NeedApproval {
-                                prompt,
-                                trust_target,
-                            }) => {
-                                let approval_ui =
-                                    tool_approval_block(&call.name, Some(&call.id), &prompt);
-                                self.pending_tool_approval = Some(PendingToolApproval {
-                                    request,
-                                    trust_target,
-                                    continuation: Some(ToolApprovalContinuation {
-                                        state,
-                                        tool_call_id: call.id,
-                                        tool_name: call.name,
-                                    }),
-                                });
-                                self.push_agent_tool(prompt.clone(), approval_ui);
-                            }
-                            Err(err) => {
-                                append_tool_result_message(
-                                    &mut state,
-                                    &call.id,
-                                    &format!("[authorization error] {}", err),
-                                );
-                                self.start_tool_agent_step_async(state);
-                            }
-                        }
+                    ToolAgentStep::ToolCalls(calls) => {
+                        self.process_tool_agent_tool_calls(state, calls);
                     }
                 }
             }
-            Ok(Err(err)) => {
-                if self.try_fallback_to_text_only_and_retry(&err.to_string()) {
-                    return;
-                }
-                if self.try_auto_compact_and_retry(&err.to_string()) {
-                    return;
-                }
+            Ok(ToolAgentRoundCompletion::Failure {
+                error,
+                mut request_trace,
+            }) => {
                 self.pending_tool_agent_state = None;
-                self.push_agent_message(format!("LLM 调用失败: {}", err));
+                self.session.append_api_trace(&mut request_trace);
+                if self.try_fallback_to_text_only_and_retry(&error) {
+                    return;
+                }
+                if self.try_auto_compact_and_retry(&error) {
+                    return;
+                }
+                self.push_agent_message(format!("LLM 调用失败: {}", error));
             }
             Err(TryRecvError::Empty) => {
                 self.pending_tool_agent_step = Some(rx);
@@ -1089,7 +1009,7 @@ impl AgentRuntime {
                             ),
                         );
                         append_tool_result_message(&mut cont.state, &cont.tool_call_id, &output);
-                        self.start_tool_agent_step_async(cont.state);
+                        self.process_tool_agent_tool_calls(cont.state, cont.remaining_tool_calls);
                     }
                     None => {
                         self.push_agent_tool(
@@ -1113,7 +1033,7 @@ impl AgentRuntime {
                         ),
                     );
                     append_tool_result_message(&mut cont.state, &cont.tool_call_id, &e);
-                    self.start_tool_agent_step_async(cont.state);
+                    self.process_tool_agent_tool_calls(cont.state, cont.remaining_tool_calls);
                 }
                 None => {
                     self.pending_background_tool_status = None;
@@ -1145,7 +1065,7 @@ impl AgentRuntime {
                         ),
                     );
                     append_tool_result_message(&mut cont.state, &cont.tool_call_id, &e);
-                    self.start_tool_agent_step_async(cont.state);
+                    self.process_tool_agent_tool_calls(cont.state, cont.remaining_tool_calls);
                 }
                 None => {
                     self.pending_background_tool_status = None;
@@ -1232,9 +1152,112 @@ impl AgentRuntime {
                 };
 
                 append_tool_result_message(&mut cont.state, &cont.tool_call_id, &output);
-                self.start_tool_agent_step_async(cont.state);
+                self.process_tool_agent_tool_calls(cont.state, cont.remaining_tool_calls);
             }
             None => self.execute_tool_request(request),
+        }
+    }
+
+    fn process_tool_agent_tool_calls(
+        &mut self,
+        mut state: ToolAgentState,
+        mut calls: Vec<ToolCallRequest>,
+    ) {
+        if calls.is_empty() {
+            self.start_tool_agent_step_async(state);
+            return;
+        }
+
+        let call = calls.remove(0);
+        let request = match self
+            .tool_executor
+            .request_from_function_call(&call.name, &call.arguments)
+        {
+            Ok(request) => request,
+            Err(err) => {
+                append_tool_result_message(
+                    &mut state,
+                    &call.id,
+                    &format!("[tool schema error] {}", err),
+                );
+                self.process_tool_agent_tool_calls(state, calls);
+                return;
+            }
+        };
+
+        match self.tool_executor.authorize(&request) {
+            Ok(AuthorizationDecision::Allowed) => {
+                if should_execute_tool_in_background(&request) {
+                    self.start_background_tool_execution(
+                        request,
+                        Some(ToolApprovalContinuation {
+                            state,
+                            tool_call_id: call.id,
+                            tool_name: call.name.clone(),
+                            remaining_tool_calls: calls,
+                        }),
+                        call.name,
+                    );
+                    return;
+                }
+
+                let tool_output = match self.tool_executor.execute(&request) {
+                    Ok(result) => {
+                        self.session.persist_tool_memory(&request, &result);
+                        self.push_agent_tool(
+                            format_tool_ui_message(&request, &call.name, &result),
+                            build_tool_result_block(
+                                &request,
+                                &call.name,
+                                Some(&call.id),
+                                &result,
+                            ),
+                        );
+                        result
+                    }
+                    Err(err) => {
+                        let e = format!("[tool error] {}", err);
+                        self.push_agent_tool(
+                            format!("模型工具调用执行失败: {}", err),
+                            tool_failed_block(
+                                &call.name,
+                                Some(&call.id),
+                                "模型工具调用执行失败",
+                                &err.to_string(),
+                            ),
+                        );
+                        e
+                    }
+                };
+
+                append_tool_result_message(&mut state, &call.id, &tool_output);
+                self.process_tool_agent_tool_calls(state, calls);
+            }
+            Ok(AuthorizationDecision::NeedApproval {
+                prompt,
+                trust_target,
+            }) => {
+                let approval_ui = tool_approval_block(&call.name, Some(&call.id), &prompt);
+                self.pending_tool_approval = Some(PendingToolApproval {
+                    request,
+                    trust_target,
+                    continuation: Some(ToolApprovalContinuation {
+                        state,
+                        tool_call_id: call.id,
+                        tool_name: call.name,
+                        remaining_tool_calls: calls,
+                    }),
+                });
+                self.push_agent_tool(prompt.clone(), approval_ui);
+            }
+            Err(err) => {
+                append_tool_result_message(
+                    &mut state,
+                    &call.id,
+                    &format!("[authorization error] {}", err),
+                );
+                self.process_tool_agent_tool_calls(state, calls);
+            }
         }
     }
 

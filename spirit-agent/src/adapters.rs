@@ -21,8 +21,8 @@ use crate::{
     },
     ports::{
         AppPaths, ChatArchive, ChatRepository, ConfigStore, LlmTransport, McpStatusSnapshot,
-        McpStatusState, SecretStore, StartedToolAgentRound, Telemetry, ToolAgentRoundResult,
-        ToolExecutor,
+        McpStatusState, SecretStore, StartedToolAgentRound, Telemetry, ToolAgentRoundCompletion,
+        ToolAgentRoundResult, ToolExecutor,
     },
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
 };
@@ -658,7 +658,7 @@ impl LlmTransport for OpenAiCompatibleTransport {
         let resolved = self.resolve_model_config(config)?;
         let telemetry = Arc::clone(&self.telemetry);
         let (stream_tx, stream_rx) = mpsc::channel::<crate::llm_client::StreamEvent>();
-        let (result_tx, result_rx) = mpsc::channel::<Result<ToolAgentRoundResult>>();
+        let (result_tx, result_rx) = mpsc::channel::<ToolAgentRoundCompletion>();
 
         thread::spawn(move || {
             let mut state = state;
@@ -675,7 +675,7 @@ impl LlmTransport for OpenAiCompatibleTransport {
             match outcome {
                 Ok(step) => {
                     let _ = stream_tx.send(crate::llm_client::StreamEvent::Done);
-                    let _ = result_tx.send(Ok(ToolAgentRoundResult {
+                    let _ = result_tx.send(ToolAgentRoundCompletion::Success(ToolAgentRoundResult {
                         state,
                         step,
                         request_trace,
@@ -684,7 +684,10 @@ impl LlmTransport for OpenAiCompatibleTransport {
                 Err(err) => {
                     let _ = stream_tx.send(crate::llm_client::StreamEvent::Error(err.to_string()));
                     let _ = stream_tx.send(crate::llm_client::StreamEvent::Done);
-                    let _ = result_tx.send(Err(err));
+                    let _ = result_tx.send(ToolAgentRoundCompletion::Failure {
+                        error: err.to_string(),
+                        request_trace,
+                    });
                 }
             }
         });

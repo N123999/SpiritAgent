@@ -50,7 +50,7 @@ pub enum StreamEvent {
     Error(String),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolCallRequest {
     pub id: String,
     pub name: String,
@@ -58,7 +58,7 @@ pub struct ToolCallRequest {
 }
 
 pub enum ToolAgentStep {
-    ToolCall(ToolCallRequest),
+    ToolCalls(Vec<ToolCallRequest>),
     FinalResponseReady,
 }
 
@@ -131,6 +131,7 @@ impl ToolCallStreamAccumulator {
         for part in deltas {
             let idx = part.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
             let slot = self.slots.entry(idx).or_default();
+            slot.insert("index".to_string(), json!(idx));
             if let Some(id) = part.get("id").and_then(Value::as_str) {
                 slot.insert("id".to_string(), json!(id));
             }
@@ -184,37 +185,51 @@ fn apply_tool_agent_assistant_message(
     message: Value,
 ) -> Result<ToolAgentStep> {
     if let Some(arr) = message.get("tool_calls").and_then(Value::as_array)
-        && let Some(first) = arr.first()
+        && !arr.is_empty()
     {
-        let id = first
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("tool_call")
-            .to_string();
-        let name = first
-            .pointer("/function/name")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("tool call 缺少 function.name"))?
-            .to_string();
-        let arguments = first
-            .pointer("/function/arguments")
-            .and_then(Value::as_str)
-            .unwrap_or("{}")
-            .to_string();
+        let mut pending_calls = Vec::new();
+        let mut redundant_call_ids = Vec::new();
 
-        let is_redundant = is_redundant_lookup_call(&state.messages, &name, &arguments);
+        for call in arr {
+            let id = call
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("tool_call")
+                .to_string();
+            let name = call
+                .pointer("/function/name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("tool call 缺少 function.name"))?
+                .to_string();
+            let arguments = call
+                .pointer("/function/arguments")
+                .and_then(Value::as_str)
+                .unwrap_or("{}")
+                .to_string();
+
+            if is_redundant_lookup_call(&state.messages, &name, &arguments) {
+                redundant_call_ids.push(id);
+                continue;
+            }
+
+            pending_calls.push(ToolCallRequest {
+                id,
+                name,
+                arguments,
+            });
+        }
+
         state.messages.push(message.clone());
 
-        if is_redundant {
-            append_redundant_lookup_result(&mut *state, &id);
+        for tool_call_id in redundant_call_ids {
+            append_redundant_lookup_result(&mut *state, &tool_call_id);
+        }
+
+        if pending_calls.is_empty() {
             return Ok(ToolAgentStep::FinalResponseReady);
         }
 
-        return Ok(ToolAgentStep::ToolCall(ToolCallRequest {
-            id,
-            name,
-            arguments,
-        }));
+        return Ok(ToolAgentStep::ToolCalls(pending_calls));
     }
 
     if let Some(content) = message.get("content").and_then(Value::as_str)
@@ -258,7 +273,7 @@ fn apply_tool_agent_assistant_message(
                 }
             ]
         }));
-        return Ok(ToolAgentStep::ToolCall(dsml_call));
+        return Ok(ToolAgentStep::ToolCalls(vec![dsml_call]));
     }
 
     let has_tool_calls = message
@@ -313,6 +328,10 @@ fn build_assistant_message_from_stream_buffers(
 }
 
 fn with_reasoning_content_if_needed(mut message: Value, reasoning_buf: &str) -> Value {
+    if message_content_has_embedded_thinking(&message) {
+        return message;
+    }
+
     let has_tool_calls = message
         .get("tool_calls")
         .and_then(Value::as_array)
@@ -340,6 +359,17 @@ fn with_reasoning_content_if_needed(mut message: Value, reasoning_buf: &str) -> 
     }
 
     message
+}
+
+fn message_content_has_embedded_thinking(message: &Value) -> bool {
+    message
+        .get("content")
+        .and_then(Value::as_str)
+        .map(|content| {
+            let trimmed = content.trim_start();
+            trimmed.starts_with("<think>") && trimmed.contains("</think>")
+        })
+        .unwrap_or(false)
 }
 
 /// 工具代理单轮：**一次** `stream=true` 的 chat/completions（含 tools），真实 SSE 输出到 `stream_tx`。
@@ -1446,10 +1476,11 @@ mod tests {
         .expect("openai style tool call should parse");
 
         match step {
-            ToolAgentStep::ToolCall(call) => {
-                assert_eq!(call.id, "call_openai");
-                assert_eq!(call.name, "read_file");
-                assert_eq!(call.arguments, "{\"path\":\"summary.md\"}");
+            ToolAgentStep::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id, "call_openai");
+                assert_eq!(calls[0].name, "read_file");
+                assert_eq!(calls[0].arguments, "{\"path\":\"summary.md\"}");
             }
             ToolAgentStep::FinalResponseReady => {
                 panic!("non-redundant openai tool call should not be treated as redundant");
@@ -1510,6 +1541,171 @@ mod tests {
         assert_eq!(
             message.get("reasoning_content").and_then(Value::as_str),
             Some("")
+        );
+    }
+
+    #[test]
+    fn embedded_thinking_content_is_left_unchanged() {
+        let message = with_reasoning_content_if_needed(
+            json!({
+                "role": "assistant",
+                "content": "<think>先想一下</think>\n\n好的",
+                "tool_calls": [
+                    {
+                        "id": "call_openai",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"summary.md\"}"
+                        }
+                    }
+                ]
+            }),
+            "",
+        );
+
+        assert!(message.get("reasoning_content").is_none());
+    }
+
+    #[test]
+    fn tool_call_deltas_preserve_index_field() {
+        let mut tool_acc = ToolCallStreamAccumulator::default();
+        tool_acc.apply_deltas(&[json!({
+            "index": 2,
+            "id": "call_openai",
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "arguments": "{\"path\":\"summary.md\"}"
+            }
+        })]);
+
+        let tool_calls = tool_acc.as_tool_calls_array().expect("tool calls should exist");
+        assert_eq!(tool_calls[0].get("index").and_then(Value::as_u64), Some(2));
+    }
+
+    #[test]
+    fn openai_multiple_tool_calls_are_recorded_in_order() {
+        let mut state = ToolAgentState {
+            messages: vec![json!({"role": "system", "content": "你是 Spirit Agent 代理。"})],
+            steps: 0,
+        };
+
+        let step = apply_tool_agent_assistant_message(
+            &mut state,
+            json!({
+                "role": "assistant",
+                "content": Value::Null,
+                "tool_calls": [
+                    {
+                        "id": "call_list",
+                        "type": "function",
+                        "function": {
+                            "name": "list_directory_files",
+                            "arguments": "{\"path\":\"src\"}"
+                        }
+                    },
+                    {
+                        "id": "call_read",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"Cargo.toml\"}"
+                        }
+                    }
+                ]
+            }),
+        )
+        .expect("multiple tool calls should parse");
+
+        match step {
+            ToolAgentStep::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 2);
+                assert_eq!(calls[0].id, "call_list");
+                assert_eq!(calls[0].name, "list_directory_files");
+                assert_eq!(calls[1].id, "call_read");
+                assert_eq!(calls[1].name, "read_file");
+            }
+            ToolAgentStep::FinalResponseReady => {
+                panic!("multiple tool calls should continue through tool execution");
+            }
+        }
+
+        assert_eq!(state.messages.len(), 2);
+    }
+
+    #[test]
+    fn redundant_lookup_batches_keep_only_non_redundant_calls_pending() {
+        let mut state = ToolAgentState {
+            messages: vec![
+                json!({"role": "system", "content": "你是 Spirit Agent 代理。"}),
+                json!({
+                    "role": "assistant",
+                    "content": Value::Null,
+                    "tool_calls": [
+                        {
+                            "id": "call_prev",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": "{\"path\":\"summary.md\"}",
+                            }
+                        }
+                    ]
+                }),
+                json!({
+                    "role": "tool",
+                    "tool_call_id": "call_prev",
+                    "content": "[read]\npath: summary.md",
+                }),
+            ],
+            steps: 0,
+        };
+
+        let step = apply_tool_agent_assistant_message(
+            &mut state,
+            json!({
+                "role": "assistant",
+                "content": "我再看一个文件。",
+                "tool_calls": [
+                    {
+                        "id": "call_dup",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"summary.md\"}",
+                        }
+                    },
+                    {
+                        "id": "call_new",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"Cargo.toml\"}",
+                        }
+                    }
+                ]
+            }),
+        )
+        .expect("mixed redundant tool call batch should parse");
+
+        match step {
+            ToolAgentStep::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id, "call_new");
+                assert_eq!(calls[0].arguments, "{\"path\":\"Cargo.toml\"}");
+            }
+            ToolAgentStep::FinalResponseReady => {
+                panic!("non-redundant tool call should remain pending");
+            }
+        }
+
+        assert_eq!(state.messages.len(), 5);
+        assert_eq!(
+            state.messages[4]
+                .get("tool_call_id")
+                .and_then(Value::as_str),
+            Some("call_dup")
         );
     }
 }

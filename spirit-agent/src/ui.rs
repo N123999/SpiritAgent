@@ -805,11 +805,16 @@ fn render_message_lines(
     let is_pending_assistant =
         msg.role == MessageRole::Agent && app.is_pending_assistant_message(message_index);
 
-    let has_message_body = !msg.content.trim().is_empty();
+    let (message_body, embedded_thinking) = match msg.role {
+        MessageRole::Agent => split_embedded_thinking_content(&msg.content),
+        MessageRole::User => (msg.content.clone(), None),
+    };
+
+    let has_message_body = !message_body.trim().is_empty();
     let content_lines = if has_message_body {
         match msg.role {
-            MessageRole::User => plain_text_lines(&msg.content),
-            MessageRole::Agent => markdown_lines(&msg.content),
+            MessageRole::User => plain_text_lines(&message_body),
+            MessageRole::Agent => markdown_lines(&message_body),
         }
     } else {
         Vec::new()
@@ -830,10 +835,16 @@ fn render_message_lines(
         .and_then(|aux| aux.compaction.as_deref())
         .filter(|value| !value.trim().is_empty())
         .filter(|_| !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing));
+    let embedded_thinking_text = if msg.role == MessageRole::Agent && app.show_aux_details {
+        embedded_thinking.as_deref().filter(|value| !value.trim().is_empty())
+    } else {
+        None
+    };
     let stored_thinking_text = if pending_aux.is_none() {
         stored_aux
             .and_then(|aux| aux.thinking.as_deref())
             .filter(|value| !value.trim().is_empty())
+            .or(embedded_thinking_text)
     } else {
         None
     };
@@ -909,6 +920,32 @@ fn render_message_lines(
     }
 
     out
+}
+
+fn split_embedded_thinking_content(text: &str) -> (String, Option<String>) {
+    let trimmed = text.trim_start();
+    let Some(after_open) = trimmed.strip_prefix("<think>") else {
+        return (text.to_string(), None);
+    };
+
+    let (thinking_raw, body_raw) = if let Some(close_idx) = after_open.find("</think>") {
+        let body_start = close_idx + "</think>".len();
+        (&after_open[..close_idx], &after_open[body_start..])
+    } else {
+        (after_open, "")
+    };
+
+    let thinking = thinking_raw.trim();
+    let body = body_raw.trim_start_matches(['\r', '\n']);
+
+    (
+        body.to_string(),
+        if thinking.is_empty() {
+            None
+        } else {
+            Some(thinking.to_string())
+        },
+    )
 }
 
 fn tool_phase_label(phase: ToolUiPhase) -> (String, Color) {
@@ -2178,5 +2215,55 @@ mod tests {
             .expect("body line exists");
 
         assert!(thinking_idx < body_idx);
+    }
+
+    #[test]
+    fn embedded_thinking_renders_in_aux_details_without_raw_tags() {
+        let app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "<think>先看一下项目结构。</think>\n\n我已经梳理完主要模块。",
+        ));
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+        let thinking_idx = lines
+            .iter()
+            .position(|line| line.contains("先看一下项目结构。"))
+            .expect("embedded thinking line exists");
+        let body_idx = lines
+            .iter()
+            .position(|line| line.contains("我已经梳理完主要模块。"))
+            .expect("body line exists");
+
+        assert!(thinking_idx < body_idx);
+        assert!(lines.iter().all(|line| !line.contains("<think>")));
+        assert!(lines.iter().all(|line| !line.contains("</think>")));
+    }
+
+    #[test]
+    fn embedded_thinking_is_hidden_when_aux_details_collapsed() {
+        let mut app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "<think>先看一下项目结构。</think>\n\n我已经梳理完主要模块。",
+        ));
+        app.show_aux_details = false;
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+
+        assert!(lines.iter().any(|line| line.contains("我已经梳理完主要模块。")));
+        assert!(lines.iter().all(|line| !line.contains("先看一下项目结构。")));
+        assert!(lines.iter().all(|line| !line.contains("<think>")));
+    }
+
+    #[test]
+    fn thinking_only_message_stays_invisible_when_aux_details_collapsed() {
+        let mut app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "<think>先看一下项目结构。</think>",
+        ));
+        app.show_aux_details = false;
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+
+        assert!(lines.is_empty());
     }
 }
