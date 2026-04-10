@@ -15,10 +15,7 @@ use std::{
 };
 
 use crate::{
-    adapters::{
-        DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore, LoggingTelemetry,
-        OpenAiCompatibleTransport, WorkspaceToolExecutor,
-    },
+    adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
     locale,
     logging,
@@ -94,62 +91,20 @@ pub struct TuiShell {
 }
 
 impl TuiShell {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let app_paths: Arc<dyn AppPaths> = Arc::new(DefaultAppPaths::new());
         let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
-        let telemetry = Arc::new(LoggingTelemetry);
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
         let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
         locale::apply_ui_locale(&config);
         let workspace_root = app_paths.workspace_root();
-        let requested_backend = env::var("SPIRIT_RUNTIME_BACKEND").unwrap_or_default();
-        let (runtime, runtime_notice) = if requested_backend.eq_ignore_ascii_case("ts") {
-            match RuntimeHandle::new_ts(
-                config.clone(),
-                Arc::clone(&secret_store),
-                workspace_root.clone(),
-            ) {
-                Ok(runtime) => (runtime, None),
-                Err(err) => {
-                    logging::log_event(&format!(
-                        "[runtime] ts backend init failed, fallback to rust: {}",
-                        err
-                    ));
-                    let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
-                        Arc::clone(&secret_store),
-                        telemetry,
-                        app_paths.as_ref(),
-                    ));
-                    let tool_executor = Box::new(WorkspaceToolExecutor::new());
-                    (
-                        RuntimeHandle::new_rust(
-                            config.clone(),
-                            llm_transport,
-                            tool_executor,
-                            workspace_root.clone(),
-                        ),
-                        Some(format!("TS runtime bridge 启动失败，已回退到 Rust backend: {}", err)),
-                    )
-                }
-            }
-        } else {
-            let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
-                Arc::clone(&secret_store),
-                telemetry,
-                app_paths.as_ref(),
-            ));
-            let tool_executor = Box::new(WorkspaceToolExecutor::new());
-            (
-                RuntimeHandle::new_rust(
-                    config.clone(),
-                    llm_transport,
-                    tool_executor,
-                    workspace_root.clone(),
-                ),
-                None,
-            )
-        };
+        let runtime = RuntimeHandle::new(
+            config.clone(),
+            Arc::clone(&secret_store),
+            workspace_root.clone(),
+        )
+        .context("初始化 TypeScript runtime bridge 失败")?;
         let initial_mcp_status = runtime.mcp_status_snapshot();
         let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
         thread::spawn(move || {
@@ -157,15 +112,12 @@ impl TuiShell {
             let _ = file_index_tx.send(files);
         });
 
-        let mut messages = vec![welcome_message(
+        let messages = vec![welcome_message(
             &config.active_model,
             &initial_mcp_status.welcome_line(),
         )];
-        if let Some(notice) = runtime_notice {
-            messages.push(ChatMessage::new(MessageRole::Agent, notice));
-        }
 
-        Self {
+        Ok(Self {
             input: String::new(),
             input_cursor: 0,
             shell_mode_active: false,
@@ -203,7 +155,7 @@ impl TuiShell {
             chat_repository,
             secret_store,
             app_paths,
-        }
+        })
     }
 
     pub fn refresh_suggestions(&mut self) {

@@ -315,7 +315,7 @@ fn run_tui() -> Result<()> {
 }
 
 fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
-    let mut shell = TuiShell::new();
+    let mut shell = TuiShell::new()?;
     shell.refresh_suggestions();
     execute!(terminal.backend_mut(), EnableMouseCapture)?;
 
