@@ -24,7 +24,8 @@ use crate::{
     logging,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
-    runtime::{AgentRuntime, RuntimeEvent},
+    runtime::RuntimeEvent,
+    runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
@@ -83,7 +84,7 @@ pub struct TuiShell {
     conversation_panel_hit: Option<ConversationPanelHit>,
     conversation_plain_rows: Vec<String>,
     should_quit: bool,
-    runtime: AgentRuntime,
+    runtime: RuntimeHandle,
     config_store: Box<dyn ConfigStore>,
     chat_repository: Box<dyn ChatRepository>,
     secret_store: Arc<dyn SecretStore>,
@@ -106,7 +107,7 @@ impl TuiShell {
         ));
         let tool_executor = Box::new(WorkspaceToolExecutor::new());
         let workspace_root = app_paths.workspace_root();
-        let runtime = AgentRuntime::new(
+        let runtime = RuntimeHandle::new_rust(
             config.clone(),
             llm_transport,
             tool_executor,
@@ -859,9 +860,7 @@ impl TuiShell {
         };
 
         self.image_picker_active = false;
-        self.runtime
-            .session_mut()
-            .add_pending_image(selected.clone());
+        self.runtime.add_pending_image(selected.clone());
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
             content: t!(
@@ -1207,7 +1206,7 @@ impl TuiShell {
         }
 
         if tail == "clear" {
-            let cleared = self.runtime.session_mut().clear_pending_images();
+            let cleared = self.runtime.clear_pending_images();
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: format!("已清空待发送图片队列（{} 张）。", cleared),
@@ -1268,9 +1267,7 @@ impl TuiShell {
             return;
         }
 
-        self.runtime
-            .session_mut()
-            .add_pending_image(raw_path.to_string());
+        self.runtime.add_pending_image(raw_path.to_string());
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
             content: t!(

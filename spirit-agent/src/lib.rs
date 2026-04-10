@@ -12,6 +12,7 @@ pub mod mcp_manager;
 pub mod model_registry;
 pub mod ports;
 pub mod runtime;
+pub mod runtime_handle;
 pub mod session;
 #[cfg(feature = "tui")]
 pub mod shell;
