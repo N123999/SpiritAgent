@@ -13,7 +13,12 @@ import type {
   ToolExecutor,
 } from '../ports.js';
 import { isOpenAiVisionUnsupportedError } from '../openai/transport.js';
-import { AgentRuntime, pendingWorkspaceFilesFromInput, type RuntimeEvent } from '../runtime.js';
+import {
+  AgentRuntime,
+  pendingWorkspaceFilesFromInput,
+  type RuntimeEvent,
+  type RuntimeTurnResult,
+} from '../runtime.js';
 
 import { printSmokeSection } from './openai-shared.js';
 
@@ -437,6 +442,100 @@ class CompactTransport implements LlmTransport<undefined, ScriptedState> {
   }
 }
 
+class PollingCompactTransport extends CompactTransport {
+  private resolveCompaction: (() => void) | undefined;
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    const beforeLength = history.length;
+
+    return new Promise((resolve) => {
+      this.resolveCompaction = () => {
+        const lastUser = [...history].reverse().find((message) => message.role === 'user');
+        history.splice(
+          0,
+          history.length,
+          {
+            role: 'system',
+            content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
+            imagePaths: [],
+          },
+          ...(lastUser ? [lastUser] : []),
+        );
+
+        resolve({
+          droppedMessages: Math.max(beforeLength - history.length, 0),
+          beforeLength,
+          afterLength: history.length,
+        });
+      };
+    });
+  }
+
+  finishCompaction(): void {
+    this.resolveCompaction?.();
+  }
+}
+
+class ProgressManualCompactionTransport extends CompactTransport {
+  private resolveCompaction: (() => void) | undefined;
+  private progressCallback: ((message: string) => void) | undefined;
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+    onProgress?: (message: string) => void,
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    const beforeLength = history.length;
+    this.progressCallback = onProgress;
+
+    return new Promise((resolve) => {
+      this.resolveCompaction = () => {
+        this.progressCallback?.('[SPIRIT_COMPACT_PROGRESS] compacting history');
+        const lastUser = [...history].reverse().find((message) => message.role === 'user');
+        history.splice(
+          0,
+          history.length,
+          {
+            role: 'system',
+            content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
+            imagePaths: [],
+          },
+          ...(lastUser ? [lastUser] : []),
+        );
+
+        resolve({
+          droppedMessages: Math.max(beforeLength - history.length, 0),
+          beforeLength,
+          afterLength: history.length,
+        });
+      };
+    });
+  }
+
+  finishCompaction(): void {
+    this.resolveCompaction?.();
+  }
+
+  compactSummaryText(history: LlmMessage[]): string | undefined {
+    return history.find((message) => message.content.startsWith('[SPIRIT_COMPACT_SUMMARY]'))?.content;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context overflow');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class BackgroundExecutor implements ToolExecutor<ScriptedToolRequest> {
   toolDefinitionsJson(): JsonValue {
     return [];
@@ -514,6 +613,18 @@ class BackgroundExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async getMcpPrompt(): Promise<JsonValue> {
     throw new Error('BackgroundExecutor.getMcpPrompt 未实现。');
+  }
+}
+
+class PollingBackgroundExecutor extends BackgroundExecutor {
+  private readonly deferred = createDeferred<string>();
+
+  async execute(_request: ScriptedToolRequest): Promise<string> {
+    return this.deferred.promise;
+  }
+
+  finish(output: string): void {
+    this.deferred.resolve(output);
   }
 }
 
@@ -1123,6 +1234,237 @@ class StreamingToolRoundTransport implements LlmTransport<undefined, ScriptedSta
   }
 }
 
+class StreamingBackgroundRoundTransport implements LlmTransport<undefined, ScriptedState> {
+  rounds = 0;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'STREAM_BACKGROUND_SYNC_FALLBACK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'streaming-background-sync-fallback' }],
+      },
+    };
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      return {
+        eventStream: streamFromEvents([]),
+        completion: Promise.resolve({
+          kind: 'success',
+          result: {
+            state: {
+              messages: [
+                ...state.messages,
+                {
+                  role: 'assistant',
+                  content: '先触发后台搜索。',
+                  tool_calls: [
+                    {
+                      id: 'call-stream-background',
+                      type: 'function',
+                      function: {
+                        name: 'search_files',
+                        arguments: '{"query":"runtime parity"}',
+                      },
+                    },
+                  ],
+                },
+              ],
+              steps: state.steps + 1,
+            },
+            step: {
+              kind: 'tool-calls',
+              calls: [
+                {
+                  id: 'call-stream-background',
+                  name: 'search_files',
+                  argumentsJson: '{"query":"runtime parity"}',
+                },
+              ],
+            },
+            requestTrace: [{ mode: 'streaming-background-round-1' }],
+          },
+        }),
+      };
+    }
+
+    return {
+      eventStream: streamFromEvents([
+        { kind: 'assistant-chunk', text: 'STREAM_BG_' },
+        { kind: 'assistant-chunk', text: 'OK' },
+        { kind: 'done' },
+      ]),
+      completion: Promise.resolve({
+        kind: 'success',
+        result: {
+          state: {
+            messages: [...state.messages, { role: 'assistant', content: 'STREAM_BG_OK' }],
+            steps: state.steps + 1,
+          },
+          step: { kind: 'final-response-ready' },
+          requestTrace: [{ mode: 'streaming-background-round-2' }],
+        },
+      }),
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context overflow');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
+class StreamingCompactionTransport implements LlmTransport<undefined, ScriptedState> {
+  rounds = 0;
+  private resolveCompaction: (() => void) | undefined;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'STREAM_COMPACT_SYNC_FALLBACK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'streaming-compact-sync-fallback' }],
+      },
+    };
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      return {
+        eventStream: streamFromEvents([
+          { kind: 'assistant-chunk', text: 'PARTIAL_BEFORE_COMPACT' },
+          { kind: 'error', error: 'context overflow: streaming too large' },
+        ]),
+        completion: Promise.resolve({
+          kind: 'failure',
+          error: 'context overflow: streaming too large',
+          requestTrace: [{ mode: 'streaming-compact-round-1' }],
+        }),
+      };
+    }
+
+    return {
+      eventStream: streamFromEvents([
+        { kind: 'assistant-chunk', text: 'STREAM_COMPACT_' },
+        { kind: 'assistant-chunk', text: 'OK' },
+        { kind: 'done' },
+      ]),
+      completion: Promise.resolve({
+        kind: 'success',
+        result: {
+          state: {
+            messages: [...state.messages, { role: 'assistant', content: 'STREAM_COMPACT_OK' }],
+            steps: state.steps + 1,
+          },
+          step: { kind: 'final-response-ready' },
+          requestTrace: [{ mode: 'streaming-compact-round-2' }],
+        },
+      }),
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    const beforeLength = history.length;
+
+    return new Promise((resolve) => {
+      this.resolveCompaction = () => {
+        const lastUser = [...history].reverse().find((message) => message.role === 'user');
+        history.splice(
+          0,
+          history.length,
+          {
+            role: 'system',
+            content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
+            imagePaths: [],
+          },
+          ...(lastUser ? [lastUser] : []),
+        );
+
+        resolve({
+          droppedMessages: Math.max(beforeLength - history.length, 0),
+          beforeLength,
+          afterLength: history.length,
+        });
+      };
+    });
+  }
+
+  finishCompaction(): void {
+    this.resolveCompaction?.();
+  }
+
+  compactSummaryText(history: LlmMessage[]): string | undefined {
+    return history.find((message) => message.content.startsWith('[SPIRIT_COMPACT_SUMMARY]'))?.content;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context overflow');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
   toolDefinitionsJson(): JsonValue {
     return [];
@@ -1131,6 +1473,10 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
   async parseCommand(message: string): Promise<ScriptedToolRequest> {
     if (message.includes('delete')) {
       return { name: 'delete_file', argumentsJson: '{"path":"demo.txt"}' };
+    }
+
+    if (message.includes('search')) {
+      return { name: 'search_files', argumentsJson: '{"query":"runtime parity"}' };
     }
 
     if (message.includes('read')) {
@@ -1162,6 +1508,18 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async execute(request: ScriptedToolRequest): Promise<string> {
     return `manual output for ${request.name}`;
+  }
+
+  shouldExecuteInBackground(request: ScriptedToolRequest): boolean {
+    return request.name === 'search_files';
+  }
+
+  backgroundStatusText(request: ScriptedToolRequest): string | undefined {
+    if (request.name === 'search_files') {
+      return '搜索中: runtime parity';
+    }
+
+    return undefined;
   }
 
   startMcpBackgroundRefresh(): void {}
@@ -1231,10 +1589,32 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
   }
 }
 
+class PollingManualBackgroundExecutor extends HostExecutor {
+  private readonly deferred = createDeferred<string>();
+
+  async execute(request: ScriptedToolRequest): Promise<string> {
+    if (request.name === 'search_files') {
+      return this.deferred.promise;
+    }
+
+    return super.execute(request);
+  }
+
+  finish(output: string): void {
+    this.deferred.resolve(output);
+  }
+}
+
 async function main(): Promise<void> {
   const backgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const pollingBackgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const pollingCompactEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const manualBackgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const manualCompactionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const visionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingBackgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingCompactionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const timeoutEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
   const approvalExecutor = new ApprovalExecutor();
@@ -1338,6 +1718,143 @@ async function main(): Promise<void> {
     throw new Error('background execution smoke 结束后应清空 pending background status。');
   }
 
+  const pollingBackgroundExecutor = new PollingBackgroundExecutor();
+  const pollingBackgroundRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new BackgroundTransport(),
+    toolExecutor: pollingBackgroundExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => pollingBackgroundEvents.push(event),
+  });
+
+  await pollingBackgroundRuntime.startUserTurn('请后台搜索 runtime parity。');
+  await flushMicrotasks(4);
+  await pollingBackgroundRuntime.poll();
+  if (!pollingBackgroundRuntime.isBusy()) {
+    throw new Error('polling background smoke 应在后台工具执行期间保持 busy。');
+  }
+  if (pollingBackgroundRuntime.backgroundToolStatus() !== '搜索中: runtime parity') {
+    throw new Error('polling background smoke 未暴露后台工具状态。');
+  }
+  const backgroundAux = pollingBackgroundRuntime.pendingAuxState();
+  if (!backgroundAux || backgroundAux.kind !== 'thinking' || backgroundAux.detailText !== '搜索中: runtime parity') {
+    throw new Error('polling background smoke 未暴露 thinking aux 状态。');
+  }
+  pollingBackgroundRuntime.tickThinkingSpinner();
+  const backgroundAuxAfterTick = pollingBackgroundRuntime.pendingAuxState();
+  if (!backgroundAuxAfterTick || backgroundAuxAfterTick.statusText === backgroundAux.statusText) {
+    throw new Error('polling background smoke spinner 未前进。');
+  }
+  if (pollingBackgroundRuntime.takeCompletedTurnResult()) {
+    throw new Error('polling background smoke 在后台工具完成前不应产出结果。');
+  }
+
+  pollingBackgroundExecutor.finish('background result for {"query":"runtime parity"}');
+  let pollingBackgroundResult: RuntimeTurnResult<ScriptedState, ScriptedToolRequest, string> | undefined;
+  for (let index = 0; index < 8; index += 1) {
+    await flushMicrotasks(4);
+    await pollingBackgroundRuntime.poll();
+    pollingBackgroundResult = pollingBackgroundRuntime.takeCompletedTurnResult();
+    if (pollingBackgroundResult) {
+      break;
+    }
+  }
+  if (
+    !pollingBackgroundResult ||
+    pollingBackgroundResult.kind !== 'completed' ||
+    pollingBackgroundResult.assistantText !== 'BACKGROUND_OK'
+  ) {
+    throw new Error('polling background smoke 未得到最终完成结果。');
+  }
+  const pollingStartedBackground = pollingBackgroundEvents.find(
+    (
+      event,
+    ): event is Extract<RuntimeEvent<ScriptedToolRequest>, { kind: 'background-tool-status' }> =>
+      event.kind === 'background-tool-status' && event.phase === 'started',
+  );
+  const pollingFinishedBackground = pollingBackgroundEvents.find(
+    (
+      event,
+    ): event is Extract<RuntimeEvent<ScriptedToolRequest>, { kind: 'background-tool-status' }> =>
+      event.kind === 'background-tool-status' && event.phase === 'finished',
+  );
+  if (!pollingStartedBackground || !pollingFinishedBackground) {
+    throw new Error('polling background smoke 未收到完整的后台状态事件。');
+  }
+
+  const pollingCompactTransport = new PollingCompactTransport();
+  const pollingCompactRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: pollingCompactTransport,
+    toolExecutor: new CompactExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    truncateStateForContextRetry: truncateScriptedStateForContextRetry,
+    truncateHistoryForCompaction: truncateScriptedHistoryForCompaction,
+    rebuildRetryStateAfterCompaction: rebuildScriptedStateAfterCompaction,
+    maxAutoCompactRetries: 2,
+    onEvent: (event) => pollingCompactEvents.push(event),
+  }, [
+    {
+      role: 'system',
+      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
+      imagePaths: [],
+    },
+    {
+      role: 'assistant',
+      content: '旧回答。',
+      imagePaths: [],
+    },
+  ]);
+
+  await pollingCompactRuntime.startUserTurn('继续处理 runtime parity。');
+  await flushMicrotasks(4);
+  await pollingCompactRuntime.poll();
+  await flushMicrotasks(4);
+  await pollingCompactRuntime.poll();
+  if (!pollingCompactRuntime.isBusy()) {
+    throw new Error('polling compact smoke 应在自动压缩期间保持 busy。');
+  }
+  const compactAux = pollingCompactRuntime.pendingAuxState();
+  if (!compactAux || compactAux.kind !== 'compressing') {
+    throw new Error('polling compact smoke 未暴露 compressing aux 状态。');
+  }
+  if (pollingCompactRuntime.takeCompletedTurnResult()) {
+    throw new Error('polling compact smoke 在压缩完成前不应产出结果。');
+  }
+
+  pollingCompactTransport.finishCompaction();
+  let pollingCompactResult: RuntimeTurnResult<ScriptedState, ScriptedToolRequest, string> | undefined;
+  for (let index = 0; index < 8; index += 1) {
+    await flushMicrotasks(4);
+    await pollingCompactRuntime.poll();
+    pollingCompactResult = pollingCompactRuntime.takeCompletedTurnResult();
+    if (pollingCompactResult) {
+      break;
+    }
+  }
+  if (
+    !pollingCompactResult ||
+    pollingCompactResult.kind !== 'completed' ||
+    pollingCompactResult.assistantText !== 'COMPACT_OK'
+  ) {
+    throw new Error('polling compact smoke 未得到自动压缩后的最终结果。');
+  }
+  if (
+    !pollingCompactEvents.some(
+      (event) =>
+        event.kind === 'update-pending-assistant-compaction' &&
+        event.text.includes('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+    )
+  ) {
+    throw new Error('polling compact smoke 缺少 compaction update 事件。');
+  }
+
   const visionRuntime = new AgentRuntime({
     config: undefined,
     llmTransport: new VisionTransport(),
@@ -1398,6 +1915,150 @@ async function main(): Promise<void> {
     manualGuidance.result.assistantText !== 'MANUAL_GUIDANCE_OK'
   ) {
     throw new Error('manual guidance smoke 未跑通最终回复。');
+  }
+
+  const manualBackgroundExecutor = new PollingManualBackgroundExecutor();
+  const manualBackgroundRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new FinalTextTransport('UNUSED_MANUAL_BACKGROUND'),
+    toolExecutor: manualBackgroundExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => manualBackgroundEvents.push(event),
+  });
+
+  const manualBackgroundStarted = await manualBackgroundRuntime.startManualToolCommand(
+    '/tool search runtime parity',
+  );
+  if (
+    manualBackgroundStarted.kind !== 'started-background' ||
+    manualBackgroundStarted.statusText !== '搜索中: runtime parity'
+  ) {
+    throw new Error('manual background smoke 未进入 started-background。');
+  }
+  const manualBackgroundAux = manualBackgroundRuntime.pendingAuxState();
+  if (
+    !manualBackgroundAux ||
+    manualBackgroundAux.kind !== 'thinking' ||
+    manualBackgroundAux.detailText !== '搜索中: runtime parity'
+  ) {
+    throw new Error('manual background smoke 未暴露 thinking aux 状态。');
+  }
+  if (manualBackgroundRuntime.takeCompletedManualToolCommandResult()) {
+    throw new Error('manual background smoke 在后台工具完成前不应产出结果。');
+  }
+
+  manualBackgroundExecutor.finish('manual output for search_files');
+  let manualBackgroundCompleted;
+  for (let index = 0; index < 8; index += 1) {
+    await flushMicrotasks(4);
+    await manualBackgroundRuntime.poll();
+    manualBackgroundCompleted = manualBackgroundRuntime.takeCompletedManualToolCommandResult();
+    if (manualBackgroundCompleted) {
+      break;
+    }
+  }
+  if (
+    !manualBackgroundCompleted ||
+    manualBackgroundCompleted.output !== 'manual output for search_files' ||
+    !manualBackgroundCompleted.backgroundExecution ||
+    manualBackgroundCompleted.failed
+  ) {
+    throw new Error('manual background smoke 未得到后台工具完成结果。');
+  }
+  if (
+    !manualBackgroundEvents.some(
+      (event) => event.kind === 'background-tool-status' && event.phase === 'started',
+    ) ||
+    !manualBackgroundEvents.some(
+      (event) => event.kind === 'background-tool-status' && event.phase === 'finished',
+    )
+  ) {
+    throw new Error('manual background smoke 缺少完整后台状态事件。');
+  }
+
+  const manualCompactionTransport = new ProgressManualCompactionTransport();
+  const manualCompactionRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: manualCompactionTransport,
+    toolExecutor: new CompactExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    truncateHistoryForCompaction: truncateScriptedHistoryForCompaction,
+    onEvent: (event) => manualCompactionEvents.push(event),
+  }, [
+    {
+      role: 'system',
+      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
+      imagePaths: [],
+    },
+    {
+      role: 'assistant',
+      content: '旧回答。',
+      imagePaths: [],
+    },
+    {
+      role: 'user',
+      content: '请帮我压缩上下文。',
+      imagePaths: [],
+    },
+  ]);
+
+  await manualCompactionRuntime.startManualHistoryCompaction();
+  await flushMicrotasks(4);
+  await manualCompactionRuntime.poll();
+  const manualCompactionAux = manualCompactionRuntime.pendingAuxState();
+  if (!manualCompactionAux || manualCompactionAux.kind !== 'compressing') {
+    throw new Error('manual compaction smoke 未暴露 compressing aux 状态。');
+  }
+  if (manualCompactionRuntime.takeCompletedManualHistoryCompactionResult()) {
+    throw new Error('manual compaction smoke 在压缩完成前不应产出结果。');
+  }
+
+  manualCompactionTransport.finishCompaction();
+  let manualCompactionCompleted;
+  for (let index = 0; index < 8; index += 1) {
+    await flushMicrotasks(4);
+    await manualCompactionRuntime.poll();
+    manualCompactionCompleted = manualCompactionRuntime.takeCompletedManualHistoryCompactionResult();
+    if (manualCompactionCompleted) {
+      break;
+    }
+  }
+  if (
+    !manualCompactionCompleted ||
+    manualCompactionCompleted.kind !== 'completed' ||
+    manualCompactionCompleted.result.droppedMessages <= 0
+  ) {
+    throw new Error('manual compaction smoke 未得到有效压缩结果。');
+  }
+  const drainedManualCompactionEvents = manualCompactionRuntime.drainEvents();
+  if (!drainedManualCompactionEvents.some((event) => event.kind === 'begin-assistant-response')) {
+    throw new Error('manual compaction smoke 缺少 begin event。');
+  }
+  if (
+    !drainedManualCompactionEvents.some(
+      (event) =>
+        event.kind === 'update-pending-assistant-compaction' &&
+        event.text.includes('[SPIRIT_COMPACT_PROGRESS] compacting history'),
+    )
+  ) {
+    throw new Error('manual compaction smoke 缺少 progress update 事件。');
+  }
+  if (
+    !drainedManualCompactionEvents.some(
+      (event) =>
+        event.kind === 'replace-pending-assistant' && event.text.includes('压缩完成：上下文消息'),
+    )
+  ) {
+    throw new Error('manual compaction smoke 缺少完成提示事件。');
+  }
+  if (!drainedManualCompactionEvents.some((event) => event.kind === 'assistant-response-completed')) {
+    throw new Error('manual compaction smoke 缺少 completed event。');
   }
 
   const promptRuntime = new AgentRuntime({
@@ -1605,6 +2266,128 @@ async function main(): Promise<void> {
     throw new Error('stream timeout smoke 未完成 pending response。');
   }
 
+  const streamingBackgroundExecutor = new PollingBackgroundExecutor();
+  const streamingBackgroundRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingBackgroundRoundTransport(),
+    toolExecutor: streamingBackgroundExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => streamingBackgroundEvents.push(event),
+  });
+
+  await streamingBackgroundRuntime.startUserTurnStreaming('请流式走后台工具');
+  await flushMicrotasks(4);
+  await streamingBackgroundRuntime.poll();
+  if (!streamingBackgroundRuntime.isBusy()) {
+    throw new Error('streaming background smoke 应在后台工具执行期间保持 busy。');
+  }
+  const streamingBackgroundAux = streamingBackgroundRuntime.pendingAuxState();
+  if (
+    !streamingBackgroundAux ||
+    streamingBackgroundAux.kind !== 'thinking' ||
+    streamingBackgroundAux.detailText !== '搜索中: runtime parity'
+  ) {
+    throw new Error('streaming background smoke 未暴露 thinking aux 状态。');
+  }
+
+  streamingBackgroundExecutor.finish('background result for {"query":"runtime parity"}');
+  for (let index = 0; index < 12 && streamingBackgroundRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await streamingBackgroundRuntime.poll();
+  }
+  if (streamingBackgroundRuntime.isBusy()) {
+    throw new Error('streaming background smoke 未在预期轮次内完成。');
+  }
+  const drainedStreamingBackgroundEvents = streamingBackgroundRuntime.drainEvents();
+  if (
+    drainedStreamingBackgroundEvents.filter((event) => event.kind === 'begin-assistant-response').length < 2
+  ) {
+    throw new Error('streaming background smoke 应包含两次 begin event。');
+  }
+  if (
+    !drainedStreamingBackgroundEvents.some(
+      (event) => event.kind === 'background-tool-status' && event.phase === 'started',
+    )
+  ) {
+    throw new Error('streaming background smoke 缺少后台开始事件。');
+  }
+  if (
+    !drainedStreamingBackgroundEvents.some(
+      (event) => event.kind === 'assistant-chunk' && event.text === 'STREAM_BG_',
+    )
+  ) {
+    throw new Error('streaming background smoke 缺少恢复后的流式 chunk。');
+  }
+
+  const streamingCompactionTransport = new StreamingCompactionTransport();
+  const streamingCompactionRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: streamingCompactionTransport,
+    toolExecutor: new CompactExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    truncateStateForContextRetry: truncateScriptedStateForContextRetry,
+    truncateHistoryForCompaction: truncateScriptedHistoryForCompaction,
+    rebuildRetryStateAfterCompaction: rebuildScriptedStateAfterCompaction,
+    maxAutoCompactRetries: 2,
+    onEvent: (event) => streamingCompactionEvents.push(event),
+  }, [
+    {
+      role: 'system',
+      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
+      imagePaths: [],
+    },
+    {
+      role: 'assistant',
+      content: '旧回答。',
+      imagePaths: [],
+    },
+  ]);
+
+  await streamingCompactionRuntime.startUserTurnStreaming('请流式处理超长上下文');
+  await flushMicrotasks(4);
+  await streamingCompactionRuntime.poll();
+  const streamingCompactionAux = streamingCompactionRuntime.pendingAuxState();
+  if (!streamingCompactionAux || streamingCompactionAux.kind !== 'compressing') {
+    throw new Error('streaming compact smoke 未进入 compressing aux 状态。');
+  }
+
+  streamingCompactionTransport.finishCompaction();
+  for (let index = 0; index < 12 && streamingCompactionRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await streamingCompactionRuntime.poll();
+  }
+  if (streamingCompactionRuntime.isBusy()) {
+    throw new Error('streaming compact smoke 未在预期轮次内完成。');
+  }
+  const drainedStreamingCompactionEvents = streamingCompactionRuntime.drainEvents();
+  if (
+    drainedStreamingCompactionEvents.filter((event) => event.kind === 'begin-assistant-response').length !== 1
+  ) {
+    throw new Error('streaming compact smoke 在自动压缩重试后不应额外发出 begin event。');
+  }
+  if (
+    !drainedStreamingCompactionEvents.some(
+      (event) =>
+        event.kind === 'update-pending-assistant-compaction' &&
+        event.text.includes('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+    )
+  ) {
+    throw new Error('streaming compact smoke 缺少 compaction update 事件。');
+  }
+  if (
+    !drainedStreamingCompactionEvents.some(
+      (event) => event.kind === 'assistant-chunk' && event.text === 'STREAM_COMPACT_',
+    )
+  ) {
+    throw new Error('streaming compact smoke 缺少压缩后恢复的流式 chunk。');
+  }
+
   const toolRoundTransport = new StreamingToolRoundTransport();
   const noTimeoutRuntime = new AgentRuntime({
     config: undefined,
@@ -1628,14 +2411,21 @@ async function main(): Promise<void> {
   printSmokeSection('approval guidance smoke', approvalCompleted);
   printSmokeSection('compact retry smoke', compactResult);
   printSmokeSection('background execution smoke', backgroundResult);
+  printSmokeSection('polling background smoke', pollingBackgroundResult);
+  printSmokeSection('polling compact smoke', pollingCompactResult);
   printSmokeSection('vision fallback smoke', visionResult);
   printSmokeSection('manual command smoke', manualGuidance);
+  printSmokeSection('manual background smoke', manualBackgroundCompleted);
+  printSmokeSection('manual compaction smoke', manualCompactionCompleted);
   printSmokeSection('mcp prompt smoke', promptApplied);
   printSmokeSection('mcp resource smoke', resourceResult);
   printSmokeSection('archive restore smoke', archive);
   printSmokeSection('workspace file context smoke', workspaceFileSmoke);
   printSmokeSection('streaming final smoke events', drainedStreamingEvents);
   printSmokeSection('stream timeout smoke events', drainedTimeoutEvents);
+  printSmokeSection('manual compaction smoke events', drainedManualCompactionEvents);
+  printSmokeSection('streaming background smoke events', drainedStreamingBackgroundEvents);
+  printSmokeSection('streaming compaction smoke events', drainedStreamingCompactionEvents);
 }
 
 function createScriptedState(history: LlmMessage[], userInput: string): ScriptedState {
@@ -1802,6 +2592,25 @@ async function flushMicrotasks(rounds = 4): Promise<void> {
   for (let index = 0; index < rounds; index += 1) {
     await Promise.resolve();
   }
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
 }
 
 main().catch((error: unknown) => {
