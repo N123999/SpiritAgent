@@ -56,6 +56,9 @@ export async function startManualToolCommand<
   let request: ToolRequest;
   try {
     request = await runtime.options.toolExecutor.parseCommand(message);
+    request = runtime.options.toolExecutor.attachRequestMetadata?.(request, {
+      toolName: toolNameFromRequest(request),
+    }) ?? request;
   } catch (error) {
     return {
       kind: 'failed',

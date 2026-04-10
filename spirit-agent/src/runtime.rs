@@ -1580,7 +1580,7 @@ fn take_last_chars(text: &str, max_chars: usize) -> String {
     text.chars().skip(total_chars - max_chars).collect()
 }
 
-fn openapi_tool_name(request: &ToolRequest) -> &'static str {
+pub(crate) fn openapi_tool_name(request: &ToolRequest) -> &'static str {
     match request {
         ToolRequest::Shell { .. } => "run_shell_command",
         ToolRequest::McpTool { .. } => "mcp_tool",
@@ -1594,7 +1594,7 @@ fn openapi_tool_name(request: &ToolRequest) -> &'static str {
     }
 }
 
-fn tool_request_args_excerpt(request: &ToolRequest) -> String {
+pub(crate) fn tool_request_args_excerpt(request: &ToolRequest) -> String {
     let v = match request {
         ToolRequest::Shell { command } => json!({ "command": command }),
         ToolRequest::McpTool {
@@ -1637,7 +1637,11 @@ fn truncate_output_for_tool_ui(text: &str, max_chars: usize) -> String {
     truncate_for_preview(text, max_chars)
 }
 
-fn tool_approval_block(tool_name: &str, tool_call_id: Option<&str>, prompt: &str) -> ToolUiBlock {
+pub(crate) fn tool_approval_block(
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+    prompt: &str,
+) -> ToolUiBlock {
     let detail_lines: Vec<String> = prompt.lines().map(|l| l.to_string()).collect();
     ToolUiBlock {
         tool_call_id: tool_call_id.map(String::from),
@@ -1650,7 +1654,7 @@ fn tool_approval_block(tool_name: &str, tool_call_id: Option<&str>, prompt: &str
     }
 }
 
-fn tool_failed_block(
+pub(crate) fn tool_failed_block(
     tool_name: &str,
     tool_call_id: Option<&str>,
     summary: &str,
@@ -1667,7 +1671,7 @@ fn tool_failed_block(
     }
 }
 
-fn build_tool_result_block(
+pub(crate) fn build_tool_result_block(
     request: &ToolRequest,
     tool_name: &str,
     tool_call_id: Option<&str>,
@@ -1780,7 +1784,11 @@ fn build_tool_result_block(
     }
 }
 
-fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) -> String {
+pub(crate) fn format_tool_ui_message(
+    request: &ToolRequest,
+    tool_name: &str,
+    output: &str,
+) -> String {
     match request {
         ToolRequest::McpTool {
             server,
@@ -1940,6 +1948,54 @@ mod tests {
             }),
             Some("搜索中: session store".to_string())
         );
+    }
+
+    #[test]
+    fn shell_tool_args_excerpt_matches_flat_legacy_shape() {
+        let excerpt = tool_request_args_excerpt(&ToolRequest::Shell {
+            command: "echo 牛逼".to_string(),
+        });
+        let parsed: Value = serde_json::from_str(&excerpt).expect("args excerpt json");
+        assert_eq!(parsed, json!({ "command": "echo 牛逼" }));
+    }
+
+    #[test]
+    fn tool_result_block_keeps_tool_call_id_for_shell() {
+        let block = build_tool_result_block(
+            &ToolRequest::Shell {
+                command: "echo 牛逼".to_string(),
+            },
+            "run_shell_command",
+            Some("call_00_demo"),
+            "牛逼\n",
+        );
+
+        assert_eq!(block.tool_call_id.as_deref(), Some("call_00_demo"));
+        assert_eq!(block.tool_name, "run_shell_command");
+        assert_eq!(block.headline, "命令已执行");
+        assert_eq!(block.args_excerpt.as_deref(), Some("{\n  \"command\": \"echo 牛逼\"\n}"));
+    }
+
+    #[test]
+    fn read_file_tool_block_keeps_legacy_summary_shape() {
+        let block = build_tool_result_block(
+            &ToolRequest::ReadFile {
+                path: "src/main.rs".to_string(),
+                start_line: Some(3),
+                end_line: Some(9),
+            },
+            "read_file",
+            Some("call_01_read"),
+            "line3\nline4\n",
+        );
+
+        assert_eq!(block.tool_call_id.as_deref(), Some("call_01_read"));
+        assert_eq!(block.headline, "已读取文件片段");
+        assert_eq!(
+            block.detail_lines,
+            vec!["路径: src/main.rs".to_string(), "行范围: 3 - 9".to_string()]
+        );
+        assert!(block.output_excerpt.is_none());
     }
 
     #[test]

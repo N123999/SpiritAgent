@@ -112,6 +112,11 @@ export type AuthorizationDecision<TrustTarget = string> =
   | { kind: 'allowed' }
   | { kind: 'need-approval'; prompt: string; trustTarget?: TrustTarget };
 
+export interface ToolRequestExecutionMetadata {
+  toolCallId?: string;
+  toolName?: string;
+}
+
 export interface ToolExecutor<
   ToolRequest = unknown,
   TrustTarget = string,
@@ -127,6 +132,7 @@ export interface ToolExecutor<
   authorize(request: ToolRequest): Promise<AuthorizationDecision<TrustTarget>>;
   trust(target: TrustTarget): Promise<void>;
   execute(request: ToolRequest): Promise<string>;
+  attachRequestMetadata?(request: ToolRequest, metadata: ToolRequestExecutionMetadata): ToolRequest;
   shouldExecuteInBackground?(request: ToolRequest): boolean;
   backgroundStatusText?(request: ToolRequest): string | undefined;
   startMcpBackgroundRefresh(): void;

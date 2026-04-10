@@ -54,6 +54,15 @@ let runtime: HostRuntime | undefined;
 let transportConfig: OpenAiTransportConfig | undefined;
 const llmTransport = new OpenAiTransport();
 
+function logBridge(message: string, extra?: unknown): void {
+  if (extra === undefined) {
+    console.error(`[host-bridge] ${message}`);
+    return;
+  }
+
+  console.error(`[host-bridge] ${message}`, extra);
+}
+
 function requireRuntime(): HostRuntime {
   if (!runtime) {
     throw new Error('runtime 尚未初始化，请先调用 runtime.init');
@@ -65,6 +74,13 @@ function requireRuntime(): HostRuntime {
 async function createRuntime(config: OpenAiTransportConfig, history: LlmMessage[] = []): Promise<HostRuntime> {
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
   await toolExecutor.refreshCaches();
+  logBridge('createRuntime', {
+    workspaceRoot,
+    historyCount: history.length,
+    mcpState: toolExecutor.mcpStatusSnapshot().state,
+    configuredServers: toolExecutor.mcpStatusSnapshot().configuredServers,
+    cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
+  });
   const createToolAgentState = (messages: LlmMessage[], userInput: string) =>
     startOpenAiToolAgentState(messages, userInput, workspaceRoot);
 
@@ -118,14 +134,21 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
 
 async function drainEvents(): Promise<DrainEventsResult> {
   const target = requireRuntime();
+  await toolExecutor.refreshCaches();
+  const events = target.drainEvents();
+  logBridge('drainEvents', {
+    count: events.length,
+    kinds: events.map((event) => event.kind),
+  });
   return {
-    events: target.drainEvents(),
+    events,
     snapshot: buildSnapshot(target),
   };
 }
 
 peer.on('runtime.init', async (rawParams) => {
   const params = rawParams as RuntimeInitParams;
+  logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
   return buildSnapshot(runtime);
@@ -133,6 +156,7 @@ peer.on('runtime.init', async (rawParams) => {
 
 peer.on('runtime.replaceConfig', async (rawParams) => {
   const params = rawParams as RuntimeReplaceConfigParams;
+  logBridge('runtime.replaceConfig', { model: params.transportConfig.model });
   transportConfig = params.transportConfig;
   const target = requireRuntime();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
@@ -152,17 +176,30 @@ peer.on('runtime.replaceFromArchive', async (archive) => {
 
 peer.on('runtime.submitUserTurn', async (rawParams) => {
   const params = rawParams as RuntimeSubmitUserTurnParams;
-  await requireRuntime().startUserTurn(params.text, params.explicitImages ?? []);
+  await toolExecutor.refreshCaches();
+  logBridge('runtime.submitUserTurn(streaming)', {
+    chars: Array.from(params.text).length,
+    explicitImages: params.explicitImages?.length ?? 0,
+    mcpState: toolExecutor.mcpStatusSnapshot().state,
+    cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
+  });
+  await requireRuntime().startUserTurnStreaming(params.text, params.explicitImages ?? []);
   return null;
 });
 
 peer.on('runtime.startUserTurnStreaming', async (rawParams) => {
   const params = rawParams as RuntimeSubmitUserTurnParams;
+  await toolExecutor.refreshCaches();
+  logBridge('runtime.startUserTurnStreaming', {
+    chars: Array.from(params.text).length,
+    explicitImages: params.explicitImages?.length ?? 0,
+  });
   await requireRuntime().startUserTurnStreaming(params.text, params.explicitImages ?? []);
   return null;
 });
 
 peer.on('runtime.poll', async () => {
+  await toolExecutor.refreshCaches();
   await requireRuntime().poll();
   return null;
 });

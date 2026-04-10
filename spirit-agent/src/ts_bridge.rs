@@ -22,10 +22,13 @@ use crate::{
     },
     model_registry::AppConfig,
     ports::{McpStatusSnapshot, SecretStore, ToolExecutor},
-    runtime::RuntimeEvent,
+    runtime::{
+        RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
+        tool_approval_block, tool_failed_block,
+    },
     session::{PendingMcpResource, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
-    view::{ChatMessage, MessageRole, PendingAssistantAux, ToolUiBlock, ToolUiPhase},
+    view::{ChatMessage, MessageRole, PendingAssistantAux},
 };
 
 const ENV_RUNTIME_BACKEND_NODE_PATH: &str = "SPIRIT_NODE_PATH";
@@ -66,6 +69,8 @@ struct JsonRpcProcess {
 struct HostToolRequestMeta {
     background_execution: bool,
     background_status_text: Option<String>,
+    tool_call_id: Option<String>,
+    tool_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -170,6 +175,11 @@ impl TsBridgeRuntime {
             events: VecDeque::new(),
             bridge_failed: false,
         };
+        logging::log_event(&format!(
+            "[ts-bridge-host] runtime init workspace_root={}",
+            runtime.workspace_root.display()
+        ));
+        runtime.tool_executor.start_mcp_background_refresh();
         runtime.initialize_bridge()?;
         Ok(runtime)
     }
@@ -257,6 +267,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn tick_thinking_spinner(&mut self) {
+        if self.bridge_failed {
+            return;
+        }
         if let Err(err) = self.call_bridge("runtime.tickThinkingSpinner", None) {
             self.handle_bridge_error(err);
             return;
@@ -267,6 +280,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn poll(&mut self) {
+        if self.bridge_failed {
+            return;
+        }
         if let Err(err) = self.call_bridge("runtime.poll", None) {
             self.handle_bridge_error(err);
             return;
@@ -277,6 +293,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
+        if self.bridge_failed {
+            return;
+        }
         if let Err(err) = self.call_bridge("runtime.handleStreamStallTimeout", None) {
             self.handle_bridge_error(err);
             return;
@@ -287,10 +306,22 @@ impl TsBridgeRuntime {
     }
 
     pub fn submit_user_turn(&mut self, text: String, explicit_images: Option<Vec<String>>) {
+        if self.bridge_failed {
+            return;
+        }
         let mut params = json!({ "text": text });
         if let Some(images) = explicit_images {
             params["explicitImages"] = serde_json::to_value(images).unwrap_or(Value::Array(vec![]));
         }
+        logging::log_event(&format!(
+            "[ts-bridge-host] submit_user_turn chars={} explicit_images={}",
+            text.chars().count(),
+            params
+                .get("explicitImages")
+                .and_then(Value::as_array)
+                .map(|items| items.len())
+                .unwrap_or(0)
+        ));
         if let Err(err) = self.call_bridge("runtime.submitUserTurn", Some(params)) {
             self.handle_bridge_error(err);
             return;
@@ -405,6 +436,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn respond_to_pending_tool_approval(&mut self, message: &str) {
+        if self.bridge_failed {
+            return;
+        }
         let decision = approval_decision_from_input(message);
         let method = match self.pending_approval_kind {
             Some(PendingApprovalKind::Manual) => "runtime.continuePendingManualToolApproval",
@@ -423,6 +457,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn execute_manual_tool_command(&mut self, message: &str) {
+        if self.bridge_failed {
+            return;
+        }
         if let Err(err) = self.call_bridge(
             "runtime.startManualToolCommand",
             Some(json!({ "message": message })),
@@ -437,6 +474,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn compact_history(&mut self) {
+        if self.bridge_failed {
+            return;
+        }
         if let Err(err) = self.call_bridge("runtime.startManualHistoryCompaction", None) {
             self.handle_bridge_error(err);
             return;
@@ -448,6 +488,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn replace_session_from_archive(&mut self, archive: &crate::ports::ChatArchive) {
+        if self.bridge_failed {
+            return;
+        }
         if let Err(err) = self.call_bridge(
             "runtime.replaceFromArchive",
             Some(chat_archive_to_bridge_json(archive)),
@@ -461,6 +504,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn add_pending_image(&mut self, path: String) {
+        if self.bridge_failed {
+            return;
+        }
         let value = match self.call_bridge(
             "runtime.addPendingImage",
             Some(json!({ "path": path })),
@@ -479,6 +525,9 @@ impl TsBridgeRuntime {
     }
 
     pub fn clear_pending_images(&mut self) -> usize {
+        if self.bridge_failed {
+            return 0;
+        }
         let cleared = match self.call_bridge("runtime.clearPendingImages", None) {
             Ok(value) => value.as_u64().unwrap_or(0) as usize,
             Err(err) => {
@@ -650,22 +699,45 @@ impl TsBridgeRuntime {
                 Ok(Some(Value::Null))
             }
             "host.execute" => {
-                let request = request_from_envelope(params)?;
+                let (request, meta) = request_with_meta_from_envelope(params)?;
+                let tool_call_id = meta.as_ref().and_then(|value| value.tool_call_id.as_deref());
                 match self.tool_executor.execute(&request) {
                     Ok(output) => {
                         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
                             MessageRole::Agent,
                             format_tool_ui_message(&request, openapi_tool_name(&request), &output),
-                            build_tool_result_block(&request, openapi_tool_name(&request), None, &output),
+                            build_tool_result_block(
+                                &request,
+                                openapi_tool_name(&request),
+                                tool_call_id,
+                                &output,
+                            ),
                         )));
+                        logging::log_event(&format!(
+                            "[ts-bridge-host] host.execute success tool={} tool_call_id={} output_chars={}",
+                            openapi_tool_name(&request),
+                            tool_call_id.unwrap_or("<none>"),
+                            output.chars().count()
+                        ));
                         Ok(Some(Value::String(output)))
                     }
                     Err(err) => {
                         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
                             MessageRole::Agent,
                             format!("工具执行失败: {}", err),
-                            tool_failed_block(openapi_tool_name(&request), None, "工具执行失败", &err.to_string()),
+                            tool_failed_block(
+                                openapi_tool_name(&request),
+                                tool_call_id,
+                                "工具执行失败",
+                                &err.to_string(),
+                            ),
                         )));
+                        logging::log_event(&format!(
+                            "[ts-bridge-host] host.execute failed tool={} tool_call_id={} error={}",
+                            openapi_tool_name(&request),
+                            tool_call_id.unwrap_or("<none>"),
+                            err
+                        ));
                         Err(err)
                     }
                 }
@@ -750,6 +822,13 @@ impl TsBridgeRuntime {
     fn sync_after_command(&mut self) -> Result<()> {
         let value = self.call_bridge("runtime.drainEvents", None)?;
         let drained: BridgeDrainEventsResult = serde_json::from_value(value)?;
+        logging::log_event(&format!(
+            "[ts-bridge-host] drain events count={} busy={} approval={} aux={}",
+            drained.events.len(),
+            drained.snapshot.is_busy,
+            drained.snapshot.has_pending_approval,
+            drained.snapshot.pending_aux_state.is_some()
+        ));
         self.apply_bridge_events(drained.events);
         self.apply_snapshot(drained.snapshot);
         Ok(())
@@ -796,6 +875,15 @@ impl TsBridgeRuntime {
             None
         };
         self.is_busy_cache = snapshot.is_busy;
+        logging::log_event(&format!(
+            "[ts-bridge-host] snapshot busy={} pending_user_turn={} pending_images={} pending_mcp_resources={} approval={} aux={}",
+            self.is_busy_cache,
+            self.session.pending_user_turn().is_some(),
+            self.session.pending_image_paths().len(),
+            self.session.pending_mcp_resources().len(),
+            self.pending_approval_kind.is_some(),
+            self.pending_aux_state.is_some()
+        ));
     }
 
     fn apply_bridge_events(&mut self, events: Vec<BridgeRuntimeEvent>) {
@@ -871,9 +959,22 @@ impl TsBridgeRuntime {
             summary = stripped.to_string();
         }
 
+        if fatal && self.bridge_failed {
+            logging::log_event(&format!(
+                "[ts-bridge-host] suppress repeated fatal error: {}",
+                summary
+            ));
+            return;
+        }
+
         if fatal {
             self.bridge_failed = true;
         }
+        logging::log_event(&format!(
+            "[ts-bridge-host] {}: {}",
+            if fatal { "fatal error" } else { "runtime error" },
+            summary
+        ));
         self.is_busy_cache = false;
         self.pending_aux_state = None;
         self.pending_approval_kind = None;
@@ -1084,12 +1185,20 @@ fn envelope_for_request(request: ToolRequest) -> HostToolRequestEnvelope {
         host_meta: HostToolRequestMeta {
             background_execution: should_execute_tool_in_background(&request),
             background_status_text: background_tool_status_text(&request),
+            tool_call_id: None,
+            tool_name: None,
         },
         request,
     }
 }
 
 fn request_from_envelope(params: Option<Value>) -> Result<ToolRequest> {
+    Ok(request_with_meta_from_envelope(params)?.0)
+}
+
+fn request_with_meta_from_envelope(
+    params: Option<Value>,
+) -> Result<(ToolRequest, Option<HostToolRequestMeta>)> {
     let params = params.ok_or_else(|| anyhow!("host 请求缺少 params"))?;
     let raw_request = params
         .get("request")
@@ -1097,10 +1206,10 @@ fn request_from_envelope(params: Option<Value>) -> Result<ToolRequest> {
         .ok_or_else(|| anyhow!("host 请求缺少 request"))?;
     if raw_request.get("request").is_some() {
         let envelope: HostToolRequestEnvelope = serde_json::from_value(raw_request)?;
-        return Ok(envelope.request);
+        return Ok((envelope.request, Some(envelope.host_meta)));
     }
 
-    Ok(serde_json::from_value(raw_request)?)
+    Ok((serde_json::from_value(raw_request)?, None))
 }
 
 fn authorization_decision_to_value(decision: AuthorizationDecision) -> Result<Value> {
@@ -1151,182 +1260,6 @@ fn background_tool_status_text(request: &ToolRequest) -> Option<String> {
             ..
         } => Some(format!("MCP 工具执行中: {} / {}", display_name, tool_name)),
         _ => None,
-    }
-}
-
-fn openapi_tool_name(request: &ToolRequest) -> &'static str {
-    match request {
-        ToolRequest::Shell { .. } => "run_shell_command",
-        ToolRequest::McpTool { .. } => "mcp_tool",
-        ToolRequest::WebFetch { .. } => "web_fetch",
-        ToolRequest::ListDirectory { .. } => "list_directory_files",
-        ToolRequest::ReadFile { .. } => "read_file",
-        ToolRequest::Search { .. } => "search_files",
-        ToolRequest::CreateFile { .. } => "create_file",
-        ToolRequest::UpdateFile { .. } => "update_file",
-        ToolRequest::DeleteFile { .. } => "delete_file",
-    }
-}
-
-fn tool_request_args_excerpt(request: &ToolRequest) -> String {
-    let value = serde_json::to_value(request).unwrap_or(Value::Null);
-    serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string())
-}
-
-fn truncate_output_for_tool_ui(text: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() <= max_chars {
-        return text.to_string();
-    }
-    chars.into_iter().take(max_chars).collect::<String>() + "...<truncated>"
-}
-
-fn tool_approval_block(tool_name: &str, tool_call_id: Option<&str>, prompt: &str) -> ToolUiBlock {
-    ToolUiBlock {
-        tool_call_id: tool_call_id.map(ToString::to_string),
-        tool_name: tool_name.to_string(),
-        phase: ToolUiPhase::PendingApproval,
-        headline: "待确认".to_string(),
-        detail_lines: prompt.lines().map(|line| line.to_string()).collect(),
-        args_excerpt: None,
-        output_excerpt: None,
-    }
-}
-
-fn tool_failed_block(
-    tool_name: &str,
-    tool_call_id: Option<&str>,
-    summary: &str,
-    err: &str,
-) -> ToolUiBlock {
-    ToolUiBlock {
-        tool_call_id: tool_call_id.map(ToString::to_string),
-        tool_name: tool_name.to_string(),
-        phase: ToolUiPhase::Failed,
-        headline: summary.to_string(),
-        detail_lines: Vec::new(),
-        args_excerpt: None,
-        output_excerpt: Some(truncate_output_for_tool_ui(err, 2000)),
-    }
-}
-
-fn build_tool_result_block(
-    request: &ToolRequest,
-    tool_name: &str,
-    tool_call_id: Option<&str>,
-    output: &str,
-) -> ToolUiBlock {
-    let args_excerpt = tool_request_args_excerpt(request);
-    match request {
-        ToolRequest::McpTool {
-            server,
-            display_name,
-            tool_name: actual_tool_name,
-            ..
-        } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "MCP 工具调用完成".to_string(),
-            detail_lines: vec![
-                format!("Server: {} ({})", display_name, server),
-                format!("Tool: {}", actual_tool_name),
-            ],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
-        },
-        ToolRequest::WebFetch { url } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "网页内容已抓取".to_string(),
-            detail_lines: vec![format!("URL: {}", url)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
-        },
-        ToolRequest::ListDirectory { path } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "目录文件已列出".to_string(),
-            detail_lines: vec![format!("路径: {}", path)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
-        },
-        ToolRequest::ReadFile { path, .. } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "文件内容已读取".to_string(),
-            detail_lines: vec![format!("路径: {}", path)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
-        },
-        ToolRequest::Search { query } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "搜索结果已返回".to_string(),
-            detail_lines: vec![format!("查询: {}", query)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
-        },
-        ToolRequest::Shell { command } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "命令已执行".to_string(),
-            detail_lines: vec![format!("命令: {}", command)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
-        },
-        ToolRequest::CreateFile { path, .. } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "已创建文件".to_string(),
-            detail_lines: vec![format!("路径: {}", path)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: None,
-        },
-        ToolRequest::UpdateFile { path, .. } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "已更新文件".to_string(),
-            detail_lines: vec![format!("路径: {}", path)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: None,
-        },
-        ToolRequest::DeleteFile { path } => ToolUiBlock {
-            tool_call_id: tool_call_id.map(ToString::to_string),
-            tool_name: tool_name.to_string(),
-            phase: ToolUiPhase::Succeeded,
-            headline: "已删除文件".to_string(),
-            detail_lines: vec![format!("路径: {}", path)],
-            args_excerpt: Some(args_excerpt),
-            output_excerpt: None,
-        },
-    }
-}
-
-fn format_tool_ui_message(request: &ToolRequest, tool_name: &str, output: &str) -> String {
-    match request {
-        ToolRequest::McpTool {
-            display_name,
-            tool_name: actual_tool_name,
-            ..
-        } => format!(
-            "MCP 工具 `{}` / `{}` 执行完成。\n\n{}",
-            display_name,
-            actual_tool_name,
-            truncate_output_for_tool_ui(output, 3600)
-        ),
-        _ => format!(
-            "工具 `{}` 执行完成。\n\n{}",
-            tool_name,
-            truncate_output_for_tool_ui(output, 3600)
-        ),
     }
 }
 
