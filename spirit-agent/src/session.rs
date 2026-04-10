@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,7 +12,8 @@ const TOOL_MEMORY_PREFIX: &str = "[TOOL_MEMORY]";
 const TOOL_MEMORY_MAX_ENTRIES: usize = 24;
 const TOOL_MEMORY_SNIPPET_CHARS: usize = 1200;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PendingMcpResource {
     pub server: String,
     pub display_name: String,
@@ -47,7 +49,8 @@ impl PendingMcpResource {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PendingWorkspaceFile {
     pub path: String,
     pub attached_at_unix_ms: u128,

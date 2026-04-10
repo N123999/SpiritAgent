@@ -8,6 +8,7 @@ use rmcp::{
         streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -28,7 +29,8 @@ use crate::mcp::{
     resolve_env_map,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum McpServerRuntimeState {
     Disabled,
     Ready,
@@ -43,7 +45,8 @@ impl McpServerRuntimeState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ManagedMcpServer {
     pub name: String,
     pub display_name: String,
@@ -83,7 +86,8 @@ pub struct McpManager {
     servers: BTreeMap<String, ManagedMcpServer>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpDiscoveredTool {
     pub name: String,
     pub title: Option<String>,
@@ -91,7 +95,8 @@ pub struct McpDiscoveredTool {
     pub input_schema: Value,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpDiscoveredResource {
     pub uri: String,
     pub name: String,
@@ -101,7 +106,8 @@ pub struct McpDiscoveredResource {
     pub size: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpDiscoveredPromptArgument {
     pub name: String,
     pub title: Option<String>,
@@ -109,7 +115,8 @@ pub struct McpDiscoveredPromptArgument {
     pub required: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpDiscoveredPrompt {
     pub name: String,
     pub title: Option<String>,
@@ -117,7 +124,8 @@ pub struct McpDiscoveredPrompt {
     pub arguments: Vec<McpDiscoveredPromptArgument>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpServerInspection {
     pub name: String,
     pub display_name: String,

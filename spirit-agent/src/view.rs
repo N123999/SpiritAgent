@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::model_registry::AppConfig;
 use crate::session::PendingMcpResource;
 
@@ -9,7 +11,8 @@ pub enum InputSuggestionKind {
     FileReference,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AssistantAuxKind {
     Thinking,
     Compressing,
@@ -21,7 +24,8 @@ pub struct AssistantAuxData {
     pub compaction: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PendingAssistantAux {
     pub kind: AssistantAuxKind,
     pub status_text: String,

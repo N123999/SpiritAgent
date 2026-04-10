@@ -1,6 +1,7 @@
 use anyhow::Result;
 #[cfg(feature = "tui")]
 use rust_i18n::t;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{path::PathBuf, sync::mpsc::Receiver};
 
@@ -15,21 +16,24 @@ use crate::{
     tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AssistantAuxArchiveEntry {
     pub message_index: usize,
     pub thinking: Option<String>,
     pub compaction: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatArchive {
     pub messages: Vec<(String, String)>,
     pub assistant_aux: Vec<AssistantAuxArchiveEntry>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum McpStatusState {
     #[default]
     Idle,
@@ -38,7 +42,8 @@ pub enum McpStatusState {
     Error,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpStatusSnapshot {
     pub revision: u64,
     pub state: McpStatusState,

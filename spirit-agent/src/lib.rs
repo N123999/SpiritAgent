@@ -14,6 +14,7 @@ pub mod ports;
 pub mod runtime;
 pub mod runtime_handle;
 pub mod session;
+pub mod ts_bridge;
 #[cfg(feature = "tui")]
 pub mod shell;
 pub mod tool_runtime;

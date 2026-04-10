@@ -100,25 +100,68 @@ impl TuiShell {
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
         let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
         locale::apply_ui_locale(&config);
-        let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
-            Arc::clone(&secret_store),
-            telemetry,
-            app_paths.as_ref(),
-        ));
-        let tool_executor = Box::new(WorkspaceToolExecutor::new());
         let workspace_root = app_paths.workspace_root();
-        let runtime = RuntimeHandle::new_rust(
-            config.clone(),
-            llm_transport,
-            tool_executor,
-            workspace_root.clone(),
-        );
+        let requested_backend = env::var("SPIRIT_RUNTIME_BACKEND").unwrap_or_default();
+        let (runtime, runtime_notice) = if requested_backend.eq_ignore_ascii_case("ts") {
+            match RuntimeHandle::new_ts(
+                config.clone(),
+                Arc::clone(&secret_store),
+                workspace_root.clone(),
+            ) {
+                Ok(runtime) => (runtime, None),
+                Err(err) => {
+                    logging::log_event(&format!(
+                        "[runtime] ts backend init failed, fallback to rust: {}",
+                        err
+                    ));
+                    let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
+                        Arc::clone(&secret_store),
+                        telemetry,
+                        app_paths.as_ref(),
+                    ));
+                    let tool_executor = Box::new(WorkspaceToolExecutor::new());
+                    (
+                        RuntimeHandle::new_rust(
+                            config.clone(),
+                            llm_transport,
+                            tool_executor,
+                            workspace_root.clone(),
+                        ),
+                        Some(format!("TS runtime bridge 启动失败，已回退到 Rust backend: {}", err)),
+                    )
+                }
+            }
+        } else {
+            let llm_transport = Arc::new(OpenAiCompatibleTransport::new(
+                Arc::clone(&secret_store),
+                telemetry,
+                app_paths.as_ref(),
+            ));
+            let tool_executor = Box::new(WorkspaceToolExecutor::new());
+            (
+                RuntimeHandle::new_rust(
+                    config.clone(),
+                    llm_transport,
+                    tool_executor,
+                    workspace_root.clone(),
+                ),
+                None,
+            )
+        };
         let initial_mcp_status = runtime.mcp_status_snapshot();
         let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
         thread::spawn(move || {
             let files = file_reference::collect_workspace_files(&workspace_root);
             let _ = file_index_tx.send(files);
         });
+
+        let mut messages = vec![welcome_message(
+            &config.active_model,
+            &initial_mcp_status.welcome_line(),
+        )];
+        if let Some(notice) = runtime_notice {
+            messages.push(ChatMessage::new(MessageRole::Agent, notice));
+        }
 
         Self {
             input: String::new(),
@@ -127,10 +170,7 @@ impl TuiShell {
             file_reference_index: Vec::new(),
             pending_file_reference_index_rx: Some(file_index_rx),
             file_reference_indexing: true,
-            messages: vec![welcome_message(
-                &config.active_model,
-                &initial_mcp_status.welcome_line(),
-            )],
+            messages,
             assistant_aux_by_message: HashMap::new(),
             show_aux_details: true,
             pending_assistant_msg_index: None,

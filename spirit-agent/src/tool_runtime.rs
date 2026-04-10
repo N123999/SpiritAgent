@@ -37,7 +37,7 @@ const WEB_FETCH_TIMEOUT_SECS: u64 = 20;
 const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 const UPDATE_FILE_LOG_PREVIEW_CHARS: usize = 180;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ToolRequest {
     Shell {
         command: String,
@@ -76,12 +76,13 @@ pub enum ToolRequest {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TrustTarget {
     ShellCommand(String),
     ExternalReadPath(String),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AuthorizationDecision {
     Allowed,
     NeedApproval {
