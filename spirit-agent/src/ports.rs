@@ -3,10 +3,9 @@ use anyhow::Result;
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{path::PathBuf, sync::mpsc::Receiver};
+use std::path::PathBuf;
 
 use crate::{
-    llm_client::{CompactResult, LlmMessage, StreamEvent, ToolAgentState, ToolAgentStep},
     mcp::McpServerConfig,
     mcp_manager::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
@@ -135,11 +134,6 @@ pub trait AppPaths: Send + Sync {
     fn log_file(&self) -> PathBuf;
 }
 
-pub trait Telemetry: Send + Sync {
-    fn log_event(&self, message: &str);
-    fn log_json_http_body(&self, label: &str, payload: &Value);
-}
-
 pub trait ConfigStore: Send + Sync {
     fn load(&self) -> Result<AppConfig>;
     fn save(&self, config: &AppConfig) -> Result<()>;
@@ -178,44 +172,4 @@ pub trait ToolExecutor: Send {
     fn read_mcp_resource(&self, name: &str, uri: &str) -> Result<Value>;
     fn list_mcp_prompts(&self, name: &str) -> Result<Vec<McpDiscoveredPrompt>>;
     fn get_mcp_prompt(&self, name: &str, prompt: &str, args_json: Option<&str>) -> Result<Value>;
-}
-
-pub struct ToolAgentRoundResult {
-    pub state: ToolAgentState,
-    pub step: ToolAgentStep,
-    pub request_trace: Vec<Value>,
-}
-
-pub enum ToolAgentRoundCompletion {
-    Success(ToolAgentRoundResult),
-    Failure { error: String, request_trace: Vec<Value> },
-}
-
-pub struct StartedToolAgentRound {
-    pub stream_rx: Receiver<StreamEvent>,
-    pub result_rx: Receiver<ToolAgentRoundCompletion>,
-}
-
-pub trait LlmTransport: Send + Sync {
-    fn start_tool_agent_round(
-        &self,
-        config: &AppConfig,
-        state: ToolAgentState,
-        tools: Value,
-    ) -> Result<StartedToolAgentRound>;
-
-    fn compact_history_manual(
-        &self,
-        config: &AppConfig,
-        history: &mut Vec<LlmMessage>,
-        progress_tx: Option<&std::sync::mpsc::Sender<String>>,
-    ) -> Result<CompactResult>;
-
-    fn compact_summary_text(&self, history: &[LlmMessage]) -> Option<String>;
-
-    fn is_context_overflow_error(&self, err: &str) -> bool;
-
-    fn llm_history_as_api_messages(&self, history: &[LlmMessage]) -> Vec<Value>;
-
-    fn llm_system_prompts_for_export(&self) -> Value;
 }

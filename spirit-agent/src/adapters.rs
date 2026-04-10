@@ -5,13 +5,12 @@ use std::{
     env,
     hash::{Hash, Hasher},
     path::PathBuf,
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, Mutex},
     thread,
 };
 
 use crate::{
     chat_store,
-    llm_client::{self, LlmMessage, ResolvedLlmConfig},
     logging,
     mcp::{McpServerConfig, add_mcp_server},
     mcp_manager::{McpManager, McpServerRuntimeState},
@@ -20,15 +19,12 @@ use crate::{
         remove_model_api_key, save_config, save_model_api_key,
     },
     ports::{
-        AppPaths, ChatArchive, ChatRepository, ConfigStore, LlmTransport, McpStatusSnapshot,
-        McpStatusState, SecretStore, StartedToolAgentRound, Telemetry, ToolAgentRoundCompletion,
-        ToolAgentRoundResult, ToolExecutor,
+        AppPaths, ChatArchive, ChatRepository, ConfigStore, McpStatusSnapshot, McpStatusState,
+        SecretStore, ToolExecutor,
     },
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
 };
 
-const ENV_API_BASE: &str = "SPIRIT_API_BASE";
-const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
 const MCP_FUNCTION_NAME_LIMIT: usize = 64;
 const MCP_SERVER_FRAGMENT_LIMIT: usize = 16;
@@ -77,18 +73,6 @@ impl AppPaths for DefaultAppPaths {
 
     fn log_file(&self) -> PathBuf {
         logging::log_file_path()
-    }
-}
-
-pub struct LoggingTelemetry;
-
-impl Telemetry for LoggingTelemetry {
-    fn log_event(&self, message: &str) {
-        logging::log_event(message);
-    }
-
-    fn log_json_http_body(&self, label: &str, payload: &Value) {
-        logging::log_json_http_body(label, payload);
     }
 }
 
@@ -585,142 +569,4 @@ fn sanitize_identifier_fragment(input: &str) -> String {
 
 fn truncate_identifier_fragment(input: &str, max_len: usize) -> String {
     input.chars().take(max_len).collect()
-}
-
-pub struct OpenAiCompatibleTransport {
-    secret_store: Arc<dyn SecretStore>,
-    telemetry: Arc<dyn Telemetry>,
-    workspace_root: PathBuf,
-}
-
-impl OpenAiCompatibleTransport {
-    pub fn new(
-        secret_store: Arc<dyn SecretStore>,
-        telemetry: Arc<dyn Telemetry>,
-        app_paths: &dyn AppPaths,
-    ) -> Self {
-        Self {
-            secret_store,
-            telemetry,
-            workspace_root: app_paths.workspace_root(),
-        }
-    }
-
-    fn resolve_model_config(&self, config: &AppConfig) -> Result<ResolvedLlmConfig> {
-        let active = config
-            .active_model_profile()
-            .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
-
-        let api_key = if let Ok(value) = env::var(ENV_API_KEY) {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                self.resolve_key_from_store(&active.name)?
-            } else {
-                trimmed.to_string()
-            }
-        } else {
-            self.resolve_key_from_store(&active.name)?
-        };
-
-        let api_base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
-
-        Ok(ResolvedLlmConfig {
-            model: active.name.clone(),
-            api_base,
-            api_key,
-            workspace_root: self.workspace_root.clone(),
-        })
-    }
-
-    fn resolve_key_from_store(&self, model_name: &str) -> Result<String> {
-        if let Some(value) = self.secret_store.load_model_api_key(model_name)? {
-            return Ok(value);
-        }
-        if let Some(value) = self.secret_store.load_global_api_key()? {
-            return Ok(value);
-        }
-        Err(anyhow!(
-            "未检测到模型 {} 的 API Key。可执行 `spirit model add {} --api-base <url> --key <api_key>` 或设置环境变量 {}",
-            model_name,
-            model_name,
-            ENV_API_KEY
-        ))
-    }
-}
-
-impl LlmTransport for OpenAiCompatibleTransport {
-    fn start_tool_agent_round(
-        &self,
-        config: &AppConfig,
-        state: crate::llm_client::ToolAgentState,
-        tools: Value,
-    ) -> Result<StartedToolAgentRound> {
-        let resolved = self.resolve_model_config(config)?;
-        let telemetry = Arc::clone(&self.telemetry);
-        let (stream_tx, stream_rx) = mpsc::channel::<crate::llm_client::StreamEvent>();
-        let (result_tx, result_rx) = mpsc::channel::<ToolAgentRoundCompletion>();
-
-        thread::spawn(move || {
-            let mut state = state;
-            let mut request_trace = Vec::new();
-            let outcome = llm_client::stream_tool_agent_round(
-                &resolved,
-                telemetry.as_ref(),
-                &mut state,
-                &tools,
-                &stream_tx,
-                Some(&mut request_trace),
-            );
-
-            match outcome {
-                Ok(step) => {
-                    let _ = stream_tx.send(crate::llm_client::StreamEvent::Done);
-                    let _ = result_tx.send(ToolAgentRoundCompletion::Success(ToolAgentRoundResult {
-                        state,
-                        step,
-                        request_trace,
-                    }));
-                }
-                Err(err) => {
-                    let _ = stream_tx.send(crate::llm_client::StreamEvent::Error(err.to_string()));
-                    let _ = stream_tx.send(crate::llm_client::StreamEvent::Done);
-                    let _ = result_tx.send(ToolAgentRoundCompletion::Failure {
-                        error: err.to_string(),
-                        request_trace,
-                    });
-                }
-            }
-        });
-
-        Ok(StartedToolAgentRound {
-            stream_rx,
-            result_rx,
-        })
-    }
-
-    fn compact_history_manual(
-        &self,
-        config: &AppConfig,
-        history: &mut Vec<LlmMessage>,
-        progress_tx: Option<&std::sync::mpsc::Sender<String>>,
-    ) -> Result<llm_client::CompactResult> {
-        let resolved = self.resolve_model_config(config)?;
-        llm_client::compact_history_manual(&resolved, self.telemetry.as_ref(), history, progress_tx)
-    }
-
-    fn compact_summary_text(&self, history: &[LlmMessage]) -> Option<String> {
-        llm_client::compact_summary_text(history)
-    }
-
-    fn is_context_overflow_error(&self, err: &str) -> bool {
-        llm_client::is_context_overflow_error(err)
-    }
-
-    fn llm_history_as_api_messages(&self, history: &[LlmMessage]) -> Vec<Value> {
-        llm_client::llm_history_as_api_messages(history, &self.workspace_root)
-    }
-
-    fn llm_system_prompts_for_export(&self) -> Value {
-        llm_client::llm_system_prompts_for_export()
-    }
 }

@@ -13,7 +13,11 @@ use std::{
 
 use crate::{
     adapters::WorkspaceToolExecutor,
-    llm_client::{self, LlmMessage},
+    host_runtime::{
+        RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
+        tool_approval_block, tool_failed_block,
+    },
+    llm_types::LlmMessage,
     logging,
     mcp::McpServerConfig,
     mcp_manager::{
@@ -24,10 +28,6 @@ use crate::{
     model_registry::AppConfig,
     ports::{McpStatusSnapshot, SecretStore, ToolExecutor},
     runtime_handle::RuntimeExportState,
-    runtime::{
-        RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
-        tool_approval_block, tool_failed_block,
-    },
     session::{PendingMcpResource, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
     view::{ChatMessage, MessageRole, PendingAssistantAux},
@@ -260,14 +260,6 @@ impl TsBridgeRuntime {
 
     pub fn session(&self) -> &SessionModel {
         &self.session
-    }
-
-    pub fn llm_history_as_api_messages(&self) -> Vec<Value> {
-        llm_client::llm_history_as_api_messages(self.session.llm_history(), &self.workspace_root)
-    }
-
-    pub fn llm_system_prompts_for_export(&self) -> Value {
-        llm_client::llm_system_prompts_for_export()
     }
 
     pub fn export_llm_state(&mut self) -> Result<RuntimeExportState> {

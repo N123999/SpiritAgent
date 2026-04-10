@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::{path::PathBuf, sync::Arc};
 
 use crate::{
+    host_runtime::RuntimeEvent,
     mcp::McpServerConfig,
     mcp_manager::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
@@ -10,7 +11,6 @@ use crate::{
     },
     model_registry::AppConfig,
     ports::{McpStatusSnapshot, SecretStore},
-    runtime::RuntimeEvent,
     session::SessionModel,
     ts_bridge::TsBridgeRuntime,
     view::PendingAssistantAux,

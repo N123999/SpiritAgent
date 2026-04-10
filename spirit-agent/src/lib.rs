@@ -3,15 +3,15 @@ pub mod chat_store;
 pub mod cli;
 #[cfg(feature = "tui")]
 pub mod conversation_select;
+pub mod host_runtime;
 #[cfg(feature = "tui")]
 pub mod locale;
-pub mod llm_client;
+pub mod llm_types;
 pub mod logging;
 pub mod mcp;
 pub mod mcp_manager;
 pub mod model_registry;
 pub mod ports;
-pub mod runtime;
 pub mod runtime_handle;
 pub mod session;
 pub mod ts_bridge;

@@ -17,11 +17,11 @@ use std::{
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
+    host_runtime::RuntimeEvent,
     locale,
     logging,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
-    runtime::RuntimeEvent,
     runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},

@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    llm_client::LlmMessage,
+    llm_types::LlmMessage,
     ports::{AssistantAuxArchiveEntry, ChatArchive},
     tool_runtime::ToolRequest,
 };

@@ -254,53 +254,65 @@ mod tests {
     #[test]
     fn current_query_tracks_token_under_cursor() {
         assert_eq!(
-            current_query("@runtime.rs", "@runtime.rs".chars().count()),
+            current_query("@host_runtime.rs", "@host_runtime.rs".chars().count()),
             Some(ActiveReferenceQuery {
                 start: 0,
-                end: "@runtime.rs".len(),
-                raw: "@runtime.rs".to_string(),
+                end: "@host_runtime.rs".len(),
+                raw: "@host_runtime.rs".to_string(),
             })
         );
         assert_eq!(
-            current_query("先看 @runtime.rs 再说", "先看 @run".chars().count()),
+            current_query("先看 @host_runtime.rs 再说", "先看 @host".chars().count()),
             Some(ActiveReferenceQuery {
                 start: "先看 ".len(),
-                end: "先看 @runtime.rs".len(),
-                raw: "@runtime.rs".to_string(),
+                end: "先看 @host_runtime.rs".len(),
+                raw: "@host_runtime.rs".to_string(),
             })
         );
-        assert_eq!(current_query("@runtime.rs ", "@runtime.rs ".chars().count()), None);
-        assert_eq!(current_query("runtime.rs", "runtime.rs".chars().count()), None);
+        assert_eq!(
+            current_query(
+                "@host_runtime.rs ",
+                "@host_runtime.rs ".chars().count()
+            ),
+            None
+        );
+        assert_eq!(
+            current_query("host_runtime.rs", "host_runtime.rs".chars().count()),
+            None
+        );
     }
 
     #[test]
     fn fuzzy_suggestions_prioritize_exact_basename_match() {
         let files = vec![
-            "src/view/runtime.rs".to_string(),
-            "src/runtime.rs".to_string(),
+            "src/view/host_runtime.rs".to_string(),
+            "src/host_runtime.rs".to_string(),
             "src/tool_runtime.rs".to_string(),
             "README.md".to_string(),
         ];
 
-        let suggestions = compute_suggestions("@runtime.rs", &files);
+        let suggestions = compute_suggestions("@host_runtime.rs", &files);
 
-        assert_eq!(suggestions.first().map(String::as_str), Some("src/runtime.rs"));
+        assert_eq!(
+            suggestions.first().map(String::as_str),
+            Some("src/host_runtime.rs")
+        );
     }
 
     #[test]
     fn replace_query_appends_single_space_when_confirmed() {
-        let query = current_query("先看 @run", "先看 @run".chars().count()).unwrap();
-        let (next, cursor) = replace_query("先看 @run", &query, "src/runtime.rs", true);
+        let query = current_query("先看 @host", "先看 @host".chars().count()).unwrap();
+        let (next, cursor) = replace_query("先看 @host", &query, "src/host_runtime.rs", true);
 
-        assert_eq!(next, "先看 @src/runtime.rs ");
-        assert_eq!(cursor, "先看 @src/runtime.rs ".chars().count());
+        assert_eq!(next, "先看 @src/host_runtime.rs ");
+        assert_eq!(cursor, "先看 @src/host_runtime.rs ".chars().count());
     }
 
     #[test]
     fn referenced_paths_collects_multiple_unique_tokens() {
         assert_eq!(
-            referenced_paths("@src/runtime.rs 请结合 @README.md 和 @src/runtime.rs 看"),
-            vec!["src/runtime.rs".to_string(), "README.md".to_string()]
+            referenced_paths("@src/host_runtime.rs 请结合 @README.md 和 @src/host_runtime.rs 看"),
+            vec!["src/host_runtime.rs".to_string(), "README.md".to_string()]
         );
     }
 }

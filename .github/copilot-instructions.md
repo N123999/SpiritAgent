@@ -3,11 +3,11 @@
 ## 代码风格
 - 优先沿用现有 Rust 风格：`anyhow::Result`、显式错误上下文、清晰的枚举分发和 `match` 结构。
 - 保持改动局部化，避免为格式化而重排无关代码。
-- 参考这些文件中的现有模式： [src/main.rs](src/main.rs), [src/runtime.rs](src/runtime.rs), [src/ports.rs](src/ports.rs), [src/tool_runtime.rs](src/tool_runtime.rs), [src/tui.rs](src/tui.rs), [src/ui.rs](src/ui.rs)。
+- 参考这些文件中的现有模式： [src/main.rs](src/main.rs), [src/host_runtime.rs](src/host_runtime.rs), [src/ports.rs](src/ports.rs), [src/tool_runtime.rs](src/tool_runtime.rs), [src/ts_bridge.rs](src/ts_bridge.rs), [src/tui.rs](src/tui.rs), [src/ui.rs](src/ui.rs)。
 
 ## 架构
 - [src/ports.rs](src/ports.rs) 定义核心抽象接口；优先通过端口扩展能力，而不是把实现细节散落到上层。
-- [src/runtime.rs](src/runtime.rs) 是运行时编排中心，负责轮询式驱动流式响应、工具调用、审批和历史压缩。
+- TypeScript core 负责运行时编排；Rust 侧的 [src/ts_bridge.rs](src/ts_bridge.rs) 负责桥接事件流，[src/host_runtime.rs](src/host_runtime.rs) 负责宿主仍需复用的运行时事件与工具 UI 格式化。
 - [src/main.rs](src/main.rs) 负责 CLI 入口与子命令分发；[src/tui.rs](src/tui.rs) 和 [src/ui.rs](src/ui.rs) 负责交互界面。
 - [src/mcp_manager.rs](src/mcp_manager.rs) 和 [src/tool_runtime.rs](src/tool_runtime.rs) 负责 MCP 与内置工具执行。
 
