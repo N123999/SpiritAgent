@@ -772,6 +772,15 @@ impl TuiShell {
 
         let mut config = self.runtime.config().clone();
         config.active_model = selected.clone();
+        if let Err(err) = self.runtime.validate_config_change(&config) {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: err.to_string(),
+                tool_block: None,
+            });
+            self.model_picker_active = false;
+            return;
+        }
         if let Err(err) = self.config_store.save(&config) {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
@@ -780,6 +789,7 @@ impl TuiShell {
             });
         } else {
             self.runtime.replace_config(config);
+            self.apply_runtime_events();
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: t!("tui.model_picker.switch_success", model = selected).into_owned(),
@@ -1046,6 +1056,14 @@ impl TuiShell {
                     return;
                 }
                 config.active_model = (*model).to_string();
+                if let Err(err) = self.runtime.validate_config_change(&config) {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: err.to_string(),
+                        tool_block: None,
+                    });
+                    return;
+                }
                 if let Err(err) = self.config_store.save(&config) {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
@@ -1054,6 +1072,7 @@ impl TuiShell {
                     });
                 } else {
                     self.runtime.replace_config(config);
+                    self.apply_runtime_events();
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!("已切换当前模型为: {}", model),

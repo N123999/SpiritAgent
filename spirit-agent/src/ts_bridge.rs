@@ -37,6 +37,8 @@ const ENV_RUNTIME_BACKEND_NODE_PATH: &str = "SPIRIT_NODE_PATH";
 const ENV_RUNTIME_BRIDGE_PATH: &str = "SPIRIT_AGENT_CORE_BRIDGE_PATH";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
+const MODEL_SWITCH_BUSY_MESSAGE: &str =
+    "当前有进行中的对话，暂不支持在 TS backend 下切换模型。请等待当前回合结束后再试。";
 
 pub struct TsBridgeRuntime {
     process: JsonRpcProcess,
@@ -47,6 +49,7 @@ pub struct TsBridgeRuntime {
     tool_executor: WorkspaceToolExecutor,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
+    pending_assistant_has_output: bool,
     is_busy_cache: bool,
     events: VecDeque<RuntimeEvent>,
     background_tool_completion_tx: Sender<BackgroundToolCompletion>,
@@ -193,6 +196,7 @@ impl TsBridgeRuntime {
             tool_executor: WorkspaceToolExecutor::new(),
             pending_aux_state: None,
             pending_approval_kind: None,
+            pending_assistant_has_output: false,
             is_busy_cache: false,
             events: VecDeque::new(),
             background_tool_completion_tx,
@@ -212,12 +216,30 @@ impl TsBridgeRuntime {
         &self.config
     }
 
-    pub fn replace_config(&mut self, config: AppConfig) {
+    pub fn validate_config_change(&self, config: &AppConfig) -> Result<()> {
+        if !self.transport_config_will_change(config) {
+            return Ok(());
+        }
+
         if self.is_busy_cache || self.session.pending_user_turn().is_some() {
+            return Err(anyhow!(MODEL_SWITCH_BUSY_MESSAGE));
+        }
+
+        self.resolve_transport_config_json_for(config).map(|_| ())
+    }
+
+    pub fn replace_config(&mut self, config: AppConfig) {
+        let transport_config_changed = self.transport_config_will_change(&config);
+        if let Err(err) = self.validate_config_change(&config) {
             self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
                 MessageRole::Agent,
-                "当前有进行中的对话，暂不支持在 TS backend 下切换模型。请等待当前回合结束后再试。",
+                err.to_string(),
             )));
+            return;
+        }
+
+        if !transport_config_changed {
+            self.config = config;
             return;
         }
 
@@ -577,8 +599,11 @@ impl TsBridgeRuntime {
     }
 
     fn resolve_transport_config_json(&self) -> Result<Value> {
-        let active = self
-            .config
+        self.resolve_transport_config_json_for(&self.config)
+    }
+
+    fn resolve_transport_config_json_for(&self, config: &AppConfig) -> Result<Value> {
+        let active = config
             .active_model_profile()
             .ok_or_else(|| anyhow!("当前模型不存在，请先配置模型"))?;
 
@@ -601,6 +626,17 @@ impl TsBridgeRuntime {
             "baseUrl": api_base,
             "workspaceRoot": self.workspace_root,
         }))
+    }
+
+    fn transport_config_will_change(&self, config: &AppConfig) -> bool {
+        if self.config.active_model != config.active_model {
+            return true;
+        }
+
+        self.config.active_model_profile().map(|profile| profile.api_base.as_str())
+            != config
+                .active_model_profile()
+                .map(|profile| profile.api_base.as_str())
     }
 
     fn resolve_key_from_store(&self, model_name: &str) -> Result<String> {
@@ -994,6 +1030,7 @@ impl TsBridgeRuntime {
         for event in events {
             match event {
                 BridgeRuntimeEvent::BeginAssistantResponse => {
+                    self.pending_assistant_has_output = false;
                     self.events.push_back(RuntimeEvent::BeginAssistantResponse);
                 }
                 BridgeRuntimeEvent::UpdatePendingAssistantThinking { text } => {
@@ -1005,17 +1042,21 @@ impl TsBridgeRuntime {
                         .push_back(RuntimeEvent::UpdatePendingAssistantCompaction(text));
                 }
                 BridgeRuntimeEvent::AssistantChunk { text } => {
+                    self.pending_assistant_has_output = true;
                     self.events.push_back(RuntimeEvent::AssistantChunk(text));
                 }
                 BridgeRuntimeEvent::ReplacePendingAssistant { text } => {
+                    self.pending_assistant_has_output = !text.trim().is_empty();
                     self.events
                         .push_back(RuntimeEvent::ReplacePendingAssistant(text));
                 }
                 BridgeRuntimeEvent::AssistantResponseCompleted => {
+                    self.pending_assistant_has_output = false;
                     self.events
                         .push_back(RuntimeEvent::AssistantResponseCompleted);
                 }
                 BridgeRuntimeEvent::RemovePendingAssistant => {
+                    self.pending_assistant_has_output = false;
                     self.events.push_back(RuntimeEvent::RemovePendingAssistant);
                 }
                 BridgeRuntimeEvent::ApprovalRequested { approval } => {
@@ -1079,9 +1120,20 @@ impl TsBridgeRuntime {
             if fatal { "fatal error" } else { "runtime error" },
             summary
         ));
+        let had_inflight_response = self.is_busy_cache || self.pending_aux_state.is_some();
+        let had_pending_output = self.pending_assistant_has_output;
         self.is_busy_cache = false;
         self.pending_aux_state = None;
         self.pending_approval_kind = None;
+        self.pending_assistant_has_output = false;
+        self.session.clear_pending_user_turn();
+        if had_inflight_response {
+            self.events.push_back(if had_pending_output {
+                RuntimeEvent::AssistantResponseCompleted
+            } else {
+                RuntimeEvent::RemovePendingAssistant
+            });
+        }
         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
             MessageRole::Agent,
             if fatal {
@@ -1467,14 +1519,16 @@ fn execute_background_tool_request_sync(
 #[cfg(test)]
 mod tests {
     use super::{
-        BridgeRuntimeEvent, ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime,
+        BridgeRuntimeEvent, BridgeRuntimeSnapshot, ENV_RUNTIME_BACKEND_NODE_PATH,
+        MODEL_SWITCH_BUSY_MESSAGE, TsBridgeRuntime,
         background_tool_json_rpc_response, resolve_bridge_script,
     };
     use crate::{
+        host_runtime::RuntimeEvent,
         model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
         ports::SecretStore,
     };
-    use anyhow::Result;
+    use anyhow::{Result, anyhow};
     use serde_json::json;
     use std::{env, path::PathBuf, process::Command, sync::Arc};
 
@@ -1510,35 +1564,117 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ts_bridge_initializes_when_bundle_is_available() {
+    fn make_test_runtime() -> Option<TsBridgeRuntime> {
         let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("workspace root")
             .to_path_buf();
 
         if resolve_bridge_script(&workspace_root).is_err() {
-            return;
+            return None;
         }
 
-        let node_path = env::var(ENV_RUNTIME_BACKEND_NODE_PATH).unwrap_or_else(|_| "node".to_string());
+        let node_path =
+            env::var(ENV_RUNTIME_BACKEND_NODE_PATH).unwrap_or_else(|_| "node".to_string());
         if Command::new(&node_path).arg("--version").output().is_err() {
-            return;
+            return None;
         }
 
         let config = AppConfig {
-            models: vec![ModelProfile {
-                name: "gpt-4o-mini".to_string(),
-                api_base: DEFAULT_API_BASE.to_string(),
-            }],
+            models: vec![
+                ModelProfile {
+                    name: "gpt-4o-mini".to_string(),
+                    api_base: DEFAULT_API_BASE.to_string(),
+                },
+                ModelProfile {
+                    name: "deepseek-chat".to_string(),
+                    api_base: "https://api.deepseek.com/v1".to_string(),
+                },
+            ],
             active_model: "gpt-4o-mini".to_string(),
             ui_locale: None,
         };
 
-        let runtime = TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root)
-            .expect("ts bridge runtime should initialize");
+        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root).ok()
+    }
+
+    fn busy_snapshot() -> BridgeRuntimeSnapshot {
+        BridgeRuntimeSnapshot {
+            pending_user_turn: Some("你好".to_string()),
+            pending_image_paths: vec![],
+            pending_mcp_resources: vec![],
+            pending_aux_state: None,
+            has_pending_approval: false,
+            has_pending_manual_approval: false,
+            current_pending_approval: None,
+            is_busy: true,
+            background_tool_status: None,
+        }
+    }
+
+    #[test]
+    fn ts_bridge_initializes_when_bundle_is_available() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
         assert!(!runtime.is_busy());
         assert!(!runtime.has_pending_tool_approval());
+    }
+
+    #[test]
+    fn validate_config_change_blocks_active_model_switch_while_busy() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_snapshot(busy_snapshot());
+
+        let mut next = runtime.config().clone();
+        next.active_model = "deepseek-chat".to_string();
+
+        let err = runtime
+            .validate_config_change(&next)
+            .expect_err("busy runtime should reject active model switch");
+        assert_eq!(err.to_string(), MODEL_SWITCH_BUSY_MESSAGE);
+    }
+
+    #[test]
+    fn validate_config_change_allows_non_transport_updates_while_busy() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_snapshot(busy_snapshot());
+
+        let mut next = runtime.config().clone();
+        next.ui_locale = Some("zh-CN".to_string());
+        next.models.push(ModelProfile {
+            name: "Pro/moonshotai/Kimi-K2.5".to_string(),
+            api_base: "https://api.siliconflow.cn/v1".to_string(),
+        });
+
+        assert!(runtime.validate_config_change(&next).is_ok());
+    }
+
+    #[test]
+    fn runtime_error_clears_pending_turn_and_finishes_round() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_snapshot(busy_snapshot());
+        runtime.handle_bridge_error(anyhow!("runtime-error: 401 status code (no body)"));
+
+        assert!(!runtime.is_busy());
+        assert!(runtime.session().pending_user_turn().is_none());
+
+        let events = runtime.drain_events();
+        assert!(events.iter().any(|event| matches!(event, RuntimeEvent::RemovePendingAssistant)));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::PushMessage(message)
+                if message.content == "TS runtime 执行失败: 401 status code (no body)"
+        )));
     }
 
     #[test]

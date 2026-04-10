@@ -42,6 +42,10 @@ impl RuntimeHandle {
         self.runtime.config()
     }
 
+    pub fn validate_config_change(&self, config: &AppConfig) -> Result<()> {
+        self.runtime.validate_config_change(config)
+    }
+
     pub fn replace_config(&mut self, config: AppConfig) {
         self.runtime.replace_config(config)
     }
