@@ -24,7 +24,9 @@
     "smoke:openai": "npm run build && node dist/smoke/openai-smoke.js",
     "smoke:openai:roundtrip": "npm run build && node dist/smoke/openai-roundtrip-smoke.js",
     "smoke:openai:compact": "npm run build && node dist/smoke/openai-compact-smoke.js",
-    "smoke:openai:all": "npm run smoke:openai && npm run smoke:openai:roundtrip && npm run smoke:openai:compact"
+    "smoke:openai:runtime": "npm run build && node dist/smoke/openai-runtime-smoke.js",
+    "smoke:runtime:parity": "npm run build && node dist/smoke/runtime-parity-smoke.js",
+    "smoke:openai:all": "npm run smoke:openai && npm run smoke:openai:roundtrip && npm run smoke:openai:compact && npm run smoke:openai:runtime"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

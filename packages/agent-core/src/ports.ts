@@ -109,6 +109,8 @@ export interface ToolExecutor<
   authorize(request: ToolRequest): Promise<AuthorizationDecision<TrustTarget>>;
   trust(target: TrustTarget): Promise<void>;
   execute(request: ToolRequest): Promise<string>;
+  shouldExecuteInBackground?(request: ToolRequest): boolean;
+  backgroundStatusText?(request: ToolRequest): string | undefined;
   startMcpBackgroundRefresh(): void;
   mcpStatusSnapshot(): McpStatusSnapshot;
   addMcpServer(name: string, config: JsonValue): Promise<string>;
