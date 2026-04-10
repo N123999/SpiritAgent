@@ -22,11 +22,11 @@
   - https://github.com/BurntSushi/aho-corasick
 - **allocator-api2** 0.2.21 — MIT OR Apache-2.0
   - https://github.com/zakarumych/allocator-api2
-- **anstream** 0.6.21 — MIT OR Apache-2.0
+- **anstream** 1.0.0 — MIT OR Apache-2.0
   - https://github.com/rust-cli/anstyle.git
-- **anstyle** 1.0.13 — MIT OR Apache-2.0
+- **anstyle** 1.0.14 — MIT OR Apache-2.0
   - https://github.com/rust-cli/anstyle.git
-- **anstyle-parse** 0.2.7 — MIT OR Apache-2.0
+- **anstyle-parse** 1.0.0 — MIT OR Apache-2.0
   - https://github.com/rust-cli/anstyle.git
 - **anstyle-query** 1.1.5 — MIT OR Apache-2.0
   - https://github.com/rust-cli/anstyle.git
@@ -58,7 +58,7 @@
   - https://github.com/smol-rs/async-process
 - **async-recursion** 1.1.1 — MIT OR Apache-2.0
   - https://github.com/dcchut/async-recursion
-- **async-signal** 0.2.13 — Apache-2.0 OR MIT
+- **async-signal** 0.2.14 — Apache-2.0 OR MIT
   - https://github.com/smol-rs/async-signal
 - **async-task** 4.7.1 — Apache-2.0 OR MIT
   - https://github.com/smol-rs/async-task
@@ -88,9 +88,9 @@
   - https://github.com/RustCrypto/utils
 - **blocking** 1.6.2 — Apache-2.0 OR MIT
   - https://github.com/smol-rs/blocking
-- **bon** 3.9.0 — MIT OR Apache-2.0
+- **bon** 3.9.1 — MIT OR Apache-2.0
   - https://github.com/elastio/bon
-- **bon-macros** 3.9.0 — MIT OR Apache-2.0
+- **bon-macros** 3.9.1 — MIT OR Apache-2.0
   - https://github.com/elastio/bon
 - **bstr** 1.12.1 — MIT OR Apache-2.0
   - https://github.com/BurntSushi/bstr
@@ -110,7 +110,7 @@
   - https://github.com/sagebind/castaway
 - **cbc** 0.1.2 — MIT OR Apache-2.0
   - https://github.com/RustCrypto/block-modes
-- **cc** 1.2.56 — MIT OR Apache-2.0
+- **cc** 1.2.60 — MIT OR Apache-2.0
   - https://github.com/rust-lang/cc-rs
 - **cfg-if** 1.0.4 — MIT OR Apache-2.0
   - https://github.com/rust-lang/cfg-if
@@ -120,19 +120,19 @@
   - https://github.com/chronotope/chrono
 - **cipher** 0.4.4 — MIT OR Apache-2.0
   - https://github.com/RustCrypto/traits
-- **clap** 4.5.60 — MIT OR Apache-2.0
+- **clap** 4.6.0 — MIT OR Apache-2.0
   - https://github.com/clap-rs/clap
-- **clap_builder** 4.5.60 — MIT OR Apache-2.0
+- **clap_builder** 4.6.0 — MIT OR Apache-2.0
   - https://github.com/clap-rs/clap
-- **clap_derive** 4.5.55 — MIT OR Apache-2.0
+- **clap_derive** 4.6.0 — MIT OR Apache-2.0
   - https://github.com/clap-rs/clap
-- **clap_lex** 1.0.0 — MIT OR Apache-2.0
+- **clap_lex** 1.1.0 — MIT OR Apache-2.0
   - https://github.com/clap-rs/clap
 - **clipboard-win** 5.4.1 — BSL-1.0
   - https://github.com/DoumanAsh/clipboard-win
 - **cmake** 0.1.58 — MIT OR Apache-2.0
   - https://github.com/rust-lang/cmake-rs
-- **colorchoice** 1.0.4 — MIT OR Apache-2.0
+- **colorchoice** 1.0.5 — MIT OR Apache-2.0
   - https://github.com/rust-cli/anstyle.git
 - **compact_str** 0.8.1 — MIT
   - https://github.com/ParkMyCar/compact_str
@@ -206,7 +206,7 @@
   - https://github.com/smol-rs/event-listener-strategy
 - **fastrand** 1.9.0 — Apache-2.0 OR MIT
   - https://github.com/smol-rs/fastrand
-- **fastrand** 2.3.0 — Apache-2.0 OR MIT
+- **fastrand** 2.4.1 — Apache-2.0 OR MIT
   - https://github.com/smol-rs/fastrand
 - **fax** 0.2.6 — MIT
   - https://github.com/pdf-rs/fax
@@ -258,6 +258,8 @@
   - https://github.com/rust-random/getrandom
 - **getrandom** 0.3.4 — MIT OR Apache-2.0
   - https://github.com/rust-random/getrandom
+- **getrandom** 0.4.2 — MIT OR Apache-2.0
+  - https://github.com/rust-random/getrandom
 - **glob** 0.3.3 — MIT OR Apache-2.0
   - https://github.com/rust-lang/glob
 - **globset** 0.4.18 — Unlicense OR MIT
@@ -274,7 +276,7 @@
   - https://github.com/VoidStarKat/half-rs
 - **hashbrown** 0.15.5 — MIT OR Apache-2.0
   - https://github.com/rust-lang/hashbrown
-- **hashbrown** 0.16.1 — MIT OR Apache-2.0
+- **hashbrown** 0.17.0 — MIT OR Apache-2.0
   - https://github.com/rust-lang/hashbrown
 - **heck** 0.5.0 — MIT OR Apache-2.0
   - https://github.com/withoutboats/heck
@@ -296,7 +298,7 @@
   - https://github.com/hyperium/http-body
 - **httparse** 1.10.1 — MIT OR Apache-2.0
   - https://github.com/seanmonstar/httparse
-- **hyper** 1.8.1 — MIT
+- **hyper** 1.9.0 — MIT
   - https://github.com/hyperium/hyper
 - **hyper-rustls** 0.27.7 — Apache-2.0 OR ISC OR MIT
   - https://github.com/rustls/hyper-rustls
@@ -304,19 +306,19 @@
   - https://github.com/hyperium/hyper-util
 - **iana-time-zone** 0.1.65 — MIT OR Apache-2.0
   - https://github.com/strawlab/iana-time-zone
-- **icu_collections** 2.1.1 — Unicode-3.0
+- **icu_collections** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **icu_locale_core** 2.1.1 — Unicode-3.0
+- **icu_locale_core** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **icu_normalizer** 2.1.1 — Unicode-3.0
+- **icu_normalizer** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **icu_normalizer_data** 2.1.1 — Unicode-3.0
+- **icu_normalizer_data** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **icu_properties** 2.1.2 — Unicode-3.0
+- **icu_properties** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **icu_properties_data** 2.1.2 — Unicode-3.0
+- **icu_properties_data** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **icu_provider** 2.1.1 — Unicode-3.0
+- **icu_provider** 2.2.0 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **ident_case** 1.0.1 — MIT OR Apache-2.0
   - https://github.com/TedDriggs/ident_case
@@ -328,19 +330,19 @@
   - https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore
 - **image** 0.25.10 — MIT OR Apache-2.0
   - https://github.com/image-rs/image
-- **indexmap** 2.13.0 — Apache-2.0 OR MIT
+- **indexmap** 2.14.0 — Apache-2.0 OR MIT
   - https://github.com/indexmap-rs/indexmap
 - **indoc** 2.0.7 — MIT OR Apache-2.0
   - https://github.com/dtolnay/indoc
 - **inout** 0.1.4 — MIT OR Apache-2.0
   - https://github.com/RustCrypto/utils
-- **instability** 0.3.11 — MIT
+- **instability** 0.3.12 — MIT
   - https://github.com/ratatui/instability
 - **io-lifetimes** 1.0.11 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   - https://github.com/sunfishcode/io-lifetimes
 - **ipnet** 2.12.0 — MIT OR Apache-2.0
   - https://github.com/krisprice/ipnet
-- **iri-string** 0.7.10 — MIT OR Apache-2.0
+- **iri-string** 0.7.12 — MIT OR Apache-2.0
   - https://github.com/lo48576/iri-string
 - **is_terminal_polyfill** 1.70.2 — MIT OR Apache-2.0
   - https://github.com/polyfill-rs/is_terminal_polyfill
@@ -348,7 +350,7 @@
   - https://github.com/rust-itertools/itertools
 - **itertools** 0.13.0 — MIT OR Apache-2.0
   - https://github.com/rust-itertools/itertools
-- **itoa** 1.0.17 — MIT OR Apache-2.0
+- **itoa** 1.0.18 — MIT OR Apache-2.0
   - https://github.com/dtolnay/itoa
 - **jobserver** 0.1.34 — MIT OR Apache-2.0
   - https://github.com/rust-lang/jobserver-rs
@@ -356,9 +358,9 @@
   - https://github.com/hwchen/keyring-rs.git
 - **lazy_static** 1.5.0 — MIT OR Apache-2.0
   - https://github.com/rust-lang-nursery/lazy-static.rs
-- **libc** 0.2.182 — MIT OR Apache-2.0
+- **libc** 0.2.184 — MIT OR Apache-2.0
   - https://github.com/rust-lang/libc
-- **linux-keyutils** 0.2.4 — Apache-2.0 OR MIT
+- **linux-keyutils** 0.2.5 — Apache-2.0 OR MIT
   - https://github.com/landhb/linux-keyutils
 - **linux-raw-sys** 0.3.8 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   - https://github.com/sunfishcode/linux-raw-sys
@@ -366,7 +368,7 @@
   - https://github.com/sunfishcode/linux-raw-sys
 - **linux-raw-sys** 0.12.1 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   - https://github.com/sunfishcode/linux-raw-sys
-- **litemap** 0.8.1 — Unicode-3.0
+- **litemap** 0.8.2 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **lock_api** 0.4.14 — MIT OR Apache-2.0
   - https://github.com/Amanieu/parking_lot
@@ -392,7 +394,7 @@
   - https://github.com/Alexhuszagh/minimal-lexical
 - **miniz_oxide** 0.8.9 — MIT OR Zlib OR Apache-2.0
   - https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-- **mio** 1.1.1 — MIT
+- **mio** 1.2.0 — MIT
   - https://github.com/tokio-rs/mio
 - **moxcms** 0.8.1 — BSD-3-Clause OR Apache-2.0
   - https://github.com/awxkee/moxcms.git
@@ -432,7 +434,7 @@
   - https://github.com/madsmtm/objc2
 - **objc2-foundation** 0.3.2 — MIT
   - https://github.com/madsmtm/objc2
-- **once_cell** 1.21.3 — MIT OR Apache-2.0
+- **once_cell** 1.21.4 — MIT OR Apache-2.0
   - https://github.com/matklad/once_cell
 - **once_cell_polyfill** 1.70.2 — MIT OR Apache-2.0
   - https://github.com/polyfill-rs/once_cell_polyfill
@@ -464,8 +466,6 @@
   - https://github.com/rust-phf/rust-phf
 - **pin-project-lite** 0.2.17 — Apache-2.0 OR MIT
   - https://github.com/taiki-e/pin-project-lite
-- **pin-utils** 0.1.0 — MIT OR Apache-2.0
-  - https://github.com/rust-lang-nursery/pin-utils
 - **piper** 0.2.5 — MIT OR Apache-2.0
   - https://github.com/smol-rs/piper
 - **pkg-config** 0.3.32 — MIT OR Apache-2.0
@@ -476,7 +476,7 @@
   - https://github.com/smol-rs/polling
 - **polling** 3.11.0 — Apache-2.0 OR MIT
   - https://github.com/smol-rs/polling
-- **potential_utf** 0.1.4 — Unicode-3.0
+- **potential_utf** 0.1.5 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **ppv-lite86** 0.2.21 — MIT OR Apache-2.0
   - https://github.com/cryptocorrosion/cryptocorrosion
@@ -516,7 +516,7 @@
   - https://github.com/seanmonstar/reqwest
 - **ring** 0.17.14 — Apache-2.0 AND ISC
   - https://github.com/briansmith/ring
-- **rmcp** 1.3.0 — Apache-2.0
+- **rmcp** 1.4.0 — Apache-2.0
   - https://github.com/modelcontextprotocol/rust-sdk/
 - **rpassword** 7.4.0 — Apache-2.0
   - https://github.com/conradkleinespel/rpassword
@@ -542,7 +542,7 @@
   - https://github.com/rustls/pki-types
 - **rustls-platform-verifier** 0.6.2 — MIT OR Apache-2.0
   - https://github.com/rustls/rustls-platform-verifier
-- **rustls-webpki** 0.103.9 — ISC
+- **rustls-webpki** 0.103.11 — ISC
   - https://github.com/rustls/webpki
 - **rustversion** 1.0.22 — MIT OR Apache-2.0
   - https://github.com/dtolnay/rustversion
@@ -550,7 +550,7 @@
   - https://github.com/dtolnay/ryu
 - **same-file** 1.0.6 — Unlicense OR MIT
   - https://github.com/BurntSushi/same-file
-- **schannel** 0.1.28 — MIT
+- **schannel** 0.1.29 — MIT
   - https://github.com/steffengy/schannel-rs
 - **scopeguard** 1.2.0 — MIT OR Apache-2.0
   - https://github.com/bluss/scopeguard
@@ -592,7 +592,7 @@
   - https://github.com/vorner/signal-hook
 - **signal-hook-registry** 1.4.8 — MIT OR Apache-2.0
   - https://github.com/vorner/signal-hook
-- **simd-adler32** 0.3.8 — MIT
+- **simd-adler32** 0.3.9 — MIT
   - https://github.com/mcountryman/simd-adler32
 - **siphasher** 1.0.2 — MIT OR Apache-2.0
   - https://github.com/jedisct1/rust-siphash
@@ -608,7 +608,7 @@
   - https://github.com/rust-lang/socket2
 - **spirit-agent** 0.1.0 — MIT
   - https://crates.io/crates/spirit-agent
-- **sse-stream** 0.2.1 — MIT OR Apache-2.0
+- **sse-stream** 0.2.2 — MIT OR Apache-2.0
   - https://github.com/4t145/sse-stream/
 - **stable_deref_trait** 1.2.1 — MIT OR Apache-2.0
   - https://github.com/storyyeller/stable_deref_trait
@@ -636,11 +636,11 @@
   - https://github.com/mystor/synstructure
 - **syntect** 5.3.0 — MIT
   - https://github.com/trishume/syntect
-- **tempfile** 3.26.0 — MIT OR Apache-2.0
+- **tempfile** 3.27.0 — MIT OR Apache-2.0
   - https://github.com/Stebalien/tempfile
 - **tendril** 0.4.3 — MIT OR Apache-2.0
   - https://github.com/servo/tendril
-- **terminal_size** 0.4.3 — MIT OR Apache-2.0
+- **terminal_size** 0.4.4 — MIT OR Apache-2.0
   - https://github.com/eminence/terminal-size
 - **thiserror** 2.0.18 — MIT OR Apache-2.0
   - https://github.com/dtolnay/thiserror
@@ -648,15 +648,15 @@
   - https://github.com/dtolnay/thiserror
 - **tiff** 0.11.3 — MIT
   - https://github.com/image-rs/image-tiff
-- **tinystr** 0.8.2 — Unicode-3.0
+- **tinystr** 0.8.3 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **tinyvec** 1.10.0 — Zlib OR Apache-2.0 OR MIT
+- **tinyvec** 1.11.0 — Zlib OR Apache-2.0 OR MIT
   - https://github.com/Lokathor/tinyvec
 - **tinyvec_macros** 0.1.1 — MIT OR Apache-2.0 OR Zlib
   - https://github.com/Soveu/tinyvec_macros
-- **tokio** 1.50.0 — MIT
+- **tokio** 1.51.1 — MIT
   - https://github.com/tokio-rs/tokio
-- **tokio-macros** 2.6.1 — MIT
+- **tokio-macros** 2.7.0 — MIT
   - https://github.com/tokio-rs/tokio
 - **tokio-rustls** 0.26.4 — MIT OR Apache-2.0
   - https://github.com/rustls/tokio-rustls
@@ -696,13 +696,13 @@
   - https://github.com/SimonSapin/rust-typed-arena
 - **typenum** 1.19.0 — MIT OR Apache-2.0
   - https://github.com/paholg/typenum
-- **uds_windows** 1.2.0 — MIT
+- **uds_windows** 1.2.1 — MIT
   - https://github.com/haraldh/rust_uds_windows
 - **unicode-ident** 1.0.24 — (MIT OR Apache-2.0) AND Unicode-3.0
   - https://github.com/dtolnay/unicode-ident
 - **unicode-normalization** 0.1.25 — MIT OR Apache-2.0
   - https://github.com/unicode-rs/unicode-normalization
-- **unicode-segmentation** 1.12.0 — MIT OR Apache-2.0
+- **unicode-segmentation** 1.13.2 — MIT OR Apache-2.0
   - https://github.com/unicode-rs/unicode-segmentation
 - **unicode-truncate** 1.1.0 — MIT OR Apache-2.0
   - https://github.com/Aetf/unicode-truncate
@@ -802,7 +802,7 @@
   - https://github.com/winnow-rs/winnow
 - **winreg** 0.52.0 — MIT
   - https://github.com/gentoo90/winreg-rs
-- **writeable** 0.6.2 — Unicode-3.0
+- **writeable** 0.6.3 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **x11rb** 0.13.2 — MIT OR Apache-2.0
   - https://github.com/psychon/x11rb
@@ -812,9 +812,9 @@
   - https://github.com/whitequark/rust-xdg
 - **xdg-home** 1.3.0 — MIT
   - https://github.com/zeenix/xdg-home
-- **yoke** 0.8.1 — Unicode-3.0
+- **yoke** 0.8.2 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **yoke-derive** 0.8.1 — Unicode-3.0
+- **yoke-derive** 0.8.2 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **zbus** 3.15.2 — MIT
   - https://github.com/dbus2/zbus/
@@ -822,21 +822,21 @@
   - https://github.com/dbus2/zbus/
 - **zbus_names** 2.6.1 — MIT
   - https://github.com/dbus2/zbus/
-- **zerocopy** 0.8.40 — BSD-2-Clause OR Apache-2.0 OR MIT
+- **zerocopy** 0.8.48 — BSD-2-Clause OR Apache-2.0 OR MIT
   - https://github.com/google/zerocopy
-- **zerocopy-derive** 0.8.40 — BSD-2-Clause OR Apache-2.0 OR MIT
+- **zerocopy-derive** 0.8.48 — BSD-2-Clause OR Apache-2.0 OR MIT
   - https://github.com/google/zerocopy
-- **zerofrom** 0.1.6 — Unicode-3.0
+- **zerofrom** 0.1.7 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **zerofrom-derive** 0.1.6 — Unicode-3.0
+- **zerofrom-derive** 0.1.7 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **zeroize** 1.8.2 — Apache-2.0 OR MIT
   - https://github.com/RustCrypto/utils
-- **zerotrie** 0.2.3 — Unicode-3.0
+- **zerotrie** 0.2.4 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **zerovec** 0.11.5 — Unicode-3.0
+- **zerovec** 0.11.6 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
-- **zerovec-derive** 0.11.2 — Unicode-3.0
+- **zerovec-derive** 0.11.3 — Unicode-3.0
   - https://github.com/unicode-org/icu4x
 - **zmij** 1.0.21 — MIT
   - https://github.com/dtolnay/zmij
@@ -857,9 +857,9 @@
 
 **Used by:**
 - encoding_rs 0.8.35
-- iri-string 0.7.10
+- iri-string 0.7.12
 - static_assertions 1.1.0
-- tinyvec 1.10.0
+- tinyvec 1.11.0
 - utf8_iter 1.0.4
 - x11rb-protocol 0.13.2
 - x11rb 0.13.2
@@ -1522,8 +1522,8 @@
 ### Apache License 2.0 (Apache-2.0)
 
 **Used by:**
-- zerocopy-derive 0.8.40
-- zerocopy 0.8.40
+- zerocopy-derive 0.8.48
+- zerocopy 0.8.48
 
 ```
                                  Apache License
@@ -2577,23 +2577,23 @@
 ### Apache License 2.0 (Apache-2.0)
 
 **Used by:**
-- anstream 0.6.21
-- anstyle-parse 0.2.7
+- anstream 1.0.0
+- anstyle-parse 1.0.0
 - anstyle-query 1.1.5
 - anstyle-wincon 3.0.11
-- anstyle 1.0.13
-- clap 4.5.60
-- clap_builder 4.5.60
-- clap_derive 4.5.55
-- clap_lex 1.0.0
-- colorchoice 1.0.4
+- anstyle 1.0.14
+- clap 4.6.0
+- clap_builder 4.6.0
+- clap_derive 4.6.0
+- clap_lex 1.1.0
+- colorchoice 1.0.5
 - crc32fast 1.5.0
 - hex 0.4.3
 - is_terminal_polyfill 1.70.2
 - once_cell_polyfill 1.70.2
 - quick-error 2.0.1
 - serde_spanned 0.6.9
-- terminal_size 0.4.3
+- terminal_size 0.4.4
 - toml 0.8.23
 - toml_datetime 0.6.11
 - toml_edit 0.19.15
@@ -4488,216 +4488,6 @@ limitations under the License.
 ### Apache License 2.0 (Apache-2.0)
 
 **Used by:**
-- pin-utils 0.1.0
-
-```
-                              Apache License
-                        Version 2.0, January 2004
-                     http://www.apache.org/licenses/
-
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-1. Definitions.
-
-   "License" shall mean the terms and conditions for use, reproduction,
-   and distribution as defined by Sections 1 through 9 of this document.
-
-   "Licensor" shall mean the copyright owner or entity authorized by
-   the copyright owner that is granting the License.
-
-   "Legal Entity" shall mean the union of the acting entity and all
-   other entities that control, are controlled by, or are under common
-   control with that entity. For the purposes of this definition,
-   "control" means (i) the power, direct or indirect, to cause the
-   direction or management of such entity, whether by contract or
-   otherwise, or (ii) ownership of fifty percent (50%) or more of the
-   outstanding shares, or (iii) beneficial ownership of such entity.
-
-   "You" (or "Your") shall mean an individual or Legal Entity
-   exercising permissions granted by this License.
-
-   "Source" form shall mean the preferred form for making modifications,
-   including but not limited to software source code, documentation
-   source, and configuration files.
-
-   "Object" form shall mean any form resulting from mechanical
-   transformation or translation of a Source form, including but
-   not limited to compiled object code, generated documentation,
-   and conversions to other media types.
-
-   "Work" shall mean the work of authorship, whether in Source or
-   Object form, made available under the License, as indicated by a
-   copyright notice that is included in or attached to the work
-   (an example is provided in the Appendix below).
-
-   "Derivative Works" shall mean any work, whether in Source or Object
-   form, that is based on (or derived from) the Work and for which the
-   editorial revisions, annotations, elaborations, or other modifications
-   represent, as a whole, an original work of authorship. For the purposes
-   of this License, Derivative Works shall not include works that remain
-   separable from, or merely link (or bind by name) to the interfaces of,
-   the Work and Derivative Works thereof.
-
-   "Contribution" shall mean any work of authorship, including
-   the original version of the Work and any modifications or additions
-   to that Work or Derivative Works thereof, that is intentionally
-   submitted to Licensor for inclusion in the Work by the copyright owner
-   or by an individual or Legal Entity authorized to submit on behalf of
-   the copyright owner. For the purposes of this definition, "submitted"
-   means any form of electronic, verbal, or written communication sent
-   to the Licensor or its representatives, including but not limited to
-   communication on electronic mailing lists, source code control systems,
-   and issue tracking systems that are managed by, or on behalf of, the
-   Licensor for the purpose of discussing and improving the Work, but
-   excluding communication that is conspicuously marked or otherwise
-   designated in writing by the copyright owner as "Not a Contribution."
-
-   "Contributor" shall mean Licensor and any individual or Legal Entity
-   on behalf of whom a Contribution has been received by Licensor and
-   subsequently incorporated within the Work.
-
-2. Grant of Copyright License. Subject to the terms and conditions of
-   this License, each Contributor hereby grants to You a perpetual,
-   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-   copyright license to reproduce, prepare Derivative Works of,
-   publicly display, publicly perform, sublicense, and distribute the
-   Work and such Derivative Works in Source or Object form.
-
-3. Grant of Patent License. Subject to the terms and conditions of
-   this License, each Contributor hereby grants to You a perpetual,
-   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-   (except as stated in this section) patent license to make, have made,
-   use, offer to sell, sell, import, and otherwise transfer the Work,
-   where such license applies only to those patent claims licensable
-   by such Contributor that are necessarily infringed by their
-   Contribution(s) alone or by combination of their Contribution(s)
-   with the Work to which such Contribution(s) was submitted. If You
-   institute patent litigation against any entity (including a
-   cross-claim or counterclaim in a lawsuit) alleging that the Work
-   or a Contribution incorporated within the Work constitutes direct
-   or contributory patent infringement, then any patent licenses
-   granted to You under this License for that Work shall terminate
-   as of the date such litigation is filed.
-
-4. Redistribution. You may reproduce and distribute copies of the
-   Work or Derivative Works thereof in any medium, with or without
-   modifications, and in Source or Object form, provided that You
-   meet the following conditions:
-
-   (a) You must give any other recipients of the Work or
-       Derivative Works a copy of this License; and
-
-   (b) You must cause any modified files to carry prominent notices
-       stating that You changed the files; and
-
-   (c) You must retain, in the Source form of any Derivative Works
-       that You distribute, all copyright, patent, trademark, and
-       attribution notices from the Source form of the Work,
-       excluding those notices that do not pertain to any part of
-       the Derivative Works; and
-
-   (d) If the Work includes a "NOTICE" text file as part of its
-       distribution, then any Derivative Works that You distribute must
-       include a readable copy of the attribution notices contained
-       within such NOTICE file, excluding those notices that do not
-       pertain to any part of the Derivative Works, in at least one
-       of the following places: within a NOTICE text file distributed
-       as part of the Derivative Works; within the Source form or
-       documentation, if provided along with the Derivative Works; or,
-       within a display generated by the Derivative Works, if and
-       wherever such third-party notices normally appear. The contents
-       of the NOTICE file are for informational purposes only and
-       do not modify the License. You may add Your own attribution
-       notices within Derivative Works that You distribute, alongside
-       or as an addendum to the NOTICE text from the Work, provided
-       that such additional attribution notices cannot be construed
-       as modifying the License.
-
-   You may add Your own copyright statement to Your modifications and
-   may provide additional or different license terms and conditions
-   for use, reproduction, or distribution of Your modifications, or
-   for any such Derivative Works as a whole, provided Your use,
-   reproduction, and distribution of the Work otherwise complies with
-   the conditions stated in this License.
-
-5. Submission of Contributions. Unless You explicitly state otherwise,
-   any Contribution intentionally submitted for inclusion in the Work
-   by You to the Licensor shall be under the terms and conditions of
-   this License, without any additional terms or conditions.
-   Notwithstanding the above, nothing herein shall supersede or modify
-   the terms of any separate license agreement you may have executed
-   with Licensor regarding such Contributions.
-
-6. Trademarks. This License does not grant permission to use the trade
-   names, trademarks, service marks, or product names of the Licensor,
-   except as required for reasonable and customary use in describing the
-   origin of the Work and reproducing the content of the NOTICE file.
-
-7. Disclaimer of Warranty. Unless required by applicable law or
-   agreed to in writing, Licensor provides the Work (and each
-   Contributor provides its Contributions) on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-   implied, including, without limitation, any warranties or conditions
-   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-   PARTICULAR PURPOSE. You are solely responsible for determining the
-   appropriateness of using or redistributing the Work and assume any
-   risks associated with Your exercise of permissions under this License.
-
-8. Limitation of Liability. In no event and under no legal theory,
-   whether in tort (including negligence), contract, or otherwise,
-   unless required by applicable law (such as deliberate and grossly
-   negligent acts) or agreed to in writing, shall any Contributor be
-   liable to You for damages, including any direct, indirect, special,
-   incidental, or consequential damages of any character arising as a
-   result of this License or out of the use or inability to use the
-   Work (including but not limited to damages for loss of goodwill,
-   work stoppage, computer failure or malfunction, or any and all
-   other commercial damages or losses), even if such Contributor
-   has been advised of the possibility of such damages.
-
-9. Accepting Warranty or Additional Liability. While redistributing
-   the Work or Derivative Works thereof, You may choose to offer,
-   and charge a fee for, acceptance of support, warranty, indemnity,
-   or other liability obligations and/or rights consistent with this
-   License. However, in accepting such obligations, You may act only
-   on Your own behalf and on Your sole responsibility, not on behalf
-   of any other Contributor, and only if You agree to indemnify,
-   defend, and hold each Contributor harmless for any liability
-   incurred by, or claims asserted against, such Contributor by reason
-   of your accepting any such warranty or additional liability.
-
-END OF TERMS AND CONDITIONS
-
-APPENDIX: How to apply the Apache License to your work.
-
-   To apply the Apache License to your work, attach the following
-   boilerplate notice, with the fields enclosed by brackets "[]"
-   replaced with your own identifying information. (Don't include
-   the brackets!)  The text should be enclosed in the appropriate
-   comment syntax for the file format. We also recommend that a
-   file or class name and description of purpose be included on the
-   same "printed page" as the copyright notice for easier
-   identification within third-party archives.
-
-Copyright 2018 The pin-utils authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-```
-
-### Apache License 2.0 (Apache-2.0)
-
-**Used by:**
 - ppv-lite86 0.2.21
 
 ```
@@ -5967,7 +5757,7 @@ limitations under the License.
 - async-lock 2.8.0
 - async-lock 3.4.2
 - async-process 1.8.1
-- async-signal 0.2.13
+- async-signal 0.2.14
 - async-task 4.7.1
 - atomic-waker 1.1.2
 - autocfg 1.5.0
@@ -5976,7 +5766,7 @@ limitations under the License.
 - bitflags 2.11.0
 - blocking 1.6.2
 - bstr 1.12.1
-- cc 1.2.56
+- cc 1.2.60
 - cfg-if 1.0.4
 - cmake 0.1.58
 - concurrent-queue 2.5.0
@@ -5997,7 +5787,7 @@ limitations under the License.
 - event-listener 3.1.0
 - event-listener 5.4.1
 - fastrand 1.9.0
-- fastrand 2.3.0
+- fastrand 2.4.1
 - find-msvc-tools 0.1.9
 - flate2 1.1.9
 - fnv 1.0.7
@@ -6008,14 +5798,14 @@ limitations under the License.
 - gethostname 1.1.0
 - glob 0.3.3
 - hashbrown 0.15.5
-- hashbrown 0.16.1
+- hashbrown 0.17.0
 - heck 0.5.0
 - html5ever 0.29.1
 - httparse 1.10.1
 - hyper-rustls 0.27.7
 - idna 1.1.0
 - idna_adapter 1.2.1
-- indexmap 2.13.0
+- indexmap 2.14.0
 - io-lifetimes 1.0.11
 - itertools 0.11.0
 - itertools 0.13.0
@@ -6034,7 +5824,7 @@ limitations under the License.
 - num-rational 0.4.2
 - num-traits 0.2.19
 - num 0.4.3
-- once_cell 1.21.3
+- once_cell 1.21.4
 - openssl-probe 0.2.1
 - ordered-stream 0.2.0
 - parking 2.2.1
@@ -6070,10 +5860,10 @@ limitations under the License.
 - string_cache 0.8.9
 - string_cache_codegen 0.5.4
 - syn 1.0.109
-- tempfile 3.26.0
+- tempfile 3.27.0
 - tendril 0.4.3
 - unicode-normalization 0.1.25
-- unicode-segmentation 1.12.0
+- unicode-segmentation 1.13.2
 - unicode-truncate 1.1.0
 - unicode-width 0.1.14
 - unicode-width 0.2.0
@@ -7338,6 +7128,7 @@ APPENDIX: How to apply the Apache License to your work.
 **Used by:**
 - getrandom 0.2.17
 - getrandom 0.3.4
+- getrandom 0.4.2
 - rand_chacha 0.3.1
 
 ```
@@ -8198,17 +7989,17 @@ limitations under the License.
 - arboard 3.6.1
 - async-trait 0.1.89
 - aws-lc-sys 0.39.1
-- bon-macros 3.9.0
-- bon 3.9.0
+- bon-macros 3.9.1
+- bon 3.9.1
 - dunce 1.0.5
 - fdeflate 0.3.7
 - half 2.7.1
 - ident_case 1.0.1
 - image 0.25.10
 - indoc 2.0.7
-- itoa 1.0.17
-- libc 0.2.182
-- linux-keyutils 0.2.4
+- itoa 1.0.18
+- libc 0.2.184
+- linux-keyutils 0.2.5
 - mac 0.1.1
 - match_token 0.1.0
 - miniz_oxide 0.8.9
@@ -8223,7 +8014,7 @@ limitations under the License.
 - process-wrap 9.1.0
 - quote 1.0.45
 - rand 0.8.5
-- rmcp 1.3.0
+- rmcp 1.4.0
 - rpassword 7.4.0
 - rtoolbox 0.0.3
 - rustversion 1.0.22
@@ -8237,7 +8028,7 @@ limitations under the License.
 - serde_yaml 0.9.34+deprecated
 - shlex 1.3.0
 - siphasher 1.0.2
-- sse-stream 0.2.1
+- sse-stream 0.2.2
 - syn 2.0.117
 - sync_wrapper 1.0.2
 - thiserror-impl 2.0.18
@@ -8883,7 +8674,7 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ### ISC License (ISC)
 
 **Used by:**
-- rustls-webpki 0.103.9
+- rustls-webpki 0.103.11
 
 ```
 Except as otherwise noted, this project is licensed under the following
@@ -8929,7 +8720,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 ### MIT License (MIT)
 
 **Used by:**
-- uds_windows 1.2.0
+- uds_windows 1.2.1
 
 ```
     MIT License
@@ -8959,7 +8750,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 ### MIT License (MIT)
 
 **Used by:**
-- instability 0.3.11
+- instability 0.3.12
 
 ```
 # MIT License
@@ -9067,7 +8858,7 @@ under the original license.
 ### MIT License (MIT)
 
 **Used by:**
-- mio 1.1.1
+- mio 1.2.0
 
 ```
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -9124,10 +8915,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 **Used by:**
-- hyper 1.8.1
+- hyper 1.9.0
 
 ```
-Copyright (c) 2014-2025 Sean McArthur
+Copyright (c) 2014-2026 Sean McArthur
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -9242,7 +9033,7 @@ DEALINGS IN THE SOFTWARE.
 ### MIT License (MIT)
 
 **Used by:**
-- schannel 0.1.28
+- schannel 0.1.29
 
 ```
 Copyright (c) 2015 steffengy
@@ -9962,7 +9753,7 @@ SOFTWARE.
 ### MIT License (MIT)
 
 **Used by:**
-- tokio-macros 2.6.1
+- tokio-macros 2.7.0
 
 ```
 MIT License
@@ -10137,7 +9928,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 **Used by:**
 - tokio-stream 0.1.18
 - tokio-util 0.7.18
-- tokio 1.50.0
+- tokio 1.51.1
 
 ```
 MIT License
@@ -10167,7 +9958,7 @@ SOFTWARE.
 ### MIT License (MIT)
 
 **Used by:**
-- simd-adler32 0.3.8
+- simd-adler32 0.3.9
 
 ```
 MIT License
@@ -10630,24 +10421,24 @@ authorization of the copyright holder.
 ### Unicode License v3 (Unicode-3.0)
 
 **Used by:**
-- icu_collections 2.1.1
-- icu_locale_core 2.1.1
-- icu_normalizer 2.1.1
-- icu_normalizer_data 2.1.1
-- icu_properties 2.1.2
-- icu_properties_data 2.1.2
-- icu_provider 2.1.1
-- litemap 0.8.1
-- potential_utf 0.1.4
-- tinystr 0.8.2
-- writeable 0.6.2
-- yoke-derive 0.8.1
-- yoke 0.8.1
-- zerofrom-derive 0.1.6
-- zerofrom 0.1.6
-- zerotrie 0.2.3
-- zerovec-derive 0.11.2
-- zerovec 0.11.5
+- icu_collections 2.2.0
+- icu_locale_core 2.2.0
+- icu_normalizer 2.2.0
+- icu_normalizer_data 2.2.0
+- icu_properties 2.2.0
+- icu_properties_data 2.2.0
+- icu_provider 2.2.0
+- litemap 0.8.2
+- potential_utf 0.1.5
+- tinystr 0.8.3
+- writeable 0.6.3
+- yoke-derive 0.8.2
+- yoke 0.8.2
+- zerofrom-derive 0.1.7
+- zerofrom 0.1.7
+- zerotrie 0.2.4
+- zerovec-derive 0.11.3
+- zerovec 0.11.6
 
 ```
 UNICODE LICENSE V3
