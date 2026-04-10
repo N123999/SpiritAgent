@@ -1,4 +1,11 @@
+import { setTimeout as waitForDelay } from 'node:timers/promises';
+
 import { OpenAiTransport } from '../openai/transport.js';
+import {
+  appendOpenAiToolResultMessage,
+  extractLastOpenAiAssistantText,
+  startOpenAiToolAgentState,
+} from '../openai/transport.js';
 import type {
   AuthorizationDecision,
   JsonValue,
@@ -6,6 +13,7 @@ import type {
   McpStatusSnapshot,
   ToolExecutor,
 } from '../ports.js';
+import { AgentRuntime, type RuntimeEvent } from '../runtime.js';
 
 export interface DemoToolRequest {
   name: string;
@@ -39,6 +47,39 @@ export function createOpenAiSmokeConfig(): {
 
 export function createOpenAiSmokeTransport(): OpenAiTransport {
   return new OpenAiTransport();
+}
+
+export function createOpenAiDemoRuntime(options: {
+  onEvent?: (event: RuntimeEvent<DemoToolRequest>) => void;
+} = {}) {
+  return new AgentRuntime({
+    config: createOpenAiSmokeConfig(),
+    llmTransport: createOpenAiSmokeTransport(),
+    toolExecutor: new DemoToolExecutor(),
+    createToolAgentState: startOpenAiToolAgentState,
+    appendToolResultMessage: appendOpenAiToolResultMessage,
+    extractAssistantText: extractLastOpenAiAssistantText,
+    ...(options.onEvent ? { onEvent: options.onEvent } : {}),
+  });
+}
+
+export async function pollRuntimeUntilIdle<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: AgentRuntime<Config, State, ToolRequest, TrustTarget>,
+  timeoutMs = 60_000,
+  pollIntervalMs = 50,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (runtime.isBusy() && Date.now() < deadline) {
+    await waitForDelay(pollIntervalMs);
+    await runtime.poll();
+  }
+
+  return !runtime.isBusy();
 }
 
 export function printSmokeSection(title: string, payload: unknown): void {

@@ -1,30 +1,14 @@
-import { setTimeout as waitForDelay } from 'node:timers/promises';
-
 import type { JsonValue } from '../ports.js';
 
 import {
-  appendOpenAiToolResultMessage,
-  extractLastOpenAiAssistantText,
-  startOpenAiToolAgentState,
-} from '../openai/transport.js';
-import { AgentRuntime } from '../runtime.js';
-
-import {
-  createOpenAiSmokeConfig,
-  createOpenAiSmokeTransport,
-  DemoToolExecutor,
+  createOpenAiDemoRuntime,
+  pollRuntimeUntilIdle,
   printSmokeSection,
 } from './openai-shared.js';
 
 async function main(): Promise<void> {
   const events: JsonValue[] = [];
-  const runtime = new AgentRuntime({
-    config: createOpenAiSmokeConfig(),
-    llmTransport: createOpenAiSmokeTransport(),
-    toolExecutor: new DemoToolExecutor(),
-    createToolAgentState: startOpenAiToolAgentState,
-    appendToolResultMessage: appendOpenAiToolResultMessage,
-    extractAssistantText: extractLastOpenAiAssistantText,
+  const runtime = createOpenAiDemoRuntime({
     onEvent: (event) => events.push(event as unknown as JsonValue),
   });
 
@@ -32,13 +16,9 @@ async function main(): Promise<void> {
     'First call demo_lookup exactly once with query "Spirit Agent streaming". After the tool result is returned, answer with exactly "STREAM_RUNTIME_OK" and nothing else.',
   );
 
-  const deadline = Date.now() + 60_000;
-  while (runtime.isBusy() && Date.now() < deadline) {
-    await waitForDelay(50);
-    await runtime.poll();
-  }
+  const completed = await pollRuntimeUntilIdle(runtime);
 
-  if (runtime.isBusy()) {
+  if (!completed) {
     printSmokeSection('streaming runtime smoke timeout snapshot', {
       pendingUserTurn: runtime.pendingUserTurn(),
       auxState: runtime.pendingAuxState(),

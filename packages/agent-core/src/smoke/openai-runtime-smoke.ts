@@ -1,26 +1,10 @@
 import {
-  appendOpenAiToolResultMessage,
-  extractLastOpenAiAssistantText,
-  startOpenAiToolAgentState,
-} from '../openai/transport.js';
-import { AgentRuntime } from '../runtime.js';
-
-import {
-  createOpenAiSmokeConfig,
-  createOpenAiSmokeTransport,
-  DemoToolExecutor,
+  createOpenAiDemoRuntime,
   printSmokeSection,
 } from './openai-shared.js';
 
 async function main(): Promise<void> {
-  const runtime = new AgentRuntime({
-    config: createOpenAiSmokeConfig(),
-    llmTransport: createOpenAiSmokeTransport(),
-    toolExecutor: new DemoToolExecutor(),
-    createToolAgentState: startOpenAiToolAgentState,
-    appendToolResultMessage: appendOpenAiToolResultMessage,
-    extractAssistantText: extractLastOpenAiAssistantText,
-  });
+  const runtime = createOpenAiDemoRuntime();
 
   const result = await runtime.submitUserTurn(
     'First call demo_lookup exactly once with query "Spirit Agent migration". After the tool result is returned, answer with exactly "RUNTIME_OK" and nothing else.',
