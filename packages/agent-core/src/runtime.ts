@@ -447,6 +447,43 @@ export class AgentRuntime<
     };
   }
 
+  async startApplyMcpPrompt(
+    server: string,
+    prompt: string,
+    argsJson?: string,
+  ): Promise<string> {
+    if (this.isBusy()) {
+      throw new Error('上一条回复仍在处理中，请稍候。');
+    }
+
+    if (this.hasPendingApproval()) {
+      throw new Error('请先响应当前待确认的工具调用。');
+    }
+
+    const value = await this.options.toolExecutor.getMcpPrompt(server, prompt, argsJson);
+    const promptMessages = promptMessagesFromValue(value);
+    if (promptMessages.length === 0) {
+      throw new Error('MCP prompt 未返回可用 messages');
+    }
+
+    const userTurn =
+      [...promptMessages]
+        .reverse()
+        .find((message) => message.role === 'user' && message.content.trim())?.content ??
+      `请根据已应用的 MCP prompt ${prompt} 继续。`;
+
+    this.historyStore.push(...promptMessages);
+    this.pendingUserTurnStore = userTurn;
+    this.completedTurnResultStore = undefined;
+    this.startToolAgentRoundAsync(
+      this.options.createToolAgentState(this.historyStore, userTurn),
+      userTurn,
+      createTurnContext<ToolRequest>(),
+    );
+
+    return `已应用 MCP prompt: ${server} / ${prompt}（${promptMessages.length} 条消息）`;
+  }
+
   async compactHistory(): Promise<RuntimeCompactionRecord> {
     await this.startManualHistoryCompaction();
     const result = await this.waitForCompletedManualHistoryCompactionResult();
@@ -538,6 +575,126 @@ export class AgentRuntime<
       this as unknown as TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
       decision,
     );
+  }
+
+  async continuePendingApproval(
+    decision: RuntimeApprovalDecision,
+  ): Promise<void> {
+    const pending = this.pendingApproval;
+    if (!pending) {
+      throw new Error('当前没有待确认的工具调用。');
+    }
+
+    this.pendingApproval = undefined;
+    this.completedTurnResultStore = undefined;
+
+    if (decision.kind === 'allow') {
+      if (decision.persistTrust && pending.trustTarget !== undefined) {
+        await this.options.toolExecutor.trust(pending.trustTarget);
+      }
+
+      if (this.options.toolExecutor.shouldExecuteInBackground?.(pending.request) ?? false) {
+        this.startBackgroundToolExecutionAsync(
+          pending.pendingUserInput,
+          pending.state,
+          pending.request,
+          pending.toolCallId,
+          pending.toolName,
+          pending.remainingCalls,
+          pending.turn,
+        );
+        return;
+      }
+
+      const execution = await this.performToolExecution(pending.request, pending.toolName);
+      pending.turn.toolExecutions.push({
+        toolCallId: pending.toolCallId,
+        toolName: pending.toolName,
+        request: pending.request,
+        output: execution.output,
+        failed: execution.failed,
+      });
+
+      const resumedState = this.options.appendToolResultMessage(
+        pending.state,
+        pending.toolCallId,
+        execution.output,
+      );
+
+      if (pending.remainingCalls.length > 0) {
+        await this.processToolCallsAsync(
+          resumedState,
+          pending.pendingUserInput,
+          pending.remainingCalls,
+          pending.turn,
+        );
+        return;
+      }
+
+      this.startToolAgentRoundAsync(resumedState, pending.pendingUserInput, pending.turn);
+      return;
+    }
+
+    if (decision.kind === 'guidance') {
+      const guidanceText = decision.resultText?.trim()
+        ? decision.resultText
+        : '[denied by user] tool call rejected by user guidance';
+      const guidanceMessage = decision.userMessage.trim();
+      let resumedState = this.options.appendToolResultMessage(
+        pending.state,
+        pending.toolCallId,
+        guidanceText,
+      );
+
+      if (!guidanceMessage) {
+        if (pending.remainingCalls.length > 0) {
+          await this.processToolCallsAsync(
+            resumedState,
+            pending.pendingUserInput,
+            pending.remainingCalls,
+            pending.turn,
+          );
+          return;
+        }
+
+        this.startToolAgentRoundAsync(resumedState, pending.pendingUserInput, pending.turn);
+        return;
+      }
+
+      this.historyStore.push({
+        role: 'user',
+        content: guidanceMessage,
+        imagePaths: [],
+      });
+      this.pendingUserTurnStore = guidanceMessage;
+      resumedState = this.options.appendUserMessage
+        ? this.options.appendUserMessage(resumedState, guidanceMessage)
+        : this.options.createToolAgentState(this.historyStore, guidanceMessage);
+
+      this.startToolAgentRoundAsync(resumedState, guidanceMessage, pending.turn);
+      return;
+    }
+
+    const deniedText = decision.resultText?.trim()
+      ? decision.resultText
+      : '[denied by user] tool call rejected by user approval policy';
+    const resumedState = this.options.appendToolResultMessage(
+      pending.state,
+      pending.toolCallId,
+      deniedText,
+    );
+
+    if (pending.remainingCalls.length > 0) {
+      await this.processToolCallsAsync(
+        resumedState,
+        pending.pendingUserInput,
+        pending.remainingCalls,
+        pending.turn,
+      );
+      return;
+    }
+
+    this.startToolAgentRoundAsync(resumedState, pending.pendingUserInput, pending.turn);
   }
 
   async executeManualToolCommand(
