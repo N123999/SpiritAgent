@@ -34,6 +34,8 @@ use crate::{
     },
 };
 
+const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
+
 struct PendingShellExecution {
     tool_call_id: String,
     command: String,
@@ -259,14 +261,24 @@ impl TuiShell {
     }
 
     pub fn view_model(&self) -> TuiViewModel {
+        let history_truncated_before = self.messages.len().saturating_sub(VIEW_MODEL_MESSAGE_LIMIT);
+        let visible_messages = self.messages[history_truncated_before..].to_vec();
+        let assistant_aux_by_message = self
+            .assistant_aux_by_message
+            .iter()
+            .filter(|(index, _)| **index >= history_truncated_before)
+            .map(|(index, value)| (*index, value.clone()))
+            .collect();
+
         TuiViewModel {
             input: self.input.clone(),
             input_cursor: self.input_cursor,
             shell_mode_active: self.shell_mode_active,
             pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
             pending_mcp_resources: self.runtime.session().pending_mcp_resources().to_vec(),
-            messages: self.messages.clone(),
-            assistant_aux_by_message: self.assistant_aux_by_message.clone(),
+            history_truncated_before,
+            messages: visible_messages,
+            assistant_aux_by_message,
             config: self.runtime.config().clone(),
             show_aux_details: self.show_aux_details,
             input_suggestion_kind: self.current_input_suggestion_kind(),
@@ -1849,8 +1861,8 @@ impl TuiShell {
         Ok(path)
     }
 
-    fn export_llm_history_json_to_temp(&self) -> Result<std::path::PathBuf> {
-        let messages = self.runtime.llm_history_as_api_messages();
+    fn export_llm_history_json_to_temp(&mut self) -> Result<std::path::PathBuf> {
+        let export_state = self.runtime.export_llm_state()?;
         let active_model = self.runtime.config().active_model.clone();
         let api_base = env::var("SPIRIT_API_BASE").unwrap_or_else(|_| {
             self.runtime
@@ -1870,12 +1882,12 @@ impl TuiShell {
             "active_model": active_model,
             "api_base": api_base,
             "working_directory": working_directory,
-            "system_prompts": self.runtime.llm_system_prompts_for_export(),
+            "system_prompts": export_state.system_prompts,
             "note": "messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。不再有单独的 final 润色请求。system_prompts 中 final_response 字段仅作元数据兼容，当前对话流已不单独使用。",
-            "message_count": messages.len(),
-            "messages": messages,
-            "api_request_trace_count": self.runtime.session().llm_api_trace().len(),
-            "api_request_trace": self.runtime.session().llm_api_trace(),
+            "message_count": export_state.api_messages.len(),
+            "messages": export_state.api_messages,
+            "api_request_trace_count": export_state.api_request_trace.len(),
+            "api_request_trace": export_state.api_request_trace,
         });
 
         let json = serde_json::to_string_pretty(&export).context("序列化 JSON 失败")?;

@@ -264,6 +264,8 @@ export interface PendingApprovalState<State, ToolRequest, TrustTarget> {
   toolName: string;
   remainingCalls: ToolCallRequest[];
   turn: RuntimeTurnContext<ToolRequest>;
+  resumeAsStreaming: boolean;
+  streamingEmitBeginResponse: boolean;
 }
 
 export interface PendingManualApprovalState<ToolRequest, TrustTarget> {

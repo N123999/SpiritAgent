@@ -25,7 +25,6 @@ use crate::{
     },
 };
 
-const MAX_RENDERED_MESSAGES: usize = 180;
 const SLASH_SUGGESTION_VISIBLE_ITEMS: usize = 10;
 const SLASH_SUGGESTION_BLOCK_HEIGHT: u16 = 12;
 const SPIRIT_LOGO_LINES: [&str; 6] = [
@@ -701,7 +700,7 @@ fn should_hide_pending_assistant_placeholder(
 }
 
 fn message_prefix_text() -> &'static str {
-    "> "
+    ">\u{00a0}"
 }
 
 fn message_gutter_padding() -> &'static str {
@@ -1301,12 +1300,7 @@ impl MdBuilder {
 }
 
 fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
-    if app.messages.len() <= MAX_RENDERED_MESSAGES {
-        return (&app.messages, 0, 0);
-    }
-
-    let start = app.messages.len() - MAX_RENDERED_MESSAGES;
-    (&app.messages[start..], start, start)
+    (&app.messages, app.history_truncated_before, app.history_truncated_before)
 }
 
 fn build_suggestion_lines(
@@ -2052,7 +2046,7 @@ mod tests {
             .map(|line| {
                 line.spans
                     .into_iter()
-                    .map(|span| span.content.into_owned())
+                    .map(|span| span.content.into_owned().replace('\u{00a0}', " "))
                     .collect::<String>()
             })
             .collect()
@@ -2065,6 +2059,7 @@ mod tests {
             shell_mode_active: false,
             pending_image_paths: vec![],
             pending_mcp_resources: vec![],
+            history_truncated_before: 0,
             messages: vec![message],
             assistant_aux_by_message: HashMap::new(),
             config: AppConfig::default(),
@@ -2265,5 +2260,42 @@ mod tests {
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn assistant_prefix_stays_with_first_wrapped_cjk_line() {
+        let app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "我注意到您使用了中文表达情绪。请问有什么我可以帮助您解决的问题吗？",
+        ));
+
+        let (flat, _) = crate::conversation_select::flatten_wrapped_history(
+            render_message_lines(&app, &app.messages[0], 0),
+            18,
+            None,
+        );
+        let lines = render_text_lines(flat);
+
+        assert!(lines.first().is_some_and(|line| line.contains("我")));
+        assert!(lines.first().is_some_and(|line| !line.trim().eq(">")));
+    }
+
+    #[test]
+    fn assistant_soft_wrap_continuation_aligns_with_text_column() {
+        let app = build_view_model(ChatMessage::new(
+            MessageRole::Agent,
+            "我理解您可能感到沮丧或生气，但使用粗口并不能帮助我们解决问题。如果您遇到了什么困难或需要帮助，请告诉我具体的情况，我会尽力为您提供有用的支持和建议。",
+        ));
+
+        let (flat, _) = crate::conversation_select::flatten_wrapped_history(
+            render_message_lines(&app, &app.messages[0], 0),
+            28,
+            None,
+        );
+        let lines = render_text_lines(flat);
+
+        assert!(lines.first().is_some_and(|line| line.starts_with("> ")));
+        assert!(lines.get(1).is_some_and(|line| line.starts_with("  ")));
+        assert!(lines.get(1).is_some_and(|line| !line.starts_with("> ")));
     }
 }

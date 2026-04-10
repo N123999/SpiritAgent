@@ -7,7 +7,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{Arc, Mutex, mpsc::{self, Receiver}},
+    sync::{Arc, Mutex, mpsc::{self, Receiver, Sender, TryRecvError}},
     thread,
 };
 
@@ -18,16 +18,18 @@ use crate::{
     mcp::McpServerConfig,
     mcp_manager::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
+        McpManager,
         McpServerInspection,
     },
     model_registry::AppConfig,
     ports::{McpStatusSnapshot, SecretStore, ToolExecutor},
+    runtime_handle::RuntimeExportState,
     runtime::{
         RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
         tool_approval_block, tool_failed_block,
     },
     session::{PendingMcpResource, SessionModel},
-    tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
+    tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
     view::{ChatMessage, MessageRole, PendingAssistantAux},
 };
 
@@ -47,6 +49,8 @@ pub struct TsBridgeRuntime {
     pending_approval_kind: Option<PendingApprovalKind>,
     is_busy_cache: bool,
     events: VecDeque<RuntimeEvent>,
+    background_tool_completion_tx: Sender<BackgroundToolCompletion>,
+    background_tool_completion_rx: Receiver<BackgroundToolCompletion>,
     bridge_failed: bool,
 }
 
@@ -82,17 +86,7 @@ struct HostToolRequestEnvelope {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BridgeLlmMessage {
-    role: String,
-    content: String,
-    image_paths: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct BridgeRuntimeSnapshot {
-    history: Vec<BridgeLlmMessage>,
-    request_trace: Vec<Value>,
     pending_user_turn: Option<String>,
     pending_image_paths: Vec<String>,
     pending_mcp_resources: Vec<PendingMcpResource>,
@@ -102,6 +96,14 @@ struct BridgeRuntimeSnapshot {
     current_pending_approval: Option<BridgePendingApproval>,
     is_busy: bool,
     background_tool_status: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeExportState {
+    api_messages: Vec<Value>,
+    request_trace: Vec<Value>,
+    system_prompts: Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -142,17 +144,35 @@ enum BridgeRuntimeEvent {
     ApprovalRequested { approval: BridgePendingApproval },
     #[serde(rename = "history-compacted")]
     HistoryCompacted {
+        #[serde(alias = "droppedMessages")]
         dropped_messages: usize,
+        #[serde(alias = "summaryPreview")]
         summary_preview: Option<String>,
     },
     #[serde(rename = "background-tool-status")]
     BackgroundToolStatus {
         phase: String,
-        tool_name: String,
-        request: Value,
+        #[serde(alias = "toolName")]
+        tool_name: Option<String>,
+        request: Option<Value>,
+        #[serde(alias = "statusText")]
         status_text: Option<String>,
         failed: Option<bool>,
     },
+}
+
+#[derive(Debug)]
+struct BackgroundToolCompletion {
+    request: ToolRequest,
+    ui_tool_name: String,
+    tool_call_id: Option<String>,
+    result: std::result::Result<String, String>,
+}
+
+#[derive(Clone)]
+struct BackgroundRpcResponseTarget {
+    request_id: u64,
+    stdin: Arc<Mutex<ChildStdin>>,
 }
 
 impl TsBridgeRuntime {
@@ -162,6 +182,8 @@ impl TsBridgeRuntime {
         workspace_root: PathBuf,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
+        let (background_tool_completion_tx, background_tool_completion_rx) =
+            mpsc::channel::<BackgroundToolCompletion>();
         let mut runtime = Self {
             process,
             config,
@@ -173,6 +195,8 @@ impl TsBridgeRuntime {
             pending_approval_kind: None,
             is_busy_cache: false,
             events: VecDeque::new(),
+            background_tool_completion_tx,
+            background_tool_completion_rx,
             bridge_failed: false,
         };
         logging::log_event(&format!(
@@ -246,6 +270,16 @@ impl TsBridgeRuntime {
         llm_client::llm_system_prompts_for_export()
     }
 
+    pub fn export_llm_state(&mut self) -> Result<RuntimeExportState> {
+        let value = self.call_bridge("runtime.exportState", None)?;
+        let export: BridgeExportState = serde_json::from_value(value)?;
+        Ok(RuntimeExportState {
+            api_messages: export.api_messages,
+            system_prompts: export.system_prompts,
+            api_request_trace: export.request_trace,
+        })
+    }
+
     pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
         self.tool_executor.mcp_status_snapshot()
     }
@@ -259,6 +293,7 @@ impl TsBridgeRuntime {
     }
 
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
+        self.drain_background_tool_completions();
         self.events.drain(..).collect()
     }
 
@@ -267,7 +302,7 @@ impl TsBridgeRuntime {
     }
 
     pub fn tick_thinking_spinner(&mut self) {
-        if self.bridge_failed {
+        if self.bridge_failed || !self.should_poll_bridge() {
             return;
         }
         if let Err(err) = self.call_bridge("runtime.tickThinkingSpinner", None) {
@@ -280,7 +315,8 @@ impl TsBridgeRuntime {
     }
 
     pub fn poll(&mut self) {
-        if self.bridge_failed {
+        self.drain_background_tool_completions();
+        if self.bridge_failed || !self.should_poll_bridge() {
             return;
         }
         if let Err(err) = self.call_bridge("runtime.poll", None) {
@@ -293,7 +329,7 @@ impl TsBridgeRuntime {
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
-        if self.bridge_failed {
+        if self.bridge_failed || !self.should_poll_bridge() {
             return;
         }
         if let Err(err) = self.call_bridge("runtime.handleStreamStallTimeout", None) {
@@ -426,12 +462,7 @@ impl TsBridgeRuntime {
             arguments,
         };
 
-        let output = self.tool_executor.execute(&request)?;
-        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-            MessageRole::Agent,
-            format_tool_ui_message(&request, "manual", &output),
-            build_tool_result_block(&request, "manual", None, &output),
-        )));
+        self.start_local_background_tool_execution(request, "manual".to_string());
         Ok(())
     }
 
@@ -639,6 +670,12 @@ impl TsBridgeRuntime {
         let params = message.get("params").cloned();
         let request_id = message.get("id").and_then(Value::as_u64);
 
+        if method == "host.execute"
+            && self.try_start_background_host_execute(request_id, params.clone())?
+        {
+            return Ok(());
+        }
+
         let response = match self.dispatch_host_method(&method, params) {
             Ok(result) => request_id.map(|id| json!({ "jsonrpc": "2.0", "id": id, "result": result.unwrap_or(Value::Null) })),
             Err(err) => request_id.map(|id| json!({
@@ -655,6 +692,94 @@ impl TsBridgeRuntime {
             self.process.write_message(&response)?;
         }
         Ok(())
+    }
+
+    fn try_start_background_host_execute(
+        &mut self,
+        request_id: Option<u64>,
+        params: Option<Value>,
+    ) -> Result<bool> {
+        let Some(request_id) = request_id else {
+            return Ok(false);
+        };
+        let (request, meta) = request_with_meta_from_envelope(params)?;
+        let Some(meta) = meta.filter(|meta| meta.background_execution) else {
+            return Ok(false);
+        };
+
+        self.start_background_host_execute(request_id, request, meta);
+        Ok(true)
+    }
+
+    fn start_background_host_execute(
+        &mut self,
+        request_id: u64,
+        request: ToolRequest,
+        meta: HostToolRequestMeta,
+    ) {
+        let ui_tool_name = meta
+            .tool_name
+            .unwrap_or_else(|| openapi_tool_name(&request).to_string());
+        start_background_tool_worker(
+            self.workspace_root.clone(),
+            request,
+            ui_tool_name,
+            meta.tool_call_id,
+            self.background_tool_completion_tx.clone(),
+            Some(BackgroundRpcResponseTarget {
+                request_id,
+                stdin: Arc::clone(&self.process.stdin),
+            }),
+        );
+    }
+
+    fn start_local_background_tool_execution(&mut self, request: ToolRequest, ui_tool_name: String) {
+        start_background_tool_worker(
+            self.workspace_root.clone(),
+            request,
+            ui_tool_name,
+            None,
+            self.background_tool_completion_tx.clone(),
+            None,
+        );
+    }
+
+    fn drain_background_tool_completions(&mut self) {
+        loop {
+            match self.background_tool_completion_rx.try_recv() {
+                Ok(completion) => self.apply_background_tool_completion(completion),
+                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+
+    fn apply_background_tool_completion(&mut self, completion: BackgroundToolCompletion) {
+        match completion.result {
+            Ok(output) => {
+                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                    MessageRole::Agent,
+                    format_tool_ui_message(&completion.request, &completion.ui_tool_name, &output),
+                    build_tool_result_block(
+                        &completion.request,
+                        &completion.ui_tool_name,
+                        completion.tool_call_id.as_deref(),
+                        &output,
+                    ),
+                )));
+            }
+            Err(err) => {
+                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                    MessageRole::Agent,
+                    format!("工具执行失败: {}", err),
+                    tool_failed_block(
+                        &completion.ui_tool_name,
+                        completion.tool_call_id.as_deref(),
+                        "工具执行失败",
+                        &err,
+                    ),
+                )));
+            }
+        }
     }
 
     fn dispatch_host_method(&mut self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
@@ -822,13 +947,15 @@ impl TsBridgeRuntime {
     fn sync_after_command(&mut self) -> Result<()> {
         let value = self.call_bridge("runtime.drainEvents", None)?;
         let drained: BridgeDrainEventsResult = serde_json::from_value(value)?;
-        logging::log_event(&format!(
-            "[ts-bridge-host] drain events count={} busy={} approval={} aux={}",
-            drained.events.len(),
-            drained.snapshot.is_busy,
-            drained.snapshot.has_pending_approval,
-            drained.snapshot.pending_aux_state.is_some()
-        ));
+        if !drained.events.is_empty() {
+            logging::log_event(&format!(
+                "[ts-bridge-host] drain events count={} busy={} approval={} aux={}",
+                drained.events.len(),
+                drained.snapshot.is_busy,
+                drained.snapshot.has_pending_approval,
+                drained.snapshot.pending_aux_state.is_some()
+            ));
+        }
         self.apply_bridge_events(drained.events);
         self.apply_snapshot(drained.snapshot);
         Ok(())
@@ -841,19 +968,9 @@ impl TsBridgeRuntime {
     }
 
     fn apply_snapshot(&mut self, snapshot: BridgeRuntimeSnapshot) {
-        self.session.clear();
-        *self.session.llm_history_mut() = snapshot
-            .history
-            .into_iter()
-            .map(|message| LlmMessage {
-                role: normalize_bridge_role(&message.role),
-                content: message.content,
-                image_paths: message.image_paths,
-            })
-            .collect();
-
-        let mut trace = snapshot.request_trace;
-        self.session.append_api_trace(&mut trace);
+        self.session.clear_pending_user_turn();
+        self.session.clear_pending_images();
+        self.session.clear_pending_mcp_resources();
         if let Some(turn) = snapshot.pending_user_turn {
             self.session.set_pending_user_turn(turn);
         }
@@ -875,15 +992,10 @@ impl TsBridgeRuntime {
             None
         };
         self.is_busy_cache = snapshot.is_busy;
-        logging::log_event(&format!(
-            "[ts-bridge-host] snapshot busy={} pending_user_turn={} pending_images={} pending_mcp_resources={} approval={} aux={}",
-            self.is_busy_cache,
-            self.session.pending_user_turn().is_some(),
-            self.session.pending_image_paths().len(),
-            self.session.pending_mcp_resources().len(),
-            self.pending_approval_kind.is_some(),
-            self.pending_aux_state.is_some()
-        ));
+    }
+
+    fn should_poll_bridge(&self) -> bool {
+        self.is_busy_cache && self.pending_approval_kind.is_none()
     }
 
     fn apply_bridge_events(&mut self, events: Vec<BridgeRuntimeEvent>) {
@@ -1034,16 +1146,7 @@ impl JsonRpcProcess {
     }
 
     fn write_message(&self, payload: &Value) -> Result<()> {
-        let body = serde_json::to_vec(payload)?;
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        let mut guard = self
-            .stdin
-            .lock()
-            .map_err(|_| anyhow!("获取 TS bridge stdin 锁失败"))?;
-        guard.write_all(header.as_bytes())?;
-        guard.write_all(&body)?;
-        guard.flush()?;
-        Ok(())
+        write_message_to_stdin(&self.stdin, payload)
     }
 
     fn recv_message(&self) -> Result<Value> {
@@ -1168,12 +1271,84 @@ fn llm_history_to_json(history: &[LlmMessage]) -> Vec<Value> {
         .collect()
 }
 
-fn normalize_bridge_role(role: &str) -> &'static str {
-    match role {
-        "assistant" => "assistant",
-        "system" => "system",
-        _ => "user",
+fn start_background_tool_worker(
+    workspace_root: PathBuf,
+    request: ToolRequest,
+    ui_tool_name: String,
+    tool_call_id: Option<String>,
+    completion_tx: Sender<BackgroundToolCompletion>,
+    response_target: Option<BackgroundRpcResponseTarget>,
+) {
+    thread::spawn(move || {
+        let request_for_worker = request.clone();
+        let result = execute_background_tool_request_sync(&workspace_root, &request_for_worker)
+            .map_err(|err| err.to_string());
+
+        if let Some(target) = response_target {
+            let payload = background_tool_json_rpc_response(target.request_id, &result);
+            if let Err(err) = write_message_to_stdin(&target.stdin, &payload) {
+                logging::log_event(&format!(
+                    "[ts-bridge-host] host.execute response write failed tool={} request_id={} error={}",
+                    ui_tool_name, target.request_id, err
+                ));
+            }
+        }
+
+        match &result {
+            Ok(output) => logging::log_event(&format!(
+                "[ts-bridge-host] background tool success tool={} tool_call_id={} output_chars={}",
+                ui_tool_name,
+                tool_call_id.as_deref().unwrap_or("<none>"),
+                output.chars().count()
+            )),
+            Err(err) => logging::log_event(&format!(
+                "[ts-bridge-host] background tool failed tool={} tool_call_id={} error={}",
+                ui_tool_name,
+                tool_call_id.as_deref().unwrap_or("<none>"),
+                err
+            )),
+        }
+
+        let _ = completion_tx.send(BackgroundToolCompletion {
+            request,
+            ui_tool_name,
+            tool_call_id,
+            result,
+        });
+    });
+}
+
+fn background_tool_json_rpc_response(
+    request_id: u64,
+    result: &std::result::Result<String, String>,
+) -> Value {
+    match result {
+        Ok(output) => json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": output,
+        }),
+        Err(err) => json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {
+                "code": -32000,
+                "message": err,
+            }
+        }),
     }
+}
+
+fn write_message_to_stdin(stdin: &Arc<Mutex<ChildStdin>>, payload: &Value) -> Result<()> {
+    let body = serde_json::to_vec(payload)?;
+    let header = format!("Content-Length: {}\r\n\r\n", body.len());
+    let mut guard = stdin
+        .lock()
+        .map_err(|_| anyhow!("获取 TS bridge stdin 锁失败"))?;
+    guard.write_all(header.as_bytes())?;
+    guard.write_all(&body)?;
+    guard.flush()?;
+    Ok(())
 }
 
 fn is_json_rpc_response(message: &Value) -> bool {
@@ -1263,14 +1438,52 @@ fn background_tool_status_text(request: &ToolRequest) -> Option<String> {
     }
 }
 
+fn execute_mcp_tool_request_sync(
+    workspace_root: &PathBuf,
+    request: &ToolRequest,
+) -> Result<String> {
+    let ToolRequest::McpTool {
+        server,
+        tool_name,
+        arguments,
+        ..
+    } = request
+    else {
+        return Err(anyhow!("后台 MCP 工具执行收到非 MCP 请求"));
+    };
+
+    let arguments = match arguments {
+        Value::Object(map) => Some(map.clone()),
+        Value::Null => None,
+        _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
+    };
+    let value = McpManager::load(workspace_root.clone())?.call_tool(server, tool_name, arguments)?;
+    Ok(serde_json::to_string_pretty(&value)?)
+}
+
+fn execute_background_tool_request_sync(
+    workspace_root: &PathBuf,
+    request: &ToolRequest,
+) -> Result<String> {
+    match request {
+        ToolRequest::McpTool { .. } => execute_mcp_tool_request_sync(workspace_root, request),
+        ToolRequest::Search { .. } => ToolRuntime::new_for_workspace(workspace_root.clone()).execute(request),
+        _ => Err(anyhow!("后台工具执行收到不支持的请求")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime, resolve_bridge_script};
+    use super::{
+        BridgeRuntimeEvent, ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime,
+        background_tool_json_rpc_response, resolve_bridge_script,
+    };
     use crate::{
         model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
         ports::SecretStore,
     };
     use anyhow::Result;
+    use serde_json::json;
     use std::{env, path::PathBuf, process::Command, sync::Arc};
 
     struct StubSecretStore;
@@ -1334,6 +1547,81 @@ mod tests {
             .expect("ts bridge runtime should initialize");
         assert!(!runtime.is_busy());
         assert!(!runtime.has_pending_tool_approval());
+    }
+
+    #[test]
+    fn bridge_runtime_event_accepts_camel_case_background_status_fields() {
+        let value = json!({
+            "kind": "background-tool-status",
+            "phase": "finished",
+            "toolName": "mcp_tool",
+            "request": { "server": "github", "tool_name": "get_me" },
+            "statusText": "MCP 工具执行中: github / get_me",
+            "failed": false,
+        });
+
+        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::BackgroundToolStatus {
+                phase,
+                tool_name,
+                request,
+                status_text,
+                failed,
+            } => {
+                assert_eq!(phase, "finished");
+                assert_eq!(tool_name.as_deref(), Some("mcp_tool"));
+                assert!(request.is_some());
+                assert_eq!(status_text.as_deref(), Some("MCP 工具执行中: github / get_me"));
+                assert_eq!(failed, Some(false));
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bridge_runtime_event_accepts_camel_case_history_compacted_fields() {
+        let value = json!({
+            "kind": "history-compacted",
+            "droppedMessages": 5,
+            "summaryPreview": "summary",
+        });
+
+        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::HistoryCompacted {
+                dropped_messages,
+                summary_preview,
+            } => {
+                assert_eq!(dropped_messages, 5);
+                assert_eq!(summary_preview.as_deref(), Some("summary"));
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn background_tool_json_rpc_response_returns_result_payload_on_success() {
+        let response = background_tool_json_rpc_response(7, &Ok("ok".to_string()));
+
+        assert_eq!(response.get("id").and_then(|value| value.as_u64()), Some(7));
+        assert_eq!(response.get("result").and_then(|value| value.as_str()), Some("ok"));
+        assert!(response.get("error").is_none());
+    }
+
+    #[test]
+    fn background_tool_json_rpc_response_returns_error_payload_on_failure() {
+        let response = background_tool_json_rpc_response(11, &Err("boom".to_string()));
+
+        assert_eq!(response.get("id").and_then(|value| value.as_u64()), Some(11));
+        assert_eq!(
+            response
+                .get("error")
+                .and_then(|value| value.get("message"))
+                .and_then(|value| value.as_str()),
+            Some("boom")
+        );
+        assert!(response.get("result").is_none());
     }
 }
 

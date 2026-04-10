@@ -399,43 +399,80 @@ export class OpenAiTransport
       };
     }
 
-    onProgress?.('OpenAI SDK: 正在生成会话摘要...');
-
     const client = createOpenAiClient(config);
-    const response = await client.chat.completions.create({
-      model: config.compactModel ?? config.model,
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            '请将以下对话压缩为后续推理可复用的系统摘要。',
-            '保留：用户目标、关键约束、已验证结论、失败尝试、未完成事项。',
-            '不要保留寒暄。',
-            '输出纯文本摘要。',
-          ].join('\n'),
-        },
-        {
-          role: 'user',
-          content: history
-            .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-            .join('\n\n'),
-        },
-      ],
-    });
+    const compactionMessages: ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: [
+          '请将以下对话压缩为后续推理可复用的系统摘要。',
+          '保留：用户目标、关键约束、已验证结论、失败尝试、未完成事项。',
+          '不要保留寒暄。',
+          '输出纯文本摘要。',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: history
+          .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
+          .join('\n\n'),
+      },
+    ];
 
-    const summary = response.choices.at(0)?.message?.content?.trim();
-    if (!summary) {
+    let summary = '';
+    if (onProgress) {
+      let emittedProgress = false;
+      try {
+        const stream = await client.chat.completions.create({
+          model: config.compactModel ?? config.model,
+          temperature: 0.2,
+          stream: true,
+          messages: compactionMessages,
+        });
+
+        for await (const chunk of stream) {
+          for (const choice of chunk.choices) {
+            for (const rawText of [choice.delta.content, choice.delta.refusal]) {
+              if (typeof rawText !== 'string' || rawText.length === 0) {
+                continue;
+              }
+
+              const normalizedText = trimLeadingStreamLineBreaks(summary, rawText);
+              if (!normalizedText) {
+                continue;
+              }
+
+              summary += normalizedText;
+              emittedProgress = true;
+              onProgress(normalizedText);
+            }
+          }
+        }
+      } catch (error) {
+        if (emittedProgress) {
+          throw error;
+        }
+      }
+    }
+
+    if (!summary.trim()) {
+      const response = await client.chat.completions.create({
+        model: config.compactModel ?? config.model,
+        temperature: 0.2,
+        messages: compactionMessages,
+      });
+      summary = response.choices.at(0)?.message?.content ?? '';
+    }
+
+    const normalizedSummary = summary.trim();
+    if (!normalizedSummary) {
       throw new Error('OpenAI SDK 压缩返回为空，无法生成摘要。');
     }
 
     history.splice(0, history.length, {
       role: 'system',
-      content: `${COMPACT_SUMMARY_PREFIX}\n${summary}`,
+      content: `${COMPACT_SUMMARY_PREFIX}\n${normalizedSummary}`,
       imagePaths: [],
     });
-
-    onProgress?.('OpenAI SDK: 会话摘要生成完成。');
 
     return {
       droppedMessages: saturatingSub(beforeLength, 1),
@@ -1041,4 +1078,12 @@ function createDeferred<T>(): Deferred<T> {
     resolve,
     reject,
   };
+}
+
+function trimLeadingStreamLineBreaks(existingText: string, nextText: string): string {
+  if (existingText.length > 0) {
+    return nextText;
+  }
+
+  return nextText.replace(/^[\r\n]+/u, '');
 }

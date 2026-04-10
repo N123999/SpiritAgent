@@ -132,39 +132,43 @@ export async function startStreamingRound<
 
   const transport = runtime.options.llmTransport;
   if (transport.startToolAgentRoundStreaming) {
-    try {
-      const started = await transport.startToolAgentRoundStreaming(
-        runtime.options.config,
-        state,
-        runtime.options.toolExecutor.toolDefinitionsJson(),
-      );
-      if (runtime.pendingStreamingRound !== pending) {
-        started.cancel?.();
-        return;
-      }
+    void transport.startToolAgentRoundStreaming(
+      runtime.options.config,
+      state,
+      runtime.options.toolExecutor.toolDefinitionsJson(),
+    )
+      .then((started) => {
+        if (runtime.pendingStreamingRound !== pending) {
+          started.cancel?.();
+          return;
+        }
 
-      pending.cancel = started.cancel;
-      void consumeStreamEvents(runtime, pending, started.eventStream);
-      void started.completion
-        .then((completion) => {
-          pending.completion = completion;
-        })
-        .catch((error: unknown) => {
-          pending.completion = {
-            kind: 'failure',
-            error: renderError(error),
-            requestTrace: [],
-          };
-        });
-      return;
-    } catch (error) {
-      pending.completion = {
-        kind: 'failure',
-        error: renderError(error),
-        requestTrace: [],
-      };
-      return;
-    }
+        pending.cancel = started.cancel;
+        void consumeStreamEvents(runtime, pending, started.eventStream);
+        void started.completion
+          .then((completion) => {
+            pending.completion = completion;
+          })
+          .catch((error: unknown) => {
+            pending.completion = {
+              kind: 'failure',
+              error: renderError(error),
+              requestTrace: [],
+            };
+          });
+      })
+      .catch((error: unknown) => {
+        if (runtime.pendingStreamingRound !== pending) {
+          return;
+        }
+
+        pending.completion = {
+          kind: 'failure',
+          error: renderError(error),
+          requestTrace: [],
+        };
+      });
+    return;
   }
 
   void runtime.options.llmTransport

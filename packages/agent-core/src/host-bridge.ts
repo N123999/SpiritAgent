@@ -107,12 +107,6 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
   const backgroundToolStatus = target.backgroundToolStatus();
 
   return {
-    history: target.history().map((message) => ({
-      role: message.role,
-      content: message.content,
-      imagePaths: [...(message.imagePaths ?? [])],
-    })),
-    requestTrace: [...target.requestTrace()],
     ...(pendingUserTurn !== undefined ? { pendingUserTurn } : {}),
     pendingImagePaths: [...target.pendingImagePaths()],
     pendingMcpResources: target.pendingMcpResources().map((resource) => ({
@@ -136,10 +130,12 @@ async function drainEvents(): Promise<DrainEventsResult> {
   const target = requireRuntime();
   await toolExecutor.refreshCaches();
   const events = target.drainEvents();
-  logBridge('drainEvents', {
-    count: events.length,
-    kinds: events.map((event) => event.kind),
-  });
+  if (events.length > 0) {
+    logBridge('drainEvents', {
+      count: events.length,
+      kinds: events.map((event) => event.kind),
+    });
+  }
   return {
     events,
     snapshot: buildSnapshot(target),
@@ -284,6 +280,7 @@ peer.on('runtime.exportState', async () => {
 
   return {
     apiMessages: llmTransport.llmHistoryAsApiMessages([...target.history()]),
+    requestTrace: [...target.requestTrace()],
     systemPrompts: llmTransport.llmSystemPromptsForExport(),
   };
 });

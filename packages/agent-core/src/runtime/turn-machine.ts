@@ -358,6 +358,8 @@ export async function processToolCalls<
         toolName: call.name,
         remainingCalls: remaining,
         turn,
+        resumeAsStreaming: false,
+        streamingEmitBeginResponse: true,
       };
       runtime.emitEvent({
         kind: 'approval-requested',
@@ -660,6 +662,8 @@ export async function processToolCallsAsync<
         toolName: call.name,
         remainingCalls: remaining,
         turn,
+        resumeAsStreaming,
+        streamingEmitBeginResponse,
       };
 
       if (resumeAsStreaming) {

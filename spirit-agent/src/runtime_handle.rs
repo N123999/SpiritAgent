@@ -16,6 +16,13 @@ use crate::{
     view::PendingAssistantAux,
 };
 
+#[derive(Clone, Debug)]
+pub struct RuntimeExportState {
+    pub api_messages: Vec<Value>,
+    pub system_prompts: Value,
+    pub api_request_trace: Vec<Value>,
+}
+
 pub enum RuntimeHandle {
     Rust(AgentRuntime),
     Ts(TsBridgeRuntime),
@@ -80,6 +87,17 @@ impl RuntimeHandle {
         match self {
             Self::Rust(runtime) => runtime.llm_system_prompts_for_export(),
             Self::Ts(runtime) => runtime.llm_system_prompts_for_export(),
+        }
+    }
+
+    pub fn export_llm_state(&mut self) -> Result<RuntimeExportState> {
+        match self {
+            Self::Rust(runtime) => Ok(RuntimeExportState {
+                api_messages: runtime.llm_history_as_api_messages(),
+                system_prompts: runtime.llm_system_prompts_for_export(),
+                api_request_trace: runtime.session().llm_api_trace().to_vec(),
+            }),
+            Self::Ts(runtime) => runtime.export_llm_state(),
         }
     }
 

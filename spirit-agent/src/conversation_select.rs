@@ -79,7 +79,71 @@ fn grapheme_line_to_owned(
 }
 
 fn graphemes_to_plain(line: &[StyledGrapheme<'_>]) -> String {
-    line.iter().map(|g| g.symbol).collect()
+    line.iter()
+        .map(|g| if g.symbol == "\u{00a0}" { " " } else { g.symbol })
+        .collect()
+}
+
+#[derive(Clone, Debug, Default)]
+struct HangingIndent {
+    spans: Vec<Span<'static>>,
+    plain: String,
+}
+
+fn display_space_for_width(width: usize) -> String {
+    " ".repeat(width.max(1))
+}
+
+fn is_display_space(symbol: &str) -> bool {
+    symbol == "\u{00a0}" || symbol.chars().all(char::is_whitespace)
+}
+
+fn build_hanging_indent(line: &[StyledGrapheme<'_>]) -> HangingIndent {
+    let mut indent = HangingIndent::default();
+
+    if let Some(first) = line.first().filter(|g| g.symbol == ">") {
+        let space = display_space_for_width(first.symbol.width());
+        indent.plain.push_str(&space);
+        indent.spans.push(Span::styled(space, first.style));
+
+        for grapheme in line.iter().skip(1) {
+            if !is_display_space(grapheme.symbol) {
+                break;
+            }
+
+            let space = display_space_for_width(grapheme.symbol.width());
+            indent.plain.push_str(&space);
+            indent.spans.push(Span::styled(space, grapheme.style));
+        }
+
+        return indent;
+    }
+
+    for grapheme in line {
+        if !is_display_space(grapheme.symbol) {
+            break;
+        }
+
+        let space = display_space_for_width(grapheme.symbol.width());
+        indent.plain.push_str(&space);
+        indent.spans.push(Span::styled(space, grapheme.style));
+    }
+
+    indent
+}
+
+fn prepend_hanging_indent(
+    line: Line<'static>,
+    plain: String,
+    indent: &HangingIndent,
+) -> (Line<'static>, String) {
+    if indent.spans.is_empty() {
+        return (line, plain);
+    }
+
+    let mut spans = indent.spans.clone();
+    spans.extend(line.spans);
+    (Line::from(spans), format!("{}{}", indent.plain, plain))
 }
 
 /// 与 `Paragraph::wrap(Wrap { trim: false })` 相同管线：按宽度折成若干视口行。
@@ -88,20 +152,35 @@ pub fn flatten_wrapped_history(
     width: u16,
     sel: Option<NormRange>,
 ) -> (Vec<Line<'static>>, Vec<String>) {
-    let styled = logical_lines.iter().map(|line| {
-        let graphemes = line.styled_graphemes(Style::default());
-        let alignment = line.alignment.unwrap_or(Alignment::Left);
-        (graphemes, alignment)
-    });
-    let mut composer = WordWrapper::new(styled, width, false);
     let mut out_lines = Vec::new();
     let mut plain_rows = Vec::new();
     let mut row = 0usize;
-    while let Some(wl) = composer.next_line() {
-        plain_rows.push(graphemes_to_plain(wl.line));
-        out_lines.push(grapheme_line_to_owned(wl.line, row, sel));
-        row += 1;
+
+    for line in logical_lines {
+        let alignment = line.alignment.unwrap_or(Alignment::Left);
+        let graphemes = line
+            .styled_graphemes(Style::default())
+            .collect::<Vec<_>>();
+        let indent = build_hanging_indent(&graphemes);
+        let mut composer = WordWrapper::new(std::iter::once((graphemes.into_iter(), alignment)), width, false);
+        let mut visual_index = 0usize;
+
+        while let Some(wl) = composer.next_line() {
+            let line_plain = graphemes_to_plain(wl.line);
+            let display_line = grapheme_line_to_owned(wl.line, row, sel);
+            let (display_line, line_plain) = if visual_index == 0 {
+                (display_line, line_plain)
+            } else {
+                prepend_hanging_indent(display_line, line_plain, &indent)
+            };
+
+            plain_rows.push(line_plain);
+            out_lines.push(display_line);
+            row += 1;
+            visual_index += 1;
+        }
     }
+
     (out_lines, plain_rows)
 }
 

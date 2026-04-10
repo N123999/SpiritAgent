@@ -1352,6 +1352,224 @@ class StreamingBackgroundRoundTransport implements LlmTransport<undefined, Scrip
   }
 }
 
+class StreamingApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
+  executedCalls = 0;
+
+  toolDefinitionsJson(): JsonValue {
+    return [];
+  }
+
+  async parseCommand(_message: string): Promise<ScriptedToolRequest> {
+    throw new Error('StreamingApprovalExecutor.parseCommand 未实现。');
+  }
+
+  async requestFromFunctionCall(
+    name: string,
+    argumentsJson: string,
+  ): Promise<ScriptedToolRequest> {
+    return { name, argumentsJson };
+  }
+
+  async authorize(request: ScriptedToolRequest): Promise<AuthorizationDecision> {
+    if (request.name === 'write_file') {
+      return {
+        kind: 'need-approval',
+        prompt: '写文件需要审批。',
+      };
+    }
+
+    return { kind: 'allowed' };
+  }
+
+  async trust(_target: string): Promise<void> {}
+
+  async execute(request: ScriptedToolRequest): Promise<string> {
+    this.executedCalls += 1;
+    return `approved output for ${request.name}`;
+  }
+
+  startMcpBackgroundRefresh(): void {}
+
+  mcpStatusSnapshot() {
+    return {
+      revision: 0,
+      state: 'idle' as const,
+      configuredServers: 0,
+      loadedServers: 0,
+      cachedTools: 0,
+    };
+  }
+
+  async addMcpServer(): Promise<string> {
+    throw new Error('StreamingApprovalExecutor.addMcpServer 未实现。');
+  }
+
+  async listMcpServers(): Promise<never[]> {
+    return [];
+  }
+
+  async inspectMcpServer(): Promise<never> {
+    throw new Error('StreamingApprovalExecutor.inspectMcpServer 未实现。');
+  }
+
+  async listMcpTools(): Promise<never[]> {
+    return [];
+  }
+
+  async listMcpResources(): Promise<never[]> {
+    return [];
+  }
+
+  async readMcpResource(): Promise<JsonValue> {
+    throw new Error('StreamingApprovalExecutor.readMcpResource 未实现。');
+  }
+
+  async listMcpPrompts(): Promise<never[]> {
+    return [];
+  }
+
+  async getMcpPrompt(): Promise<JsonValue> {
+    throw new Error('StreamingApprovalExecutor.getMcpPrompt 未实现。');
+  }
+}
+
+class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedState> {
+  rounds = 0;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'STREAM_APPROVAL_SYNC_FALLBACK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'streaming-approval-sync-fallback' }],
+      },
+    };
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      return {
+        eventStream: streamFromEvents([]),
+        completion: Promise.resolve({
+          kind: 'success',
+          result: {
+            state: {
+              messages: [
+                ...state.messages,
+                {
+                  role: 'assistant',
+                  content: '先申请写文件权限。',
+                  tool_calls: [
+                    {
+                      id: 'call-stream-approval',
+                      type: 'function',
+                      function: {
+                        name: 'write_file',
+                        arguments: '{"path":"demo.txt"}',
+                      },
+                    },
+                  ],
+                },
+              ],
+              steps: state.steps + 1,
+            },
+            step: {
+              kind: 'tool-calls',
+              calls: [
+                {
+                  id: 'call-stream-approval',
+                  name: 'write_file',
+                  argumentsJson: '{"path":"demo.txt"}',
+                },
+              ],
+            },
+            requestTrace: [{ mode: 'streaming-approval-round-1' }],
+          },
+        }),
+      };
+    }
+
+    const hasApprovedToolResult = state.messages.some(
+      (message) =>
+        isJsonObject(message) &&
+        message.role === 'tool' &&
+        typeof message.content === 'string' &&
+        message.content === 'approved output for write_file',
+    );
+
+    if (!hasApprovedToolResult) {
+      return {
+        eventStream: streamFromEvents([]),
+        completion: Promise.resolve({
+          kind: 'failure',
+          error: 'streaming approval resume 未写回 tool result。',
+          requestTrace: [{ mode: 'streaming-approval-round-2-missing-tool-result' }],
+        }),
+      };
+    }
+
+    return {
+      eventStream: streamFromEvents([
+        { kind: 'assistant-chunk', text: 'STREAM_APPROVAL_' },
+        { kind: 'assistant-chunk', text: 'OK' },
+        { kind: 'done' },
+      ]),
+      completion: Promise.resolve({
+        kind: 'success',
+        result: {
+          state: {
+            messages: [...state.messages, { role: 'assistant', content: 'STREAM_APPROVAL_OK' }],
+            steps: state.steps + 1,
+          },
+          step: { kind: 'final-response-ready' },
+          requestTrace: [{ mode: 'streaming-approval-round-2' }],
+        },
+      }),
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context overflow');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class StreamingCompactionTransport implements LlmTransport<undefined, ScriptedState> {
   rounds = 0;
   private resolveCompaction: (() => void) | undefined;
@@ -1615,6 +1833,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   const streamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingBackgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingCompactionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingApprovalEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const timeoutEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
   const approvalExecutor = new ApprovalExecutor();
@@ -2266,6 +2485,73 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     throw new Error('stream timeout smoke 未完成 pending response。');
   }
 
+  const streamingApprovalExecutor = new StreamingApprovalExecutor();
+  const streamingApprovalRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingApprovalTransport(),
+    toolExecutor: streamingApprovalExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => streamingApprovalEvents.push(event),
+  });
+
+  await streamingApprovalRuntime.startUserTurnStreaming('请流式审批后继续');
+  await flushMicrotasks(4);
+  await streamingApprovalRuntime.poll();
+  if (!streamingApprovalRuntime.hasPendingApproval()) {
+    throw new Error('streaming approval smoke 未进入待审批状态。');
+  }
+
+  await streamingApprovalRuntime.continuePendingApproval({ kind: 'allow' });
+  for (let index = 0; index < 12 && streamingApprovalRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await streamingApprovalRuntime.poll();
+  }
+  if (streamingApprovalRuntime.isBusy()) {
+    throw new Error('streaming approval smoke 未在预期轮次内完成。');
+  }
+
+  const drainedStreamingApprovalEvents = streamingApprovalRuntime.drainEvents();
+  if (
+    drainedStreamingApprovalEvents.filter((event) => event.kind === 'begin-assistant-response').length < 2
+  ) {
+    throw new Error('streaming approval smoke 应包含审批前后两次 begin event。');
+  }
+  if (
+    !drainedStreamingApprovalEvents.some(
+      (event) => event.kind === 'approval-requested' && event.approval.toolName === 'write_file',
+    )
+  ) {
+    throw new Error('streaming approval smoke 缺少 approval-requested 事件。');
+  }
+  if (
+    !drainedStreamingApprovalEvents.some(
+      (event) => event.kind === 'assistant-chunk' && event.text === 'STREAM_APPROVAL_',
+    )
+  ) {
+    throw new Error('streaming approval smoke 缺少审批恢复后的流式 chunk。');
+  }
+  if (streamingApprovalExecutor.executedCalls !== 1) {
+    throw new Error('streaming approval smoke 工具执行次数不正确。');
+  }
+  const streamingApprovalTrace = streamingApprovalRuntime.requestTrace();
+  if (
+    !streamingApprovalTrace.some(
+      (trace) => isJsonObject(trace) && trace.mode === 'streaming-approval-round-2',
+    )
+  ) {
+    throw new Error('streaming approval smoke 缺少审批恢复后的 streaming trace。');
+  }
+  if (
+    streamingApprovalTrace.some(
+      (trace) => isJsonObject(trace) && trace.mode === 'streaming-approval-sync-fallback',
+    )
+  ) {
+    throw new Error('streaming approval smoke 错误退回到了非流式 round。');
+  }
+
   const streamingBackgroundExecutor = new PollingBackgroundExecutor();
   const streamingBackgroundRuntime = new AgentRuntime({
     config: undefined,
@@ -2423,6 +2709,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   printSmokeSection('workspace file context smoke', workspaceFileSmoke);
   printSmokeSection('streaming final smoke events', drainedStreamingEvents);
   printSmokeSection('stream timeout smoke events', drainedTimeoutEvents);
+  printSmokeSection('streaming approval smoke events', drainedStreamingApprovalEvents);
   printSmokeSection('manual compaction smoke events', drainedManualCompactionEvents);
   printSmokeSection('streaming background smoke events', drainedStreamingBackgroundEvents);
   printSmokeSection('streaming compaction smoke events', drainedStreamingCompactionEvents);

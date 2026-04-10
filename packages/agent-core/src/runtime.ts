@@ -602,6 +602,8 @@ export class AgentRuntime<
           pending.toolName,
           pending.remainingCalls,
           pending.turn,
+          pending.resumeAsStreaming,
+          pending.streamingEmitBeginResponse,
         );
         return;
       }
@@ -627,6 +629,18 @@ export class AgentRuntime<
           pending.pendingUserInput,
           pending.remainingCalls,
           pending.turn,
+          pending.resumeAsStreaming,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
+
+      if (pending.resumeAsStreaming) {
+        await this.startStreamingRound(
+          resumedState,
+          pending.pendingUserInput,
+          pending.turn,
+          pending.streamingEmitBeginResponse,
         );
         return;
       }
@@ -653,6 +667,18 @@ export class AgentRuntime<
             pending.pendingUserInput,
             pending.remainingCalls,
             pending.turn,
+            pending.resumeAsStreaming,
+            pending.streamingEmitBeginResponse,
+          );
+          return;
+        }
+
+        if (pending.resumeAsStreaming) {
+          await this.startStreamingRound(
+            resumedState,
+            pending.pendingUserInput,
+            pending.turn,
+            pending.streamingEmitBeginResponse,
           );
           return;
         }
@@ -670,6 +696,16 @@ export class AgentRuntime<
       resumedState = this.options.appendUserMessage
         ? this.options.appendUserMessage(resumedState, guidanceMessage)
         : this.options.createToolAgentState(this.historyStore, guidanceMessage);
+
+      if (pending.resumeAsStreaming) {
+        await this.startStreamingRound(
+          resumedState,
+          guidanceMessage,
+          pending.turn,
+          true,
+        );
+        return;
+      }
 
       this.startToolAgentRoundAsync(resumedState, guidanceMessage, pending.turn);
       return;
@@ -690,6 +726,18 @@ export class AgentRuntime<
         pending.pendingUserInput,
         pending.remainingCalls,
         pending.turn,
+        pending.resumeAsStreaming,
+        pending.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    if (pending.resumeAsStreaming) {
+      await this.startStreamingRound(
+        resumedState,
+        pending.pendingUserInput,
+        pending.turn,
+        pending.streamingEmitBeginResponse,
       );
       return;
     }

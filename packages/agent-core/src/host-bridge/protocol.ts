@@ -47,8 +47,6 @@ export type JsonRpcMessage =
   | JsonRpcErrorResponse;
 
 export interface BridgeRuntimeSnapshot {
-  history: LlmMessage[];
-  requestTrace: JsonValue[];
   pendingUserTurn?: string;
   pendingImagePaths: string[];
   pendingMcpResources: PendingMcpResource[];
@@ -63,6 +61,12 @@ export interface BridgeRuntimeSnapshot {
 export interface DrainEventsResult {
   events: RuntimeEvent<JsonValue>[];
   snapshot: BridgeRuntimeSnapshot;
+}
+
+export interface BridgeExportState {
+  apiMessages: JsonValue[];
+  requestTrace: JsonValue[];
+  systemPrompts: JsonValue;
 }
 
 export interface RuntimeInitParams {
