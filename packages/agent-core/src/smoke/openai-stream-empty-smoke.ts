@@ -1,0 +1,106 @@
+import { once } from 'node:events';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
+import type { JsonValue } from '../ports.js';
+import { OpenAiTransport, startOpenAiToolAgentState } from '../openai/transport.js';
+
+import { printSmokeSection } from './openai-shared.js';
+
+async function main(): Promise<void> {
+  const server = createServer((request, response) => {
+    if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
+      response.statusCode = 404;
+      response.end('not found');
+      return;
+    }
+
+    response.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    });
+
+    const chunk = {
+      id: 'chatcmpl-test-empty-stream',
+      object: 'chat.completion.chunk',
+      created: 0,
+      model: 'test-openai-compatible',
+      choices: [
+        {
+          index: 0,
+          delta: {
+            reasoning_content: '先想一下，但不给正文。',
+          },
+          finish_reason: null,
+        },
+      ],
+    };
+
+    response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    response.write('data: [DONE]\n\n');
+    response.end();
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    server.close();
+    throw new Error('无法获取本地 smoke server 端口。');
+  }
+
+  const transport = new OpenAiTransport();
+  const state = startOpenAiToolAgentState([], '请测试空流式输出。');
+  const started = await transport.startToolAgentRoundStreaming(
+    {
+      apiKey: 'test-key',
+      model: 'test-openai-compatible',
+      baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
+    },
+    state,
+    [],
+  );
+
+  const events = await collectEvents(started.eventStream);
+  const completion = await started.completion;
+  server.close();
+
+  printSmokeSection('stream-empty smoke events', events);
+  printSmokeSection('stream-empty smoke completion', completion);
+
+  if (!events.some((event) => isJsonObject(event) && event.kind === 'thinking-chunk')) {
+    throw new Error('stream-empty smoke 未收到 thinking-chunk。');
+  }
+
+  if (!events.some((event) => isJsonObject(event) && event.kind === 'error')) {
+    throw new Error('stream-empty smoke 未收到 error 事件。');
+  }
+
+  if (events.some((event) => isJsonObject(event) && event.kind === 'assistant-chunk')) {
+    throw new Error('stream-empty smoke 不应收到 assistant-chunk。');
+  }
+
+  if (completion.kind !== 'failure' || !completion.error.includes('流式响应无任何 delta')) {
+    throw new Error('stream-empty smoke 未返回预期的空流式输出失败。');
+  }
+}
+
+async function collectEvents(stream: AsyncIterable<{ kind: string } & Record<string, unknown>>): Promise<JsonValue[]> {
+  const events: JsonValue[] = [];
+  for await (const event of stream) {
+    events.push(event as unknown as JsonValue);
+  }
+  return events;
+}
+
+function isJsonObject(value: JsonValue | undefined): value is Record<string, JsonValue> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+main().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`openai stream-empty smoke failed: ${message}`);
+  process.exitCode = 1;
+});

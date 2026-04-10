@@ -25,6 +25,21 @@ async function main(): Promise<void> {
   const toolRound = await transport.startToolAgentRound(config, toolState, toolDefinition);
 
   printSmokeSection('tool-call smoke', toolRound);
+
+  if (toolRound.kind !== 'success' || toolRound.result.step.kind !== 'tool-calls') {
+    throw new Error('tool-call smoke 未进入 tool-calls。');
+  }
+
+  const lastMessage = toolRound.result.state.messages.at(-1);
+  if (
+    !lastMessage ||
+    typeof lastMessage !== 'object' ||
+    lastMessage === null ||
+    !('reasoning_content' in lastMessage) ||
+    lastMessage.reasoning_content !== ''
+  ) {
+    throw new Error('tool-call smoke 未在非流式 assistant tool_call message 上保留空 reasoning_content。');
+  }
 }
 
 main().catch((error: unknown) => {

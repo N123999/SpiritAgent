@@ -3,8 +3,10 @@ import { extname, isAbsolute, resolve } from 'node:path';
 
 import OpenAI from 'openai';
 import type {
+  ChatCompletionChunk,
   ChatCompletionMessage,
   ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
   ChatCompletionTool,
@@ -13,8 +15,10 @@ import type {
 import type {
   JsonObject,
   JsonValue,
+  LlmStreamEvent,
   LlmMessage,
   LlmTransport,
+  StartedToolAgentRound,
   ToolAgentRoundCompletion,
   ToolCallRequest,
 } from '../ports.js';
@@ -61,11 +65,20 @@ export interface OpenAiRequestTrace extends JsonObject {
   kind: 'openai_sdk_chat_completions';
   stepIndex: number;
   model: string;
-  stream: false;
+  stream: boolean;
   toolChoice?: 'auto';
   temperature: number;
   messages: JsonValue[];
   tools?: JsonValue[];
+}
+
+interface AggregatedStreamingToolCall {
+  index: number;
+  id: string;
+  type: 'function';
+  functionName: string;
+  functionArguments: string;
+  nameEmitted: boolean;
 }
 
 export function startOpenAiToolAgentState(
@@ -329,6 +342,45 @@ export class OpenAiTransport
     }
   }
 
+  async startToolAgentRoundStreaming(
+    config: OpenAiTransportConfig,
+    state: OpenAiToolAgentState,
+    tools: JsonValue,
+  ): Promise<StartedToolAgentRound<OpenAiToolAgentState>> {
+    const client = createOpenAiClient(config);
+    const nextState: OpenAiToolAgentState = {
+      messages: [...state.messages],
+      steps: state.steps + 1,
+    };
+
+    const normalizedTools = normalizeTools(tools);
+    const requestTrace = buildRequestTrace(config, nextState, normalizedTools, true);
+    const payload: ChatCompletionCreateParamsStreaming = {
+      model: config.model,
+      messages: nextState.messages as unknown as ChatCompletionMessageParam[],
+      temperature: config.temperature ?? 0.2,
+      stream: true,
+      ...(normalizedTools.length > 0
+        ? {
+            tools: normalizedTools,
+            tool_choice: 'auto' as const,
+          }
+        : {}),
+    };
+
+    const abortController = new AbortController();
+    const stream = await client.chat.completions.create(payload, {
+      signal: abortController.signal,
+    });
+    const completion = createDeferred<ToolAgentRoundCompletion<OpenAiToolAgentState>>();
+
+    return {
+      eventStream: openAiEventStreamToRuntimeEvents(stream, nextState, requestTrace, completion),
+      completion: completion.promise,
+      cancel: () => abortController.abort(),
+    };
+  }
+
   async compactHistoryManual(
     config: OpenAiTransportConfig,
     history: LlmMessage[],
@@ -438,12 +490,13 @@ function buildRequestTrace(
   config: OpenAiTransportConfig,
   state: OpenAiToolAgentState,
   tools: ChatCompletionTool[],
+  stream = false,
 ): JsonValue[] {
   const trace: OpenAiRequestTrace = {
     kind: 'openai_sdk_chat_completions',
     stepIndex: state.steps,
     model: config.model,
-    stream: false,
+    stream,
     temperature: config.temperature ?? 0.2,
     messages: state.messages,
     ...(tools.length > 0
@@ -455,6 +508,86 @@ function buildRequestTrace(
   };
 
   return [trace];
+}
+
+async function* openAiEventStreamToRuntimeEvents(
+  stream: AsyncIterable<ChatCompletionChunk>,
+  nextState: OpenAiToolAgentState,
+  requestTrace: JsonValue[],
+  completion: Deferred<ToolAgentRoundCompletion<OpenAiToolAgentState>>,
+): AsyncGenerator<LlmStreamEvent, void, undefined> {
+  const toolCalls = new Map<number, AggregatedStreamingToolCall>();
+  let assistantContent = '';
+  let reasoningContent = '';
+  let sawModelOutput = false;
+  const rawPreview: string[] = [];
+
+  try {
+    for await (const chunk of stream) {
+      if (rawPreview.length < 8) {
+        rawPreview.push(truncateChars(JSON.stringify(chunk), 320));
+      }
+
+      for (const choice of chunk.choices) {
+        const delta = choice.delta;
+        const thinkingText = extractStreamingThinkingText(delta);
+        if (thinkingText) {
+          reasoningContent += thinkingText;
+          yield { kind: 'thinking-chunk', text: thinkingText };
+        }
+
+        if ((delta.tool_calls?.length ?? 0) > 0) {
+          sawModelOutput = true;
+        }
+
+        for (const progressText of accumulateStreamingToolCallProgress(toolCalls, delta.tool_calls)) {
+          yield { kind: 'tool-progress', text: progressText };
+        }
+
+        if (typeof delta.content === 'string' && delta.content.length > 0) {
+          sawModelOutput = true;
+          assistantContent += delta.content;
+          yield { kind: 'assistant-chunk', text: delta.content };
+        }
+
+        if (typeof delta.refusal === 'string' && delta.refusal.length > 0) {
+          sawModelOutput = true;
+          assistantContent += delta.refusal;
+          yield { kind: 'assistant-chunk', text: delta.refusal };
+        }
+      }
+    }
+
+    if (!sawModelOutput) {
+      const preview = rawPreview.length === 0 ? '<empty stream body>' : rawPreview.join('\n');
+      throw new Error(`流式响应无任何 delta（无 content / tool_calls）。预览:\n${truncateChars(preview, 600)}`);
+    }
+
+    nextState.messages.push(
+      buildStreamingAssistantMessage(assistantContent, reasoningContent, toolCalls),
+    );
+    const calls = extractToolCallsFromAggregatedMap(toolCalls);
+    completion.resolve({
+      kind: 'success',
+      result: {
+        state: nextState,
+        step: calls.length > 0 ? { kind: 'tool-calls', calls } : { kind: 'final-response-ready' },
+        requestTrace,
+      },
+    });
+    yield { kind: 'done' };
+  } catch (error) {
+    const rendered = renderOpenAiError(error);
+    completion.resolve({
+      kind: 'failure',
+      error: rendered,
+      requestTrace,
+    });
+    yield {
+      kind: 'error',
+      error: rendered,
+    };
+  }
 }
 
 function llmHistoryToOpenAiMessages(
@@ -510,8 +643,9 @@ function normalizeTools(tools: JsonValue): ChatCompletionTool[] {
 
 function normalizeAssistantMessage(message: ChatCompletionMessage): JsonValue {
   const functionToolCalls = extractFunctionToolCalls(message.tool_calls);
+  const reasoningContent = extractAssistantReasoningContent(message);
 
-  return {
+  return withReasoningContentIfNeeded({
     role: 'assistant',
     content: message.content ?? null,
     ...(functionToolCalls.length > 0
@@ -526,7 +660,7 @@ function normalizeAssistantMessage(message: ChatCompletionMessage): JsonValue {
           })),
         }
       : {}),
-  };
+  }, reasoningContent);
 }
 
 function extractToolCalls(
@@ -546,6 +680,174 @@ function extractFunctionToolCalls(
     (call): call is Extract<ChatCompletionMessageToolCall, { type: 'function' }> =>
       call.type === 'function',
   );
+}
+
+function extractAssistantReasoningContent(message: ChatCompletionMessage): string {
+  const raw = message as unknown as Record<string, unknown>;
+  const pieces = [
+    raw.reasoning_content,
+    raw.reasoningContent,
+    raw.reasoning,
+    raw.thinking,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+  return pieces.join('');
+}
+
+function extractStreamingThinkingText(delta: ChatCompletionChunk.Choice.Delta): string | undefined {
+  const raw = delta as unknown as Record<string, unknown>;
+  const chunks = [
+    raw.reasoning,
+    raw.reasoning_content,
+    raw.reasoningText,
+    raw.reasoning_text,
+    raw.thinking,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join('');
+
+  return chunks || undefined;
+}
+
+function accumulateStreamingToolCallProgress(
+  toolCalls: Map<number, AggregatedStreamingToolCall>,
+  deltas: ChatCompletionChunk.Choice.Delta.ToolCall[] | undefined,
+): string[] {
+  if (!deltas || deltas.length === 0) {
+    return [];
+  }
+
+  const updates: string[] = [];
+  for (const delta of deltas) {
+    const existing = toolCalls.get(delta.index);
+    const current: AggregatedStreamingToolCall = existing ?? {
+      index: delta.index,
+      id: delta.id ?? `stream-tool-call-${delta.index}`,
+      type: 'function',
+      functionName: '',
+      functionArguments: '',
+      nameEmitted: false,
+    };
+
+    if (delta.id) {
+      current.id = delta.id;
+    }
+    if (delta.function?.name) {
+      current.functionName += delta.function.name;
+    }
+    if (delta.function?.arguments) {
+      current.functionArguments += delta.function.arguments;
+    }
+
+    if (current.functionName && !current.nameEmitted) {
+      updates.push(buildToolProgressPreview(current.functionName, current.functionArguments));
+      current.nameEmitted = true;
+    }
+
+    toolCalls.set(delta.index, current);
+  }
+
+  return updates;
+}
+
+function buildStreamingAssistantMessage(
+  assistantContent: string,
+  reasoningContent: string,
+  toolCalls: Map<number, AggregatedStreamingToolCall>,
+): JsonValue {
+  const functionToolCalls = [...toolCalls.values()]
+    .sort((left, right) => left.index - right.index)
+    .map((call) => ({
+      index: call.index,
+      id: call.id,
+      type: call.type,
+      function: {
+        name: call.functionName,
+        arguments: call.functionArguments,
+      },
+    }));
+
+  return withReasoningContentIfNeeded({
+    role: 'assistant',
+    content: assistantContent || null,
+    ...(functionToolCalls.length > 0 ? { tool_calls: functionToolCalls } : {}),
+  }, reasoningContent);
+}
+
+function extractToolCallsFromAggregatedMap(
+  toolCalls: Map<number, AggregatedStreamingToolCall>,
+): ToolCallRequest[] {
+  return [...toolCalls.values()]
+    .sort((left, right) => left.index - right.index)
+    .filter((call) => call.functionName.trim().length > 0)
+    .map((call) => ({
+      id: call.id,
+      name: call.functionName,
+      argumentsJson: call.functionArguments,
+    }));
+}
+
+function withReasoningContentIfNeeded(message: JsonObject, reasoningContent: string): JsonValue {
+  if (messageContentHasEmbeddedThinking(message)) {
+    return message;
+  }
+
+  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  if ('reasoning_content' in message) {
+    return message;
+  }
+
+  if (reasoningContent.length > 0) {
+    return {
+      ...message,
+      reasoning_content: reasoningContent,
+    };
+  }
+
+  if (toolCalls.length > 0) {
+    return {
+      ...message,
+      reasoning_content: '',
+    };
+  }
+
+  return message;
+}
+
+function messageContentHasEmbeddedThinking(message: JsonObject): boolean {
+  if (typeof message.content !== 'string') {
+    return false;
+  }
+
+  const trimmed = message.content.trimStart();
+  return trimmed.startsWith('<think>') && trimmed.includes('</think>');
+}
+
+function buildToolProgressPreview(name: string, argumentsJson: string): string {
+  const lineHint = tryCountContentLines(argumentsJson);
+  if (lineHint !== undefined && lineHint > 0) {
+    return `准备调用工具: ${name}（约 ${lineHint} 行内容）`;
+  }
+
+  return `准备调用工具: ${name}`;
+}
+
+function tryCountContentLines(argumentsJson: string): number | undefined {
+  try {
+    const parsed = JSON.parse(argumentsJson) as JsonValue;
+    if (!isJsonObject(parsed)) {
+      return undefined;
+    }
+
+    const candidate = parsed.content ?? parsed.new_text;
+    if (typeof candidate !== 'string') {
+      return undefined;
+    }
+
+    return candidate.split(/\r?\n/).length;
+  } catch {
+    return undefined;
+  }
 }
 
 function renderOpenAiError(error: unknown): string {
@@ -709,4 +1011,34 @@ function findLastMatchingIndex<T>(items: T[], predicate: (item: T) => boolean): 
 
 function saturatingSub(value: number, delta: number): number {
   return Math.max(0, value - delta);
+}
+
+function truncateChars(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) {
+    return text;
+  }
+
+  return `${chars.slice(0, maxChars).join('')}...`;
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
 }
