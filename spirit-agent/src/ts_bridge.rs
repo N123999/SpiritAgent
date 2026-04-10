@@ -179,6 +179,16 @@ impl TsBridgeRuntime {
     }
 
     pub fn replace_config(&mut self, config: AppConfig) {
+        if self.is_busy_cache || self.session.pending_user_turn().is_some() {
+            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                MessageRole::Agent,
+                "当前有进行中的对话，暂不支持在 TS backend 下切换模型。请等待当前回合结束后再试。",
+            )));
+            return;
+        }
+
+        let pending_images = self.session.pending_image_paths().to_vec();
+        let pending_resources = self.session.pending_mcp_resources().to_vec();
         self.config = config;
         let transport_config = match self.resolve_transport_config_json() {
             Ok(value) => value,
@@ -200,6 +210,17 @@ impl TsBridgeRuntime {
 
         if let Err(err) = self.sync_snapshot_only() {
             self.handle_bridge_error(err);
+            return;
+        }
+
+        for path in pending_images {
+            self.add_pending_image(path);
+        }
+        for resource in pending_resources {
+            if let Err(err) = self.attach_mcp_resource(&resource.server, &resource.uri) {
+                self.handle_bridge_error(err);
+                return;
+            }
         }
     }
 
@@ -429,7 +450,7 @@ impl TsBridgeRuntime {
     pub fn replace_session_from_archive(&mut self, archive: &crate::ports::ChatArchive) {
         if let Err(err) = self.call_bridge(
             "runtime.replaceFromArchive",
-            Some(serde_json::to_value(archive).unwrap_or(Value::Null)),
+            Some(chat_archive_to_bridge_json(archive)),
         ) {
             self.handle_bridge_error(err);
             return;
@@ -1381,4 +1402,29 @@ mod tests {
         assert!(!runtime.is_busy());
         assert!(!runtime.has_pending_tool_approval());
     }
+}
+
+fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
+    json!({
+        "messages": archive.messages.iter().map(|(role, content)| {
+            json!({
+                "role": role,
+                "content": content,
+            })
+        }).collect::<Vec<_>>(),
+        "assistantAux": archive.assistant_aux.iter().map(|entry| {
+            json!({
+                "messageIndex": entry.message_index,
+                "thinking": entry.thinking,
+                "compaction": entry.compaction,
+            })
+        }).collect::<Vec<_>>(),
+        "llmHistory": archive.llm_history.iter().map(|(role, content, image_paths)| {
+            json!({
+                "role": role,
+                "content": content,
+                "imagePaths": image_paths,
+            })
+        }).collect::<Vec<_>>(),
+    })
 }
