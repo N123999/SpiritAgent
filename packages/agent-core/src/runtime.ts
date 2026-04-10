@@ -1,10 +1,15 @@
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import type {
   AuthorizationDecision,
   AssistantAuxArchiveEntry,
   ChatArchive,
   JsonValue,
   LlmMessage,
+  LlmStreamEvent,
   LlmTransport,
+  ToolAgentRoundCompletion,
   ToolCallRequest,
   ToolExecutor,
 } from './ports.js';
@@ -12,6 +17,9 @@ import type {
 const TOOL_MEMORY_PREFIX = '[TOOL_MEMORY]';
 const TOOL_MEMORY_RESULT_MAX_CHARS = 1200;
 const TOOL_MEMORY_MAX_ENTRIES = 24;
+const PENDING_WORKSPACE_FILE_MAX_CHARS = 24_000;
+const STREAM_EVENT_BUDGET_PER_POLL = 128;
+const STREAM_STALL_TIMEOUT_MS = 20_000;
 
 export interface RuntimeToolExecution<ToolRequest> {
   toolCallId: string;
@@ -40,6 +48,40 @@ export interface RuntimeHistoryPreparationResult {
 
 export type RuntimeEvent<ToolRequest> =
   | {
+      kind: 'begin-assistant-response';
+    }
+  | {
+      kind: 'update-pending-assistant-thinking';
+      text: string;
+    }
+  | {
+      kind: 'update-pending-assistant-compaction';
+      text: string;
+    }
+  | {
+      kind: 'assistant-chunk';
+      text: string;
+    }
+  | {
+      kind: 'replace-pending-assistant';
+      text: string;
+    }
+  | {
+      kind: 'assistant-response-completed';
+    }
+  | {
+      kind: 'remove-pending-assistant';
+    }
+  | {
+      kind: 'history-compacted';
+      droppedMessages: number;
+      summaryPreview?: string;
+    }
+  | {
+      kind: 'approval-requested';
+      approval: RuntimePendingApproval<ToolRequest, unknown>;
+    }
+  | {
       kind: 'vision-fallback-retry';
       droppedImages: number;
       message: string;
@@ -67,6 +109,14 @@ export interface PendingMcpResource {
   uri: string;
   mimeType?: string;
   readAtUnixMs: number;
+  content: string;
+}
+
+export interface PendingWorkspaceFile {
+  path: string;
+  totalChars: number;
+  truncated: boolean;
+  attachedAtUnixMs: number;
   content: string;
 }
 
@@ -157,6 +207,9 @@ export interface AgentRuntimeOptions<
   maxAutoCompactRetries?: number;
   maxToolMemoryEntries?: number;
   onEvent?: (event: RuntimeEvent<ToolRequest>) => void;
+  resolveWorkspaceFilesFromInput?: (
+    userInput: string,
+  ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];
 }
 
 interface RuntimeTurnContext<ToolRequest> {
@@ -185,6 +238,16 @@ interface PendingManualApprovalState<ToolRequest, TrustTarget> {
   toolName: string;
 }
 
+interface PendingStreamingRound<State, ToolRequest> {
+  pendingUserInput: string;
+  turn: RuntimeTurnContext<ToolRequest>;
+  rawEvents: LlmStreamEvent[];
+  completion: ToolAgentRoundCompletion<State> | undefined;
+  completionHandled: boolean;
+  streamEnded: boolean;
+  cancel: (() => void) | undefined;
+}
+
 export class AgentRuntime<
   Config,
   State,
@@ -194,14 +257,22 @@ export class AgentRuntime<
   private readonly options: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>;
   private historyStore: LlmMessage[];
   private requestTraceStore: JsonValue[];
+  private eventQueueStore: RuntimeEvent<ToolRequest>[];
   private pendingBackgroundToolStatusStore: string | undefined;
   private pendingImagePathsStore: string[];
   private pendingMcpResourcesStore: PendingMcpResource[];
+  private pendingAssistantTextStore: string;
+  private thinkingTextStore: string;
+  private compactionTextStore: string;
   private pendingUserTurnStore: string | undefined;
   private pendingApproval: PendingApprovalState<State, ToolRequest, TrustTarget> | undefined;
   private pendingManualApproval:
     | PendingManualApprovalState<ToolRequest, TrustTarget>
     | undefined;
+  private pendingStreamingRound: PendingStreamingRound<State, ToolRequest> | undefined;
+  private pendingStartedAtStore: number | undefined;
+  private pendingLastEventAtStore: number | undefined;
+  private streamChunkCounterStore: number;
 
   constructor(
     options: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>,
@@ -210,8 +281,13 @@ export class AgentRuntime<
     this.options = options;
     this.historyStore = cloneHistory(initialHistory);
     this.requestTraceStore = [];
+    this.eventQueueStore = [];
     this.pendingImagePathsStore = [];
     this.pendingMcpResourcesStore = [];
+    this.pendingAssistantTextStore = '';
+    this.thinkingTextStore = '';
+    this.compactionTextStore = '';
+    this.streamChunkCounterStore = 0;
   }
 
   history(): readonly LlmMessage[] {
@@ -222,8 +298,38 @@ export class AgentRuntime<
     return this.requestTraceStore;
   }
 
+  drainEvents(): RuntimeEvent<ToolRequest>[] {
+    const events = [...this.eventQueueStore];
+    this.eventQueueStore = [];
+    return events;
+  }
+
   pendingUserTurn(): string | undefined {
     return this.pendingUserTurnStore;
+  }
+
+  pendingAssistantText(): string {
+    return this.pendingAssistantTextStore;
+  }
+
+  thinkingText(): string {
+    return this.thinkingTextStore;
+  }
+
+  compactionText(): string {
+    return this.compactionTextStore;
+  }
+
+  pendingStartedAt(): number | undefined {
+    return this.pendingStartedAtStore;
+  }
+
+  pendingLastEventAt(): number | undefined {
+    return this.pendingLastEventAtStore;
+  }
+
+  streamChunkCounter(): number {
+    return this.streamChunkCounterStore;
   }
 
   backgroundToolStatus(): string | undefined {
@@ -242,12 +348,44 @@ export class AgentRuntime<
     return this.pendingApproval !== undefined || this.pendingManualApproval !== undefined;
   }
 
+  currentPendingApproval(): RuntimePendingApproval<ToolRequest, TrustTarget> | undefined {
+    if (this.pendingApproval) {
+      return {
+        prompt: this.pendingApproval.prompt,
+        request: this.pendingApproval.request,
+        ...(this.pendingApproval.trustTarget !== undefined
+          ? { trustTarget: this.pendingApproval.trustTarget }
+          : {}),
+        toolCallId: this.pendingApproval.toolCallId,
+        toolName: this.pendingApproval.toolName,
+      };
+    }
+
+    if (this.pendingManualApproval) {
+      return {
+        prompt: this.pendingManualApproval.prompt,
+        request: this.pendingManualApproval.request,
+        ...(this.pendingManualApproval.trustTarget !== undefined
+          ? { trustTarget: this.pendingManualApproval.trustTarget }
+          : {}),
+        toolName: this.pendingManualApproval.toolName,
+      };
+    }
+
+    return undefined;
+  }
+
+  isBusy(): boolean {
+    return this.pendingStreamingRound !== undefined || this.hasPendingApproval();
+  }
+
   hasPendingManualApproval(): boolean {
     return this.pendingManualApproval !== undefined;
   }
 
   replaceHistory(history: LlmMessage[]): void {
     this.historyStore = cloneHistory(history);
+    this.clearPendingStreamingState();
     this.pendingBackgroundToolStatusStore = undefined;
     this.pendingImagePathsStore = [];
     this.pendingMcpResourcesStore = [];
@@ -263,6 +401,7 @@ export class AgentRuntime<
       imagePaths: [...message.imagePaths],
     }));
     this.requestTraceStore = [];
+    this.clearPendingStreamingState();
     this.pendingBackgroundToolStatusStore = undefined;
     this.pendingImagePathsStore = [];
     this.pendingMcpResourcesStore = [];
@@ -378,21 +517,65 @@ export class AgentRuntime<
       throw new Error('当前存在待确认的工具调用，请先处理审批。');
     }
 
-    const images = explicitImages.length > 0 ? [...explicitImages] : this.takePendingImages();
-    const resources = this.takePendingMcpResources();
-    for (const resource of resources) {
-      this.recordContextMessage('system', formatPendingMcpResourceContext(resource));
+    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages);
+    return this.runTurnLoop(state, userInput, createTurnContext<ToolRequest>());
+  }
+
+  async startUserTurnStreaming(
+    userInput: string,
+    explicitImages: string[] = [],
+  ): Promise<void> {
+    if (this.isBusy()) {
+      throw new Error('当前已有响应或审批在处理中，请稍候。');
     }
 
-    this.historyStore.push({
-      role: 'user',
-      content: userInput,
-      imagePaths: images,
-    });
-    this.pendingUserTurnStore = userInput;
+    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages);
+    await this.startStreamingRound(
+      state,
+      userInput,
+      createTurnContext<ToolRequest>(),
+      true,
+    );
+  }
 
-    const state = this.options.createToolAgentState(this.historyStore, userInput);
-    return this.runTurnLoop(state, userInput, createTurnContext<ToolRequest>());
+  async poll(): Promise<void> {
+    await this.pollPendingStreamingRound();
+  }
+
+  handleStreamStallTimeout(
+    nowMs = Date.now(),
+    stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
+  ): void {
+    const pending = this.pendingStreamingRound;
+    if (!pending) {
+      return;
+    }
+
+    if (!pending.completionHandled) {
+      return;
+    }
+
+    const lastEventAt = this.pendingLastEventAtStore;
+    if (lastEventAt === undefined || nowMs - lastEventAt < stallTimeoutMs) {
+      return;
+    }
+
+    if (!this.pendingAssistantTextStore.trim()) {
+      this.emitEvent({
+        kind: 'replace-pending-assistant',
+        text: '流式响应超时，连接已中断。',
+      });
+    } else {
+      const suffix = '\n\n[stream timeout] 响应长时间无数据，已自动停止等待。';
+      this.pendingAssistantTextStore += suffix;
+      this.emitEvent({
+        kind: 'assistant-chunk',
+        text: suffix,
+      });
+    }
+
+    this.clearPendingStreamingState();
+    this.emitEvent({ kind: 'assistant-response-completed' });
   }
 
   async resumePendingApproval(
@@ -501,6 +684,17 @@ export class AgentRuntime<
           : {}),
         toolName,
       };
+      this.emitEvent({
+        kind: 'approval-requested',
+        approval: {
+          prompt: authorization.prompt,
+          request,
+          ...(authorization.trustTarget !== undefined
+            ? { trustTarget: authorization.trustTarget }
+            : {}),
+          toolName,
+        },
+      });
       return {
         kind: 'requires-approval',
         approval: {
@@ -748,6 +942,18 @@ export class AgentRuntime<
           remainingCalls: remaining,
           turn,
         };
+        this.emitEvent({
+          kind: 'approval-requested',
+          approval: {
+            prompt: authorization.prompt,
+            request,
+            ...(authorization.trustTarget !== undefined
+              ? { trustTarget: authorization.trustTarget }
+              : {}),
+            toolCallId: call.id,
+            toolName: call.name,
+          },
+        });
 
         return {
           kind: 'requires-approval',
@@ -812,6 +1018,422 @@ export class AgentRuntime<
     turn.requestTrace.push(...trace);
   }
 
+  private async prepareSubmittedUserTurn(
+    userInput: string,
+    explicitImages: string[],
+  ): Promise<State> {
+    const images = explicitImages.length > 0 ? [...explicitImages] : this.takePendingImages();
+    const workspaceFiles = this.options.resolveWorkspaceFilesFromInput
+      ? await this.options.resolveWorkspaceFilesFromInput(userInput)
+      : [];
+    const resources = this.takePendingMcpResources();
+    for (const file of workspaceFiles) {
+      this.recordContextMessage('system', formatPendingWorkspaceFileContext(file));
+    }
+    for (const resource of resources) {
+      this.recordContextMessage('system', formatPendingMcpResourceContext(resource));
+    }
+
+    this.historyStore.push({
+      role: 'user',
+      content: userInput,
+      imagePaths: images,
+    });
+    this.pendingUserTurnStore = userInput;
+    return this.options.createToolAgentState(this.historyStore, userInput);
+  }
+
+  private async startStreamingRound(
+    state: State,
+    pendingUserInput: string,
+    turn: RuntimeTurnContext<ToolRequest>,
+    emitBeginResponse: boolean,
+  ): Promise<void> {
+    this.clearPendingStreamingState();
+    this.pendingStartedAtStore = Date.now();
+    this.pendingLastEventAtStore = this.pendingStartedAtStore;
+
+    const pending: PendingStreamingRound<State, ToolRequest> = {
+      pendingUserInput,
+      turn,
+      rawEvents: [],
+      completion: undefined,
+      completionHandled: false,
+      streamEnded: false,
+      cancel: undefined,
+    };
+    this.pendingStreamingRound = pending;
+
+    if (emitBeginResponse) {
+      this.emitEvent({ kind: 'begin-assistant-response' });
+    }
+
+    const transport = this.options.llmTransport;
+    if (transport.startToolAgentRoundStreaming) {
+      try {
+        const started = await transport.startToolAgentRoundStreaming(
+          this.options.config,
+          state,
+          this.options.toolExecutor.toolDefinitionsJson(),
+        );
+        if (this.pendingStreamingRound !== pending) {
+          started.cancel?.();
+          return;
+        }
+
+        pending.cancel = started.cancel;
+        void this.consumeStreamEvents(pending, started.eventStream);
+        void started.completion
+          .then((completion) => {
+            pending.completion = completion;
+          })
+          .catch((error: unknown) => {
+            pending.completion = {
+              kind: 'failure',
+              error: renderError(error),
+              requestTrace: [],
+            };
+          });
+        return;
+      } catch (error) {
+        pending.completion = {
+          kind: 'failure',
+          error: renderError(error),
+          requestTrace: [],
+        };
+        return;
+      }
+    }
+
+    void this.options.llmTransport
+      .startToolAgentRound(
+        this.options.config,
+        state,
+        this.options.toolExecutor.toolDefinitionsJson(),
+      )
+      .then((completion) => {
+        pending.completion = completion;
+        if (completion.kind === 'success' && completion.result.step.kind === 'final-response-ready') {
+          const assistantText = this.options.extractAssistantText(completion.result.state)?.trim();
+          if (assistantText) {
+            pending.rawEvents.push({ kind: 'assistant-chunk', text: assistantText });
+          }
+          pending.rawEvents.push({ kind: 'done' });
+        }
+      })
+      .catch((error: unknown) => {
+        pending.completion = {
+          kind: 'failure',
+          error: renderError(error),
+          requestTrace: [],
+        };
+      });
+  }
+
+  private async consumeStreamEvents(
+    pending: PendingStreamingRound<State, ToolRequest>,
+    eventStream: AsyncIterable<LlmStreamEvent>,
+  ): Promise<void> {
+    try {
+      for await (const event of eventStream) {
+        pending.rawEvents.push(event);
+      }
+    } catch (error) {
+      pending.rawEvents.push({
+        kind: 'error',
+        error: renderError(error),
+      });
+    }
+  }
+
+  private async pollPendingStreamingRound(): Promise<void> {
+    const pending = this.pendingStreamingRound;
+    if (!pending) {
+      return;
+    }
+
+    let processed = 0;
+    while (processed < STREAM_EVENT_BUDGET_PER_POLL) {
+      const event = pending.rawEvents.shift();
+      if (!event) {
+        break;
+      }
+
+      processed += 1;
+      const shouldBreak = await this.handlePendingStreamEvent(pending, event);
+      if (shouldBreak || this.pendingStreamingRound !== pending) {
+        break;
+      }
+    }
+
+    if (this.pendingStreamingRound !== pending || pending.completionHandled || !pending.completion) {
+      return;
+    }
+
+    pending.completionHandled = true;
+    await this.handlePendingStreamingCompletion(pending, pending.completion);
+  }
+
+  private async handlePendingStreamEvent(
+    pending: PendingStreamingRound<State, ToolRequest>,
+    event: LlmStreamEvent,
+  ): Promise<boolean> {
+    this.pendingLastEventAtStore = Date.now();
+
+    if (event.kind === 'thinking-chunk') {
+      this.thinkingTextStore += event.text;
+      this.emitEvent({
+        kind: 'update-pending-assistant-thinking',
+        text: this.thinkingTextStore,
+      });
+      return false;
+    }
+
+    if (event.kind === 'tool-progress') {
+      this.mergeToolProgressIntoThinking(event.text);
+      this.emitEvent({
+        kind: 'update-pending-assistant-thinking',
+        text: this.thinkingTextStore,
+      });
+      return false;
+    }
+
+    if (event.kind === 'assistant-chunk') {
+      this.streamChunkCounterStore += 1;
+      this.pendingAssistantTextStore += event.text;
+      this.emitEvent({
+        kind: 'assistant-chunk',
+        text: event.text,
+      });
+      return false;
+    }
+
+    if (event.kind === 'history-compacted') {
+      this.historyStore = cloneHistory(event.newHistory);
+      const summaryPreview = this.options.llmTransport.compactSummaryText(this.historyStore);
+      this.emitEvent({
+        kind: 'history-compacted',
+        droppedMessages: event.droppedMessages,
+        ...(summaryPreview !== undefined ? { summaryPreview } : {}),
+      });
+      return false;
+    }
+
+    if (event.kind === 'done') {
+      pending.streamEnded = true;
+      if (!this.pendingAssistantTextStore.trim()) {
+        this.emitEvent({ kind: 'remove-pending-assistant' });
+      } else {
+        this.historyStore.push({
+          role: 'assistant',
+          content: this.pendingAssistantTextStore,
+          imagePaths: [],
+        });
+        this.pendingUserTurnStore = undefined;
+        this.emitEvent({ kind: 'assistant-response-completed' });
+      }
+
+      this.clearStreamingUiState();
+      return true;
+    }
+
+    const retryState = this.tryFallbackToTextOnlyAndBuildRetryState(
+      event.error,
+      pending.pendingUserInput,
+    );
+    if (retryState !== undefined) {
+      if (!this.pendingAssistantTextStore.trim()) {
+        this.emitEvent({
+          kind: 'replace-pending-assistant',
+          text: '当前模型不支持图片输入，已自动去除图片并重试。',
+        });
+      }
+      this.emitEvent({ kind: 'assistant-response-completed' });
+      await this.startStreamingRound(retryState, pending.pendingUserInput, pending.turn, true);
+      return true;
+    }
+
+    if (!this.pendingAssistantTextStore.trim()) {
+      this.emitEvent({
+        kind: 'replace-pending-assistant',
+        text: `LLM 调用失败: ${event.error}`,
+      });
+    } else {
+      const suffix = `\n\n[Error] ${event.error}`;
+      this.pendingAssistantTextStore += suffix;
+      this.emitEvent({
+        kind: 'assistant-chunk',
+        text: suffix,
+      });
+    }
+
+    this.clearPendingStreamingState();
+    this.emitEvent({ kind: 'assistant-response-completed' });
+    return true;
+  }
+
+  private async handlePendingStreamingCompletion(
+    pending: PendingStreamingRound<State, ToolRequest>,
+    completion: ToolAgentRoundCompletion<State>,
+  ): Promise<void> {
+    if (completion.kind === 'failure') {
+      this.appendTrace(completion.requestTrace, pending.turn);
+
+      const textOnlyRetryState = this.tryFallbackToTextOnlyAndBuildRetryState(
+        completion.error,
+        pending.pendingUserInput,
+      );
+      if (textOnlyRetryState !== undefined) {
+        await this.startStreamingRound(
+          textOnlyRetryState,
+          pending.pendingUserInput,
+          pending.turn,
+          true,
+        );
+        return;
+      }
+
+      if (
+        this.options.llmTransport.isContextOverflowError(completion.error) &&
+        pending.turn.autoCompactAttempts < (this.options.maxAutoCompactRetries ?? 1)
+      ) {
+        pending.turn.autoCompactAttempts += 1;
+        const preparedRetry = this.options.truncateStateForContextRetry
+          ? this.options.truncateStateForContextRetry(
+              this.options.createToolAgentState(this.historyStore, pending.pendingUserInput),
+            )
+          : {
+              state: this.options.createToolAgentState(this.historyStore, pending.pendingUserInput),
+              changed: false,
+            };
+        const compaction = await this.compactHistory();
+        pending.turn.compactions.push(compaction);
+
+        if (compaction.droppedMessages === 0 && !preparedRetry.changed) {
+          this.emitEvent({
+            kind: 'replace-pending-assistant',
+            text: `检测到上下文超限，但历史已无法继续压缩。原始错误: ${completion.error}`,
+          });
+          this.clearPendingStreamingState();
+          this.emitEvent({ kind: 'assistant-response-completed' });
+          return;
+        }
+
+        const nextState =
+          compaction.droppedMessages === 0
+            ? preparedRetry.state
+            : this.options.rebuildRetryStateAfterCompaction
+              ? this.options.rebuildRetryStateAfterCompaction(
+                  this.historyStore,
+                  pending.pendingUserInput,
+                  preparedRetry.state,
+                )
+              : this.options.createToolAgentState(this.historyStore, pending.pendingUserInput);
+
+        await this.startStreamingRound(nextState, pending.pendingUserInput, pending.turn, true);
+        return;
+      }
+
+      if (!this.pendingAssistantTextStore.trim()) {
+        this.emitEvent({
+          kind: 'replace-pending-assistant',
+          text: `LLM 调用失败: ${completion.error}`,
+        });
+      }
+      this.clearPendingStreamingState();
+      this.emitEvent({ kind: 'assistant-response-completed' });
+      return;
+    }
+
+    const round = completion.result;
+    this.appendTrace(round.requestTrace, pending.turn);
+
+    if (round.step.kind === 'tool-calls') {
+      if (!this.pendingAssistantTextStore.trim()) {
+        this.emitEvent({ kind: 'remove-pending-assistant' });
+      }
+      this.clearPendingStreamingState();
+      const result = await this.processToolCalls(
+        round.state,
+        pending.pendingUserInput,
+        round.step.calls,
+        pending.turn,
+      );
+      this.emitSyncTurnResultEvents(result);
+      return;
+    }
+
+    const assistantText = this.options.extractAssistantText(round.state)?.trim();
+    if (!assistantText) {
+      await this.startStreamingRound(round.state, pending.pendingUserInput, pending.turn, false);
+      return;
+    }
+
+    if (!pending.streamEnded && !this.pendingAssistantTextStore.trim()) {
+      this.pendingAssistantTextStore = assistantText;
+      this.emitEvent({ kind: 'assistant-chunk', text: assistantText });
+      this.historyStore.push({
+        role: 'assistant',
+        content: assistantText,
+        imagePaths: [],
+      });
+      this.pendingUserTurnStore = undefined;
+      this.clearPendingStreamingState();
+      this.emitEvent({ kind: 'assistant-response-completed' });
+      return;
+    }
+
+    if (pending.streamEnded) {
+      this.clearPendingStreamingState();
+    }
+  }
+
+  private emitSyncTurnResultEvents(
+    result: RuntimeTurnResult<State, ToolRequest, TrustTarget>,
+  ): void {
+    if (result.kind === 'completed') {
+      this.emitEvent({ kind: 'begin-assistant-response' });
+      this.emitEvent({ kind: 'assistant-chunk', text: result.assistantText });
+      this.emitEvent({ kind: 'assistant-response-completed' });
+      return;
+    }
+
+    if (result.kind === 'requires-approval') {
+      this.emitEvent({
+        kind: 'approval-requested',
+        approval: result.approval,
+      });
+      return;
+    }
+
+    this.emitEvent({
+      kind: 'replace-pending-assistant',
+      text: `LLM 调用失败: ${result.error}`,
+    });
+    this.emitEvent({ kind: 'assistant-response-completed' });
+  }
+
+  private mergeToolProgressIntoThinking(progress: string): void {
+    const normalized = progress.trim();
+    if (!normalized) {
+      return;
+    }
+
+    if (!this.thinkingTextStore.trim()) {
+      this.thinkingTextStore = normalized;
+      return;
+    }
+
+    if (this.thinkingTextStore.split('\n').some((line) => line.trim() === normalized)) {
+      return;
+    }
+
+    if (!this.thinkingTextStore.endsWith('\n')) {
+      this.thinkingTextStore += '\n';
+    }
+    this.thinkingTextStore += normalized;
+  }
+
   private tryFallbackToTextOnlyAndBuildRetryState(
     error: string,
     pendingUserInput: string,
@@ -857,7 +1479,23 @@ export class AgentRuntime<
   }
 
   private emitEvent(event: RuntimeEvent<ToolRequest>): void {
+    this.eventQueueStore.push(event);
     this.options.onEvent?.(event);
+  }
+
+  private clearStreamingUiState(): void {
+    this.pendingStartedAtStore = undefined;
+    this.pendingLastEventAtStore = undefined;
+    this.streamChunkCounterStore = 0;
+    this.pendingAssistantTextStore = '';
+    this.thinkingTextStore = '';
+    this.compactionTextStore = '';
+  }
+
+  private clearPendingStreamingState(): void {
+    this.pendingStreamingRound?.cancel?.();
+    this.pendingStreamingRound = undefined;
+    this.clearStreamingUiState();
   }
 
   private async executeManualToolRequest(
@@ -1029,6 +1667,88 @@ function renderError(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+export function referencedPathsFromInput(input: string): string[] {
+  const seen = new Set<string>();
+  const paths: string[] = [];
+
+  for (const token of input.split(/\s+/u)) {
+    const path = token.startsWith('@') ? token.slice(1) : undefined;
+    if (!path) {
+      continue;
+    }
+
+    const normalized = path.replace(/\\/gu, '/');
+    if (seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    paths.push(normalized);
+  }
+
+  return paths;
+}
+
+export async function pendingWorkspaceFilesFromInput(
+  workspaceRoot: string,
+  text: string,
+): Promise<PendingWorkspaceFile[]> {
+  const files: PendingWorkspaceFile[] = [];
+
+  for (const path of referencedPathsFromInput(text)) {
+    try {
+      files.push(await pendingWorkspaceFileFromPath(workspaceRoot, path));
+    } catch {
+      // 与 Rust 保持一致：忽略不存在、不可读或不支持的引用。
+    }
+  }
+
+  return files;
+}
+
+function formatPendingWorkspaceFileContext(file: PendingWorkspaceFile): string {
+  return [
+    '[WORKSPACE_FILE]',
+    `path: ${file.path}`,
+    `attached_at_unix_ms: ${file.attachedAtUnixMs}`,
+    `chars: ${file.totalChars}`,
+    `truncated: ${file.truncated}`,
+    '',
+    file.content,
+  ].join('\n');
+}
+
+async function pendingWorkspaceFileFromPath(
+  workspaceRoot: string,
+  referencePath: string,
+): Promise<PendingWorkspaceFile> {
+  const target = join(workspaceRoot, referencePath);
+  const metadata = await stat(target);
+  if (!metadata.isFile()) {
+    throw new Error(`不是可引用的文件: ${target}`);
+  }
+
+  const bytes = await readFile(target);
+  if (bytes.includes(0)) {
+    throw new Error(`暂不支持引用二进制文件: ${referencePath}`);
+  }
+
+  const text = bytes.toString('utf8');
+  const chars = Array.from(text);
+  const truncated = chars.length > PENDING_WORKSPACE_FILE_MAX_CHARS;
+  const content = truncated
+    ? `${chars.slice(0, PENDING_WORKSPACE_FILE_MAX_CHARS).join('')}\n\n...<文件内容已截断>`
+    : text;
+
+  return {
+    path: referencePath.replace(/\\/gu, '/'),
+    totalChars: chars.length,
+    truncated,
+    attachedAtUnixMs: Date.now(),
+    content,
+  };
 }
 
 function pendingMcpResourceFromReadResult(

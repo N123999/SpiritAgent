@@ -90,6 +90,24 @@ export type ToolAgentRoundCompletion<State = JsonValue> =
   | { kind: 'success'; result: ToolAgentRoundResult<State> }
   | { kind: 'failure'; error: string; requestTrace: JsonValue[] };
 
+export type LlmStreamEvent =
+  | { kind: 'thinking-chunk'; text: string }
+  | { kind: 'tool-progress'; text: string }
+  | { kind: 'assistant-chunk'; text: string }
+  | {
+      kind: 'history-compacted';
+      newHistory: LlmMessage[];
+      droppedMessages: number;
+    }
+  | { kind: 'done' }
+  | { kind: 'error'; error: string };
+
+export interface StartedToolAgentRound<State = JsonValue> {
+  eventStream: AsyncIterable<LlmStreamEvent>;
+  completion: Promise<ToolAgentRoundCompletion<State>>;
+  cancel?: () => void;
+}
+
 export type AuthorizationDecision<TrustTarget = string> =
   | { kind: 'allowed' }
   | { kind: 'need-approval'; prompt: string; trustTarget?: TrustTarget };
@@ -129,6 +147,11 @@ export interface LlmTransport<Config, State = JsonValue> {
     state: State,
     tools: JsonValue,
   ): Promise<ToolAgentRoundCompletion<State>>;
+  startToolAgentRoundStreaming?(
+    config: Config,
+    state: State,
+    tools: JsonValue,
+  ): Promise<StartedToolAgentRound<State>>;
   compactHistoryManual(
     config: Config,
     history: LlmMessage[],

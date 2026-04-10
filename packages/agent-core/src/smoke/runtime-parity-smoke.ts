@@ -1,13 +1,19 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type {
   AuthorizationDecision,
   JsonValue,
   LlmMessage,
+  LlmStreamEvent,
   LlmTransport,
+  StartedToolAgentRound,
   ToolAgentRoundCompletion,
   ToolExecutor,
 } from '../ports.js';
 import { isOpenAiVisionUnsupportedError } from '../openai/transport.js';
-import { AgentRuntime, type RuntimeEvent } from '../runtime.js';
+import { AgentRuntime, pendingWorkspaceFilesFromInput, type RuntimeEvent } from '../runtime.js';
 
 import { printSmokeSection } from './openai-shared.js';
 
@@ -821,6 +827,302 @@ class FinalTextTransport implements LlmTransport<undefined, ScriptedState> {
   }
 }
 
+class StreamingFinalTransport implements LlmTransport<undefined, ScriptedState> {
+  async startToolAgentRound(
+    _config: undefined,
+    _state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    throw new Error('StreamingFinalTransport 应走 streaming 路径。');
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    return {
+      eventStream: streamFromEvents([
+        { kind: 'thinking-chunk', text: 'thinking...' },
+        { kind: 'tool-progress', text: 'searching workspace' },
+        { kind: 'assistant-chunk', text: 'STREAM_' },
+        { kind: 'assistant-chunk', text: 'OK' },
+        { kind: 'done' },
+      ]),
+      completion: (async () => {
+        await flushMicrotasks();
+        return {
+          kind: 'success',
+          result: {
+            state: {
+              messages: [...state.messages, { role: 'assistant', content: 'STREAM_OK' }],
+              steps: state.steps + 1,
+            },
+            step: { kind: 'final-response-ready' },
+            requestTrace: [{ mode: 'streaming-final' }],
+          },
+        };
+      })(),
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
+class WorkspaceContextTransport implements LlmTransport<undefined, ScriptedState> {
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    const workspaceMessages = state.messages.flatMap((message) => {
+      if (
+        !isJsonObject(message) ||
+        message.role !== 'system' ||
+        typeof message.content !== 'string' ||
+        !message.content.startsWith('[WORKSPACE_FILE]')
+      ) {
+        return [];
+      }
+
+      return [message.content];
+    });
+    const hasRuntimeContext = workspaceMessages.some(
+      (content) =>
+        content.includes('path: src/runtime.ts') &&
+        content.includes('export const runtime = true;'),
+    );
+    const hasReadmeContext = workspaceMessages.some(
+      (content) =>
+        content.includes('path: README.md') &&
+        content.includes('hello from readme'),
+    );
+
+    if (!hasRuntimeContext || !hasReadmeContext) {
+      return {
+        kind: 'failure',
+        error: 'workspace file context 未注入到 tool-agent state。',
+        requestTrace: [{ workspaceMessages }],
+      };
+    }
+
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'WORKSPACE_CONTEXT_OK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'workspace-context' }],
+      },
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
+class StreamingTimeoutTransport implements LlmTransport<undefined, ScriptedState> {
+  async startToolAgentRound(
+    _config: undefined,
+    _state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    throw new Error('StreamingTimeoutTransport 应走 streaming 路径。');
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    return {
+      eventStream: streamFromEvents([
+        { kind: 'assistant-chunk', text: 'PARTIAL' },
+      ]),
+      completion: Promise.resolve({
+        kind: 'success',
+        result: {
+          state: {
+            messages: [...state.messages, { role: 'assistant', content: 'PARTIAL' }],
+            steps: state.steps + 1,
+          },
+          step: { kind: 'final-response-ready' },
+          requestTrace: [{ mode: 'stream-timeout' }],
+        },
+      }),
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
+class StreamingToolRoundTransport implements LlmTransport<undefined, ScriptedState> {
+  private resolveCompletion:
+    | ((completion: ToolAgentRoundCompletion<ScriptedState>) => void)
+    | undefined;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'TOOL_ROUND_DONE' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'stream-tool-round-sync-fallback' }],
+      },
+    };
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    return {
+      eventStream: streamFromEvents([]),
+      completion: new Promise<ToolAgentRoundCompletion<ScriptedState>>((resolve) => {
+        this.resolveCompletion = resolve;
+      }),
+      cancel: () => {
+        this.resolveCompletion?.({
+          kind: 'failure',
+          error: 'cancelled',
+          requestTrace: [],
+        });
+      },
+    };
+  }
+
+  finish(state: ScriptedState): void {
+    this.resolveCompletion?.({
+      kind: 'success',
+      result: {
+        state,
+        step: {
+          kind: 'tool-calls',
+          calls: [
+            {
+              id: 'call-stream-tool',
+              name: 'search_files',
+              argumentsJson: '{"query":"later"}',
+            },
+          ],
+        },
+        requestTrace: [{ mode: 'stream-tool-round' }],
+      },
+    });
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
   toolDefinitionsJson(): JsonValue {
     return [];
@@ -932,6 +1234,8 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
 async function main(): Promise<void> {
   const backgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const visionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const timeoutEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
   const approvalExecutor = new ApprovalExecutor();
   const approvalRuntime = new AgentRuntime({
@@ -1172,6 +1476,155 @@ async function main(): Promise<void> {
     throw new Error('replaceFromArchive smoke 未恢复 llmHistory。');
   }
 
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-agent-runtime-'));
+  let workspaceFileSmoke: JsonValue;
+  try {
+    await mkdir(join(workspaceRoot, 'src'), { recursive: true });
+    await writeFile(join(workspaceRoot, 'src', 'runtime.ts'), 'export const runtime = true;\n');
+    await writeFile(join(workspaceRoot, 'README.md'), 'hello from readme\n');
+    await writeFile(join(workspaceRoot, 'large.txt'), 'x'.repeat(24_050));
+
+    const referencedFiles = await pendingWorkspaceFilesFromInput(
+      workspaceRoot,
+      '@src/runtime.ts 请参考 @README.md 和 @missing.rs 以及 @large.txt',
+    );
+    const referencedPaths = referencedFiles.map((file) => file.path);
+    if (referencedPaths.join('|') !== 'src/runtime.ts|README.md|large.txt') {
+      throw new Error('workspace file helper smoke 未按预期提取现有引用。');
+    }
+
+    const largeFile = referencedFiles.find((file) => file.path === 'large.txt');
+    if (!largeFile || !largeFile.truncated || !largeFile.content.endsWith('...<文件内容已截断>')) {
+      throw new Error('workspace file helper smoke 未按预期截断超长文件。');
+    }
+
+    const workspaceRuntime = new AgentRuntime({
+      config: undefined,
+      llmTransport: new WorkspaceContextTransport(),
+      toolExecutor: new HostExecutor(),
+      createToolAgentState: createScriptedState,
+      appendToolResultMessage: appendScriptedToolResult,
+      appendUserMessage: appendScriptedUserMessage,
+      extractAssistantText: extractScriptedAssistantText,
+      resolveWorkspaceFilesFromInput: (text) => pendingWorkspaceFilesFromInput(workspaceRoot, text),
+    });
+
+    const workspaceResult = await workspaceRuntime.submitUserTurn(
+      '@src/runtime.ts 请结合 @README.md 总结',
+    );
+    if (
+      workspaceResult.kind !== 'completed' ||
+      workspaceResult.assistantText !== 'WORKSPACE_CONTEXT_OK'
+    ) {
+      throw new Error('workspace file context smoke 未完成闭环。');
+    }
+
+    const injectedContexts = workspaceRuntime.history().filter(
+      (message) =>
+        message.role === 'system' && message.content.startsWith('[WORKSPACE_FILE]'),
+    );
+    if (injectedContexts.length !== 2) {
+      throw new Error('workspace file context smoke 注入的 system context 数量不正确。');
+    }
+
+    workspaceFileSmoke = {
+      referencedPaths,
+      truncatedLargeFile: largeFile.truncated,
+      injectedContexts: injectedContexts.length,
+      assistantText: workspaceResult.assistantText,
+    };
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+
+  const streamingRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingFinalTransport(),
+    toolExecutor: new HostExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => streamingEvents.push(event),
+  });
+
+  await streamingRuntime.startUserTurnStreaming('请流式输出');
+  for (let index = 0; index < 24 && streamingRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(8);
+    await streamingRuntime.poll();
+  }
+
+  if (streamingRuntime.isBusy()) {
+    throw new Error('streaming final smoke 未在预期轮次内完成。');
+  }
+
+  const drainedStreamingEvents = streamingRuntime.drainEvents();
+  if (!drainedStreamingEvents.some((event) => event.kind === 'begin-assistant-response')) {
+    throw new Error('streaming final smoke 缺少 begin event。');
+  }
+  if (
+    !drainedStreamingEvents.some(
+      (event) => event.kind === 'update-pending-assistant-thinking' && event.text.includes('searching workspace'),
+    )
+  ) {
+    throw new Error('streaming final smoke 缺少 thinking/tool-progress 聚合事件。');
+  }
+  if (
+    drainedStreamingEvents.filter((event) => event.kind === 'assistant-chunk').length < 2
+  ) {
+    throw new Error('streaming final smoke 缺少 assistant chunk 事件。');
+  }
+  if (!drainedStreamingEvents.some((event) => event.kind === 'assistant-response-completed')) {
+    throw new Error('streaming final smoke 缺少 completed event。');
+  }
+
+  const timeoutRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingTimeoutTransport(),
+    toolExecutor: new HostExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => timeoutEvents.push(event),
+  });
+
+  await timeoutRuntime.startUserTurnStreaming('请等待超时');
+  await flushMicrotasks();
+  await timeoutRuntime.poll();
+  timeoutRuntime.handleStreamStallTimeout(Date.now() + 25_000);
+  const drainedTimeoutEvents = timeoutRuntime.drainEvents();
+  if (
+    !drainedTimeoutEvents.some(
+      (event) => event.kind === 'assistant-chunk' && event.text.includes('[stream timeout]'),
+    )
+  ) {
+    throw new Error('stream timeout smoke 未产生 timeout chunk。');
+  }
+  if (!drainedTimeoutEvents.some((event) => event.kind === 'assistant-response-completed')) {
+    throw new Error('stream timeout smoke 未完成 pending response。');
+  }
+
+  const toolRoundTransport = new StreamingToolRoundTransport();
+  const noTimeoutRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: toolRoundTransport,
+    toolExecutor: new BackgroundExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+  });
+
+  await noTimeoutRuntime.startUserTurnStreaming('这是一个 tool round');
+  noTimeoutRuntime.handleStreamStallTimeout(Date.now() + 25_000);
+  if (!noTimeoutRuntime.isBusy()) {
+    throw new Error('tool round timeout smoke 不应在 decision 未完成时超时退出。');
+  }
+  toolRoundTransport.finish(createScriptedState(noTimeoutRuntime.history() as LlmMessage[], '这是一个 tool round'));
+  await flushMicrotasks();
+  await noTimeoutRuntime.poll();
+
   printSmokeSection('approval guidance smoke', approvalCompleted);
   printSmokeSection('compact retry smoke', compactResult);
   printSmokeSection('background execution smoke', backgroundResult);
@@ -1180,6 +1633,9 @@ async function main(): Promise<void> {
   printSmokeSection('mcp prompt smoke', promptApplied);
   printSmokeSection('mcp resource smoke', resourceResult);
   printSmokeSection('archive restore smoke', archive);
+  printSmokeSection('workspace file context smoke', workspaceFileSmoke);
+  printSmokeSection('streaming final smoke events', drainedStreamingEvents);
+  printSmokeSection('stream timeout smoke events', drainedTimeoutEvents);
 }
 
 function createScriptedState(history: LlmMessage[], userInput: string): ScriptedState {
@@ -1333,6 +1789,19 @@ function cloneJsonValue(value: JsonValue): JsonValue {
   return Object.fromEntries(
     Object.entries(value).map(([key, entryValue]) => [key, cloneJsonValue(entryValue)]),
   );
+}
+
+async function* streamFromEvents(events: LlmStreamEvent[]): AsyncIterable<LlmStreamEvent> {
+  for (const event of events) {
+    await Promise.resolve();
+    yield event;
+  }
+}
+
+async function flushMicrotasks(rounds = 4): Promise<void> {
+  for (let index = 0; index < rounds; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 main().catch((error: unknown) => {
