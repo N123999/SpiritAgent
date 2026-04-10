@@ -552,11 +552,9 @@ impl AgentRuntime {
     }
 
     fn make_tool_agent_state(&self, user_input: &str) -> ToolAgentState {
-        let tools = self.tool_executor.tool_definitions_json();
         crate::llm_client::start_tool_agent_state(
             self.session.llm_history(),
             user_input,
-            &tools,
             &self.workspace_root,
         )
     }

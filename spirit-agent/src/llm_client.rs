@@ -14,8 +14,13 @@ use crate::ports::Telemetry;
 
 const COMPACT_SUMMARY_PREFIX: &str = "[SPIRIT_COMPACT_SUMMARY]";
 const COMPACT_MAX_ROUNDS: usize = 64;
-/// 测试用极简 system（工具 schema 仍随请求下发）。
-const TOOL_AGENT_SYSTEM_PROMPT: &str = "你是 Spirit Agent 代理。";
+/// 工具定义随每轮请求的 `tools` 下发；此处仅固定身份与原则约束，不枚举具体工具名。
+const TOOL_AGENT_SYSTEM_PROMPT: &str = concat!(
+    "你是 Spirit Agent 代理。\n\n",
+    "本回合可用的工具以 API 请求中的 tools 字段为准；仅能通过 function calling 调用其中已声明的函数。",
+    "当用户未明确要求时（例如 「请帮我改个代码」、「请读取文件」等），不要主动使用工具。",
+    "不要在自然语言回复中捏造或声称本请求未提供的工具名或能力（例如「联网搜索」「上传 PDF」等）。",
+);
 const FINAL_RESPONSE_SYSTEM_PROMPT: &str = "你是 Spirit Agent 代理。";
 
 #[derive(Clone)]
@@ -63,47 +68,14 @@ pub struct ToolAgentState {
     pub steps: usize,
 }
 
-/// 把当前请求的 `tools` 里的 **function.name** 写进 system 正文，避免模型只在「JSON 并列字段」里看到 tools、
-/// 却在自然语言里编造「联网搜索」等与 schema 无关的能力（provider/模型侧对 tools 的接地不一致时尤其明显）。
-fn tool_names_block_for_system_prompt(tools: &Value) -> String {
-    let Some(arr) = tools.as_array() else {
-        return String::new();
-    };
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|t| {
-            t.get("function")
-                .and_then(|f| f.get("name"))
-                .and_then(Value::as_str)
-        })
-        .collect();
-    if names.is_empty() {
-        return String::new();
-    }
-    let bullets = names
-        .iter()
-        .map(|n| format!("- `{}`", n))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "\n\n本回合 API 已注册的 function 名称如下（仅能通过 function calling 按名调用；**禁止**在回复中捏造其它工具名或未提供的能力，例如「联网搜索」「上传 PDF」等）：\n{bullets}"
-    )
-}
-
 pub fn start_tool_agent_state(
     history: &[LlmMessage],
     user_input: &str,
-    tools: &Value,
     asset_root: &Path,
 ) -> ToolAgentState {
-    let system_text = format!(
-        "{}{}",
-        TOOL_AGENT_SYSTEM_PROMPT,
-        tool_names_block_for_system_prompt(tools)
-    );
     let mut messages = vec![json!({
         "role": "system",
-        "content": system_text
+        "content": TOOL_AGENT_SYSTEM_PROMPT
     })];
 
     messages.extend(
