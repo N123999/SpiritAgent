@@ -1,5 +1,8 @@
 use ignore::{DirEntry, WalkBuilder};
-use std::{collections::HashSet, path::Path};
+use std::path::Path;
+
+#[cfg(test)]
+use std::collections::HashSet;
 
 const DEFAULT_SUGGESTION_LIMIT: usize = 128;
 
@@ -54,6 +57,7 @@ pub(crate) fn replace_query(
     (next, next_cursor)
 }
 
+#[cfg(test)]
 pub(crate) fn referenced_paths(input: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut paths = Vec::new();
