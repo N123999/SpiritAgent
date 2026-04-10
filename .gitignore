@@ -1,1 +1,4 @@
 spirit-agent/target
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
