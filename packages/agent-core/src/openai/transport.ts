@@ -40,6 +40,7 @@ const TOOL_OUTPUT_RETRY_MAX_CHARS = 12_000;
 const TOOL_MEMORY_RETRY_MAX_CHARS = 4_000;
 const TOOL_TRUNCATION_HEAD_RATIO_NUM = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
+const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
 
 export interface OpenAiTransportConfig {
   apiKey: string;
@@ -94,13 +95,17 @@ export function startOpenAiToolAgentState(
   history: LlmMessage[],
   userInput: string,
   assetRoot = process.cwd(),
-  _enabledRules: OpenAiEnabledRule[] = [],
+  enabledRules: OpenAiEnabledRule[] = [],
 ): OpenAiToolAgentState {
+  const rulesSystemMessage = buildRulesSystemMessage(enabledRules);
   const messages: JsonValue[] = [
     {
       role: 'system',
       content: TOOL_AGENT_SYSTEM_PROMPT,
     },
+    ...(rulesSystemMessage === undefined
+      ? []
+      : [{ role: 'system', content: rulesSystemMessage }]),
     ...llmHistoryToOpenAiMessages(history, assetRoot),
   ];
 
@@ -249,9 +254,9 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   userInput: string,
   retryState: OpenAiToolAgentState,
   assetRoot = process.cwd(),
-  _enabledRules: OpenAiEnabledRule[] = [],
+  enabledRules: OpenAiEnabledRule[] = [],
 ): OpenAiToolAgentState {
-  const rebuilt = startOpenAiToolAgentState(history, userInput, assetRoot, _enabledRules);
+  const rebuilt = startOpenAiToolAgentState(history, userInput, assetRoot, enabledRules);
   rebuilt.steps = retryState.steps;
 
   const userIndex = findLastMatchingIndex(
@@ -522,6 +527,32 @@ export class OpenAiTransport
       tool_agent: TOOL_AGENT_SYSTEM_PROMPT,
     };
   }
+}
+
+export function buildRulesSystemMessage(
+  enabledRules: OpenAiEnabledRule[],
+): string | undefined {
+  if (enabledRules.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    RULES_SECTION_PREFIX,
+    'Apply the following enabled rules as additive constraints from their source files.',
+    'These rules do not replace the main system prompt; they extend it.',
+    '',
+  ];
+
+  for (const rule of enabledRules) {
+    lines.push(
+      `<rule id="${escapeRuleAttribute(rule.id)}" scope="${escapeRuleAttribute(rule.scope)}" title="${escapeRuleAttribute(rule.title)}" path="${escapeRuleAttribute(rule.path)}">`,
+    );
+    lines.push(rule.content.trimEnd());
+    lines.push('</rule>');
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
 }
 
 function createOpenAiClient(config: OpenAiTransportConfig): OpenAI {
@@ -1096,4 +1127,12 @@ function trimLeadingStreamLineBreaks(existingText: string, nextText: string): st
   }
 
   return nextText.replace(/^[\r\n]+/u, '');
+}
+
+function escapeRuleAttribute(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }

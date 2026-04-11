@@ -3,6 +3,7 @@ import { stdin, stdout } from 'node:process';
 import {
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
+  buildRulesSystemMessage,
   extractLastOpenAiAssistantText,
   OpenAiTransport,
   rebuildOpenAiToolAgentStateAfterCompaction,
@@ -298,10 +299,16 @@ peer.on('runtime.exportState', async () => {
     throw new Error('transportConfig 尚未初始化。');
   }
 
+  const baseSystemPrompts = llmTransport.llmSystemPromptsForExport() as Record<string, JsonValue>;
+  const rulesSystemPrompt = buildRulesSystemMessage(enabledRules);
+
   return {
     apiMessages: llmTransport.llmHistoryAsApiMessages([...target.history()]),
     requestTrace: [...target.requestTrace()],
-    systemPrompts: llmTransport.llmSystemPromptsForExport(),
+    systemPrompts: {
+      ...baseSystemPrompts,
+      ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
+    },
   };
 });
 
