@@ -44,6 +44,7 @@ pub struct BottomFormView {
     pub title: String,
     pub fields: Vec<BottomFormFieldView>,
     pub selected_field: usize,
+    pub scroll_offset: usize,
     pub footer_hint: String,
 }
 
@@ -72,6 +73,7 @@ pub enum BottomFormFieldEditorView {
         id: String,
         checked: bool,
         disabled: bool,
+        path: Option<String>,
     },
 }
 

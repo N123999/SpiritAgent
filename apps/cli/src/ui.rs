@@ -19,7 +19,8 @@ use crate::{
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
     view::{
-        AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
+        AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind,
+        BottomFormView,
         ChatMessage, InputSuggestionKind, MessageRole,
         PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
@@ -39,6 +40,17 @@ const SPIRIT_LOGO_LINES: [&str; 6] = [
 thread_local! {
     static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
         RefCell::new(HashMap::new());
+}
+
+struct BottomFormRenderResult {
+    cursor: Option<(u16, u16)>,
+    scroll_offset: Option<usize>,
+}
+
+struct RulesBottomFormLayout {
+    content_lines: Vec<Line<'static>>,
+    field_ranges: Vec<Option<(usize, usize)>>,
+    footer_lines: Vec<Line<'static>>,
 }
 
 fn conversation_logo_width(available_width: u16) -> u16 {
@@ -71,13 +83,13 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         })
         .split(frame.area());
     let content_area = root_chunks[0];
+    let input_inner_width = content_area.width.saturating_sub(2) as usize;
+    let input_height = input_block_height(&app, input_inner_width);
     let bottom_form_height = app
         .bottom_form
         .as_ref()
-        .map(|f| bottom_form_block_height(f, content_area.width))
+        .map(|f| bottom_form_display_height(f, content_area.width, content_area.height, input_height))
         .unwrap_or(0);
-    let input_inner_width = content_area.width.saturating_sub(2) as usize;
-    let input_height = input_block_height(&app, input_inner_width);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -169,7 +181,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
 
     if show_bottom_form {
         if let Some(form) = &app.bottom_form {
-            if let Some((cursor_x, cursor_y)) = draw_bottom_form(frame, chunks[2], form) {
+            let render = draw_bottom_form(frame, chunks[2], form);
+            if let Some(scroll_offset) = render.scroll_offset {
+                shell.sync_active_bottom_form_scroll(scroll_offset);
+            }
+            if let Some((cursor_x, cursor_y)) = render.cursor {
                 frame.set_cursor_position((cursor_x, cursor_y));
             }
         }
@@ -1495,6 +1511,8 @@ fn suggestion_summary(command: &str) -> String {
         "/sessions" => t!("ui.suggestion.summary.sessions").into_owned(),
         "/image" => t!("ui.suggestion.summary.image").into_owned(),
         "/mcp" => t!("ui.suggestion.summary.mcp").into_owned(),
+        "/create-rule" => t!("ui.suggestion.summary.create_rule").into_owned(),
+        "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
         _ => String::new(),
@@ -1534,6 +1552,15 @@ fn suggestion_usage_lines(command: &str) -> Vec<String> {
             "    /mcp prompt [server] <prompt> [args_json]".to_string(),
             t!("ui.suggestion.usage.note").into_owned(),
             t!("ui.suggestion.usage.mcp_note").into_owned(),
+        ],
+        "/create-rule" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            format!("    {}", t!("ui.suggestion.usage.create_rule.repo")),
+            format!("    {}", t!("ui.suggestion.usage.create_rule.user")),
+        ],
+        "/rules" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /rules".to_string(),
         ],
         "/log" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -1779,6 +1806,10 @@ fn bottom_form_field_outer_height(field: &BottomFormFieldView, text_inner_w: usi
 }
 
 fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
+    if matches!(form.kind, BottomFormKind::Rules) {
+        return rules_bottom_form_block_height(form, panel_width);
+    }
+
     let text_inner_w = bottom_form_text_inner_width(panel_width);
     let content_w = bottom_form_content_width(panel_width);
     let fields_height = form
@@ -1795,6 +1826,35 @@ fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
         .saturating_add(footer_gap)
         .saturating_add(footer_height)
         .saturating_add(4) as u16
+}
+
+fn bottom_form_display_height(
+    form: &BottomFormView,
+    panel_width: u16,
+    panel_height: u16,
+    input_height: u16,
+) -> u16 {
+    let full_height = bottom_form_block_height(form, panel_width);
+    if !matches!(form.kind, BottomFormKind::Rules) {
+        return full_height;
+    }
+
+    let available = panel_height.saturating_sub(input_height).max(3);
+    let ratio_cap = panel_height.saturating_mul(3) / 5;
+    let capped = available.min(ratio_cap.max(3));
+    full_height.min(capped.max(3))
+}
+
+fn rules_bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
+    let layout = build_rules_bottom_form_layout(form, bottom_form_content_width(panel_width));
+    let content_height = layout.content_lines.len().max(1) as u16;
+    let footer_height = layout.footer_lines.len().max(1) as u16;
+    let footer_gap = if layout.content_lines.is_empty() { 0 } else { 1 };
+
+    content_height
+        .saturating_add(footer_height)
+        .saturating_add(footer_gap)
+        .saturating_add(4)
 }
 
 /// Character-wrapped visual rows for one logical line (no `\n`), aligned with `wrapped_single_line_cursor_position`.
@@ -1886,7 +1946,11 @@ fn draw_bottom_form(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
     form: &BottomFormView,
-) -> Option<(u16, u16)> {
+) -> BottomFormRenderResult {
+    if matches!(form.kind, BottomFormKind::Rules) {
+        return draw_rules_bottom_form(frame, area, form);
+    }
+
     let outer_border_style = subtle_aux_text_style();
     let outer_title_style = subtle_aux_text_style();
     let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
@@ -1899,7 +1963,10 @@ fn draw_bottom_form(
 
     let content_area = inset_rect(inner_area, 2, 1);
     if content_area.width < 3 || content_area.height == 0 {
-        return None;
+        return BottomFormRenderResult {
+            cursor: None,
+            scroll_offset: None,
+        };
     }
 
     let text_inner_w = bottom_form_text_inner_width(area.width);
@@ -1983,7 +2050,261 @@ fn draw_bottom_form(
     };
     frame.render_widget(Paragraph::new(footer_lines), footer_area);
 
-    cursor
+    BottomFormRenderResult {
+        cursor,
+        scroll_offset: None,
+    }
+}
+
+fn draw_rules_bottom_form(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    form: &BottomFormView,
+) -> BottomFormRenderResult {
+    let outer_border_style = subtle_aux_text_style();
+    let outer_title_style = subtle_aux_text_style();
+    let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
+    let outer_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(outer_border_style)
+        .title(Line::from(Span::styled(title, outer_title_style)));
+    let inner_area = outer_block.inner(area);
+    frame.render_widget(outer_block, area);
+
+    let content_area = inset_rect(inner_area, 2, 1);
+    if content_area.width < 3 || content_area.height == 0 {
+        return BottomFormRenderResult {
+            cursor: None,
+            scroll_offset: Some(0),
+        };
+    }
+
+    let layout = build_rules_bottom_form_layout(form, content_area.width as usize);
+    let footer_height = layout.footer_lines.len().max(1) as u16;
+    let footer_gap = if layout.content_lines.is_empty() { 0 } else { 1 };
+    let footer_y = content_area
+        .y
+        .saturating_add(content_area.height.saturating_sub(footer_height));
+    let fields_limit_y = footer_y.saturating_sub(footer_gap);
+    let visible_height = fields_limit_y.saturating_sub(content_area.y) as usize;
+
+    if visible_height > 0 {
+        let max_scroll = layout.content_lines.len().saturating_sub(visible_height);
+        let mut effective_scroll = form.scroll_offset.min(max_scroll);
+
+        if let Some(Some((selected_start, selected_end))) = layout.field_ranges.get(form.selected_field)
+        {
+            if *selected_start < effective_scroll {
+                effective_scroll = *selected_start;
+            } else if *selected_end >= effective_scroll.saturating_add(visible_height) {
+                effective_scroll = selected_end
+                    .saturating_add(1)
+                    .saturating_sub(visible_height);
+            }
+        }
+
+        let fields_area = Rect {
+            x: content_area.x,
+            y: content_area.y,
+            width: content_area.width,
+            height: fields_limit_y.saturating_sub(content_area.y),
+        };
+        let visible_lines = layout
+            .content_lines
+            .iter()
+            .skip(effective_scroll)
+            .take(visible_height)
+            .cloned()
+            .collect::<Vec<_>>();
+        frame.render_widget(Paragraph::new(visible_lines), fields_area);
+
+        let footer_area = Rect {
+            x: content_area.x,
+            y: footer_y,
+            width: content_area.width,
+            height: footer_height,
+        };
+        frame.render_widget(Paragraph::new(layout.footer_lines), footer_area);
+
+        return BottomFormRenderResult {
+            cursor: None,
+            scroll_offset: Some(effective_scroll),
+        };
+    }
+
+    let footer_area = Rect {
+        x: content_area.x,
+        y: footer_y,
+        width: content_area.width,
+        height: footer_height,
+    };
+    frame.render_widget(Paragraph::new(layout.footer_lines), footer_area);
+
+    BottomFormRenderResult {
+        cursor: None,
+        scroll_offset: Some(0),
+    }
+}
+
+fn build_rules_bottom_form_layout(form: &BottomFormView, max_width: usize) -> RulesBottomFormLayout {
+    let mut content_lines = Vec::new();
+    let mut field_ranges = vec![None; form.fields.len()];
+    let checkbox_column_width = form
+        .fields
+        .iter()
+        .filter_map(|field| match &field.editor {
+            BottomFormFieldEditorView::Checkbox { checked, .. } => {
+                Some(UnicodeWidthStr::width(rules_checkbox_label_text(&field.label, *checked).as_str()))
+            }
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+
+    for (index, field) in form.fields.iter().enumerate() {
+        let start = content_lines.len();
+        match &field.editor {
+            BottomFormFieldEditorView::Section { text } => {
+                let section_style = subtle_aux_text_style().add_modifier(Modifier::BOLD);
+                for line in build_bottom_form_footer_lines(text, max_width) {
+                    let text = line
+                        .spans
+                        .into_iter()
+                        .map(|span| span.content.into_owned())
+                        .collect::<String>();
+                    content_lines.push(Line::from(Span::styled(text, section_style)));
+                }
+            }
+            BottomFormFieldEditorView::Checkbox {
+                checked,
+                disabled,
+                path,
+                ..
+            } => {
+                content_lines.push(build_rules_checkbox_header_line(
+                    &field.label,
+                    path.as_deref(),
+                    *checked,
+                    *disabled,
+                    index == form.selected_field,
+                    checkbox_column_width,
+                    max_width,
+                ));
+                if !field.help.trim().is_empty() {
+                    content_lines.extend(build_bottom_form_footer_lines(&field.help, max_width));
+                }
+            }
+            BottomFormFieldEditorView::Text { .. } | BottomFormFieldEditorView::Choice { .. } => {}
+        }
+
+        if content_lines.len() > start {
+            field_ranges[index] = Some((start, content_lines.len().saturating_sub(1)));
+        }
+
+        if index + 1 < form.fields.len() {
+            content_lines.push(Line::from(Span::styled(String::new(), subtle_aux_text_style())));
+        }
+    }
+
+    RulesBottomFormLayout {
+        content_lines,
+        field_ranges,
+        footer_lines: build_bottom_form_footer_lines(&form.footer_hint, max_width),
+    }
+}
+
+fn build_rules_checkbox_header_line(
+    label: &str,
+    path: Option<&str>,
+    checked: bool,
+    disabled: bool,
+    is_selected: bool,
+    checkbox_column_width: usize,
+    max_width: usize,
+) -> Line<'static> {
+    let label_style = if disabled {
+        subtle_aux_text_style().add_modifier(Modifier::DIM)
+    } else if is_selected {
+        Style::default().fg(Color::White)
+    } else {
+        subtle_aux_text_style()
+    };
+    let path_style = if disabled {
+        subtle_aux_text_style().add_modifier(Modifier::DIM)
+    } else {
+        subtle_aux_text_style()
+    };
+    let left_text = rules_checkbox_label_text(label, checked);
+
+    let Some(path_text) = path.filter(|value| !value.is_empty()) else {
+        return Line::from(Span::styled(left_text, label_style));
+    };
+
+    let left_width = UnicodeWidthStr::width(left_text.as_str());
+    if max_width == 0 || left_width >= max_width {
+        return Line::from(Span::styled(
+            truncate_to_width(&left_text, max_width.max(1)),
+            label_style,
+        ));
+    }
+
+    let description_gap = if max_width >= 40 {
+        4
+    } else if max_width >= 24 {
+        3
+    } else {
+        2
+    };
+    let base_column = checkbox_column_width.max(left_width);
+    let available_for_path = max_width.saturating_sub(base_column + description_gap);
+    if available_for_path == 0 {
+        return Line::from(Span::styled(left_text, label_style));
+    }
+
+    let rendered_path = truncate_from_left_to_width(path_text, available_for_path);
+    let gap = base_column
+        .saturating_sub(left_width)
+        .saturating_add(description_gap);
+
+    Line::from(vec![
+        Span::styled(left_text, label_style),
+        Span::styled(" ".repeat(gap), subtle_aux_text_style()),
+        Span::styled(rendered_path, path_style),
+    ])
+}
+
+fn rules_checkbox_label_text(label: &str, checked: bool) -> String {
+    let checkbox_text = if checked { "[x]" } else { "[ ]" };
+    format!("{} {}", checkbox_text, label)
+}
+
+fn truncate_from_left_to_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if UnicodeWidthStr::width(text) <= max_width {
+        return text.to_string();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+
+    let mut collected = Vec::new();
+    let mut used_width = 1;
+    for ch in text.chars().rev() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if ch_width == 0 {
+            continue;
+        }
+        if used_width + ch_width > max_width {
+            break;
+        }
+        collected.push(ch);
+        used_width += ch_width;
+    }
+    collected.reverse();
+
+    format!("…{}", collected.into_iter().collect::<String>())
 }
 
 fn draw_bottom_form_section_field(
@@ -2234,6 +2555,7 @@ mod tests {
                 },
             ],
             selected_field: 2,
+            scroll_offset: 0,
             footer_hint: footer_hint.to_string(),
         }
     }

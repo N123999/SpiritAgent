@@ -353,8 +353,16 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
             Event::Mouse(mouse) => {
                 flush_pending_text(shell, &mut pending_text);
                 match mouse.kind {
-                    MouseEventKind::ScrollUp => shell.scroll_history_up(3),
-                    MouseEventKind::ScrollDown => shell.scroll_history_down(3),
+                    MouseEventKind::ScrollUp => {
+                        if !shell.scroll_active_bottom_form_up(3) {
+                            shell.scroll_history_up(3)
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if !shell.scroll_active_bottom_form_down(3) {
+                            shell.scroll_history_down(3)
+                        }
+                    }
                     MouseEventKind::Down(MouseButton::Left) => {
                         shell.conversation_left_down(mouse.column, mouse.row);
                     }

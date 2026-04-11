@@ -69,21 +69,6 @@ export interface BridgeExportState {
   systemPrompts: JsonValue;
 }
 
-export type RuntimeCompletedTurnResult =
-  | {
-      kind: 'completed';
-      assistantText: string;
-    }
-  | {
-      kind: 'requires-approval';
-      toolName: string;
-      prompt: string;
-    }
-  | {
-      kind: 'failed';
-      error: string;
-    };
-
 export interface RuntimeInitParams {
   transportConfig: OpenAiTransportConfig;
   history?: LlmMessage[];

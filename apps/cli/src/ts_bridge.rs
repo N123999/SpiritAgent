@@ -111,24 +111,6 @@ struct BridgeExportState {
     system_prompts: Value,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "kind")]
-pub enum CompletedTurnResult {
-    #[serde(rename = "completed")]
-    Completed {
-        #[serde(rename = "assistantText")]
-        assistant_text: String,
-    },
-    #[serde(rename = "requires-approval")]
-    RequiresApproval {
-        #[serde(rename = "toolName")]
-        tool_name: String,
-        prompt: String,
-    },
-    #[serde(rename = "failed")]
-    Failed { error: String },
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BridgePendingApproval {
@@ -339,15 +321,6 @@ impl TsBridgeRuntime {
             system_prompts: export.system_prompts,
             api_request_trace: export.request_trace,
         })
-    }
-
-    pub fn take_completed_turn_result(&mut self) -> Result<Option<CompletedTurnResult>> {
-        let value = self.call_bridge("runtime.takeCompletedTurnResult", None)?;
-        if value.is_null() {
-            return Ok(None);
-        }
-
-        Ok(Some(serde_json::from_value(value)?))
     }
 
     pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {

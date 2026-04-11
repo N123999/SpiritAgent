@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     env, fs,
     fs::OpenOptions,
-    path::{Path, PathBuf},
+    path::Path,
     process::Command,
     sync::{
         Arc,
@@ -22,7 +22,7 @@ use crate::{
     logging,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
-    rules::{self, RuleEntry, RuleScope, RuleStateFile},
+    rules::{self, RuleEntry, RuleStateFile},
     runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
@@ -38,13 +38,6 @@ struct PendingShellExecution {
     tool_call_id: String,
     command: String,
     result_rx: Receiver<anyhow::Result<String>>,
-}
-
-struct PendingCreateRuleGeneration {
-    scope: RuleScope,
-    target_path: PathBuf,
-    existed_before: bool,
-    buffered_response: String,
 }
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
@@ -71,7 +64,6 @@ pub struct TuiShell {
     pending_assistant_msg_index: Option<usize>,
     next_local_shell_tool_id: usize,
     pending_shell_executions: Vec<PendingShellExecution>,
-    pending_create_rule_generation: Option<PendingCreateRuleGeneration>,
     last_mcp_status_revision: u64,
     slash: slash::SlashState,
     model_picker_active: bool,
@@ -145,7 +137,6 @@ impl TuiShell {
             pending_assistant_msg_index: None,
             next_local_shell_tool_id: 0,
             pending_shell_executions: Vec::new(),
-            pending_create_rule_generation: None,
             last_mcp_status_revision: initial_mcp_status.revision,
             slash: slash::SlashState::new(),
             model_picker_active: false,
@@ -416,16 +407,6 @@ impl TuiShell {
         });
     }
 
-    fn replace_agent_message(&mut self, index: usize, content: String) {
-        if let Some(message) = self.messages.get_mut(index) {
-            message.content = content;
-            message.tool_block = None;
-            return;
-        }
-
-        self.push_agent_message(content);
-    }
-
     pub(crate) fn clear_chat_for_slash(&mut self) {
         self.messages.clear();
         self.assistant_aux_by_message.clear();
@@ -465,6 +446,36 @@ impl TuiShell {
 
     pub fn is_bottom_form_active(&self) -> bool {
         self.bottom_form.is_some()
+    }
+
+    pub fn sync_active_bottom_form_scroll(&mut self, scroll_offset: usize) {
+        if let Some(form) = self.bottom_form.as_mut() {
+            form.scroll_offset = scroll_offset;
+        }
+    }
+
+    pub fn scroll_active_bottom_form_up(&mut self, lines: usize) -> bool {
+        let Some(form) = self.bottom_form.as_mut() else {
+            return false;
+        };
+        if !matches!(form.kind, BottomFormKind::Rules) {
+            return false;
+        }
+
+        form.scroll_offset = form.scroll_offset.saturating_sub(lines);
+        true
+    }
+
+    pub fn scroll_active_bottom_form_down(&mut self, lines: usize) -> bool {
+        let Some(form) = self.bottom_form.as_mut() else {
+            return false;
+        };
+        if !matches!(form.kind, BottomFormKind::Rules) {
+            return false;
+        }
+
+        form.scroll_offset = form.scroll_offset.saturating_add(lines);
+        true
     }
 
     pub fn is_slash_mode_active(&self) -> bool {
@@ -1097,7 +1108,7 @@ impl TuiShell {
                 Ok(()) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: format!("规则状态已保存: {}", path.display()),
+                        content: t!("tui.rules.saved", path = path.display()).into_owned(),
                         tool_block: None,
                     });
                     self.bottom_form = None;
@@ -1105,7 +1116,7 @@ impl TuiShell {
                 Err(err) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: format!("刷新规则状态失败: {}", err),
+                        content: t!("tui.rules.refresh_failed", err = err).into_owned(),
                         tool_block: None,
                     });
                 }
@@ -1113,94 +1124,9 @@ impl TuiShell {
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("保存规则状态失败: {}", err),
+                    content: t!("tui.rules.save_failed", err = err).into_owned(),
                     tool_block: None,
                 });
-            }
-        }
-    }
-
-    fn finish_pending_create_rule_generation(&mut self, message_index: usize) {
-        let Some(pending) = self.pending_create_rule_generation.take() else {
-            return;
-        };
-
-        let scope_label = rules::rule_scope_label(pending.scope);
-        let completed_result = match self.runtime.take_completed_turn_result() {
-            Ok(result) => result,
-            Err(err) => {
-                self.replace_agent_message(
-                    message_index,
-                    format!("生成{}规则失败: {}", scope_label, err),
-                );
-                return;
-            }
-        };
-
-        let raw_response = match completed_result {
-            Some(crate::ts_bridge::CompletedTurnResult::Completed { assistant_text }) => {
-                assistant_text
-            }
-            Some(crate::ts_bridge::CompletedTurnResult::Failed { error }) => {
-                self.replace_agent_message(
-                    message_index,
-                    format!("生成{}规则失败: {}", scope_label, error),
-                );
-                return;
-            }
-            Some(crate::ts_bridge::CompletedTurnResult::RequiresApproval { tool_name, .. }) => {
-                self.replace_agent_message(
-                    message_index,
-                    format!(
-                        "生成{}规则时触发了工具审批（{}），请拒绝该审批后重试。",
-                        scope_label, tool_name
-                    ),
-                );
-                return;
-            }
-            None => pending.buffered_response,
-        };
-
-        let content = match rules::extract_generated_rule_content(&raw_response) {
-            Ok(content) => content,
-            Err(err) => {
-                self.replace_agent_message(
-                    message_index,
-                    format!("生成{}规则失败: {}", scope_label, err),
-                );
-                return;
-            }
-        };
-
-        match rules::save_rule_document(&pending.target_path, &content) {
-            Ok(path) => {
-                let refresh_note = match self.refresh_rules_from_disk() {
-                    Ok(()) => match self
-                        .rule_entries
-                        .iter()
-                        .find(|entry| entry.source.path == pending.target_path)
-                    {
-                        Some(entry) if entry.enabled => "当前已启用。".to_string(),
-                        Some(_) => "文件已写入，当前未启用，可用 /rules 调整。".to_string(),
-                        None => "文件已写入，但刷新后未发现该规则条目。".to_string(),
-                    },
-                    Err(err) => format!("文件已写入，但刷新规则失败: {}", err),
-                };
-                let action = if pending.existed_before {
-                    "已更新"
-                } else {
-                    "已创建"
-                };
-                self.replace_agent_message(
-                    message_index,
-                    format!("{}{}规则: {}\n{}", action, scope_label, path.display(), refresh_note),
-                );
-            }
-            Err(err) => {
-                self.replace_agent_message(
-                    message_index,
-                    format!("写入{}规则失败: {}", scope_label, err),
-                );
             }
         }
     }
@@ -1588,14 +1514,14 @@ impl TuiShell {
 
     pub(crate) fn handle_rules_slash(&mut self, args: &[&str]) {
         if !args.is_empty() {
-            self.push_agent_message("用法: /rules");
+            self.push_agent_message(t!("tui.rules.usage").into_owned());
             return;
         }
 
         if let Err(err) = self.refresh_rules_from_disk() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: format!("读取规则失败: {}", err),
+                content: t!("tui.rules.read_failed", err = err).into_owned(),
                 tool_block: None,
             });
             return;
@@ -1604,7 +1530,7 @@ impl TuiShell {
         self.open_rules_form();
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "已打开规则表单。Enter 切换规则，Esc 保存并关闭。".to_string(),
+            content: t!("tui.rules.opened").into_owned(),
             tool_block: None,
         });
     }
@@ -1632,30 +1558,9 @@ impl TuiShell {
         }
 
         let workspace_root = self.app_paths.workspace_root();
-        let target_path = rules::rule_path_for_scope(&workspace_root, request.scope);
-        let existing_content = match fs::read_to_string(&target_path) {
-            Ok(content) => Some(content),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-            Err(err) => {
-                self.push_agent_message(format!("读取现有规则失败: {}", err));
-                return;
-            }
-        };
-        let generation_prompt =
-            rules::build_create_rule_prompt(&workspace_root, &request, existing_content.as_deref());
-
-        self.pending_create_rule_generation = Some(PendingCreateRuleGeneration {
-            scope: request.scope,
-            target_path: target_path.clone(),
-            existed_before: target_path.exists(),
-            buffered_response: String::new(),
-        });
+        let generation_prompt = rules::build_create_rule_user_turn(&workspace_root, &request);
         self.runtime.submit_user_turn(generation_prompt, None);
         self.apply_runtime_events();
-
-        if !self.runtime.is_busy() && self.pending_assistant_msg_index.is_none() {
-            self.pending_create_rule_generation = None;
-        }
     }
 
     pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
@@ -2438,14 +2343,8 @@ impl TuiShell {
             match event {
                 RuntimeEvent::PushMessage(msg) => self.messages.push(msg),
                 RuntimeEvent::BeginAssistantResponse => {
-                    let content = if let Some(pending) = self.pending_create_rule_generation.as_mut() {
-                        pending.buffered_response.clear();
-                        format!("正在生成{}规则...", rules::rule_scope_label(pending.scope))
-                    } else {
-                        String::new()
-                    };
                     self.messages
-                        .push(ChatMessage::new(MessageRole::Agent, content));
+                        .push(ChatMessage::new(MessageRole::Agent, String::new()));
                     let idx = self.messages.len() - 1;
                     self.assistant_aux_by_message.remove(&idx);
                     self.pending_assistant_msg_index = Some(idx);
@@ -2477,10 +2376,6 @@ impl TuiShell {
                     }
                 }
                 RuntimeEvent::AssistantChunk(chunk) => {
-                    if let Some(pending) = self.pending_create_rule_generation.as_mut() {
-                        pending.buffered_response.push_str(&chunk);
-                        continue;
-                    }
                     if let Some(idx) = self.pending_assistant_msg_index {
                         if let Some(msg) = self.messages.get_mut(idx) {
                             msg.content.push_str(&chunk);
@@ -2488,10 +2383,6 @@ impl TuiShell {
                     }
                 }
                 RuntimeEvent::ReplacePendingAssistant(content) => {
-                    if let Some(pending) = self.pending_create_rule_generation.as_mut() {
-                        pending.buffered_response = content;
-                        continue;
-                    }
                     if let Some(idx) = self.pending_assistant_msg_index {
                         if let Some(msg) = self.messages.get_mut(idx) {
                             msg.content = content;
@@ -2503,19 +2394,9 @@ impl TuiShell {
                     }
                 }
                 RuntimeEvent::AssistantResponseCompleted => {
-                    if let Some(idx) = self.pending_assistant_msg_index.take() {
-                        if self.pending_create_rule_generation.is_some() {
-                            self.finish_pending_create_rule_generation(idx);
-                        }
-                    }
+                    self.pending_assistant_msg_index = None;
                 }
                 RuntimeEvent::RemovePendingAssistant => {
-                    if self.pending_create_rule_generation.is_some() {
-                        if let Some(pending) = self.pending_create_rule_generation.as_mut() {
-                            pending.buffered_response.clear();
-                        }
-                        continue;
-                    }
                     if let Some(idx) = self.pending_assistant_msg_index.take() {
                         let has_persisted_aux =
                             self.assistant_aux_by_message.get(&idx).is_some_and(|aux| {

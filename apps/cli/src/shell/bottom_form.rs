@@ -60,6 +60,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
             },
         ],
         selected_field: MCP_ADD_FIELD_NAME,
+        scroll_offset: 0,
         footer_hint: t!("form.mcp.footer_hint").into_owned(),
     };
     sync_mcp_add_form_fields(&mut form);
@@ -68,15 +69,26 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
 
 pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
     let mut fields = Vec::new();
-    push_rules_section(&mut fields, "工作区规则", RuleScope::Workspace, entries);
-    push_rules_section(&mut fields, "用户规则", RuleScope::User, entries);
+    push_rules_section(
+        &mut fields,
+        t!("form.rules.section.workspace").as_ref(),
+        RuleScope::Workspace,
+        entries,
+    );
+    push_rules_section(
+        &mut fields,
+        t!("form.rules.section.user").as_ref(),
+        RuleScope::User,
+        entries,
+    );
 
     let mut form = BottomFormView {
         kind: BottomFormKind::Rules,
-        title: "规则启用设置".to_string(),
+        title: t!("form.rules.title").into_owned(),
         fields,
         selected_field: 0,
-        footer_hint: "↑/↓ 切换规则  Enter 切换启用状态  Esc 保存并关闭".to_string(),
+        scroll_offset: 0,
+        footer_hint: t!("form.rules.footer_hint").into_owned(),
     };
     ensure_selectable_field(&mut form);
     form
@@ -324,6 +336,7 @@ pub(crate) fn rules_form_overrides(form: &BottomFormView) -> Vec<(String, bool)>
                 id,
                 checked,
                 disabled,
+                ..
             } if !disabled => Some((id.clone(), *checked)),
             _ => None,
         })
@@ -393,40 +406,14 @@ fn push_rules_section(
             RuleScope::Workspace => WORKSPACE_RULE_LABEL,
             RuleScope::User => USER_RULE_LABEL,
         };
-        let status = if entry.exists {
-            if entry.enabled {
-                "已启用"
-            } else {
-                "已禁用"
-            }
-        } else {
-            "未发现，暂不可切换"
-        };
-
-        let mut help_lines = vec![
-            format!("路径: {}", entry.source.path.display()),
-            format!("状态: {}", status),
-        ];
-        if let Some(preview) = &entry.preview {
-            if !preview.excerpt.trim().is_empty() {
-                help_lines.push("预览:".to_string());
-                help_lines.push(preview.excerpt.clone());
-            }
-            if preview.truncated {
-                help_lines.push("已截断，模型仍按源文件全文生效。".to_string());
-            }
-        }
-        if !entry.exists {
-            help_lines.push("未发现规则文件。".to_string());
-        }
-
         fields.push(BottomFormFieldView {
             label: label.to_string(),
-            help: help_lines.join("\n"),
+            help: String::new(),
             editor: BottomFormFieldEditorView::Checkbox {
                 id: entry.source.id.clone(),
                 checked: entry.enabled,
                 disabled: !entry.exists,
+                path: Some(entry.source.path.display().to_string()),
             },
         });
     }
@@ -676,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn new_rules_form_help_mentions_truncation_for_long_preview() {
+    fn existing_rule_does_not_render_preview_help() {
         let mut entry = sample_rule_entry(RuleScope::Workspace, true, true);
         entry.preview = Some(RulePreview {
             excerpt: "line1\nline2".to_string(),
@@ -685,9 +672,28 @@ mod tests {
 
         let form = new_rules_form(&[entry]);
         let help = &form.fields[1].help;
+        let path = match &form.fields[1].editor {
+            crate::view::BottomFormFieldEditorView::Checkbox { path, .. } => {
+                path.as_deref().unwrap_or("")
+            }
+            _ => "",
+        };
 
-        assert!(help.contains("预览:"));
-        assert!(help.contains("已截断，模型仍按源文件全文生效。"));
+        assert!(help.is_empty());
+        assert!(path.ends_with("AGENTS.md"));
+    }
+
+    #[test]
+    fn missing_rule_keeps_disabled_row_without_extra_hint() {
+        let form = new_rules_form(&[sample_rule_entry(RuleScope::User, false, false)]);
+        let help = &form.fields[2].help;
+        let disabled = match &form.fields[2].editor {
+            crate::view::BottomFormFieldEditorView::Checkbox { disabled, .. } => *disabled,
+            _ => false,
+        };
+
+        assert!(disabled);
+        assert!(help.is_empty());
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

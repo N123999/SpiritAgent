@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -10,12 +11,9 @@ use crate::mcp::spirit_agent_data_dir;
 
 pub const WORKSPACE_RULE_FILE_NAME: &str = "AGENTS.md";
 pub const USER_RULE_FILE_NAME: &str = "rule.md";
-pub const CREATE_RULE_USAGE: &str = "用法: /create-rule [repo|user] <需求描述>";
 const RULES_STATE_FILE_NAME: &str = "rules-state.json";
 const RULE_PREVIEW_MAX_LINES: usize = 8;
 const RULE_PREVIEW_MAX_CHARS: usize = 1_200;
-const CREATE_RULE_RESPONSE_START: &str = "<spirit-rule-file>";
-const CREATE_RULE_RESPONSE_END: &str = "</spirit-rule-file>";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -84,6 +82,10 @@ impl RuleStateFile {
     }
 }
 
+pub fn create_rule_usage() -> String {
+    t!("tui.rules.create_rule_usage").into_owned()
+}
+
 pub fn workspace_rule_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(WORKSPACE_RULE_FILE_NAME)
 }
@@ -111,13 +113,13 @@ pub fn default_rule_sources(workspace_root: &Path) -> Vec<RuleSource> {
         RuleSource {
             id: stable_rule_id(&workspace_path),
             scope: RuleScope::Workspace,
-            title: "工作区规则".to_string(),
+            title: t!("form.rules.section.workspace").into_owned(),
             path: workspace_path,
         },
         RuleSource {
             id: stable_rule_id(&user_path),
             scope: RuleScope::User,
-            title: "用户规则".to_string(),
+            title: t!("form.rules.section.user").into_owned(),
             path: user_path,
         },
     ]
@@ -183,13 +185,13 @@ pub fn rule_scope_label(scope: RuleScope) -> &'static str {
 pub fn parse_create_rule_request(input: &str) -> Result<CreateRuleRequest> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return Err(anyhow!(CREATE_RULE_USAGE));
+        return Err(anyhow!(create_rule_usage()));
     }
 
     if let Some((scope, remainder)) = parse_leading_rule_scope(trimmed) {
         let prompt = remainder.trim();
         if prompt.is_empty() {
-            return Err(anyhow!(CREATE_RULE_USAGE));
+            return Err(anyhow!(create_rule_usage()));
         }
 
         return Ok(CreateRuleRequest {
@@ -204,57 +206,38 @@ pub fn parse_create_rule_request(input: &str) -> Result<CreateRuleRequest> {
     })
 }
 
-pub fn build_create_rule_prompt(
-    workspace_root: &Path,
-    request: &CreateRuleRequest,
-    existing_content: Option<&str>,
-) -> String {
+pub fn build_create_rule_user_turn(workspace_root: &Path, request: &CreateRuleRequest) -> String {
     let scope_label = rule_scope_label(request.scope);
     let target_path = rule_path_for_scope(workspace_root, request.scope);
+    let target_exists = target_path.exists();
     let scope_hint = match request.scope {
         RuleScope::Workspace => {
-            "优先写清当前仓库或模块的目录边界、代码风格、验证命令和禁止事项。"
+            "优先提炼当前仓库真实存在的目录边界、代码风格差异、验证命令和高价值限制。"
         }
-        RuleScope::User => "优先写清跨仓库通用的个人偏好、默认工作方式和沟通习惯。",
+        RuleScope::User => "优先提炼跨仓库通用的个人偏好、默认协作方式和稳定工作习惯。",
     };
-    let existing_section = match existing_content.map(str::trim).filter(|value| !value.is_empty()) {
-        Some(content) => format!(
-            "当前目标文件已存在。请保留仍然有效的约束，删除重复或过时内容，并输出完整重写版本。\n<existing-rule-file>\n{}\n</existing-rule-file>",
-            content
+    let target_note = if target_exists {
+        "目标文件已存在；如果要更新，先读取原文并压缩重写，不要在旧内容后面继续堆砌模板化废话。"
+    } else {
+        "目标文件目前不存在；如果内容确定且路径可写，直接创建即可。"
+    };
+    let write_note = match request.scope {
+        RuleScope::Workspace => format!(
+            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 update_file 写入 {}。写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
+            target_path.display()
         ),
-        None => "当前目标文件不存在，请从零开始生成一份完整文件。".to_string(),
+        RuleScope::User => format!(
+            "目标文件位于工作区外：{}。当前文件写工具只覆盖工作区内路径。请先正常分析并给出最终 Markdown 草案；如果无法直接写入，就明确说明未写入，不要伪造落盘结果。",
+            target_path.display()
+        ),
     };
 
     format!(
-        "你正在为 Spirit Agent 编写一份{scope_label}规则文件。\n\n目标信息:\n- scope: {scope_label}\n- target_path: {target_path}\n- workspace_root: {workspace_root}\n- 文件格式: Markdown\n\n用户需求:\n{user_prompt}\n\n写作要求:\n1. 直接输出可落盘的完整文件，不要输出解释、前言、后记、diff 或代码围栏。\n2. 必须把完整文件放在 {start_tag} 和 {end_tag} 标签内。\n3. 文件第一行必须是一级标题。\n4. 文件必须包含这些二级标题：`## 适用范围`、`## 执行优先级`、`## 工程约束`、`## 工作流程`、`## 验证与交付`。\n5. 规则必须具体、可执行、可验证，避免空泛口号。\n6. 如果需求不完整，补足合理默认值，不要留下 TODO、占位符或“按需补充”。\n7. 不要调用任何工具，也不要向用户反问。\n8. {scope_hint}\n\n现有内容:\n{existing_section}\n\n输出格式:\n{start_tag}\n# Spirit Agent 规则\n## 适用范围\n- ...\n{end_tag}",
+        "你现在在处理一个 /create-rule 请求。\n\n目标:\n- scope: {scope_label}\n- target_path: {target_path}\n- workspace_root: {workspace_root}\n\n用户需求:\n{user_prompt}\n\n要求:\n- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。\n- 最终规则文件是给后续 LLM 看的，不是给人类流程管理看的。\n- 保持内容短、硬、可执行；优先保留真正影响编码行为的约束。\n- 需要事实时先读取仓库内相关文件，不要臆造项目结构、技术栈或工作流。\n- 避免空话和人类治理废话，例如生效日期、发布流程、分支策略、贡献者流程、严重级别分层、泛化检查清单、冗长示例。\n- 规则文件必须以 Markdown 一级标题开头，正文优先使用短标题和短 bullet。\n- 如果某条信息不会改变后续 agent 的行为，就不要写进文件。\n- {scope_hint}\n- {target_note}\n- {write_note}\n\n交付方式:\n- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。\n- 如果不能直接落盘，就把最终文件内容完整贴在回复里，并明确说明未写入。",
         target_path = target_path.display(),
         workspace_root = workspace_root.display(),
         user_prompt = request.prompt,
-        start_tag = CREATE_RULE_RESPONSE_START,
-        end_tag = CREATE_RULE_RESPONSE_END,
     )
-}
-
-pub fn extract_generated_rule_content(response: &str) -> Result<String> {
-    if let Some(tagged) = extract_tagged_rule_content(response)? {
-        return normalize_generated_rule_content(&tagged);
-    }
-
-    if let Some(fenced) = extract_fenced_rule_content(response) {
-        return normalize_generated_rule_content(&fenced);
-    }
-
-    normalize_generated_rule_content(response)
-}
-
-pub fn save_rule_document(path: &Path, content: &str) -> Result<PathBuf> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("创建规则目录失败: {}", parent.display()))?;
-    }
-
-    fs::write(path, content).with_context(|| format!("写入规则文件失败: {}", path.display()))?;
-    Ok(path.to_path_buf())
 }
 
 fn discover_rule_entry(source: RuleSource, state: &RuleStateFile) -> Result<RuleEntry> {
@@ -334,52 +317,6 @@ fn match_prefix<'a>(input: &'a str, prefixes: &[&str]) -> Option<&'a str> {
     })
 }
 
-fn extract_tagged_rule_content(response: &str) -> Result<Option<String>> {
-    let trimmed = response.trim();
-    let Some(start) = trimmed.find(CREATE_RULE_RESPONSE_START) else {
-        if trimmed.contains(CREATE_RULE_RESPONSE_END) {
-            return Err(anyhow!("规则输出缺少开始标签"));
-        }
-        return Ok(None);
-    };
-
-    let after_start = &trimmed[start + CREATE_RULE_RESPONSE_START.len()..];
-    let Some(end) = after_start.find(CREATE_RULE_RESPONSE_END) else {
-        return Err(anyhow!("规则输出缺少结束标签"));
-    };
-
-    Ok(Some(after_start[..end].to_string()))
-}
-
-fn extract_fenced_rule_content(response: &str) -> Option<String> {
-    let trimmed = response.trim();
-    let start = trimmed.find("```")?;
-    let after_start = &trimmed[start + 3..];
-    let after_language = after_start
-        .strip_prefix("markdown")
-        .or_else(|| after_start.strip_prefix("md"))
-        .unwrap_or(after_start);
-    let after_newline = after_language
-        .strip_prefix("\r\n")
-        .or_else(|| after_language.strip_prefix('\n'))
-        .or_else(|| after_language.strip_prefix('\r'))
-        .unwrap_or(after_language);
-    let end = after_newline.find("```")?;
-    Some(after_newline[..end].to_string())
-}
-
-fn normalize_generated_rule_content(content: &str) -> Result<String> {
-    let normalized = content.replace("\r\n", "\n");
-    let trimmed = normalized.trim();
-    if trimmed.is_empty() {
-        return Err(anyhow!("模型未返回规则内容"));
-    }
-    if !trimmed.starts_with('#') {
-        return Err(anyhow!("规则内容必须以 Markdown 一级标题开头"));
-    }
-
-    Ok(format!("{}\n", trimmed))
-}
 
 fn build_rule_preview(content: &str) -> RulePreview {
     let mut excerpt_lines = Vec::new();
@@ -692,59 +629,40 @@ mod tests {
     fn parse_create_rule_request_requires_prompt_after_scope() {
         let error = parse_create_rule_request("repo").expect_err("missing prompt should fail");
 
-        assert_eq!(error.to_string(), CREATE_RULE_USAGE);
+        assert_eq!(error.to_string(), create_rule_usage());
     }
 
     #[test]
-    fn build_create_rule_prompt_mentions_existing_content_and_tags() {
+    fn build_create_rule_user_turn_pushes_compact_llm_focused_constraints() {
         let workspace_root = PathBuf::from("C:/workspace/demo");
         let request = CreateRuleRequest {
             scope: RuleScope::Workspace,
             prompt: "补充构建命令和禁止事项".to_string(),
         };
 
-        let prompt = build_create_rule_prompt(&workspace_root, &request, Some("# Old\nbody"));
+        let prompt = build_create_rule_user_turn(&workspace_root, &request);
 
-        assert!(prompt.contains(CREATE_RULE_RESPONSE_START));
-        assert!(prompt.contains(CREATE_RULE_RESPONSE_END));
-        assert!(prompt.contains("<existing-rule-file>"));
+        assert!(prompt.contains("正常流式输出"));
+        assert!(prompt.contains("给后续 LLM 看的"));
+        assert!(prompt.contains("create_file 或 update_file"));
+        assert!(prompt.contains("不要假设自己已经拿到权限"));
         assert!(prompt.contains("补充构建命令和禁止事项"));
         assert!(prompt.contains("AGENTS.md"));
     }
 
     #[test]
-    fn extract_generated_rule_content_prefers_tagged_block() {
-        let response = "说明文字\n<spirit-rule-file>\n# Spirit Agent 规则\n## 适用范围\n- foo\n</spirit-rule-file>\n补充说明";
+    fn build_create_rule_user_turn_handles_user_scope_without_fake_write_access() {
+        let workspace_root = PathBuf::from("C:/workspace/demo");
+        let request = CreateRuleRequest {
+            scope: RuleScope::User,
+            prompt: "强调先读代码再改".to_string(),
+        };
 
-        let content = extract_generated_rule_content(response).expect("extract content");
+        let prompt = build_create_rule_user_turn(&workspace_root, &request);
 
-        assert_eq!(content, "# Spirit Agent 规则\n## 适用范围\n- foo\n");
-    }
-
-    #[test]
-    fn extract_generated_rule_content_accepts_fenced_markdown() {
-        let response = "```markdown\n# Spirit Agent 规则\n## 适用范围\n- foo\n```";
-
-        let content = extract_generated_rule_content(response).expect("extract fenced content");
-
-        assert_eq!(content, "# Spirit Agent 规则\n## 适用范围\n- foo\n");
-    }
-
-    #[test]
-    fn extract_generated_rule_content_rejects_missing_heading() {
-        let error = extract_generated_rule_content("普通说明文字").expect_err("missing heading");
-
-        assert_eq!(error.to_string(), "规则内容必须以 Markdown 一级标题开头");
-    }
-
-    #[test]
-    fn save_rule_document_creates_parent_directory() {
-        let root = temp_test_dir("save-rule-document");
-        let path = root.join("nested").join("AGENTS.md");
-
-        let saved = save_rule_document(&path, "# Spirit Agent 规则\n").expect("save rule document");
-
-        assert_eq!(saved, path);
-        assert_eq!(fs::read_to_string(saved).expect("read saved rule"), "# Spirit Agent 规则\n");
+        assert!(prompt.contains("工作区外"));
+        assert!(prompt.contains("文件写工具只覆盖工作区内路径"));
+        assert!(prompt.contains("明确说明未写入"));
+        assert!(prompt.contains("rule.md"));
     }
 }

@@ -13,7 +13,7 @@ use crate::{
     ports::{McpStatusSnapshot, SecretStore},
     rules::EnabledRule,
     session::SessionModel,
-    ts_bridge::{CompletedTurnResult, TsBridgeRuntime},
+    ts_bridge::TsBridgeRuntime,
     view::PendingAssistantAux,
 };
 
@@ -62,10 +62,6 @@ impl RuntimeHandle {
 
     pub fn export_llm_state(&mut self) -> Result<RuntimeExportState> {
         self.runtime.export_llm_state()
-    }
-
-    pub fn take_completed_turn_result(&mut self) -> Result<Option<CompletedTurnResult>> {
-        self.runtime.take_completed_turn_result()
     }
 
     pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
