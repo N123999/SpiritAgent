@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
@@ -26,6 +27,31 @@ import {
 const WINDOWS_USER_ENV_REGISTRY_PATH = 'HKCU\\Environment';
 const WINDOWS_MACHINE_ENV_REGISTRY_PATH =
   'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment';
+const MCP_FUNCTION_NAME_LIMIT = 64;
+const MCP_SERVER_FRAGMENT_LIMIT = 16;
+const MCP_TOOL_FRAGMENT_LIMIT = 24;
+
+interface McpToolRoute {
+  functionName: string;
+  server: string;
+  displayName: string;
+  toolName: string;
+}
+
+interface McpToolCatalog {
+  definitions: JsonValue[];
+  routes: Map<string, McpToolRoute>;
+}
+
+export interface McpToolRequest {
+  [key: string]: JsonValue;
+  kind: 'mcpTool';
+  name: string;
+  server: string;
+  displayName: string;
+  toolName: string;
+  arguments: JsonValue;
+}
 
 interface LoadedMcpConfig {
   raw: McpConfigFile;
@@ -40,11 +66,33 @@ export class McpService {
     raw: { servers: {} },
     resolved: {},
   };
+  private toolCatalogStore: McpToolCatalog = {
+    definitions: [],
+    routes: new Map<string, McpToolRoute>(),
+  };
   private loadErrorStore: string | undefined;
   private windowsEnvLookupPromise: Promise<EnvLookupStore> | undefined;
+  private toolingRefreshPromise: Promise<void> | undefined;
+  private toolingCacheInitialized = false;
 
   constructor(private readonly workspaceRootStore = process.cwd()) {
     this.registry.replaceConfig({ servers: {} });
+  }
+
+  toolDefinitionsJson(): JsonValue[] {
+    return [...this.toolCatalogStore.definitions];
+  }
+
+  isToolRequest(value: JsonValue): value is McpToolRequest {
+    return isMcpToolRequest(value);
+  }
+
+  backgroundStatusText(value: JsonValue): string | undefined {
+    if (!isMcpToolRequest(value)) {
+      return undefined;
+    }
+
+    return `MCP 工具执行中: ${value.displayName} / ${value.toolName}`;
   }
 
   statusSnapshot(): {
@@ -65,6 +113,14 @@ export class McpService {
       state: 'error',
       lastError: this.loadErrorStore,
     };
+  }
+
+  async ensureToolingCache(): Promise<void> {
+    if (this.toolingCacheInitialized) {
+      return;
+    }
+
+    await this.startBackgroundRefresh();
   }
 
   async refreshConfig(): Promise<void> {
@@ -88,39 +144,95 @@ export class McpService {
         resolved: Object.fromEntries(resolvedEntries),
       };
       this.registry.replaceConfig(raw);
+      this.toolingCacheInitialized = false;
       this.loadErrorStore = undefined;
     } catch (error) {
       this.loadErrorStore = describeError(error);
+      this.toolCatalogStore = {
+        definitions: [],
+        routes: new Map<string, McpToolRoute>(),
+      };
       throw error;
     }
   }
 
   async startBackgroundRefresh(): Promise<void> {
+    if (this.toolingRefreshPromise) {
+      await this.toolingRefreshPromise;
+      return;
+    }
+
+    this.toolingRefreshPromise = this.refreshToolingCaches().finally(() => {
+      this.toolingRefreshPromise = undefined;
+    });
+    await this.toolingRefreshPromise;
+  }
+
+  async requestFromFunctionCall(name: string, argumentsJson: string): Promise<McpToolRequest | undefined> {
+    let route = this.toolCatalogStore.routes.get(name);
+    if (!route) {
+      await this.ensureToolingCache();
+      route = this.toolCatalogStore.routes.get(name);
+    }
+
+    if (!route) {
+      return undefined;
+    }
+
+    return this.createToolRequest(route.server, route.toolName, argumentsJson, route.functionName);
+  }
+
+  async createToolRequest(
+    serverName: string,
+    toolName: string,
+    argsJson?: string,
+    functionName?: string,
+  ): Promise<McpToolRequest> {
     await this.refreshConfig();
 
-    for (const server of Object.values(this.loadedConfigStore.resolved)) {
-      if (!server.enabled) {
-        continue;
+    const server = this.loadedConfigStore.resolved[serverName];
+    if (!server) {
+      throw new McpConfigError(`未知 MCP server: ${serverName}`);
+    }
+
+    return {
+      kind: 'mcpTool',
+      name: functionName ?? syntheticMcpFunctionName(server.name, toolName),
+      server: server.name,
+      displayName: server.displayName,
+      toolName,
+      arguments: parseOptionalJsonValue(argsJson),
+    };
+  }
+
+  async authorizeToolRequest(request: McpToolRequest): Promise<void> {
+    const server = await this.requireConnectableServer(request.server);
+    if (!server.capabilities.tools) {
+      throw new McpConfigError(`MCP server ${server.name} 未启用 tools capability`);
+    }
+  }
+
+  async executeToolRequest(request: McpToolRequest): Promise<string> {
+    const server = await this.requireConnectableServer(request.server);
+
+    return this.withConnection(server, async (connection) => {
+      const capabilities = connection.serverCapabilities;
+      assertToolCapability(server, capabilities);
+      const argumentsValue = request.arguments;
+      let args: Record<string, unknown> | undefined;
+      if (isJsonRecord(argumentsValue)) {
+        args = argumentsValue;
+      } else if (argumentsValue !== null) {
+        throw new McpConfigError('MCP 工具参数必须是 JSON object');
       }
 
-      this.registry.setServerState(server.name, 'loading');
-      const connection = new SdkMcpConnection();
-      try {
-        await connection.connect(server);
-        const capabilities = connection.serverCapabilities;
-        const cachedTools =
-          server.capabilities.tools && capabilities?.tools !== undefined
-            ? (await connection.listTools()).tools.length
-            : 0;
-        this.registry.setServerState(server.name, 'ready', { cachedTools });
-      } catch (error) {
-        this.registry.setServerState(server.name, 'error', {
-          lastError: describeError(error),
-        });
-      } finally {
-        await connection.close();
-      }
-    }
+      const result = await connection.callTool(request.toolName, args);
+      this.registry.clearServerError(server.name);
+      this.registry.setServerState(server.name, 'ready', {
+        cachedTools: this.registry.get(server.name)?.cachedTools ?? 0,
+      });
+      return JSON.stringify(result, null, 2);
+    });
   }
 
   async listServers(): Promise<JsonValue[]> {
@@ -360,6 +472,74 @@ export class McpService {
 
     return this.windowsEnvLookupPromise;
   }
+
+  private async refreshToolingCaches(): Promise<void> {
+    await this.refreshConfig();
+
+    const definitions: JsonValue[] = [];
+    const routes = new Map<string, McpToolRoute>();
+
+    for (const server of Object.values(this.loadedConfigStore.resolved)) {
+      if (!server.enabled) {
+        continue;
+      }
+
+      this.registry.setServerState(server.name, 'loading', { cachedTools: 0 });
+      const connection = new SdkMcpConnection();
+      try {
+        await connection.connect(server);
+        const capabilities = connection.serverCapabilities;
+        const discoveredTools =
+          server.capabilities.tools && capabilities?.tools !== undefined
+            ? (await connection.listTools()).tools
+            : [];
+
+        for (const tool of discoveredTools) {
+          const functionName = syntheticMcpFunctionName(server.name, tool.name);
+          const description = tool.description ?? `MCP tool ${tool.name} from server ${server.displayName}.`;
+          const parameters = isJsonRecord(tool.inputSchema)
+            ? (tool.inputSchema as JsonValue)
+            : {
+                type: 'object',
+                additionalProperties: true,
+              };
+
+          definitions.push({
+            type: 'function',
+            function: {
+              name: functionName,
+              description: `[MCP ${server.displayName}] ${description}`,
+              parameters,
+            },
+          });
+          routes.set(functionName, {
+            functionName,
+            server: server.name,
+            displayName: server.displayName,
+            toolName: tool.name,
+          });
+        }
+
+        this.registry.clearServerError(server.name);
+        this.registry.setServerState(server.name, 'ready', {
+          cachedTools: discoveredTools.length,
+        });
+      } catch (error) {
+        this.registry.setServerState(server.name, 'error', {
+          cachedTools: 0,
+          lastError: describeError(error),
+        });
+      } finally {
+        await connection.close();
+      }
+    }
+
+    this.toolCatalogStore = {
+      definitions,
+      routes,
+    };
+    this.toolingCacheInitialized = true;
+  }
 }
 
 function resolveMcpConfigPath(): string {
@@ -560,6 +740,18 @@ function transportConfigForRust(transport: McpServerConfig['transport']): JsonVa
   }
 }
 
+function assertToolCapability(
+  server: ResolvedMcpServerConfig,
+  capabilities: SdkMcpConnection['serverCapabilities'],
+): void {
+  if (!server.capabilities.tools) {
+    throw new McpConfigError(`MCP server ${server.name} 未启用 tools capability`);
+  }
+  if (capabilities?.tools === undefined) {
+    throw new McpConfigError(`MCP server ${server.name} 不支持 tools capability`);
+  }
+}
+
 function assertResourceCapability(
   server: ResolvedMcpServerConfig,
   capabilities: SdkMcpConnection['serverCapabilities'],
@@ -704,4 +896,71 @@ function describeError(error: unknown): string {
 
 function isErrnoWithCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === code;
+}
+
+function parseOptionalJsonValue(argsJson: string | undefined): JsonValue {
+  if (!argsJson?.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(argsJson) as JsonValue;
+  } catch (error) {
+    throw new McpConfigError('MCP 工具参数必须是合法 JSON', {
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
+}
+
+function isJsonRecord(value: unknown): value is Record<string, JsonValue> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isMcpToolRequest(value: JsonValue): value is McpToolRequest {
+  return isJsonRecord(value)
+    && value.kind === 'mcpTool'
+    && typeof value.name === 'string'
+    && typeof value.server === 'string'
+    && typeof value.displayName === 'string'
+    && typeof value.toolName === 'string'
+    && 'arguments' in value;
+}
+
+function syntheticMcpFunctionName(server: string, tool: string): string {
+  const serverFragment = truncateIdentifierFragment(
+    sanitizeIdentifierFragment(server),
+    MCP_SERVER_FRAGMENT_LIMIT,
+  );
+  const toolFragment = truncateIdentifierFragment(
+    sanitizeIdentifierFragment(tool),
+    MCP_TOOL_FRAGMENT_LIMIT,
+  );
+  const digest = createHash('sha1')
+    .update(`${serverFragment}\0${toolFragment}`)
+    .digest('hex')
+    .slice(0, 8);
+
+  const base = `mcp__${serverFragment}__${toolFragment}__${digest}`;
+  return base.length > MCP_FUNCTION_NAME_LIMIT ? base.slice(0, MCP_FUNCTION_NAME_LIMIT) : base;
+}
+
+function sanitizeIdentifierFragment(input: string): string {
+  let out = '';
+  for (const char of input) {
+    if ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
+      out += char.toLowerCase();
+      continue;
+    }
+
+    if (!out.endsWith('_')) {
+      out += '_';
+    }
+  }
+
+  const trimmed = out.replace(/^_+|_+$/gu, '');
+  return trimmed || 'tool';
+}
+
+function truncateIdentifierFragment(input: string, maxLength: number): string {
+  return Array.from(input).slice(0, maxLength).join('');
 }

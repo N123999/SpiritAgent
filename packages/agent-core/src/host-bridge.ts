@@ -42,6 +42,7 @@ import type {
   RuntimeReplaceConfigParams,
   RuntimeReplaceRulesParams,
   RuntimeRespondToPendingApprovalParams,
+  RuntimeStartManualMcpToolParams,
   RuntimeStartManualToolCommandParams,
   RuntimeSubmitUserTurnParams,
 } from './host-bridge/protocol.js';
@@ -234,6 +235,16 @@ peer.on('runtime.respondToPendingApproval', async (rawParams) => {
 peer.on('runtime.startManualToolCommand', async (rawParams) => {
   const params = rawParams as RuntimeStartManualToolCommandParams;
   const result = await requireRuntime().startManualToolCommand(params.message);
+  return {
+    result,
+    snapshot: buildSnapshot(requireRuntime()),
+  };
+});
+
+peer.on('runtime.startManualMcpTool', async (rawParams) => {
+  const params = rawParams as RuntimeStartManualMcpToolParams;
+  const request = await toolExecutor.createMcpToolRequest(params.server, params.tool, params.argsJson);
+  const result = await requireRuntime().startManualToolRequestDirect(request, 'manual');
   return {
     result,
     snapshot: buildSnapshot(requireRuntime()),

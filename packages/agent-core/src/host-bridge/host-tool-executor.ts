@@ -5,7 +5,7 @@ import type {
   ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '../ports.js';
-import { McpService } from '../mcp/service.js';
+import { McpService, type McpToolRequest } from '../mcp/service.js';
 import { JsonRpcPeer } from './framing.js';
 
 interface HostToolRequestMetadata {
@@ -16,6 +16,7 @@ interface HostToolRequestMetadata {
 }
 
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
+  private hostToolDefinitionsCache: JsonValue = [];
   private toolDefinitionsCache: JsonValue = [];
   private mcpStatusSnapshotCache: McpStatusSnapshot = {
     revision: 0,
@@ -30,7 +31,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   constructor(protected readonly peer: JsonRpcPeer) {}
 
   async refreshCaches(): Promise<void> {
-    this.toolDefinitionsCache = await this.peer.call<JsonValue>('host.toolDefinitionsJson');
+    this.hostToolDefinitionsCache = await this.peer.call<JsonValue>('host.toolDefinitionsJson');
+    await this.mcp.ensureToolingCache().catch(() => undefined);
+    this.toolDefinitionsCache = mergeToolDefinitions(
+      this.hostToolDefinitionsCache,
+      this.mcp.toolDefinitionsJson(),
+    );
     this.mcpStatusSnapshotCache = await this.peer.call<McpStatusSnapshot>('host.mcpStatusSnapshot');
   }
 
@@ -43,12 +49,22 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async requestFromFunctionCall(name: string, argumentsJson: string): Promise<JsonValue> {
+    const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
+    if (localMcpRequest) {
+      return localMcpRequest;
+    }
+
     return this.unwrapHostToolRequest(
       await this.peer.call<JsonValue>('host.requestFromFunctionCall', { name, argumentsJson }),
     );
   }
 
   async authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>> {
+    if (this.mcp.isToolRequest(request)) {
+      await this.mcp.authorizeToolRequest(request);
+      return { kind: 'allowed' };
+    }
+
     return this.peer.call<AuthorizationDecision<JsonValue>>('host.authorize', {
       request: this.serializeRequest(request),
     });
@@ -59,6 +75,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async execute(request: JsonValue): Promise<string> {
+    if (this.mcp.isToolRequest(request)) {
+      return this.executeLocalMcpTool(request);
+    }
+
     return this.peer.call<string>('host.execute', { request: this.serializeRequest(request) });
   }
 
@@ -77,10 +97,18 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   shouldExecuteInBackground(request: JsonValue): boolean {
+    if (this.mcp.isToolRequest(request)) {
+      return true;
+    }
+
     return this.resolveRequestMetadata(request)?.backgroundExecution ?? false;
   }
 
   backgroundStatusText(request: JsonValue): string | undefined {
+    if (this.mcp.isToolRequest(request)) {
+      return this.mcp.backgroundStatusText(request);
+    }
+
     return this.resolveRequestMetadata(request)?.backgroundStatusText;
   }
 
@@ -95,8 +123,16 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
   async addMcpServer(name: string, config: JsonValue): Promise<string> {
     const result = await this.peer.call<string>('host.addMcpServer', { name, config });
-    void this.mcp.refreshConfig().catch(() => undefined);
+    void this.mcp.startBackgroundRefresh().catch(() => undefined);
     return result;
+  }
+
+  async createMcpToolRequest(
+    server: string,
+    toolName: string,
+    argsJson?: string,
+  ): Promise<McpToolRequest> {
+    return this.mcp.createToolRequest(server, toolName, argsJson);
   }
 
   async listMcpServers(): Promise<JsonValue[]> {
@@ -168,6 +204,30 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
     return this.requestMetadata.get(request);
   }
+
+  private async executeLocalMcpTool(request: McpToolRequest): Promise<string> {
+    const metadata = this.resolveRequestMetadata(request);
+
+    try {
+      const output = await this.mcp.executeToolRequest(request);
+      this.peer.notify('host.localToolExecuted', {
+        request,
+        output,
+        ...(metadata?.toolCallId === undefined ? {} : { toolCallId: metadata.toolCallId }),
+        toolName: metadata?.toolName ?? 'mcp_tool',
+      });
+      return output;
+    } catch (error) {
+      const message = renderError(error);
+      this.peer.notify('host.localToolFailed', {
+        request,
+        error: message,
+        ...(metadata?.toolCallId === undefined ? {} : { toolCallId: metadata.toolCallId }),
+        toolName: metadata?.toolName ?? 'mcp_tool',
+      });
+      throw error;
+    }
+  }
 }
 
 function hostToolRequestMetadata(request: JsonValue): HostToolRequestMetadata | undefined {
@@ -194,4 +254,18 @@ function hostToolRequestMetadata(request: JsonValue): HostToolRequestMetadata | 
 
 function isJsonObject(value: JsonValue): value is Record<string, JsonValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mergeToolDefinitions(hostDefinitions: JsonValue, mcpDefinitions: JsonValue[]): JsonValue {
+  const merged = Array.isArray(hostDefinitions) ? [...hostDefinitions] : [];
+  merged.push(...mcpDefinitions);
+  return merged;
+}
+
+function renderError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
 }

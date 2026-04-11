@@ -761,6 +761,13 @@ export class AgentRuntime<
     );
   }
 
+  async startManualToolRequestDirect(
+    request: ToolRequest,
+    toolName: string,
+  ): Promise<RuntimeManualToolCommandStartResult<State, ToolRequest, TrustTarget>> {
+    return this.startManualToolRequest(request, toolName);
+  }
+
   async resumePendingManualToolApproval(
     decision: RuntimeApprovalDecision,
   ): Promise<RuntimeManualToolCommandResult<State, ToolRequest, TrustTarget>> {

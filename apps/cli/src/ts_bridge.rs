@@ -91,6 +91,35 @@ struct HostToolRequestEnvelope {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct LocalMcpToolRequest {
+    kind: String,
+    name: String,
+    server: String,
+    display_name: String,
+    tool_name: String,
+    arguments: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalMcpToolResultEvent {
+    request: LocalMcpToolRequest,
+    output: String,
+    tool_call_id: Option<String>,
+    tool_name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalMcpToolFailedEvent {
+    request: LocalMcpToolRequest,
+    error: String,
+    tool_call_id: Option<String>,
+    tool_name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgeRuntimeSnapshot {
     pending_user_turn: Option<String>,
     pending_image_paths: Vec<String>,
@@ -578,15 +607,16 @@ impl TsBridgeRuntime {
         tool_name: &str,
         args_json: Option<&str>,
     ) -> Result<()> {
-        let arguments = parse_optional_json_value(args_json)?;
-        let request = ToolRequest::McpTool {
-            server: server.to_string(),
-            display_name: self.resolve_mcp_display_name(server)?,
-            tool_name: tool_name.to_string(),
-            arguments,
-        };
+        let mut params = json!({
+            "server": server,
+            "tool": tool_name,
+        });
+        if let Some(args_json) = args_json {
+            params["argsJson"] = Value::String(args_json.to_string());
+        }
 
-        self.start_local_background_tool_execution(request, "manual".to_string());
+        self.call_bridge("runtime.startManualMcpTool", Some(params))?;
+        self.sync_after_command()?;
         Ok(())
     }
 
@@ -1025,6 +1055,18 @@ impl TsBridgeRuntime {
                 let path = self.tool_executor.add_mcp_server(name, config)?;
                 Ok(Some(Value::String(path.display().to_string())))
             }
+            "host.localToolExecuted" => {
+                let params = params.ok_or_else(|| anyhow!("host.localToolExecuted 缺少 params"))?;
+                let event: LocalMcpToolResultEvent = serde_json::from_value(params)?;
+                self.push_local_mcp_tool_result(event);
+                Ok(None)
+            }
+            "host.localToolFailed" => {
+                let params = params.ok_or_else(|| anyhow!("host.localToolFailed 缺少 params"))?;
+                let event: LocalMcpToolFailedEvent = serde_json::from_value(params)?;
+                self.push_local_mcp_tool_failure(event);
+                Ok(None)
+            }
             "host.listMcpServers" => Ok(Some(serde_json::to_value(self.tool_executor.list_mcp_servers()?)?)),
             "host.inspectMcpServer" => {
                 let name = params
@@ -1205,6 +1247,33 @@ impl TsBridgeRuntime {
             .find(|item| item.name == server)
             .map(|item| item.display_name)
             .ok_or_else(|| anyhow!("未知 MCP server: {}", server))
+    }
+
+    fn push_local_mcp_tool_result(&mut self, event: LocalMcpToolResultEvent) {
+        let request = tool_request_from_local_mcp(&event.request);
+        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+            MessageRole::Agent,
+            format_tool_ui_message(&request, &event.tool_name, &event.output),
+            build_tool_result_block(
+                &request,
+                &event.tool_name,
+                event.tool_call_id.as_deref(),
+                &event.output,
+            ),
+        )));
+    }
+
+    fn push_local_mcp_tool_failure(&mut self, event: LocalMcpToolFailedEvent) {
+        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+            MessageRole::Agent,
+            format!("工具执行失败: {}", event.error),
+            tool_failed_block(
+                &event.tool_name,
+                event.tool_call_id.as_deref(),
+                "工具执行失败",
+                &event.error,
+            ),
+        )));
     }
 
     fn handle_bridge_error(&mut self, err: anyhow::Error) {
@@ -1914,4 +1983,13 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
             })
         }).collect::<Vec<_>>(),
     })
+}
+
+fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolRequest {
+    ToolRequest::McpTool {
+        server: request.server.clone(),
+        display_name: request.display_name.clone(),
+        tool_name: request.tool_name.clone(),
+        arguments: request.arguments.clone(),
+    }
 }

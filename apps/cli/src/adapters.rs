@@ -216,16 +216,7 @@ impl WorkspaceToolExecutor {
 
 impl ToolExecutor for WorkspaceToolExecutor {
     fn tool_definitions_json(&self) -> Value {
-        let mut definitions = self
-            .inner
-            .tool_definitions_json()
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-
-        let state = lock_mcp_state(&self.mcp_state);
-        definitions.extend(state.catalog.definitions.clone());
-        Value::Array(definitions)
+        self.inner.tool_definitions_json()
     }
 
     fn parse_command(&self, message: &str) -> Result<ToolRequest> {
@@ -233,25 +224,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
     }
 
     fn request_from_function_call(&self, name: &str, arguments_json: &str) -> Result<ToolRequest> {
-        if let Ok(request) = ToolRuntime::request_from_function_call(name, arguments_json) {
-            return Ok(request);
-        }
-
-        let route = lock_mcp_state(&self.mcp_state)
-            .catalog
-            .routes
-            .get(name)
-            .cloned()
-            .ok_or_else(|| anyhow!("未知工具名: {}", name))?;
-        let arguments: Value = serde_json::from_str(arguments_json)
-            .with_context(|| format!("MCP 工具参数 JSON 解析失败: {}", arguments_json))?;
-
-        Ok(ToolRequest::McpTool {
-            server: route.server,
-            display_name: route.display_name,
-            tool_name: route.tool_name,
-            arguments,
-        })
+        ToolRuntime::request_from_function_call(name, arguments_json)
     }
 
     fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {

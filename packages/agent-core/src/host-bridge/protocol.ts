@@ -123,3 +123,9 @@ export interface RuntimeRespondToPendingApprovalParams {
 export interface RuntimeStartManualToolCommandParams {
   message: string;
 }
+
+export interface RuntimeStartManualMcpToolParams {
+  server: string;
+  tool: string;
+  argsJson?: string;
+}
