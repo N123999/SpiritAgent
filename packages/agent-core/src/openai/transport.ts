@@ -256,7 +256,19 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   assetRoot = process.cwd(),
   enabledRules: OpenAiEnabledRule[] = [],
 ): OpenAiToolAgentState {
-  const rebuilt = startOpenAiToolAgentState(history, userInput, assetRoot, enabledRules);
+  const preservedRulesSystemMessage = findRulesSystemMessageContent(retryState.messages);
+  const rebuilt = startOpenAiToolAgentState(
+    history,
+    userInput,
+    assetRoot,
+    preservedRulesSystemMessage === undefined ? enabledRules : [],
+  );
+  if (preservedRulesSystemMessage !== undefined) {
+    rebuilt.messages.splice(1, 0, {
+      role: 'system',
+      content: preservedRulesSystemMessage,
+    });
+  }
   rebuilt.steps = retryState.steps;
 
   const userIndex = findLastMatchingIndex(
@@ -553,6 +565,19 @@ export function buildRulesSystemMessage(
   }
 
   return lines.join('\n').trimEnd();
+}
+
+function findRulesSystemMessageContent(messages: JsonValue[]): string | undefined {
+  for (const message of messages) {
+    if (!isJsonObject(message) || message.role !== 'system') {
+      continue;
+    }
+    if (typeof message.content === 'string' && message.content.startsWith(RULES_SECTION_PREFIX)) {
+      return message.content;
+    }
+  }
+
+  return undefined;
 }
 
 function createOpenAiClient(config: OpenAiTransportConfig): OpenAI {
