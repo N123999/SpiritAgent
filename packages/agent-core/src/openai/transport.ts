@@ -1219,7 +1219,7 @@ function buildPrimarySystemMessage(rulesSystemMessage: string | undefined): stri
 }
 
 function normalizeMessagesForRequest(messages: JsonValue[]): JsonValue[] {
-  // 保持通用 BYOK 请求形态原样透传；若某个提供方不支持多 system message，应该放到专用适配器里处理。
+  // TODO: 某些 LLM 提供商不兼容多个 system message，后续可能需要单独适配提供商模型，BYOK 容不得代码污染。
   return messages.map((message) => cloneJsonValue(message));
 }
 
