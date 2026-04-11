@@ -1482,6 +1482,29 @@ impl TuiShell {
         }
     }
 
+    pub(crate) fn handle_rules_slash(&mut self, args: &[&str]) {
+        if !args.is_empty() {
+            self.push_agent_message("用法: /rules");
+            return;
+        }
+
+        if let Err(err) = self.refresh_rules_from_disk() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("读取规则失败: {}", err),
+                tool_block: None,
+            });
+            return;
+        }
+
+        self.open_rules_form();
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: "已打开规则表单。Enter 切换规则，Esc 保存并关闭。".to_string(),
+            tool_block: None,
+        });
+    }
+
     pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
         let tail = message.strip_prefix("/mcp").map(str::trim).unwrap_or("");
 
