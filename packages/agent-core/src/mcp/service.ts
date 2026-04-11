@@ -212,7 +212,21 @@ export class McpService {
     }
   }
 
+  async callTool(
+    serverName: string,
+    toolName: string,
+    argsJson?: string,
+  ): Promise<JsonValue> {
+    const request = await this.createToolRequest(serverName, toolName, argsJson);
+    return this.callToolRequest(request);
+  }
+
   async executeToolRequest(request: McpToolRequest): Promise<string> {
+    const result = await this.callToolRequest(request);
+    return JSON.stringify(result, null, 2);
+  }
+
+  async callToolRequest(request: McpToolRequest): Promise<JsonValue> {
     const server = await this.requireConnectableServer(request.server);
 
     return this.withConnection(server, async (connection) => {
@@ -231,7 +245,7 @@ export class McpService {
       this.registry.setServerState(server.name, 'ready', {
         cachedTools: this.registry.get(server.name)?.cachedTools ?? 0,
       });
-      return JSON.stringify(result, null, 2);
+      return result as JsonValue;
     });
   }
 

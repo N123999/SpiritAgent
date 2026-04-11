@@ -20,9 +20,8 @@ use crate::{
     llm_types::LlmMessage,
     logging,
     mcp::McpServerConfig,
-    mcp_manager::{
+    mcp_types::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
-        McpManager,
         McpServerInspection,
     },
     model_registry::AppConfig,
@@ -272,6 +271,36 @@ impl TsBridgeRuntime {
             runtime.workspace_root.display()
         ));
         runtime.initialize_bridge()?;
+        Ok(runtime)
+    }
+
+    pub fn new_mcp_only(
+        secret_store: Arc<dyn SecretStore>,
+        workspace_root: PathBuf,
+    ) -> Result<Self> {
+        let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
+        let (background_tool_completion_tx, background_tool_completion_rx) =
+            mpsc::channel::<BackgroundToolCompletion>();
+        let mut runtime = Self {
+            process,
+            config: AppConfig::default(),
+            secret_store,
+            workspace_root,
+            session: SessionModel::new(),
+            tool_executor: WorkspaceToolExecutor::new(),
+            enabled_rules: Vec::new(),
+            pending_aux_state: None,
+            pending_approval_kind: None,
+            pending_assistant_has_output: false,
+            is_busy_cache: false,
+            events: VecDeque::new(),
+            background_tool_completion_tx,
+            background_tool_completion_rx,
+            bridge_failed: false,
+        };
+        runtime.initialize_bridge_with_transport_config(build_mcp_only_transport_config(
+            &runtime.workspace_root,
+        ))?;
         Ok(runtime)
     }
 
@@ -548,6 +577,47 @@ impl TsBridgeRuntime {
         Ok(serde_json::from_value(value)?)
     }
 
+    pub fn read_mcp_resource_value(&mut self, server: &str, uri: &str) -> Result<Value> {
+        self.call_bridge(
+            "runtime.readMcpResource",
+            Some(json!({ "server": server, "uri": uri })),
+        )
+    }
+
+    pub fn get_mcp_prompt_value(
+        &mut self,
+        server: &str,
+        prompt: &str,
+        args_json: Option<&str>,
+    ) -> Result<Value> {
+        let mut params = json!({
+            "server": server,
+            "prompt": prompt,
+        });
+        if let Some(args_json) = args_json {
+            params["argsJson"] = Value::String(args_json.to_string());
+        }
+
+        self.call_bridge("runtime.getMcpPrompt", Some(params))
+    }
+
+    pub fn call_mcp_tool_value(
+        &mut self,
+        server: &str,
+        tool_name: &str,
+        args_json: Option<&str>,
+    ) -> Result<Value> {
+        let mut params = json!({
+            "server": server,
+            "tool": tool_name,
+        });
+        if let Some(args_json) = args_json {
+            params["argsJson"] = Value::String(args_json.to_string());
+        }
+
+        self.call_bridge("runtime.callMcpTool", Some(params))
+    }
+
     pub fn attach_mcp_resource(&mut self, server: &str, uri: &str) -> Result<String> {
         let value = self.call_bridge(
             "runtime.attachMcpResource",
@@ -735,10 +805,14 @@ impl TsBridgeRuntime {
     }
 
     fn initialize_bridge(&mut self) -> Result<()> {
+        self.initialize_bridge_with_transport_config(self.resolve_transport_config_json()?)
+    }
+
+    fn initialize_bridge_with_transport_config(&mut self, transport_config: Value) -> Result<()> {
         let snapshot = self.call_bridge(
             "runtime.init",
             Some(json!({
-                "transportConfig": self.resolve_transport_config_json()?,
+                "transportConfig": transport_config,
                 "history": llm_history_to_json(self.session.llm_history()),
                 "enabledRules": self.enabled_rules,
             })),
@@ -910,17 +984,6 @@ impl TsBridgeRuntime {
         );
     }
 
-    fn start_local_background_tool_execution(&mut self, request: ToolRequest, ui_tool_name: String) {
-        start_background_tool_worker(
-            self.workspace_root.clone(),
-            request,
-            ui_tool_name,
-            None,
-            self.background_tool_completion_tx.clone(),
-            None,
-        );
-    }
-
     fn drain_background_tool_completions(&mut self) {
         loop {
             match self.background_tool_completion_rx.try_recv() {
@@ -1070,60 +1133,6 @@ impl TsBridgeRuntime {
                 self.push_local_mcp_tool_failure(event);
                 Ok(None)
             }
-            "host.listMcpServers" => Ok(Some(serde_json::to_value(self.tool_executor.list_mcp_servers()?)?)),
-            "host.inspectMcpServer" => {
-                let name = params
-                    .and_then(|value| value.get("name").cloned())
-                    .and_then(|value| value.as_str().map(ToString::to_string))
-                    .ok_or_else(|| anyhow!("host.inspectMcpServer 缺少 name"))?;
-                Ok(Some(serde_json::to_value(self.tool_executor.inspect_mcp_server(&name)?)?))
-            }
-            "host.listMcpTools" => {
-                let name = params
-                    .and_then(|value| value.get("name").cloned())
-                    .and_then(|value| value.as_str().map(ToString::to_string))
-                    .ok_or_else(|| anyhow!("host.listMcpTools 缺少 name"))?;
-                Ok(Some(serde_json::to_value(self.tool_executor.list_mcp_tools(&name)?)?))
-            }
-            "host.listMcpResources" => {
-                let name = params
-                    .and_then(|value| value.get("name").cloned())
-                    .and_then(|value| value.as_str().map(ToString::to_string))
-                    .ok_or_else(|| anyhow!("host.listMcpResources 缺少 name"))?;
-                Ok(Some(serde_json::to_value(self.tool_executor.list_mcp_resources(&name)?)?))
-            }
-            "host.readMcpResource" => {
-                let params = params.ok_or_else(|| anyhow!("host.readMcpResource 缺少 params"))?;
-                let name = params
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("host.readMcpResource 缺少 name"))?;
-                let uri = params
-                    .get("uri")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("host.readMcpResource 缺少 uri"))?;
-                Ok(Some(self.tool_executor.read_mcp_resource(name, uri)?))
-            }
-            "host.listMcpPrompts" => {
-                let name = params
-                    .and_then(|value| value.get("name").cloned())
-                    .and_then(|value| value.as_str().map(ToString::to_string))
-                    .ok_or_else(|| anyhow!("host.listMcpPrompts 缺少 name"))?;
-                Ok(Some(serde_json::to_value(self.tool_executor.list_mcp_prompts(&name)?)?))
-            }
-            "host.getMcpPrompt" => {
-                let params = params.ok_or_else(|| anyhow!("host.getMcpPrompt 缺少 params"))?;
-                let name = params
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("host.getMcpPrompt 缺少 name"))?;
-                let prompt = params
-                    .get("prompt")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("host.getMcpPrompt 缺少 prompt"))?;
-                let args_json = params.get("argsJson").and_then(Value::as_str);
-                Ok(Some(self.tool_executor.get_mcp_prompt(name, prompt, args_json)?))
-            }
             _ => Err(anyhow!("未知 host callback: {}", method)),
         }
     }
@@ -1242,14 +1251,6 @@ impl TsBridgeRuntime {
                 BridgeRuntimeEvent::BackgroundToolStatus { .. } => {}
             }
         }
-    }
-
-    fn resolve_mcp_display_name(&mut self, server: &str) -> Result<String> {
-        self.list_mcp_servers()?
-            .into_iter()
-            .find(|item| item.name == server)
-            .map(|item| item.display_name)
-            .ok_or_else(|| anyhow!("未知 MCP server: {}", server))
     }
 
     fn push_local_mcp_tool_result(&mut self, event: LocalMcpToolResultEvent) {
@@ -1668,51 +1669,15 @@ fn approval_decision_from_input(message: &str) -> Value {
     }
 }
 
-fn parse_optional_json_value(input: Option<&str>) -> Result<Value> {
-    let Some(raw) = input else {
-        return Ok(Value::Null);
-    };
-
-    serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))
-}
-
 fn should_execute_tool_in_background(request: &ToolRequest) -> bool {
-    matches!(request, ToolRequest::McpTool { .. } | ToolRequest::Search { .. })
+    matches!(request, ToolRequest::Search { .. })
 }
 
 fn background_tool_status_text(request: &ToolRequest) -> Option<String> {
     match request {
         ToolRequest::Search { query } => Some(format!("搜索中: {}", query)),
-        ToolRequest::McpTool {
-            display_name,
-            tool_name,
-            ..
-        } => Some(format!("MCP 工具执行中: {} / {}", display_name, tool_name)),
         _ => None,
     }
-}
-
-fn execute_mcp_tool_request_sync(
-    workspace_root: &PathBuf,
-    request: &ToolRequest,
-) -> Result<String> {
-    let ToolRequest::McpTool {
-        server,
-        tool_name,
-        arguments,
-        ..
-    } = request
-    else {
-        return Err(anyhow!("后台 MCP 工具执行收到非 MCP 请求"));
-    };
-
-    let arguments = match arguments {
-        Value::Object(map) => Some(map.clone()),
-        Value::Null => None,
-        _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
-    };
-    let value = McpManager::load(workspace_root.clone())?.call_tool(server, tool_name, arguments)?;
-    Ok(serde_json::to_string_pretty(&value)?)
 }
 
 fn execute_background_tool_request_sync(
@@ -1720,10 +1685,18 @@ fn execute_background_tool_request_sync(
     request: &ToolRequest,
 ) -> Result<String> {
     match request {
-        ToolRequest::McpTool { .. } => execute_mcp_tool_request_sync(workspace_root, request),
         ToolRequest::Search { .. } => ToolRuntime::new_for_workspace(workspace_root.clone()).execute(request),
         _ => Err(anyhow!("后台工具执行收到不支持的请求")),
     }
+}
+
+fn build_mcp_only_transport_config(workspace_root: &Path) -> Value {
+    json!({
+        "apiKey": "mcp-only",
+        "model": "mcp-only",
+        "baseUrl": "https://example.invalid/v1",
+        "workspaceRoot": workspace_root,
+    })
 }
 
 #[cfg(test)]

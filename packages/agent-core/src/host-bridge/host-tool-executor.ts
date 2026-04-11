@@ -126,6 +126,14 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     return this.mcp.createToolRequest(server, toolName, argsJson);
   }
 
+  async callMcpTool(
+    server: string,
+    toolName: string,
+    argsJson?: string,
+  ): Promise<JsonValue> {
+    return this.mcp.callTool(server, toolName, argsJson);
+  }
+
   async listMcpServers(): Promise<JsonValue[]> {
     return this.mcp.listServers();
   }

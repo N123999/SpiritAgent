@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use std::env;
+use std::{env, path::PathBuf, sync::Arc};
 
 use crate::{
     adapters::{DefaultAppPaths, JsonConfigStore, KeyringSecretStore},
@@ -7,9 +7,9 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path,
     },
-    mcp_manager::McpManager,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, ConfigStore, SecretStore},
+    ts_bridge::TsBridgeRuntime,
 };
 
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
@@ -224,12 +224,12 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
 
     match action {
         McpCommand::List => {
-            let manager = McpManager::load(workspace_root.clone())?;
-            let mut servers = manager.servers();
+            let mut runtime = new_mcp_cli_runtime(workspace_root.clone())?;
+            let servers = runtime.list_mcp_servers()?;
 
-            println!("MCP 配置: {}", manager.config_path().display());
+            println!("MCP 配置: {}", user_mcp_config_path().display());
 
-            if servers.len() == 0 {
+            if servers.is_empty() {
                 println!("未配置任何 MCP server。可先执行 `spirit mcp init` 生成模板。\n");
                 println!(
                     "提示: 首个模板会生成 GitHub MCP 的 stdio 配置，并使用环境变量 GITHUB_PERSONAL_ACCESS_TOKEN。"
@@ -238,7 +238,7 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             }
 
             println!("MCP servers:");
-            for server in servers.by_ref() {
+            for server in servers {
                 println!(
                     "  - {}\n    display: {}\n    state: {}\n    capabilities: {}\n    transport: {}",
                     server.name,
@@ -277,8 +277,8 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("已禁用 MCP server: {}\n配置文件: {}", name, path.display(),);
         }
         McpCommand::Inspect { name } => {
-            let manager = McpManager::load(workspace_root)?;
-            let inspection = manager.inspect_server(&name)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let inspection = runtime.inspect_mcp_server(&name)?;
             println!("server: {}", inspection.name);
             println!("display: {}", inspection.display_name);
             println!("protocol_version: {}", inspection.protocol_version);
@@ -321,8 +321,8 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             println!("  prompts: {}", inspection.prompts_count);
         }
         McpCommand::Tools { name } => {
-            let manager = McpManager::load(workspace_root)?;
-            let tools = manager.list_tools(&name)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let tools = runtime.list_mcp_tools(&name)?;
             if tools.is_empty() {
                 println!("MCP server {} 当前没有可见 tools。", name);
             } else {
@@ -343,14 +343,13 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             tool,
             args_json,
         } => {
-            let manager = McpManager::load(workspace_root)?;
-            let arguments = parse_optional_json_object(args_json.as_deref())?;
-            let value = manager.call_tool(&name, &tool, arguments)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let value = runtime.call_mcp_tool_value(&name, &tool, args_json.as_deref())?;
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
         McpCommand::Resources { name } => {
-            let manager = McpManager::load(workspace_root)?;
-            let resources = manager.list_resources(&name)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let resources = runtime.list_mcp_resources(&name)?;
             if resources.is_empty() {
                 println!("MCP server {} 当前没有可见 resources。", name);
             } else {
@@ -374,8 +373,8 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             }
         }
         McpCommand::Prompts { name } => {
-            let manager = McpManager::load(workspace_root)?;
-            let prompts = manager.list_prompts(&name)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let prompts = runtime.list_mcp_prompts(&name)?;
             if prompts.is_empty() {
                 println!("MCP server {} 当前没有可见 prompts。", name);
             } else {
@@ -408,8 +407,8 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             }
         }
         McpCommand::ReadResource { name, uri } => {
-            let manager = McpManager::load(workspace_root)?;
-            let value = manager.read_resource(&name, &uri)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let value = runtime.read_mcp_resource_value(&name, &uri)?;
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
         McpCommand::GetPrompt {
@@ -417,9 +416,8 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
             prompt,
             args_json,
         } => {
-            let manager = McpManager::load(workspace_root)?;
-            let arguments = parse_optional_json_object(args_json.as_deref())?;
-            let value = manager.get_prompt(&name, &prompt, arguments)?;
+            let mut runtime = new_mcp_cli_runtime(workspace_root)?;
+            let value = runtime.get_mcp_prompt_value(&name, &prompt, args_json.as_deref())?;
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
     }
@@ -427,21 +425,8 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
     Ok(())
 }
 
-fn parse_optional_json_object(
-    input: Option<&str>,
-) -> Result<Option<serde_json::Map<String, serde_json::Value>>> {
-    let Some(raw) = input else {
-        return Ok(None);
-    };
-
-    let value: serde_json::Value =
-        serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))?;
-    match value {
-        serde_json::Value::Object(map) => Ok(Some(map)),
-        _ => Err(anyhow!(
-            "args-json 必须是 JSON object，例如 `{{\"owner\":\"microsoft\"}}`"
-        )),
-    }
+fn new_mcp_cli_runtime(workspace_root: PathBuf) -> Result<TsBridgeRuntime> {
+    TsBridgeRuntime::new_mcp_only(Arc::new(KeyringSecretStore), workspace_root)
 }
 
 fn yes_no(flag: bool) -> &'static str {

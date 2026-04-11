@@ -301,9 +301,24 @@ peer.on('runtime.listMcpResources', async (rawParams) => {
   return toolExecutor.listMcpResources(params.name);
 });
 
+peer.on('runtime.readMcpResource', async (rawParams) => {
+  const params = rawParams as RuntimeAttachMcpResourceParams;
+  return toolExecutor.readMcpResource(params.server, params.uri);
+});
+
 peer.on('runtime.listMcpPrompts', async (rawParams) => {
   const params = rawParams as RuntimeNamedMcpServerParams;
   return toolExecutor.listMcpPrompts(params.name);
+});
+
+peer.on('runtime.getMcpPrompt', async (rawParams) => {
+  const params = rawParams as RuntimeApplyMcpPromptParams;
+  return toolExecutor.getMcpPrompt(params.server, params.prompt, params.argsJson);
+});
+
+peer.on('runtime.callMcpTool', async (rawParams) => {
+  const params = rawParams as RuntimeApplyMcpPromptParams & { tool: string };
+  return toolExecutor.callMcpTool(params.server, params.tool, params.argsJson);
 });
 
 peer.on('runtime.mcpStatusSnapshot', async () => toolExecutor.mcpStatusSnapshot());

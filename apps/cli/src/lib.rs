@@ -9,7 +9,7 @@ pub mod locale;
 pub mod llm_types;
 pub mod logging;
 pub mod mcp;
-pub mod mcp_manager;
+pub mod mcp_types;
 pub mod model_registry;
 pub mod ports;
 pub mod rules;

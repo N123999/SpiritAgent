@@ -1,34 +1,20 @@
 use anyhow::{Context, Result, anyhow};
-use serde_json::{Map, Value, json};
-use std::{
-    collections::{BTreeMap, hash_map::DefaultHasher},
-    env,
-    hash::{Hash, Hasher},
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    thread,
-};
+use serde_json::Value;
+use std::{env, path::PathBuf};
 
 use crate::{
     chat_store,
     logging,
     mcp::{McpServerConfig, add_mcp_server},
-    mcp_manager::{McpManager, McpServerRuntimeState},
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
         remove_model_api_key, save_config, save_model_api_key,
     },
-    ports::{
-        AppPaths, ChatArchive, ChatRepository, ConfigStore, McpStatusSnapshot, McpStatusState,
-        SecretStore, ToolExecutor,
-    },
+    ports::{AppPaths, ChatArchive, ChatRepository, ConfigStore, SecretStore, ToolExecutor},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
 };
 
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
-const MCP_FUNCTION_NAME_LIMIT: usize = 64;
-const MCP_SERVER_FRAGMENT_LIMIT: usize = 16;
-const MCP_TOOL_FRAGMENT_LIMIT: usize = 24;
 
 pub struct DefaultAppPaths {
     workspace_root: PathBuf,
@@ -172,45 +158,14 @@ impl ChatRepository for JsonChatRepository {
 pub struct WorkspaceToolExecutor {
     inner: ToolRuntime,
     workspace_root: PathBuf,
-    mcp_state: Arc<Mutex<McpSharedState>>,
-}
-
-#[derive(Clone)]
-struct McpFunctionRoute {
-    server: String,
-    display_name: String,
-    tool_name: String,
-}
-
-#[derive(Default)]
-struct McpToolCatalog {
-    definitions: Vec<Value>,
-    routes: BTreeMap<String, McpFunctionRoute>,
-}
-
-#[derive(Default)]
-struct McpSharedState {
-    catalog: McpToolCatalog,
-    status: McpStatusSnapshot,
-    refresh_in_flight: bool,
 }
 
 impl WorkspaceToolExecutor {
     pub fn new() -> Self {
-        let workspace_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             inner: ToolRuntime::new(),
-            mcp_state: Arc::new(Mutex::new(McpSharedState {
-                catalog: McpToolCatalog::default(),
-                status: initial_mcp_status(&workspace_root),
-                refresh_in_flight: false,
-            })),
-            workspace_root,
+            workspace_root: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
-    }
-
-    fn load_mcp_manager(&self) -> Result<McpManager> {
-        McpManager::load(self.workspace_root.clone())
     }
 }
 
@@ -228,27 +183,7 @@ impl ToolExecutor for WorkspaceToolExecutor {
     }
 
     fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
-        match request {
-            ToolRequest::McpTool { server, .. } => {
-                let manager = self.load_mcp_manager()?;
-                let configured = manager
-                    .get(server)
-                    .ok_or_else(|| anyhow!("未知 MCP server: {}", server))?;
-                if !configured.capabilities.tools {
-                    return Err(anyhow!("MCP server {} 未启用 tools capability", server));
-                }
-
-                match configured.state {
-                    McpServerRuntimeState::Disabled => Err(anyhow!(
-                        "MCP server {} 已禁用，请先执行 `spirit mcp enable {}`。",
-                        server,
-                        server
-                    )),
-                    McpServerRuntimeState::Ready => Ok(AuthorizationDecision::Allowed),
-                }
-            }
-            _ => self.inner.authorize(request),
-        }
+        self.inner.authorize(request)
     }
 
     fn trust(&mut self, target: &TrustTarget) -> Result<()> {
@@ -256,290 +191,10 @@ impl ToolExecutor for WorkspaceToolExecutor {
     }
 
     fn execute(&mut self, request: &ToolRequest) -> Result<String> {
-        match request {
-            ToolRequest::McpTool {
-                server,
-                tool_name,
-                arguments,
-                ..
-            } => {
-                let arguments = match arguments {
-                    Value::Object(map) => Some(map.clone()),
-                    Value::Null => None,
-                    _ => return Err(anyhow!("MCP 工具参数必须是 JSON object")),
-                };
-                let value = self
-                    .load_mcp_manager()?
-                    .call_tool(server, tool_name, arguments)?;
-                Ok(serde_json::to_string_pretty(&value)?)
-            }
-            _ => self.inner.execute(request),
-        }
-    }
-
-    fn start_mcp_background_refresh(&self) {
-        spawn_mcp_catalog_refresh(Arc::clone(&self.mcp_state), self.workspace_root.clone());
-    }
-
-    fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
-        lock_mcp_state(&self.mcp_state).status.clone()
+        self.inner.execute(request)
     }
 
     fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {
-        let path = add_mcp_server(&self.workspace_root, name, config)?;
-        self.start_mcp_background_refresh();
-        Ok(path)
+        add_mcp_server(&self.workspace_root, name, config)
     }
-
-    fn list_mcp_servers(&self) -> Result<Vec<crate::mcp_manager::ManagedMcpServer>> {
-        let manager = self.load_mcp_manager()?;
-        Ok(manager.servers().cloned().collect())
-    }
-
-    fn inspect_mcp_server(&self, name: &str) -> Result<crate::mcp_manager::McpServerInspection> {
-        self.load_mcp_manager()?.inspect_server(name)
-    }
-
-    fn list_mcp_tools(&self, name: &str) -> Result<Vec<crate::mcp_manager::McpDiscoveredTool>> {
-        self.load_mcp_manager()?.list_tools(name)
-    }
-
-    fn list_mcp_resources(
-        &self,
-        name: &str,
-    ) -> Result<Vec<crate::mcp_manager::McpDiscoveredResource>> {
-        self.load_mcp_manager()?.list_resources(name)
-    }
-
-    fn read_mcp_resource(&self, name: &str, uri: &str) -> Result<Value> {
-        self.load_mcp_manager()?.read_resource(name, uri)
-    }
-
-    fn list_mcp_prompts(&self, name: &str) -> Result<Vec<crate::mcp_manager::McpDiscoveredPrompt>> {
-        self.load_mcp_manager()?.list_prompts(name)
-    }
-
-    fn get_mcp_prompt(&self, name: &str, prompt: &str, args_json: Option<&str>) -> Result<Value> {
-        self.load_mcp_manager()?
-            .get_prompt(name, prompt, parse_optional_json_object(args_json)?)
-    }
-}
-
-fn lock_mcp_state(state: &Arc<Mutex<McpSharedState>>) -> std::sync::MutexGuard<'_, McpSharedState> {
-    match state.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
-}
-
-fn initial_mcp_status(workspace_root: &PathBuf) -> McpStatusSnapshot {
-    match McpManager::load(workspace_root.clone()) {
-        Ok(manager) => McpStatusSnapshot {
-            revision: 0,
-            state: McpStatusState::Loading,
-            configured_servers: manager.servers().len(),
-            loaded_servers: 0,
-            cached_tools: 0,
-            last_error: None,
-        },
-        Err(err) => McpStatusSnapshot {
-            revision: 0,
-            state: McpStatusState::Error,
-            configured_servers: 0,
-            loaded_servers: 0,
-            cached_tools: 0,
-            last_error: Some(err.to_string()),
-        },
-    }
-}
-
-fn spawn_mcp_catalog_refresh(state: Arc<Mutex<McpSharedState>>, workspace_root: PathBuf) {
-    {
-        let mut guard = lock_mcp_state(&state);
-        if guard.refresh_in_flight {
-            return;
-        }
-        guard.refresh_in_flight = true;
-        guard.status.state = McpStatusState::Loading;
-        guard.status.revision = guard.status.revision.saturating_add(1);
-    }
-
-    thread::spawn(move || {
-        let result = build_mcp_catalog_snapshot(&workspace_root);
-        let mut guard = lock_mcp_state(&state);
-        guard.refresh_in_flight = false;
-
-        match result {
-            Ok((catalog, mut status)) => {
-                status.revision = guard.status.revision.saturating_add(1);
-                guard.catalog = catalog;
-                guard.status = status;
-            }
-            Err(err) => {
-                let formatted = logging::format_error_chain(&err);
-                guard.catalog = McpToolCatalog::default();
-                guard.status = McpStatusSnapshot {
-                    revision: guard.status.revision.saturating_add(1),
-                    state: McpStatusState::Error,
-                    configured_servers: guard.status.configured_servers,
-                    loaded_servers: 0,
-                    cached_tools: 0,
-                    last_error: Some(formatted.clone()),
-                };
-                logging::log_event(&format!("[mcp] background refresh failed: {}", formatted));
-            }
-        }
-    });
-}
-
-fn build_mcp_catalog_snapshot(
-    workspace_root: &PathBuf,
-) -> Result<(McpToolCatalog, McpStatusSnapshot)> {
-    let manager = McpManager::load(workspace_root.clone())?;
-    let servers = manager.servers().cloned().collect::<Vec<_>>();
-    let configured_servers = servers.len();
-    let mut loaded_servers = 0usize;
-    let mut cached_tools = 0usize;
-    let mut definitions = Vec::new();
-    let mut routes = BTreeMap::new();
-    let mut first_error = None;
-
-    for server in servers {
-        if server.state != McpServerRuntimeState::Ready {
-            continue;
-        }
-
-        loaded_servers += 1;
-        if !server.capabilities.tools {
-            continue;
-        }
-
-        match manager.list_tools(&server.name) {
-            Ok(tools) => {
-                cached_tools += tools.len();
-                for tool in tools {
-                    let function_name = synthetic_mcp_function_name(&server.name, &tool.name);
-                    let description = tool.description.clone().unwrap_or_else(|| {
-                        format!(
-                            "MCP tool `{}` from server `{}`.",
-                            tool.name, server.display_name
-                        )
-                    });
-                    let parameters = if tool.input_schema.is_object() {
-                        tool.input_schema.clone()
-                    } else {
-                        json!({
-                            "type": "object",
-                            "additionalProperties": true,
-                        })
-                    };
-
-                    definitions.push(json!({
-                        "type": "function",
-                        "function": {
-                            "name": function_name,
-                            "description": format!("[MCP {}] {}", server.display_name, description),
-                            "parameters": parameters,
-                        }
-                    }));
-                    routes.insert(
-                        function_name,
-                        McpFunctionRoute {
-                            server: server.name.clone(),
-                            display_name: server.display_name.clone(),
-                            tool_name: tool.name,
-                        },
-                    );
-                }
-            }
-            Err(err) => {
-                let formatted = logging::format_error_chain(&err);
-                logging::log_event(&format!(
-                    "[mcp] preload tools failed for server {}: {}",
-                    server.name, formatted
-                ));
-                if first_error.is_none() {
-                    first_error = Some(formatted);
-                }
-            }
-        }
-    }
-
-    let status = McpStatusSnapshot {
-        revision: 0,
-        state: if first_error.is_some() {
-            McpStatusState::Error
-        } else {
-            McpStatusState::Ready
-        },
-        configured_servers,
-        loaded_servers,
-        cached_tools,
-        last_error: first_error,
-    };
-
-    Ok((
-        McpToolCatalog {
-            definitions,
-            routes,
-        },
-        status,
-    ))
-}
-
-fn parse_optional_json_object(input: Option<&str>) -> Result<Option<Map<String, Value>>> {
-    let Some(raw) = input.map(str::trim).filter(|raw| !raw.is_empty()) else {
-        return Ok(None);
-    };
-
-    let value: Value =
-        serde_json::from_str(raw).with_context(|| format!("JSON 解析失败: {}", raw))?;
-    match value {
-        Value::Object(map) => Ok(Some(map)),
-        _ => Err(anyhow!(
-            "参数必须是 JSON object，例如 {{\"owner\":\"microsoft\"}}"
-        )),
-    }
-}
-
-fn synthetic_mcp_function_name(server: &str, tool: &str) -> String {
-    let server = truncate_identifier_fragment(
-        &sanitize_identifier_fragment(server),
-        MCP_SERVER_FRAGMENT_LIMIT,
-    );
-    let tool =
-        truncate_identifier_fragment(&sanitize_identifier_fragment(tool), MCP_TOOL_FRAGMENT_LIMIT);
-
-    let mut hasher = DefaultHasher::new();
-    server.hash(&mut hasher);
-    tool.hash(&mut hasher);
-    let digest = hasher.finish();
-
-    let mut name = format!("mcp__{}__{}__{:08x}", server, tool, digest as u32);
-    if name.len() > MCP_FUNCTION_NAME_LIMIT {
-        name.truncate(MCP_FUNCTION_NAME_LIMIT);
-    }
-    name
-}
-
-fn sanitize_identifier_fragment(input: &str) -> String {
-    let mut out = String::new();
-    for ch in input.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-        } else if !out.ends_with('_') {
-            out.push('_');
-        }
-    }
-
-    let trimmed = out.trim_matches('_');
-    if trimmed.is_empty() {
-        "tool".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn truncate_identifier_fragment(input: &str, max_len: usize) -> String {
-    input.chars().take(max_len).collect()
 }

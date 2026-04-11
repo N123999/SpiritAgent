@@ -5,7 +5,7 @@ use std::{path::PathBuf, sync::Arc};
 use crate::{
     host_runtime::RuntimeEvent,
     mcp::McpServerConfig,
-    mcp_manager::{
+    mcp_types::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
     },
