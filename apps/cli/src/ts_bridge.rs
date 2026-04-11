@@ -1216,6 +1216,19 @@ fn resolve_bridge_script(workspace_root: &Path) -> Result<PathBuf> {
         }
     }
 
+    // 与「用户项目目录」无关：bridge 位于 monorepo 的 packages/agent-core/dist。
+    // 开发时 cwd 常为 apps/cli，不能仅用 workspace_root（current_dir）推导路径。
+    let from_crate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("packages")
+        .join("agent-core")
+        .join("dist")
+        .join("host-bridge.js");
+    if from_crate.exists() {
+        return Ok(from_crate);
+    }
+
     let direct = workspace_root.join("packages").join("agent-core").join("dist").join("host-bridge.js");
     if direct.exists() {
         return Ok(direct);
@@ -1225,6 +1238,21 @@ fn resolve_bridge_script(workspace_root: &Path) -> Result<PathBuf> {
         let sibling = parent.join("packages").join("agent-core").join("dist").join("host-bridge.js");
         if sibling.exists() {
             return Ok(sibling);
+        }
+    }
+
+    let mut cursor = workspace_root.to_path_buf();
+    loop {
+        let candidate = cursor
+            .join("packages")
+            .join("agent-core")
+            .join("dist")
+            .join("host-bridge.js");
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        if !cursor.pop() {
+            break;
         }
     }
 
