@@ -113,6 +113,37 @@ struct BridgeExportState {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BridgeChatArchive {
+    messages: Vec<BridgeChatMessage>,
+    assistant_aux: Vec<BridgeAssistantAuxEntry>,
+    llm_history: Vec<BridgeLlmMessage>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeAssistantAuxEntry {
+    message_index: usize,
+    thinking: Option<String>,
+    compaction: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeLlmMessage {
+    role: String,
+    content: String,
+    image_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgePendingApproval {
     prompt: String,
     request: Value,
@@ -344,7 +375,28 @@ impl TsBridgeRuntime {
                 "assistantAux": assistant_aux,
             })),
         )?;
-        Ok(serde_json::from_value(value)?)
+        let bridge_archive: BridgeChatArchive = serde_json::from_value(value)?;
+        Ok(ChatArchive {
+            messages: bridge_archive
+                .messages
+                .into_iter()
+                .map(|message| (message.role, message.content))
+                .collect(),
+            assistant_aux: bridge_archive
+                .assistant_aux
+                .into_iter()
+                .map(|entry| AssistantAuxArchiveEntry {
+                    message_index: entry.message_index,
+                    thinking: entry.thinking,
+                    compaction: entry.compaction,
+                })
+                .collect(),
+            llm_history: bridge_archive
+                .llm_history
+                .into_iter()
+                .map(|message| (message.role, message.content, message.image_paths))
+                .collect(),
+        })
     }
 
     pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
