@@ -106,6 +106,10 @@ export interface RuntimeAttachMcpResourceParams {
   uri: string;
 }
 
+export interface RuntimeNamedMcpServerParams {
+  name: string;
+}
+
 export interface RuntimeApplyMcpPromptParams {
   server: string;
   prompt: string;

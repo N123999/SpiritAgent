@@ -1947,7 +1947,7 @@ impl TuiShell {
         }
     }
 
-    fn server_exists(&self, name: &str) -> bool {
+    fn server_exists(&mut self, name: &str) -> bool {
         self.runtime
             .list_mcp_servers()
             .map(|servers| servers.into_iter().any(|server| server.name == name))

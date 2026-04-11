@@ -5,6 +5,7 @@ import type {
   ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '../ports.js';
+import { McpService } from '../mcp/service.js';
 import { JsonRpcPeer } from './framing.js';
 
 interface HostToolRequestMetadata {
@@ -24,6 +25,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     cachedTools: 0,
   };
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
+  private readonly mcp = new McpService();
 
   constructor(protected readonly peer: JsonRpcPeer) {}
 
@@ -83,6 +85,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   startMcpBackgroundRefresh(): void {
+    void this.mcp.startBackgroundRefresh().catch(() => undefined);
     this.peer.notify('host.startMcpBackgroundRefresh');
   }
 
@@ -91,35 +94,37 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async addMcpServer(name: string, config: JsonValue): Promise<string> {
-    return this.peer.call<string>('host.addMcpServer', { name, config });
+    const result = await this.peer.call<string>('host.addMcpServer', { name, config });
+    void this.mcp.refreshConfig().catch(() => undefined);
+    return result;
   }
 
   async listMcpServers(): Promise<JsonValue[]> {
-    return this.peer.call<JsonValue[]>('host.listMcpServers');
+    return this.mcp.listServers();
   }
 
   async inspectMcpServer(name: string): Promise<JsonValue> {
-    return this.peer.call<JsonValue>('host.inspectMcpServer', { name });
+    return this.mcp.inspectServer(name);
   }
 
   async listMcpTools(name: string): Promise<JsonValue[]> {
-    return this.peer.call<JsonValue[]>('host.listMcpTools', { name });
+    return this.mcp.listTools(name);
   }
 
   async listMcpResources(name: string): Promise<JsonValue[]> {
-    return this.peer.call<JsonValue[]>('host.listMcpResources', { name });
+    return this.mcp.listResources(name);
   }
 
   async readMcpResource(name: string, uri: string): Promise<JsonValue> {
-    return this.peer.call<JsonValue>('host.readMcpResource', { name, uri });
+    return this.mcp.readResource(name, uri);
   }
 
   async listMcpPrompts(name: string): Promise<JsonValue[]> {
-    return this.peer.call<JsonValue[]>('host.listMcpPrompts', { name });
+    return this.mcp.listPrompts(name);
   }
 
   async getMcpPrompt(name: string, prompt: string, argsJson?: string): Promise<JsonValue> {
-    return this.peer.call<JsonValue>('host.getMcpPrompt', { name, prompt, argsJson });
+    return this.mcp.getPrompt(name, prompt, argsJson);
   }
 
   private unwrapHostToolRequest(value: JsonValue): JsonValue {

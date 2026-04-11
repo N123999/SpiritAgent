@@ -108,23 +108,23 @@ impl RuntimeHandle {
         self.runtime.submit_user_turn(text, explicit_images)
     }
 
-    pub fn list_mcp_servers(&self) -> Result<Vec<ManagedMcpServer>> {
+    pub fn list_mcp_servers(&mut self) -> Result<Vec<ManagedMcpServer>> {
         self.runtime.list_mcp_servers()
     }
 
-    pub fn inspect_mcp_server(&self, name: &str) -> Result<McpServerInspection> {
+    pub fn inspect_mcp_server(&mut self, name: &str) -> Result<McpServerInspection> {
         self.runtime.inspect_mcp_server(name)
     }
 
-    pub fn list_mcp_tools(&self, name: &str) -> Result<Vec<McpDiscoveredTool>> {
+    pub fn list_mcp_tools(&mut self, name: &str) -> Result<Vec<McpDiscoveredTool>> {
         self.runtime.list_mcp_tools(name)
     }
 
-    pub fn list_mcp_resources(&self, name: &str) -> Result<Vec<McpDiscoveredResource>> {
+    pub fn list_mcp_resources(&mut self, name: &str) -> Result<Vec<McpDiscoveredResource>> {
         self.runtime.list_mcp_resources(name)
     }
 
-    pub fn list_mcp_prompts(&self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
+    pub fn list_mcp_prompts(&mut self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
         self.runtime.list_mcp_prompts(name)
     }
 

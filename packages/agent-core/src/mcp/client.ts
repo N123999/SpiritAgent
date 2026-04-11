@@ -1,6 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport, type StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp';
+import type { Implementation, ServerCapabilities } from '@modelcontextprotocol/sdk/types';
+import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types';
 
 import { DEFAULT_MCP_CLIENT_INFO } from './config.js';
 import { McpConnectionError } from './errors.js';
@@ -14,6 +16,7 @@ import type {
 
 export type McpListToolsResult = Awaited<ReturnType<Client['listTools']>>;
 export type McpListResourcesResult = Awaited<ReturnType<Client['listResources']>>;
+export type McpListResourceTemplatesResult = Awaited<ReturnType<Client['listResourceTemplates']>>;
 export type McpListPromptsResult = Awaited<ReturnType<Client['listPrompts']>>;
 export type McpReadResourceResult = Awaited<ReturnType<Client['readResource']>>;
 export type McpGetPromptResult = Awaited<ReturnType<Client['getPrompt']>>;
@@ -39,6 +42,8 @@ export class SdkMcpConnection {
   private readonly clientStore: Client;
   private transportStore: McpSdkTransport | undefined;
   private serverNameStore: string | undefined;
+  private timeoutMsStore: number | undefined;
+  private protocolVersionStore = LATEST_PROTOCOL_VERSION;
 
   constructor(clientInfo: McpClientInfo = DEFAULT_MCP_CLIENT_INFO) {
     this.clientStore = createMcpSdkClient(clientInfo);
@@ -52,12 +57,29 @@ export class SdkMcpConnection {
     return this.serverNameStore;
   }
 
+  get serverCapabilities(): ServerCapabilities | undefined {
+    return this.clientStore.getServerCapabilities();
+  }
+
+  get serverVersion(): Implementation | undefined {
+    return this.clientStore.getServerVersion();
+  }
+
+  get instructions(): string | undefined {
+    return this.clientStore.getInstructions();
+  }
+
+  get protocolVersion(): string {
+    return this.protocolVersionStore;
+  }
+
   async connect(server: ResolvedMcpServerConfig): Promise<void> {
     await this.close();
     const transport = createTransport(server.transport);
+    this.timeoutMsStore = server.transport.timeoutMs;
 
     try {
-      await this.clientStore.connect(transport as unknown as McpConnectTransport);
+      await this.clientStore.connect(transport as unknown as McpConnectTransport, this.requestOptions());
     } catch (error) {
       await safeCloseTransport(transport);
       throw new McpConnectionError(`MCP server 连接失败: ${server.name}`, { cause: error });
@@ -65,12 +87,15 @@ export class SdkMcpConnection {
 
     this.transportStore = transport;
     this.serverNameStore = server.name;
+    this.protocolVersionStore = resolveProtocolVersion(transport);
   }
 
   async close(): Promise<void> {
     const transport = this.transportStore;
     this.transportStore = undefined;
     this.serverNameStore = undefined;
+    this.timeoutMsStore = undefined;
+    this.protocolVersionStore = LATEST_PROTOCOL_VERSION;
 
     if (transport) {
       await transport.close();
@@ -78,33 +103,41 @@ export class SdkMcpConnection {
   }
 
   async listTools(): Promise<McpListToolsResult> {
-    return this.clientStore.listTools();
+    return this.clientStore.listTools(undefined, this.requestOptions());
   }
 
   async listResources(): Promise<McpListResourcesResult> {
-    return this.clientStore.listResources();
+    return this.clientStore.listResources(undefined, this.requestOptions());
+  }
+
+  async listResourceTemplates(): Promise<McpListResourceTemplatesResult> {
+    return this.clientStore.listResourceTemplates(undefined, this.requestOptions());
   }
 
   async listPrompts(): Promise<McpListPromptsResult> {
-    return this.clientStore.listPrompts();
+    return this.clientStore.listPrompts(undefined, this.requestOptions());
   }
 
   async readResource(uri: string): Promise<McpReadResourceResult> {
-    return this.clientStore.readResource({ uri });
+    return this.clientStore.readResource({ uri }, this.requestOptions());
   }
 
   async getPrompt(name: string, args?: Record<string, string>): Promise<McpGetPromptResult> {
     return this.clientStore.getPrompt({
       name,
       ...(args === undefined ? {} : { arguments: args }),
-    });
+    }, this.requestOptions());
   }
 
   async callTool(name: string, args?: Record<string, unknown>): Promise<McpCallToolResult> {
     return this.clientStore.callTool({
       name,
       ...(args === undefined ? {} : { arguments: args }),
-    });
+    }, undefined, this.requestOptions());
+  }
+
+  private requestOptions(): { timeout: number } | undefined {
+    return this.timeoutMsStore === undefined ? undefined : { timeout: this.timeoutMsStore };
   }
 }
 
@@ -149,4 +182,12 @@ export function isHttpTransport(
   config: ResolvedMcpTransportConfig,
 ): config is ResolvedMcpHttpTransportConfig {
   return config.type === 'http';
+}
+
+function resolveProtocolVersion(transport: McpSdkTransport): string {
+  if (transport instanceof StreamableHTTPClientTransport) {
+    return transport.protocolVersion ?? LATEST_PROTOCOL_VERSION;
+  }
+
+  return LATEST_PROTOCOL_VERSION;
 }

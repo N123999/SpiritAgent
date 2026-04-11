@@ -38,6 +38,7 @@ import type {
   RuntimeApplyMcpPromptParams,
   RuntimeAttachMcpResourceParams,
   RuntimeInitParams,
+  RuntimeNamedMcpServerParams,
   RuntimeReplaceConfigParams,
   RuntimeReplaceRulesParams,
   RuntimeRespondToPendingApprovalParams,
@@ -271,6 +272,28 @@ peer.on('runtime.attachMcpResource', async (rawParams) => {
 });
 
 peer.on('runtime.clearPendingMcpResources', async () => requireRuntime().clearPendingMcpResources());
+
+peer.on('runtime.listMcpServers', async () => toolExecutor.listMcpServers());
+
+peer.on('runtime.inspectMcpServer', async (rawParams) => {
+  const params = rawParams as RuntimeNamedMcpServerParams;
+  return toolExecutor.inspectMcpServer(params.name);
+});
+
+peer.on('runtime.listMcpTools', async (rawParams) => {
+  const params = rawParams as RuntimeNamedMcpServerParams;
+  return toolExecutor.listMcpTools(params.name);
+});
+
+peer.on('runtime.listMcpResources', async (rawParams) => {
+  const params = rawParams as RuntimeNamedMcpServerParams;
+  return toolExecutor.listMcpResources(params.name);
+});
+
+peer.on('runtime.listMcpPrompts', async (rawParams) => {
+  const params = rawParams as RuntimeNamedMcpServerParams;
+  return toolExecutor.listMcpPrompts(params.name);
+});
 
 peer.on('runtime.applyMcpPrompt', async (rawParams) => {
   const params = rawParams as RuntimeApplyMcpPromptParams;

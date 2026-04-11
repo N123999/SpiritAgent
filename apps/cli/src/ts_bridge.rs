@@ -486,24 +486,29 @@ impl TsBridgeRuntime {
         }
     }
 
-    pub fn list_mcp_servers(&self) -> Result<Vec<ManagedMcpServer>> {
-        self.tool_executor.list_mcp_servers()
+    pub fn list_mcp_servers(&mut self) -> Result<Vec<ManagedMcpServer>> {
+        let value = self.call_bridge("runtime.listMcpServers", None)?;
+        Ok(serde_json::from_value(value)?)
     }
 
-    pub fn inspect_mcp_server(&self, name: &str) -> Result<McpServerInspection> {
-        self.tool_executor.inspect_mcp_server(name)
+    pub fn inspect_mcp_server(&mut self, name: &str) -> Result<McpServerInspection> {
+        let value = self.call_bridge("runtime.inspectMcpServer", Some(json!({ "name": name })))?;
+        Ok(serde_json::from_value(value)?)
     }
 
-    pub fn list_mcp_tools(&self, name: &str) -> Result<Vec<McpDiscoveredTool>> {
-        self.tool_executor.list_mcp_tools(name)
+    pub fn list_mcp_tools(&mut self, name: &str) -> Result<Vec<McpDiscoveredTool>> {
+        let value = self.call_bridge("runtime.listMcpTools", Some(json!({ "name": name })))?;
+        Ok(serde_json::from_value(value)?)
     }
 
-    pub fn list_mcp_resources(&self, name: &str) -> Result<Vec<McpDiscoveredResource>> {
-        self.tool_executor.list_mcp_resources(name)
+    pub fn list_mcp_resources(&mut self, name: &str) -> Result<Vec<McpDiscoveredResource>> {
+        let value = self.call_bridge("runtime.listMcpResources", Some(json!({ "name": name })))?;
+        Ok(serde_json::from_value(value)?)
     }
 
-    pub fn list_mcp_prompts(&self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
-        self.tool_executor.list_mcp_prompts(name)
+    pub fn list_mcp_prompts(&mut self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
+        let value = self.call_bridge("runtime.listMcpPrompts", Some(json!({ "name": name })))?;
+        Ok(serde_json::from_value(value)?)
     }
 
     pub fn attach_mcp_resource(&mut self, server: &str, uri: &str) -> Result<String> {
@@ -1194,9 +1199,8 @@ impl TsBridgeRuntime {
         }
     }
 
-    fn resolve_mcp_display_name(&self, server: &str) -> Result<String> {
-        self.tool_executor
-            .list_mcp_servers()?
+    fn resolve_mcp_display_name(&mut self, server: &str) -> Result<String> {
+        self.list_mcp_servers()?
             .into_iter()
             .find(|item| item.name == server)
             .map(|item| item.display_name)
