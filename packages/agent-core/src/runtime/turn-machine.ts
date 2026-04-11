@@ -621,6 +621,10 @@ export async function processToolCallsAsync<
         call.name,
         call.argumentsJson,
       );
+      request = runtime.options.toolExecutor.attachRequestMetadata?.(request, {
+        toolCallId: call.id,
+        toolName: call.name,
+      }) ?? request;
     } catch (error) {
       currentState = runtime.options.appendToolResultMessage(
         currentState,

@@ -535,11 +535,11 @@ function buildRequestTrace(
     model: config.model,
     stream,
     temperature: config.temperature ?? 0.2,
-    messages: state.messages,
+    messages: state.messages.map((message) => cloneJsonValue(message)),
     ...(tools.length > 0
       ? {
           toolChoice: 'auto',
-          tools: tools as unknown as JsonValue[],
+          tools: tools.map((tool) => cloneJsonValue(tool as unknown as JsonValue)),
         }
       : {}),
   };

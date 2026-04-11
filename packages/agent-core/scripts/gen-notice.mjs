@@ -81,7 +81,7 @@ function runChecker() {
     initLicenseChecker(
       {
         start: pkgRoot,
-        production: false,
+        production: productionOnly,
         color: false,
       },
       (err, packages) => {

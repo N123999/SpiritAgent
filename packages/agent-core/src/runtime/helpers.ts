@@ -1,5 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 import type { JsonValue, LlmMessage } from '../ports.js';
 
@@ -242,7 +242,22 @@ async function pendingWorkspaceFileFromPath(
   workspaceRoot: string,
   referencePath: string,
 ): Promise<PendingWorkspaceFile> {
-  const target = join(workspaceRoot, referencePath);
+  const normalizedReference = referencePath.replace(/\\/gu, '/');
+  if (
+    isAbsolute(referencePath) ||
+    normalizedReference.startsWith('/') ||
+    normalizedReference.split('/').some((segment) => segment === '..')
+  ) {
+    throw new Error(`不支持引用工作区外文件: ${referencePath}`);
+  }
+
+  const workspaceRootResolved = resolve(workspaceRoot);
+  const target = resolve(workspaceRootResolved, referencePath);
+  const relativeTarget = relative(workspaceRootResolved, target);
+  if (relativeTarget.startsWith('..') || isAbsolute(relativeTarget)) {
+    throw new Error(`不支持引用工作区外文件: ${referencePath}`);
+  }
+
   const metadata = await stat(target);
   if (!metadata.isFile()) {
     throw new Error(`不是可引用的文件: ${target}`);
@@ -261,7 +276,7 @@ async function pendingWorkspaceFileFromPath(
     : text;
 
   return {
-    path: referencePath.replace(/\\/gu, '/'),
+    path: relativeTarget.replace(/\\/gu, '/'),
     totalChars: chars.length,
     truncated,
     attachedAtUnixMs: Date.now(),
