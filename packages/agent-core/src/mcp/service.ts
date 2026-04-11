@@ -1,10 +1,16 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { access, readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
 import type { JsonValue } from '../ports.js';
-import { resolveEnvRecord, mcpUserConfigPath, normalizeMcpServerConfig } from './config.js';
+import {
+  parseMcpConfigFile,
+  resolveEnvRecord,
+  mcpUserConfigPath,
+  normalizeMcpServerConfig,
+} from './config.js';
 import { SdkMcpConnection } from './client.js';
 import { McpConfigError } from './errors.js';
 import { McpRegistry } from './registry.js';
@@ -120,12 +126,24 @@ export class McpService {
       return;
     }
 
-    await this.startBackgroundRefresh();
+    this.ensureToolingCacheInBackground();
+    if (this.toolingRefreshPromise) {
+      await this.toolingRefreshPromise;
+    }
+  }
+
+  ensureToolingCacheInBackground(): void {
+    this.launchBackgroundRefresh(false);
   }
 
   async refreshConfig(): Promise<void> {
     try {
       const raw = await loadMcpConfigFile(resolveMcpConfigPath());
+      this.loadedConfigStore = {
+        raw,
+        resolved: {},
+      };
+      this.registry.replaceConfig(raw);
       const lookup = await this.buildEnvLookupStore();
       const resolvedEntries = await Promise.all(
         Object.entries(raw.servers).map(async ([name, server]) => {
@@ -143,7 +161,6 @@ export class McpService {
         raw,
         resolved: Object.fromEntries(resolvedEntries),
       };
-      this.registry.replaceConfig(raw);
       this.toolingCacheInitialized = false;
       this.loadErrorStore = undefined;
     } catch (error) {
@@ -157,15 +174,14 @@ export class McpService {
   }
 
   async startBackgroundRefresh(): Promise<void> {
+    this.launchBackgroundRefresh(true);
     if (this.toolingRefreshPromise) {
       await this.toolingRefreshPromise;
-      return;
     }
+  }
 
-    this.toolingRefreshPromise = this.refreshToolingCaches().finally(() => {
-      this.toolingRefreshPromise = undefined;
-    });
-    await this.toolingRefreshPromise;
+  startBackgroundRefreshInBackground(force = true): void {
+    this.launchBackgroundRefresh(force);
   }
 
   async requestFromFunctionCall(name: string, argumentsJson: string): Promise<McpToolRequest | undefined> {
@@ -250,7 +266,13 @@ export class McpService {
   }
 
   async listServers(): Promise<JsonValue[]> {
-    await this.refreshConfig();
+    try {
+      await this.refreshConfig();
+    } catch (error) {
+      if (Object.keys(this.loadedConfigStore.raw.servers).length === 0) {
+        throw error;
+      }
+    }
 
     return Object.entries(this.loadedConfigStore.raw.servers).map(([name, server]) =>
       buildManagedServerForRust(name, server, this.loadedConfigStore.resolved[name]),
@@ -554,6 +576,41 @@ export class McpService {
     };
     this.toolingCacheInitialized = true;
   }
+
+  private launchBackgroundRefresh(force: boolean): void {
+    if (this.toolingRefreshPromise) {
+      return;
+    }
+
+    if (!force && this.toolingCacheInitialized) {
+      return;
+    }
+
+    this.toolingCacheInitialized = false;
+    this.primeRegistryFromDisk();
+    this.toolingRefreshPromise = this.refreshToolingCaches().finally(() => {
+      this.toolingRefreshPromise = undefined;
+    });
+  }
+
+  private primeRegistryFromDisk(): void {
+    try {
+      const raw = loadMcpConfigFileSync(resolveMcpConfigPath());
+      this.loadedConfigStore = {
+        raw,
+        resolved: {},
+      };
+      this.registry.replaceConfig(raw);
+      this.loadErrorStore = undefined;
+    } catch (error) {
+      this.loadedConfigStore = {
+        raw: { servers: {} },
+        resolved: {},
+      };
+      this.registry.replaceConfig({ servers: {} });
+      this.loadErrorStore = describeError(error);
+    }
+  }
 }
 
 function resolveMcpConfigPath(): string {
@@ -577,14 +634,33 @@ function spiritAgentDataDir(): string {
 async function loadMcpConfigFile(path: string): Promise<McpConfigFile> {
   try {
     const content = await readFile(path, 'utf8');
-    return JSON.parse(content) as McpConfigFile;
+    return parseMcpConfigFile(JSON.parse(content) as unknown);
   } catch (error) {
     if (isErrnoWithCode(error, 'ENOENT')) {
       return { servers: {} };
     }
 
     if (error instanceof SyntaxError) {
-      throw new McpConfigError(`解析 MCP 配置失败: ${path}` , { cause: error });
+      throw new McpConfigError(`解析 MCP 配置失败: ${path}`, { cause: error });
+    }
+
+    throw new McpConfigError(`读取 MCP 配置失败: ${path}`, {
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
+}
+
+function loadMcpConfigFileSync(path: string): McpConfigFile {
+  try {
+    const content = readFileSync(path, 'utf8');
+    return parseMcpConfigFile(JSON.parse(content) as unknown);
+  } catch (error) {
+    if (isErrnoWithCode(error, 'ENOENT')) {
+      return { servers: {} };
+    }
+
+    if (error instanceof SyntaxError) {
+      throw new McpConfigError(`解析 MCP 配置失败: ${path}`, { cause: error });
     }
 
     throw new McpConfigError(`读取 MCP 配置失败: ${path}`, {

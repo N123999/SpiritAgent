@@ -1,8 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client';
-import { StdioClientTransport, type StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp';
-import type { Implementation, ServerCapabilities } from '@modelcontextprotocol/sdk/types';
-import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types';
+import { StdioClientTransport, type StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { Implementation, ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
+import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
 
 import { DEFAULT_MCP_CLIENT_INFO } from './config.js';
 import { McpConnectionError } from './errors.js';

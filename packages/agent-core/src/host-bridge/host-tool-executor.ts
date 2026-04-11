@@ -17,6 +17,7 @@ interface HostToolRequestMetadata {
 
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
   private hostToolDefinitionsCache: JsonValue = [];
+  private hostToolDefinitionsLoaded = false;
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly mcp = new McpService();
@@ -24,12 +25,13 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   constructor(protected readonly peer: JsonRpcPeer) {}
 
   async refreshCaches(): Promise<void> {
-    this.hostToolDefinitionsCache = await this.peer.call<JsonValue>('host.toolDefinitionsJson');
-    await this.mcp.ensureToolingCache().catch(() => undefined);
-    this.toolDefinitionsCache = mergeToolDefinitions(
-      this.hostToolDefinitionsCache,
-      this.mcp.toolDefinitionsJson(),
-    );
+    if (!this.hostToolDefinitionsLoaded) {
+      this.hostToolDefinitionsCache = await this.peer.call<JsonValue>('host.toolDefinitionsJson');
+      this.hostToolDefinitionsLoaded = true;
+    }
+
+    this.mcp.ensureToolingCacheInBackground();
+    this.refreshMergedToolDefinitions();
   }
 
   toolDefinitionsJson(): JsonValue {
@@ -105,7 +107,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   startMcpBackgroundRefresh(): void {
-    void this.mcp.startBackgroundRefresh().catch(() => undefined);
+    this.mcp.startBackgroundRefreshInBackground(true);
+    this.refreshMergedToolDefinitions();
   }
 
   mcpStatusSnapshot(): McpStatusSnapshot {
@@ -114,7 +117,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
   async addMcpServer(name: string, config: JsonValue): Promise<string> {
     const result = await this.peer.call<string>('host.addMcpServer', { name, config });
-    void this.mcp.startBackgroundRefresh().catch(() => undefined);
+    this.mcp.startBackgroundRefreshInBackground(true);
+    this.refreshMergedToolDefinitions();
     return result;
   }
 
@@ -226,6 +230,13 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       });
       throw error;
     }
+  }
+
+  private refreshMergedToolDefinitions(): void {
+    this.toolDefinitionsCache = mergeToolDefinitions(
+      this.hostToolDefinitionsCache,
+      this.mcp.toolDefinitionsJson(),
+    );
   }
 }
 
