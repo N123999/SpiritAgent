@@ -776,13 +776,14 @@ fn render_aux_text_lines(
 fn render_pending_aux_lines(
     push_message_line: &mut impl FnMut(Vec<Span<'static>>),
     pending_aux: &PendingAssistantAux,
+    detail_text: Option<&str>,
 ) {
     push_message_line(vec![Span::styled(
         pending_aux.status_text.clone(),
         pending_aux_status_style(pending_aux.kind),
     )]);
 
-    if let Some(detail_text) = pending_aux.detail_text.as_deref() {
+    if let Some(detail_text) = detail_text {
         render_aux_text_lines(push_message_line, pending_aux.kind, detail_text);
     }
 }
@@ -847,11 +848,15 @@ fn render_message_lines(
     } else {
         None
     };
+    let pending_aux_detail_text = if app.show_aux_details {
+        pending_aux.and_then(|aux| aux.detail_text.as_deref())
+    } else {
+        None
+    };
     let render_stored_thinking_after_body =
         should_render_aux_after_message_body(stored_thinking_text, has_message_body);
-    let render_pending_aux_after_body = pending_aux.is_some_and(|aux| {
-        should_render_aux_after_message_body(aux.detail_text.as_deref(), has_message_body)
-    });
+    let render_pending_aux_after_body = pending_aux
+        .is_some_and(|_| should_render_aux_after_message_body(pending_aux_detail_text, has_message_body));
 
     let mut has_rendered_visible_line = false;
     let mut push_message_line = |content_spans: Vec<Span<'static>>| {
@@ -891,7 +896,7 @@ fn render_message_lines(
 
     if let Some(pending_aux) = pending_aux {
         if !render_pending_aux_after_body {
-            render_pending_aux_lines(&mut push_message_line, pending_aux);
+            render_pending_aux_lines(&mut push_message_line, pending_aux, pending_aux_detail_text);
         }
     }
 
@@ -914,7 +919,7 @@ fn render_message_lines(
 
     if let Some(pending_aux) = pending_aux {
         if render_pending_aux_after_body {
-            render_pending_aux_lines(&mut push_message_line, pending_aux);
+            render_pending_aux_lines(&mut push_message_line, pending_aux, pending_aux_detail_text);
         }
     }
 
@@ -2260,6 +2265,42 @@ mod tests {
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn pending_thinking_detail_is_hidden_when_aux_details_collapsed() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "我来处理这个问题。"));
+        app.show_aux_details = false;
+        app.pending_response_active = true;
+        app.pending_assistant_msg_index = Some(0);
+        app.pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "Thinking...".to_string(),
+            detail_text: Some("先检查当前渲染分支。".to_string()),
+        });
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+
+        assert!(lines.iter().any(|line| line.contains("Thinking...")));
+        assert!(lines.iter().any(|line| line.contains("我来处理这个问题。")));
+        assert!(lines.iter().all(|line| !line.contains("先检查当前渲染分支。")));
+    }
+
+    #[test]
+    fn pending_thinking_detail_is_visible_when_aux_details_expanded() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "我来处理这个问题。"));
+        app.pending_response_active = true;
+        app.pending_assistant_msg_index = Some(0);
+        app.pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "Thinking...".to_string(),
+            detail_text: Some("先检查当前渲染分支。".to_string()),
+        });
+
+        let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+
+        assert!(lines.iter().any(|line| line.contains("Thinking...")));
+        assert!(lines.iter().any(|line| line.contains("先检查当前渲染分支。")));
     }
 
     #[test]
