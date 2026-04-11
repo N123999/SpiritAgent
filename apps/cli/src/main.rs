@@ -346,7 +346,6 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
     let mut pending_text = String::new();
     let mut bracketed_paste_chars = 0usize;
     let mut bracketed_paste_lines = 0usize;
-    let mut suppress_enter_after_paste = false;
 
     for evt in events {
         match evt {
@@ -393,19 +392,11 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
                 bracketed_paste_chars += normalized.chars().count();
                 bracketed_paste_lines += normalized.lines().count().max(1);
                 pending_text.push_str(&normalized);
-                suppress_enter_after_paste = true;
             }
             Event::Key(key) => {
                 if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
                     continue;
                 }
-
-                if suppress_enter_after_paste && matches!(key.code, KeyCode::Enter) {
-                    logging::log_event("[paste] suppressed trailing enter in same batch");
-                    continue;
-                }
-
-                let key_is_paste_shortcut = is_paste_shortcut(&key);
 
                 if !shell.is_model_picker_active()
                     && !shell.is_language_picker_active()
@@ -434,9 +425,6 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
 
                 flush_pending_text(shell, &mut pending_text);
                 process_key_event(shell, key);
-                if key_is_paste_shortcut {
-                    suppress_enter_after_paste = true;
-                }
             }
             _ => {}
         }
@@ -472,11 +460,6 @@ fn batched_text_char(key: &crossterm::event::KeyEvent) -> Option<char> {
         KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => Some(ch),
         _ => None,
     }
-}
-
-fn is_paste_shortcut(key: &crossterm::event::KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'v'))
-        && key.modifiers.contains(KeyModifiers::CONTROL)
 }
 
 fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
