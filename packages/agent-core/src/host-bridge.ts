@@ -33,6 +33,7 @@ import { HostToolExecutorProxy } from './host-bridge/host-tool-executor.js';
 import type {
   BridgeRuntimeSnapshot,
   DrainEventsResult,
+  RuntimeExportArchiveParams,
   RuntimeAddPendingImageParams,
   RuntimeApplyMcpPromptParams,
   RuntimeAttachMcpResourceParams,
@@ -309,6 +310,11 @@ peer.on('runtime.exportState', async () => {
       ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
     },
   };
+});
+
+peer.on('runtime.exportArchive', async (rawParams) => {
+  const params = rawParams as RuntimeExportArchiveParams;
+  return requireRuntime().toArchive(params.messages, params.assistantAux);
 });
 
 peer.start();

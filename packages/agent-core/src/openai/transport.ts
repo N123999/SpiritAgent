@@ -101,11 +101,8 @@ export function startOpenAiToolAgentState(
   const messages: JsonValue[] = [
     {
       role: 'system',
-      content: TOOL_AGENT_SYSTEM_PROMPT,
+      content: buildPrimarySystemMessage(rulesSystemMessage),
     },
-    ...(rulesSystemMessage === undefined
-      ? []
-      : [{ role: 'system', content: rulesSystemMessage }]),
     ...llmHistoryToOpenAiMessages(history, assetRoot),
   ];
 
@@ -264,10 +261,10 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
     preservedRulesSystemMessage === undefined ? enabledRules : [],
   );
   if (preservedRulesSystemMessage !== undefined) {
-    rebuilt.messages.splice(1, 0, {
+    rebuilt.messages[0] = {
       role: 'system',
-      content: preservedRulesSystemMessage,
-    });
+      content: buildPrimarySystemMessage(preservedRulesSystemMessage),
+    };
   }
   rebuilt.steps = retryState.steps;
 
@@ -307,11 +304,17 @@ export class OpenAiTransport
     };
 
     const normalizedTools = normalizeTools(tools);
-    const requestTrace = buildRequestTrace(config, nextState, normalizedTools);
+    const requestMessages = normalizeMessagesForRequest(nextState.messages);
+    const requestTrace = buildRequestTrace(
+      config,
+      nextState.steps,
+      requestMessages,
+      normalizedTools,
+    );
 
     const payload: ChatCompletionCreateParamsNonStreaming = {
       model: config.model,
-      messages: nextState.messages as unknown as ChatCompletionMessageParam[],
+      messages: requestMessages as unknown as ChatCompletionMessageParam[],
       temperature: config.temperature ?? 0.2,
       ...(normalizedTools.length > 0
         ? {
@@ -333,7 +336,10 @@ export class OpenAiTransport
         };
       }
 
-      const assistantMessage = normalizeAssistantMessage(message);
+      const assistantMessage = normalizeAssistantMessage(
+        message,
+        shouldInjectSyntheticToolReasoning(config),
+      );
       nextState.messages.push(assistantMessage);
 
       const calls = extractToolCalls(message.tool_calls);
@@ -382,10 +388,17 @@ export class OpenAiTransport
     };
 
     const normalizedTools = normalizeTools(tools);
-    const requestTrace = buildRequestTrace(config, nextState, normalizedTools, true);
+    const requestMessages = normalizeMessagesForRequest(nextState.messages);
+    const requestTrace = buildRequestTrace(
+      config,
+      nextState.steps,
+      requestMessages,
+      normalizedTools,
+      true,
+    );
     const payload: ChatCompletionCreateParamsStreaming = {
       model: config.model,
-      messages: nextState.messages as unknown as ChatCompletionMessageParam[],
+      messages: requestMessages as unknown as ChatCompletionMessageParam[],
       temperature: config.temperature ?? 0.2,
       stream: true,
       ...(normalizedTools.length > 0
@@ -397,16 +410,34 @@ export class OpenAiTransport
     };
 
     const abortController = new AbortController();
-    const stream = await client.chat.completions.create(payload, {
-      signal: abortController.signal,
-    });
-    const completion = createDeferred<ToolAgentRoundCompletion<OpenAiToolAgentState>>();
+    try {
+      const stream = await client.chat.completions.create(payload, {
+        signal: abortController.signal,
+      });
+      const completion = createDeferred<ToolAgentRoundCompletion<OpenAiToolAgentState>>();
 
-    return {
-      eventStream: openAiEventStreamToRuntimeEvents(stream, nextState, requestTrace, completion),
-      completion: completion.promise,
-      cancel: () => abortController.abort(),
-    };
+      return {
+        eventStream: openAiEventStreamToRuntimeEvents(
+          stream,
+          nextState,
+          requestTrace,
+          completion,
+          shouldInjectSyntheticToolReasoning(config),
+        ),
+        completion: completion.promise,
+        cancel: () => abortController.abort(),
+      };
+    } catch (error) {
+      return {
+        eventStream: emptyOpenAiEventStream(),
+        completion: Promise.resolve({
+          kind: 'failure',
+          error: renderOpenAiError(error),
+          requestTrace,
+        }),
+        cancel: () => abortController.abort(),
+      };
+    }
   }
 
   async compactHistoryManual(
@@ -572,8 +603,11 @@ function findRulesSystemMessageContent(messages: JsonValue[]): string | undefine
     if (!isJsonObject(message) || message.role !== 'system') {
       continue;
     }
-    if (typeof message.content === 'string' && message.content.startsWith(RULES_SECTION_PREFIX)) {
-      return message.content;
+    if (typeof message.content === 'string') {
+      const rulesStart = message.content.indexOf(RULES_SECTION_PREFIX);
+      if (rulesStart >= 0) {
+        return message.content.slice(rulesStart).trim();
+      }
     }
   }
 
@@ -591,17 +625,18 @@ function createOpenAiClient(config: OpenAiTransportConfig): OpenAI {
 
 function buildRequestTrace(
   config: OpenAiTransportConfig,
-  state: OpenAiToolAgentState,
+  stepIndex: number,
+  messages: JsonValue[],
   tools: ChatCompletionTool[],
   stream = false,
 ): JsonValue[] {
   const trace: OpenAiRequestTrace = {
     kind: 'openai_sdk_chat_completions',
-    stepIndex: state.steps,
+    stepIndex,
     model: config.model,
     stream,
     temperature: config.temperature ?? 0.2,
-    messages: state.messages.map((message) => cloneJsonValue(message)),
+    messages: messages.map((message) => cloneJsonValue(message)),
     ...(tools.length > 0
       ? {
           toolChoice: 'auto',
@@ -618,6 +653,7 @@ async function* openAiEventStreamToRuntimeEvents(
   nextState: OpenAiToolAgentState,
   requestTrace: JsonValue[],
   completion: Deferred<ToolAgentRoundCompletion<OpenAiToolAgentState>>,
+  injectEmptyToolReasoningContent = true,
 ): AsyncGenerator<LlmStreamEvent, void, undefined> {
   const toolCalls = new Map<number, AggregatedStreamingToolCall>();
   let assistantContent = '';
@@ -667,7 +703,12 @@ async function* openAiEventStreamToRuntimeEvents(
     }
 
     nextState.messages.push(
-      buildStreamingAssistantMessage(assistantContent, reasoningContent, toolCalls),
+      buildStreamingAssistantMessage(
+        assistantContent,
+        reasoningContent,
+        toolCalls,
+        injectEmptyToolReasoningContent,
+      ),
     );
     const calls = extractToolCallsFromAggregatedMap(toolCalls);
     completion.resolve({
@@ -744,7 +785,10 @@ function normalizeTools(tools: JsonValue): ChatCompletionTool[] {
     .map((tool) => tool as unknown as ChatCompletionTool);
 }
 
-function normalizeAssistantMessage(message: ChatCompletionMessage): JsonValue {
+function normalizeAssistantMessage(
+  message: ChatCompletionMessage,
+  injectEmptyToolReasoningContent = true,
+): JsonValue {
   const functionToolCalls = extractFunctionToolCalls(message.tool_calls);
   const reasoningContent = extractAssistantReasoningContent(message);
 
@@ -763,7 +807,7 @@ function normalizeAssistantMessage(message: ChatCompletionMessage): JsonValue {
           })),
         }
       : {}),
-  }, reasoningContent);
+  }, reasoningContent, injectEmptyToolReasoningContent);
 }
 
 function extractToolCalls(
@@ -857,6 +901,7 @@ function buildStreamingAssistantMessage(
   assistantContent: string,
   reasoningContent: string,
   toolCalls: Map<number, AggregatedStreamingToolCall>,
+  injectEmptyToolReasoningContent = true,
 ): JsonValue {
   const functionToolCalls = [...toolCalls.values()]
     .sort((left, right) => left.index - right.index)
@@ -874,7 +919,7 @@ function buildStreamingAssistantMessage(
     role: 'assistant',
     content: assistantContent || null,
     ...(functionToolCalls.length > 0 ? { tool_calls: functionToolCalls } : {}),
-  }, reasoningContent);
+  }, reasoningContent, injectEmptyToolReasoningContent);
 }
 
 function extractToolCallsFromAggregatedMap(
@@ -890,7 +935,11 @@ function extractToolCallsFromAggregatedMap(
     }));
 }
 
-function withReasoningContentIfNeeded(message: JsonObject, reasoningContent: string): JsonValue {
+function withReasoningContentIfNeeded(
+  message: JsonObject,
+  reasoningContent: string,
+  injectEmptyToolReasoningContent = true,
+): JsonValue {
   if (messageContentHasEmbeddedThinking(message)) {
     return message;
   }
@@ -907,7 +956,7 @@ function withReasoningContentIfNeeded(message: JsonObject, reasoningContent: str
     };
   }
 
-  if (toolCalls.length > 0) {
+  if (toolCalls.length > 0 && injectEmptyToolReasoningContent) {
     return {
       ...message,
       reasoning_content: '',
@@ -1161,3 +1210,28 @@ function escapeRuleAttribute(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
 }
+
+function buildPrimarySystemMessage(rulesSystemMessage: string | undefined): string {
+  return [TOOL_AGENT_SYSTEM_PROMPT, rulesSystemMessage]
+    .filter((section): section is string => typeof section === 'string' && section.trim().length > 0)
+    .map((section) => section.trim())
+    .join('\n\n');
+}
+
+function normalizeMessagesForRequest(messages: JsonValue[]): JsonValue[] {
+  // 保持通用 BYOK 请求形态原样透传；若某个提供方不支持多 system message，应该放到专用适配器里处理。
+  return messages.map((message) => cloneJsonValue(message));
+}
+
+function shouldInjectSyntheticToolReasoning(config: OpenAiTransportConfig): boolean {
+  return !isMiniMaxCompatibleConfig(config);
+}
+
+function isMiniMaxCompatibleConfig(config: OpenAiTransportConfig): boolean {
+  const normalizedModel = config.model.trim().toLowerCase();
+  const normalizedBaseUrl = config.baseUrl?.trim().toLowerCase();
+
+  return normalizedModel.startsWith('minimax') || normalizedBaseUrl?.includes('minimaxi.com') === true;
+}
+
+async function* emptyOpenAiEventStream(): AsyncGenerator<LlmStreamEvent, void, undefined> {}

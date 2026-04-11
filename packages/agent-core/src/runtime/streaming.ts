@@ -95,6 +95,7 @@ export function handleStreamStallTimeout<
     });
   }
 
+  runtime.pendingUserTurnStore = undefined;
   clearPendingStreamingState(runtime);
   runtime.emitEvent({ kind: 'assistant-response-completed' });
 }
@@ -462,6 +463,7 @@ export async function handlePendingStreamEvent<
     });
   }
 
+  runtime.pendingUserTurnStore = undefined;
   clearPendingStreamingState(runtime);
   runtime.emitEvent({ kind: 'assistant-response-completed' });
   return true;
@@ -525,6 +527,7 @@ export async function handlePendingStreamingCompletion<
         text: `LLM 调用失败: ${completion.error}`,
       });
     }
+    runtime.pendingUserTurnStore = undefined;
     clearPendingStreamingState(runtime);
     runtime.emitEvent({ kind: 'assistant-response-completed' });
     return;

@@ -1143,6 +1143,58 @@ class StreamingTimeoutTransport implements LlmTransport<undefined, ScriptedState
   }
 }
 
+class StreamingFailureTransport implements LlmTransport<undefined, ScriptedState> {
+  async startToolAgentRound(
+    _config: undefined,
+    _state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    throw new Error('StreamingFailureTransport 应走 streaming 路径。');
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    _state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    return {
+      eventStream: streamFromEvents([]),
+      completion: Promise.resolve({
+        kind: 'failure',
+        error: '400 invalid params, invalid chat setting (2013)',
+        requestTrace: [{ mode: 'streaming-failure' }],
+      }),
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class StreamingToolRoundTransport implements LlmTransport<undefined, ScriptedState> {
   private resolveCompletion:
     | ((completion: ToolAgentRoundCompletion<ScriptedState>) => void)
@@ -1835,6 +1887,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   const streamingCompactionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingApprovalEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const timeoutEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingFailureEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
   const approvalExecutor = new ApprovalExecutor();
   const approvalRuntime = new AgentRuntime({
@@ -2484,6 +2537,49 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   if (!drainedTimeoutEvents.some((event) => event.kind === 'assistant-response-completed')) {
     throw new Error('stream timeout smoke 未完成 pending response。');
   }
+  if (timeoutRuntime.pendingUserTurn() !== undefined) {
+    throw new Error('stream timeout smoke 结束后未清空 pending user turn。');
+  }
+
+  const streamingFailureRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingFailureTransport(),
+    toolExecutor: new HostExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => streamingFailureEvents.push(event),
+  });
+
+  await streamingFailureRuntime.startUserTurnStreaming('请触发流式失败');
+  for (let index = 0; index < 8 && streamingFailureRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await streamingFailureRuntime.poll();
+  }
+  if (streamingFailureRuntime.isBusy()) {
+    throw new Error('streaming failure smoke 未在预期轮次内完成。');
+  }
+  if (streamingFailureRuntime.pendingUserTurn() !== undefined) {
+    throw new Error('streaming failure smoke 结束后未清空 pending user turn。');
+  }
+  const drainedStreamingFailureEvents = streamingFailureRuntime.drainEvents();
+  if (
+    !drainedStreamingFailureEvents.some(
+      (event) =>
+        event.kind === 'replace-pending-assistant' &&
+        event.text.includes('invalid chat setting (2013)'),
+    )
+  ) {
+    throw new Error('streaming failure smoke 未输出预期错误消息。');
+  }
+  if (
+    !drainedStreamingFailureEvents.some(
+      (event) => event.kind === 'assistant-response-completed',
+    )
+  ) {
+    throw new Error('streaming failure smoke 缺少 completed event。');
+  }
 
   const streamingApprovalExecutor = new StreamingApprovalExecutor();
   const streamingApprovalRuntime = new AgentRuntime({
@@ -2709,6 +2805,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   printSmokeSection('workspace file context smoke', workspaceFileSmoke);
   printSmokeSection('streaming final smoke events', drainedStreamingEvents);
   printSmokeSection('stream timeout smoke events', drainedTimeoutEvents);
+  printSmokeSection('streaming failure smoke events', drainedStreamingFailureEvents);
   printSmokeSection('streaming approval smoke events', drainedStreamingApprovalEvents);
   printSmokeSection('manual compaction smoke events', drainedManualCompactionEvents);
   printSmokeSection('streaming background smoke events', drainedStreamingBackgroundEvents);

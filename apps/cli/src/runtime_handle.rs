@@ -10,7 +10,7 @@ use crate::{
         McpServerInspection,
     },
     model_registry::AppConfig,
-    ports::{McpStatusSnapshot, SecretStore},
+    ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore},
     rules::EnabledRule,
     session::SessionModel,
     ts_bridge::TsBridgeRuntime,
@@ -62,6 +62,14 @@ impl RuntimeHandle {
 
     pub fn export_llm_state(&mut self) -> Result<RuntimeExportState> {
         self.runtime.export_llm_state()
+    }
+
+    pub fn export_chat_archive(
+        &mut self,
+        messages: &[(String, String)],
+        assistant_aux: &[AssistantAuxArchiveEntry],
+    ) -> Result<ChatArchive> {
+        self.runtime.export_chat_archive(messages, assistant_aux)
     }
 
     pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {

@@ -80,6 +80,15 @@ export interface RuntimeSubmitUserTurnParams {
   explicitImages?: string[];
 }
 
+export interface RuntimeExportArchiveParams {
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  assistantAux: Array<{
+    messageIndex: number;
+    thinking?: string;
+    compaction?: string;
+  }>;
+}
+
 export interface RuntimeReplaceConfigParams {
   transportConfig: OpenAiTransportConfig;
 }

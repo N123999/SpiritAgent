@@ -2252,15 +2252,23 @@ impl TuiShell {
             })
             .collect::<Vec<_>>();
         assistant_aux.sort_by_key(|entry| entry.message_index);
-        let archive = self.runtime.session().to_archive(&messages, &assistant_aux);
-        match self.chat_repository.save(path, &archive) {
-            Ok(saved_path) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: t!("tui.session.saved", path = saved_path.display()).into_owned(),
-                    tool_block: None,
-                });
-            }
+        match self.runtime.export_chat_archive(&messages, &assistant_aux) {
+            Ok(archive) => match self.chat_repository.save(path, &archive) {
+                Ok(saved_path) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.session.saved", path = saved_path.display()).into_owned(),
+                        tool_block: None,
+                    });
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.session.save_failed", err = err).into_owned(),
+                        tool_block: None,
+                    });
+                }
+            },
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,

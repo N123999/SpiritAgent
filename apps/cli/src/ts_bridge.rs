@@ -26,7 +26,7 @@ use crate::{
         McpServerInspection,
     },
     model_registry::AppConfig,
-    ports::{McpStatusSnapshot, SecretStore, ToolExecutor},
+    ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore, ToolExecutor},
     rules::EnabledRule,
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
@@ -321,6 +321,30 @@ impl TsBridgeRuntime {
             system_prompts: export.system_prompts,
             api_request_trace: export.request_trace,
         })
+    }
+
+    pub fn export_chat_archive(
+        &mut self,
+        messages: &[(String, String)],
+        assistant_aux: &[AssistantAuxArchiveEntry],
+    ) -> Result<ChatArchive> {
+        let message_values = messages
+            .iter()
+            .map(|(role, content)| {
+                json!({
+                    "role": role,
+                    "content": content,
+                })
+            })
+            .collect::<Vec<_>>();
+        let value = self.call_bridge(
+            "runtime.exportArchive",
+            Some(json!({
+                "messages": message_values,
+                "assistantAux": assistant_aux,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
     }
 
     pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
