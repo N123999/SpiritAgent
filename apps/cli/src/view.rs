@@ -33,7 +33,14 @@ pub struct PendingAssistantAux {
 }
 
 #[derive(Clone, Debug)]
+pub enum BottomFormKind {
+    McpAdd,
+    Rules,
+}
+
+#[derive(Clone, Debug)]
 pub struct BottomFormView {
+    pub kind: BottomFormKind,
     pub title: String,
     pub fields: Vec<BottomFormFieldView>,
     pub selected_field: usize,
@@ -49,6 +56,9 @@ pub struct BottomFormFieldView {
 
 #[derive(Clone, Debug)]
 pub enum BottomFormFieldEditorView {
+    Section {
+        text: String,
+    },
     Text {
         value: String,
         placeholder: String,
@@ -57,6 +67,11 @@ pub enum BottomFormFieldEditorView {
     Choice {
         options: Vec<String>,
         selected: usize,
+    },
+    Checkbox {
+        id: String,
+        checked: bool,
+        disabled: bool,
     },
 }
 

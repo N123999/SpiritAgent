@@ -1760,10 +1760,14 @@ fn bottom_form_text_field_outer_height(value: &str, placeholder: &str, text_inne
 
 fn bottom_form_field_outer_height(editor: &BottomFormFieldEditorView, text_inner_w: usize) -> u16 {
     match editor {
+        BottomFormFieldEditorView::Section { text } => {
+            build_bottom_form_footer_lines(text, text_inner_w).len().max(1) as u16
+        }
         BottomFormFieldEditorView::Text {
             value, placeholder, ..
         } => bottom_form_text_field_outer_height(value, placeholder, text_inner_w),
         BottomFormFieldEditorView::Choice { .. } => 3,
+        BottomFormFieldEditorView::Checkbox { .. } => 5,
     }
 }
 
@@ -1916,6 +1920,10 @@ fn draw_bottom_form(
         };
 
         let field_cursor = match &field.editor {
+            BottomFormFieldEditorView::Section { text } => {
+                draw_bottom_form_section_field(frame, field_area, text);
+                None
+            }
             BottomFormFieldEditorView::Text {
                 value,
                 placeholder,
@@ -1938,6 +1946,19 @@ fn draw_bottom_form(
                     index == form.selected_field,
                 )
             }
+            BottomFormFieldEditorView::Checkbox {
+                checked,
+                disabled,
+                ..
+            } => draw_bottom_form_checkbox_field(
+                frame,
+                field_area,
+                &field.label,
+                field.help.as_str(),
+                *checked,
+                *disabled,
+                index == form.selected_field,
+            ),
         };
 
         if index == form.selected_field {
@@ -1956,6 +1977,15 @@ fn draw_bottom_form(
     frame.render_widget(Paragraph::new(footer_lines), footer_area);
 
     cursor
+}
+
+fn draw_bottom_form_section_field(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    text: &str,
+) {
+    let lines = build_bottom_form_footer_lines(text, area.width as usize);
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 fn draw_bottom_form_text_field(
@@ -2040,6 +2070,45 @@ fn draw_bottom_form_choice_field(
     }
 }
 
+fn draw_bottom_form_checkbox_field(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    label: &str,
+    help: &str,
+    checked: bool,
+    disabled: bool,
+    is_selected: bool,
+) -> Option<(u16, u16)> {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(bottom_form_field_style(is_selected));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let checkbox_text = if checked { "[x]" } else { "[ ]" };
+    let checkbox_style = if disabled {
+        subtle_aux_text_style().add_modifier(Modifier::DIM)
+    } else if is_selected {
+        Style::default().fg(Color::White)
+    } else {
+        subtle_aux_text_style()
+    };
+    let mut lines = vec![Line::from(Span::styled(
+        format!("{} {}", checkbox_text, label),
+        checkbox_style,
+    ))];
+    if !help.trim().is_empty() {
+        lines.extend(build_bottom_form_footer_lines(help, inner.width as usize));
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
+
+    if is_selected && !disabled {
+        Some((inner.x + 1, inner.y))
+    } else {
+        None
+    }
+}
+
 fn bottom_form_field_style(is_selected: bool) -> Style {
     if is_selected {
         Style::default().fg(Color::White)
@@ -2117,6 +2186,7 @@ mod tests {
 
     fn build_bottom_form_view(value: &str, footer_hint: &str) -> BottomFormView {
         BottomFormView {
+            kind: crate::view::BottomFormKind::McpAdd,
             title: "Add MCP Server".to_string(),
             fields: vec![
                 BottomFormFieldView {

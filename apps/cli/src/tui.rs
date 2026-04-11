@@ -27,8 +27,8 @@ use crate::{
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
-        AssistantAuxData, BottomFormView, ChatMessage, InputSuggestionKind, MessageRole,
-        TuiViewModel,
+        AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestionKind,
+        MessageRole, TuiViewModel,
     },
 };
 
@@ -917,6 +917,17 @@ impl TuiShell {
         self.bottom_form = None;
     }
 
+    pub fn dismiss_bottom_form(&mut self) {
+        let Some(form) = self.bottom_form.as_ref() else {
+            return;
+        };
+
+        match form.kind {
+            BottomFormKind::McpAdd => self.cancel_bottom_form(),
+            BottomFormKind::Rules => self.save_rules_bottom_form(),
+        }
+    }
+
     pub fn select_next_bottom_form_field(&mut self) {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
@@ -996,6 +1007,21 @@ impl TuiShell {
         Ok(())
     }
 
+    pub fn activate_bottom_form(&mut self) {
+        let Some(form) = self.bottom_form.as_ref() else {
+            return;
+        };
+
+        match form.kind {
+            BottomFormKind::McpAdd => self.save_bottom_form(),
+            BottomFormKind::Rules => {
+                if let Some(form) = self.bottom_form.as_mut() {
+                    bottom_form::activate(form);
+                }
+            }
+        }
+    }
+
     pub fn save_bottom_form(&mut self) {
         let Some(form) = self.bottom_form.as_ref() else {
             return;
@@ -1029,6 +1055,46 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: t!("tui.bottom_form.add_failed", err = err).into_owned(),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn save_rules_bottom_form(&mut self) {
+        let Some(form) = self.bottom_form.as_ref() else {
+            return;
+        };
+
+        for entry in &self.rule_entries {
+            self.rule_state.enabled_overrides.remove(&entry.source.id);
+        }
+        for (rule_id, enabled) in bottom_form::rules_form_overrides(form) {
+            self.rule_state.set_enabled(rule_id, enabled);
+        }
+
+        match rules::save_rule_state(&self.rule_state) {
+            Ok(path) => match self.refresh_rules_from_disk() {
+                Ok(()) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("规则状态已保存: {}", path.display()),
+                        tool_block: None,
+                    });
+                    self.bottom_form = None;
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: format!("刷新规则状态失败: {}", err),
+                        tool_block: None,
+                    });
+                }
+            },
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("保存规则状态失败: {}", err),
                     tool_block: None,
                 });
             }
@@ -2005,6 +2071,16 @@ impl TuiShell {
 
     fn open_mcp_add_form(&mut self) {
         self.bottom_form = Some(bottom_form::new_mcp_add_form());
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    pub fn open_rules_form(&mut self) {
+        self.bottom_form = Some(bottom_form::new_rules_form(&self.rule_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;

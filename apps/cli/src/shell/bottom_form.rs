@@ -5,7 +5,8 @@ use rust_i18n::t;
 
 use crate::{
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
-    view::{BottomFormFieldEditorView, BottomFormFieldView, BottomFormView},
+    rules::{RuleEntry, RuleScope},
+    view::{BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView},
 };
 
 const MCP_ADD_FIELD_NAME: usize = 0;
@@ -16,6 +17,7 @@ const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
 pub(crate) fn new_mcp_add_form() -> BottomFormView {
     let mut form = BottomFormView {
+        kind: BottomFormKind::McpAdd,
         title: t!("form.mcp.title").into_owned(),
         fields: vec![
             BottomFormFieldView {
@@ -64,21 +66,59 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
     form
 }
 
+pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
+    let mut fields = Vec::new();
+    push_rules_section(&mut fields, "工作区规则", RuleScope::Workspace, entries);
+    push_rules_section(&mut fields, "用户规则", RuleScope::User, entries);
+
+    let mut form = BottomFormView {
+        kind: BottomFormKind::Rules,
+        title: "规则启用设置".to_string(),
+        fields,
+        selected_field: 0,
+        footer_hint: "↑/↓ 切换规则  Enter 切换启用状态  Esc 保存并关闭".to_string(),
+    };
+    ensure_selectable_field(&mut form);
+    form
+}
+
 pub(crate) fn select_next_field(form: &mut BottomFormView) {
-    if form.fields.is_empty() {
+    if form.fields.is_empty() || !has_selectable_field(form) {
         return;
     }
-    form.selected_field = (form.selected_field + 1) % form.fields.len();
+    let start = form.selected_field.min(form.fields.len().saturating_sub(1));
+    let mut next = start;
+    loop {
+        next = (next + 1) % form.fields.len();
+        if is_field_selectable(&form.fields[next]) {
+            form.selected_field = next;
+            return;
+        }
+        if next == start {
+            return;
+        }
+    }
 }
 
 pub(crate) fn select_prev_field(form: &mut BottomFormView) {
-    if form.fields.is_empty() {
+    if form.fields.is_empty() || !has_selectable_field(form) {
         return;
     }
-    if form.selected_field == 0 {
-        form.selected_field = form.fields.len() - 1;
-    } else {
-        form.selected_field -= 1;
+    let start = form.selected_field.min(form.fields.len().saturating_sub(1));
+    let mut next = start;
+    loop {
+        next = if next == 0 {
+            form.fields.len() - 1
+        } else {
+            next - 1
+        };
+        if is_field_selectable(&form.fields[next]) {
+            form.selected_field = next;
+            return;
+        }
+        if next == start {
+            return;
+        }
     }
 }
 
@@ -89,6 +129,7 @@ pub(crate) fn move_left(form: &mut BottomFormView) {
     };
 
     match &mut field.editor {
+        BottomFormFieldEditorView::Section { .. } => {}
         BottomFormFieldEditorView::Text { value, cursor, .. } => {
             *cursor = (*cursor).min(value.chars().count());
             if *cursor > 0 {
@@ -106,6 +147,7 @@ pub(crate) fn move_left(form: &mut BottomFormView) {
             }
             sync_mcp_add_form_fields(form);
         }
+        BottomFormFieldEditorView::Checkbox { .. } => {}
     }
 }
 
@@ -116,6 +158,7 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
     };
 
     match &mut field.editor {
+        BottomFormFieldEditorView::Section { .. } => {}
         BottomFormFieldEditorView::Text { value, cursor, .. } => {
             *cursor = (*cursor + 1).min(value.chars().count());
         }
@@ -125,6 +168,25 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
             }
             *selected = (*selected + 1) % options.len();
             sync_mcp_add_form_fields(form);
+        }
+        BottomFormFieldEditorView::Checkbox { .. } => {}
+    }
+}
+
+pub(crate) fn activate(form: &mut BottomFormView) {
+    let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
+    let Some(field) = form.fields.get_mut(selected) else {
+        return;
+    };
+
+    if let BottomFormFieldEditorView::Checkbox {
+        checked,
+        disabled,
+        ..
+    } = &mut field.editor
+    {
+        if !*disabled {
+            *checked = !*checked;
         }
     }
 }
@@ -254,6 +316,20 @@ pub(crate) fn to_config(
     ))
 }
 
+pub(crate) fn rules_form_overrides(form: &BottomFormView) -> Vec<(String, bool)> {
+    form.fields
+        .iter()
+        .filter_map(|field| match &field.editor {
+            BottomFormFieldEditorView::Checkbox {
+                id,
+                checked,
+                disabled,
+            } if !disabled => Some((id.clone(), *checked)),
+            _ => None,
+        })
+        .collect()
+}
+
 fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
     let transport = selected_transport_kind(form).unwrap_or(McpAddTransportKind::Stdio);
 
@@ -295,7 +371,83 @@ fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
         }
     }
 
-    form.selected_field = form.selected_field.min(form.fields.len().saturating_sub(1));
+    ensure_selectable_field(form);
+}
+
+fn push_rules_section(
+    fields: &mut Vec<BottomFormFieldView>,
+    title: &str,
+    scope: RuleScope,
+    entries: &[RuleEntry],
+) {
+    fields.push(BottomFormFieldView {
+        label: String::new(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Section {
+            text: title.to_string(),
+        },
+    });
+
+    for entry in entries.iter().filter(|entry| entry.source.scope == scope) {
+        let label = match scope {
+            RuleScope::Workspace => WORKSPACE_RULE_LABEL,
+            RuleScope::User => USER_RULE_LABEL,
+        };
+        let status = if entry.exists {
+            if entry.enabled {
+                "已启用"
+            } else {
+                "已禁用"
+            }
+        } else {
+            "未发现，暂不可切换"
+        };
+
+        fields.push(BottomFormFieldView {
+            label: label.to_string(),
+            help: format!("路径: {}\n状态: {}", entry.source.path.display(), status),
+            editor: BottomFormFieldEditorView::Checkbox {
+                id: entry.source.id.clone(),
+                checked: entry.enabled,
+                disabled: !entry.exists,
+            },
+        });
+    }
+}
+
+fn is_field_selectable(field: &BottomFormFieldView) -> bool {
+    match &field.editor {
+        BottomFormFieldEditorView::Section { .. } => false,
+        BottomFormFieldEditorView::Checkbox { disabled, .. } => !*disabled,
+        BottomFormFieldEditorView::Text { .. } | BottomFormFieldEditorView::Choice { .. } => true,
+    }
+}
+
+fn has_selectable_field(form: &BottomFormView) -> bool {
+    form.fields.iter().any(is_field_selectable)
+}
+
+fn ensure_selectable_field(form: &mut BottomFormView) {
+    if form.fields.is_empty() {
+        form.selected_field = 0;
+        return;
+    }
+
+    let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
+    if form
+        .fields
+        .get(selected)
+        .is_some_and(is_field_selectable)
+    {
+        form.selected_field = selected;
+        return;
+    }
+
+    form.selected_field = form
+        .fields
+        .iter()
+        .position(is_field_selectable)
+        .unwrap_or(0);
 }
 
 fn selected_editor_mut(form: &mut BottomFormView) -> Option<&mut BottomFormFieldEditorView> {
@@ -435,10 +587,19 @@ enum McpAddTransportKind {
     Http,
 }
 
+const WORKSPACE_RULE_LABEL: &str = "AGENTS.md";
+const USER_RULE_LABEL: &str = "rule.md";
+
 #[cfg(test)]
 mod tests {
-    use super::{MetadataFieldKind, new_mcp_add_form, parse_metadata_map};
+    use super::{
+        MetadataFieldKind, activate, new_mcp_add_form, new_rules_form, parse_metadata_map,
+        rules_form_overrides, select_next_field,
+    };
     use rust_i18n::t;
+    use std::path::PathBuf;
+
+    use crate::rules::{RuleEntry, RulePreview, RuleScope, RuleSource};
 
     #[test]
     fn parse_header_metadata_supports_colon_syntax() {
@@ -467,5 +628,64 @@ mod tests {
 
         assert_eq!(form.fields[2].label, t!("form.mcp.field.endpoint.command.label"));
         assert_eq!(form.fields[3].label, t!("form.mcp.field.metadata.env.label"));
+    }
+
+    #[test]
+    fn new_rules_form_selects_first_available_checkbox() {
+        let form = new_rules_form(&[sample_rule_entry(RuleScope::Workspace, true, true)]);
+
+        assert_eq!(form.selected_field, 1);
+    }
+
+    #[test]
+    fn select_next_field_skips_sections_and_disabled_checkboxes() {
+        let mut form = new_rules_form(&[
+            sample_rule_entry(RuleScope::Workspace, true, true),
+            sample_rule_entry(RuleScope::User, false, false),
+        ]);
+
+        select_next_field(&mut form);
+
+        assert_eq!(form.selected_field, 1);
+    }
+
+    #[test]
+    fn activate_toggles_selected_checkbox() {
+        let mut form = new_rules_form(&[sample_rule_entry(RuleScope::Workspace, true, true)]);
+
+        activate(&mut form);
+
+        assert_eq!(rules_form_overrides(&form), vec![("workspace-rule".to_string(), false)]);
+    }
+
+    fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {
+        let (id, title, path) = match scope {
+            RuleScope::Workspace => (
+                "workspace-rule",
+                "工作区规则",
+                PathBuf::from("C:/workspace/AGENTS.md"),
+            ),
+            RuleScope::User => (
+                "user-rule",
+                "用户规则",
+                PathBuf::from("C:/users/demo/AppData/Roaming/SpiritAgent/rule.md"),
+            ),
+        };
+
+        RuleEntry {
+            source: RuleSource {
+                id: id.to_string(),
+                scope,
+                title: title.to_string(),
+                path,
+            },
+            exists,
+            enabled,
+            content: exists.then(|| "body".to_string()),
+            preview: exists.then(|| RulePreview {
+                excerpt: "body".to_string(),
+                truncated: false,
+            }),
+        }
     }
 }

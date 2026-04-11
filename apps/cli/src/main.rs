@@ -513,7 +513,7 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
 
     if shell.is_bottom_form_active() {
         match key.code {
-            KeyCode::Esc => shell.cancel_bottom_form(),
+            KeyCode::Esc => shell.dismiss_bottom_form(),
             KeyCode::Up => shell.select_prev_bottom_form_field(),
             KeyCode::Down => shell.select_next_bottom_form_field(),
             KeyCode::Left => shell.bottom_form_move_left(),
@@ -523,7 +523,7 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             KeyCode::Enter if enter_should_insert_newline(key.modifiers) => {
                 shell.bottom_form_insert_char('\n');
             }
-            KeyCode::Enter => shell.save_bottom_form(),
+            KeyCode::Enter => shell.activate_bottom_form(),
             KeyCode::Char(ch)
                 if ch.eq_ignore_ascii_case(&'v')
                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
