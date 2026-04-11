@@ -72,7 +72,7 @@ impl RuntimeHandle {
         self.runtime.export_chat_archive(messages, assistant_aux)
     }
 
-    pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
+    pub fn mcp_status_snapshot(&mut self) -> McpStatusSnapshot {
         self.runtime.mcp_status_snapshot()
     }
 

@@ -18,13 +18,6 @@ interface HostToolRequestMetadata {
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
   private hostToolDefinitionsCache: JsonValue = [];
   private toolDefinitionsCache: JsonValue = [];
-  private mcpStatusSnapshotCache: McpStatusSnapshot = {
-    revision: 0,
-    state: 'idle',
-    configuredServers: 0,
-    loadedServers: 0,
-    cachedTools: 0,
-  };
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly mcp = new McpService();
 
@@ -37,7 +30,6 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       this.hostToolDefinitionsCache,
       this.mcp.toolDefinitionsJson(),
     );
-    this.mcpStatusSnapshotCache = await this.peer.call<McpStatusSnapshot>('host.mcpStatusSnapshot');
   }
 
   toolDefinitionsJson(): JsonValue {
@@ -114,11 +106,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
   startMcpBackgroundRefresh(): void {
     void this.mcp.startBackgroundRefresh().catch(() => undefined);
-    this.peer.notify('host.startMcpBackgroundRefresh');
   }
 
   mcpStatusSnapshot(): McpStatusSnapshot {
-    return this.mcpStatusSnapshotCache;
+    return this.mcp.statusSnapshot();
   }
 
   async addMcpServer(name: string, config: JsonValue): Promise<string> {

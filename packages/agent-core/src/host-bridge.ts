@@ -306,6 +306,13 @@ peer.on('runtime.listMcpPrompts', async (rawParams) => {
   return toolExecutor.listMcpPrompts(params.name);
 });
 
+peer.on('runtime.mcpStatusSnapshot', async () => toolExecutor.mcpStatusSnapshot());
+
+peer.on('runtime.startMcpBackgroundRefresh', async () => {
+  toolExecutor.startMcpBackgroundRefresh();
+  return toolExecutor.mcpStatusSnapshot();
+});
+
 peer.on('runtime.applyMcpPrompt', async (rawParams) => {
   const params = rawParams as RuntimeApplyMcpPromptParams;
   const notice = await requireRuntime().startApplyMcpPrompt(

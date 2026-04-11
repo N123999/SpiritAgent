@@ -105,7 +105,7 @@ impl TuiShell {
         let rule_state = rules::load_rule_state().context("读取规则状态失败")?;
         let rule_entries = rules::discover_rule_entries(&workspace_root, &rule_state)
             .context("发现规则文件失败")?;
-        let runtime = RuntimeHandle::new(
+        let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
             workspace_root.clone(),
@@ -2208,9 +2208,11 @@ impl TuiShell {
         {
             return;
         }
+        let active_model = self.runtime.config().active_model.clone();
+        let mcp_welcome_line = self.runtime.mcp_status_snapshot().welcome_line();
         first_message.content = welcome_message_text(
-            &self.runtime.config().active_model,
-            &self.runtime.mcp_status_snapshot().welcome_line(),
+            &active_model,
+            &mcp_welcome_line,
         );
     }
 

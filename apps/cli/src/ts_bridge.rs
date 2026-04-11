@@ -271,7 +271,6 @@ impl TsBridgeRuntime {
             "[ts-bridge-host] runtime init workspace_root={}",
             runtime.workspace_root.display()
         ));
-        runtime.tool_executor.start_mcp_background_refresh();
         runtime.initialize_bridge()?;
         Ok(runtime)
     }
@@ -428,8 +427,17 @@ impl TsBridgeRuntime {
         })
     }
 
-    pub fn mcp_status_snapshot(&self) -> McpStatusSnapshot {
-        self.tool_executor.mcp_status_snapshot()
+    pub fn mcp_status_snapshot(&mut self) -> McpStatusSnapshot {
+        match self.call_bridge("runtime.mcpStatusSnapshot", None) {
+            Ok(value) => serde_json::from_value(value).unwrap_or_default(),
+            Err(err) => {
+                logging::log_event(&format!(
+                    "[ts-bridge-host] read mcpStatusSnapshot failed: {}",
+                    err
+                ));
+                McpStatusSnapshot::default()
+            }
+        }
     }
 
     pub fn has_pending_tool_approval(&self) -> bool {
@@ -597,7 +605,7 @@ impl TsBridgeRuntime {
 
     pub fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {
         let path = self.tool_executor.add_mcp_server(name, config)?;
-        self.tool_executor.start_mcp_background_refresh();
+        let _ = self.call_bridge("runtime.startMcpBackgroundRefresh", None)?;
         Ok(path)
     }
 
@@ -954,7 +962,6 @@ impl TsBridgeRuntime {
     fn dispatch_host_method(&mut self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
         match method {
             "host.toolDefinitionsJson" => Ok(Some(self.tool_executor.tool_definitions_json())),
-            "host.mcpStatusSnapshot" => Ok(Some(serde_json::to_value(self.tool_executor.mcp_status_snapshot())?)),
             "host.parseCommand" => {
                 let message = params
                     .and_then(|value| value.get("message").cloned())
@@ -1035,10 +1042,6 @@ impl TsBridgeRuntime {
                         Err(err)
                     }
                 }
-            }
-            "host.startMcpBackgroundRefresh" => {
-                self.tool_executor.start_mcp_background_refresh();
-                Ok(None)
             }
             "host.addMcpServer" => {
                 let params = params.ok_or_else(|| anyhow!("host.addMcpServer 缺少 params"))?;
