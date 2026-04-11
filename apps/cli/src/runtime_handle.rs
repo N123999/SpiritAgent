@@ -11,6 +11,7 @@ use crate::{
     },
     model_registry::AppConfig,
     ports::{McpStatusSnapshot, SecretStore},
+    rules::EnabledRule,
     session::SessionModel,
     ts_bridge::TsBridgeRuntime,
     view::PendingAssistantAux,
@@ -32,9 +33,10 @@ impl RuntimeHandle {
         config: AppConfig,
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
+        enabled_rules: Vec<EnabledRule>,
     ) -> Result<Self> {
         Ok(Self {
-            runtime: TsBridgeRuntime::new(config, secret_store, workspace_root)?,
+            runtime: TsBridgeRuntime::new(config, secret_store, workspace_root, enabled_rules)?,
         })
     }
 
@@ -48,6 +50,10 @@ impl RuntimeHandle {
 
     pub fn replace_config(&mut self, config: AppConfig) {
         self.runtime.replace_config(config)
+    }
+
+    pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
+        self.runtime.replace_rules(rules)
     }
 
     pub fn session(&self) -> &SessionModel {

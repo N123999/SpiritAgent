@@ -27,6 +27,7 @@ use crate::{
     },
     model_registry::AppConfig,
     ports::{McpStatusSnapshot, SecretStore, ToolExecutor},
+    rules::EnabledRule,
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
@@ -47,6 +48,7 @@ pub struct TsBridgeRuntime {
     workspace_root: PathBuf,
     session: SessionModel,
     tool_executor: WorkspaceToolExecutor,
+    enabled_rules: Vec<EnabledRule>,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
     pending_assistant_has_output: bool,
@@ -183,6 +185,7 @@ impl TsBridgeRuntime {
         config: AppConfig,
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
+        enabled_rules: Vec<EnabledRule>,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
         let (background_tool_completion_tx, background_tool_completion_rx) =
@@ -194,6 +197,7 @@ impl TsBridgeRuntime {
             workspace_root,
             session: SessionModel::new(),
             tool_executor: WorkspaceToolExecutor::new(),
+            enabled_rules,
             pending_aux_state: None,
             pending_approval_kind: None,
             pending_assistant_has_output: false,
@@ -277,6 +281,31 @@ impl TsBridgeRuntime {
                 self.handle_bridge_error(err);
                 return;
             }
+        }
+    }
+
+    pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
+        self.enabled_rules = rules;
+        if self.bridge_failed {
+            return;
+        }
+
+        let snapshot = match self.call_bridge(
+            "runtime.replaceRules",
+            Some(json!({
+                "enabledRules": self.enabled_rules,
+            })),
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.handle_bridge_error(err);
+                return;
+            }
+        };
+
+        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
+            Ok(snapshot) => self.apply_snapshot(snapshot),
+            Err(err) => self.handle_bridge_error(anyhow!("解析 TS replaceRules snapshot 失败: {}", err)),
         }
     }
 
@@ -592,6 +621,7 @@ impl TsBridgeRuntime {
             Some(json!({
                 "transportConfig": self.resolve_transport_config_json()?,
                 "history": llm_history_to_json(self.session.llm_history()),
+                "enabledRules": self.enabled_rules,
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
@@ -1623,7 +1653,7 @@ mod tests {
             ui_locale: None,
         };
 
-        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root).ok()
+        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root, vec![]).ok()
     }
 
     fn busy_snapshot() -> BridgeRuntimeSnapshot {

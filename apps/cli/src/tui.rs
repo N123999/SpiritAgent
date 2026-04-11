@@ -22,6 +22,7 @@ use crate::{
     logging,
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
+    rules::{self, RuleEntry, RuleStateFile},
     runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
@@ -88,6 +89,8 @@ pub struct TuiShell {
     chat_repository: Box<dyn ChatRepository>,
     secret_store: Arc<dyn SecretStore>,
     app_paths: Arc<dyn AppPaths>,
+    rule_state: RuleStateFile,
+    rule_entries: Vec<RuleEntry>,
 }
 
 impl TuiShell {
@@ -99,10 +102,14 @@ impl TuiShell {
         let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
         locale::apply_ui_locale(&config);
         let workspace_root = app_paths.workspace_root();
+        let rule_state = rules::load_rule_state().context("读取规则状态失败")?;
+        let rule_entries = rules::discover_rule_entries(&workspace_root, &rule_state)
+            .context("发现规则文件失败")?;
         let runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
             workspace_root.clone(),
+            rules::enabled_rules(&rule_entries),
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
         let initial_mcp_status = runtime.mcp_status_snapshot();
@@ -155,7 +162,26 @@ impl TuiShell {
             chat_repository,
             secret_store,
             app_paths,
+            rule_state,
+            rule_entries,
         })
+    }
+
+    pub fn rule_state(&self) -> &RuleStateFile {
+        &self.rule_state
+    }
+
+    pub fn rule_entries(&self) -> &[RuleEntry] {
+        &self.rule_entries
+    }
+
+    pub fn refresh_rules_from_disk(&mut self) -> Result<()> {
+        self.rule_state = rules::load_rule_state().context("读取规则状态失败")?;
+        self.rule_entries = rules::discover_rule_entries(&self.app_paths.workspace_root(), &self.rule_state)
+            .context("发现规则文件失败")?;
+        self.runtime
+            .replace_rules(rules::enabled_rules(&self.rule_entries));
+        Ok(())
     }
 
     pub fn refresh_suggestions(&mut self) {

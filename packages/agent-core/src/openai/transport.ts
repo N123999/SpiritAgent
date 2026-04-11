@@ -52,6 +52,14 @@ export interface OpenAiTransportConfig {
   workspaceRoot?: string;
 }
 
+export interface OpenAiEnabledRule {
+  id: string;
+  scope: 'workspace' | 'user';
+  title: string;
+  path: string;
+  content: string;
+}
+
 export interface OpenAiToolAgentState {
   messages: JsonValue[];
   steps: number;
@@ -86,6 +94,7 @@ export function startOpenAiToolAgentState(
   history: LlmMessage[],
   userInput: string,
   assetRoot = process.cwd(),
+  _enabledRules: OpenAiEnabledRule[] = [],
 ): OpenAiToolAgentState {
   const messages: JsonValue[] = [
     {
@@ -240,8 +249,9 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   userInput: string,
   retryState: OpenAiToolAgentState,
   assetRoot = process.cwd(),
+  _enabledRules: OpenAiEnabledRule[] = [],
 ): OpenAiToolAgentState {
-  const rebuilt = startOpenAiToolAgentState(history, userInput, assetRoot);
+  const rebuilt = startOpenAiToolAgentState(history, userInput, assetRoot, _enabledRules);
   rebuilt.steps = retryState.steps;
 
   const userIndex = findLastMatchingIndex(

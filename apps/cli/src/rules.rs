@@ -46,6 +46,16 @@ pub struct RuleEntry {
     pub preview: Option<RulePreview>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnabledRule {
+    pub id: String,
+    pub scope: RuleScope,
+    pub title: String,
+    pub path: PathBuf,
+    pub content: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleStateFile {
@@ -126,6 +136,22 @@ pub fn discover_rule_entries(
     default_rule_sources(workspace_root)
         .into_iter()
         .map(|source| discover_rule_entry(source, state))
+        .collect()
+}
+
+pub fn enabled_rules(entries: &[RuleEntry]) -> Vec<EnabledRule> {
+    entries
+        .iter()
+        .filter(|entry| entry.exists && entry.enabled)
+        .filter_map(|entry| {
+            entry.content.as_ref().map(|content| EnabledRule {
+                id: entry.source.id.clone(),
+                scope: entry.source.scope,
+                title: entry.source.title.clone(),
+                path: entry.source.path.clone(),
+                content: content.clone(),
+            })
+        })
         .collect()
 }
 
@@ -319,5 +345,53 @@ mod tests {
         assert!(entries.iter().all(|entry| !entry.exists));
         assert!(entries.iter().all(|entry| !entry.enabled));
         assert!(entries.iter().all(|entry| entry.content.is_none()));
+    }
+
+    #[test]
+    fn enabled_rules_only_keeps_existing_enabled_entries() {
+        let entries = vec![
+            RuleEntry {
+                source: RuleSource {
+                    id: "repo".to_string(),
+                    scope: RuleScope::Workspace,
+                    title: "工作区规则".to_string(),
+                    path: PathBuf::from("C:/workspace/AGENTS.md"),
+                },
+                exists: true,
+                enabled: true,
+                content: Some("repo body".to_string()),
+                preview: None,
+            },
+            RuleEntry {
+                source: RuleSource {
+                    id: "user".to_string(),
+                    scope: RuleScope::User,
+                    title: "用户规则".to_string(),
+                    path: PathBuf::from("C:/users/demo/AppData/Roaming/SpiritAgent/rule.md"),
+                },
+                exists: true,
+                enabled: false,
+                content: Some("user body".to_string()),
+                preview: None,
+            },
+            RuleEntry {
+                source: RuleSource {
+                    id: "missing".to_string(),
+                    scope: RuleScope::Workspace,
+                    title: "缺失规则".to_string(),
+                    path: PathBuf::from("C:/workspace/MISSING.md"),
+                },
+                exists: false,
+                enabled: true,
+                content: None,
+                preview: None,
+            },
+        ];
+
+        let enabled = enabled_rules(&entries);
+
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].id, "repo");
+        assert_eq!(enabled[0].content, "repo body");
     }
 }

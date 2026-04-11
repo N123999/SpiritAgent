@@ -9,6 +9,7 @@ import {
   startOpenAiToolAgentState,
   truncateOpenAiHistoryForCompaction,
   truncateOpenAiToolAgentStateForContextRetry,
+  type OpenAiEnabledRule,
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
 } from './openai/transport.js';
@@ -36,6 +37,7 @@ import type {
   RuntimeAttachMcpResourceParams,
   RuntimeInitParams,
   RuntimeReplaceConfigParams,
+  RuntimeReplaceRulesParams,
   RuntimeRespondToPendingApprovalParams,
   RuntimeStartManualToolCommandParams,
   RuntimeSubmitUserTurnParams,
@@ -52,6 +54,7 @@ const peer = new JsonRpcPeer(stdin, stdout);
 const toolExecutor = new HostToolExecutorProxy(peer);
 let runtime: HostRuntime | undefined;
 let transportConfig: OpenAiTransportConfig | undefined;
+let enabledRules: OpenAiEnabledRule[] = [];
 const llmTransport = new OpenAiTransport();
 
 function logBridge(message: string, extra?: unknown): void {
@@ -71,7 +74,11 @@ function requireRuntime(): HostRuntime {
   return runtime;
 }
 
-async function createRuntime(config: OpenAiTransportConfig, history: LlmMessage[] = []): Promise<HostRuntime> {
+async function createRuntime(
+  config: OpenAiTransportConfig,
+  history: LlmMessage[] = [],
+  rules: OpenAiEnabledRule[] = enabledRules,
+): Promise<HostRuntime> {
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
   await toolExecutor.refreshCaches();
   logBridge('createRuntime', {
@@ -82,7 +89,7 @@ async function createRuntime(config: OpenAiTransportConfig, history: LlmMessage[
     cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
   });
   const createToolAgentState = (messages: LlmMessage[], userInput: string) =>
-    startOpenAiToolAgentState(messages, userInput, workspaceRoot);
+    startOpenAiToolAgentState(messages, userInput, workspaceRoot, rules);
 
   return new AgentRuntime({
     config,
@@ -95,7 +102,13 @@ async function createRuntime(config: OpenAiTransportConfig, history: LlmMessage[
     truncateStateForContextRetry: truncateOpenAiToolAgentStateForContextRetry,
     truncateHistoryForCompaction: truncateOpenAiHistoryForCompaction,
     rebuildRetryStateAfterCompaction: (messages, userInput, retryState) =>
-      rebuildOpenAiToolAgentStateAfterCompaction(messages, userInput, retryState, workspaceRoot),
+      rebuildOpenAiToolAgentStateAfterCompaction(
+        messages,
+        userInput,
+        retryState,
+        workspaceRoot,
+        rules,
+      ),
     resolveWorkspaceFilesFromInput: (text) => pendingWorkspaceFilesFromInput(workspaceRoot, text),
   }, history);
 }
@@ -146,7 +159,8 @@ peer.on('runtime.init', async (rawParams) => {
   const params = rawParams as RuntimeInitParams;
   logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
-  runtime = await createRuntime(params.transportConfig, params.history ?? []);
+  enabledRules = [...(params.enabledRules ?? [])];
+  runtime = await createRuntime(params.transportConfig, params.history ?? [], enabledRules);
   return buildSnapshot(runtime);
 });
 
@@ -155,8 +169,14 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   logBridge('runtime.replaceConfig', { model: params.transportConfig.model });
   transportConfig = params.transportConfig;
   const target = requireRuntime();
-  runtime = await createRuntime(params.transportConfig, [...target.history()]);
+  runtime = await createRuntime(params.transportConfig, [...target.history()], enabledRules);
   return buildSnapshot(runtime);
+});
+
+peer.on('runtime.replaceRules', async (rawParams) => {
+  const params = rawParams as RuntimeReplaceRulesParams;
+  enabledRules = [...params.enabledRules];
+  return buildSnapshot(requireRuntime());
 });
 
 peer.on('runtime.replaceHistory', async (rawParams) => {
