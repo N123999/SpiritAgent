@@ -147,7 +147,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
 
     let (input_cursor_row, input_cursor_col) =
         input_cursor_position(&app, chunks[1].width.saturating_sub(2) as usize);
-    let input_style = input_block_style(app.shell_mode_active);
+    let input_style = input_block_style(app.shell_mode_active, show_bottom_form);
     let input_title = if app.shell_mode_active {
         t!("ui.input.title_shell")
     } else {
@@ -156,6 +156,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let input = Paragraph::new(build_input_lines(
         &app,
         chunks[1].width.saturating_sub(2) as usize,
+        show_bottom_form,
     ))
     .block(
         Block::default()
@@ -241,7 +242,10 @@ fn shell_mode_input_style() -> Style {
     Style::default().fg(Color::Rgb(184, 134, 11))
 }
 
-fn input_block_style(shell_mode_active: bool) -> Style {
+fn input_block_style(shell_mode_active: bool, bottom_form_open: bool) -> Style {
+    if bottom_form_open {
+        return subtle_aux_text_style();
+    }
     if shell_mode_active {
         shell_mode_input_style()
     } else {
@@ -249,11 +253,22 @@ fn input_block_style(shell_mode_active: bool) -> Style {
     }
 }
 
-fn input_text_style(shell_mode_active: bool) -> Style {
+fn input_text_style(shell_mode_active: bool, bottom_form_open: bool) -> Style {
+    if bottom_form_open {
+        return subtle_aux_text_style();
+    }
     if shell_mode_active {
         shell_mode_input_style()
     } else {
         Style::default().fg(Color::White)
+    }
+}
+
+fn deemphasize_pending_style(style: Style, bottom_form_open: bool) -> Style {
+    if bottom_form_open {
+        style.add_modifier(Modifier::DIM)
+    } else {
+        style
     }
 }
 
@@ -335,7 +350,7 @@ fn input_cursor_position(app: &TuiViewModel, max_width: usize) -> (u16, u16) {
     )
 }
 
-fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
+fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: bool) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     if !app.pending_image_paths.is_empty() {
@@ -346,13 +361,16 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
         );
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
+            deemphasize_pending_style(
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+                bottom_form_open,
+            ),
         )));
         lines.push(Line::from(Span::styled(
             summarize_pending_images(&app.pending_image_paths, max_width),
-            Style::default().fg(Color::Cyan),
+            deemphasize_pending_style(Style::default().fg(Color::Cyan), bottom_form_open),
         )));
     }
 
@@ -364,13 +382,16 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
         );
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            deemphasize_pending_style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+                bottom_form_open,
+            ),
         )));
         lines.push(Line::from(Span::styled(
             summarize_pending_mcp_resources(&app.pending_mcp_resources, max_width),
-            Style::default().fg(Color::LightYellow),
+            deemphasize_pending_style(Style::default().fg(Color::LightYellow), bottom_form_open),
         )));
     }
 
@@ -382,7 +403,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>>
     for line in logical_lines {
         lines.push(Line::from(Span::styled(
             line.to_string(),
-            input_text_style(app.shell_mode_active),
+            input_text_style(app.shell_mode_active, bottom_form_open),
         )));
     }
 
@@ -1855,12 +1876,13 @@ fn draw_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> Option<(u16, u16)> {
-    let outer_style = Style::default().fg(Color::White);
+    let outer_border_style = subtle_aux_text_style();
+    let outer_title_style = subtle_aux_text_style();
     let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
     let outer_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(outer_style)
-        .title(Line::from(Span::styled(title, outer_style)));
+        .border_style(outer_border_style)
+        .title(Line::from(Span::styled(title, outer_title_style)));
     let inner_area = outer_block.inner(area);
     frame.render_widget(outer_block, area);
 
