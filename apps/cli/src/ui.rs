@@ -19,8 +19,8 @@ use crate::{
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
     view::{
-        AssistantAuxKind, BottomFormFieldEditorView, BottomFormView, ChatMessage,
-        InputSuggestionKind, MessageRole,
+        AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
+        ChatMessage, InputSuggestionKind, MessageRole,
         PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
@@ -1758,8 +1758,8 @@ fn bottom_form_text_field_outer_height(value: &str, placeholder: &str, text_inne
         .saturating_add(2) as u16
 }
 
-fn bottom_form_field_outer_height(editor: &BottomFormFieldEditorView, text_inner_w: usize) -> u16 {
-    match editor {
+fn bottom_form_field_outer_height(field: &BottomFormFieldView, text_inner_w: usize) -> u16 {
+    match &field.editor {
         BottomFormFieldEditorView::Section { text } => {
             build_bottom_form_footer_lines(text, text_inner_w).len().max(1) as u16
         }
@@ -1767,7 +1767,14 @@ fn bottom_form_field_outer_height(editor: &BottomFormFieldEditorView, text_inner
             value, placeholder, ..
         } => bottom_form_text_field_outer_height(value, placeholder, text_inner_w),
         BottomFormFieldEditorView::Choice { .. } => 3,
-        BottomFormFieldEditorView::Checkbox { .. } => 5,
+        BottomFormFieldEditorView::Checkbox { .. } => {
+            let help_lines = if field.help.trim().is_empty() {
+                0
+            } else {
+                build_bottom_form_footer_lines(&field.help, text_inner_w).len()
+            };
+            (1 + help_lines).max(1) as u16 + 2
+        }
     }
 }
 
@@ -1777,7 +1784,7 @@ fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let fields_height = form
         .fields
         .iter()
-        .map(|field| u32::from(bottom_form_field_outer_height(&field.editor, text_inner_w)))
+        .map(|field| u32::from(bottom_form_field_outer_height(field, text_inner_w)))
         .sum::<u32>();
     let field_gaps = form.fields.len().saturating_sub(1) as u32;
     let footer_gap = if form.fields.is_empty() { 0 } else { 1 };
@@ -1907,7 +1914,7 @@ fn draw_bottom_form(
     let mut cursor = None;
     let mut field_y = content_area.y;
     for (index, field) in form.fields.iter().enumerate() {
-        let field_h = bottom_form_field_outer_height(&field.editor, text_inner_w);
+        let field_h = bottom_form_field_outer_height(field, text_inner_w);
         let available_h = fields_limit_y.saturating_sub(field_y);
         if available_h == 0 {
             break;

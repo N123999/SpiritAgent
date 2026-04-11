@@ -403,9 +403,26 @@ fn push_rules_section(
             "未发现，暂不可切换"
         };
 
+        let mut help_lines = vec![
+            format!("路径: {}", entry.source.path.display()),
+            format!("状态: {}", status),
+        ];
+        if let Some(preview) = &entry.preview {
+            if !preview.excerpt.trim().is_empty() {
+                help_lines.push("预览:".to_string());
+                help_lines.push(preview.excerpt.clone());
+            }
+            if preview.truncated {
+                help_lines.push("已截断，模型仍按源文件全文生效。".to_string());
+            }
+        }
+        if !entry.exists {
+            help_lines.push("未发现规则文件。".to_string());
+        }
+
         fields.push(BottomFormFieldView {
             label: label.to_string(),
-            help: format!("路径: {}\n状态: {}", entry.source.path.display(), status),
+            help: help_lines.join("\n"),
             editor: BottomFormFieldEditorView::Checkbox {
                 id: entry.source.id.clone(),
                 checked: entry.enabled,
@@ -656,6 +673,21 @@ mod tests {
         activate(&mut form);
 
         assert_eq!(rules_form_overrides(&form), vec![("workspace-rule".to_string(), false)]);
+    }
+
+    #[test]
+    fn new_rules_form_help_mentions_truncation_for_long_preview() {
+        let mut entry = sample_rule_entry(RuleScope::Workspace, true, true);
+        entry.preview = Some(RulePreview {
+            excerpt: "line1\nline2".to_string(),
+            truncated: true,
+        });
+
+        let form = new_rules_form(&[entry]);
+        let help = &form.fields[1].help;
+
+        assert!(help.contains("预览:"));
+        assert!(help.contains("已截断，模型仍按源文件全文生效。"));
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

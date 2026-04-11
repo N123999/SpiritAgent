@@ -11,6 +11,8 @@ use crate::mcp::spirit_agent_data_dir;
 pub const WORKSPACE_RULE_FILE_NAME: &str = "AGENTS.md";
 pub const USER_RULE_FILE_NAME: &str = "rule.md";
 const RULES_STATE_FILE_NAME: &str = "rules-state.json";
+const RULE_PREVIEW_MAX_LINES: usize = 8;
+const RULE_PREVIEW_MAX_CHARS: usize = 1_200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -169,10 +171,7 @@ fn discover_rule_entry(source: RuleSource, state: &RuleStateFile) -> Result<Rule
     let content = fs::read_to_string(&source.path)
         .with_context(|| format!("读取规则文件失败: {}", source.path.display()))?;
     let enabled = state.enabled_override(&source.id).unwrap_or(true);
-    let preview = Some(RulePreview {
-        excerpt: content.clone(),
-        truncated: false,
-    });
+    let preview = Some(build_rule_preview(&content));
 
     Ok(RuleEntry {
         source,
@@ -181,6 +180,55 @@ fn discover_rule_entry(source: RuleSource, state: &RuleStateFile) -> Result<Rule
         content: Some(content),
         preview,
     })
+}
+
+fn build_rule_preview(content: &str) -> RulePreview {
+    let mut excerpt_lines = Vec::new();
+    let mut used_chars = 0usize;
+    let mut truncated = false;
+
+    for (index, line) in content.lines().enumerate() {
+        if index >= RULE_PREVIEW_MAX_LINES {
+            truncated = true;
+            break;
+        }
+
+        let line_chars = line.chars().count();
+        let separator = if excerpt_lines.is_empty() { 0 } else { 1 };
+        if used_chars + separator + line_chars > RULE_PREVIEW_MAX_CHARS {
+            let remaining = RULE_PREVIEW_MAX_CHARS.saturating_sub(used_chars + separator);
+            if remaining > 0 {
+                excerpt_lines.push(truncate_chars(line, remaining));
+            }
+            truncated = true;
+            break;
+        }
+
+        excerpt_lines.push(line.to_string());
+        used_chars = used_chars.saturating_add(separator + line_chars);
+    }
+
+    if !truncated && content.lines().count() <= RULE_PREVIEW_MAX_LINES {
+        truncated = content.chars().count() > RULE_PREVIEW_MAX_CHARS;
+    }
+
+    RulePreview {
+        excerpt: excerpt_lines.join("\n").trim_end().to_string(),
+        truncated,
+    }
+}
+
+fn truncate_chars(text: &str, count: usize) -> String {
+    if count == 0 {
+        return String::new();
+    }
+
+    let total = text.chars().count();
+    let mut out = text.chars().take(count).collect::<String>();
+    if total > count && !out.is_empty() {
+        out.push('…');
+    }
+    out
 }
 
 fn stable_rule_id(path: &Path) -> String {
@@ -393,5 +441,35 @@ mod tests {
         assert_eq!(enabled.len(), 1);
         assert_eq!(enabled[0].id, "repo");
         assert_eq!(enabled[0].content, "repo body");
+    }
+
+    #[test]
+    fn discover_rule_entries_builds_truncated_preview_for_long_content() {
+        let _guard = env_lock().lock().expect("env lock");
+        let workspace_root = temp_test_dir("discover-preview-workspace");
+        let appdata = temp_test_dir("discover-preview-appdata");
+        unsafe {
+            env::set_var("APPDATA", &appdata);
+            env::remove_var("USERPROFILE");
+        }
+
+        let long_content = (0..12)
+            .map(|index| format!("line-{index}: {}", "x".repeat(180)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(workspace_rule_path(&workspace_root), &long_content)
+            .expect("write workspace rule");
+
+        let entries = discover_rule_entries(&workspace_root, &RuleStateFile::default())
+            .expect("discover rules");
+        let preview = entries
+            .iter()
+            .find(|entry| entry.source.scope == RuleScope::Workspace)
+            .and_then(|entry| entry.preview.as_ref())
+            .expect("workspace preview");
+
+        assert!(preview.truncated);
+        assert!(preview.excerpt.lines().count() <= RULE_PREVIEW_MAX_LINES);
+        assert!(preview.excerpt.chars().count() <= RULE_PREVIEW_MAX_CHARS + 1);
     }
 }
