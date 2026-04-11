@@ -12,6 +12,7 @@ pub mod mcp;
 pub mod mcp_manager;
 pub mod model_registry;
 pub mod ports;
+pub mod rules;
 pub mod runtime_handle;
 pub mod session;
 pub mod ts_bridge;
