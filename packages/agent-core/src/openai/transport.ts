@@ -26,13 +26,14 @@ import type {
 const TOOL_AGENT_SYSTEM_PROMPT = [
   'You are Spirit Agent.',
   '',
+  'When composing replies, follow conventional typography and editorial norms for each language you use (spacing, punctuation, and mixed-script text such as Latin alongside CJK or other scripts).',
+  '',
   'Available tools are defined only by the tools field in this request.',
   'Only call declared functions.',
   'When the user clearly asks to inspect files, code, or environment, you may use tools.',
   'Do not invent tools or capabilities that are not present in the request.',
 ].join('\n');
 
-const FINAL_RESPONSE_SYSTEM_PROMPT = 'You are Spirit Agent.';
 const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
 const TOOL_MEMORY_PREFIX = '[TOOL_MEMORY]';
 const TOOL_OUTPUT_RETRY_MAX_CHARS = 12_000;
@@ -509,7 +510,6 @@ export class OpenAiTransport
   llmSystemPromptsForExport(): JsonValue {
     return {
       tool_agent: TOOL_AGENT_SYSTEM_PROMPT,
-      final_response: FINAL_RESPONSE_SYSTEM_PROMPT,
     };
   }
 }

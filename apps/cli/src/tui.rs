@@ -1854,7 +1854,7 @@ impl TuiShell {
             "api_base": api_base,
             "working_directory": working_directory,
             "system_prompts": export_state.system_prompts,
-            "note": "messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。不再有单独的 final 润色请求。system_prompts 中 final_response 字段仅作元数据兼容，当前对话流已不单独使用。",
+            "note": "messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。system_prompts 为 transport 导出的 system 文案（如 tool_agent），供调试与导出。",
             "message_count": export_state.api_messages.len(),
             "messages": export_state.api_messages,
             "api_request_trace_count": export_state.api_request_trace.len(),
