@@ -247,6 +247,16 @@ pub fn extract_generated_rule_content(response: &str) -> Result<String> {
     normalize_generated_rule_content(response)
 }
 
+pub fn save_rule_document(path: &Path, content: &str) -> Result<PathBuf> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("创建规则目录失败: {}", parent.display()))?;
+    }
+
+    fs::write(path, content).with_context(|| format!("写入规则文件失败: {}", path.display()))?;
+    Ok(path.to_path_buf())
+}
+
 fn discover_rule_entry(source: RuleSource, state: &RuleStateFile) -> Result<RuleEntry> {
     if !source.path.exists() {
         return Ok(RuleEntry {
@@ -725,5 +735,16 @@ mod tests {
         let error = extract_generated_rule_content("普通说明文字").expect_err("missing heading");
 
         assert_eq!(error.to_string(), "规则内容必须以 Markdown 一级标题开头");
+    }
+
+    #[test]
+    fn save_rule_document_creates_parent_directory() {
+        let root = temp_test_dir("save-rule-document");
+        let path = root.join("nested").join("AGENTS.md");
+
+        let saved = save_rule_document(&path, "# Spirit Agent 规则\n").expect("save rule document");
+
+        assert_eq!(saved, path);
+        assert_eq!(fs::read_to_string(saved).expect("read saved rule"), "# Spirit Agent 规则\n");
     }
 }

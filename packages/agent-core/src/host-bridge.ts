@@ -33,6 +33,7 @@ import { HostToolExecutorProxy } from './host-bridge/host-tool-executor.js';
 import type {
   BridgeRuntimeSnapshot,
   DrainEventsResult,
+  RuntimeCompletedTurnResult,
   RuntimeAddPendingImageParams,
   RuntimeApplyMcpPromptParams,
   RuntimeAttachMcpResourceParams,
@@ -309,6 +310,36 @@ peer.on('runtime.exportState', async () => {
       ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
     },
   };
+});
+
+peer.on('runtime.takeCompletedTurnResult', async () => {
+  const result = requireRuntime().takeCompletedTurnResult();
+  if (!result) {
+    return null;
+  }
+
+  const serializable: RuntimeCompletedTurnResult = (() => {
+    switch (result.kind) {
+      case 'completed':
+        return {
+          kind: 'completed',
+          assistantText: result.assistantText,
+        };
+      case 'requires-approval':
+        return {
+          kind: 'requires-approval',
+          toolName: result.approval.toolName,
+          prompt: result.approval.prompt,
+        };
+      case 'failed':
+        return {
+          kind: 'failed',
+          error: result.error,
+        };
+    }
+  })();
+
+  return serializable;
 });
 
 peer.start();
