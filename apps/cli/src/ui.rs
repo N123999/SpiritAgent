@@ -15,6 +15,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     conversation_select::flatten_wrapped_history,
+    logging,
     shell::manual_shell,
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
@@ -40,6 +41,7 @@ const SPIRIT_LOGO_LINES: [&str; 6] = [
 thread_local! {
     static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
         RefCell::new(HashMap::new());
+    static INPUT_CURSOR_DEBUG_SIGNATURE: RefCell<Option<String>> = RefCell::new(None);
 }
 
 struct BottomFormRenderResult {
@@ -159,6 +161,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
 
     let (input_cursor_row, input_cursor_col) =
         input_cursor_position(&app, chunks[1].width.saturating_sub(2) as usize);
+    maybe_log_input_cursor_diagnostics(
+        &app,
+        chunks[1].width.saturating_sub(2) as usize,
+        input_cursor_row,
+        input_cursor_col,
+    );
     let input_style = input_block_style(app.shell_mode_active, show_bottom_form);
     let input_title = if app.shell_mode_active {
         t!("ui.input.title_shell")
@@ -175,8 +183,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             .borders(Borders::ALL)
             .border_style(input_style)
             .title(Line::from(Span::styled(input_title, input_style))),
-    )
-    .wrap(Wrap { trim: false });
+    );
     frame.render_widget(input, chunks[1]);
 
     if show_bottom_form {
@@ -411,14 +418,9 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
         )));
     }
 
-    let logical_lines: Vec<&str> = if app.input.is_empty() {
-        vec![""]
-    } else {
-        app.input.split('\n').collect()
-    };
-    for line in logical_lines {
+    for line in wrap_editor_text_lines(&app.input, max_width) {
         lines.push(Line::from(Span::styled(
-            line.to_string(),
+            line,
             input_text_style(app.shell_mode_active, bottom_form_open),
         )));
     }
@@ -438,46 +440,113 @@ fn pending_input_header_line_count(app: &TuiViewModel) -> usize {
 }
 
 fn input_visual_line_count(text: &str, max_width: usize) -> usize {
-    wrapped_text_cursor_position(text, max_width)
-        .0
-        .saturating_add(1)
+    wrap_editor_text_lines(text, max_width).len().max(1)
 }
 
 fn wrapped_text_cursor_position(text: &str, max_width: usize) -> (usize, usize) {
-    let mut total_rows = 0usize;
-    let mut lines = text.split('\n').peekable();
-    while let Some(line) = lines.next() {
-        let (row, col) = wrapped_single_line_cursor_position(line, max_width);
-        if lines.peek().is_none() {
-            return (total_rows.saturating_add(row), col);
-        }
-        total_rows = total_rows.saturating_add(row.saturating_add(1));
-    }
-    (total_rows, 0)
+    let visual_lines = wrap_editor_text_lines(text, max_width);
+    let row = visual_lines.len().saturating_sub(1);
+    let col = visual_lines
+        .last()
+        .map(|line| UnicodeWidthStr::width(line.as_str()))
+        .unwrap_or(0);
+    (row, col)
 }
 
-fn wrapped_single_line_cursor_position(line: &str, max_width: usize) -> (usize, usize) {
+fn wrap_editor_text_lines(text: &str, max_width: usize) -> Vec<String> {
     let width = max_width.max(1);
-    let mut row = 0usize;
+    let mut lines = vec![String::new()];
     let mut col = 0usize;
 
-    for ch in line.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if ch_width == 0 {
+    for ch in text.chars() {
+        if ch == '\n' {
+            lines.push(String::new());
+            col = 0;
             continue;
         }
-        if col > 0 && col + ch_width > width {
-            row += 1;
+
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if ch_width > width {
+            continue;
+        }
+
+        if ch_width > 0 && col > 0 && col + ch_width > width {
+            lines.push(String::new());
             col = 0;
         }
-        col += ch_width;
-        if col >= width {
-            row += col / width;
-            col %= width;
+
+        lines
+            .last_mut()
+            .expect("wrap_editor_text_lines")
+            .push(ch);
+
+        if ch_width > 0 {
+            col += ch_width;
         }
     }
 
-    (row, col)
+    if !text.is_empty() && col == width {
+        lines.push(String::new());
+    }
+
+    lines
+}
+
+fn maybe_log_input_cursor_diagnostics(
+    app: &TuiViewModel,
+    max_width: usize,
+    input_cursor_row: u16,
+    input_cursor_col: u16,
+) {
+    let input_chars = app.input.chars().count();
+    let should_log = app.input.contains('\n')
+        || input_chars >= 48
+        || app.input.chars().any(|ch| !ch.is_ascii());
+    if !should_log {
+        return;
+    }
+
+    let preview = sanitize_input_log_preview(&app.input, 96);
+    let signature = format!(
+        "width={max_width}|chars={input_chars}|cursor={}|row={input_cursor_row}|col={input_cursor_col}|preview={preview}",
+        app.input_cursor,
+    );
+
+    INPUT_CURSOR_DEBUG_SIGNATURE.with(|last| {
+        let mut last = last.borrow_mut();
+        if last.as_deref() == Some(signature.as_str()) {
+            return;
+        }
+        *last = Some(signature);
+        logging::log_event(&format!(
+            "[input] render chars={} cursor={} width={} row={} col={} visual_lines={} preview={}",
+            input_chars,
+            app.input_cursor,
+            max_width,
+            input_cursor_row,
+            input_cursor_col,
+            wrap_editor_text_lines(&app.input, max_width).len(),
+            preview,
+        ));
+    });
+}
+
+fn sanitize_input_log_preview(text: &str, max_chars: usize) -> String {
+    let mut preview = String::new();
+    let mut emitted = 0usize;
+    for ch in text.chars() {
+        if emitted >= max_chars {
+            preview.push('…');
+            break;
+        }
+        match ch {
+            '\n' => preview.push_str("\\n"),
+            '\r' => preview.push_str("\\r"),
+            _ => preview.push(ch),
+        }
+        emitted += 1;
+    }
+    preview
 }
 
 fn summarize_pending_images(paths: &[String], max_width: usize) -> String {
@@ -2759,6 +2828,32 @@ mod tests {
         );
 
         assert!(bottom_form_block_height(&form, 28) > bottom_form_block_height(&form, 96));
+    }
+
+    #[test]
+    fn input_cursor_matches_wrapped_render_for_exact_width_line_before_newline() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "welcome"));
+        app.input = "你好你好\nA".to_string();
+        app.input_cursor = app.input.chars().count();
+
+        let lines = render_text_lines(build_input_lines(&app, 8, false));
+        let (row, col) = input_cursor_position(&app, 8);
+
+        assert_eq!(lines, vec!["你好你好", "A"]);
+        assert_eq!((row, col), (1, 1));
+    }
+
+    #[test]
+    fn input_cursor_moves_to_trailing_empty_row_when_last_line_fills_width() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "welcome"));
+        app.input = "你好你好".to_string();
+        app.input_cursor = app.input.chars().count();
+
+        let lines = render_text_lines(build_input_lines(&app, 8, false));
+        let (row, col) = input_cursor_position(&app, 8);
+
+        assert_eq!(lines, vec!["你好你好", ""]);
+        assert_eq!((row, col), (1, 0));
     }
 
     #[test]

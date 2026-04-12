@@ -569,9 +569,13 @@ impl TuiShell {
     }
 
     pub fn insert_char_at_cursor(&mut self, ch: char) {
+        let cursor_before = self.input_cursor;
         let idx = self.cursor_byte_index();
         self.input.insert(idx, ch);
         self.input_cursor += 1;
+        if ch == '\n' {
+            self.log_input_edit("insert_char", &ch.to_string(), cursor_before);
+        }
     }
 
     pub fn insert_text_at_cursor(&mut self, text: &str) {
@@ -579,9 +583,13 @@ impl TuiShell {
             return;
         }
 
+        let cursor_before = self.input_cursor;
         let idx = self.cursor_byte_index();
         self.input.insert_str(idx, text);
         self.input_cursor += text.chars().count();
+        if should_log_input_edit(text) {
+            self.log_input_edit("insert_text", text, cursor_before);
+        }
     }
 
     pub fn paste_from_clipboard(&mut self) -> Result<(), String> {
@@ -2788,6 +2796,18 @@ impl TuiShell {
         self.input_cursor = self.input_len_chars();
     }
 
+    fn log_input_edit(&self, action: &str, text: &str, cursor_before: usize) {
+        logging::log_event(&format!(
+            "[input] {} inserted_chars={} cursor_before={} cursor_after={} total_chars={} preview={}",
+            action,
+            text.chars().count(),
+            cursor_before,
+            self.input_cursor,
+            self.input_len_chars(),
+            truncate_input_log_preview(text, 80),
+        ));
+    }
+
     fn replace_current_file_reference(&mut self, selected: &str, finalize: bool) -> bool {
         let Some(query) = self.current_file_reference_query() else {
             return false;
@@ -2966,6 +2986,30 @@ fn looks_like_prompt_args_json(input: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(input)
         .map(|value| value.is_object())
         .unwrap_or(false)
+}
+
+fn should_log_input_edit(text: &str) -> bool {
+    text.contains('\n')
+        || text.chars().count() >= 16
+        || text.chars().filter(|ch| !ch.is_ascii()).count() >= 8
+}
+
+fn truncate_input_log_preview(text: &str, max_chars: usize) -> String {
+    let mut preview = String::new();
+    let mut emitted = 0usize;
+    for ch in text.chars() {
+        if emitted >= max_chars {
+            preview.push('…');
+            break;
+        }
+        match ch {
+            '\n' => preview.push_str("\\n"),
+            '\r' => preview.push_str("\\r"),
+            _ => preview.push(ch),
+        }
+        emitted += 1;
+    }
+    preview
 }
 
 fn parse_image_path_and_prompt(input: &str) -> (&str, &str) {
