@@ -257,7 +257,7 @@ pub fn build_create_rule_user_turn(workspace_root: &Path, request: &CreateRuleRe
             target_path.display()
         ),
         RuleScope::User => format!(
-            "目标文件位于工作区外：{}。当前文件写工具只覆盖工作区内路径。请先正常分析并给出最终 Markdown 草案；如果无法直接写入，就明确说明未写入，不要伪造落盘结果。",
+            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 update_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
             target_path.display()
         ),
     };
@@ -416,16 +416,10 @@ fn stable_rule_id(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::shared_env_lock;
     use std::{
-        sync::{Mutex, OnceLock},
         time::{SystemTime, UNIX_EPOCH},
     };
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    fn env_lock() -> &'static Mutex<()> {
-        ENV_LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn temp_test_dir(label: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -458,7 +452,7 @@ mod tests {
 
     #[test]
     fn user_rule_path_lives_under_spirit_agent_data_dir() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("user-rule-path");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -472,7 +466,7 @@ mod tests {
 
     #[test]
     fn load_rule_state_returns_default_when_missing() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("load-state-default");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -486,7 +480,7 @@ mod tests {
 
     #[test]
     fn save_rule_state_round_trips_overrides() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("save-state-roundtrip");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -505,7 +499,7 @@ mod tests {
 
     #[test]
     fn discover_rule_entries_defaults_existing_rules_to_enabled() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-default-enabled-workspace");
         let appdata = temp_test_dir("discover-default-enabled-appdata");
         unsafe {
@@ -536,7 +530,7 @@ mod tests {
 
     #[test]
     fn discover_rule_entries_applies_disabled_override() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-override-workspace");
         let appdata = temp_test_dir("discover-override-appdata");
         unsafe {
@@ -562,7 +556,7 @@ mod tests {
 
     #[test]
     fn discover_rule_entries_returns_missing_sources() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-missing-workspace");
         let appdata = temp_test_dir("discover-missing-appdata");
         unsafe {
@@ -632,7 +626,7 @@ mod tests {
 
     #[test]
     fn discover_rule_entries_builds_truncated_preview_for_long_content() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-preview-workspace");
         let appdata = temp_test_dir("discover-preview-appdata");
         unsafe {
@@ -704,7 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn build_create_rule_user_turn_handles_user_scope_without_fake_write_access() {
+    fn build_create_rule_user_turn_mentions_spirit_managed_user_write_scope() {
         let workspace_root = PathBuf::from("C:/workspace/demo");
         let request = CreateRuleRequest {
             scope: RuleScope::User,
@@ -713,9 +707,9 @@ mod tests {
 
         let prompt = build_create_rule_user_turn(&workspace_root, &request);
 
-        assert!(prompt.contains("工作区外"));
-        assert!(prompt.contains("文件写工具只覆盖工作区内路径"));
-        assert!(prompt.contains("明确说明未写入"));
+        assert!(prompt.contains("Spirit 托管的用户目录"));
+        assert!(prompt.contains("允许写入的托管范围"));
+        assert!(prompt.contains("create_file 或 update_file"));
         assert!(prompt.contains("rule.md"));
     }
 }

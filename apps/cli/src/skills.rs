@@ -343,7 +343,7 @@ pub fn build_create_skill_user_turn(workspace_root: &Path, request: &CreateSkill
             target_path.display()
         ),
         SkillScope::User => format!(
-            "目标文件位于工作区外：{}。当前阶段文件写工具仍只覆盖工作区内路径；请先正常分析并给出最终 SKILL.md 草案，如果不能直接写入，就明确说明未写入。",
+            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 update_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要在工具成功前声称已经创建。",
             target_path.display()
         ),
     };
@@ -840,16 +840,10 @@ fn split_first_token(input: &str) -> Option<(&str, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::shared_env_lock;
     use std::{
-        sync::{Mutex, OnceLock},
         time::{SystemTime, UNIX_EPOCH},
     };
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    fn env_lock() -> &'static Mutex<()> {
-        ENV_LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn temp_test_dir(label: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -877,7 +871,7 @@ mod tests {
 
     #[test]
     fn user_skills_dir_lives_under_spirit_agent_data_dir() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("user-skills-dir");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -889,7 +883,7 @@ mod tests {
 
     #[test]
     fn save_skill_state_round_trips_overrides() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("skill-state-roundtrip");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -907,7 +901,7 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_prefers_workspace_spirit_over_agents_and_user() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-precedence-workspace");
         let appdata = temp_test_dir("discover-precedence-appdata");
         unsafe {
@@ -953,7 +947,7 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_uses_enabled_override() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-enabled-workspace");
         let appdata = temp_test_dir("discover-enabled-appdata");
         unsafe {
@@ -980,7 +974,7 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_skips_missing_description() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-missing-description-workspace");
         let appdata = temp_test_dir("discover-missing-description-appdata");
         unsafe {
@@ -1001,7 +995,7 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_accepts_lenient_description_with_colon() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-lenient-yaml-workspace");
         let appdata = temp_test_dir("discover-lenient-yaml-appdata");
         unsafe {
@@ -1104,6 +1098,22 @@ mod tests {
         assert!(prompt.contains("code-review"));
         assert!(prompt.contains("create_file 或 update_file"));
         assert!(prompt.contains("YAML frontmatter"));
+    }
+
+    #[test]
+    fn build_create_skill_user_turn_mentions_spirit_managed_user_write_scope() {
+        let workspace_root = PathBuf::from("C:/workspace/demo");
+        let request = CreateSkillRequest {
+            scope: SkillScope::User,
+            name: "code-review".to_string(),
+            prompt: "生成一个跨仓库稳定复用的 code review skill".to_string(),
+        };
+
+        let prompt = build_create_skill_user_turn(&workspace_root, &request);
+
+        assert!(prompt.contains("Spirit 托管的用户目录"));
+        assert!(prompt.contains("允许写入的托管范围"));
+        assert!(prompt.contains("create_file 或 update_file"));
     }
 
     #[test]

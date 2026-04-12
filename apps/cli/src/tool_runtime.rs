@@ -24,6 +24,11 @@ use windows_sys::Win32::{
 };
 
 use crate::logging;
+use crate::{
+    mcp::spirit_agent_data_dir,
+    rules::USER_RULE_FILE_NAME,
+    skills::SKILLS_DIR_NAME,
+};
 
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
 const MAX_COMMAND_OUTPUT_CHARS: usize = 16_000;
@@ -99,6 +104,7 @@ struct ToolPermissionStore {
 
 pub struct ToolRuntime {
     workspace_root: PathBuf,
+    spirit_data_dir: PathBuf,
     permission_store_path: PathBuf,
     permissions: ToolPermissionStore,
     shell_context: ShellContext,
@@ -160,16 +166,26 @@ impl ToolRuntime {
     }
 
     pub fn new_for_workspace(workspace_root: PathBuf) -> Self {
+        Self::new_with_spirit_dir(workspace_root, spirit_agent_data_dir())
+    }
+
+    fn new_with_spirit_dir(workspace_root: PathBuf, spirit_data_dir: PathBuf) -> Self {
         let permission_store_path = permissions_file_path();
         let permissions = load_permissions(&permission_store_path).unwrap_or_default();
         let shell_context = ShellContext::detect();
 
         Self {
             workspace_root,
+            spirit_data_dir,
             permission_store_path,
             permissions,
             shell_context,
         }
+    }
+
+    #[cfg(test)]
+    fn new_for_workspace_and_spirit_dir(workspace_root: PathBuf, spirit_data_dir: PathBuf) -> Self {
+        Self::new_with_spirit_dir(workspace_root, spirit_data_dir)
     }
 
     pub fn parse_tool_command(&self, message: &str) -> Result<ToolRequest> {
@@ -484,7 +500,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "create_file",
-                    "description": "Create a new file inside the workspace. Fails if the file already exists.",
+                    "description": "Create a new file inside the workspace or under Spirit-managed user rule/skills paths. Fails if the file already exists.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -500,7 +516,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "update_file",
-                    "description": "Update an existing file by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
+                    "description": "Update an existing file inside the workspace or under Spirit-managed user rule/skills paths by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -517,7 +533,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "delete_file",
-                    "description": "Delete an existing file inside the workspace.",
+                    "description": "Delete an existing file inside the workspace or under Spirit-managed user rule/skills paths.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1100,7 +1116,9 @@ fn normalize_search_line(line: &str) -> &str {
         canonical: &Path,
         prompt_title: &str,
     ) -> AuthorizationDecision {
-        if self.is_inside_workspace(canonical) {
+        if self.is_inside_workspace(canonical)
+            || self.is_inside_spirit_managed_user_area(canonical)
+        {
             return AuthorizationDecision::Allowed;
         }
 
@@ -1161,9 +1179,25 @@ fn normalize_search_line(line: &str) -> &str {
 
     fn is_inside_workspace(&self, path: &Path) -> bool {
         match self.workspace_root.canonicalize() {
-            Ok(root) => path.starts_with(root),
+            Ok(root) => path_has_prefix(path, &root),
             Err(_) => false,
         }
+    }
+
+    fn is_inside_spirit_managed_user_area(&self, path: &Path) -> bool {
+        let user_rule = normalize_path_lossy(&self.spirit_data_dir.join(USER_RULE_FILE_NAME)).ok();
+        if user_rule.as_ref().is_some_and(|allowed| path_has_prefix(path, allowed)) {
+            return true;
+        }
+
+        let skills_root = normalize_path_lossy(&self.spirit_data_dir.join(SKILLS_DIR_NAME)).ok();
+        skills_root
+            .as_ref()
+            .is_some_and(|allowed| path_has_prefix(path, allowed))
+    }
+
+    fn is_allowed_write_path(&self, path: &Path) -> bool {
+        self.is_inside_workspace(path) || self.is_inside_spirit_managed_user_area(path)
     }
 
     fn resolve_workspace_target_path(&self, input: &str) -> Result<PathBuf> {
@@ -1179,14 +1213,9 @@ fn normalize_search_line(line: &str) -> &str {
         };
 
         let normalized = normalize_path_lossy(&joined)?;
-        let root = self
-            .workspace_root
-            .canonicalize()
-            .with_context(|| format!("工作目录无法访问: {}", self.workspace_root.display()))?;
-
-        if !normalized.starts_with(&root) {
+        if !self.is_allowed_write_path(&normalized) {
             return Err(anyhow!(
-                "仅允许修改工作目录内文件: {}",
+                "仅允许修改工作目录内文件，或 Spirit 托管的用户规则/skills 路径: {}",
                 normalized.display()
             ));
         }
@@ -1196,8 +1225,11 @@ fn normalize_search_line(line: &str) -> &str {
 
     fn resolve_existing_workspace_file(&self, input: &str) -> Result<PathBuf> {
         let path = self.resolve_existing_path(input)?;
-        if !self.is_inside_workspace(&path) {
-            return Err(anyhow!("仅允许修改工作目录内文件: {}", path.display()));
+        if !self.is_allowed_write_path(&path) {
+            return Err(anyhow!(
+                "仅允许修改工作目录内文件，或 Spirit 托管的用户规则/skills 路径: {}",
+                path.display()
+            ));
         }
         if !path.is_file() {
             return Err(anyhow!("目标不是文件: {}", path.display()));
@@ -1442,16 +1474,42 @@ fn normalize_path_lossy(path: &Path) -> Result<PathBuf> {
             .with_context(|| format!("路径无法访问: {}", path.display()));
     }
 
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("路径缺少父目录: {}", path.display()))?;
-    let parent = parent
+    let mut missing_components = Vec::new();
+    let mut cursor = path;
+    while !cursor.exists() {
+        let file_name = cursor
+            .file_name()
+            .ok_or_else(|| anyhow!("路径缺少文件名: {}", path.display()))?;
+        missing_components.push(file_name.to_os_string());
+        cursor = cursor
+            .parent()
+            .ok_or_else(|| anyhow!("路径缺少可访问父目录: {}", path.display()))?;
+    }
+
+    let mut normalized = cursor
         .canonicalize()
-        .with_context(|| format!("父目录不存在或无法访问: {}", parent.display()))?;
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| anyhow!("路径缺少文件名: {}", path.display()))?;
-    Ok(parent.join(file_name))
+        .with_context(|| format!("父目录不存在或无法访问: {}", cursor.display()))?;
+    for component in missing_components.iter().rev() {
+        normalized.push(component);
+    }
+    Ok(normalized)
+}
+
+fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
+    let normalized_path = path_compare_key(path);
+    let normalized_prefix = path_compare_key(prefix);
+    normalized_path == normalized_prefix
+        || normalized_path.starts_with(&(normalized_prefix + "/"))
+}
+
+fn path_compare_key(path: &Path) -> String {
+    let mut normalized = path.to_string_lossy().replace('\\', "/");
+    if let Some(stripped) = normalized.strip_prefix("//?/UNC/") {
+        normalized = format!("//{}", stripped);
+    } else if let Some(stripped) = normalized.strip_prefix("//?/") {
+        normalized = stripped.to_string();
+    }
+    normalized.trim_end_matches('/').to_string()
 }
 
 fn decode_command_output(bytes: &[u8]) -> String {
@@ -1728,6 +1786,77 @@ mod tests {
         assert!(!result.contains(&expected_ignored));
 
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn create_file_allows_spirit_user_skill_paths_and_creates_missing_dirs() {
+        let workspace = make_temp_workspace("spirit-user-skill-write-workspace");
+        let spirit_dir = make_temp_workspace("spirit-user-skill-write-data");
+        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let target = spirit_dir
+            .join(SKILLS_DIR_NAME)
+            .join(format!(
+                "code-review-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("system time before unix epoch")
+                    .as_nanos()
+            ))
+            .join("SKILL.md");
+
+        runtime
+            .execute_create_file(
+                target.to_str().expect("target path utf8"),
+                "---\nname: code-review\ndescription: Review code\n---\n",
+            )
+            .expect("create spirit-managed skill file");
+
+        assert!(target.is_file());
+
+        let _ = fs::remove_dir_all(workspace);
+        let _ = fs::remove_dir_all(spirit_dir);
+        let _ = fs::remove_dir_all(target.parent().expect("skill dir"));
+    }
+
+    #[test]
+    fn authorize_read_allows_spirit_user_skill_resources_without_external_prompt() {
+        let workspace = make_temp_workspace("spirit-user-skill-read-workspace");
+        let spirit_dir = make_temp_workspace("spirit-user-skill-read-data");
+        let resource = spirit_dir
+            .join(SKILLS_DIR_NAME)
+            .join(format!(
+                "code-review-read-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("system time before unix epoch")
+                    .as_nanos()
+            ))
+            .join("references")
+            .join("checklist.md");
+        fs::create_dir_all(resource.parent().expect("resource parent"))
+            .expect("create resource parent");
+        fs::write(&resource, "- inspect regression risk\n").expect("write resource");
+
+        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let decision = runtime
+            .authorize(&ToolRequest::ReadFile {
+                path: resource.to_string_lossy().to_string(),
+                start_line: None,
+                end_line: None,
+            })
+            .expect("authorize read");
+
+        assert!(matches!(decision, AuthorizationDecision::Allowed));
+
+        let _ = fs::remove_dir_all(workspace);
+        let _ = fs::remove_dir_all(spirit_dir);
+        let _ = fs::remove_dir_all(
+            resource
+                .parent()
+                .expect("references dir")
+                .parent()
+                .expect("skill dir"),
+        );
     }
 
     fn make_temp_workspace(prefix: &str) -> PathBuf {
