@@ -158,6 +158,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     return this.mcp.readResource(name, uri);
   }
 
+  async listCachedMcpPrompts(name: string): Promise<JsonValue[]> {
+    return this.mcp.listCachedPrompts(name);
+  }
+
   async listMcpPrompts(name: string): Promise<JsonValue[]> {
     return this.mcp.listPrompts(name);
   }

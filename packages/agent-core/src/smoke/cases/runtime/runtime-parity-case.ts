@@ -104,6 +104,10 @@ class ApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
     throw new Error('ApprovalExecutor.readMcpResource 未实现。');
   }
 
+  async listCachedMcpPrompts(): Promise<never[]> {
+    return [];
+  }
+
   async listMcpPrompts(): Promise<never[]> {
     return [];
   }
@@ -291,6 +295,10 @@ class CompactExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async readMcpResource(): Promise<JsonValue> {
     throw new Error('CompactExecutor.readMcpResource 未实现。');
+  }
+
+  async listCachedMcpPrompts(): Promise<never[]> {
+    return [];
   }
 
   async listMcpPrompts(): Promise<never[]> {
@@ -607,6 +615,10 @@ class BackgroundExecutor implements ToolExecutor<ScriptedToolRequest> {
     throw new Error('BackgroundExecutor.readMcpResource 未实现。');
   }
 
+  async listCachedMcpPrompts(): Promise<never[]> {
+    return [];
+  }
+
   async listMcpPrompts(): Promise<never[]> {
     return [];
   }
@@ -789,6 +801,10 @@ class VisionExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async readMcpResource(): Promise<JsonValue> {
     throw new Error('VisionExecutor.readMcpResource 未实现。');
+  }
+
+  async listCachedMcpPrompts(): Promise<never[]> {
+    return [];
   }
 
   async listMcpPrompts(): Promise<never[]> {
@@ -1476,6 +1492,10 @@ class StreamingApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
     throw new Error('StreamingApprovalExecutor.readMcpResource 未实现。');
   }
 
+  async listCachedMcpPrompts(): Promise<never[]> {
+    return [];
+  }
+
   async listMcpPrompts(): Promise<never[]> {
     return [];
   }
@@ -1834,6 +1854,10 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
         },
       ],
     };
+  }
+
+  async listCachedMcpPrompts(): Promise<never[]> {
+    return [];
   }
 
   async listMcpPrompts(): Promise<never[]> {

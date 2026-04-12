@@ -306,6 +306,11 @@ peer.on('runtime.readMcpResource', async (rawParams) => {
   return toolExecutor.readMcpResource(params.server, params.uri);
 });
 
+peer.on('runtime.listCachedMcpPrompts', async (rawParams) => {
+  const params = rawParams as RuntimeNamedMcpServerParams;
+  return toolExecutor.listCachedMcpPrompts(params.name);
+});
+
 peer.on('runtime.listMcpPrompts', async (rawParams) => {
   const params = rawParams as RuntimeNamedMcpServerParams;
   return toolExecutor.listMcpPrompts(params.name);

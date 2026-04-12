@@ -49,6 +49,17 @@ interface McpToolCatalog {
   routes: Map<string, McpToolRoute>;
 }
 
+interface McpPromptCatalogEntry {
+  name: string;
+  title?: string;
+  description?: string;
+  arguments: Array<{
+    name: string;
+    description?: string;
+    required: boolean;
+  }>;
+}
+
 export interface McpToolRequest {
   [key: string]: JsonValue;
   kind: 'mcpTool';
@@ -76,6 +87,7 @@ export class McpService {
     definitions: [],
     routes: new Map<string, McpToolRoute>(),
   };
+  private promptCatalogStore = new Map<string, McpPromptCatalogEntry[]>();
   private loadErrorStore: string | undefined;
   private windowsEnvLookupPromise: Promise<EnvLookupStore> | undefined;
   private toolingRefreshPromise: Promise<void> | undefined;
@@ -169,6 +181,7 @@ export class McpService {
         definitions: [],
         routes: new Map<string, McpToolRoute>(),
       };
+      this.promptCatalogStore = new Map<string, McpPromptCatalogEntry[]>();
       throw error;
     }
   }
@@ -411,6 +424,30 @@ export class McpService {
     });
   }
 
+  async listCachedPrompts(name: string): Promise<JsonValue[]> {
+    this.ensureToolingCacheInBackground();
+
+    if (Object.keys(this.loadedConfigStore.raw.servers).length === 0) {
+      this.primeRegistryFromDisk();
+    }
+
+    const server = this.loadedConfigStore.raw.servers[name];
+    if (!server || server.enabled === false || server.capabilities?.prompts === false) {
+      return [];
+    }
+
+    return (this.promptCatalogStore.get(name) ?? []).map((prompt) => ({
+      name: prompt.name,
+      ...(prompt.title === undefined ? {} : { title: prompt.title }),
+      ...(prompt.description === undefined ? {} : { description: prompt.description }),
+      arguments: prompt.arguments.map((argument) => ({
+        name: argument.name,
+        ...(argument.description === undefined ? {} : { description: argument.description }),
+        required: argument.required,
+      })),
+    }));
+  }
+
   async getPrompt(name: string, prompt: string, argsJson?: string): Promise<JsonValue> {
     const server = await this.requireConnectableServer(name);
     const args = parsePromptArguments(argsJson);
@@ -514,6 +551,7 @@ export class McpService {
 
     const definitions: JsonValue[] = [];
     const routes = new Map<string, McpToolRoute>();
+    const prompts = new Map<string, McpPromptCatalogEntry[]>();
 
     for (const server of Object.values(this.loadedConfigStore.resolved)) {
       if (!server.enabled) {
@@ -528,6 +566,10 @@ export class McpService {
         const discoveredTools =
           server.capabilities.tools && capabilities?.tools !== undefined
             ? (await connection.listTools()).tools
+            : [];
+        const discoveredPrompts =
+          server.capabilities.prompts && capabilities?.prompts !== undefined
+            ? (await connection.listPrompts()).prompts
             : [];
 
         for (const tool of discoveredTools) {
@@ -556,6 +598,20 @@ export class McpService {
           });
         }
 
+        prompts.set(
+          server.name,
+          discoveredPrompts.map((prompt) => ({
+            name: prompt.name,
+            ...(prompt.title === undefined ? {} : { title: prompt.title }),
+            ...(prompt.description === undefined ? {} : { description: prompt.description }),
+            arguments: (prompt.arguments ?? []).map((argument) => ({
+              name: argument.name,
+              ...(argument.description === undefined ? {} : { description: argument.description }),
+              required: argument.required ?? false,
+            })),
+          })),
+        );
+
         this.registry.clearServerError(server.name);
         this.registry.setServerState(server.name, 'ready', {
           cachedTools: discoveredTools.length,
@@ -574,6 +630,7 @@ export class McpService {
       definitions,
       routes,
     };
+    this.promptCatalogStore = prompts;
     this.toolingCacheInitialized = true;
   }
 

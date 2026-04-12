@@ -235,6 +235,10 @@ export class DemoToolExecutor implements ToolExecutor<DemoToolRequest> {
     throw new Error('DemoToolExecutor.readMcpResource 未实现。');
   }
 
+  async listCachedMcpPrompts(_name: string): Promise<never[]> {
+    return [];
+  }
+
   async listMcpPrompts(_name: string): Promise<never[]> {
     return [];
   }

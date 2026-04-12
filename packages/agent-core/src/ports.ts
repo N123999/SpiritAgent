@@ -143,6 +143,7 @@ export interface ToolExecutor<
   listMcpTools(name: string): Promise<McpTool[]>;
   listMcpResources(name: string): Promise<McpResource[]>;
   readMcpResource(name: string, uri: string): Promise<JsonValue>;
+  listCachedMcpPrompts(name: string): Promise<McpPrompt[]>;
   listMcpPrompts(name: string): Promise<McpPrompt[]>;
   getMcpPrompt(name: string, prompt: string, argsJson?: string): Promise<JsonValue>;
 }

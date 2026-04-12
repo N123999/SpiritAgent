@@ -128,6 +128,10 @@ impl RuntimeHandle {
         self.runtime.list_mcp_prompts(name)
     }
 
+    pub fn list_cached_mcp_prompts(&mut self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
+        self.runtime.list_cached_mcp_prompts(name)
+    }
+
     pub fn attach_mcp_resource(&mut self, server: &str, uri: &str) -> Result<String> {
         self.runtime.attach_mcp_resource(server, uri)
     }

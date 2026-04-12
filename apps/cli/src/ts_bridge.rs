@@ -577,6 +577,11 @@ impl TsBridgeRuntime {
         Ok(serde_json::from_value(value)?)
     }
 
+    pub fn list_cached_mcp_prompts(&mut self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
+        let value = self.call_bridge("runtime.listCachedMcpPrompts", Some(json!({ "name": name })))?;
+        Ok(serde_json::from_value(value)?)
+    }
+
     pub fn read_mcp_resource_value(&mut self, server: &str, uri: &str) -> Result<Value> {
         self.call_bridge(
             "runtime.readMcpResource",
