@@ -660,6 +660,7 @@ impl TsBridgeRuntime {
         server: &str,
         prompt: &str,
         args_json: Option<&str>,
+        user_message: Option<&str>,
     ) -> Result<String> {
         let mut params = json!({
             "server": server,
@@ -667,6 +668,9 @@ impl TsBridgeRuntime {
         });
         if let Some(args_json) = args_json {
             params["argsJson"] = Value::String(args_json.to_string());
+        }
+        if let Some(user_message) = user_message {
+            params["userMessage"] = Value::String(user_message.to_string());
         }
         let value = self.call_bridge("runtime.applyMcpPrompt", Some(params))?;
         let notice = value

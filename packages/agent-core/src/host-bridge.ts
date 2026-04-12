@@ -335,10 +335,18 @@ peer.on('runtime.startMcpBackgroundRefresh', async () => {
 
 peer.on('runtime.applyMcpPrompt', async (rawParams) => {
   const params = rawParams as RuntimeApplyMcpPromptParams;
+  await toolExecutor.refreshCaches();
+  logBridge('runtime.applyMcpPrompt(streaming)', {
+    server: params.server,
+    prompt: params.prompt,
+    hasArgsJson: typeof params.argsJson === 'string' && params.argsJson.trim().length > 0,
+    userMessageChars: Array.from(params.userMessage ?? '').length,
+  });
   const notice = await requireRuntime().startApplyMcpPrompt(
     params.server,
     params.prompt,
     params.argsJson,
+    params.userMessage,
   );
   return { notice };
 });

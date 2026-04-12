@@ -1559,7 +1559,7 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
             "    /mcp tools [server]".to_string(),
             "    /mcp resources [server]".to_string(),
             "    /mcp prompts [server]".to_string(),
-            "    /mcp prompt [server] <prompt> [args_json]".to_string(),
+            "    /<server>_<prompt> [args_json | user_message]".to_string(),
             t!("ui.suggestion.usage.note").into_owned(),
             t!("ui.suggestion.usage.mcp_note").into_owned(),
         ],
@@ -1789,20 +1789,63 @@ fn bottom_form_text_visual_line_count(
         .max(1)
 }
 
-fn bottom_form_text_field_outer_height(value: &str, placeholder: &str, text_inner_w: usize) -> u16 {
+fn bottom_form_text_field_body_outer_height(
+    value: &str,
+    placeholder: &str,
+    text_inner_w: usize,
+) -> u16 {
     bottom_form_text_visual_line_count(value, placeholder, text_inner_w)
         .max(1)
         .saturating_add(2) as u16
 }
 
-fn bottom_form_field_outer_height(field: &BottomFormFieldView, text_inner_w: usize) -> u16 {
+fn bottom_form_text_field_outer_height(
+    label: &str,
+    help: &str,
+    value: &str,
+    placeholder: &str,
+    field_width: usize,
+    text_inner_w: usize,
+) -> u16 {
+    let label_height = if label.trim().is_empty() {
+        0
+    } else {
+        build_bottom_form_footer_lines(label, field_width).len().max(1) as u16
+    };
+    let help_height = if help.trim().is_empty() {
+        0
+    } else {
+        build_bottom_form_footer_lines(help, field_width).len().max(1) as u16
+    };
+
+    label_height
+        .saturating_add(bottom_form_text_field_body_outer_height(
+            value,
+            placeholder,
+            text_inner_w,
+        ))
+        .saturating_add(help_height)
+}
+
+fn bottom_form_field_outer_height(
+    field: &BottomFormFieldView,
+    field_width: usize,
+    text_inner_w: usize,
+) -> u16 {
     match &field.editor {
         BottomFormFieldEditorView::Section { text } => {
-            build_bottom_form_footer_lines(text, text_inner_w).len().max(1) as u16
+            build_bottom_form_footer_lines(text, field_width).len().max(1) as u16
         }
         BottomFormFieldEditorView::Text {
             value, placeholder, ..
-        } => bottom_form_text_field_outer_height(value, placeholder, text_inner_w),
+        } => bottom_form_text_field_outer_height(
+            &field.label,
+            &field.help,
+            value,
+            placeholder,
+            field_width,
+            text_inner_w,
+        ),
         BottomFormFieldEditorView::Choice { .. } => 3,
         BottomFormFieldEditorView::Checkbox { .. } => {
             let help_lines = if field.help.trim().is_empty() {
@@ -1825,7 +1868,7 @@ fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let fields_height = form
         .fields
         .iter()
-        .map(|field| u32::from(bottom_form_field_outer_height(field, text_inner_w)))
+        .map(|field| u32::from(bottom_form_field_outer_height(field, content_w, text_inner_w)))
         .sum::<u32>();
     let field_gaps = form.fields.len().saturating_sub(1) as u32;
     let footer_gap = if form.fields.is_empty() { 0 } else { 1 };
@@ -1845,14 +1888,63 @@ fn bottom_form_display_height(
     input_height: u16,
 ) -> u16 {
     let full_height = bottom_form_block_height(form, panel_width);
-    if !matches!(form.kind, BottomFormKind::Rules) {
-        return full_height;
-    }
-
     let available = panel_height.saturating_sub(input_height).max(3);
     let ratio_cap = panel_height.saturating_mul(3) / 5;
     let capped = available.min(ratio_cap.max(3));
     full_height.min(capped.max(3))
+}
+
+fn generic_bottom_form_selection_visible(
+    form: &BottomFormView,
+    scroll_offset: usize,
+    field_width: usize,
+    text_inner_w: usize,
+    visible_height: usize,
+) -> bool {
+    let mut used_height = 0usize;
+    for index in scroll_offset..form.fields.len() {
+        let field_height = bottom_form_field_outer_height(&form.fields[index], field_width, text_inner_w)
+            as usize;
+        let needed_height = field_height + usize::from(index > scroll_offset);
+        if used_height + needed_height > visible_height {
+            return false;
+        }
+        used_height += needed_height;
+        if index == form.selected_field {
+            return true;
+        }
+    }
+    false
+}
+
+fn generic_bottom_form_effective_scroll(
+    form: &BottomFormView,
+    field_width: usize,
+    text_inner_w: usize,
+    visible_height: usize,
+) -> usize {
+    if form.fields.is_empty() || visible_height == 0 {
+        return 0;
+    }
+
+    let mut effective_scroll = form.scroll_offset.min(form.fields.len().saturating_sub(1));
+    if form.selected_field < effective_scroll {
+        effective_scroll = form.selected_field;
+    }
+
+    while effective_scroll < form.selected_field
+        && !generic_bottom_form_selection_visible(
+            form,
+            effective_scroll,
+            field_width,
+            text_inner_w,
+            visible_height,
+        )
+    {
+        effective_scroll += 1;
+    }
+
+    effective_scroll
 }
 
 fn rules_bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
@@ -1988,19 +2080,33 @@ fn draw_bottom_form(
         .y
         .saturating_add(content_area.height.saturating_sub(footer_height));
     let fields_limit_y = footer_y.saturating_sub(footer_gap);
+    let visible_height = fields_limit_y.saturating_sub(content_area.y) as usize;
+    let effective_scroll = generic_bottom_form_effective_scroll(
+        form,
+        content_area.width as usize,
+        text_inner_w,
+        visible_height,
+    );
     let mut cursor = None;
     let mut field_y = content_area.y;
-    for (index, field) in form.fields.iter().enumerate() {
-        let field_h = bottom_form_field_outer_height(field, text_inner_w);
+    for (index, field) in form.fields.iter().enumerate().skip(effective_scroll) {
+        let field_h = bottom_form_field_outer_height(field, content_area.width as usize, text_inner_w);
+        let gap = u16::from(field_y > content_area.y);
         let available_h = fields_limit_y.saturating_sub(field_y);
-        if available_h == 0 {
+        if available_h <= gap {
+            break;
+        }
+        if field_y > content_area.y {
+            field_y = field_y.saturating_add(1);
+        }
+        if field_h > fields_limit_y.saturating_sub(field_y) {
             break;
         }
         let field_area = Rect {
             x: content_area.x,
             y: field_y,
             width: content_area.width,
-            height: field_h.min(available_h),
+            height: field_h,
         };
 
         let field_cursor = match &field.editor {
@@ -2015,6 +2121,8 @@ fn draw_bottom_form(
             } => draw_bottom_form_text_field(
                 frame,
                 field_area,
+                &field.label,
+                &field.help,
                 value,
                 placeholder,
                 *cursor,
@@ -2049,7 +2157,7 @@ fn draw_bottom_form(
             cursor = field_cursor;
         }
 
-        field_y = field_y.saturating_add(field_h.saturating_add(1));
+        field_y = field_y.saturating_add(field_h);
     }
 
     let footer_area = Rect {
@@ -2062,7 +2170,7 @@ fn draw_bottom_form(
 
     BottomFormRenderResult {
         cursor,
-        scroll_offset: None,
+        scroll_offset: Some(effective_scroll),
     }
 }
 
@@ -2329,19 +2437,78 @@ fn draw_bottom_form_section_field(
 fn draw_bottom_form_text_field(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
+    label: &str,
+    help: &str,
     value: &str,
     placeholder: &str,
     cursor_chars: usize,
     is_selected: bool,
 ) -> Option<(u16, u16)> {
+    let mut next_y = area.y;
+    if !label.trim().is_empty() {
+        let label_style = if is_selected {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        } else {
+            subtle_aux_text_style().add_modifier(Modifier::BOLD)
+        };
+        let label_lines = build_bottom_form_footer_lines(label, area.width as usize)
+            .into_iter()
+            .map(|line| {
+                let text = line
+                    .spans
+                    .into_iter()
+                    .map(|span| span.content.into_owned())
+                    .collect::<String>();
+                Line::from(Span::styled(text, label_style))
+            })
+            .collect::<Vec<_>>();
+        let label_height = label_lines.len().max(1) as u16;
+        frame.render_widget(
+            Paragraph::new(label_lines),
+            Rect {
+                x: area.x,
+                y: next_y,
+                width: area.width,
+                height: label_height,
+            },
+        );
+        next_y = next_y.saturating_add(label_height);
+    }
+
+    let body_height = bottom_form_text_field_body_outer_height(
+        value,
+        placeholder,
+        area.width.saturating_sub(2).max(1) as usize,
+    );
+    let body_area = Rect {
+        x: area.x,
+        y: next_y,
+        width: area.width,
+        height: body_height,
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(bottom_form_field_style(is_selected));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = block.inner(body_area);
+    frame.render_widget(block, body_area);
 
     let lines = build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
     frame.render_widget(Paragraph::new(lines), inner);
+
+    next_y = next_y.saturating_add(body_height);
+    if !help.trim().is_empty() && next_y < area.y.saturating_add(area.height) {
+        let help_lines = build_bottom_form_footer_lines(help, area.width as usize);
+        let help_height = help_lines.len().max(1) as u16;
+        frame.render_widget(
+            Paragraph::new(help_lines),
+            Rect {
+                x: area.x,
+                y: next_y,
+                width: area.width,
+                height: help_height.min(area.y.saturating_add(area.height).saturating_sub(next_y)),
+            },
+        );
+    }
 
     if !is_selected {
         return None;

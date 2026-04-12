@@ -1,7 +1,7 @@
 //! TUI slash command helpers.
 
 use crate::{
-    mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
+    mcp_types::McpDiscoveredPrompt,
     tui::TuiShell,
     view::InputSuggestion,
 };
@@ -9,6 +9,7 @@ use crate::{
 #[derive(Debug, Default)]
 pub(crate) struct SlashState {
     pub(crate) commands: Vec<String>,
+    pub(crate) prompt_commands: Vec<PromptSlashCommand>,
     pub(crate) suggestions: Vec<InputSuggestion>,
     pub(crate) selected_suggestion: usize,
 }
@@ -17,20 +18,18 @@ impl SlashState {
     pub(crate) fn new() -> Self {
         Self {
             commands: default_commands(),
+            prompt_commands: Vec::new(),
             suggestions: Vec::new(),
             selected_suggestion: 0,
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum McpPromptSuggestionStage {
-    NeedServer { prefix: String },
-    NeedPrompt {
-        server: String,
-        prefix: String,
-        omit_server: bool,
-    },
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PromptSlashCommand {
+    pub(crate) alias: String,
+    pub(crate) server: String,
+    pub(crate) prompt: McpDiscoveredPrompt,
 }
 
 pub(crate) fn default_commands() -> Vec<String> {
@@ -69,6 +68,8 @@ pub(crate) fn compute_suggestions(
         .map(|cmd| command_suggestion(cmd))
         .collect::<Vec<_>>();
 
+    suggestions.extend(prompt_alias_suggestions(shell, query));
+
     if suggestions.is_empty() {
         suggestions = contextual_suggestions(shell, query);
     }
@@ -88,14 +89,14 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 fn command_replacement(command: &str) -> String {
     match command {
         "/model" | "/sessions" | "/image" | "/mcp" | "/create-rule" | "/log"
-        | "/language" | "/mcp prompt" => {
+        | "/language" => {
             format!("{} ", command)
         }
         _ => command.to_string(),
     }
 }
 
-fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
+fn contextual_suggestions(_shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
     if query == "/model" || query.starts_with("/model ") {
         return matching_command_suggestions(
             query,
@@ -122,13 +123,6 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
         );
     }
 
-    if query == "/mcp prompt" || query.starts_with("/mcp prompt ") {
-        let suggestions = mcp_prompt_suggestions(shell, query);
-        if !suggestions.is_empty() {
-            return suggestions;
-        }
-    }
-
     if query == "/mcp" || query.starts_with("/mcp ") {
         return matching_command_suggestions(
             query,
@@ -140,7 +134,6 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
                 "/mcp tools",
                 "/mcp resources",
                 "/mcp prompts",
-                "/mcp prompt",
             ],
         );
     }
@@ -180,70 +173,39 @@ fn matching_command_suggestions(query: &str, candidates: &[&str]) -> Vec<InputSu
         .collect()
 }
 
-fn mcp_prompt_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
-    let Ok(prompt_servers) = shell.list_prompt_capable_mcp_servers() else {
-        return Vec::new();
-    };
-    if prompt_servers.is_empty() {
-        return Vec::new();
-    }
+fn prompt_alias_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
+    let mut commands = shell.prompt_slash_commands().to_vec();
+    commands.retain(|command| command.alias.starts_with(query));
+    commands.into_iter().map(prompt_suggestion).collect()
+}
 
-    let server_names = prompt_servers
+pub(crate) fn resolve_prompt_slash_command(
+    shell: &TuiShell,
+    command: &str,
+) -> Option<PromptSlashCommand> {
+    let normalized = command.trim();
+    shell
+        .prompt_slash_commands()
         .iter()
-        .map(|server| server.name.clone())
-        .collect::<Vec<_>>();
-
-    let Some(stage) = parse_mcp_prompt_stage(query, &server_names) else {
-        return Vec::new();
-    };
-
-    match stage {
-        McpPromptSuggestionStage::NeedServer { prefix } => prompt_servers
-            .into_iter()
-            .filter(|server| server.name.starts_with(prefix.as_str()))
-            .map(server_prompt_suggestion)
-            .collect(),
-        McpPromptSuggestionStage::NeedPrompt {
-            server,
-            prefix,
-            omit_server,
-        } => {
-            let Ok(prompts) = shell.list_cached_mcp_prompts_for_suggestions(&server) else {
-                return Vec::new();
-            };
-            prompts
-                .into_iter()
-                .filter(|prompt| prompt.name.starts_with(prefix.as_str()))
-                .map(|prompt| prompt_suggestion(&server, prompt, omit_server))
-                .collect()
-        }
-    }
+        .cloned()
+        .into_iter()
+        .find(|candidate| candidate.alias == normalized)
 }
 
-fn server_prompt_suggestion(server: ManagedMcpServer) -> InputSuggestion {
-    let summary = if server.display_name == server.name {
-        "MCP server".to_string()
-    } else {
-        server.display_name.clone()
-    };
-
-    InputSuggestion {
-        label: format!("/mcp prompt {}", server.name),
-        replacement: format!("/mcp prompt {} ", server.name),
-        summary,
-        details: vec![format!("选择 MCP server: {}", server.name)],
-    }
+pub(crate) fn prompt_slash_alias(server: &str, prompt_name: &str) -> String {
+    format!("/{}_{}", server, prompt_name)
 }
 
-fn prompt_suggestion(
-    server: &str,
-    prompt: McpDiscoveredPrompt,
-    omit_server: bool,
-) -> InputSuggestion {
-    let replacement = if omit_server {
-        format!("/mcp prompt {} ", prompt.name)
+fn prompt_suggestion(command: PromptSlashCommand) -> InputSuggestion {
+    let PromptSlashCommand {
+        alias,
+        server,
+        prompt,
+    } = command;
+    let replacement = if prompt.arguments.is_empty() {
+        alias.clone()
     } else {
-        format!("/mcp prompt {} {} ", server, prompt.name)
+        format!("{} ", alias)
     };
 
     let required_args = prompt
@@ -272,77 +234,22 @@ fn prompt_suggestion(
     }
 
     InputSuggestion {
-        label: replacement.trim_end().to_string(),
+        label: alias,
         replacement,
         summary,
         details,
     }
 }
 
-fn parse_mcp_prompt_stage(
-    query: &str,
-    server_names: &[String],
-) -> Option<McpPromptSuggestionStage> {
-    let tail = query.strip_prefix("/mcp prompt")?;
-    let trailing_space = query.ends_with(' ');
-    let tokens = tail
-        .trim_start()
-        .split_whitespace()
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
-
-    let implicit_server = (server_names.len() == 1).then(|| server_names[0].clone());
-
-    if let Some(server) = implicit_server {
-        return match tokens.as_slice() {
-            [] => Some(McpPromptSuggestionStage::NeedPrompt {
-                server,
-                prefix: String::new(),
-                omit_server: true,
-            }),
-            [prompt_prefix] if !trailing_space => Some(McpPromptSuggestionStage::NeedPrompt {
-                server,
-                prefix: (*prompt_prefix).to_string(),
-                omit_server: true,
-            }),
-            _ => None,
-        };
-    }
-
-    match tokens.as_slice() {
-        [] => Some(McpPromptSuggestionStage::NeedServer {
-            prefix: String::new(),
-        }),
-        [server_prefix] => {
-            if trailing_space && server_names.iter().any(|name| name == server_prefix) {
-                Some(McpPromptSuggestionStage::NeedPrompt {
-                    server: (*server_prefix).to_string(),
-                    prefix: String::new(),
-                    omit_server: false,
-                })
-            } else {
-                Some(McpPromptSuggestionStage::NeedServer {
-                    prefix: (*server_prefix).to_string(),
-                })
-            }
-        }
-        [server_name, prompt_prefix] if !trailing_space => server_names
-            .iter()
-            .any(|name| name == server_name)
-            .then(|| McpPromptSuggestionStage::NeedPrompt {
-                server: (*server_name).to_string(),
-                prefix: (*prompt_prefix).to_string(),
-                omit_server: false,
-            }),
-        _ => None,
-    }
-}
-
 pub(crate) fn help_text() -> &'static str {
-    "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /create-rule [repo|user] <需求描述>\n- /rules\n- /log（或 /log export、/log session export）\n- /language [en|zh-CN]\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- 输入 @<文件名> 会打开工作区文件引用建议，回车后会把选中文件写回输入框，格式为 @路径 加一个空格。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消）。\n- /mcp prompt 在省略 args_json 且 prompt 定义了参数时，会自动打开参数表单；若 prompt 无参数则直接注入当前会话。\n- /create-rule 会走正常 assistant 对话来起草或收紧规则；工作区写入仍走标准工具审批，默认目标是工作区 AGENTS.md。\n- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- /language 不带参数时打开语言选择菜单。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+    "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /<server>_<prompt> [args_json | user_message]\n- /create-rule [repo|user] <需求描述>\n- /rules\n- /log（或 /log export、/log session export）\n- /language [en|zh-CN]\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- 输入 @<文件名> 会打开工作区文件引用建议，回车后会把选中文件写回输入框，格式为 @路径 加一个空格。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消）。\n- MCP prompt 会以一级 slash 命令暴露，例如 /github_issue_to_fix_workflow；若尾部是合法 JSON object，会直接作为 prompt 参数，其他文本会作为附加用户消息发给 LLM。\n- 省略尾部且 prompt 定义了参数时，会自动打开参数表单；表单最后一栏可填写附加说明。\n- /create-rule 会走正常 assistant 对话来起草或收紧规则；工作区写入仍走标准工具审批，默认目标是工作区 AGENTS.md。\n- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- /language 不带参数时打开语言选择菜单。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
 }
 
 pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
+    if shell.handle_prompt_alias_slash(message) {
+        return;
+    }
+
     let parts: Vec<&str> = message.split_whitespace().collect();
     let Some(cmd) = parts.first().copied() else {
         return;
@@ -375,57 +282,16 @@ mod tests {
     #[test]
     fn current_query_rejects_multiline_input_and_preserves_trailing_space() {
         assert_eq!(current_query("/mcp list"), Some("/mcp list"));
-        assert_eq!(current_query("/mcp prompt github "), Some("/mcp prompt github "));
+        assert_eq!(current_query("/github_issue_to_fix_workflow "), Some("/github_issue_to_fix_workflow "));
         assert_eq!(current_query("/mcp\nlist"), None);
         assert_eq!(current_query("hello"), None);
     }
 
     #[test]
-    fn parse_mcp_prompt_stage_requires_server_when_multiple_servers_exist() {
-        let stage = parse_mcp_prompt_stage(
-            "/mcp prompt git",
-            &["github".to_string(), "notion".to_string()],
-        );
-
+    fn prompt_slash_alias_joins_server_and_prompt_name() {
         assert_eq!(
-            stage,
-            Some(McpPromptSuggestionStage::NeedServer {
-                prefix: "git".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn parse_mcp_prompt_stage_switches_to_prompt_after_server_space() {
-        let stage = parse_mcp_prompt_stage(
-            "/mcp prompt github ",
-            &["github".to_string(), "notion".to_string()],
-        );
-
-        assert_eq!(
-            stage,
-            Some(McpPromptSuggestionStage::NeedPrompt {
-                server: "github".to_string(),
-                prefix: String::new(),
-                omit_server: false,
-            })
-        );
-    }
-
-    #[test]
-    fn parse_mcp_prompt_stage_supports_single_server_implicit_prompt_lookup() {
-        let stage = parse_mcp_prompt_stage(
-            "/mcp prompt ass",
-            &["github".to_string()],
-        );
-
-        assert_eq!(
-            stage,
-            Some(McpPromptSuggestionStage::NeedPrompt {
-                server: "github".to_string(),
-                prefix: "ass".to_string(),
-                omit_server: true,
-            })
+            prompt_slash_alias("github", "issue_to_fix_workflow"),
+            "/github_issue_to_fix_workflow"
         );
     }
 

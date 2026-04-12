@@ -100,7 +100,11 @@ pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
     form
 }
 
-pub(crate) fn new_mcp_prompt_form(server: &str, prompt: &McpDiscoveredPrompt) -> BottomFormView {
+pub(crate) fn new_mcp_prompt_form(
+    server: &str,
+    prompt: &McpDiscoveredPrompt,
+    initial_user_message: Option<&str>,
+) -> BottomFormView {
     let arguments = prompt
         .arguments
         .iter()
@@ -109,7 +113,7 @@ pub(crate) fn new_mcp_prompt_form(server: &str, prompt: &McpDiscoveredPrompt) ->
             required: argument.required,
         })
         .collect::<Vec<_>>();
-    let fields = prompt
+    let mut fields = prompt
         .arguments
         .iter()
         .map(|argument| {
@@ -141,6 +145,16 @@ pub(crate) fn new_mcp_prompt_form(server: &str, prompt: &McpDiscoveredPrompt) ->
             }
         })
         .collect::<Vec<_>>();
+
+    fields.push(BottomFormFieldView {
+        label: t!("form.prompt.field.user_message.label").into_owned(),
+        help: t!("form.prompt.field.user_message.help").into_owned(),
+        editor: BottomFormFieldEditorView::Text {
+            value: initial_user_message.unwrap_or_default().to_string(),
+            placeholder: t!("form.prompt.field.user_message.placeholder").into_owned(),
+            cursor: initial_user_message.unwrap_or_default().chars().count(),
+        },
+    });
 
     let mut form = BottomFormView {
         kind: BottomFormKind::McpPrompt {
@@ -429,6 +443,21 @@ pub(crate) fn to_prompt_args_json(
     }
 }
 
+pub(crate) fn prompt_user_message(
+    form: &BottomFormView,
+) -> std::result::Result<Option<String>, String> {
+    let BottomFormKind::McpPrompt { arguments, .. } = &form.kind else {
+        return Err(t!("form.prompt.validation.invalid_form_kind").into_owned());
+    };
+
+    let value = bottom_form_text_value(form, arguments.len()).trim().to_string();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
 pub(crate) fn rules_form_overrides(form: &BottomFormView) -> Vec<(String, bool)> {
     form.fields
         .iter()
@@ -708,8 +737,8 @@ const USER_RULE_LABEL: &str = "rule.md";
 mod tests {
     use super::{
         MetadataFieldKind, activate, insert_text, new_mcp_add_form, new_mcp_prompt_form,
-        new_rules_form, parse_metadata_map, rules_form_overrides, select_next_field,
-        to_prompt_args_json,
+        new_rules_form, parse_metadata_map, prompt_user_message, rules_form_overrides,
+        select_next_field, to_prompt_args_json,
     };
     use rust_i18n::t;
     use std::path::PathBuf;
@@ -812,7 +841,7 @@ mod tests {
 
     #[test]
     fn prompt_form_marks_required_arguments() {
-        let form = new_mcp_prompt_form("github", &sample_prompt(true));
+        let form = new_mcp_prompt_form("github", &sample_prompt(true), None);
 
         assert_eq!(form.fields[0].label, format!("issue{}", t!("form.prompt.field.required_suffix")));
         assert_eq!(form.fields[1].label, format!("style{}", t!("form.prompt.field.optional_suffix")));
@@ -820,7 +849,7 @@ mod tests {
 
     #[test]
     fn prompt_form_args_json_requires_required_fields() {
-        let form = new_mcp_prompt_form("github", &sample_prompt(true));
+        let form = new_mcp_prompt_form("github", &sample_prompt(true), None);
 
         let err = to_prompt_args_json(&form).expect_err("missing required field should fail");
         assert!(err.contains("issue"));
@@ -828,7 +857,7 @@ mod tests {
 
     #[test]
     fn prompt_form_args_json_omits_empty_optional_fields() {
-        let mut form = new_mcp_prompt_form("github", &sample_prompt(true));
+        let mut form = new_mcp_prompt_form("github", &sample_prompt(true), None);
         insert_text(&mut form, "123");
 
         let json = to_prompt_args_json(&form)
@@ -840,7 +869,7 @@ mod tests {
 
     #[test]
     fn prompt_form_preserves_multiline_paste() {
-        let mut form = new_mcp_prompt_form("github", &sample_prompt(false));
+        let mut form = new_mcp_prompt_form("github", &sample_prompt(false), None);
 
         insert_text(&mut form, "line1\r\nline2");
 
@@ -848,6 +877,20 @@ mod tests {
             .expect("args json")
             .expect("non-empty args json");
         assert_eq!(json, r#"{"issue":"line1\nline2"}"#);
+    }
+
+    #[test]
+    fn prompt_form_user_message_round_trips() {
+        let mut form = new_mcp_prompt_form("github", &sample_prompt(true), Some("帮我看看用途"));
+
+        form.selected_field = 2;
+        insert_text(&mut form, "\n并给出例子");
+
+        let user_message = prompt_user_message(&form)
+            .expect("user message")
+            .expect("non-empty user message");
+
+        assert_eq!(user_message, "帮我看看用途\n并给出例子");
     }
 
     #[test]

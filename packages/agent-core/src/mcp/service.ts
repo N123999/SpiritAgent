@@ -83,6 +83,7 @@ export class McpService {
     raw: { servers: {} },
     resolved: {},
   };
+  private configDigestStore = mcpConfigDigest({ servers: {} });
   private toolCatalogStore: McpToolCatalog = {
     definitions: [],
     routes: new Map<string, McpToolRoute>(),
@@ -151,11 +152,11 @@ export class McpService {
   async refreshConfig(): Promise<void> {
     try {
       const raw = await loadMcpConfigFile(resolveMcpConfigPath());
-      this.loadedConfigStore = {
-        raw,
-        resolved: {},
-      };
-      this.registry.replaceConfig(raw);
+      const nextDigest = mcpConfigDigest(raw);
+      const configChanged = nextDigest !== this.configDigestStore;
+      if (configChanged) {
+        this.registry.replaceConfig(raw);
+      }
       const lookup = await this.buildEnvLookupStore();
       const resolvedEntries = await Promise.all(
         Object.entries(raw.servers).map(async ([name, server]) => {
@@ -173,7 +174,10 @@ export class McpService {
         raw,
         resolved: Object.fromEntries(resolvedEntries),
       };
-      this.toolingCacheInitialized = false;
+      if (configChanged) {
+        this.configDigestStore = nextDigest;
+        this.toolingCacheInitialized = false;
+      }
       this.loadErrorStore = undefined;
     } catch (error) {
       this.loadErrorStore = describeError(error);
@@ -489,7 +493,7 @@ export class McpService {
       });
       throw error;
     } finally {
-      await connection.close();
+      await closeConnectionQuietly(connection, `withConnection:${server.name}`);
     }
   }
 
@@ -548,6 +552,9 @@ export class McpService {
 
   private async refreshToolingCaches(): Promise<void> {
     await this.refreshConfig();
+    console.error('[mcp-service] refreshToolingCaches.start', {
+      servers: Object.keys(this.loadedConfigStore.resolved).length,
+    });
 
     const definitions: JsonValue[] = [];
     const routes = new Map<string, McpToolRoute>();
@@ -622,7 +629,7 @@ export class McpService {
           lastError: describeError(error),
         });
       } finally {
-        await connection.close();
+        await closeConnectionQuietly(connection, `refreshToolingCaches:${server.name}`);
       }
     }
 
@@ -632,6 +639,10 @@ export class McpService {
     };
     this.promptCatalogStore = prompts;
     this.toolingCacheInitialized = true;
+    console.error('[mcp-service] refreshToolingCaches.done', {
+      definitions: definitions.length,
+      promptServers: prompts.size,
+    });
   }
 
   private launchBackgroundRefresh(force: boolean): void {
@@ -653,11 +664,15 @@ export class McpService {
   private primeRegistryFromDisk(): void {
     try {
       const raw = loadMcpConfigFileSync(resolveMcpConfigPath());
+      const nextDigest = mcpConfigDigest(raw);
       this.loadedConfigStore = {
         raw,
         resolved: {},
       };
-      this.registry.replaceConfig(raw);
+      if (nextDigest !== this.configDigestStore) {
+        this.registry.replaceConfig(raw);
+        this.configDigestStore = nextDigest;
+      }
       this.loadErrorStore = undefined;
     } catch (error) {
       this.loadedConfigStore = {
@@ -665,9 +680,14 @@ export class McpService {
         resolved: {},
       };
       this.registry.replaceConfig({ servers: {} });
+      this.configDigestStore = mcpConfigDigest({ servers: {} });
       this.loadErrorStore = describeError(error);
     }
   }
+}
+
+function mcpConfigDigest(config: McpConfigFile): string {
+  return createHash('sha1').update(JSON.stringify(config)).digest('hex');
 }
 
 function resolveMcpConfigPath(): string {
@@ -1030,6 +1050,20 @@ async function pathExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function closeConnectionQuietly(
+  connection: SdkMcpConnection,
+  context: string,
+): Promise<void> {
+  try {
+    await connection.close();
+  } catch (error) {
+    console.error('[mcp-service] connection.close failed', {
+      context,
+      error: describeError(error),
+    });
   }
 }
 

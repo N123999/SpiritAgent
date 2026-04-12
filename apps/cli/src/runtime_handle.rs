@@ -145,8 +145,10 @@ impl RuntimeHandle {
         server: &str,
         prompt: &str,
         args_json: Option<&str>,
+        user_message: Option<&str>,
     ) -> Result<String> {
-        self.runtime.apply_mcp_prompt(server, prompt, args_json)
+        self.runtime
+            .apply_mcp_prompt(server, prompt, args_json, user_message)
     }
 
     pub fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {

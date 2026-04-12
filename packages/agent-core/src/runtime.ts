@@ -412,37 +412,20 @@ export class AgentRuntime<
     server: string,
     prompt: string,
     argsJson?: string,
+    userMessage?: string,
   ): Promise<{
     notice: string;
     result: RuntimeTurnResult<State, ToolRequest, TrustTarget>;
   }> {
-    if (this.hasPendingApproval()) {
-      throw new Error('请先响应当前待确认的工具调用。');
-    }
-
-    const value = await this.options.toolExecutor.getMcpPrompt(server, prompt, argsJson);
-    const promptMessages = promptMessagesFromValue(value);
-    if (promptMessages.length === 0) {
-      throw new Error('MCP prompt 未返回可用 messages');
-    }
-
-    const userTurn =
-      [...promptMessages]
-        .reverse()
-        .find((message) => message.role === 'user' && message.content.trim())?.content ??
-      `请根据已应用的 MCP prompt ${prompt} 继续。`;
-
-    this.historyStore.push(...promptMessages);
-    this.pendingUserTurnStore = userTurn;
-    this.completedTurnResultStore = undefined;
+    const started = await this.prepareMcpPromptTurn(server, prompt, argsJson, userMessage);
     this.startToolAgentRoundAsync(
-      this.options.createToolAgentState(this.historyStore, userTurn),
-      userTurn,
+      started.state,
+      started.userTurn,
       createTurnContext<ToolRequest>(),
     );
     const result = await this.waitForCompletedTurnResult();
     return {
-      notice: `已应用 MCP prompt: ${server} / ${prompt}（${promptMessages.length} 条消息）`,
+      notice: started.notice,
       result,
     };
   }
@@ -451,37 +434,16 @@ export class AgentRuntime<
     server: string,
     prompt: string,
     argsJson?: string,
+    userMessage?: string,
   ): Promise<string> {
-    if (this.isBusy()) {
-      throw new Error('上一条回复仍在处理中，请稍候。');
-    }
-
-    if (this.hasPendingApproval()) {
-      throw new Error('请先响应当前待确认的工具调用。');
-    }
-
-    const value = await this.options.toolExecutor.getMcpPrompt(server, prompt, argsJson);
-    const promptMessages = promptMessagesFromValue(value);
-    if (promptMessages.length === 0) {
-      throw new Error('MCP prompt 未返回可用 messages');
-    }
-
-    const userTurn =
-      [...promptMessages]
-        .reverse()
-        .find((message) => message.role === 'user' && message.content.trim())?.content ??
-      `请根据已应用的 MCP prompt ${prompt} 继续。`;
-
-    this.historyStore.push(...promptMessages);
-    this.pendingUserTurnStore = userTurn;
-    this.completedTurnResultStore = undefined;
-    this.startToolAgentRoundAsync(
-      this.options.createToolAgentState(this.historyStore, userTurn),
-      userTurn,
+    const started = await this.prepareMcpPromptTurn(server, prompt, argsJson, userMessage);
+    await this.startStreamingRound(
+      started.state,
+      started.userTurn,
       createTurnContext<ToolRequest>(),
+      true,
     );
-
-    return `已应用 MCP prompt: ${server} / ${prompt}（${promptMessages.length} 条消息）`;
+    return started.notice;
   }
 
   async compactHistory(): Promise<RuntimeCompactionRecord> {
@@ -992,6 +954,56 @@ export class AgentRuntime<
       userInput,
       explicitImages,
     );
+  }
+
+  private async prepareMcpPromptTurn(
+    server: string,
+    prompt: string,
+    argsJson?: string,
+    userMessage?: string,
+  ): Promise<{
+    notice: string;
+    state: State;
+    userTurn: string;
+  }> {
+    if (this.hasPendingApproval()) {
+      throw new Error('请先响应当前待确认的工具调用。');
+    }
+
+    if (this.isBusy()) {
+      throw new Error('上一条回复仍在处理中，请稍候。');
+    }
+
+    const value = await this.options.toolExecutor.getMcpPrompt(server, prompt, argsJson);
+    const promptMessages = promptMessagesFromValue(value);
+    if (promptMessages.length === 0) {
+      throw new Error('MCP prompt 未返回可用 messages');
+    }
+
+    this.historyStore.push(...promptMessages);
+
+    const trimmedUserMessage = userMessage?.trim();
+    let userTurn: string;
+    let state: State;
+    if (trimmedUserMessage) {
+      userTurn = trimmedUserMessage;
+      state = await this.prepareSubmittedUserTurn(userTurn, []);
+    } else {
+      userTurn =
+        [...promptMessages]
+          .reverse()
+          .find((message) => message.role === 'user' && message.content.trim())?.content ??
+        `请根据已应用的 MCP prompt ${prompt} 继续。`;
+      this.pendingUserTurnStore = userTurn;
+      state = this.options.createToolAgentState(this.historyStore, userTurn);
+    }
+
+    this.completedTurnResultStore = undefined;
+    return {
+      notice: `已应用 MCP prompt: ${server} / ${prompt}（${promptMessages.length} 条消息）`,
+      state,
+      userTurn,
+    };
   }
 
   private async startStreamingRound(

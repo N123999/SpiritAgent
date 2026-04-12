@@ -22,7 +22,10 @@ use crate::{
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
-    ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
+    ports::{
+        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
+        McpStatusState, SecretStore,
+    },
     rules::{self, RuleEntry, RuleStateFile},
     runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
@@ -125,7 +128,7 @@ impl TuiShell {
             &initial_mcp_status.welcome_line(),
         )];
 
-        Ok(Self {
+        let mut shell = Self {
             input: String::new(),
             input_cursor: 0,
             shell_mode_active: false,
@@ -165,7 +168,10 @@ impl TuiShell {
             app_paths,
             rule_state,
             rule_entries,
-        })
+        };
+
+        shell.refresh_prompt_slash_commands(&initial_mcp_status);
+        Ok(shell)
     }
 
     pub fn rule_state(&self) -> &RuleStateFile {
@@ -313,22 +319,6 @@ impl TuiShell {
         self.conversation_dragging = false;
     }
 
-    pub(crate) fn list_prompt_capable_mcp_servers(&mut self) -> Result<Vec<ManagedMcpServer>> {
-        self.runtime.list_mcp_servers().map(|servers| {
-            servers
-                .into_iter()
-                .filter(|server| server.enabled && server.capabilities.prompts)
-                .collect()
-        })
-    }
-
-    pub(crate) fn list_cached_mcp_prompts_for_suggestions(
-        &mut self,
-        name: &str,
-    ) -> Result<Vec<McpDiscoveredPrompt>> {
-        self.runtime.list_cached_mcp_prompts(name)
-    }
-
     /// `column`, `row`：crossterm 终端坐标（与 ratatui 一致）。
     pub fn conversation_pointer_from_mouse(&self, column: u16, row: u16) -> Option<(usize, usize)> {
         let hit = self.conversation_panel_hit?;
@@ -447,6 +437,10 @@ impl TuiShell {
         self.apply_runtime_events();
     }
 
+    pub(crate) fn prompt_slash_commands(&self) -> &[slash::PromptSlashCommand] {
+        &self.slash.prompt_commands
+    }
+
     pub fn toggle_aux_details(&mut self) {
         self.show_aux_details = !self.show_aux_details;
     }
@@ -487,11 +481,12 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return false;
         };
-        if !matches!(form.kind, BottomFormKind::Rules) {
-            return false;
+        if matches!(form.kind, BottomFormKind::Rules) {
+            form.scroll_offset = form.scroll_offset.saturating_sub(lines);
+            return true;
         }
 
-        form.scroll_offset = form.scroll_offset.saturating_sub(lines);
+        bottom_form::select_prev_field(form);
         true
     }
 
@@ -499,11 +494,12 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return false;
         };
-        if !matches!(form.kind, BottomFormKind::Rules) {
-            return false;
+        if matches!(form.kind, BottomFormKind::Rules) {
+            form.scroll_offset = form.scroll_offset.saturating_add(lines);
+            return true;
         }
 
-        form.scroll_offset = form.scroll_offset.saturating_add(lines);
+        bottom_form::select_next_field(form);
         true
     }
 
@@ -1797,32 +1793,53 @@ impl TuiShell {
                 }
             };
 
-            let Some((prompt, args_json)) = split_first_token(rest) else {
+            let Some((prompt_name, prompt_tail)) = split_first_token(rest) else {
                 self.push_mcp_usage();
                 return;
             };
-            if let Some(args_json) = non_empty_opt(args_json) {
-                self.apply_mcp_prompt_command(&server, prompt, Some(args_json));
-                return;
-            }
-
-            match self.resolve_mcp_prompt_definition(&server, prompt) {
-                Ok(prompt_definition) if prompt_definition.arguments.is_empty() => {
-                    self.apply_mcp_prompt_command(&server, prompt, None);
-                }
-                Ok(prompt_definition) => {
-                    self.open_mcp_prompt_form(&server, &prompt_definition);
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: t!(
-                            "tui.bottom_form.prompt_opened",
-                            server = server,
-                            prompt = prompt
-                        )
-                        .into_owned(),
-                        tool_block: None,
-                    });
-                }
+            match self.resolve_mcp_prompt_definition(&server, prompt_name) {
+                Ok(prompt_definition) => match classify_prompt_tail(&prompt_definition, prompt_tail) {
+                    PromptTail::ArgsJson(args_json) => {
+                        self.apply_mcp_prompt_command(&server, prompt_name, Some(args_json), None);
+                    }
+                    PromptTail::UserMessage(user_message) if prompt_definition.arguments.is_empty() => {
+                        self.apply_mcp_prompt_command(
+                            &server,
+                            prompt_name,
+                            None,
+                            Some(user_message),
+                        );
+                    }
+                    PromptTail::Empty if prompt_definition.arguments.is_empty() => {
+                        self.apply_mcp_prompt_command(&server, prompt_name, None, None);
+                    }
+                    PromptTail::Empty => {
+                        self.open_mcp_prompt_form(&server, &prompt_definition, None);
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: t!(
+                                "tui.bottom_form.prompt_opened",
+                                server = server,
+                                prompt = prompt_name
+                            )
+                            .into_owned(),
+                            tool_block: None,
+                        });
+                    }
+                    PromptTail::UserMessage(user_message) => {
+                        self.open_mcp_prompt_form(&server, &prompt_definition, Some(user_message));
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: t!(
+                                "tui.bottom_form.prompt_opened",
+                                server = server,
+                                prompt = prompt_name
+                            )
+                            .into_owned(),
+                            tool_block: None,
+                        });
+                    }
+                },
                 Err(err) => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("读取 MCP prompt 参数失败: {}", err),
@@ -1897,10 +1914,62 @@ impl TuiShell {
         self.push_mcp_usage();
     }
 
+    pub(crate) fn handle_prompt_alias_slash(&mut self, message: &str) -> bool {
+        let Some((command, rest)) = split_first_token(message) else {
+            return false;
+        };
+
+        let Some(resolved) = slash::resolve_prompt_slash_command(self, command) else {
+            return false;
+        };
+
+        let server = resolved.server;
+        let prompt = resolved.prompt;
+
+        match classify_prompt_tail(&prompt, rest) {
+            PromptTail::ArgsJson(args_json) => {
+                self.apply_mcp_prompt_command(&server, &prompt.name, Some(args_json), None);
+            }
+            PromptTail::UserMessage(user_message) if prompt.arguments.is_empty() => {
+                self.apply_mcp_prompt_command(&server, &prompt.name, None, Some(user_message));
+            }
+            PromptTail::Empty if prompt.arguments.is_empty() => {
+                self.apply_mcp_prompt_command(&server, &prompt.name, None, None);
+            }
+            PromptTail::Empty => {
+                self.open_mcp_prompt_form(&server, &prompt, None);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!(
+                        "tui.bottom_form.prompt_opened",
+                        server = server,
+                        prompt = prompt.name
+                    )
+                    .into_owned(),
+                    tool_block: None,
+                });
+            }
+            PromptTail::UserMessage(user_message) => {
+                self.open_mcp_prompt_form(&server, &prompt, Some(user_message));
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!(
+                        "tui.bottom_form.prompt_opened",
+                        server = server,
+                        prompt = prompt.name
+                    )
+                    .into_owned(),
+                    tool_block: None,
+                });
+            }
+        }
+        true
+    }
+
     fn push_mcp_usage(&mut self) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消。\n- `/mcp prompt` 在省略 `args_json` 且 prompt 定义了参数时，会自动打开参数表单；若 prompt 无参数则直接注入当前会话。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
+            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /<server>_<prompt> [args_json | user_message]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消。\n- MCP prompt 会作为一级 slash 命令暴露，例如 `/github_issue_to_fix_workflow`。若尾部是合法 JSON object，会直接作为 prompt 参数；其他文本会作为附加用户消息发给 LLM。\n- 省略尾部且 prompt 定义了参数时，会自动打开参数表单；表单最后一栏可填写附加说明。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
             tool_block: None,
         });
     }
@@ -1999,8 +2068,77 @@ impl TuiShell {
         if snapshot.revision == self.last_mcp_status_revision {
             return;
         }
+        logging::log_event(&format!(
+            "[mcp] snapshot revision={} prev_revision={} state={:?} configured={} loaded={} cached_tools={} last_error={}",
+            snapshot.revision,
+            self.last_mcp_status_revision,
+            snapshot.state,
+            snapshot.configured_servers,
+            snapshot.loaded_servers,
+            snapshot.cached_tools,
+            snapshot.last_error.as_deref().unwrap_or("<none>"),
+        ));
         self.last_mcp_status_revision = snapshot.revision;
-        self.refresh_welcome_message();
+        self.refresh_prompt_slash_commands(&snapshot);
+        self.refresh_welcome_message_with_snapshot(&snapshot);
+    }
+
+    fn refresh_prompt_slash_commands(&mut self, snapshot: &McpStatusSnapshot) {
+        if !matches!(snapshot.state, McpStatusState::Ready) {
+            if !self.slash.prompt_commands.is_empty() {
+                self.slash.prompt_commands.clear();
+                if self.current_slash_query().is_some() {
+                    self.refresh_suggestions();
+                }
+            }
+            return;
+        }
+
+        let commands = match self.build_prompt_slash_commands() {
+            Ok(commands) => commands,
+            Err(err) => {
+                logging::log_event(&format!(
+                    "[mcp] refresh prompt slash cache failed: {}",
+                    err
+                ));
+                return;
+            }
+        };
+        let changed = self.slash.prompt_commands != commands;
+        self.slash.prompt_commands = commands;
+        if changed && self.current_slash_query().is_some() {
+            self.refresh_suggestions();
+        }
+    }
+
+    fn build_prompt_slash_commands(&mut self) -> Result<Vec<slash::PromptSlashCommand>> {
+        let prompt_servers = self.runtime.list_mcp_servers()?;
+        let mut commands = Vec::new();
+        for ManagedMcpServer {
+            name,
+            enabled,
+            capabilities,
+            ..
+        } in prompt_servers
+        {
+            if !(enabled && capabilities.prompts) {
+                continue;
+            }
+
+            let prompts = self.runtime.list_cached_mcp_prompts(&name)?;
+            commands.extend(prompts.into_iter().map(|prompt| slash::PromptSlashCommand {
+                alias: slash::prompt_slash_alias(&name, &prompt.name),
+                server: name.clone(),
+                prompt,
+            }));
+        }
+
+        commands.sort_by(|left, right| left.alias.cmp(&right.alias));
+        logging::log_event(&format!(
+            "[mcp] refreshed prompt slash cache commands={}",
+            commands.len()
+        ));
+        Ok(commands)
     }
 
     fn open_cli_log_file(&self) -> Result<std::path::PathBuf> {
@@ -2200,8 +2338,17 @@ impl TuiShell {
         self.refresh_suggestions();
     }
 
-    fn open_mcp_prompt_form(&mut self, server: &str, prompt: &McpDiscoveredPrompt) {
-        self.bottom_form = Some(bottom_form::new_mcp_prompt_form(server, prompt));
+    fn open_mcp_prompt_form(
+        &mut self,
+        server: &str,
+        prompt: &McpDiscoveredPrompt,
+        initial_user_message: Option<&str>,
+    ) {
+        self.bottom_form = Some(bottom_form::new_mcp_prompt_form(
+            server,
+            prompt,
+            initial_user_message,
+        ));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -2225,14 +2372,13 @@ impl TuiShell {
         server: &str,
         prompt: &str,
         args_json: Option<&str>,
+        user_message: Option<&str>,
     ) -> bool {
-        match self.runtime.apply_mcp_prompt(server, prompt, args_json) {
-            Ok(summary) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: summary,
-                    tool_block: None,
-                });
+        match self
+            .runtime
+            .apply_mcp_prompt(server, prompt, args_json, user_message)
+        {
+            Ok(_) => {
                 self.apply_runtime_events();
                 true
             }
@@ -2257,13 +2403,21 @@ impl TuiShell {
         let server = server.clone();
         let prompt = prompt.clone();
 
-        match bottom_form::to_prompt_args_json(form) {
-            Ok(args_json) => {
-                if self.apply_mcp_prompt_command(&server, &prompt, args_json.as_deref()) {
+        match (
+            bottom_form::to_prompt_args_json(form),
+            bottom_form::prompt_user_message(form),
+        ) {
+            (Ok(args_json), Ok(user_message)) => {
+                if self.apply_mcp_prompt_command(
+                    &server,
+                    &prompt,
+                    args_json.as_deref(),
+                    user_message.as_deref(),
+                ) {
                     self.bottom_form = None;
                 }
             }
-            Err(err) => {
+            (Err(err), _) | (_, Err(err)) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("应用 MCP prompt 失败: {}", err),
@@ -2278,6 +2432,16 @@ impl TuiShell {
         server: &str,
         prompt_name: &str,
     ) -> Result<McpDiscoveredPrompt> {
+        if let Some(prompt) = self
+            .slash
+            .prompt_commands
+            .iter()
+            .find(|candidate| candidate.server == server && candidate.prompt.name == prompt_name)
+            .map(|candidate| candidate.prompt.clone())
+        {
+            return Ok(prompt);
+        }
+
         if let Ok(prompts) = self.runtime.list_mcp_prompts(server) {
             if let Some(prompt) = prompts.into_iter().find(|prompt| prompt.name == prompt_name) {
                 return Ok(prompt);
@@ -2328,19 +2492,44 @@ impl TuiShell {
     }
 
     fn refresh_welcome_message(&mut self) {
+        let snapshot = self.runtime.mcp_status_snapshot();
+        self.refresh_welcome_message_with_snapshot(&snapshot);
+    }
+
+    fn refresh_welcome_message_with_snapshot(&mut self, snapshot: &McpStatusSnapshot) {
         let Some(first_message) = self.messages.first_mut() else {
+            logging::log_event("[mcp] welcome refresh skipped: no first message");
             return;
         };
-        if first_message.role != MessageRole::Agent || !locale::is_welcome_message(&first_message.content)
-        {
+        let is_welcome = locale::is_welcome_message(&first_message.content);
+        if first_message.role != MessageRole::Agent || !is_welcome {
+            logging::log_event(&format!(
+                "[mcp] welcome refresh skipped: role={:?} is_welcome={} first_line={}",
+                first_message.role,
+                is_welcome,
+                first_message.content.lines().next().unwrap_or("<empty>"),
+            ));
             return;
         }
         let active_model = self.runtime.config().active_model.clone();
-        let mcp_welcome_line = self.runtime.mcp_status_snapshot().welcome_line();
+        let mcp_welcome_line = snapshot.welcome_line();
+        let previous_status_line = first_message
+            .content
+            .lines()
+            .last()
+            .unwrap_or("<empty>")
+            .to_string();
         first_message.content = welcome_message_text(
             &active_model,
             &mcp_welcome_line,
         );
+        logging::log_event(&format!(
+            "[mcp] welcome refreshed revision={} state={:?} previous_status={} next_status={}",
+            snapshot.revision,
+            snapshot.state,
+            previous_status_line,
+            mcp_welcome_line,
+        ));
     }
 
     fn save_current_chat(&mut self, path: Option<&str>) {
@@ -2753,6 +2942,30 @@ fn non_empty_opt(input: &str) -> Option<&str> {
     } else {
         Some(trimmed)
     }
+}
+
+enum PromptTail<'a> {
+    Empty,
+    ArgsJson(&'a str),
+    UserMessage(&'a str),
+}
+
+fn classify_prompt_tail<'a>(prompt: &McpDiscoveredPrompt, input: &'a str) -> PromptTail<'a> {
+    let Some(tail) = non_empty_opt(input) else {
+        return PromptTail::Empty;
+    };
+
+    if !prompt.arguments.is_empty() && looks_like_prompt_args_json(tail) {
+        PromptTail::ArgsJson(tail)
+    } else {
+        PromptTail::UserMessage(tail)
+    }
+}
+
+fn looks_like_prompt_args_json(input: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(input)
+        .map(|value| value.is_object())
+        .unwrap_or(false)
 }
 
 fn parse_image_path_and_prompt(input: &str) -> (&str, &str) {

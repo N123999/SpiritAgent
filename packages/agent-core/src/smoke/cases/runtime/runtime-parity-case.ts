@@ -2366,6 +2366,9 @@ export async function runRuntimeParitySmoke(): Promise<void> {
       if (!state.messages.some((message) => isJsonObject(message) && message.content === 'prompt-user-message')) {
         throw new Error('prompt user message 未注入 state。');
       }
+      if (!state.messages.some((message) => isJsonObject(message) && message.content === '补充说明')) {
+        throw new Error('prompt extra user message 未注入 state。');
+      }
     }),
     toolExecutor: new HostExecutor(),
     createToolAgentState: createScriptedState,
@@ -2374,12 +2377,60 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     extractAssistantText: extractScriptedAssistantText,
   });
 
-  const promptApplied = await promptRuntime.applyMcpPrompt('demo', 'analysis');
+  const promptApplied = await promptRuntime.applyMcpPrompt('demo', 'analysis', undefined, '补充说明');
   if (promptApplied.result.kind !== 'completed' || promptApplied.result.assistantText !== 'PROMPT_OK') {
     throw new Error('applyMcpPrompt smoke 未完成闭环。');
   }
   if (!promptApplied.notice.includes('已应用 MCP prompt: demo / analysis')) {
     throw new Error('applyMcpPrompt smoke notice 不正确。');
+  }
+
+  const streamingPromptRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingFinalTransport(),
+    toolExecutor: new HostExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+  });
+
+  const startedPrompt = await streamingPromptRuntime.startApplyMcpPrompt(
+    'demo',
+    'analysis',
+    undefined,
+    '帮我看看这个工具有什么用',
+  );
+  if (!startedPrompt.includes('已应用 MCP prompt: demo / analysis')) {
+    throw new Error('startApplyMcpPrompt smoke notice 不正确。');
+  }
+  for (let index = 0; index < 24 && streamingPromptRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(8);
+    await streamingPromptRuntime.poll();
+  }
+  if (streamingPromptRuntime.isBusy()) {
+    throw new Error('streaming prompt smoke 未在预期轮次内完成。');
+  }
+  const drainedStreamingPromptEvents = streamingPromptRuntime.drainEvents();
+  if (
+    drainedStreamingPromptEvents.filter((event) => event.kind === 'begin-assistant-response').length !== 1
+  ) {
+    throw new Error('streaming prompt smoke begin event 数量不正确。');
+  }
+  if (
+    drainedStreamingPromptEvents.filter((event) => event.kind === 'assistant-chunk').length < 2
+  ) {
+    throw new Error('streaming prompt smoke 缺少 assistant chunk 事件。');
+  }
+  if (!drainedStreamingPromptEvents.some((event) => event.kind === 'assistant-response-completed')) {
+    throw new Error('streaming prompt smoke 缺少 completed event。');
+  }
+  if (
+    !streamingPromptRuntime
+      .history()
+      .some((message) => message.role === 'user' && message.content === '帮我看看这个工具有什么用')
+  ) {
+    throw new Error('streaming prompt smoke 未保留附加用户消息。');
   }
 
   const resourceRuntime = new AgentRuntime({
@@ -2824,6 +2875,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   printSmokeSection('manual background smoke', manualBackgroundCompleted);
   printSmokeSection('manual compaction smoke', manualCompactionCompleted);
   printSmokeSection('mcp prompt smoke', promptApplied);
+  printSmokeSection('mcp prompt streaming smoke events', drainedStreamingPromptEvents);
   printSmokeSection('mcp resource smoke', resourceResult);
   printSmokeSection('archive restore smoke', archive);
   printSmokeSection('workspace file context smoke', workspaceFileSmoke);

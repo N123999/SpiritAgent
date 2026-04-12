@@ -114,6 +114,7 @@ export interface RuntimeApplyMcpPromptParams {
   server: string;
   prompt: string;
   argsJson?: string;
+  userMessage?: string;
 }
 
 export interface RuntimeRespondToPendingApprovalParams {
