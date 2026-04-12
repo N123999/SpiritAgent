@@ -15,6 +15,7 @@ pub mod ports;
 pub mod rules;
 pub mod runtime_handle;
 pub mod session;
+pub mod skills;
 pub mod ts_bridge;
 #[cfg(feature = "tui")]
 pub mod shell;

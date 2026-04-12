@@ -3074,6 +3074,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tokio",
  "unicode-width 0.2.0",
  "windows-sys 0.59.0",
