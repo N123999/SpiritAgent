@@ -16,7 +16,7 @@ use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
 };
-use std::{io, time::Duration};
+use std::{io, time::{Duration, Instant}};
 
 use spirit_agent::{
     ConfigCommand, KeyCommand, McpCommand, ModelCommand, TuiShell, handle_config_cli,
@@ -24,6 +24,8 @@ use spirit_agent::{
 };
 
 const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
+const IMPLICIT_PASTE_MAX_GAP: Duration = Duration::from_millis(180);
+const EXPLICIT_PASTE_REPLAY_MAX_GAP: Duration = Duration::from_millis(750);
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIFT, VK_RSHIFT};
@@ -316,6 +318,7 @@ fn run_tui() -> Result<()> {
 
 fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
     let mut shell = TuiShell::new()?;
+    let mut paste_tracker = PasteReplayTracker::default();
     shell.refresh_suggestions();
     execute!(terminal.backend_mut(), EnableMouseCapture)?;
 
@@ -336,16 +339,24 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
             events.push(event::read()?);
         }
 
-        process_event_batch(&mut shell, events);
+        process_event_batch(&mut shell, events, &mut paste_tracker);
     }
 
     Ok(())
 }
 
-fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
+fn process_event_batch(
+    shell: &mut TuiShell,
+    events: Vec<Event>,
+    paste_tracker: &mut PasteReplayTracker,
+) {
+    maybe_log_event_batch(shell, &events);
     let mut pending_text = String::new();
     let mut bracketed_paste_chars = 0usize;
     let mut bracketed_paste_lines = 0usize;
+    let now = Instant::now();
+
+    paste_tracker.expire_if_idle(now);
 
     for evt in events {
         match evt {
@@ -391,11 +402,23 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
                 let normalized = normalize_pasted_text(&text);
                 bracketed_paste_chars += normalized.chars().count();
                 bracketed_paste_lines += normalized.lines().count().max(1);
+                if let Some(target) = paste_target(shell) {
+                    paste_tracker.prime_explicit_replay_suppression(&normalized, target, now);
+                }
                 pending_text.push_str(&normalized);
             }
             Event::Key(key) => {
                 if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
                     continue;
+                }
+
+                match paste_tracker.intercept_key(&key, paste_target(shell), now) {
+                    PasteKeyHandling::InsertText(text) => {
+                        pending_text.push_str(&text);
+                        continue;
+                    }
+                    PasteKeyHandling::Suppress => continue,
+                    PasteKeyHandling::Passthrough => {}
                 }
 
                 if !shell.is_model_picker_active()
@@ -424,7 +447,7 @@ fn process_event_batch(shell: &mut TuiShell, events: Vec<Event>) {
                 }
 
                 flush_pending_text(shell, &mut pending_text);
-                process_key_event(shell, key);
+                process_key_event(shell, key, paste_tracker, now);
             }
             _ => {}
         }
@@ -462,7 +485,12 @@ fn batched_text_char(key: &crossterm::event::KeyEvent) -> Option<char> {
     }
 }
 
-fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
+fn process_key_event(
+    shell: &mut TuiShell,
+    key: crossterm::event::KeyEvent,
+    paste_tracker: &mut PasteReplayTracker,
+    now: Instant,
+) {
     if shell.is_model_picker_active() {
         match key.code {
             KeyCode::Esc => shell.cancel_model_picker(),
@@ -538,6 +566,12 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
             {
                 if let Err(e) = shell.paste_bottom_form_from_clipboard() {
                     logging::log_event(&format!("clipboard paste failed: {}", e));
+                } else if let Some(text) = load_clipboard_text() {
+                    paste_tracker.prime_explicit_replay_suppression(
+                        &text,
+                        PasteTarget::BottomForm,
+                        now,
+                    );
                 }
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -575,6 +609,8 @@ fn process_key_event(shell: &mut TuiShell, key: crossterm::event::KeyEvent) {
         {
             if let Err(e) = shell.paste_from_clipboard() {
                 logging::log_event(&format!("clipboard paste failed: {}", e));
+            } else if let Some(text) = load_clipboard_text() {
+                paste_tracker.prime_explicit_replay_suppression(&text, PasteTarget::MainInput, now);
             }
         }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => shell.request_quit(),
@@ -660,6 +696,497 @@ fn maybe_log_key_event(key: &crossterm::event::KeyEvent, should_insert_newline: 
 
 fn normalize_pasted_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PasteTarget {
+    MainInput,
+    BottomForm,
+}
+
+impl PasteTarget {
+    fn newline_text(self) -> &'static str {
+        match self {
+            Self::MainInput => "\n",
+            Self::BottomForm => " ",
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::MainInput => "main-input",
+            Self::BottomForm => "bottom-form",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PasteKeyHandling {
+    Passthrough,
+    InsertText(String),
+    Suppress,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PasteTrackingMode {
+    ImplicitReplay,
+    ExplicitReplaySuppression,
+}
+
+#[derive(Debug)]
+struct PasteTrackingState {
+    mode: PasteTrackingMode,
+    source_text: Vec<char>,
+    cursor: usize,
+    first_seen_at: Instant,
+    last_seen_at: Instant,
+    target: PasteTarget,
+    logged: bool,
+}
+
+#[derive(Debug, Default)]
+struct PasteReplayTracker {
+    state: Option<PasteTrackingState>,
+}
+
+impl PasteReplayTracker {
+    fn expire_if_idle(&mut self, now: Instant) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+
+        let max_gap = match state.mode {
+            PasteTrackingMode::ImplicitReplay => IMPLICIT_PASTE_MAX_GAP,
+            PasteTrackingMode::ExplicitReplaySuppression => EXPLICIT_PASTE_REPLAY_MAX_GAP,
+        };
+        if now.duration_since(state.last_seen_at) > max_gap {
+            self.state = None;
+        }
+    }
+
+    fn prime_explicit_replay_suppression(&mut self, text: &str, target: PasteTarget, now: Instant) {
+        let normalized = normalize_pasted_text(text);
+        if normalized.is_empty() {
+            self.state = None;
+            return;
+        }
+
+        logging::log_event(&format!(
+            "[paste] primed explicit replay suppression chars={} lines={}",
+            normalized.chars().count(),
+            normalized.lines().count().max(1)
+        ));
+
+        self.state = Some(PasteTrackingState {
+            mode: PasteTrackingMode::ExplicitReplaySuppression,
+            source_text: normalized.chars().collect(),
+            cursor: 0,
+            first_seen_at: now,
+            last_seen_at: now,
+            target,
+            logged: false,
+        });
+    }
+
+    fn intercept_key(
+        &mut self,
+        key: &crossterm::event::KeyEvent,
+        target: Option<PasteTarget>,
+        now: Instant,
+    ) -> PasteKeyHandling {
+        self.expire_if_idle(now);
+
+        let Some(unit) = key_to_paste_unit(key) else {
+            if matches!(key.code, KeyCode::Esc) {
+                self.state = None;
+            }
+            return PasteKeyHandling::Passthrough;
+        };
+
+        if self.advance_existing_state(unit, target, now) {
+            return self.resolve_existing_state(unit, now);
+        }
+
+        let Some(target) = target else {
+            return PasteKeyHandling::Passthrough;
+        };
+
+        let Some(clipboard_text) = load_multiline_clipboard_text() else {
+            return PasteKeyHandling::Passthrough;
+        };
+        let clipboard_chars: Vec<char> = clipboard_text.chars().collect();
+        if clipboard_chars.first().copied() != Some(unit) {
+            return PasteKeyHandling::Passthrough;
+        }
+
+        self.state = Some(PasteTrackingState {
+            mode: PasteTrackingMode::ImplicitReplay,
+            source_text: clipboard_chars,
+            cursor: 1,
+            first_seen_at: now,
+            last_seen_at: now,
+            target,
+            logged: false,
+        });
+
+        logging::log_event(&format!(
+            "[paste] detected implicit replay candidate target={} first_char={:?}",
+            target.as_str(),
+            unit
+        ));
+
+        self.resolve_existing_state(unit, now)
+    }
+
+    fn advance_existing_state(
+        &mut self,
+        unit: char,
+        target: Option<PasteTarget>,
+        now: Instant,
+    ) -> bool {
+        let Some(state) = self.state.as_mut() else {
+            return false;
+        };
+
+        if state.mode == PasteTrackingMode::ImplicitReplay && Some(state.target) != target {
+            self.state = None;
+            return false;
+        }
+
+        if state.source_text.get(state.cursor).copied() != Some(unit) {
+            self.state = None;
+            return false;
+        }
+
+        state.cursor += 1;
+        state.last_seen_at = now;
+        true
+    }
+
+    fn resolve_existing_state(&mut self, unit: char, now: Instant) -> PasteKeyHandling {
+        let Some(state) = self.state.as_mut() else {
+            return PasteKeyHandling::Passthrough;
+        };
+
+        let handling = match state.mode {
+            PasteTrackingMode::ExplicitReplaySuppression => {
+                if !state.logged {
+                    logging::log_event("[paste] suppressed replayed key stream after explicit clipboard paste");
+                    state.logged = true;
+                }
+                PasteKeyHandling::Suppress
+            }
+            PasteTrackingMode::ImplicitReplay => {
+                if unit == '\n'
+                    && now.duration_since(state.first_seen_at) <= IMPLICIT_PASTE_MAX_GAP
+                    && state.cursor > 2
+                {
+                    logging::log_event(&format!(
+                        "[paste] translated replayed newline target={} elapsed_ms={} matched_chars={}",
+                        state.target.as_str(),
+                        now.duration_since(state.first_seen_at).as_millis(),
+                        state.cursor.saturating_sub(1)
+                    ));
+                    PasteKeyHandling::InsertText(state.target.newline_text().to_string())
+                } else if unit == '\n' {
+                    self.state = None;
+                    return PasteKeyHandling::Passthrough;
+                } else {
+                    PasteKeyHandling::InsertText(unit.to_string())
+                }
+            }
+        };
+
+        let should_clear = state.cursor >= state.source_text.len();
+        if should_clear {
+            self.state = None;
+        }
+        handling
+    }
+}
+
+fn paste_target(shell: &TuiShell) -> Option<PasteTarget> {
+    if shell.is_model_picker_active()
+        || shell.is_language_picker_active()
+        || shell.is_chat_picker_active()
+        || shell.is_image_picker_active()
+    {
+        None
+    } else if shell.is_bottom_form_active() {
+        Some(PasteTarget::BottomForm)
+    } else {
+        Some(PasteTarget::MainInput)
+    }
+}
+
+fn load_clipboard_text() -> Option<String> {
+    let text = arboard::Clipboard::new().ok()?.get_text().ok()?;
+    let normalized = normalize_pasted_text(&text);
+    (!normalized.is_empty()).then_some(normalized)
+}
+
+fn load_multiline_clipboard_text() -> Option<String> {
+    let normalized = load_clipboard_text()?;
+    normalized.contains('\n').then_some(normalized)
+}
+
+fn key_to_paste_unit(key: &crossterm::event::KeyEvent) -> Option<char> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return None;
+    }
+
+    match key.code {
+        KeyCode::Char(ch) => Some(ch),
+        KeyCode::Enter => Some('\n'),
+        _ => None,
+    }
+}
+
+fn maybe_log_event_batch(shell: &TuiShell, events: &[Event]) {
+    let mut key_events = 0usize;
+    let mut char_keys = 0usize;
+    let mut enter_keys = 0usize;
+    let mut paste_events = 0usize;
+
+    for event in events {
+        match event {
+            Event::Paste(_) => paste_events += 1,
+            Event::Key(key) if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) => {
+                key_events += 1;
+                match key.code {
+                    KeyCode::Char(_) => char_keys += 1,
+                    KeyCode::Enter => enter_keys += 1,
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if paste_events == 0 && !(enter_keys > 0 && char_keys >= 4) {
+        return;
+    }
+
+    logging::log_event(&format!(
+        "[input-batch] target={} events={} keys={} chars={} enters={} paste_events={} busy={} bottom_form={}",
+        paste_target(shell).map(PasteTarget::as_str).unwrap_or("picker"),
+        events.len(),
+        key_events,
+        char_keys,
+        enter_keys,
+        paste_events,
+        shell.view_model().pending_response_active,
+        shell.is_bottom_form_active()
+    ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn ctrl_v() -> KeyEvent {
+        KeyEvent {
+            code: KeyCode::Char('v'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    impl PasteReplayTracker {
+        fn intercept_key_with_clipboard(
+            &mut self,
+            key: &KeyEvent,
+            target: Option<PasteTarget>,
+            now: Instant,
+            clipboard_text: Option<&str>,
+        ) -> PasteKeyHandling {
+            self.expire_if_idle(now);
+
+            let Some(unit) = key_to_paste_unit(key) else {
+                return PasteKeyHandling::Passthrough;
+            };
+
+            if self.advance_existing_state(unit, target, now) {
+                return self.resolve_existing_state(unit, now);
+            }
+
+            let Some(target) = target else {
+                return PasteKeyHandling::Passthrough;
+            };
+            let Some(clipboard_text) = clipboard_text else {
+                return PasteKeyHandling::Passthrough;
+            };
+            let normalized = normalize_pasted_text(clipboard_text);
+            if !normalized.contains('\n') {
+                return PasteKeyHandling::Passthrough;
+            }
+            let chars: Vec<char> = normalized.chars().collect();
+            if chars.first().copied() != Some(unit) {
+                return PasteKeyHandling::Passthrough;
+            }
+
+            self.state = Some(PasteTrackingState {
+                mode: PasteTrackingMode::ImplicitReplay,
+                source_text: chars,
+                cursor: 1,
+                first_seen_at: now,
+                last_seen_at: now,
+                target,
+                logged: false,
+            });
+            self.resolve_existing_state(unit, now)
+        }
+    }
+
+    #[test]
+    fn implicit_multiline_replay_inserts_newline_in_main_input() {
+        let mut tracker = PasteReplayTracker::default();
+        let clipboard = "Hello\nThis is a test\nbro";
+        let start = Instant::now();
+
+        assert_eq!(
+            tracker.intercept_key_with_clipboard(
+                &key(KeyCode::Char('H')),
+                Some(PasteTarget::MainInput),
+                start,
+                Some(clipboard)
+            ),
+            PasteKeyHandling::InsertText("H".to_string())
+        );
+
+        for (ch, offset) in [('e', 5), ('l', 10), ('l', 15), ('o', 20)] {
+            assert_eq!(
+                tracker.intercept_key_with_clipboard(
+                    &key(KeyCode::Char(ch)),
+                    Some(PasteTarget::MainInput),
+                    start + Duration::from_millis(offset),
+                    Some(clipboard)
+                ),
+                PasteKeyHandling::InsertText(ch.to_string())
+            );
+        }
+
+        assert_eq!(
+            tracker.intercept_key_with_clipboard(
+                &key(KeyCode::Enter),
+                Some(PasteTarget::MainInput),
+                start + Duration::from_millis(25),
+                Some(clipboard)
+            ),
+            PasteKeyHandling::InsertText("\n".to_string())
+        );
+    }
+
+    #[test]
+    fn implicit_multiline_replay_normalizes_newline_in_bottom_form() {
+        let mut tracker = PasteReplayTracker::default();
+        let clipboard = "Header\nBearer";
+        let start = Instant::now();
+
+        for (index, ch) in ['H', 'e', 'a', 'd', 'e', 'r'].into_iter().enumerate() {
+            assert_eq!(
+                tracker.intercept_key_with_clipboard(
+                    &key(KeyCode::Char(ch)),
+                    Some(PasteTarget::BottomForm),
+                    start + Duration::from_millis(index as u64 * 5),
+                    Some(clipboard)
+                ),
+                PasteKeyHandling::InsertText(ch.to_string())
+            );
+        }
+
+        assert_eq!(
+            tracker.intercept_key_with_clipboard(
+                &key(KeyCode::Enter),
+                Some(PasteTarget::BottomForm),
+                start + Duration::from_millis(35),
+                Some(clipboard)
+            ),
+            PasteKeyHandling::InsertText(" ".to_string())
+        );
+    }
+
+    #[test]
+    fn delayed_enter_is_not_treated_as_implicit_paste() {
+        let mut tracker = PasteReplayTracker::default();
+        let clipboard = "Hello\nWorld";
+        let start = Instant::now();
+
+        for (index, ch) in ['H', 'e', 'l', 'l', 'o'].into_iter().enumerate() {
+            assert_eq!(
+                tracker.intercept_key_with_clipboard(
+                    &key(KeyCode::Char(ch)),
+                    Some(PasteTarget::MainInput),
+                    start + Duration::from_millis(index as u64 * 80),
+                    Some(clipboard)
+                ),
+                if index == 0 {
+                    PasteKeyHandling::InsertText("H".to_string())
+                } else {
+                    PasteKeyHandling::InsertText(ch.to_string())
+                }
+            );
+        }
+
+        assert_eq!(
+            tracker.intercept_key_with_clipboard(
+                &key(KeyCode::Enter),
+                Some(PasteTarget::MainInput),
+                start + Duration::from_millis(500),
+                Some(clipboard)
+            ),
+            PasteKeyHandling::Passthrough
+        );
+    }
+
+    #[test]
+    fn explicit_paste_suppresses_following_replay() {
+        let mut tracker = PasteReplayTracker::default();
+        let start = Instant::now();
+        tracker.prime_explicit_replay_suppression("Hello\nWorld", PasteTarget::MainInput, start);
+
+        assert_eq!(
+            tracker.intercept_key(&ctrl_v(), Some(PasteTarget::MainInput), start),
+            PasteKeyHandling::Passthrough
+        );
+        assert_eq!(
+            tracker.intercept_key(
+                &key(KeyCode::Char('H')),
+                Some(PasteTarget::MainInput),
+                start + Duration::from_millis(5)
+            ),
+            PasteKeyHandling::Suppress
+        );
+        for (index, ch) in ['e', 'l', 'l', 'o'].into_iter().enumerate() {
+            assert_eq!(
+                tracker.intercept_key(
+                    &key(KeyCode::Char(ch)),
+                    Some(PasteTarget::MainInput),
+                    start + Duration::from_millis(10 + index as u64 * 5)
+                ),
+                PasteKeyHandling::Suppress
+            );
+        }
+        assert_eq!(
+            tracker.intercept_key(
+                &key(KeyCode::Enter),
+                Some(PasteTarget::MainInput),
+                start + Duration::from_millis(35)
+            ),
+            PasteKeyHandling::Suppress
+        );
+    }
 }
 
 #[cfg(target_os = "windows")]
