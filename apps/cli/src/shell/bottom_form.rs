@@ -532,12 +532,8 @@ fn push_rules_section(
     });
 
     for entry in entries.iter().filter(|entry| entry.source.scope == scope) {
-        let label = match scope {
-            RuleScope::Workspace => WORKSPACE_RULE_LABEL,
-            RuleScope::User => USER_RULE_LABEL,
-        };
         fields.push(BottomFormFieldView {
-            label: label.to_string(),
+            label: entry.source.short_label.clone(),
             help: String::new(),
             editor: BottomFormFieldEditorView::Checkbox {
                 id: entry.source.id.clone(),
@@ -730,9 +726,6 @@ enum McpAddTransportKind {
     Http,
 }
 
-const WORKSPACE_RULE_LABEL: &str = "AGENTS.md";
-const USER_RULE_LABEL: &str = "rule.md";
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -823,7 +816,7 @@ mod tests {
         };
 
         assert!(help.is_empty());
-        assert!(path.ends_with("AGENTS.md"));
+        assert!(path.contains(".spirit") && path.ends_with("rule.md"));
     }
 
     #[test]
@@ -907,15 +900,17 @@ mod tests {
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {
-        let (id, title, path) = match scope {
+        let (id, title, short_label, path) = match scope {
             RuleScope::Workspace => (
                 "workspace-rule",
                 "工作区规则",
-                PathBuf::from("C:/workspace/AGENTS.md"),
+                ".spirit/rule.md",
+                PathBuf::from("C:/workspace/.spirit/rule.md"),
             ),
             RuleScope::User => (
                 "user-rule",
                 "用户规则",
+                "rule.md",
                 PathBuf::from("C:/users/demo/AppData/Roaming/SpiritAgent/rule.md"),
             ),
         };
@@ -925,6 +920,7 @@ mod tests {
                 id: id.to_string(),
                 scope,
                 title: title.to_string(),
+                short_label: short_label.to_string(),
                 path,
             },
             exists,

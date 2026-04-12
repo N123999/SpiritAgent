@@ -26,7 +26,7 @@ use crate::{
         AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
         McpStatusState, SecretStore,
     },
-    rules::{self, RuleEntry, RuleStateFile},
+    rules::{self, RuleEntry, RuleScope, RuleStateFile},
     runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
@@ -1592,6 +1592,12 @@ impl TuiShell {
         }
 
         let workspace_root = self.app_paths.workspace_root();
+        if request.scope == RuleScope::Workspace {
+            if let Err(err) = rules::ensure_workspace_spirit_dir(&workspace_root) {
+                self.push_agent_message(err.to_string());
+                return;
+            }
+        }
         let generation_prompt = rules::build_create_rule_user_turn(&workspace_root, &request);
         self.runtime.submit_user_turn(generation_prompt, None);
         self.apply_runtime_events();

@@ -9,6 +9,8 @@ use std::{
 
 use crate::mcp::spirit_agent_data_dir;
 
+pub const SPIRIT_DIR_NAME: &str = ".spirit";
+pub const WORKSPACE_SPIRIT_RULE_FILE_NAME: &str = "rule.md";
 pub const WORKSPACE_RULE_FILE_NAME: &str = "AGENTS.md";
 pub const USER_RULE_FILE_NAME: &str = "rule.md";
 const RULES_STATE_FILE_NAME: &str = "rules-state.json";
@@ -34,6 +36,8 @@ pub struct RuleSource {
     pub id: String,
     pub scope: RuleScope,
     pub title: String,
+    /// Short label for the rules form checkbox row (path-like, not necessarily absolute).
+    pub short_label: String,
     pub path: PathBuf,
 }
 
@@ -90,15 +94,31 @@ pub fn workspace_rule_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(WORKSPACE_RULE_FILE_NAME)
 }
 
+/// Spirit 专用仓库级规则路径（创建 `/create-rule` 与规则 UI 的默认工作区目标）。
+pub fn workspace_spirit_rule_path(workspace_root: &Path) -> PathBuf {
+    workspace_root
+        .join(SPIRIT_DIR_NAME)
+        .join(WORKSPACE_SPIRIT_RULE_FILE_NAME)
+}
+
 pub fn user_rule_path() -> PathBuf {
     spirit_agent_data_dir().join(USER_RULE_FILE_NAME)
 }
 
 pub fn rule_path_for_scope(workspace_root: &Path, scope: RuleScope) -> PathBuf {
     match scope {
-        RuleScope::Workspace => workspace_rule_path(workspace_root),
+        RuleScope::Workspace => workspace_spirit_rule_path(workspace_root),
         RuleScope::User => user_rule_path(),
     }
+}
+
+/// 确保存在 `.spirit` 目录，便于后续写入 `workspace_spirit_rule_path`。
+pub fn ensure_workspace_spirit_dir(workspace_root: &Path) -> Result<()> {
+    let dir = workspace_root.join(SPIRIT_DIR_NAME);
+    if dir.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(&dir).with_context(|| format!("创建 .spirit 目录失败: {}", dir.display()))
 }
 
 pub fn rules_state_file_path() -> PathBuf {
@@ -106,20 +126,30 @@ pub fn rules_state_file_path() -> PathBuf {
 }
 
 pub fn default_rule_sources(workspace_root: &Path) -> Vec<RuleSource> {
-    let workspace_path = workspace_rule_path(workspace_root);
+    let spirit_path = workspace_spirit_rule_path(workspace_root);
+    let agents_path = workspace_rule_path(workspace_root);
     let user_path = user_rule_path();
 
     vec![
         RuleSource {
-            id: stable_rule_id(&workspace_path),
+            id: stable_rule_id(&spirit_path),
             scope: RuleScope::Workspace,
-            title: t!("form.rules.section.workspace").into_owned(),
-            path: workspace_path,
+            title: t!("form.rules.title.workspace_spirit").into_owned(),
+            short_label: t!("form.rules.short.spirit").into_owned(),
+            path: spirit_path,
+        },
+        RuleSource {
+            id: stable_rule_id(&agents_path),
+            scope: RuleScope::Workspace,
+            title: t!("form.rules.title.workspace_agents").into_owned(),
+            short_label: t!("form.rules.short.agents").into_owned(),
+            path: agents_path,
         },
         RuleSource {
             id: stable_rule_id(&user_path),
             scope: RuleScope::User,
             title: t!("form.rules.section.user").into_owned(),
+            short_label: t!("form.rules.short.user").into_owned(),
             path: user_path,
         },
     ]
@@ -416,6 +446,17 @@ mod tests {
     }
 
     #[test]
+    fn workspace_spirit_rule_path_points_under_dot_spirit() {
+        let root = PathBuf::from("C:/workspace/demo");
+        let path = workspace_spirit_rule_path(&root);
+
+        assert_eq!(
+            path,
+            root.join(SPIRIT_DIR_NAME).join(WORKSPACE_SPIRIT_RULE_FILE_NAME)
+        );
+    }
+
+    #[test]
     fn user_rule_path_lives_under_spirit_agent_data_dir() {
         let _guard = env_lock().lock().expect("env lock");
         let appdata = temp_test_dir("user-rule-path");
@@ -471,15 +512,21 @@ mod tests {
             env::set_var("APPDATA", &appdata);
             env::remove_var("USERPROFILE");
         }
-        fs::write(workspace_rule_path(&workspace_root), "# repo rule\nrepo body")
-            .expect("write workspace rule");
+        fs::create_dir_all(workspace_root.join(SPIRIT_DIR_NAME)).expect("create .spirit");
+        fs::write(
+            workspace_spirit_rule_path(&workspace_root),
+            "# spirit rule\nspirit body",
+        )
+        .expect("write spirit rule");
+        fs::write(workspace_rule_path(&workspace_root), "# agents rule\nagents body")
+            .expect("write agents rule");
         fs::create_dir_all(appdata.join("SpiritAgent")).expect("create appdata dir");
         fs::write(user_rule_path(), "# user rule\nuser body").expect("write user rule");
 
         let entries = discover_rule_entries(&workspace_root, &RuleStateFile::default())
             .expect("discover rules");
 
-        assert_eq!(entries.len(), 2);
+        assert_eq!(entries.len(), 3);
         assert!(entries.iter().all(|entry| entry.exists));
         assert!(entries.iter().all(|entry| entry.enabled));
         assert!(entries
@@ -497,19 +544,20 @@ mod tests {
             env::remove_var("USERPROFILE");
         }
 
-        let workspace_path = workspace_rule_path(&workspace_root);
-        fs::write(&workspace_path, "# repo rule\nrepo body").expect("write workspace rule");
+        fs::create_dir_all(workspace_root.join(SPIRIT_DIR_NAME)).expect("create .spirit");
+        let spirit_path = workspace_spirit_rule_path(&workspace_root);
+        fs::write(&spirit_path, "# spirit rule\nbody").expect("write spirit rule");
         let mut state = RuleStateFile::default();
-        state.set_enabled(stable_rule_id(&workspace_path), false);
+        state.set_enabled(stable_rule_id(&spirit_path), false);
 
         let entries = discover_rule_entries(&workspace_root, &state).expect("discover rules");
-        let workspace_entry = entries
+        let spirit_entry = entries
             .iter()
-            .find(|entry| entry.source.scope == RuleScope::Workspace)
-            .expect("workspace entry");
+            .find(|entry| entry.source.path == spirit_path)
+            .expect("spirit entry");
 
-        assert!(workspace_entry.exists);
-        assert!(!workspace_entry.enabled);
+        assert!(spirit_entry.exists);
+        assert!(!spirit_entry.enabled);
     }
 
     #[test]
@@ -525,7 +573,7 @@ mod tests {
         let entries = discover_rule_entries(&workspace_root, &RuleStateFile::default())
             .expect("discover rules");
 
-        assert_eq!(entries.len(), 2);
+        assert_eq!(entries.len(), 3);
         assert!(entries.iter().all(|entry| !entry.exists));
         assert!(entries.iter().all(|entry| !entry.enabled));
         assert!(entries.iter().all(|entry| entry.content.is_none()));
@@ -539,7 +587,8 @@ mod tests {
                     id: "repo".to_string(),
                     scope: RuleScope::Workspace,
                     title: "工作区规则".to_string(),
-                    path: PathBuf::from("C:/workspace/AGENTS.md"),
+                    short_label: ".spirit/rule.md".to_string(),
+                    path: PathBuf::from("C:/workspace/.spirit/rule.md"),
                 },
                 exists: true,
                 enabled: true,
@@ -551,6 +600,7 @@ mod tests {
                     id: "user".to_string(),
                     scope: RuleScope::User,
                     title: "用户规则".to_string(),
+                    short_label: "rule.md".to_string(),
                     path: PathBuf::from("C:/users/demo/AppData/Roaming/SpiritAgent/rule.md"),
                 },
                 exists: true,
@@ -563,6 +613,7 @@ mod tests {
                     id: "missing".to_string(),
                     scope: RuleScope::Workspace,
                     title: "缺失规则".to_string(),
+                    short_label: "AGENTS.md".to_string(),
                     path: PathBuf::from("C:/workspace/MISSING.md"),
                 },
                 exists: false,
@@ -593,16 +644,17 @@ mod tests {
             .map(|index| format!("line-{index}: {}", "x".repeat(180)))
             .collect::<Vec<_>>()
             .join("\n");
-        fs::write(workspace_rule_path(&workspace_root), &long_content)
-            .expect("write workspace rule");
+        fs::create_dir_all(workspace_root.join(SPIRIT_DIR_NAME)).expect("create .spirit");
+        fs::write(workspace_spirit_rule_path(&workspace_root), &long_content)
+            .expect("write spirit rule");
 
         let entries = discover_rule_entries(&workspace_root, &RuleStateFile::default())
             .expect("discover rules");
         let preview = entries
             .iter()
-            .find(|entry| entry.source.scope == RuleScope::Workspace)
+            .find(|entry| entry.source.path == workspace_spirit_rule_path(&workspace_root))
             .and_then(|entry| entry.preview.as_ref())
-            .expect("workspace preview");
+            .expect("spirit preview");
 
         assert!(preview.truncated);
         assert!(preview.excerpt.lines().count() <= RULE_PREVIEW_MAX_LINES);
@@ -647,7 +699,8 @@ mod tests {
         assert!(prompt.contains("create_file 或 update_file"));
         assert!(prompt.contains("不要假设自己已经拿到权限"));
         assert!(prompt.contains("补充构建命令和禁止事项"));
-        assert!(prompt.contains("AGENTS.md"));
+        assert!(prompt.contains(".spirit"));
+        assert!(prompt.contains("rule.md"));
     }
 
     #[test]
