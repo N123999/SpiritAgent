@@ -1586,6 +1586,9 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
         "/mcp" => t!("ui.suggestion.summary.mcp").into_owned(),
         "/create-rule" => t!("ui.suggestion.summary.create_rule").into_owned(),
         "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
+        "/create-skill" => t!("ui.suggestion.summary.create_skill").into_owned(),
+        "/skills" => t!("ui.suggestion.summary.skills").into_owned(),
+        "/i-am-skills" => t!("ui.suggestion.summary.i_am_skills").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
         _ => String::new(),
@@ -1640,6 +1643,19 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
         "/rules" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /rules".to_string(),
+        ],
+        "/create-skill" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            format!("    {}", t!("ui.suggestion.usage.create_skill.repo")),
+            format!("    {}", t!("ui.suggestion.usage.create_skill.user")),
+        ],
+        "/skills" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /skills".to_string(),
+        ],
+        "/i-am-skills" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            format!("    {}", t!("ui.suggestion.usage.i_am_skills")),
         ],
         "/log" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -1928,7 +1944,7 @@ fn bottom_form_field_outer_height(
 }
 
 fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
-    if matches!(form.kind, BottomFormKind::Rules) {
+    if matches!(form.kind, BottomFormKind::Rules | BottomFormKind::Skills) {
         return rules_bottom_form_block_height(form, panel_width);
     }
 
@@ -2118,7 +2134,7 @@ fn draw_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    if matches!(form.kind, BottomFormKind::Rules) {
+    if matches!(form.kind, BottomFormKind::Rules | BottomFormKind::Skills) {
         return draw_rules_bottom_form(frame, area, form);
     }
 

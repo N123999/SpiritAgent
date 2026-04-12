@@ -67,6 +67,7 @@ pub enum BottomFormKind {
         arguments: Vec<McpPromptArgumentBinding>,
     },
     Rules,
+    Skills,
 }
 
 #[derive(Clone, Debug)]

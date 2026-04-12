@@ -9,6 +9,7 @@ use crate::{
     mcp_types::McpDiscoveredPrompt,
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     rules::{RuleEntry, RuleScope},
+    skills::{SkillEntry, SkillScope},
     view::{
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
         McpPromptArgumentBinding,
@@ -95,6 +96,33 @@ pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
         selected_field: 0,
         scroll_offset: 0,
         footer_hint: t!("form.rules.footer_hint").into_owned(),
+    };
+    ensure_selectable_field(&mut form);
+    form
+}
+
+pub(crate) fn new_skills_form(entries: &[SkillEntry]) -> BottomFormView {
+    let mut fields = Vec::new();
+    push_skills_section(
+        &mut fields,
+        t!("form.skills.section.workspace").as_ref(),
+        SkillScope::Workspace,
+        entries,
+    );
+    push_skills_section(
+        &mut fields,
+        t!("form.skills.section.user").as_ref(),
+        SkillScope::User,
+        entries,
+    );
+
+    let mut form = BottomFormView {
+        kind: BottomFormKind::Skills,
+        title: t!("form.skills.title").into_owned(),
+        fields,
+        selected_field: 0,
+        scroll_offset: 0,
+        footer_hint: t!("form.skills.footer_hint").into_owned(),
     };
     ensure_selectable_field(&mut form);
     form
@@ -473,6 +501,10 @@ pub(crate) fn rules_form_overrides(form: &BottomFormView) -> Vec<(String, bool)>
         .collect()
 }
 
+pub(crate) fn skills_form_overrides(form: &BottomFormView) -> Vec<(String, bool)> {
+    rules_form_overrides(form)
+}
+
 fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
     let transport = selected_transport_kind(form).unwrap_or(McpAddTransportKind::Stdio);
 
@@ -545,6 +577,34 @@ fn push_rules_section(
     }
 }
 
+fn push_skills_section(
+    fields: &mut Vec<BottomFormFieldView>,
+    title: &str,
+    scope: SkillScope,
+    entries: &[SkillEntry],
+) {
+    fields.push(BottomFormFieldView {
+        label: String::new(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Section {
+            text: title.to_string(),
+        },
+    });
+
+    for entry in entries.iter().filter(|entry| entry.source.scope == scope) {
+        fields.push(BottomFormFieldView {
+            label: entry.source.name.clone(),
+            help: entry.source.description.clone(),
+            editor: BottomFormFieldEditorView::Checkbox {
+                id: entry.source.id.clone(),
+                checked: entry.enabled,
+                disabled: false,
+                path: Some(entry.source.path.display().to_string()),
+            },
+        });
+    }
+}
+
 fn is_field_selectable(field: &BottomFormFieldView) -> bool {
     match &field.editor {
         BottomFormFieldEditorView::Section { .. } => false,
@@ -588,7 +648,7 @@ fn selected_editor_mut(form: &mut BottomFormView) -> Option<&mut BottomFormField
 fn normalize_inserted_text(form: &BottomFormView, text: &str) -> String {
     match form.kind {
         BottomFormKind::McpPrompt { .. } => text.replace("\r\n", "\n").replace('\r', "\n"),
-        BottomFormKind::McpAdd | BottomFormKind::Rules => {
+        BottomFormKind::McpAdd | BottomFormKind::Rules | BottomFormKind::Skills => {
             text.replace("\r\n", " ").replace(['\r', '\n'], " ")
         }
     }
@@ -730,8 +790,8 @@ enum McpAddTransportKind {
 mod tests {
     use super::{
         MetadataFieldKind, activate, insert_text, new_mcp_add_form, new_mcp_prompt_form,
-        new_rules_form, parse_metadata_map, prompt_user_message, rules_form_overrides,
-        select_next_field, to_prompt_args_json,
+        new_rules_form, new_skills_form, parse_metadata_map, prompt_user_message,
+        rules_form_overrides, select_next_field, skills_form_overrides, to_prompt_args_json,
     };
     use rust_i18n::t;
     use std::path::PathBuf;
@@ -739,6 +799,7 @@ mod tests {
     use crate::{
         mcp_types::{McpDiscoveredPrompt, McpDiscoveredPromptArgument},
         rules::{RuleEntry, RulePreview, RuleScope, RuleSource},
+        skills::{SkillEntry, SkillPreview, SkillRootKind, SkillScope, SkillSource},
     };
 
     #[test]
@@ -796,6 +857,22 @@ mod tests {
         activate(&mut form);
 
         assert_eq!(rules_form_overrides(&form), vec![("workspace-rule".to_string(), false)]);
+    }
+
+    #[test]
+    fn new_skills_form_selects_first_available_checkbox() {
+        let form = new_skills_form(&[sample_skill_entry(SkillScope::Workspace, true)]);
+
+        assert_eq!(form.selected_field, 1);
+    }
+
+    #[test]
+    fn skills_activate_toggles_selected_checkbox() {
+        let mut form = new_skills_form(&[sample_skill_entry(SkillScope::Workspace, true)]);
+
+        activate(&mut form);
+
+        assert_eq!(skills_form_overrides(&form), vec![("workspace-skill".to_string(), false)]);
     }
 
     #[test]
@@ -952,6 +1029,47 @@ mod tests {
                     required: false,
                 },
             ],
+        }
+    }
+
+    fn sample_skill_entry(scope: SkillScope, enabled: bool) -> SkillEntry {
+        let (id, name, description, short_label, path, root_kind) = match scope {
+            SkillScope::Workspace => (
+                "workspace-skill",
+                "code-review",
+                "Review code when the user asks for diff analysis.",
+                ".spirit/skills/code-review/SKILL.md",
+                PathBuf::from("C:/workspace/.spirit/skills/code-review/SKILL.md"),
+                SkillRootKind::WorkspaceSpirit,
+            ),
+            SkillScope::User => (
+                "user-skill",
+                "data-analysis",
+                "Analyze datasets and summarize findings.",
+                "skills/data-analysis/SKILL.md",
+                PathBuf::from(
+                    "C:/users/demo/AppData/Roaming/SpiritAgent/skills/data-analysis/SKILL.md",
+                ),
+                SkillRootKind::User,
+            ),
+        };
+
+        SkillEntry {
+            source: SkillSource {
+                id: id.to_string(),
+                scope,
+                root_kind,
+                name: name.to_string(),
+                description: description.to_string(),
+                short_label: short_label.to_string(),
+                path,
+            },
+            enabled,
+            content: "# Skill body".to_string(),
+            preview: SkillPreview {
+                excerpt: "# Skill body".to_string(),
+                truncated: false,
+            },
         }
     }
 }

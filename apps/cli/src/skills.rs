@@ -112,6 +112,14 @@ pub fn create_skill_usage() -> &'static str {
     "用法: /create-skill [repo|user] <skill-name> <需求描述>"
 }
 
+pub fn activate_skill_usage() -> &'static str {
+    "用法: /i-am-skills <skill-name> [补充说明]"
+}
+
+pub fn skills_usage() -> &'static str {
+    "用法: /skills"
+}
+
 pub fn workspace_spirit_skills_dir(workspace_root: &Path) -> PathBuf {
     workspace_root.join(SPIRIT_DIR_NAME).join(SKILLS_DIR_NAME)
 }
@@ -255,6 +263,43 @@ pub fn parse_create_skill_request(input: &str) -> Result<CreateSkillRequest> {
         name: name.to_string(),
         prompt: prompt.trim().to_string(),
     })
+}
+
+pub fn skill_scope_label(scope: SkillScope) -> &'static str {
+    match scope {
+        SkillScope::Workspace => "工作区",
+        SkillScope::User => "用户",
+    }
+}
+
+pub fn build_create_skill_user_turn(workspace_root: &Path, request: &CreateSkillRequest) -> String {
+    let scope_label = skill_scope_label(request.scope);
+    let target_path = skill_path_for_scope(workspace_root, request.scope, &request.name);
+    let scope_hint = match request.scope {
+        SkillScope::Workspace => {
+            "优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。"
+        }
+        SkillScope::User => "优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。",
+    };
+    let write_note = match request.scope {
+        SkillScope::Workspace => format!(
+            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 update_file 写入 {}；不要在工具成功前声称已经创建。",
+            target_path.display()
+        ),
+        SkillScope::User => format!(
+            "目标文件位于工作区外：{}。当前阶段文件写工具仍只覆盖工作区内路径；请先正常分析并给出最终 SKILL.md 草案，如果不能直接写入，就明确说明未写入。",
+            target_path.display()
+        ),
+    };
+
+    format!(
+        "你现在在处理一个 /create-skill 请求。\n\n目标:\n- scope: {scope_label}\n- skill_name: {skill_name}\n- target_path: {target_path}\n- workspace_root: {workspace_root}\n\n用户需求:\n{user_prompt}\n\n要求:\n- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。\n- 生成内容必须符合 Agent Skills 目录规范：目标目录名与 frontmatter `name` 必须完全等于 `{skill_name}`。\n- `SKILL.md` 必须以 YAML frontmatter 开头，至少包含 `name` 和 `description`；正文使用 Markdown，重点写清“做什么、何时用、怎么做”。\n- `description` 要具体说明适用场景，便于 agent 在 catalog 中识别。\n- 正文优先写步骤、输入输出示例、边界条件；避免空话、组织治理废话和泛泛 checklist。\n- 如果技能需要引用其他文件，正文里使用相对路径表达，不要假设这些文件已经存在。\n- {scope_hint}\n- {write_note}\n\n交付方式:\n- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。\n- 如果不能直接落盘，就把最终 `SKILL.md` 完整贴在回复里，并明确说明未写入。",
+        scope_label = scope_label,
+        skill_name = request.name,
+        target_path = target_path.display(),
+        workspace_root = workspace_root.display(),
+        user_prompt = request.prompt,
+    )
 }
 
 pub fn validate_skill_name(name: &str) -> Result<()> {
@@ -909,5 +954,22 @@ mod tests {
             .expect_err("invalid skill name should fail");
 
         assert!(error.to_string().contains("小写字母"));
+    }
+
+    #[test]
+    fn build_create_skill_user_turn_mentions_skill_shape_and_target() {
+        let workspace_root = PathBuf::from("C:/workspace/demo");
+        let request = CreateSkillRequest {
+            scope: SkillScope::Workspace,
+            name: "code-review".to_string(),
+            prompt: "生成一个用于审查 diff 的 skill".to_string(),
+        };
+
+        let prompt = build_create_skill_user_turn(&workspace_root, &request);
+
+        assert!(prompt.contains("SKILL.md"));
+        assert!(prompt.contains("code-review"));
+        assert!(prompt.contains("create_file 或 update_file"));
+        assert!(prompt.contains("YAML frontmatter"));
     }
 }

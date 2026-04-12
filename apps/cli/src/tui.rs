@@ -29,6 +29,7 @@ use crate::{
     rules::{self, RuleEntry, RuleScope, RuleStateFile},
     runtime_handle::RuntimeHandle,
     shell::{bottom_form, file_reference, manual_shell, slash},
+    skills::{self, SkillEntry, SkillScope, SkillStateFile},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
@@ -95,6 +96,8 @@ pub struct TuiShell {
     app_paths: Arc<dyn AppPaths>,
     rule_state: RuleStateFile,
     rule_entries: Vec<RuleEntry>,
+    skill_state: SkillStateFile,
+    skill_entries: Vec<SkillEntry>,
 }
 
 impl TuiShell {
@@ -109,6 +112,9 @@ impl TuiShell {
         let rule_state = rules::load_rule_state().context("读取规则状态失败")?;
         let rule_entries = rules::discover_rule_entries(&workspace_root, &rule_state)
             .context("发现规则文件失败")?;
+        let skill_state = skills::load_skill_state().context("读取技能状态失败")?;
+        let skill_entries = skills::discover_skill_entries(&workspace_root, &skill_state)
+            .context("发现技能文件失败")?;
         let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
@@ -168,6 +174,8 @@ impl TuiShell {
             app_paths,
             rule_state,
             rule_entries,
+            skill_state,
+            skill_entries,
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
@@ -182,12 +190,32 @@ impl TuiShell {
         &self.rule_entries
     }
 
+    pub fn skill_entries(&self) -> &[SkillEntry] {
+        &self.skill_entries
+    }
+
+    pub(crate) fn enabled_skill_entries(&self) -> impl Iterator<Item = &SkillEntry> {
+        self.skill_entries.iter().filter(|entry| entry.enabled)
+    }
+
+    pub(crate) fn find_enabled_skill_entry(&self, name: &str) -> Option<&SkillEntry> {
+        self.enabled_skill_entries()
+            .find(|entry| entry.source.name == name)
+    }
+
     pub fn refresh_rules_from_disk(&mut self) -> Result<()> {
         self.rule_state = rules::load_rule_state().context("读取规则状态失败")?;
         self.rule_entries = rules::discover_rule_entries(&self.app_paths.workspace_root(), &self.rule_state)
             .context("发现规则文件失败")?;
         self.runtime
             .replace_rules(rules::enabled_rules(&self.rule_entries));
+        Ok(())
+    }
+
+    pub fn refresh_skills_from_disk(&mut self) -> Result<()> {
+        self.skill_state = skills::load_skill_state().context("读取技能状态失败")?;
+        self.skill_entries = skills::discover_skill_entries(&self.app_paths.workspace_root(), &self.skill_state)
+            .context("发现技能文件失败")?;
         Ok(())
     }
 
@@ -988,6 +1016,7 @@ impl TuiShell {
         match kind {
             BottomFormKind::McpAdd | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
             BottomFormKind::Rules => self.save_rules_bottom_form(),
+            BottomFormKind::Skills => self.save_skills_bottom_form(),
         }
     }
 
@@ -1083,6 +1112,11 @@ impl TuiShell {
                     bottom_form::activate(form);
                 }
             }
+            BottomFormKind::Skills => {
+                if let Some(form) = self.bottom_form.as_mut() {
+                    bottom_form::activate(form);
+                }
+            }
         }
     }
 
@@ -1159,6 +1193,46 @@ impl TuiShell {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: t!("tui.rules.save_failed", err = err).into_owned(),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn save_skills_bottom_form(&mut self) {
+        let Some(form) = self.bottom_form.as_ref() else {
+            return;
+        };
+
+        for entry in &self.skill_entries {
+            self.skill_state.enabled_overrides.remove(&entry.source.id);
+        }
+        for (skill_id, enabled) in bottom_form::skills_form_overrides(form) {
+            self.skill_state.set_enabled(skill_id, enabled);
+        }
+
+        match skills::save_skill_state(&self.skill_state) {
+            Ok(path) => match self.refresh_skills_from_disk() {
+                Ok(()) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.skills.saved", path = path.display()).into_owned(),
+                        tool_block: None,
+                    });
+                    self.bottom_form = None;
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.skills.refresh_failed", err = err).into_owned(),
+                        tool_block: None,
+                    });
+                }
+            },
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!("tui.skills.save_failed", err = err).into_owned(),
                     tool_block: None,
                 });
             }
@@ -1569,6 +1643,29 @@ impl TuiShell {
         });
     }
 
+    pub(crate) fn handle_skills_slash(&mut self, args: &[&str]) {
+        if !args.is_empty() {
+            self.push_agent_message(t!("tui.skills.usage").into_owned());
+            return;
+        }
+
+        if let Err(err) = self.refresh_skills_from_disk() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.skills.read_failed", err = err).into_owned(),
+                tool_block: None,
+            });
+            return;
+        }
+
+        self.open_skills_form();
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: t!("tui.skills.opened").into_owned(),
+            tool_block: None,
+        });
+    }
+
     pub(crate) fn handle_create_rule_slash(&mut self, message: &str) {
         let tail = message
             .strip_prefix("/create-rule")
@@ -1601,6 +1698,79 @@ impl TuiShell {
         let generation_prompt = rules::build_create_rule_user_turn(&workspace_root, &request);
         self.runtime.submit_user_turn(generation_prompt, None);
         self.apply_runtime_events();
+    }
+
+    pub(crate) fn handle_create_skill_slash(&mut self, message: &str) {
+        let tail = message
+            .strip_prefix("/create-skill")
+            .map(str::trim)
+            .unwrap_or("");
+        let request = match skills::parse_create_skill_request(tail) {
+            Ok(request) => request,
+            Err(err) => {
+                self.push_agent_message(err.to_string());
+                return;
+            }
+        };
+
+        if self.runtime.is_busy() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.busy.pending_reply").into_owned(),
+                tool_block: None,
+            });
+            return;
+        }
+
+        let workspace_root = self.app_paths.workspace_root();
+        if request.scope == SkillScope::Workspace {
+            if let Err(err) = skills::ensure_workspace_spirit_skills_dir(&workspace_root) {
+                self.push_agent_message(err.to_string());
+                return;
+            }
+        }
+
+        let generation_prompt = skills::build_create_skill_user_turn(&workspace_root, &request);
+        self.runtime.submit_user_turn(generation_prompt, None);
+        self.apply_runtime_events();
+    }
+
+    pub(crate) fn handle_i_am_skills_slash(&mut self, message: &str) {
+        let tail = message
+            .strip_prefix("/i-am-skills")
+            .map(str::trim)
+            .unwrap_or("");
+        let Some((skill_name, user_message)) = split_first_token(tail) else {
+            self.push_agent_message(t!("tui.skills.activate_usage").into_owned());
+            return;
+        };
+
+        let Some(skill) = self.find_enabled_skill_entry(skill_name) else {
+            self.push_agent_message(t!("tui.skills.activate_missing", name = skill_name).into_owned());
+            return;
+        };
+
+        let extra_note = user_message.trim();
+        let mut content = t!(
+            "tui.skills.activate_pending",
+            name = skill.source.name,
+            path = skill.source.path.display(),
+            description = skill.source.description
+        )
+        .into_owned();
+        if !extra_note.is_empty() {
+            content.push('\n');
+            content.push_str(
+                t!("tui.skills.activate_extra_note", note = extra_note)
+                    .into_owned()
+                    .as_str(),
+            );
+        }
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content,
+            tool_block: None,
+        });
     }
 
     pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
@@ -2373,6 +2543,16 @@ impl TuiShell {
 
     pub fn open_rules_form(&mut self) {
         self.bottom_form = Some(bottom_form::new_rules_form(&self.rule_entries));
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    pub fn open_skills_form(&mut self) {
+        self.bottom_form = Some(bottom_form::new_skills_form(&self.skill_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
