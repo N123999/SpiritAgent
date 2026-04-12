@@ -7,9 +7,10 @@
 
 ## 架构
 - Rust CLI 位于 `apps/cli/`；[apps/cli/src/ports.rs](apps/cli/src/ports.rs) 定义核心抽象接口；优先通过端口扩展能力，而不是把实现细节散落到上层。
+- **TS 库与宿主边界**：`packages/agent-core` 承载可复用的 Agent 语义（LLM 编排、协议、面向模型的提示拼装；业务逻辑优先落在此）。`apps/cli`（Rust）承载宿主与 UI（交互、工作区路径与规则/配置的扫描与本地状态、桥接与持久化），不把应跨 CLI / Desktop 复用的核心能力长期堆在 Rust。
 - TypeScript core（`packages/agent-core`）负责运行时编排；Rust 侧的 [apps/cli/src/ts_bridge.rs](apps/cli/src/ts_bridge.rs) 负责桥接事件流，[apps/cli/src/host_runtime.rs](apps/cli/src/host_runtime.rs) 负责宿主仍需复用的运行时事件与工具 UI 格式化。
 - [apps/cli/src/main.rs](apps/cli/src/main.rs) 负责 CLI 入口与子命令分发；[apps/cli/src/tui.rs](apps/cli/src/tui.rs) 和 [apps/cli/src/ui.rs](apps/cli/src/ui.rs) 负责交互界面。
-- [apps/cli/src/mcp_manager.rs](apps/cli/src/mcp_manager.rs) 和 [apps/cli/src/tool_runtime.rs](apps/cli/src/tool_runtime.rs) 负责 MCP 与内置工具执行。
+- MCP 主链路与协议实现以 `packages/agent-core` 为准；[apps/cli/src/tool_runtime.rs](apps/cli/src/tool_runtime.rs) 等负责内置工具执行，Rust 侧保留与宿主、桥接相关的配合代码。
 
 ## 构建与测试
 - 默认在仓库根目录执行 Rust 命令：`cargo check -p spirit-agent`、`cargo test -p spirit-agent`（或先 `cd apps/cli` 使用本地 `cargo check`）
