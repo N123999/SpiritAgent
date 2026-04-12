@@ -567,9 +567,14 @@ fn process_key_event(
                 if let Err(e) = shell.paste_bottom_form_from_clipboard() {
                     logging::log_event(&format!("clipboard paste failed: {}", e));
                 } else if let Some(text) = load_clipboard_text() {
+                    let target = if shell.bottom_form_preserves_newline() {
+                        PasteTarget::BottomFormMultiline
+                    } else {
+                        PasteTarget::BottomFormSingleLine
+                    };
                     paste_tracker.prime_explicit_replay_suppression(
                         &text,
-                        PasteTarget::BottomForm,
+                        target,
                         now,
                     );
                 }
@@ -701,21 +706,24 @@ fn normalize_pasted_text(text: &str) -> String {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PasteTarget {
     MainInput,
-    BottomForm,
+    BottomFormSingleLine,
+    BottomFormMultiline,
 }
 
 impl PasteTarget {
     fn newline_text(self) -> &'static str {
         match self {
             Self::MainInput => "\n",
-            Self::BottomForm => " ",
+            Self::BottomFormSingleLine => " ",
+            Self::BottomFormMultiline => "\n",
         }
     }
 
     fn as_str(self) -> &'static str {
         match self {
             Self::MainInput => "main-input",
-            Self::BottomForm => "bottom-form",
+            Self::BottomFormSingleLine => "bottom-form-single-line",
+            Self::BottomFormMultiline => "bottom-form-multiline",
         }
     }
 }
@@ -913,7 +921,11 @@ fn paste_target(shell: &TuiShell) -> Option<PasteTarget> {
     {
         None
     } else if shell.is_bottom_form_active() {
-        Some(PasteTarget::BottomForm)
+        Some(if shell.bottom_form_preserves_newline() {
+            PasteTarget::BottomFormMultiline
+        } else {
+            PasteTarget::BottomFormSingleLine
+        })
     } else {
         Some(PasteTarget::MainInput)
     }
@@ -1089,7 +1101,7 @@ mod tests {
     }
 
     #[test]
-    fn implicit_multiline_replay_normalizes_newline_in_bottom_form() {
+    fn implicit_multiline_replay_normalizes_newline_in_single_line_bottom_form() {
         let mut tracker = PasteReplayTracker::default();
         let clipboard = "Header\nBearer";
         let start = Instant::now();
@@ -1098,7 +1110,7 @@ mod tests {
             assert_eq!(
                 tracker.intercept_key_with_clipboard(
                     &key(KeyCode::Char(ch)),
-                    Some(PasteTarget::BottomForm),
+                    Some(PasteTarget::BottomFormSingleLine),
                     start + Duration::from_millis(index as u64 * 5),
                     Some(clipboard)
                 ),
@@ -1109,11 +1121,40 @@ mod tests {
         assert_eq!(
             tracker.intercept_key_with_clipboard(
                 &key(KeyCode::Enter),
-                Some(PasteTarget::BottomForm),
+                Some(PasteTarget::BottomFormSingleLine),
                 start + Duration::from_millis(35),
                 Some(clipboard)
             ),
             PasteKeyHandling::InsertText(" ".to_string())
+        );
+    }
+
+    #[test]
+    fn implicit_multiline_replay_preserves_newline_in_multiline_bottom_form() {
+        let mut tracker = PasteReplayTracker::default();
+        let clipboard = "line1\nline2";
+        let start = Instant::now();
+
+        for (index, ch) in ['l', 'i', 'n', 'e', '1'].into_iter().enumerate() {
+            assert_eq!(
+                tracker.intercept_key_with_clipboard(
+                    &key(KeyCode::Char(ch)),
+                    Some(PasteTarget::BottomFormMultiline),
+                    start + Duration::from_millis(index as u64 * 5),
+                    Some(clipboard)
+                ),
+                PasteKeyHandling::InsertText(ch.to_string())
+            );
+        }
+
+        assert_eq!(
+            tracker.intercept_key_with_clipboard(
+                &key(KeyCode::Enter),
+                Some(PasteTarget::BottomFormMultiline),
+                start + Duration::from_millis(30),
+                Some(clipboard)
+            ),
+            PasteKeyHandling::InsertText("\n".to_string())
         );
     }
 

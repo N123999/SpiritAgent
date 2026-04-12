@@ -53,8 +53,19 @@ pub struct PendingAssistantAux {
 }
 
 #[derive(Clone, Debug)]
+pub struct McpPromptArgumentBinding {
+    pub name: String,
+    pub required: bool,
+}
+
+#[derive(Clone, Debug)]
 pub enum BottomFormKind {
     McpAdd,
+    McpPrompt {
+        server: String,
+        prompt: String,
+        arguments: Vec<McpPromptArgumentBinding>,
+    },
     Rules,
 }
 

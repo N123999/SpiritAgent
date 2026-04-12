@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::{
     collections::HashMap,
@@ -469,6 +469,12 @@ impl TuiShell {
 
     pub fn is_bottom_form_active(&self) -> bool {
         self.bottom_form.is_some()
+    }
+
+    pub fn bottom_form_preserves_newline(&self) -> bool {
+        self.bottom_form
+            .as_ref()
+            .is_some_and(|form| matches!(form.kind, BottomFormKind::McpPrompt { .. }))
     }
 
     pub fn sync_active_bottom_form_scroll(&mut self, scroll_offset: usize) {
@@ -971,12 +977,12 @@ impl TuiShell {
     }
 
     pub fn dismiss_bottom_form(&mut self) {
-        let Some(form) = self.bottom_form.as_ref() else {
+        let Some(kind) = self.bottom_form.as_ref().map(|form| form.kind.clone()) else {
             return;
         };
 
-        match form.kind {
-            BottomFormKind::McpAdd => self.cancel_bottom_form(),
+        match kind {
+            BottomFormKind::McpAdd | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
             BottomFormKind::Rules => self.save_rules_bottom_form(),
         }
     }
@@ -1061,12 +1067,13 @@ impl TuiShell {
     }
 
     pub fn activate_bottom_form(&mut self) {
-        let Some(form) = self.bottom_form.as_ref() else {
+        let Some(kind) = self.bottom_form.as_ref().map(|form| form.kind.clone()) else {
             return;
         };
 
-        match form.kind {
+        match kind {
             BottomFormKind::McpAdd => self.save_bottom_form(),
+            BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {
                 if let Some(form) = self.bottom_form.as_mut() {
                     bottom_form::activate(form);
@@ -1794,21 +1801,31 @@ impl TuiShell {
                 self.push_mcp_usage();
                 return;
             };
-            match self
-                .runtime
-                .apply_mcp_prompt(&server, prompt, non_empty_opt(args_json))
-            {
-                Ok(summary) => {
+            if let Some(args_json) = non_empty_opt(args_json) {
+                self.apply_mcp_prompt_command(&server, prompt, Some(args_json));
+                return;
+            }
+
+            match self.resolve_mcp_prompt_definition(&server, prompt) {
+                Ok(prompt_definition) if prompt_definition.arguments.is_empty() => {
+                    self.apply_mcp_prompt_command(&server, prompt, None);
+                }
+                Ok(prompt_definition) => {
+                    self.open_mcp_prompt_form(&server, &prompt_definition);
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
-                        content: summary,
+                        content: t!(
+                            "tui.bottom_form.prompt_opened",
+                            server = server,
+                            prompt = prompt
+                        )
+                        .into_owned(),
                         tool_block: None,
                     });
-                    self.apply_runtime_events();
                 }
                 Err(err) => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: format!("应用 MCP prompt 失败: {}", err),
+                    content: format!("读取 MCP prompt 参数失败: {}", err),
                     tool_block: None,
                 }),
             }
@@ -1883,7 +1900,7 @@ impl TuiShell {
     fn push_mcp_usage(&mut self) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
+            content: "用法:\n- /mcp\n- /mcp list\n- /mcp add\n- /mcp inspect [server]\n- /mcp tools [server]\n- /mcp resources [server]\n- /mcp prompts [server]\n- /mcp prompt [server] <prompt> [args_json]\n\n说明:\n- `/mcp add` 会打开底部表单，支持填写 STDIO 或 HTTP server；Enter 保存，Esc 取消。\n- `/mcp prompt` 在省略 `args_json` 且 prompt 定义了参数时，会自动打开参数表单；若 prompt 无参数则直接注入当前会话。\n- 仅有一个 MCP server 时，`[server]` 可省略。\n- `/mcp tool call`、`/mcp resource attach`、`/mcp resource clear` 仍保留为调试入口，但不作为主交互路径。".to_string(),
             tool_block: None,
         });
     }
@@ -2183,6 +2200,16 @@ impl TuiShell {
         self.refresh_suggestions();
     }
 
+    fn open_mcp_prompt_form(&mut self, server: &str, prompt: &McpDiscoveredPrompt) {
+        self.bottom_form = Some(bottom_form::new_mcp_prompt_form(server, prompt));
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
     pub fn open_rules_form(&mut self) {
         self.bottom_form = Some(bottom_form::new_rules_form(&self.rule_entries));
         self.model_picker_active = false;
@@ -2191,6 +2218,83 @@ impl TuiShell {
         self.image_picker_active = false;
         self.set_input(String::new());
         self.refresh_suggestions();
+    }
+
+    fn apply_mcp_prompt_command(
+        &mut self,
+        server: &str,
+        prompt: &str,
+        args_json: Option<&str>,
+    ) -> bool {
+        match self.runtime.apply_mcp_prompt(server, prompt, args_json) {
+            Ok(summary) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: summary,
+                    tool_block: None,
+                });
+                self.apply_runtime_events();
+                true
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("应用 MCP prompt 失败: {}", err),
+                    tool_block: None,
+                });
+                false
+            }
+        }
+    }
+
+    fn apply_prompt_bottom_form(&mut self) {
+        let Some(form) = self.bottom_form.as_ref() else {
+            return;
+        };
+        let BottomFormKind::McpPrompt { server, prompt, .. } = &form.kind else {
+            return;
+        };
+        let server = server.clone();
+        let prompt = prompt.clone();
+
+        match bottom_form::to_prompt_args_json(form) {
+            Ok(args_json) => {
+                if self.apply_mcp_prompt_command(&server, &prompt, args_json.as_deref()) {
+                    self.bottom_form = None;
+                }
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("应用 MCP prompt 失败: {}", err),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn resolve_mcp_prompt_definition(
+        &mut self,
+        server: &str,
+        prompt_name: &str,
+    ) -> Result<McpDiscoveredPrompt> {
+        if let Ok(prompts) = self.runtime.list_mcp_prompts(server) {
+            if let Some(prompt) = prompts.into_iter().find(|prompt| prompt.name == prompt_name) {
+                return Ok(prompt);
+            }
+        }
+
+        if let Ok(prompts) = self.runtime.list_cached_mcp_prompts(server) {
+            if let Some(prompt) = prompts.into_iter().find(|prompt| prompt.name == prompt_name) {
+                return Ok(prompt);
+            }
+        }
+
+        Err(anyhow!(
+            "MCP server {} 中不存在 prompt {}",
+            server,
+            prompt_name
+        ))
     }
 
     fn switch_ui_locale(&mut self, locale_code: &str) {

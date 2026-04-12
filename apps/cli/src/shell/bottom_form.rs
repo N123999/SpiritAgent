@@ -1,12 +1,18 @@
 //! TUI bottom-form helpers.
 
 use std::collections::BTreeMap;
+
 use rust_i18n::t;
+use serde_json::{Map, Value};
 
 use crate::{
+    mcp_types::McpDiscoveredPrompt,
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     rules::{RuleEntry, RuleScope},
-    view::{BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView},
+    view::{
+        BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
+        McpPromptArgumentBinding,
+    },
 };
 
 const MCP_ADD_FIELD_NAME: usize = 0;
@@ -89,6 +95,69 @@ pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
         selected_field: 0,
         scroll_offset: 0,
         footer_hint: t!("form.rules.footer_hint").into_owned(),
+    };
+    ensure_selectable_field(&mut form);
+    form
+}
+
+pub(crate) fn new_mcp_prompt_form(server: &str, prompt: &McpDiscoveredPrompt) -> BottomFormView {
+    let arguments = prompt
+        .arguments
+        .iter()
+        .map(|argument| McpPromptArgumentBinding {
+            name: argument.name.clone(),
+            required: argument.required,
+        })
+        .collect::<Vec<_>>();
+    let fields = prompt
+        .arguments
+        .iter()
+        .map(|argument| {
+            let label_suffix = if argument.required {
+                t!("form.prompt.field.required_suffix").into_owned()
+            } else {
+                t!("form.prompt.field.optional_suffix").into_owned()
+            };
+            let mut help_lines = Vec::new();
+            if let Some(title) = argument.title.as_ref().filter(|title| *title != &argument.name) {
+                help_lines.push(title.clone());
+            }
+            if let Some(description) = argument.description.as_ref().filter(|value| !value.is_empty()) {
+                help_lines.push(description.clone());
+            }
+
+            BottomFormFieldView {
+                label: format!("{}{}", argument.name, label_suffix),
+                help: help_lines.join("\n"),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: if argument.required {
+                        t!("form.prompt.field.required.placeholder").into_owned()
+                    } else {
+                        t!("form.prompt.field.optional.placeholder").into_owned()
+                    },
+                    cursor: 0,
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut form = BottomFormView {
+        kind: BottomFormKind::McpPrompt {
+            server: server.to_string(),
+            prompt: prompt.name.clone(),
+            arguments,
+        },
+        title: format!(
+            "{} · {} / {}",
+            t!("form.prompt.title"),
+            server,
+            prompt.name
+        ),
+        fields,
+        selected_field: 0,
+        scroll_offset: 0,
+        footer_hint: t!("form.prompt.footer_hint").into_owned(),
     };
     ensure_selectable_field(&mut form);
     form
@@ -229,7 +298,7 @@ pub(crate) fn insert_char(form: &mut BottomFormView, ch: char) {
 }
 
 pub(crate) fn insert_text(form: &mut BottomFormView, text: &str) {
-    let normalized = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
+    let normalized = normalize_inserted_text(form, text);
     if normalized.is_empty() {
         return;
     }
@@ -239,7 +308,7 @@ pub(crate) fn insert_text(form: &mut BottomFormView, text: &str) {
         return;
     };
     let idx = char_cursor_to_byte_index(value, *cursor);
-    value.insert_str(idx, &normalized);
+    value.insert_str(idx, normalized.as_str());
     *cursor += normalized.chars().count();
 }
 
@@ -326,6 +395,38 @@ pub(crate) fn to_config(
             transport,
         },
     ))
+}
+
+pub(crate) fn to_prompt_args_json(
+    form: &BottomFormView,
+) -> std::result::Result<Option<String>, String> {
+    let BottomFormKind::McpPrompt { arguments, .. } = &form.kind else {
+        return Err(t!("form.prompt.validation.invalid_form_kind").into_owned());
+    };
+
+    let mut args = Map::new();
+    for (index, argument) in arguments.iter().enumerate() {
+        let value = bottom_form_text_value(form, index);
+        if value.trim().is_empty() {
+            if argument.required {
+                let label = form
+                    .fields
+                    .get(index)
+                    .map(|field| field.label.clone())
+                    .unwrap_or_else(|| argument.name.clone());
+                return Err(t!("form.prompt.validation.required", label = label).into_owned());
+            }
+            continue;
+        }
+
+        args.insert(argument.name.clone(), Value::String(value.to_string()));
+    }
+
+    if args.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(Value::Object(args).to_string()))
+    }
 }
 
 pub(crate) fn rules_form_overrides(form: &BottomFormView) -> Vec<(String, bool)> {
@@ -457,6 +558,15 @@ fn ensure_selectable_field(form: &mut BottomFormView) {
 fn selected_editor_mut(form: &mut BottomFormView) -> Option<&mut BottomFormFieldEditorView> {
     let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
     form.fields.get_mut(selected).map(|field| &mut field.editor)
+}
+
+fn normalize_inserted_text(form: &BottomFormView, text: &str) -> String {
+    match form.kind {
+        BottomFormKind::McpPrompt { .. } => text.replace("\r\n", "\n").replace('\r', "\n"),
+        BottomFormKind::McpAdd | BottomFormKind::Rules => {
+            text.replace("\r\n", " ").replace(['\r', '\n'], " ")
+        }
+    }
 }
 
 fn bottom_form_text_value(form: &BottomFormView, index: usize) -> &str {
@@ -597,13 +707,17 @@ const USER_RULE_LABEL: &str = "rule.md";
 #[cfg(test)]
 mod tests {
     use super::{
-        MetadataFieldKind, activate, new_mcp_add_form, new_rules_form, parse_metadata_map,
-        rules_form_overrides, select_next_field,
+        MetadataFieldKind, activate, insert_text, new_mcp_add_form, new_mcp_prompt_form,
+        new_rules_form, parse_metadata_map, rules_form_overrides, select_next_field,
+        to_prompt_args_json,
     };
     use rust_i18n::t;
     use std::path::PathBuf;
 
-    use crate::rules::{RuleEntry, RulePreview, RuleScope, RuleSource};
+    use crate::{
+        mcp_types::{McpDiscoveredPrompt, McpDiscoveredPromptArgument},
+        rules::{RuleEntry, RulePreview, RuleScope, RuleSource},
+    };
 
     #[test]
     fn parse_header_metadata_supports_colon_syntax() {
@@ -696,6 +810,59 @@ mod tests {
         assert!(help.is_empty());
     }
 
+    #[test]
+    fn prompt_form_marks_required_arguments() {
+        let form = new_mcp_prompt_form("github", &sample_prompt(true));
+
+        assert_eq!(form.fields[0].label, format!("issue{}", t!("form.prompt.field.required_suffix")));
+        assert_eq!(form.fields[1].label, format!("style{}", t!("form.prompt.field.optional_suffix")));
+    }
+
+    #[test]
+    fn prompt_form_args_json_requires_required_fields() {
+        let form = new_mcp_prompt_form("github", &sample_prompt(true));
+
+        let err = to_prompt_args_json(&form).expect_err("missing required field should fail");
+        assert!(err.contains("issue"));
+    }
+
+    #[test]
+    fn prompt_form_args_json_omits_empty_optional_fields() {
+        let mut form = new_mcp_prompt_form("github", &sample_prompt(true));
+        insert_text(&mut form, "123");
+
+        let json = to_prompt_args_json(&form)
+            .expect("args json")
+            .expect("non-empty args json");
+
+        assert_eq!(json, r#"{"issue":"123"}"#);
+    }
+
+    #[test]
+    fn prompt_form_preserves_multiline_paste() {
+        let mut form = new_mcp_prompt_form("github", &sample_prompt(false));
+
+        insert_text(&mut form, "line1\r\nline2");
+
+        let json = to_prompt_args_json(&form)
+            .expect("args json")
+            .expect("non-empty args json");
+        assert_eq!(json, r#"{"issue":"line1\nline2"}"#);
+    }
+
+    #[test]
+    fn mcp_add_form_normalizes_multiline_paste_to_spaces() {
+        let mut form = new_mcp_add_form();
+
+        insert_text(&mut form, "line1\r\nline2");
+
+        let value = match &form.fields[0].editor {
+            crate::view::BottomFormFieldEditorView::Text { value, .. } => value,
+            _ => panic!("expected text field"),
+        };
+        assert_eq!(value, "line1 line2");
+    }
+
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {
         let (id, title, path) = match scope {
             RuleScope::Workspace => (
@@ -724,6 +891,28 @@ mod tests {
                 excerpt: "body".to_string(),
                 truncated: false,
             }),
+        }
+    }
+
+    fn sample_prompt(required: bool) -> McpDiscoveredPrompt {
+        McpDiscoveredPrompt {
+            name: "issue-summary".to_string(),
+            title: Some("Issue Summary".to_string()),
+            description: Some("Summarize an issue with extra context".to_string()),
+            arguments: vec![
+                McpDiscoveredPromptArgument {
+                    name: "issue".to_string(),
+                    title: Some("Issue Number".to_string()),
+                    description: Some("The issue number to summarize".to_string()),
+                    required,
+                },
+                McpDiscoveredPromptArgument {
+                    name: "style".to_string(),
+                    title: Some("Style".to_string()),
+                    description: Some("Optional style hint".to_string()),
+                    required: false,
+                },
+            ],
         }
     }
 }
