@@ -20,6 +20,7 @@ use crate::{
     host_runtime::RuntimeEvent,
     locale,
     logging,
+    mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     ports::{AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, SecretStore},
     rules::{self, RuleEntry, RuleStateFile},
@@ -27,8 +28,8 @@ use crate::{
     shell::{bottom_form, file_reference, manual_shell, slash},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
-        AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestionKind,
-        MessageRole, TuiViewModel,
+        AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
+        InputSuggestionKind, MessageRole, TuiViewModel,
     },
 };
 
@@ -198,8 +199,13 @@ impl TuiShell {
                 return;
             }
 
-            self.slash.suggestions =
-                file_reference::compute_suggestions(&query.raw, &self.file_reference_index);
+            self.slash.suggestions = file_reference::compute_suggestions(
+                &query.raw,
+                &self.file_reference_index,
+            )
+            .into_iter()
+            .map(InputSuggestion::simple)
+            .collect();
 
             if self.slash.selected_suggestion >= self.slash.suggestions.len() {
                 self.slash.selected_suggestion = 0;
@@ -213,7 +219,8 @@ impl TuiShell {
             return;
         };
 
-        self.slash.suggestions = slash::compute_suggestions(&query, &self.slash.commands);
+        let commands = self.slash.commands.clone();
+        self.slash.suggestions = slash::compute_suggestions(self, &query, &commands);
 
         if self.slash.selected_suggestion >= self.slash.suggestions.len() {
             self.slash.selected_suggestion = 0;
@@ -304,6 +311,22 @@ impl TuiShell {
         self.conversation_sel_anchor = None;
         self.conversation_sel_head = None;
         self.conversation_dragging = false;
+    }
+
+    pub(crate) fn list_prompt_capable_mcp_servers(&mut self) -> Result<Vec<ManagedMcpServer>> {
+        self.runtime.list_mcp_servers().map(|servers| {
+            servers
+                .into_iter()
+                .filter(|server| server.enabled && server.capabilities.prompts)
+                .collect()
+        })
+    }
+
+    pub(crate) fn list_cached_mcp_prompts_for_suggestions(
+        &mut self,
+        name: &str,
+    ) -> Result<Vec<McpDiscoveredPrompt>> {
+        self.runtime.list_cached_mcp_prompts(name)
     }
 
     /// `column`, `row`：crossterm 终端坐标（与 ratatui 一致）。
@@ -710,9 +733,9 @@ impl TuiShell {
             .cloned()
         {
             match self.current_input_suggestion_kind() {
-                Some(InputSuggestionKind::Slash) => self.set_input(slash::apply_value(&selected)),
+                Some(InputSuggestionKind::Slash) => self.set_input(selected.replacement),
                 Some(InputSuggestionKind::FileReference) => {
-                    if !self.replace_current_file_reference(&selected, false) {
+                    if !self.replace_current_file_reference(&selected.replacement, false) {
                         return;
                     }
                 }
@@ -740,7 +763,7 @@ impl TuiShell {
             return;
         };
 
-        if self.replace_current_file_reference(&selected, true) {
+        if self.replace_current_file_reference(&selected.replacement, true) {
             self.refresh_suggestions();
         }
     }

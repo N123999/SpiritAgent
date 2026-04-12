@@ -11,6 +11,26 @@ pub enum InputSuggestionKind {
     FileReference,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InputSuggestion {
+    pub label: String,
+    pub replacement: String,
+    pub summary: String,
+    pub details: Vec<String>,
+}
+
+impl InputSuggestion {
+    pub fn simple(value: impl Into<String>) -> Self {
+        let value = value.into();
+        Self {
+            label: value.clone(),
+            replacement: value,
+            summary: String::new(),
+            details: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AssistantAuxKind {
@@ -149,7 +169,7 @@ pub struct TuiViewModel {
     pub show_aux_details: bool,
     pub input_suggestion_kind: Option<InputSuggestionKind>,
     pub input_suggestion_loading: bool,
-    pub slash_suggestions: Vec<String>,
+    pub slash_suggestions: Vec<InputSuggestion>,
     pub selected_suggestion: usize,
     pub model_picker_active: bool,
     pub model_picker_index: usize,

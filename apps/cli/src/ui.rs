@@ -21,7 +21,7 @@ use crate::{
     view::{
         AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind,
         BottomFormView,
-        ChatMessage, InputSuggestionKind, MessageRole,
+        ChatMessage, InputSuggestion, InputSuggestionKind, MessageRole,
         PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
@@ -1400,7 +1400,7 @@ fn build_suggestion_lines(
     let visible_commands = &app.slash_suggestions[start..end];
     let command_column_width = visible_commands
         .iter()
-        .map(|cmd| UnicodeWidthStr::width(format!("  {}", cmd).as_str()))
+        .map(|suggestion| UnicodeWidthStr::width(format!("  {}", suggestion.label).as_str()))
         .max()
         .unwrap_or(0);
     let description_gap = if max_width >= 40 {
@@ -1413,15 +1413,15 @@ fn build_suggestion_lines(
 
     let mut lines = Vec::new();
     for idx in start..end {
-        let cmd = &app.slash_suggestions[idx];
+        let suggestion = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
         let command_style = if is_selected {
             selected_style
         } else {
             default_style
         };
-        let command_text = format!("  {}", cmd);
-        let summary = suggestion_summary(cmd);
+        let command_text = format!("  {}", suggestion.label);
+        let summary = suggestion_summary(suggestion);
 
         if summary.is_empty() || max_width == 0 {
             lines.push(Line::from(Span::styled(command_text, command_style)));
@@ -1448,7 +1448,7 @@ fn build_suggestion_lines(
     }
 
     if total == 1 {
-        let details = suggestion_usage_lines(app.slash_suggestions[selected].as_str());
+        let details = suggestion_usage_lines(&app.slash_suggestions[selected]);
         if !details.is_empty() {
             lines.push(Line::from(Span::styled("", default_style)));
             for detail in details {
@@ -1483,7 +1483,7 @@ fn build_file_reference_suggestion_lines(
         let style = if is_selected { selected_style } else { default_style };
         let prefix = if is_selected { "> " } else { "  " };
         lines.push(Line::from(Span::styled(
-            format!("{}{}", prefix, path),
+            format!("{}{}", prefix, path.label),
             style,
         )));
     }
@@ -1501,8 +1501,12 @@ fn input_suggestion_title(app: &TuiViewModel) -> String {
     }
 }
 
-fn suggestion_summary(command: &str) -> String {
-    match command {
+fn suggestion_summary(suggestion: &InputSuggestion) -> String {
+    if !suggestion.summary.is_empty() {
+        return suggestion.summary.clone();
+    }
+
+    match suggestion.label.as_str() {
         "/help" => t!("ui.suggestion.summary.help").into_owned(),
         "/clear" => t!("ui.suggestion.summary.clear").into_owned(),
         "/quit" | "/exit" => t!("ui.suggestion.summary.quit").into_owned(),
@@ -1519,8 +1523,14 @@ fn suggestion_summary(command: &str) -> String {
     }
 }
 
-fn suggestion_usage_lines(command: &str) -> Vec<String> {
-    match command {
+fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
+    if !suggestion.details.is_empty() {
+        let mut lines = vec![t!("ui.suggestion.usage.heading").into_owned()];
+        lines.extend(suggestion.details.iter().map(|detail| format!("    {}", detail)));
+        return lines;
+    }
+
+    match suggestion.label.as_str() {
         "/model" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /model list".to_string(),
