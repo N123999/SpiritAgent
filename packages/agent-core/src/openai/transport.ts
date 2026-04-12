@@ -49,6 +49,8 @@ const TOOL_MEMORY_RETRY_MAX_CHARS = 4_000;
 const TOOL_TRUNCATION_HEAD_RATIO_NUM = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
 const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
+const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
+const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
 
 export interface OpenAiTransportConfig {
   apiKey: string;
@@ -67,6 +69,31 @@ export interface OpenAiEnabledRule {
   title: string;
   path: string;
   content: string;
+}
+
+export interface OpenAiEnabledSkillCatalogEntry {
+  id: string;
+  scope: 'workspace' | 'user';
+  name: string;
+  description: string;
+  path: string;
+}
+
+export interface OpenAiActiveSkillResourceEntry {
+  kind: string;
+  path: string;
+}
+
+export interface OpenAiActiveSkill {
+  id: string;
+  scope: 'workspace' | 'user';
+  name: string;
+  description: string;
+  path: string;
+  content: string;
+  truncated: boolean;
+  resources: OpenAiActiveSkillResourceEntry[];
+  resourcesTruncated: boolean;
 }
 
 export interface OpenAiToolAgentState {
@@ -104,12 +131,20 @@ export function startOpenAiToolAgentState(
   userInput: string,
   assetRoot = process.cwd(),
   enabledRules: OpenAiEnabledRule[] = [],
+  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [],
+  activeSkills: OpenAiActiveSkill[] = [],
 ): OpenAiToolAgentState {
   const rulesSystemMessage = buildRulesSystemMessage(enabledRules);
+  const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
+  const activeSkillsSystemMessage = buildActiveSkillsSystemMessage(activeSkills);
   const messages: JsonValue[] = [
     {
       role: 'system',
-      content: buildPrimarySystemMessage(rulesSystemMessage),
+      content: buildPrimarySystemMessage(
+        rulesSystemMessage,
+        skillsCatalogSystemMessage,
+        activeSkillsSystemMessage,
+      ),
     },
     ...llmHistoryToOpenAiMessages(history, assetRoot),
   ];
@@ -260,18 +295,22 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   retryState: OpenAiToolAgentState,
   assetRoot = process.cwd(),
   enabledRules: OpenAiEnabledRule[] = [],
+  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [],
+  activeSkills: OpenAiActiveSkill[] = [],
 ): OpenAiToolAgentState {
-  const preservedRulesSystemMessage = findRulesSystemMessageContent(retryState.messages);
+  const preservedSpiritSystemMessage = findSpiritSystemMessageContent(retryState.messages);
   const rebuilt = startOpenAiToolAgentState(
     history,
     userInput,
     assetRoot,
-    preservedRulesSystemMessage === undefined ? enabledRules : [],
+    preservedSpiritSystemMessage === undefined ? enabledRules : [],
+    preservedSpiritSystemMessage === undefined ? enabledSkillCatalog : [],
+    preservedSpiritSystemMessage === undefined ? activeSkills : [],
   );
-  if (preservedRulesSystemMessage !== undefined) {
+  if (preservedSpiritSystemMessage !== undefined) {
     rebuilt.messages[0] = {
       role: 'system',
-      content: buildPrimarySystemMessage(preservedRulesSystemMessage),
+      content: buildPrimarySystemMessage(preservedSpiritSystemMessage),
     };
   }
   rebuilt.steps = retryState.steps;
@@ -606,15 +645,90 @@ export function buildRulesSystemMessage(
   return lines.join('\n').trimEnd();
 }
 
-function findRulesSystemMessageContent(messages: JsonValue[]): string | undefined {
+export function buildSkillsCatalogSystemMessage(
+  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
+): string | undefined {
+  if (enabledSkillCatalog.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    SKILLS_CATALOG_SECTION_PREFIX,
+    'The host exposes the following enabled skills as metadata only.',
+    'Do not assume a skill\'s full instructions unless it appears in the active skills section.',
+    'If a listed skill seems relevant, ask the user to activate it explicitly with /i-am-skills <skill-name>.',
+    '',
+  ];
+
+  for (const skill of enabledSkillCatalog) {
+    lines.push(
+      `<skill id="${escapeRuleAttribute(skill.id)}" scope="${escapeRuleAttribute(skill.scope)}" name="${escapeRuleAttribute(skill.name)}" path="${escapeRuleAttribute(skill.path)}">`,
+    );
+    lines.push(skill.description.trimEnd());
+    lines.push('</skill>');
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
+export function buildActiveSkillsSystemMessage(
+  activeSkills: OpenAiActiveSkill[],
+): string | undefined {
+  if (activeSkills.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    ACTIVE_SKILLS_SECTION_PREFIX,
+    'The following skills were explicitly activated by the user.',
+    'Treat them as additive host-provided instructions for subsequent turns.',
+    'Do not claim you discovered or read these files yourself; this content was provided by the host after explicit activation.',
+    '',
+  ];
+
+  for (const skill of activeSkills) {
+    lines.push(
+      `<skill id="${escapeRuleAttribute(skill.id)}" scope="${escapeRuleAttribute(skill.scope)}" name="${escapeRuleAttribute(skill.name)}" path="${escapeRuleAttribute(skill.path)}" truncated="${skill.truncated ? 'true' : 'false'}" resourcesTruncated="${skill.resourcesTruncated ? 'true' : 'false'}">`,
+    );
+    lines.push(`description: ${skill.description}`);
+    if (skill.resources.length > 0) {
+      lines.push('<resources>');
+      for (const resource of skill.resources) {
+        lines.push(
+          `<resource kind="${escapeRuleAttribute(resource.kind)}" path="${escapeRuleAttribute(resource.path)}" />`,
+        );
+      }
+      lines.push('</resources>');
+    }
+    lines.push('<content>');
+    lines.push(skill.content.trimEnd());
+    lines.push('</content>');
+    lines.push('</skill>');
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
+function findSpiritSystemMessageContent(messages: JsonValue[]): string | undefined {
   for (const message of messages) {
     if (!isJsonObject(message) || message.role !== 'system') {
       continue;
     }
     if (typeof message.content === 'string') {
-      const rulesStart = message.content.indexOf(RULES_SECTION_PREFIX);
-      if (rulesStart >= 0) {
-        return message.content.slice(rulesStart).trim();
+      const content = message.content;
+      const sectionStart = [
+        RULES_SECTION_PREFIX,
+        SKILLS_CATALOG_SECTION_PREFIX,
+        ACTIVE_SKILLS_SECTION_PREFIX,
+      ]
+        .map((prefix) => content.indexOf(prefix))
+        .filter((index) => index >= 0)
+        .sort((left, right) => left - right)
+        .at(0);
+      if (sectionStart !== undefined) {
+        return content.slice(sectionStart).trim();
       }
     }
   }
@@ -1219,8 +1333,8 @@ function escapeRuleAttribute(value: string): string {
     .replaceAll('>', '&gt;');
 }
 
-function buildPrimarySystemMessage(rulesSystemMessage: string | undefined): string {
-  return [TOOL_AGENT_SYSTEM_PROMPT, rulesSystemMessage]
+function buildPrimarySystemMessage(...sections: Array<string | undefined>): string {
+  return [TOOL_AGENT_SYSTEM_PROMPT, ...sections]
     .filter((section): section is string => typeof section === 'string' && section.trim().length > 0)
     .map((section) => section.trim())
     .join('\n\n');

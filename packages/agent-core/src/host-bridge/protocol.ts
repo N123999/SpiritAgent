@@ -9,7 +9,12 @@ import type {
   RuntimeEvent,
   RuntimePendingApproval,
 } from '../runtime.js';
-import type { OpenAiEnabledRule, OpenAiTransportConfig } from '../openai/transport.js';
+import type {
+  OpenAiActiveSkill,
+  OpenAiEnabledRule,
+  OpenAiEnabledSkillCatalogEntry,
+  OpenAiTransportConfig,
+} from '../openai/transport.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -73,6 +78,7 @@ export interface RuntimeInitParams {
   transportConfig: OpenAiTransportConfig;
   history?: LlmMessage[];
   enabledRules?: OpenAiEnabledRule[];
+  enabledSkillCatalog?: OpenAiEnabledSkillCatalogEntry[];
 }
 
 export interface RuntimeSubmitUserTurnParams {
@@ -95,6 +101,14 @@ export interface RuntimeReplaceConfigParams {
 
 export interface RuntimeReplaceRulesParams {
   enabledRules: OpenAiEnabledRule[];
+}
+
+export interface RuntimeReplaceSkillsCatalogParams {
+  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[];
+}
+
+export interface RuntimeActivateSkillParams {
+  skill: OpenAiActiveSkill;
 }
 
 export interface RuntimeAddPendingImageParams {

@@ -29,6 +29,7 @@ use crate::{
     rules::EnabledRule,
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
+    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
     view::{ChatMessage, MessageRole, PendingAssistantAux},
 };
@@ -48,6 +49,7 @@ pub struct TsBridgeRuntime {
     session: SessionModel,
     tool_executor: WorkspaceToolExecutor,
     enabled_rules: Vec<EnabledRule>,
+    enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
     pending_assistant_has_output: bool,
@@ -245,6 +247,7 @@ impl TsBridgeRuntime {
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
         enabled_rules: Vec<EnabledRule>,
+        enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
         let (background_tool_completion_tx, background_tool_completion_rx) =
@@ -257,6 +260,7 @@ impl TsBridgeRuntime {
             session: SessionModel::new(),
             tool_executor: WorkspaceToolExecutor::new(),
             enabled_rules,
+            enabled_skill_catalog,
             pending_aux_state: None,
             pending_approval_kind: None,
             pending_assistant_has_output: false,
@@ -289,6 +293,7 @@ impl TsBridgeRuntime {
             session: SessionModel::new(),
             tool_executor: WorkspaceToolExecutor::new(),
             enabled_rules: Vec::new(),
+            enabled_skill_catalog: Vec::new(),
             pending_aux_state: None,
             pending_approval_kind: None,
             pending_assistant_has_output: false,
@@ -395,6 +400,48 @@ impl TsBridgeRuntime {
             Ok(snapshot) => self.apply_snapshot(snapshot),
             Err(err) => self.handle_bridge_error(anyhow!("解析 TS replaceRules snapshot 失败: {}", err)),
         }
+    }
+
+    pub fn replace_skills_catalog(&mut self, catalog: Vec<EnabledSkillCatalogEntry>) {
+        self.enabled_skill_catalog = catalog;
+        if self.bridge_failed {
+            return;
+        }
+
+        let snapshot = match self.call_bridge(
+            "runtime.replaceSkillsCatalog",
+            Some(json!({
+                "enabledSkillCatalog": self.enabled_skill_catalog,
+            })),
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.handle_bridge_error(err);
+                return;
+            }
+        };
+
+        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
+            Ok(snapshot) => self.apply_snapshot(snapshot),
+            Err(err) => {
+                self.handle_bridge_error(anyhow!("解析 TS replaceSkillsCatalog snapshot 失败: {}", err))
+            }
+        }
+    }
+
+    pub fn activate_skill(&mut self, skill: ActiveSkillPayload) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已失效，无法激活 skill"));
+        }
+
+        let snapshot = self.call_bridge(
+            "runtime.activateSkill",
+            Some(json!({
+                "skill": skill,
+            })),
+        )?;
+        self.apply_snapshot(serde_json::from_value(snapshot)?);
+        Ok(())
     }
 
     pub fn session(&self) -> &SessionModel {
@@ -824,6 +871,7 @@ impl TsBridgeRuntime {
                 "transportConfig": transport_config,
                 "history": llm_history_to_json(self.session.llm_history()),
                 "enabledRules": self.enabled_rules,
+                "enabledSkillCatalog": self.enabled_skill_catalog,
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
@@ -1787,7 +1835,14 @@ mod tests {
             ui_locale: None,
         };
 
-        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root, vec![]).ok()
+        TsBridgeRuntime::new(
+            config,
+            Arc::new(StubSecretStore),
+            workspace_root,
+            vec![],
+            vec![],
+        )
+        .ok()
     }
 
     fn busy_snapshot() -> BridgeRuntimeSnapshot {

@@ -7,7 +7,9 @@ import {
   OpenAiTransport,
   appendOpenAiToolResultMessage,
   startOpenAiToolAgentState,
+  type OpenAiActiveSkill,
   type OpenAiEnabledRule,
+  type OpenAiEnabledSkillCatalogEntry,
 } from '../openai/transport.js';
 
 import { demoLookupToolDefinition, printSmokeSection } from './openai-shared.js';
@@ -103,12 +105,41 @@ async function main(): Promise<void> {
       content: '# Workspace Rules\n- Keep responses concise.',
     },
   ];
+  const enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [
+    {
+      id: 'workspace:code-review',
+      scope: 'workspace',
+      name: 'code-review',
+      description: 'Review diffs when the user asks for code review.',
+      path: 'C:\\Users\\pc\\SpiritAgent\\.spirit\\skills\\code-review\\SKILL.md',
+    },
+  ];
+  const activeSkills: OpenAiActiveSkill[] = [
+    {
+      id: 'workspace:code-review',
+      scope: 'workspace',
+      name: 'code-review',
+      description: 'Review diffs when the user asks for code review.',
+      path: 'C:\\Users\\pc\\SpiritAgent\\.spirit\\skills\\code-review\\SKILL.md',
+      content: '# Code Review\n- Focus on regressions.',
+      truncated: false,
+      resources: [
+        {
+          kind: 'references',
+          path: 'references/checklist.md',
+        },
+      ],
+      resourcesTruncated: false,
+    },
+  ];
 
   const firstState = startOpenAiToolAgentState(
     [],
     'First call demo_lookup exactly once.',
     process.cwd(),
     enabledRules,
+    enabledSkillCatalog,
+    activeSkills,
   );
   const tools = demoLookupToolDefinition();
   const firstRound = await transport.startToolAgentRound(config, firstState, tools);
@@ -163,9 +194,11 @@ async function main(): Promise<void> {
   if (
     typeof firstSystemContent !== 'string' ||
     !firstSystemContent.includes('You are Spirit Agent.') ||
-    !firstSystemContent.includes('[SPIRIT_RULES]')
+    !firstSystemContent.includes('[SPIRIT_RULES]') ||
+    !firstSystemContent.includes('[SPIRIT_SKILLS_CATALOG]') ||
+    !firstSystemContent.includes('[SPIRIT_ACTIVE_SKILLS]')
   ) {
-    throw new Error('request shape smoke 未将主 system prompt 与 rules 合并。');
+    throw new Error('request shape smoke 未将主 system prompt、rules 与 skills 段落合并。');
   }
 
   const assistantToolMessage = secondBody.messages.find(

@@ -16,6 +16,8 @@ const SKILLS_STATE_FILE_NAME: &str = "skills-state.json";
 const SKILL_PREVIEW_MAX_LINES: usize = 8;
 const SKILL_PREVIEW_MAX_CHARS: usize = 1_200;
 const SKILL_NAME_MAX_CHARS: usize = 64;
+const ACTIVE_SKILL_CONTENT_MAX_CHARS: usize = 12_000;
+const ACTIVE_SKILL_RESOURCE_MAX_ENTRIES: usize = 24;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -76,6 +78,29 @@ pub struct EnabledSkillCatalogEntry {
     pub name: String,
     pub description: String,
     pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveSkillResourceEntry {
+    pub kind: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveSkillPayload {
+    pub id: String,
+    pub scope: SkillScope,
+    pub name: String,
+    pub description: String,
+    pub path: PathBuf,
+    pub content: String,
+    pub truncated: bool,
+    #[serde(default)]
+    pub resources: Vec<ActiveSkillResourceEntry>,
+    #[serde(default)]
+    pub resources_truncated: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,6 +261,37 @@ pub fn enabled_skill_catalog(entries: &[SkillEntry]) -> Vec<EnabledSkillCatalogE
             path: entry.source.path.clone(),
         })
         .collect()
+}
+
+pub fn build_active_skill_payload(entry: &SkillEntry) -> Result<ActiveSkillPayload> {
+    let skill_root = entry
+        .source
+        .path
+        .parent()
+        .ok_or_else(|| anyhow!("skill 路径缺少父目录: {}", entry.source.path.display()))?;
+    let (content, truncated) = truncate_active_skill_content(&entry.content);
+    let (resources, resources_truncated) = collect_skill_resources(skill_root)?;
+
+    Ok(ActiveSkillPayload {
+        id: entry.source.id.clone(),
+        scope: entry.source.scope,
+        name: entry.source.name.clone(),
+        description: entry.source.description.clone(),
+        path: entry.source.path.clone(),
+        content,
+        truncated,
+        resources,
+        resources_truncated,
+    })
+}
+
+pub fn build_activate_skill_user_turn(skill_name: &str, extra_note: &str) -> String {
+    let trimmed = extra_note.trim();
+    if trimmed.is_empty() {
+        return format!("请按已激活的 skill \"{}\" 处理当前任务。", skill_name);
+    }
+
+    trimmed.to_string()
 }
 
 pub fn parse_create_skill_request(input: &str) -> Result<CreateSkillRequest> {
@@ -606,6 +662,83 @@ fn build_skill_preview(content: &str) -> SkillPreview {
     }
 }
 
+fn truncate_active_skill_content(content: &str) -> (String, bool) {
+    let chars = content.chars().collect::<Vec<_>>();
+    if chars.len() <= ACTIVE_SKILL_CONTENT_MAX_CHARS {
+        return (content.trim().to_string(), false);
+    }
+
+    let truncated = chars
+        .into_iter()
+        .take(ACTIVE_SKILL_CONTENT_MAX_CHARS)
+        .collect::<String>();
+    (
+        format!(
+            "{}\n\n...<skill content truncated>",
+            truncated.trim_end()
+        ),
+        true,
+    )
+}
+
+fn collect_skill_resources(skill_root: &Path) -> Result<(Vec<ActiveSkillResourceEntry>, bool)> {
+    let mut resources = Vec::new();
+    let mut truncated = false;
+
+    for (kind, dirname) in [
+        ("scripts", "scripts"),
+        ("references", "references"),
+        ("assets", "assets"),
+    ] {
+        let root = skill_root.join(dirname);
+        if !root.is_dir() {
+            continue;
+        }
+
+        let mut stack = vec![root.clone()];
+        while let Some(current) = stack.pop() {
+            let mut entries = fs::read_dir(&current)
+                .with_context(|| format!("读取 skill 资源目录失败: {}", current.display()))?
+                .filter_map(|entry| entry.ok())
+                .collect::<Vec<_>>();
+            entries.sort_by_key(|entry| entry.path());
+            entries.reverse();
+
+            for entry in entries {
+                let path = entry.path();
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(_) => continue,
+                };
+                if file_type.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if !file_type.is_file() {
+                    continue;
+                }
+
+                if resources.len() >= ACTIVE_SKILL_RESOURCE_MAX_ENTRIES {
+                    truncated = true;
+                    return Ok((resources, truncated));
+                }
+
+                let relative = path
+                    .strip_prefix(skill_root)
+                    .unwrap_or(path.as_path())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                resources.push(ActiveSkillResourceEntry {
+                    kind: kind.to_string(),
+                    path: relative,
+                });
+            }
+        }
+    }
+
+    Ok((resources, truncated))
+}
+
 fn truncate_chars(text: &str, count: usize) -> String {
     if count == 0 {
         return String::new();
@@ -971,5 +1104,68 @@ mod tests {
         assert!(prompt.contains("code-review"));
         assert!(prompt.contains("create_file 或 update_file"));
         assert!(prompt.contains("YAML frontmatter"));
+    }
+
+    #[test]
+    fn build_active_skill_payload_collects_resources_and_truncates_long_content() {
+        let workspace_root = temp_test_dir("active-skill-payload");
+        let skill_path = write_skill(
+            &workspace_spirit_skills_dir(&workspace_root),
+            "code-review",
+            &sample_skill(
+                "code-review",
+                "Review diffs when the user asks for code review.",
+                &"A".repeat(ACTIVE_SKILL_CONTENT_MAX_CHARS + 32),
+            ),
+        );
+        let skill_root = skill_path.parent().expect("skill root");
+        fs::create_dir_all(skill_root.join("scripts")).expect("create scripts dir");
+        fs::create_dir_all(skill_root.join("references")).expect("create references dir");
+        fs::write(skill_root.join("scripts/review.ps1"), "Write-Host review")
+            .expect("write script");
+        fs::write(skill_root.join("references/checklist.md"), "- inspect diff")
+            .expect("write reference");
+
+        let entry = SkillEntry {
+            source: SkillSource {
+                id: stable_skill_id(&skill_path),
+                scope: SkillScope::Workspace,
+                root_kind: SkillRootKind::WorkspaceSpirit,
+                name: "code-review".to_string(),
+                description: "Review diffs when the user asks for code review.".to_string(),
+                short_label: ".spirit/skills/code-review/SKILL.md".to_string(),
+                path: skill_path,
+            },
+            enabled: true,
+            content: "A".repeat(ACTIVE_SKILL_CONTENT_MAX_CHARS + 32),
+            preview: SkillPreview::default(),
+        };
+
+        let payload = build_active_skill_payload(&entry).expect("build active skill payload");
+        assert!(payload.truncated);
+        assert!(payload.content.contains("...<skill content truncated>"));
+        assert_eq!(payload.resources.len(), 2);
+        let mut resource_paths = payload
+            .resources
+            .iter()
+            .map(|resource| resource.path.clone())
+            .collect::<Vec<_>>();
+        resource_paths.sort();
+        assert_eq!(
+            resource_paths,
+            vec![
+                "references/checklist.md".to_string(),
+                "scripts/review.ps1".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_activate_skill_user_turn_falls_back_when_note_is_empty() {
+        assert!(build_activate_skill_user_turn("code-review", "  ").contains("code-review"));
+        assert_eq!(
+            build_activate_skill_user_turn("code-review", "聚焦风险与回归"),
+            "聚焦风险与回归"
+        );
     }
 }

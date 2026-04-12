@@ -3,14 +3,18 @@ import { stdin, stdout } from 'node:process';
 import {
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
+  buildActiveSkillsSystemMessage,
   buildRulesSystemMessage,
+  buildSkillsCatalogSystemMessage,
   extractLastOpenAiAssistantText,
   OpenAiTransport,
   rebuildOpenAiToolAgentStateAfterCompaction,
   startOpenAiToolAgentState,
   truncateOpenAiHistoryForCompaction,
   truncateOpenAiToolAgentStateForContextRetry,
+  type OpenAiActiveSkill,
   type OpenAiEnabledRule,
+  type OpenAiEnabledSkillCatalogEntry,
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
 } from './openai/transport.js';
@@ -41,7 +45,9 @@ import type {
   RuntimeNamedMcpServerParams,
   RuntimeReplaceConfigParams,
   RuntimeReplaceRulesParams,
+  RuntimeReplaceSkillsCatalogParams,
   RuntimeRespondToPendingApprovalParams,
+  RuntimeActivateSkillParams,
   RuntimeStartManualMcpToolParams,
   RuntimeStartManualToolCommandParams,
   RuntimeSubmitUserTurnParams,
@@ -59,6 +65,8 @@ const toolExecutor = new HostToolExecutorProxy(peer);
 let runtime: HostRuntime | undefined;
 let transportConfig: OpenAiTransportConfig | undefined;
 let enabledRules: OpenAiEnabledRule[] = [];
+let enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [];
+let activeSkills: OpenAiActiveSkill[] = [];
 const llmTransport = new OpenAiTransport();
 
 function logBridge(message: string, extra?: unknown): void {
@@ -78,6 +86,20 @@ function requireRuntime(): HostRuntime {
   return runtime;
 }
 
+function pruneActiveSkillsAgainstCatalog(
+  skills: OpenAiActiveSkill[],
+  catalog: OpenAiEnabledSkillCatalogEntry[],
+): OpenAiActiveSkill[] {
+  const allowedIds = new Set(catalog.map((entry) => entry.id));
+  return skills.filter((skill) => allowedIds.has(skill.id));
+}
+
+function upsertActiveSkill(skills: OpenAiActiveSkill[], next: OpenAiActiveSkill): OpenAiActiveSkill[] {
+  const filtered = skills.filter((skill) => skill.id !== next.id);
+  filtered.push({ ...next, resources: [...next.resources] });
+  return filtered;
+}
+
 async function createRuntime(
   config: OpenAiTransportConfig,
   history: LlmMessage[] = [],
@@ -92,7 +114,14 @@ async function createRuntime(
     cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
   });
   const createToolAgentState = (messages: LlmMessage[], userInput: string) =>
-    startOpenAiToolAgentState(messages, userInput, workspaceRoot, enabledRules);
+    startOpenAiToolAgentState(
+      messages,
+      userInput,
+      workspaceRoot,
+      enabledRules,
+      enabledSkillCatalog,
+      activeSkills,
+    );
 
   return new AgentRuntime({
     config,
@@ -111,6 +140,8 @@ async function createRuntime(
         retryState,
         workspaceRoot,
         enabledRules,
+        enabledSkillCatalog,
+        activeSkills,
       ),
     resolveWorkspaceFilesFromInput: (text) => pendingWorkspaceFilesFromInput(workspaceRoot, text),
   }, history);
@@ -163,6 +194,8 @@ peer.on('runtime.init', async (rawParams) => {
   logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
   enabledRules = [...(params.enabledRules ?? [])];
+  enabledSkillCatalog = [...(params.enabledSkillCatalog ?? [])];
+  activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
   return buildSnapshot(runtime);
 });
@@ -179,6 +212,20 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
 peer.on('runtime.replaceRules', async (rawParams) => {
   const params = rawParams as RuntimeReplaceRulesParams;
   enabledRules = [...params.enabledRules];
+  return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.replaceSkillsCatalog', async (rawParams) => {
+  const params = rawParams as RuntimeReplaceSkillsCatalogParams;
+  enabledSkillCatalog = [...params.enabledSkillCatalog];
+  activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
+  return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.activateSkill', async (rawParams) => {
+  const params = rawParams as RuntimeActivateSkillParams;
+  activeSkills = upsertActiveSkill(activeSkills, params.skill);
+  activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   return buildSnapshot(requireRuntime());
 });
 
@@ -370,6 +417,8 @@ peer.on('runtime.exportState', async () => {
 
   const baseSystemPrompts = llmTransport.llmSystemPromptsForExport() as Record<string, JsonValue>;
   const rulesSystemPrompt = buildRulesSystemMessage(enabledRules);
+  const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
+  const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(activeSkills);
 
   return {
     apiMessages: llmTransport.llmHistoryAsApiMessages([...target.history()]),
@@ -377,6 +426,12 @@ peer.on('runtime.exportState', async () => {
     systemPrompts: {
       ...baseSystemPrompts,
       ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
+      ...(skillsCatalogSystemPrompt === undefined
+        ? {}
+        : { skillsCatalog: skillsCatalogSystemPrompt }),
+      ...(activeSkillsSystemPrompt === undefined
+        ? {}
+        : { activeSkills: activeSkillsSystemPrompt }),
     },
   };
 });

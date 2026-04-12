@@ -12,6 +12,7 @@ use crate::{
     model_registry::AppConfig,
     ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore},
     rules::EnabledRule,
+    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     session::SessionModel,
     ts_bridge::TsBridgeRuntime,
     view::PendingAssistantAux,
@@ -34,9 +35,16 @@ impl RuntimeHandle {
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
         enabled_rules: Vec<EnabledRule>,
+        enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
     ) -> Result<Self> {
         Ok(Self {
-            runtime: TsBridgeRuntime::new(config, secret_store, workspace_root, enabled_rules)?,
+            runtime: TsBridgeRuntime::new(
+                config,
+                secret_store,
+                workspace_root,
+                enabled_rules,
+                enabled_skill_catalog,
+            )?,
         })
     }
 
@@ -54,6 +62,14 @@ impl RuntimeHandle {
 
     pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
         self.runtime.replace_rules(rules)
+    }
+
+    pub fn replace_skills_catalog(&mut self, catalog: Vec<EnabledSkillCatalogEntry>) {
+        self.runtime.replace_skills_catalog(catalog)
+    }
+
+    pub fn activate_skill(&mut self, skill: ActiveSkillPayload) -> Result<()> {
+        self.runtime.activate_skill(skill)
     }
 
     pub fn session(&self) -> &SessionModel {

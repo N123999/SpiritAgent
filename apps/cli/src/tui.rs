@@ -120,6 +120,7 @@ impl TuiShell {
             Arc::clone(&secret_store),
             workspace_root.clone(),
             rules::enabled_rules(&rule_entries),
+            skills::enabled_skill_catalog(&skill_entries),
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
         let initial_mcp_status = runtime.mcp_status_snapshot();
@@ -216,6 +217,8 @@ impl TuiShell {
         self.skill_state = skills::load_skill_state().context("读取技能状态失败")?;
         self.skill_entries = skills::discover_skill_entries(&self.app_paths.workspace_root(), &self.skill_state)
             .context("发现技能文件失败")?;
+        self.runtime
+            .replace_skills_catalog(skills::enabled_skill_catalog(&self.skill_entries));
         Ok(())
     }
 
@@ -1750,27 +1753,30 @@ impl TuiShell {
             return;
         };
 
-        let extra_note = user_message.trim();
-        let mut content = t!(
-            "tui.skills.activate_pending",
-            name = skill.source.name,
-            path = skill.source.path.display(),
-            description = skill.source.description
-        )
-        .into_owned();
-        if !extra_note.is_empty() {
-            content.push('\n');
-            content.push_str(
-                t!("tui.skills.activate_extra_note", note = extra_note)
-                    .into_owned()
-                    .as_str(),
-            );
+        if self.runtime.is_busy() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.busy.pending_reply").into_owned(),
+                tool_block: None,
+            });
+            return;
         }
-        self.messages.push(ChatMessage {
-            role: MessageRole::Agent,
-            content,
-            tool_block: None,
-        });
+
+        let payload = match skills::build_active_skill_payload(skill) {
+            Ok(payload) => payload,
+            Err(err) => {
+                self.push_agent_message(t!("tui.skills.activate_failed", err = err).into_owned());
+                return;
+            }
+        };
+        if let Err(err) = self.runtime.activate_skill(payload) {
+            self.push_agent_message(t!("tui.skills.activate_failed", err = err).into_owned());
+            return;
+        }
+
+        let user_turn = skills::build_activate_skill_user_turn(skill_name, user_message);
+        self.runtime.submit_user_turn(user_turn, None);
+        self.apply_runtime_events();
     }
 
     pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
