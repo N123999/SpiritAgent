@@ -656,9 +656,18 @@ export class McpService {
 
     this.toolingCacheInitialized = false;
     this.primeRegistryFromDisk();
-    this.toolingRefreshPromise = this.refreshToolingCaches().finally(() => {
-      this.toolingRefreshPromise = undefined;
+    const refreshPromise = this.refreshToolingCaches();
+    const settledPromise = refreshPromise.finally(() => {
+      if (this.toolingRefreshPromise === refreshPromise) {
+        this.toolingRefreshPromise = undefined;
+      }
     });
+    void settledPromise.catch((error) => {
+      console.error('[mcp-service] refreshToolingCaches.failed', {
+        error: describeError(error),
+      });
+    });
+    this.toolingRefreshPromise = refreshPromise;
   }
 
   private primeRegistryFromDisk(): void {
