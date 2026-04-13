@@ -44,3 +44,11 @@
 - 忽略所有 `node_modules/` 目录
 - 忽略所有 `dist/` 目录
 - 忽略所有 `*.tsbuildinfo` 文件
+
+## 提交规范
+- 使用约定式提交（Conventional Commits）格式
+- Type 和范围使用英文，其余部分使用中文
+- 格式：`<type>(<scope>): <description>`
+- 示例：`fix(cli): 回退 slash 命令补全机制更改`
+- 常见 Type：`feat`、`fix`、`docs`、`style`、`refactor`、`test`、`chore`
+- 常见 Scope：`cli`、`core`、`tui`、`mcp`、`skills`、`docs`
