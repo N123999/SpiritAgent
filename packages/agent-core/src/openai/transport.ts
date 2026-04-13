@@ -1341,7 +1341,6 @@ function buildPrimarySystemMessage(...sections: Array<string | undefined>): stri
 }
 
 function normalizeMessagesForRequest(messages: JsonValue[]): JsonValue[] {
-  // TODO: 某些 LLM 提供商不兼容多个 system message，后续可能需要单独适配提供商模型，BYOK 容不得代码污染。
   return messages.map((message) => cloneJsonValue(message));
 }
 
