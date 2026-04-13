@@ -20,6 +20,11 @@ const MCP_ADD_FIELD_NAME: usize = 0;
 const MCP_ADD_FIELD_TRANSPORT: usize = 1;
 const MCP_ADD_FIELD_ENDPOINT: usize = 2;
 const MCP_ADD_FIELD_METADATA: usize = 3;
+
+const MODEL_ADD_FIELD_NAME: usize = 0;
+const MODEL_ADD_FIELD_API_BASE: usize = 1;
+const MODEL_ADD_FIELD_API_KEY: usize = 2;
+
 const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
 pub(crate) fn new_mcp_add_form() -> BottomFormView {
@@ -34,6 +39,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
                     value: String::new(),
                     placeholder: t!("form.mcp.field.name.placeholder").into_owned(),
                     cursor: 0,
+                    mask: false,
                 },
             },
             BottomFormFieldView {
@@ -54,6 +60,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
                     value: String::new(),
                     placeholder: String::new(),
                     cursor: 0,
+                    mask: false,
                 },
             },
             BottomFormFieldView {
@@ -63,6 +70,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
                     value: String::new(),
                     placeholder: String::new(),
                     cursor: 0,
+                    mask: false,
                 },
             },
         ],
@@ -71,6 +79,49 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
         footer_hint: t!("form.mcp.footer_hint").into_owned(),
     };
     sync_mcp_add_form_fields(&mut form);
+    form
+}
+
+pub(crate) fn new_model_add_form() -> BottomFormView {
+    let form = BottomFormView {
+        kind: BottomFormKind::ModelAdd,
+        title: t!("form.model.title").into_owned(),
+        fields: vec![
+            BottomFormFieldView {
+                label: t!("form.model.field.name.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: t!("form.model.field.name.placeholder").into_owned(),
+                    cursor: 0,
+                    mask: false,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.model.field.api_base.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: t!("form.model.field.api_base.placeholder").into_owned(),
+                    cursor: 0,
+                    mask: false,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.model.field.api_key.label").into_owned(),
+                help: t!("form.model.field.api_key.help").into_owned(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: t!("form.model.field.api_key.placeholder").into_owned(),
+                    cursor: 0,
+                    mask: true,
+                },
+            },
+        ],
+        selected_field: MODEL_ADD_FIELD_NAME,
+        scroll_offset: 0,
+        footer_hint: t!("form.model.footer_hint").into_owned(),
+    };
     form
 }
 
@@ -169,6 +220,7 @@ pub(crate) fn new_mcp_prompt_form(
                         t!("form.prompt.field.optional.placeholder").into_owned()
                     },
                     cursor: 0,
+                    mask: false,
                 },
             }
         })
@@ -181,6 +233,7 @@ pub(crate) fn new_mcp_prompt_form(
             value: initial_user_message.unwrap_or_default().to_string(),
             placeholder: t!("form.prompt.field.user_message.placeholder").into_owned(),
             cursor: initial_user_message.unwrap_or_default().chars().count(),
+            mask: false,
         },
     });
 
@@ -439,6 +492,34 @@ pub(crate) fn to_config(
     ))
 }
 
+pub(crate) fn parse_model_add_form(
+    form: &BottomFormView,
+) -> std::result::Result<(String, String, String), String> {
+    if !matches!(form.kind, BottomFormKind::ModelAdd) {
+        return Err(t!("form.model.validation.invalid_form_kind").into_owned());
+    }
+
+    let name = bottom_form_text_value(form, MODEL_ADD_FIELD_NAME).trim().to_string();
+    if name.is_empty() {
+        return Err(t!("form.model.validation.name_empty").into_owned());
+    }
+    if name.chars().any(char::is_whitespace) {
+        return Err(t!("form.model.validation.name_whitespace").into_owned());
+    }
+
+    let api_base = bottom_form_text_value(form, MODEL_ADD_FIELD_API_BASE).trim().to_string();
+    if api_base.is_empty() {
+        return Err(t!("form.model.validation.api_base_empty").into_owned());
+    }
+
+    let api_key = bottom_form_text_value(form, MODEL_ADD_FIELD_API_KEY).trim().to_string();
+    if api_key.is_empty() {
+        return Err(t!("form.model.validation.api_key_empty").into_owned());
+    }
+
+    Ok((name, api_base, api_key))
+}
+
 pub(crate) fn to_prompt_args_json(
     form: &BottomFormView,
 ) -> std::result::Result<Option<String>, String> {
@@ -648,9 +729,10 @@ fn selected_editor_mut(form: &mut BottomFormView) -> Option<&mut BottomFormField
 fn normalize_inserted_text(form: &BottomFormView, text: &str) -> String {
     match form.kind {
         BottomFormKind::McpPrompt { .. } => text.replace("\r\n", "\n").replace('\r', "\n"),
-        BottomFormKind::McpAdd | BottomFormKind::Rules | BottomFormKind::Skills => {
-            text.replace("\r\n", " ").replace(['\r', '\n'], " ")
-        }
+        BottomFormKind::McpAdd
+        | BottomFormKind::ModelAdd
+        | BottomFormKind::Rules
+        | BottomFormKind::Skills => text.replace("\r\n", " ").replace(['\r', '\n'], " "),
     }
 }
 
@@ -790,8 +872,9 @@ enum McpAddTransportKind {
 mod tests {
     use super::{
         MetadataFieldKind, activate, insert_text, new_mcp_add_form, new_mcp_prompt_form,
-        new_rules_form, new_skills_form, parse_metadata_map, prompt_user_message,
-        rules_form_overrides, select_next_field, skills_form_overrides, to_prompt_args_json,
+        new_model_add_form, new_rules_form, new_skills_form, parse_metadata_map,
+        parse_model_add_form, prompt_user_message, rules_form_overrides, select_next_field,
+        skills_form_overrides, to_prompt_args_json,
     };
     use rust_i18n::t;
     use std::path::PathBuf;
@@ -974,6 +1057,21 @@ mod tests {
             _ => panic!("expected text field"),
         };
         assert_eq!(value, "line1 line2");
+    }
+
+    #[test]
+    fn model_add_form_parses_three_fields() {
+        let mut form = new_model_add_form();
+        assert!(matches!(form.kind, crate::view::BottomFormKind::ModelAdd));
+        insert_text(&mut form, "m1");
+        form.selected_field = 1;
+        insert_text(&mut form, "https://api.example/v1");
+        form.selected_field = 2;
+        insert_text(&mut form, "sk-secret");
+        let parsed = parse_model_add_form(&form).expect("parse");
+        assert_eq!(parsed.0, "m1");
+        assert_eq!(parsed.1, "https://api.example/v1");
+        assert_eq!(parsed.2, "sk-secret");
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

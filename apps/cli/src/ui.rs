@@ -1606,7 +1606,8 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /model list".to_string(),
             "    /model use <name>".to_string(),
-            "    /model add <name> <api_base> <api_key>".to_string(),
+            t!("ui.suggestion.usage.model.add_form").into_owned(),
+            t!("ui.suggestion.usage.model.add_cli").into_owned(),
             "    /model remove <name>".to_string(),
         ],
         "/sessions" => vec![
@@ -1859,12 +1860,27 @@ fn bottom_form_text_inner_width(panel_width: u16) -> usize {
         .max(1)
 }
 
+fn mask_bottom_form_secret(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if w == 0 {
+            continue;
+        }
+        for _ in 0..w {
+            out.push('*');
+        }
+    }
+    out
+}
+
 fn bottom_form_text_visual_line_count(
     value: &str,
     placeholder: &str,
     text_inner_w: usize,
+    mask: bool,
 ) -> usize {
-    build_bottom_form_text_lines(value, placeholder, text_inner_w, false)
+    build_bottom_form_text_lines(value, placeholder, text_inner_w, false, mask)
         .len()
         .max(1)
 }
@@ -1873,8 +1889,9 @@ fn bottom_form_text_field_body_outer_height(
     value: &str,
     placeholder: &str,
     text_inner_w: usize,
+    mask: bool,
 ) -> u16 {
-    bottom_form_text_visual_line_count(value, placeholder, text_inner_w)
+    bottom_form_text_visual_line_count(value, placeholder, text_inner_w, mask)
         .max(1)
         .saturating_add(2) as u16
 }
@@ -1886,6 +1903,7 @@ fn bottom_form_text_field_outer_height(
     placeholder: &str,
     field_width: usize,
     text_inner_w: usize,
+    mask: bool,
 ) -> u16 {
     let label_height = if label.trim().is_empty() {
         0
@@ -1903,6 +1921,7 @@ fn bottom_form_text_field_outer_height(
             value,
             placeholder,
             text_inner_w,
+            mask,
         ))
         .saturating_add(help_height)
 }
@@ -1917,7 +1936,10 @@ fn bottom_form_field_outer_height(
             build_bottom_form_footer_lines(text, field_width).len().max(1) as u16
         }
         BottomFormFieldEditorView::Text {
-            value, placeholder, ..
+            value,
+            placeholder,
+            mask,
+            ..
         } => bottom_form_text_field_outer_height(
             &field.label,
             &field.help,
@@ -1925,6 +1947,7 @@ fn bottom_form_field_outer_height(
             placeholder,
             field_width,
             text_inner_w,
+            *mask,
         ),
         BottomFormFieldEditorView::Choice { .. } => 3,
         BottomFormFieldEditorView::Checkbox { .. } => {
@@ -2077,9 +2100,17 @@ fn build_bottom_form_text_lines(
     placeholder: &str,
     max_width: usize,
     is_selected: bool,
+    mask: bool,
 ) -> Vec<Line<'static>> {
-    let (text, is_placeholder) = if value.is_empty() {
+    let masked_storage: Option<String> = if !value.is_empty() && mask {
+        Some(mask_bottom_form_secret(value))
+    } else {
+        None
+    };
+    let (text, is_placeholder): (&str, bool) = if value.is_empty() {
         (placeholder, true)
+    } else if let Some(ref masked) = masked_storage {
+        (masked.as_str(), false)
     } else {
         (value, false)
     };
@@ -2198,6 +2229,7 @@ fn draw_bottom_form(
                 value,
                 placeholder,
                 cursor,
+                mask,
             } => draw_bottom_form_text_field(
                 frame,
                 field_area,
@@ -2206,6 +2238,7 @@ fn draw_bottom_form(
                 value,
                 placeholder,
                 *cursor,
+                *mask,
                 index == form.selected_field,
             ),
             BottomFormFieldEditorView::Choice { options, selected } => {
@@ -2522,6 +2555,7 @@ fn draw_bottom_form_text_field(
     value: &str,
     placeholder: &str,
     cursor_chars: usize,
+    mask: bool,
     is_selected: bool,
 ) -> Option<(u16, u16)> {
     let mut next_y = area.y;
@@ -2559,6 +2593,7 @@ fn draw_bottom_form_text_field(
         value,
         placeholder,
         area.width.saturating_sub(2).max(1) as usize,
+        mask,
     );
     let body_area = Rect {
         x: area.x,
@@ -2572,7 +2607,13 @@ fn draw_bottom_form_text_field(
     let inner = block.inner(body_area);
     frame.render_widget(block, body_area);
 
-    let lines = build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
+    let lines = build_bottom_form_text_lines(
+        value,
+        placeholder,
+        inner.width as usize,
+        is_selected,
+        mask,
+    );
     frame.render_widget(Paragraph::new(lines), inner);
 
     next_y = next_y.saturating_add(body_height);
@@ -2594,8 +2635,13 @@ fn draw_bottom_form_text_field(
         return None;
     }
 
-    let prefix: String = value.chars().take(cursor_chars).collect();
-    let (row, col) = wrapped_text_cursor_position(&prefix, inner.width as usize);
+    let prefix_raw: String = value.chars().take(cursor_chars).collect();
+    let prefix_for_layout = if mask && !value.is_empty() {
+        mask_bottom_form_secret(&prefix_raw)
+    } else {
+        prefix_raw
+    };
+    let (row, col) = wrapped_text_cursor_position(&prefix_for_layout, inner.width as usize);
     Some((
         inner.x + col.min(inner.width.saturating_sub(1) as usize) as u16,
         inner.y + row as u16,
@@ -2781,6 +2827,7 @@ mod tests {
                         value: "github".to_string(),
                         placeholder: "名称，例如 github".to_string(),
                         cursor: 0,
+                        mask: false,
                     },
                 },
                 BottomFormFieldView {
@@ -2799,6 +2846,7 @@ mod tests {
                         placeholder: "命令，例如 npx -y @modelcontextprotocol/server-github"
                             .to_string(),
                         cursor: 0,
+                        mask: false,
                     },
                 },
                 BottomFormFieldView {
@@ -2808,6 +2856,7 @@ mod tests {
                         value: "GITHUB_TOKEN=demo".to_string(),
                         placeholder: "环境变量，可选，例如 GITHUB_TOKEN=demo".to_string(),
                         cursor: 0,
+                        mask: false,
                     },
                 },
             ],

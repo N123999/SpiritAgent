@@ -61,6 +61,7 @@ pub struct McpPromptArgumentBinding {
 #[derive(Clone, Debug)]
 pub enum BottomFormKind {
     McpAdd,
+    ModelAdd,
     McpPrompt {
         server: String,
         prompt: String,
@@ -96,6 +97,8 @@ pub enum BottomFormFieldEditorView {
         value: String,
         placeholder: String,
         cursor: usize,
+        /// When true, the TUI renders the value masked (e.g. API keys).
+        mask: bool,
     },
     Choice {
         options: Vec<String>,

@@ -123,9 +123,10 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     name: name.clone(),
                     api_base: api_base.clone(),
                 });
+                cfg.active_model = name.clone();
                 secret_store.save_model_api_key(&name, &key_value)?;
                 config_store.save(&cfg)?;
-                println!("已添加模型: {}", name);
+                println!("已添加模型: {}，并已设为当前模型", name);
                 println!("api_base: {}", api_base);
             }
         }

@@ -1020,7 +1020,9 @@ impl TuiShell {
         };
 
         match kind {
-            BottomFormKind::McpAdd | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
+            BottomFormKind::McpAdd
+            | BottomFormKind::ModelAdd
+            | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
             BottomFormKind::Rules => self.save_rules_bottom_form(),
             BottomFormKind::Skills => self.save_skills_bottom_form(),
         }
@@ -1111,7 +1113,7 @@ impl TuiShell {
         };
 
         match kind {
-            BottomFormKind::McpAdd => self.save_bottom_form(),
+            BottomFormKind::McpAdd | BottomFormKind::ModelAdd => self.save_bottom_form(),
             BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {
                 if let Some(form) = self.bottom_form.as_mut() {
@@ -1130,6 +1132,40 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_ref() else {
             return;
         };
+
+        if matches!(form.kind, BottomFormKind::ModelAdd) {
+            match bottom_form::parse_model_add_form(form) {
+                Ok((name, api_base, api_key)) => match self.apply_model_add_and_switch(
+                    name.as_str(),
+                    api_base.as_str(),
+                    api_key.as_str(),
+                ) {
+                    Ok(()) => {
+                        self.bottom_form = None;
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: t!("tui.model_add.saved", name = name).into_owned(),
+                            tool_block: None,
+                        });
+                    }
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: err,
+                            tool_block: None,
+                        });
+                    }
+                },
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.model_add.validation_failed", err = err).into_owned(),
+                        tool_block: None,
+                    });
+                }
+            }
+            return;
+        }
 
         match bottom_form::to_config(form) {
             Ok((server_name, config)) => match self.runtime.add_mcp_server(&server_name, config) {
@@ -1249,6 +1285,41 @@ impl TuiShell {
         slash::handle_command(self, message);
     }
 
+    /// Adds a model, saves API key, sets it as `active_model`, and persists config.
+    fn apply_model_add_and_switch(
+        &mut self,
+        name: &str,
+        api_base: &str,
+        api_key: &str,
+    ) -> Result<(), String> {
+        let mut config = self.runtime.config().clone();
+        if config.has_model(name) {
+            return Err(t!("tui.model_add.duplicate", name = name).into_owned());
+        }
+
+        config.add_model(ModelProfile {
+            name: name.to_string(),
+            api_base: api_base.to_string(),
+        });
+        config.active_model = name.to_string();
+
+        if let Err(err) = self.runtime.validate_config_change(&config) {
+            return Err(err.to_string());
+        }
+
+        if let Err(err) = self.secret_store.save_model_api_key(name, api_key) {
+            return Err(t!("tui.model_add.key_save_failed", err = err).into_owned());
+        }
+
+        if let Err(err) = self.config_store.save(&config) {
+            return Err(t!("tui.model_add.config_save_failed", err = err).into_owned());
+        }
+
+        self.runtime.replace_config(config);
+        self.apply_runtime_events();
+        Ok(())
+    }
+
     pub(crate) fn handle_model_slash(&mut self, args: &[&str]) {
         match args {
             [] => self.open_model_picker(),
@@ -1284,7 +1355,7 @@ impl TuiShell {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: format!(
-                            "模型不存在: {}，先用 `/model add {} <api_base> <api_key>`",
+                            "模型不存在: {}，先用 `/model add` 打开表单添加，或 `/model add {} <api_base> <api_key>`",
                             model, model
                         ),
                         tool_block: None,
@@ -1316,49 +1387,30 @@ impl TuiShell {
                     });
                 }
             }
-            ["add"] | ["add", _] | ["add", _, _] => {
+            ["add"] => {
+                self.open_model_add_form();
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "用法: `/model add <name> <api_base> <api_key>`".to_string(),
+                    content: t!("tui.model_add.opened").into_owned(),
                     tool_block: None,
                 });
             }
             ["add", model, api_base, api_key] => {
-                let mut config = self.runtime.config().clone();
-                if config.has_model(model) {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("模型已存在: {}", model),
-                        tool_block: None,
-                    });
-                    return;
-                }
-
-                config.add_model(ModelProfile {
-                    name: (*model).to_string(),
-                    api_base: (*api_base).to_string(),
-                });
-                if let Err(err) = self.secret_store.save_model_api_key(model, api_key) {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("模型已添加，但密钥保存失败: {}", err),
-                        tool_block: None,
-                    });
-                    return;
-                }
-                if let Err(err) = self.config_store.save(&config) {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("添加成功但保存失败: {}", err),
-                        tool_block: None,
-                    });
-                } else {
-                    self.runtime.replace_config(config);
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: format!("已添加模型: {} (api_base: {})", model, api_base),
-                        tool_block: None,
-                    });
+                match self.apply_model_add_and_switch(model, api_base, api_key) {
+                    Ok(()) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: t!("tui.model_add.saved", name = model).into_owned(),
+                            tool_block: None,
+                        });
+                    }
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: err,
+                            tool_block: None,
+                        });
+                    }
                 }
             }
             ["remove"] => {
@@ -1408,7 +1460,7 @@ impl TuiShell {
             _ => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
-                    content: "用法:\n- `/model list`\n- `/model use <name>`\n- `/model add <name> <api_base> <api_key>`\n- `/model remove <name>`".to_string(),
+                    content: "用法:\n- `/model list`\n- `/model use <name>`\n- `/model add`（底部表单）或 `/model add <name> <api_base> <api_key>`\n- `/model remove <name>`".to_string(),
                     tool_block: None,
                 });
             }
@@ -2421,7 +2473,7 @@ impl TuiShell {
         if self.runtime.config().models.is_empty() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: "当前没有可选模型，请先 /model add <name> <api_base> <api_key>。"
+                content: "当前没有可选模型，请先 `/model add` 添加（或一行 `/model add <name> <api_base> <api_key>`）。"
                     .to_string(),
                 tool_block: None,
             });
@@ -2526,6 +2578,16 @@ impl TuiShell {
 
     fn open_mcp_add_form(&mut self) {
         self.bottom_form = Some(bottom_form::new_mcp_add_form());
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    fn open_model_add_form(&mut self) {
+        self.bottom_form = Some(bottom_form::new_model_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
