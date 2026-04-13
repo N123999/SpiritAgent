@@ -122,96 +122,62 @@ fn command_replacement(command: &str) -> String {
     }
 }
 
+/// When the user continues past the primary slash command (e.g. `/model add …`), top-level
+/// [`slash_commands`] no longer prefix-match, so we fall back here. We intentionally return a
+/// **single** suggestion whose `label` is the primary command (e.g. `/model`) so the TUI can show
+/// the static usage block (`ui.rs` only renders it when there is exactly one slash suggestion).
+/// `replacement` preserves the full query so applying the suggestion does not erase typed args.
+fn primary_help_suggestion(primary: &str, query: &str) -> InputSuggestion {
+    InputSuggestion {
+        label: primary.to_string(),
+        replacement: query.to_string(),
+        summary: String::new(),
+        details: Vec::new(),
+    }
+}
+
 fn contextual_suggestions(_shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
     if query == "/model" || query.starts_with("/model ") {
-        return matching_command_suggestions(
-            query,
-            &["/model", "/model list", "/model use", "/model add", "/model remove"],
-        );
+        return vec![primary_help_suggestion("/model", query)];
     }
 
     if query == "/sessions" || query.starts_with("/sessions ") {
-        return matching_command_suggestions(
-            query,
-            &[
-                "/sessions",
-                "/sessions save",
-                "/sessions save <path>",
-                "/sessions load <file>",
-            ],
-        );
+        return vec![primary_help_suggestion("/sessions", query)];
     }
 
     if query == "/image" || query.starts_with("/image ") {
-        return matching_command_suggestions(
-            query,
-            &["/image", "/image pick", "/image clear", "/image <path> [prompt]"],
-        );
+        return vec![primary_help_suggestion("/image", query)];
     }
 
     if query == "/mcp" || query.starts_with("/mcp ") {
-        return matching_command_suggestions(
-            query,
-            &[
-                "/mcp",
-                "/mcp list",
-                "/mcp add",
-                "/mcp inspect",
-                "/mcp tools",
-                "/mcp resources",
-                "/mcp prompts",
-            ],
-        );
+        return vec![primary_help_suggestion("/mcp", query)];
     }
 
     if query == "/create-rule" || query.starts_with("/create-rule ") {
-        return matching_command_suggestions(
-            query,
-            &[
-                "/create-rule",
-                "/create-rule repo <需求描述>",
-                "/create-rule user <需求描述>",
-            ],
-        );
+        return vec![primary_help_suggestion("/create-rule", query)];
     }
 
     if query == "/rules" || query.starts_with("/rules ") {
-        return matching_command_suggestions(query, &["/rules"]);
+        return vec![primary_help_suggestion("/rules", query)];
     }
 
     if query == "/create-skill" || query.starts_with("/create-skill ") {
-        return matching_command_suggestions(
-            query,
-            &[
-                "/create-skill",
-                "/create-skill repo <skill-name> <需求描述>",
-                "/create-skill user <skill-name> <需求描述>",
-            ],
-        );
+        return vec![primary_help_suggestion("/create-skill", query)];
     }
 
     if query == "/skills" || query.starts_with("/skills ") {
-        return matching_command_suggestions(query, &["/skills"]);
+        return vec![primary_help_suggestion("/skills", query)];
     }
 
     if query == "/log" || query.starts_with("/log ") {
-        return matching_command_suggestions(query, &["/log", "/log export", "/log session export"]);
+        return vec![primary_help_suggestion("/log", query)];
     }
 
     if query == "/language" || query.starts_with("/language ") {
-        return matching_command_suggestions(query, &["/language", "/language en", "/language zh-CN"]);
+        return vec![primary_help_suggestion("/language", query)];
     }
 
     Vec::new()
-}
-
-fn matching_command_suggestions(query: &str, candidates: &[&str]) -> Vec<InputSuggestion> {
-    candidates
-        .iter()
-        .copied()
-        .filter(|candidate| candidate.starts_with(query))
-        .map(command_suggestion)
-        .collect()
 }
 
 fn skill_alias_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
