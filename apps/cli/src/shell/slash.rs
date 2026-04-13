@@ -32,25 +32,47 @@ pub(crate) struct PromptSlashCommand {
     pub(crate) prompt: McpDiscoveredPrompt,
 }
 
+const DEFAULT_SLASH_COMMANDS: &[&str] = &[
+    "/help",
+    "/clear",
+    "/quit",
+    "/exit",
+    "/model",
+    "/compact",
+    "/sessions",
+    "/image",
+    "/mcp",
+    "/create-rule",
+    "/rules",
+    "/create-skill",
+    "/skills",
+    "/log",
+    "/language",
+];
+
+const RESERVED_SLASH_COMMANDS: &[&str] = &[
+    "/help",
+    "/clear",
+    "/quit",
+    "/exit",
+    "/model",
+    "/compact",
+    "/sessions",
+    "/image",
+    "/mcp",
+    "/create-rule",
+    "/rules",
+    "/create-skill",
+    "/skills",
+    "/log",
+    "/language",
+];
+
 pub(crate) fn default_commands() -> Vec<String> {
-    vec![
-        "/help".to_string(),
-        "/clear".to_string(),
-        "/quit".to_string(),
-        "/exit".to_string(),
-        "/model".to_string(),
-        "/compact".to_string(),
-        "/sessions".to_string(),
-        "/image".to_string(),
-        "/mcp".to_string(),
-        "/create-rule".to_string(),
-        "/rules".to_string(),
-        "/create-skill".to_string(),
-        "/skills".to_string(),
-        "/i-am-skills".to_string(),
-        "/log".to_string(),
-        "/language".to_string(),
-    ]
+    DEFAULT_SLASH_COMMANDS
+        .iter()
+        .map(|command| (*command).to_string())
+        .collect()
 }
 
 pub(crate) fn current_query(input: &str) -> Option<&str> {
@@ -72,6 +94,7 @@ pub(crate) fn compute_suggestions(
         .collect::<Vec<_>>();
 
     suggestions.extend(prompt_alias_suggestions(shell, query));
+    suggestions.extend(skill_alias_suggestions(shell, query));
 
     if suggestions.is_empty() {
         suggestions = contextual_suggestions(shell, query);
@@ -92,7 +115,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 fn command_replacement(command: &str) -> String {
     match command {
         "/model" | "/sessions" | "/image" | "/mcp" | "/create-rule" | "/log"
-        | "/language" | "/create-skill" | "/i-am-skills" => {
+        | "/language" | "/create-skill" => {
             format!("{} ", command)
         }
         _ => command.to_string(),
@@ -171,10 +194,6 @@ fn contextual_suggestions(_shell: &mut TuiShell, query: &str) -> Vec<InputSugges
         return matching_command_suggestions(query, &["/skills"]);
     }
 
-    if query == "/i-am-skills" || query.starts_with("/i-am-skills") {
-        return skill_activation_suggestions(_shell, query);
-    }
-
     if query == "/log" || query.starts_with("/log ") {
         return matching_command_suggestions(query, &["/log", "/log export", "/log session export"]);
     }
@@ -195,24 +214,21 @@ fn matching_command_suggestions(query: &str, candidates: &[&str]) -> Vec<InputSu
         .collect()
 }
 
-fn skill_activation_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
-    if query == "/i-am-skills" {
-        return vec![command_suggestion("/i-am-skills")];
-    }
-
-    let Some(prefix) = query.strip_prefix("/i-am-skills ") else {
-        return Vec::new();
-    };
-
-    let prefix = prefix.trim();
+fn skill_alias_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
     shell
         .enabled_skill_entries()
-        .filter(|entry| entry.source.name.starts_with(prefix))
-        .map(|entry| InputSuggestion {
-            label: format!("/i-am-skills {}", entry.source.name),
-            replacement: format!("/i-am-skills {} ", entry.source.name),
-            summary: entry.source.description.clone(),
-            details: vec![format!("path: {}", entry.source.path.display())],
+        .filter_map(|entry| {
+            let alias = skill_slash_alias(&entry.source.name);
+            if !alias.starts_with(query) || is_reserved_skill_alias(shell, &alias) {
+                return None;
+            }
+
+            Some(InputSuggestion {
+                label: alias.clone(),
+                replacement: format!("{} ", alias),
+                summary: entry.source.description.clone(),
+                details: vec![format!("path: {}", entry.source.path.display())],
+            })
         })
         .collect()
 }
@@ -236,8 +252,32 @@ pub(crate) fn resolve_prompt_slash_command(
         .find(|candidate| candidate.alias == normalized)
 }
 
+pub(crate) fn resolve_skill_slash_command(shell: &TuiShell, command: &str) -> Option<String> {
+    let normalized = command.trim();
+    shell.enabled_skill_entries().find_map(|entry| {
+        let alias = skill_slash_alias(&entry.source.name);
+        if alias == normalized && !is_reserved_skill_alias(shell, &alias) {
+            Some(entry.source.name.clone())
+        } else {
+            None
+        }
+    })
+}
+
 pub(crate) fn prompt_slash_alias(server: &str, prompt_name: &str) -> String {
     format!("/{}_{}", server, prompt_name)
+}
+
+pub(crate) fn skill_slash_alias(skill_name: &str) -> String {
+    format!("/{}", skill_name)
+}
+
+fn is_reserved_skill_alias(shell: &TuiShell, alias: &str) -> bool {
+    RESERVED_SLASH_COMMANDS.contains(&alias)
+        || shell
+            .prompt_slash_commands()
+            .iter()
+            .any(|command| command.alias == alias)
 }
 
 fn prompt_suggestion(command: PromptSlashCommand) -> InputSuggestion {
@@ -286,7 +326,7 @@ fn prompt_suggestion(command: PromptSlashCommand) -> InputSuggestion {
 }
 
 pub(crate) fn help_text() -> &'static str {
-    "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /<server>_<prompt> [args_json | user_message]\n- /create-rule [repo|user] <需求描述>\n- /rules\n- /create-skill [repo|user] <skill-name> <需求描述>\n- /skills\n- /i-am-skills <skill-name> [补充说明]\n- /log（或 /log export、/log session export）\n- /language [en|zh-CN]\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- 输入 @<文件名> 会打开工作区文件引用建议，回车后会把选中文件写回输入框，格式为 @路径 加一个空格。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消）。\n- MCP prompt 会以一级 slash 命令暴露，例如 /github_issue_to_fix_workflow；若尾部是合法 JSON object，会直接作为 prompt 参数，其他文本会作为附加用户消息发给 LLM。\n- 省略尾部且 prompt 定义了参数时，会自动打开参数表单；表单最后一栏可填写附加说明。\n- /create-rule 会走正常 assistant 对话来起草或收紧规则；repo 目标默认写入工作区 .spirit/rule.md，user 目标写入 Spirit 用户目录 rule.md，两者都走标准工具审批；同时仍会扫描仓库根 AGENTS.md（兼容其他工具）。\n- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。\n- /create-skill 会走正常 assistant 对话来起草或收紧 SKILL.md；repo 目标默认写入工作区 .spirit/skills/<skill-name>/SKILL.md，user 目标写入 Spirit 用户目录 skills/<skill-name>/SKILL.md，都会走标准工具审批。\n- /skills 打开可滚动的技能启用清单；Enter 切换当前技能，Esc 保存并关闭，鼠标滚轮可浏览长内容。\n- /i-am-skills 用于显式指定一个已启用 skill，并附加本轮任务说明；skill 正文会作为独立 system prompt 状态注入，不会伪装成模型自行读文件。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- /language 不带参数时打开语言选择菜单。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
+    "可用指令:\n- /help\n- /clear\n- /quit\n- /model [list|use <name>|add <name> <api_base> <api_key>|remove <name>]\n- /compact\n- /sessions\n- /sessions save [path]\n- /sessions load <file>\n- /image <path> [prompt]\n- /image pick\n- /image clear\n- /mcp [list|add|inspect|tools|resources|prompts]\n- /<server>_<prompt> [args_json | user_message]\n- /create-rule [repo|user] <需求描述>\n- /rules\n- /create-skill [repo|user] <skill-name> <需求描述>\n- /skills\n- /<skill-name> [补充说明]\n- /log（或 /log export、/log session export）\n- /language [en|zh-CN]\n\n说明:\n- /sessions 打开已保存会话列表选择器。\n- /image pick 打开当前目录图片选择器。\n- /image 不带 prompt 时会把图片加入待发送队列。\n- 输入 @<文件名> 会打开工作区文件引用建议，回车后会把选中文件写回输入框，格式为 @路径 加一个空格。\n- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消）。\n- MCP prompt 会以一级 slash 命令暴露，例如 /github_issue_to_fix_workflow；若尾部是合法 JSON object，会直接作为 prompt 参数，其他文本会作为附加用户消息发给 LLM。\n- 省略尾部且 prompt 定义了参数时，会自动打开参数表单；表单最后一栏可填写附加说明。\n- /create-rule 会走正常 assistant 对话来起草或收紧规则；repo 目标默认写入工作区 .spirit/rule.md，user 目标写入 Spirit 用户目录 rule.md，两者都走标准工具审批；同时仍会扫描仓库根 AGENTS.md（兼容其他工具）。\n- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。\n- /create-skill 会走正常 assistant 对话来起草或收紧 SKILL.md；repo 目标默认写入工作区 .spirit/skills/<skill-name>/SKILL.md，user 目标写入 Spirit 用户目录 skills/<skill-name>/SKILL.md，都会走标准工具审批。\n- /skills 打开可滚动的技能启用清单；Enter 切换当前技能，Esc 保存并关闭，鼠标滚轮可浏览长内容。\n- 已启用的 skill 会直接作为一级 slash 命令暴露，例如 /llm-debug；尾部文本会作为本轮附加说明，skill 正文会作为独立 system prompt 状态注入，不会伪装成模型自行读文件。\n- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。\n- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。\n- /language 不带参数时打开语言选择菜单。\n- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。\n- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。\n\nAPI Key 来源优先级: SPIRIT_API_KEY > 模型专属 keyring > 全局 keyring。"
 }
 
 pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
@@ -315,10 +355,13 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/rules" => shell.handle_rules_slash(&parts[1..]),
         "/create-skill" => shell.handle_create_skill_slash(message),
         "/skills" => shell.handle_skills_slash(&parts[1..]),
-        "/i-am-skills" => shell.handle_i_am_skills_slash(message),
         "/log" => shell.handle_log_slash(&parts[1..]),
         "/language" => shell.handle_language_slash(&parts[1..]),
-        _ => shell.push_agent_message("未知斜杠命令，输入 /help 查看可用指令。"),
+        _ => {
+            if !shell.handle_skill_alias_slash(message) {
+                shell.push_agent_message("未知斜杠命令，输入 /help 查看可用指令。");
+            }
+        }
     }
 }
 
@@ -349,8 +392,20 @@ mod tests {
         assert!(help_text().contains("/rules"));
         assert!(help_text().contains("/create-skill"));
         assert!(help_text().contains("/skills"));
-        assert!(help_text().contains("/i-am-skills"));
+        assert!(help_text().contains("/<skill-name> [补充说明]"));
         assert!(help_text().contains("Enter 保存"));
         assert!(help_text().contains("@<文件名>"));
+    }
+
+    #[test]
+    fn default_commands_hide_legacy_skill_alias() {
+        let commands = default_commands();
+        assert!(commands.contains(&"/skills".to_string()));
+        assert_eq!(commands, DEFAULT_SLASH_COMMANDS.iter().map(|command| (*command).to_string()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn skill_slash_alias_is_first_level() {
+        assert_eq!(skill_slash_alias("llm-debug"), "/llm-debug");
     }
 }

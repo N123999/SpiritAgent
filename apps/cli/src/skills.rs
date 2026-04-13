@@ -137,10 +137,6 @@ pub fn create_skill_usage() -> &'static str {
     "用法: /create-skill [repo|user] <skill-name> <需求描述>"
 }
 
-pub fn activate_skill_usage() -> &'static str {
-    "用法: /i-am-skills <skill-name> [补充说明]"
-}
-
 pub fn skills_usage() -> &'static str {
     "用法: /skills"
 }

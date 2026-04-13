@@ -656,7 +656,7 @@ export function buildSkillsCatalogSystemMessage(
     SKILLS_CATALOG_SECTION_PREFIX,
     'The host exposes the following enabled skills as metadata only.',
     'Do not assume a skill\'s full instructions unless it appears in the active skills section.',
-    'If a listed skill seems relevant, ask the user to activate it explicitly with /i-am-skills <skill-name>.',
+    'If a listed skill seems relevant, you may read it proactively or ask the user to activate it explicitly with its top-level slash command, e.g. /llm-debug.',
     '',
   ];
 

@@ -1588,7 +1588,6 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
         "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
         "/create-skill" => t!("ui.suggestion.summary.create_skill").into_owned(),
         "/skills" => t!("ui.suggestion.summary.skills").into_owned(),
-        "/i-am-skills" => t!("ui.suggestion.summary.i_am_skills").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
         _ => String::new(),
@@ -1652,10 +1651,6 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
         "/skills" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /skills".to_string(),
-        ],
-        "/i-am-skills" => vec![
-            t!("ui.suggestion.usage.heading").into_owned(),
-            format!("    {}", t!("ui.suggestion.usage.i_am_skills")),
         ],
         "/log" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),

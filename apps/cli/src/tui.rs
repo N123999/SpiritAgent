@@ -219,6 +219,9 @@ impl TuiShell {
             .context("发现技能文件失败")?;
         self.runtime
             .replace_skills_catalog(skills::enabled_skill_catalog(&self.skill_entries));
+        if self.current_slash_query().is_some() {
+            self.refresh_suggestions();
+        }
         Ok(())
     }
 
@@ -1738,16 +1741,19 @@ impl TuiShell {
         self.apply_runtime_events();
     }
 
-    pub(crate) fn handle_i_am_skills_slash(&mut self, message: &str) {
-        let tail = message
-            .strip_prefix("/i-am-skills")
-            .map(str::trim)
-            .unwrap_or("");
-        let Some((skill_name, user_message)) = split_first_token(tail) else {
-            self.push_agent_message(t!("tui.skills.activate_usage").into_owned());
-            return;
+    pub(crate) fn handle_skill_alias_slash(&mut self, message: &str) -> bool {
+        let Some((command, user_message)) = split_first_token(message) else {
+            return false;
+        };
+        let Some(skill_name) = slash::resolve_skill_slash_command(self, command) else {
+            return false;
         };
 
+        self.activate_skill_slash(&skill_name, user_message);
+        true
+    }
+
+    fn activate_skill_slash(&mut self, skill_name: &str, user_message: &str) {
         let Some(skill) = self.find_enabled_skill_entry(skill_name) else {
             self.push_agent_message(t!("tui.skills.activate_missing", name = skill_name).into_owned());
             return;
