@@ -22,7 +22,7 @@ use crate::{
     view::{
         AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind,
         BottomFormView,
-        ChatMessage, InputSuggestion, InputSuggestionKind, MessageRole,
+        ChatMessage, InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole,
         PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
@@ -68,7 +68,7 @@ fn conversation_logo_width(available_width: u16) -> u16 {
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let app = shell.view_model();
-    let show_model_picker = app.model_picker_active || app.model_add_pick_active;
+    let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_image_picker = app.image_picker_active;
@@ -167,11 +167,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         input_cursor_row,
         input_cursor_col,
     );
-    let input_style = input_block_style(app.shell_mode_active, show_bottom_form);
+    let input_style = input_block_style(app.shell_mode_active, app.input_mode, show_bottom_form);
     let input_title = if app.shell_mode_active {
-        t!("ui.input.title_shell")
+        t!("ui.input.title_shell").into_owned()
     } else {
-        t!("ui.input.title")
+        input_mode_title(app.input_mode)
     };
     let input = Paragraph::new(build_input_lines(
         &app,
@@ -207,13 +207,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
 
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
-        let picker_title = if app.model_add_pick_active {
-            t!("ui.picker.model_add_mock")
-        } else {
-            t!("ui.picker.model")
-        };
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(picker_title))
+            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.model")))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_language_picker {
@@ -270,25 +265,50 @@ fn shell_mode_input_style() -> Style {
     Style::default().fg(Color::Rgb(184, 134, 11))
 }
 
-fn input_block_style(shell_mode_active: bool, bottom_form_open: bool) -> Style {
-    if bottom_form_open {
-        return subtle_aux_text_style();
-    }
-    if shell_mode_active {
-        shell_mode_input_style()
-    } else {
-        Style::default().fg(Color::White)
+fn plan_mode_input_style() -> Style {
+    Style::default().fg(Color::Yellow)
+}
+
+fn input_mode_title(input_mode: MainInputMode) -> String {
+    match input_mode {
+        MainInputMode::Agent => t!("ui.input.title_agent").into_owned(),
+        MainInputMode::Plan => t!("ui.input.title_plan").into_owned(),
     }
 }
 
-fn input_text_style(shell_mode_active: bool, bottom_form_open: bool) -> Style {
+fn input_block_style(
+    shell_mode_active: bool,
+    input_mode: MainInputMode,
+    bottom_form_open: bool,
+) -> Style {
     if bottom_form_open {
         return subtle_aux_text_style();
     }
     if shell_mode_active {
         shell_mode_input_style()
     } else {
-        Style::default().fg(Color::White)
+        match input_mode {
+            MainInputMode::Agent => Style::default().fg(Color::White),
+            MainInputMode::Plan => plan_mode_input_style(),
+        }
+    }
+}
+
+fn input_text_style(
+    shell_mode_active: bool,
+    input_mode: MainInputMode,
+    bottom_form_open: bool,
+) -> Style {
+    if bottom_form_open {
+        return subtle_aux_text_style();
+    }
+    if shell_mode_active {
+        shell_mode_input_style()
+    } else {
+        match input_mode {
+            MainInputMode::Agent => Style::default().fg(Color::White),
+            MainInputMode::Plan => plan_mode_input_style(),
+        }
     }
 }
 
@@ -302,7 +322,11 @@ fn deemphasize_pending_style(style: Style, bottom_form_open: bool) -> Style {
 
 fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
     let footer_style = subtle_aux_text_style();
-    let left_label = t!("ui.footer.preview");
+    let mode_label = match app.input_mode {
+        MainInputMode::Agent => t!("ui.footer.mode.agent"),
+        MainInputMode::Plan => t!("ui.footer.mode.plan"),
+    };
+    let left_label = format!("{}  |  {}", t!("ui.footer.preview"), mode_label);
     let right_label = app.config.active_model.as_str();
     let side_padding = if width >= 12 {
         2
@@ -426,7 +450,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
     for line in wrap_editor_text_lines(&app.input, max_width) {
         lines.push(Line::from(Span::styled(
             line,
-            input_text_style(app.shell_mode_active, bottom_form_open),
+            input_text_style(app.shell_mode_active, app.input_mode, bottom_form_open),
         )));
     }
 
@@ -1611,8 +1635,7 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /model list".to_string(),
             "    /model use <name>".to_string(),
-            t!("ui.suggestion.usage.model.add_form").into_owned(),
-            t!("ui.suggestion.usage.model.add_cli").into_owned(),
+            "    /model add <name> <api_base> <api_key>".to_string(),
             "    /model remove <name>".to_string(),
         ],
         "/sessions" => vec![
@@ -1675,42 +1698,6 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
 }
 
 fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
-    if app.model_add_pick_active {
-        if app.model_add_pick_models.is_empty() {
-            return vec![Line::from(t!("ui.picker.model_add_mock.empty").into_owned())];
-        }
-        let selected = app
-            .model_add_pick_index
-            .min(app.model_add_pick_models.len().saturating_sub(1));
-        let total = app.model_add_pick_models.len();
-        let window = max_items.max(1);
-        let start = if selected + 1 > window {
-            selected + 1 - window
-        } else {
-            0
-        };
-        let end = (start + window).min(total);
-        let base_hint = app.model_add_pick_api_base.as_str();
-        let mut lines = Vec::new();
-        for idx in start..end {
-            let name = &app.model_add_pick_models[idx];
-            let is_selected = idx == selected;
-            let marker = if is_selected { "> " } else { "  " };
-            let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            lines.push(Line::from(Span::styled(
-                format!("{}{} ({})", marker, name, base_hint),
-                style,
-            )));
-        }
-        return lines;
-    }
-
     if app.config.models.is_empty() {
         return vec![Line::from(t!("ui.picker.models.empty").into_owned())];
     }
@@ -1901,27 +1888,12 @@ fn bottom_form_text_inner_width(panel_width: u16) -> usize {
         .max(1)
 }
 
-fn mask_bottom_form_secret(value: &str) -> String {
-    let mut out = String::new();
-    for ch in value.chars() {
-        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if w == 0 {
-            continue;
-        }
-        for _ in 0..w {
-            out.push('*');
-        }
-    }
-    out
-}
-
 fn bottom_form_text_visual_line_count(
     value: &str,
     placeholder: &str,
     text_inner_w: usize,
-    mask: bool,
 ) -> usize {
-    build_bottom_form_text_lines(value, placeholder, text_inner_w, false, mask)
+    build_bottom_form_text_lines(value, placeholder, text_inner_w, false)
         .len()
         .max(1)
 }
@@ -1930,9 +1902,8 @@ fn bottom_form_text_field_body_outer_height(
     value: &str,
     placeholder: &str,
     text_inner_w: usize,
-    mask: bool,
 ) -> u16 {
-    bottom_form_text_visual_line_count(value, placeholder, text_inner_w, mask)
+    bottom_form_text_visual_line_count(value, placeholder, text_inner_w)
         .max(1)
         .saturating_add(2) as u16
 }
@@ -1944,7 +1915,6 @@ fn bottom_form_text_field_outer_height(
     placeholder: &str,
     field_width: usize,
     text_inner_w: usize,
-    mask: bool,
 ) -> u16 {
     let label_height = if label.trim().is_empty() {
         0
@@ -1962,7 +1932,6 @@ fn bottom_form_text_field_outer_height(
             value,
             placeholder,
             text_inner_w,
-            mask,
         ))
         .saturating_add(help_height)
 }
@@ -1977,10 +1946,7 @@ fn bottom_form_field_outer_height(
             build_bottom_form_footer_lines(text, field_width).len().max(1) as u16
         }
         BottomFormFieldEditorView::Text {
-            value,
-            placeholder,
-            mask,
-            ..
+            value, placeholder, ..
         } => bottom_form_text_field_outer_height(
             &field.label,
             &field.help,
@@ -1988,7 +1954,6 @@ fn bottom_form_field_outer_height(
             placeholder,
             field_width,
             text_inner_w,
-            *mask,
         ),
         BottomFormFieldEditorView::Choice { .. } => 3,
         BottomFormFieldEditorView::Checkbox { .. } => {
@@ -2091,55 +2056,6 @@ fn generic_bottom_form_effective_scroll(
     effective_scroll
 }
 
-fn generic_bottom_form_visible_field_areas(
-    form: &BottomFormView,
-    content_area: Rect,
-    fields_limit_y: u16,
-    text_inner_w: usize,
-    effective_scroll: usize,
-) -> Vec<(usize, Rect)> {
-    let mut areas = Vec::new();
-    let mut field_y = content_area.y;
-
-    for (index, field) in form.fields.iter().enumerate().skip(effective_scroll) {
-        if field_y > content_area.y {
-            let available_before_gap = fields_limit_y.saturating_sub(field_y);
-            if available_before_gap <= 1 {
-                break;
-            }
-            field_y = field_y.saturating_add(1);
-        }
-
-        let remaining_height = fields_limit_y.saturating_sub(field_y);
-        if remaining_height == 0 {
-            break;
-        }
-
-        let field_height = bottom_form_field_outer_height(
-            field,
-            content_area.width as usize,
-            text_inner_w,
-        );
-        let render_height = field_height.min(remaining_height);
-        areas.push((
-            index,
-            Rect {
-                x: content_area.x,
-                y: field_y,
-                width: content_area.width,
-                height: render_height,
-            },
-        ));
-
-        field_y = field_y.saturating_add(render_height);
-        if render_height < field_height {
-            break;
-        }
-    }
-
-    areas
-}
-
 fn rules_bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let layout = build_rules_bottom_form_layout(form, bottom_form_content_width(panel_width));
     let content_height = layout.content_lines.len().max(1) as u16;
@@ -2190,17 +2106,9 @@ fn build_bottom_form_text_lines(
     placeholder: &str,
     max_width: usize,
     is_selected: bool,
-    mask: bool,
 ) -> Vec<Line<'static>> {
-    let masked_storage: Option<String> = if !value.is_empty() && mask {
-        Some(mask_bottom_form_secret(value))
-    } else {
-        None
-    };
-    let (text, is_placeholder): (&str, bool) = if value.is_empty() {
+    let (text, is_placeholder) = if value.is_empty() {
         (placeholder, true)
-    } else if let Some(ref masked) = masked_storage {
-        (masked.as_str(), false)
     } else {
         (value, false)
     };
@@ -2289,14 +2197,27 @@ fn draw_bottom_form(
         visible_height,
     );
     let mut cursor = None;
-    for (index, field_area) in generic_bottom_form_visible_field_areas(
-        form,
-        content_area,
-        fields_limit_y,
-        text_inner_w,
-        effective_scroll,
-    ) {
-        let field = &form.fields[index];
+    let mut field_y = content_area.y;
+    for (index, field) in form.fields.iter().enumerate().skip(effective_scroll) {
+        let field_h = bottom_form_field_outer_height(field, content_area.width as usize, text_inner_w);
+        let gap = u16::from(field_y > content_area.y);
+        let available_h = fields_limit_y.saturating_sub(field_y);
+        if available_h <= gap {
+            break;
+        }
+        if field_y > content_area.y {
+            field_y = field_y.saturating_add(1);
+        }
+        if field_h > fields_limit_y.saturating_sub(field_y) {
+            break;
+        }
+        let field_area = Rect {
+            x: content_area.x,
+            y: field_y,
+            width: content_area.width,
+            height: field_h,
+        };
+
         let field_cursor = match &field.editor {
             BottomFormFieldEditorView::Section { text } => {
                 draw_bottom_form_section_field(frame, field_area, text);
@@ -2306,7 +2227,7 @@ fn draw_bottom_form(
                 value,
                 placeholder,
                 cursor,
-                mask,
+                ..
             } => draw_bottom_form_text_field(
                 frame,
                 field_area,
@@ -2315,7 +2236,6 @@ fn draw_bottom_form(
                 value,
                 placeholder,
                 *cursor,
-                *mask,
                 index == form.selected_field,
             ),
             BottomFormFieldEditorView::Choice { options, selected } => {
@@ -2346,6 +2266,8 @@ fn draw_bottom_form(
         if index == form.selected_field {
             cursor = field_cursor;
         }
+
+        field_y = field_y.saturating_add(field_h);
     }
 
     let footer_area = Rect {
@@ -2630,15 +2552,9 @@ fn draw_bottom_form_text_field(
     value: &str,
     placeholder: &str,
     cursor_chars: usize,
-    mask: bool,
     is_selected: bool,
 ) -> Option<(u16, u16)> {
-    if area.width == 0 || area.height == 0 {
-        return None;
-    }
-
     let mut next_y = area.y;
-    let mut remaining_height = area.height;
     if !label.trim().is_empty() {
         let label_style = if is_selected {
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
@@ -2656,7 +2572,7 @@ fn draw_bottom_form_text_field(
                 Line::from(Span::styled(text, label_style))
             })
             .collect::<Vec<_>>();
-        let label_height = (label_lines.len().max(1) as u16).min(remaining_height);
+        let label_height = label_lines.len().max(1) as u16;
         frame.render_widget(
             Paragraph::new(label_lines),
             Rect {
@@ -2667,20 +2583,13 @@ fn draw_bottom_form_text_field(
             },
         );
         next_y = next_y.saturating_add(label_height);
-        remaining_height = remaining_height.saturating_sub(label_height);
-    }
-
-    if remaining_height == 0 {
-        return None;
     }
 
     let body_height = bottom_form_text_field_body_outer_height(
         value,
         placeholder,
         area.width.saturating_sub(2).max(1) as usize,
-        mask,
-    )
-    .min(remaining_height);
+    );
     let body_area = Rect {
         x: area.x,
         y: next_y,
@@ -2693,29 +2602,20 @@ fn draw_bottom_form_text_field(
     let inner = block.inner(body_area);
     frame.render_widget(block, body_area);
 
-    if inner.width > 0 && inner.height > 0 {
-        let lines = build_bottom_form_text_lines(
-            value,
-            placeholder,
-            inner.width as usize,
-            is_selected,
-            mask,
-        );
-        frame.render_widget(Paragraph::new(lines), inner);
-    }
+    let lines = build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
+    frame.render_widget(Paragraph::new(lines), inner);
 
     next_y = next_y.saturating_add(body_height);
-    remaining_height = remaining_height.saturating_sub(body_height);
     if !help.trim().is_empty() && next_y < area.y.saturating_add(area.height) {
         let help_lines = build_bottom_form_footer_lines(help, area.width as usize);
-        let help_height = (help_lines.len().max(1) as u16).min(remaining_height);
+        let help_height = help_lines.len().max(1) as u16;
         frame.render_widget(
             Paragraph::new(help_lines),
             Rect {
                 x: area.x,
                 y: next_y,
                 width: area.width,
-                height: help_height,
+                height: help_height.min(area.y.saturating_add(area.height).saturating_sub(next_y)),
             },
         );
     }
@@ -2724,20 +2624,8 @@ fn draw_bottom_form_text_field(
         return None;
     }
 
-    if inner.width == 0 || inner.height == 0 {
-        return None;
-    }
-
-    let prefix_raw: String = value.chars().take(cursor_chars).collect();
-    let prefix_for_layout = if mask && !value.is_empty() {
-        mask_bottom_form_secret(&prefix_raw)
-    } else {
-        prefix_raw
-    };
-    let (row, col) = wrapped_text_cursor_position(&prefix_for_layout, inner.width as usize);
-    if row >= inner.height as usize {
-        return None;
-    }
+    let prefix: String = value.chars().take(cursor_chars).collect();
+    let (row, col) = wrapped_text_cursor_position(&prefix, inner.width as usize);
     Some((
         inner.x + col.min(inner.width.saturating_sub(1) as usize) as u16,
         inner.y + row as u16,
@@ -2752,10 +2640,6 @@ fn draw_bottom_form_choice_field(
     selected: usize,
     is_selected: bool,
 ) -> Option<(u16, u16)> {
-    if area.width == 0 || area.height == 0 {
-        return None;
-    }
-
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(bottom_form_field_style(is_selected));
@@ -2791,7 +2675,7 @@ fn draw_bottom_form_choice_field(
 
     frame.render_widget(Paragraph::new(Line::from(spans)), inner);
 
-    if is_selected && inner.width > 0 && inner.height > 0 {
+    if is_selected {
         Some((
             inner.x + cursor_offset.min(inner.width.saturating_sub(1)),
             inner.y,
@@ -2810,10 +2694,6 @@ fn draw_bottom_form_checkbox_field(
     disabled: bool,
     is_selected: bool,
 ) -> Option<(u16, u16)> {
-    if area.width == 0 || area.height == 0 {
-        return None;
-    }
-
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(bottom_form_field_style(is_selected));
@@ -2837,7 +2717,7 @@ fn draw_bottom_form_checkbox_field(
     }
     frame.render_widget(Paragraph::new(lines), inner);
 
-    if is_selected && !disabled && inner.width > 0 && inner.height > 0 {
+    if is_selected && !disabled {
         Some((inner.x + 1, inner.y))
     } else {
         None
@@ -2868,7 +2748,10 @@ mod tests {
     use super::*;
     use crate::{
         model_registry::AppConfig,
-        view::{AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView},
+        view::{
+            AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
+            MainInputMode,
+        },
     };
 
     fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
@@ -2887,6 +2770,7 @@ mod tests {
         TuiViewModel {
             input: String::new(),
             input_cursor: 0,
+            input_mode: MainInputMode::Agent,
             shell_mode_active: false,
             pending_image_paths: vec![],
             pending_mcp_resources: vec![],
@@ -2999,56 +2883,6 @@ mod tests {
     }
 
     #[test]
-    fn generic_bottom_form_allows_last_field_partial_visibility() {
-        let mut form = build_bottom_form_view(
-            "https://test3.example/v1",
-            "Enter 保存 Esc 取消",
-        );
-        form.selected_field = 1;
-
-        let content_area = Rect {
-            x: 0,
-            y: 0,
-            width: 24,
-            height: 12,
-        };
-        let footer_height = bottom_form_footer_height(&form.footer_hint, content_area.width as usize);
-        let fields_limit_y = content_area
-            .y
-            .saturating_add(content_area.height.saturating_sub(footer_height).saturating_sub(1));
-        let visible_height = fields_limit_y.saturating_sub(content_area.y) as usize;
-        let text_inner_w = content_area.width.saturating_sub(2).max(1) as usize;
-        let effective_scroll = generic_bottom_form_effective_scroll(
-            &form,
-            content_area.width as usize,
-            text_inner_w,
-            visible_height,
-        );
-
-        let visible_fields = generic_bottom_form_visible_field_areas(
-            &form,
-            content_area,
-            fields_limit_y,
-            text_inner_w,
-            effective_scroll,
-        );
-
-        assert_eq!(visible_fields.len(), 3);
-        assert_eq!(visible_fields[0].0, 0);
-        assert_eq!(visible_fields[1].0, 1);
-        assert_eq!(visible_fields[2].0, 2);
-
-        let partial_area = visible_fields[2].1;
-        let full_height = bottom_form_field_outer_height(
-            &form.fields[2],
-            content_area.width as usize,
-            text_inner_w,
-        );
-        assert!(partial_area.height > 0);
-        assert!(partial_area.height < full_height);
-    }
-
-    #[test]
     fn input_cursor_matches_wrapped_render_for_exact_width_line_before_newline() {
         let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "welcome"));
         app.input = "你好你好\nA".to_string();
@@ -3072,6 +2906,30 @@ mod tests {
 
         assert_eq!(lines, vec!["你好你好", ""]);
         assert_eq!((row, col), (1, 0));
+    }
+
+    #[test]
+    fn plan_mode_input_uses_yellow_style_and_plan_title() {
+        let title = input_mode_title(MainInputMode::Plan);
+        let style = input_block_style(false, MainInputMode::Plan, false);
+
+        assert_eq!(title, "Plan");
+        assert_eq!(style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn footer_mentions_next_mode_toggle() {
+        let agent_footer = render_text_lines(vec![build_footer_line(
+            &build_view_model(ChatMessage::new(MessageRole::Agent, "welcome")),
+            80,
+        )]);
+
+        let mut plan_app = build_view_model(ChatMessage::new(MessageRole::Agent, "welcome"));
+        plan_app.input_mode = MainInputMode::Plan;
+        let plan_footer = render_text_lines(vec![build_footer_line(&plan_app, 80)]);
+
+        assert!(agent_footer[0].contains("Tab -> Plan"));
+        assert!(plan_footer[0].contains("Tab -> Agent"));
     }
 
     #[test]

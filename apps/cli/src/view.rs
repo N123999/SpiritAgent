@@ -11,6 +11,13 @@ pub enum InputSuggestionKind {
     FileReference,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MainInputMode {
+    #[default]
+    Agent,
+    Plan,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InputSuggestion {
     pub label: String,
@@ -174,6 +181,7 @@ pub enum MessageRole {
 pub struct TuiViewModel {
     pub input: String,
     pub input_cursor: usize,
+    pub input_mode: MainInputMode,
     pub shell_mode_active: bool,
     pub pending_image_paths: Vec<String>,
     pub pending_mcp_resources: Vec<PendingMcpResource>,

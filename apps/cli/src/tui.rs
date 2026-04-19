@@ -33,7 +33,7 @@ use crate::{
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
-        InputSuggestionKind, MessageRole, TuiViewModel,
+        InputSuggestionKind, MainInputMode, MessageRole, TuiViewModel,
     },
 };
 
@@ -59,6 +59,7 @@ pub struct ConversationPanelHit {
 pub struct TuiShell {
     input: String,
     input_cursor: usize,
+    input_mode: MainInputMode,
     shell_mode_active: bool,
     file_reference_index: Vec<String>,
     pending_file_reference_index_rx: Option<Receiver<Vec<String>>>,
@@ -144,6 +145,7 @@ impl TuiShell {
         let mut shell = Self {
             input: String::new(),
             input_cursor: 0,
+            input_mode: MainInputMode::Agent,
             shell_mode_active: false,
             file_reference_index: Vec::new(),
             pending_file_reference_index_rx: Some(file_index_rx),
@@ -309,6 +311,7 @@ impl TuiShell {
         TuiViewModel {
             input: self.input.clone(),
             input_cursor: self.input_cursor,
+            input_mode: self.input_mode,
             shell_mode_active: self.shell_mode_active,
             pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
             pending_mcp_resources: self.runtime.session().pending_mcp_resources().to_vec(),
@@ -575,6 +578,31 @@ impl TuiShell {
 
     pub fn is_shell_mode_active(&self) -> bool {
         self.shell_mode_active
+    }
+
+    pub fn input_mode(&self) -> MainInputMode {
+        self.input_mode
+    }
+
+    pub fn is_plan_mode_active(&self) -> bool {
+        matches!(self.input_mode, MainInputMode::Plan)
+    }
+
+    pub fn set_input_mode(&mut self, mode: MainInputMode) {
+        if self.input_mode == mode {
+            return;
+        }
+
+        self.input_mode = mode;
+        self.refresh_suggestions();
+    }
+
+    pub fn toggle_input_mode(&mut self) {
+        let next = match self.input_mode {
+            MainInputMode::Agent => MainInputMode::Plan,
+            MainInputMode::Plan => MainInputMode::Agent,
+        };
+        self.set_input_mode(next);
     }
 
     pub fn can_enter_shell_mode(&self) -> bool {
