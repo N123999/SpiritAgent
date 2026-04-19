@@ -10,6 +10,7 @@ use crate::{
         McpServerInspection,
     },
     model_registry::AppConfig,
+    plan::PlanMetadata,
     ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore},
     rules::EnabledRule,
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
@@ -36,6 +37,7 @@ impl RuntimeHandle {
         workspace_root: PathBuf,
         enabled_rules: Vec<EnabledRule>,
         enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
+        plan_metadata: PlanMetadata,
     ) -> Result<Self> {
         Ok(Self {
             runtime: TsBridgeRuntime::new(
@@ -44,6 +46,7 @@ impl RuntimeHandle {
                 workspace_root,
                 enabled_rules,
                 enabled_skill_catalog,
+                plan_metadata,
             )?,
         })
     }
@@ -66,6 +69,10 @@ impl RuntimeHandle {
 
     pub fn replace_skills_catalog(&mut self, catalog: Vec<EnabledSkillCatalogEntry>) {
         self.runtime.replace_skills_catalog(catalog)
+    }
+
+    pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {
+        self.runtime.replace_plan_metadata(metadata)
     }
 
     pub fn activate_skill(&mut self, skill: ActiveSkillPayload) -> Result<()> {

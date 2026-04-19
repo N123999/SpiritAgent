@@ -25,6 +25,7 @@ use crate::{
         McpServerInspection,
     },
     model_registry::AppConfig,
+    plan::PlanMetadata,
     ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore, ToolExecutor},
     rules::EnabledRule,
     runtime_handle::RuntimeExportState,
@@ -50,6 +51,7 @@ pub struct TsBridgeRuntime {
     tool_executor: WorkspaceToolExecutor,
     enabled_rules: Vec<EnabledRule>,
     enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
+    plan_metadata: PlanMetadata,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
     pending_assistant_has_output: bool,
@@ -248,6 +250,7 @@ impl TsBridgeRuntime {
         workspace_root: PathBuf,
         enabled_rules: Vec<EnabledRule>,
         enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
+        plan_metadata: PlanMetadata,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
         let (background_tool_completion_tx, background_tool_completion_rx) =
@@ -261,6 +264,7 @@ impl TsBridgeRuntime {
             tool_executor: WorkspaceToolExecutor::new(),
             enabled_rules,
             enabled_skill_catalog,
+            plan_metadata,
             pending_aux_state: None,
             pending_approval_kind: None,
             pending_assistant_has_output: false,
@@ -294,6 +298,10 @@ impl TsBridgeRuntime {
             tool_executor: WorkspaceToolExecutor::new(),
             enabled_rules: Vec::new(),
             enabled_skill_catalog: Vec::new(),
+            plan_metadata: PlanMetadata {
+                path: PathBuf::new(),
+                exists: false,
+            },
             pending_aux_state: None,
             pending_approval_kind: None,
             pending_assistant_has_output: false,
@@ -425,6 +433,33 @@ impl TsBridgeRuntime {
             Ok(snapshot) => self.apply_snapshot(snapshot),
             Err(err) => {
                 self.handle_bridge_error(anyhow!("解析 TS replaceSkillsCatalog snapshot 失败: {}", err))
+            }
+        }
+    }
+
+    pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {
+        self.plan_metadata = metadata;
+        if self.bridge_failed {
+            return;
+        }
+
+        let snapshot = match self.call_bridge(
+            "runtime.replacePlanMetadata",
+            Some(json!({
+                "planMetadata": self.plan_metadata,
+            })),
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.handle_bridge_error(err);
+                return;
+            }
+        };
+
+        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
+            Ok(snapshot) => self.apply_snapshot(snapshot),
+            Err(err) => {
+                self.handle_bridge_error(anyhow!("解析 TS replacePlanMetadata snapshot 失败: {}", err))
             }
         }
     }
@@ -872,6 +907,7 @@ impl TsBridgeRuntime {
                 "history": llm_history_to_json(self.session.llm_history()),
                 "enabledRules": self.enabled_rules,
                 "enabledSkillCatalog": self.enabled_skill_catalog,
+                "planMetadata": self.plan_metadata,
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
@@ -1766,6 +1802,7 @@ mod tests {
     use crate::{
         host_runtime::RuntimeEvent,
         model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
+        plan::PlanMetadata,
         ports::SecretStore,
     };
     use anyhow::{Result, anyhow};
@@ -1841,6 +1878,10 @@ mod tests {
             workspace_root,
             vec![],
             vec![],
+            PlanMetadata {
+                path: PathBuf::new(),
+                exists: false,
+            },
         )
         .ok()
     }

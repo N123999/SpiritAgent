@@ -22,7 +22,7 @@ use crate::{
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
-    plan,
+    plan::{self, PlanMetadata},
     ports::{
         AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
         McpStatusState, SecretStore,
@@ -102,6 +102,7 @@ pub struct TuiShell {
     chat_repository: Box<dyn ChatRepository>,
     secret_store: Arc<dyn SecretStore>,
     app_paths: Arc<dyn AppPaths>,
+    plan_metadata: PlanMetadata,
     rule_state: RuleStateFile,
     rule_entries: Vec<RuleEntry>,
     skill_state: SkillStateFile,
@@ -123,12 +124,14 @@ impl TuiShell {
         let skill_state = skills::load_skill_state().context("读取技能状态失败")?;
         let skill_entries = skills::discover_skill_entries(&workspace_root, &skill_state)
             .context("发现技能文件失败")?;
+        let plan_metadata = plan::current_plan_metadata();
         let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
             workspace_root.clone(),
             rules::enabled_rules(&rule_entries),
             skills::enabled_skill_catalog(&skill_entries),
+            plan_metadata.clone(),
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
         let initial_mcp_status = runtime.mcp_status_snapshot();
@@ -187,6 +190,7 @@ impl TuiShell {
             chat_repository,
             secret_store,
             app_paths,
+            plan_metadata,
             rule_state,
             rule_entries,
             skill_state,
@@ -287,6 +291,7 @@ impl TuiShell {
         self.poll_pending_shell_executions();
         self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
+        self.refresh_plan_metadata_from_disk();
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
@@ -3218,6 +3223,16 @@ impl TuiShell {
         self.input = next_input;
         self.input_cursor = next_cursor;
         true
+    }
+
+    fn refresh_plan_metadata_from_disk(&mut self) {
+        let next = plan::current_plan_metadata();
+        if next == self.plan_metadata {
+            return;
+        }
+
+        self.plan_metadata = next.clone();
+        self.runtime.replace_plan_metadata(next);
     }
 
     fn poll_file_reference_index(&mut self) {

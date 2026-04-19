@@ -50,6 +50,7 @@ const TOOL_TRUNCATION_HEAD_RATIO_NUM = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
 const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
 const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
+const PLAN_SECTION_PREFIX = '[SPIRIT_PLAN]';
 const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
 
 export interface OpenAiTransportConfig {
@@ -96,6 +97,11 @@ export interface OpenAiActiveSkill {
   resourcesTruncated: boolean;
 }
 
+export interface OpenAiPlanMetadata {
+  path: string;
+  exists: boolean;
+}
+
 export interface OpenAiToolAgentState {
   messages: JsonValue[];
   steps: number;
@@ -133,9 +139,11 @@ export function startOpenAiToolAgentState(
   enabledRules: OpenAiEnabledRule[] = [],
   enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [],
   activeSkills: OpenAiActiveSkill[] = [],
+  planMetadata?: OpenAiPlanMetadata,
 ): OpenAiToolAgentState {
   const rulesSystemMessage = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
+  const planSystemMessage = buildPlanSystemMessage(planMetadata);
   const activeSkillsSystemMessage = buildActiveSkillsSystemMessage(activeSkills);
   const messages: JsonValue[] = [
     {
@@ -143,6 +151,7 @@ export function startOpenAiToolAgentState(
       content: buildPrimarySystemMessage(
         rulesSystemMessage,
         skillsCatalogSystemMessage,
+        planSystemMessage,
         activeSkillsSystemMessage,
       ),
     },
@@ -297,6 +306,7 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   enabledRules: OpenAiEnabledRule[] = [],
   enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [],
   activeSkills: OpenAiActiveSkill[] = [],
+  planMetadata?: OpenAiPlanMetadata,
 ): OpenAiToolAgentState {
   const preservedSpiritSystemMessage = findSpiritSystemMessageContent(retryState.messages);
   const rebuilt = startOpenAiToolAgentState(
@@ -306,6 +316,7 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
     preservedSpiritSystemMessage === undefined ? enabledRules : [],
     preservedSpiritSystemMessage === undefined ? enabledSkillCatalog : [],
     preservedSpiritSystemMessage === undefined ? activeSkills : [],
+    preservedSpiritSystemMessage === undefined ? planMetadata : undefined,
   );
   if (preservedSpiritSystemMessage !== undefined) {
     rebuilt.messages[0] = {
@@ -670,6 +681,24 @@ export function buildSkillsCatalogSystemMessage(
   }
 
   return lines.join('\n').trimEnd();
+}
+
+export function buildPlanSystemMessage(
+  planMetadata?: OpenAiPlanMetadata,
+): string | undefined {
+  if (!planMetadata?.exists) {
+    return undefined;
+  }
+
+  return [
+    PLAN_SECTION_PREFIX,
+    'The host exposes a shared implementation plan file as metadata only.',
+    'Do not assume its contents unless you read the file.',
+    'When the user asks to continue, resume, or start implementing an existing plan, read this file before acting.',
+    'While the user is still planning, you may update this file through the normal file-approval flow.',
+    '',
+    `<plan path="${escapeRuleAttribute(planMetadata.path)}" />`,
+  ].join('\n').trimEnd();
 }
 
 export function buildActiveSkillsSystemMessage(

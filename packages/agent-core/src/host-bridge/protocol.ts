@@ -13,6 +13,7 @@ import type {
   OpenAiActiveSkill,
   OpenAiEnabledRule,
   OpenAiEnabledSkillCatalogEntry,
+  OpenAiPlanMetadata,
   OpenAiTransportConfig,
 } from '../openai/transport.js';
 
@@ -79,6 +80,7 @@ export interface RuntimeInitParams {
   history?: LlmMessage[];
   enabledRules?: OpenAiEnabledRule[];
   enabledSkillCatalog?: OpenAiEnabledSkillCatalogEntry[];
+  planMetadata?: OpenAiPlanMetadata;
 }
 
 export interface RuntimeSubmitUserTurnParams {
@@ -105,6 +107,10 @@ export interface RuntimeReplaceRulesParams {
 
 export interface RuntimeReplaceSkillsCatalogParams {
   enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[];
+}
+
+export interface RuntimeReplacePlanMetadataParams {
+  planMetadata: OpenAiPlanMetadata;
 }
 
 export interface RuntimeActivateSkillParams {
