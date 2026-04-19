@@ -21,7 +21,7 @@ const MCP_ADD_FIELD_TRANSPORT: usize = 1;
 const MCP_ADD_FIELD_ENDPOINT: usize = 2;
 const MCP_ADD_FIELD_METADATA: usize = 3;
 
-const MODEL_ADD_FIELD_NAME: usize = 0;
+const MODEL_ADD_FIELD_PROVIDER: usize = 0;
 const MODEL_ADD_FIELD_API_BASE: usize = 1;
 const MODEL_ADD_FIELD_API_KEY: usize = 2;
 
@@ -82,19 +82,76 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
     form
 }
 
+fn model_add_provider_choice_labels() -> Vec<String> {
+    vec![
+        t!("form.model.provider.test1").into_owned(),
+        t!("form.model.provider.test2").into_owned(),
+        t!("form.model.provider.test3").into_owned(),
+        t!("form.model.provider.custom").into_owned(),
+    ]
+}
+
+fn preset_api_base_for_model_add(selected: usize) -> Option<&'static str> {
+    match selected {
+        0 => Some("https://test1.example/v1"),
+        1 => Some("https://test2.example/v1"),
+        2 => Some("https://test3.example/v1"),
+        _ => None,
+    }
+}
+
+/// Mock `GET /v1/models` ids for the add-model UI test flow (no network).
+pub(crate) fn model_add_mock_model_ids(provider_index: usize) -> Vec<String> {
+    match provider_index {
+        0 => vec!["test1-alpha".to_string(), "test1-beta".to_string()],
+        1 => vec!["test2-fast".to_string(), "test2-slow".to_string()],
+        2 => vec!["test3-pro".to_string()],
+        _ => vec!["custom-model-a".to_string(), "custom-model-b".to_string()],
+    }
+}
+
+fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
+    match form.fields.get(MODEL_ADD_FIELD_PROVIDER).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if !options.is_empty() => {
+            Some((*selected).min(options.len().saturating_sub(1)))
+        }
+        _ => None,
+    }
+}
+
+fn sync_model_add_form_fields(form: &mut BottomFormView) {
+    if !matches!(form.kind, BottomFormKind::ModelAdd) {
+        return;
+    }
+    let Some(selected) = model_add_provider_selected(form) else {
+        return;
+    };
+    if let Some(base) = preset_api_base_for_model_add(selected) {
+        if let Some(field) = form.fields.get_mut(MODEL_ADD_FIELD_API_BASE) {
+            if let BottomFormFieldEditorView::Text { value, cursor, .. } = &mut field.editor {
+                *value = base.to_string();
+                *cursor = value.chars().count();
+            }
+        }
+    } else if let Some(field) = form.fields.get_mut(MODEL_ADD_FIELD_API_BASE) {
+        if let BottomFormFieldEditorView::Text { value, cursor, .. } = &mut field.editor {
+            value.clear();
+            *cursor = 0;
+        }
+    }
+}
+
 pub(crate) fn new_model_add_form() -> BottomFormView {
-    let form = BottomFormView {
+    let mut form = BottomFormView {
         kind: BottomFormKind::ModelAdd,
         title: t!("form.model.title").into_owned(),
         fields: vec![
             BottomFormFieldView {
-                label: t!("form.model.field.name.label").into_owned(),
+                label: t!("form.model.field.provider.label").into_owned(),
                 help: String::new(),
-                editor: BottomFormFieldEditorView::Text {
-                    value: String::new(),
-                    placeholder: t!("form.model.field.name.placeholder").into_owned(),
-                    cursor: 0,
-                    mask: false,
+                editor: BottomFormFieldEditorView::Choice {
+                    options: model_add_provider_choice_labels(),
+                    selected: 0,
                 },
             },
             BottomFormFieldView {
@@ -118,10 +175,11 @@ pub(crate) fn new_model_add_form() -> BottomFormView {
                 },
             },
         ],
-        selected_field: MODEL_ADD_FIELD_NAME,
+        selected_field: MODEL_ADD_FIELD_PROVIDER,
         scroll_offset: 0,
         footer_hint: t!("form.model.footer_hint").into_owned(),
     };
+    sync_model_add_form_fields(&mut form);
     form
 }
 
@@ -322,6 +380,7 @@ pub(crate) fn move_left(form: &mut BottomFormView) {
                 *selected -= 1;
             }
             sync_mcp_add_form_fields(form);
+            sync_model_add_form_fields(form);
         }
         BottomFormFieldEditorView::Checkbox { .. } => {}
     }
@@ -344,6 +403,7 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
             }
             *selected = (*selected + 1) % options.len();
             sync_mcp_add_form_fields(form);
+            sync_model_add_form_fields(form);
         }
         BottomFormFieldEditorView::Checkbox { .. } => {}
     }
@@ -492,32 +552,34 @@ pub(crate) fn to_config(
     ))
 }
 
-pub(crate) fn parse_model_add_form(
+/// Provider index, resolved API base, API key. Model id is chosen in the next mock list step.
+pub(crate) fn parse_model_add_connection(
     form: &BottomFormView,
-) -> std::result::Result<(String, String, String), String> {
+) -> std::result::Result<(usize, String, String), String> {
     if !matches!(form.kind, BottomFormKind::ModelAdd) {
         return Err(t!("form.model.validation.invalid_form_kind").into_owned());
     }
 
-    let name = bottom_form_text_value(form, MODEL_ADD_FIELD_NAME).trim().to_string();
-    if name.is_empty() {
-        return Err(t!("form.model.validation.name_empty").into_owned());
-    }
-    if name.chars().any(char::is_whitespace) {
-        return Err(t!("form.model.validation.name_whitespace").into_owned());
-    }
-
-    let api_base = bottom_form_text_value(form, MODEL_ADD_FIELD_API_BASE).trim().to_string();
-    if api_base.is_empty() {
-        return Err(t!("form.model.validation.api_base_empty").into_owned());
-    }
+    let Some(provider_index) = model_add_provider_selected(form) else {
+        return Err(t!("form.model.validation.provider_invalid").into_owned());
+    };
 
     let api_key = bottom_form_text_value(form, MODEL_ADD_FIELD_API_KEY).trim().to_string();
     if api_key.is_empty() {
         return Err(t!("form.model.validation.api_key_empty").into_owned());
     }
 
-    Ok((name, api_base, api_key))
+    let api_base = if let Some(preset) = preset_api_base_for_model_add(provider_index) {
+        preset.to_string()
+    } else {
+        let v = bottom_form_text_value(form, MODEL_ADD_FIELD_API_BASE).trim().to_string();
+        if v.is_empty() {
+            return Err(t!("form.model.validation.api_base_empty").into_owned());
+        }
+        v
+    };
+
+    Ok((provider_index, api_base, api_key))
 }
 
 pub(crate) fn to_prompt_args_json(
@@ -587,6 +649,9 @@ pub(crate) fn skills_form_overrides(form: &BottomFormView) -> Vec<(String, bool)
 }
 
 fn sync_mcp_add_form_fields(form: &mut BottomFormView) {
+    if !matches!(form.kind, BottomFormKind::McpAdd) {
+        return;
+    }
     let transport = selected_transport_kind(form).unwrap_or(McpAddTransportKind::Stdio);
 
     if let Some(field) = form.fields.get_mut(MCP_ADD_FIELD_ENDPOINT) {
@@ -871,10 +936,10 @@ enum McpAddTransportKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        MetadataFieldKind, activate, insert_text, new_mcp_add_form, new_mcp_prompt_form,
+        MetadataFieldKind, activate, insert_text, move_right, new_mcp_add_form, new_mcp_prompt_form,
         new_model_add_form, new_rules_form, new_skills_form, parse_metadata_map,
-        parse_model_add_form, prompt_user_message, rules_form_overrides, select_next_field,
-        skills_form_overrides, to_prompt_args_json,
+        parse_model_add_connection, prompt_user_message, rules_form_overrides, select_next_field,
+        skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
     };
     use rust_i18n::t;
     use std::path::PathBuf;
@@ -883,6 +948,7 @@ mod tests {
         mcp_types::{McpDiscoveredPrompt, McpDiscoveredPromptArgument},
         rules::{RuleEntry, RulePreview, RuleScope, RuleSource},
         skills::{SkillEntry, SkillPreview, SkillRootKind, SkillScope, SkillSource},
+        view::BottomFormFieldEditorView,
     };
 
     #[test]
@@ -1060,18 +1126,42 @@ mod tests {
     }
 
     #[test]
-    fn model_add_form_parses_three_fields() {
+    fn model_add_form_parses_preset_connection() {
         let mut form = new_model_add_form();
         assert!(matches!(form.kind, crate::view::BottomFormKind::ModelAdd));
-        insert_text(&mut form, "m1");
-        form.selected_field = 1;
-        insert_text(&mut form, "https://api.example/v1");
         form.selected_field = 2;
         insert_text(&mut form, "sk-secret");
-        let parsed = parse_model_add_form(&form).expect("parse");
-        assert_eq!(parsed.0, "m1");
-        assert_eq!(parsed.1, "https://api.example/v1");
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.0, 0);
+        assert_eq!(parsed.1, "https://test1.example/v1");
         assert_eq!(parsed.2, "sk-secret");
+    }
+
+    #[test]
+    fn model_add_provider_choice_does_not_overwrite_api_key_with_mcp_command_label() {
+        let mut form = new_model_add_form();
+        let expected_key_label = t!("form.model.field.api_key.label").into_owned();
+        move_right(&mut form);
+        assert_eq!(form.fields[2].label, expected_key_label);
+    }
+
+    #[test]
+    fn model_add_form_parses_custom_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 3;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        form.selected_field = 1;
+        insert_text(&mut form, "https://custom.example/v1");
+        form.selected_field = 2;
+        insert_text(&mut form, "sk-c");
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.0, 3);
+        assert_eq!(parsed.1, "https://custom.example/v1");
+        assert_eq!(parsed.2, "sk-c");
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

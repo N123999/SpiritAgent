@@ -73,6 +73,12 @@ pub struct TuiShell {
     slash: slash::SlashState,
     model_picker_active: bool,
     model_picker_index: usize,
+    /// Mock list-models step after add-model form (UI test).
+    model_add_pick_active: bool,
+    model_add_pick_index: usize,
+    model_add_pick_models: Vec<String>,
+    model_add_pick_api_base: String,
+    model_add_pick_api_key: String,
     language_picker_active: bool,
     language_picker_index: usize,
     chat_picker_active: bool,
@@ -152,6 +158,11 @@ impl TuiShell {
             slash: slash::SlashState::new(),
             model_picker_active: false,
             model_picker_index: 0,
+            model_add_pick_active: false,
+            model_add_pick_index: 0,
+            model_add_pick_models: vec![],
+            model_add_pick_api_base: String::new(),
+            model_add_pick_api_key: String::new(),
             language_picker_active: false,
             language_picker_index: 0,
             chat_picker_active: false,
@@ -313,6 +324,10 @@ impl TuiShell {
             selected_suggestion: self.slash.selected_suggestion,
             model_picker_active: self.model_picker_active,
             model_picker_index: self.model_picker_index,
+            model_add_pick_active: self.model_add_pick_active,
+            model_add_pick_index: self.model_add_pick_index,
+            model_add_pick_models: self.model_add_pick_models.clone(),
+            model_add_pick_api_base: self.model_add_pick_api_base.clone(),
             language_picker_active: self.language_picker_active,
             language_picker_index: self.language_picker_index,
             chat_picker_active: self.chat_picker_active,
@@ -481,6 +496,15 @@ impl TuiShell {
 
     pub fn is_model_picker_active(&self) -> bool {
         self.model_picker_active
+    }
+
+    pub fn is_model_add_pick_active(&self) -> bool {
+        self.model_add_pick_active
+    }
+
+    /// Any full-screen model list overlay (switch model or mock add-model list).
+    pub fn is_model_list_overlay_active(&self) -> bool {
+        self.model_picker_active || self.model_add_pick_active
     }
 
     pub fn is_language_picker_active(&self) -> bool {
@@ -838,11 +862,27 @@ impl TuiShell {
         self.model_picker_active = false;
     }
 
+    pub fn cancel_model_add_pick(&mut self) {
+        self.model_add_pick_active = false;
+        self.model_add_pick_models.clear();
+        self.model_add_pick_api_base.clear();
+        self.model_add_pick_api_key.clear();
+        self.model_add_pick_index = 0;
+    }
+
     pub fn cancel_language_picker(&mut self) {
         self.language_picker_active = false;
     }
 
     pub fn select_next_model(&mut self) {
+        if self.model_add_pick_active {
+            if self.model_add_pick_models.is_empty() {
+                return;
+            }
+            self.model_add_pick_index =
+                (self.model_add_pick_index + 1) % self.model_add_pick_models.len();
+            return;
+        }
         if self.runtime.config().models.is_empty() {
             return;
         }
@@ -859,6 +899,17 @@ impl TuiShell {
     }
 
     pub fn select_prev_model(&mut self) {
+        if self.model_add_pick_active {
+            if self.model_add_pick_models.is_empty() {
+                return;
+            }
+            if self.model_add_pick_index == 0 {
+                self.model_add_pick_index = self.model_add_pick_models.len() - 1;
+            } else {
+                self.model_add_pick_index -= 1;
+            }
+            return;
+        }
         if self.runtime.config().models.is_empty() {
             return;
         }
@@ -920,6 +971,41 @@ impl TuiShell {
             });
         }
         self.model_picker_active = false;
+    }
+
+    pub fn confirm_model_add_pick(&mut self) {
+        let Some(selected_name) = self
+            .model_add_pick_models
+            .get(self.model_add_pick_index)
+            .cloned()
+        else {
+            self.cancel_model_add_pick();
+            return;
+        };
+        let api_base = self.model_add_pick_api_base.clone();
+        let api_key = std::mem::take(&mut self.model_add_pick_api_key);
+        self.model_add_pick_active = false;
+        self.model_add_pick_models.clear();
+        self.model_add_pick_api_base.clear();
+        self.model_add_pick_index = 0;
+
+        match self.apply_model_add_and_switch(selected_name.as_str(), api_base.as_str(), api_key.as_str())
+        {
+            Ok(()) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!("tui.model_add.saved", name = selected_name).into_owned(),
+                    tool_block: None,
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: err,
+                    tool_block: None,
+                });
+            }
+        }
     }
 
     pub fn confirm_language_picker(&mut self) {
@@ -1134,28 +1220,20 @@ impl TuiShell {
         };
 
         if matches!(form.kind, BottomFormKind::ModelAdd) {
-            match bottom_form::parse_model_add_form(form) {
-                Ok((name, api_base, api_key)) => match self.apply_model_add_and_switch(
-                    name.as_str(),
-                    api_base.as_str(),
-                    api_key.as_str(),
-                ) {
-                    Ok(()) => {
-                        self.bottom_form = None;
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::Agent,
-                            content: t!("tui.model_add.saved", name = name).into_owned(),
-                            tool_block: None,
-                        });
-                    }
-                    Err(err) => {
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::Agent,
-                            content: err,
-                            tool_block: None,
-                        });
-                    }
-                },
+            match bottom_form::parse_model_add_connection(form) {
+                Ok((provider_idx, api_base, api_key)) => {
+                    self.bottom_form = None;
+                    self.model_add_pick_models = bottom_form::model_add_mock_model_ids(provider_idx);
+                    self.model_add_pick_api_base = api_base;
+                    self.model_add_pick_api_key = api_key;
+                    self.model_add_pick_index = 0;
+                    self.model_add_pick_active = true;
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.model_add.mock_list_opened").into_owned(),
+                        tool_block: None,
+                    });
+                }
                 Err(err) => {
                     self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
@@ -2470,6 +2548,7 @@ impl TuiShell {
     }
 
     fn open_model_picker(&mut self) {
+        self.cancel_model_add_pick();
         if self.runtime.config().models.is_empty() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
@@ -2497,6 +2576,7 @@ impl TuiShell {
     }
 
     fn open_language_picker(&mut self) {
+        self.cancel_model_add_pick();
         let current = locale::normalize_ui_locale(rust_i18n::locale().as_ref());
         self.language_picker_index = locale::supported_ui_locales()
             .iter()
@@ -2512,6 +2592,7 @@ impl TuiShell {
     }
 
     fn open_chat_picker(&mut self) {
+        self.cancel_model_add_pick();
         match self.chat_repository.list() {
             Ok(files) => {
                 if files.is_empty() {
@@ -2544,6 +2625,7 @@ impl TuiShell {
     }
 
     fn open_image_picker(&mut self) {
+        self.cancel_model_add_pick();
         match list_local_image_files() {
             Ok(files) => {
                 if files.is_empty() {
@@ -2577,6 +2659,7 @@ impl TuiShell {
     }
 
     fn open_mcp_add_form(&mut self) {
+        self.cancel_model_add_pick();
         self.bottom_form = Some(bottom_form::new_mcp_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -2587,6 +2670,7 @@ impl TuiShell {
     }
 
     fn open_model_add_form(&mut self) {
+        self.cancel_model_add_pick();
         self.bottom_form = Some(bottom_form::new_model_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -2602,6 +2686,7 @@ impl TuiShell {
         prompt: &McpDiscoveredPrompt,
         initial_user_message: Option<&str>,
     ) {
+        self.cancel_model_add_pick();
         self.bottom_form = Some(bottom_form::new_mcp_prompt_form(
             server,
             prompt,
@@ -2616,6 +2701,7 @@ impl TuiShell {
     }
 
     pub fn open_rules_form(&mut self) {
+        self.cancel_model_add_pick();
         self.bottom_form = Some(bottom_form::new_rules_form(&self.rule_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -2626,6 +2712,7 @@ impl TuiShell {
     }
 
     pub fn open_skills_form(&mut self) {
+        self.cancel_model_add_pick();
         self.bottom_form = Some(bottom_form::new_skills_form(&self.skill_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
