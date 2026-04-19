@@ -1902,6 +1902,29 @@ impl TuiShell {
         self.apply_runtime_events();
     }
 
+    pub(crate) fn handle_start_implementing_slash(&mut self) {
+        if !self.is_plan_mode_active() {
+            self.push_agent_message(
+                "该命令仅在 Plan 模式下可用；按 Tab 切到 Plan 后重试。".to_string(),
+            );
+            return;
+        }
+
+        if self.runtime.is_busy() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.busy.pending_reply").into_owned(),
+                tool_block: None,
+            });
+            return;
+        }
+
+        self.set_input_mode(MainInputMode::Agent);
+        let user_turn = plan::build_start_implementing_user_turn();
+        self.runtime.submit_user_turn(user_turn, None);
+        self.apply_runtime_events();
+    }
+
     pub(crate) fn handle_skill_alias_slash(&mut self, message: &str) -> bool {
         let Some((command, user_message)) = split_first_token(message) else {
             return false;
