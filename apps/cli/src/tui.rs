@@ -22,6 +22,7 @@ use crate::{
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
+    plan,
     ports::{
         AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
         McpStatusState, SecretStore,
@@ -794,7 +795,9 @@ impl TuiShell {
         if trimmed_message.starts_with('/') {
             self.handle_slash_command(trimmed_message);
         } else {
-            self.runtime.submit_user_turn(raw_message, None);
+            let workspace_root = self.app_paths.workspace_root();
+            let runtime_turn = user_turn_text_for_mode(&workspace_root, self.input_mode, &raw_message);
+            self.runtime.submit_user_turn(runtime_turn, None);
             self.apply_runtime_events();
         }
 
@@ -3298,6 +3301,52 @@ impl TuiShell {
 
         self.messages
             .push(ChatMessage::with_tool_block(MessageRole::Agent, String::new(), block));
+    }
+}
+
+fn user_turn_text_for_mode(
+    workspace_root: &Path,
+    input_mode: MainInputMode,
+    raw_message: &str,
+) -> String {
+    match input_mode {
+        MainInputMode::Agent => raw_message.to_string(),
+        MainInputMode::Plan => plan::build_create_plan_user_turn(workspace_root, raw_message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::user_turn_text_for_mode;
+    use crate::{
+        plan::START_IMPLEMENTING_REMINDER,
+        view::MainInputMode,
+    };
+    use std::path::PathBuf;
+
+    #[test]
+    fn user_turn_text_for_agent_mode_keeps_raw_input() {
+        let workspace_root = PathBuf::from("C:/workspace/demo");
+        let raw_message = "实现计划模式";
+
+        let runtime_turn =
+            user_turn_text_for_mode(&workspace_root, MainInputMode::Agent, raw_message);
+
+        assert_eq!(runtime_turn, raw_message);
+    }
+
+    #[test]
+    fn user_turn_text_for_plan_mode_builds_generation_prompt() {
+        let workspace_root = PathBuf::from("C:/workspace/demo");
+        let raw_message = "实现计划模式";
+
+        let runtime_turn =
+            user_turn_text_for_mode(&workspace_root, MainInputMode::Plan, raw_message);
+
+        assert!(runtime_turn.contains("Plan 模式规划请求"));
+        assert!(runtime_turn.contains(raw_message));
+        assert!(runtime_turn.contains("create_file 或 update_file"));
+        assert!(runtime_turn.contains(START_IMPLEMENTING_REMINDER));
     }
 }
 
