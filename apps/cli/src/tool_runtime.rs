@@ -26,6 +26,7 @@ use windows_sys::Win32::{
 use crate::logging;
 use crate::{
     mcp::spirit_agent_data_dir,
+    plan::USER_PLAN_FILE_NAME,
     rules::USER_RULE_FILE_NAME,
     skills::SKILLS_DIR_NAME,
 };
@@ -500,7 +501,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "create_file",
-                    "description": "Create a new file inside the workspace or under Spirit-managed user rule/skills paths. Fails if the file already exists.",
+                    "description": "Create a new file inside the workspace or under Spirit-managed user rule/plan/skills paths. Fails if the file already exists.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -516,7 +517,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "update_file",
-                    "description": "Update an existing file inside the workspace or under Spirit-managed user rule/skills paths by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
+                    "description": "Update an existing file inside the workspace or under Spirit-managed user rule/plan/skills paths by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -533,7 +534,7 @@ impl ToolRuntime {
                 "type": "function",
                 "function": {
                     "name": "delete_file",
-                    "description": "Delete an existing file inside the workspace or under Spirit-managed user rule/skills paths.",
+                    "description": "Delete an existing file inside the workspace or under Spirit-managed user rule/plan/skills paths.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1190,6 +1191,11 @@ fn normalize_search_line(line: &str) -> &str {
             return true;
         }
 
+        let user_plan = normalize_path_lossy(&self.spirit_data_dir.join(USER_PLAN_FILE_NAME)).ok();
+        if user_plan.as_ref().is_some_and(|allowed| path_has_prefix(path, allowed)) {
+            return true;
+        }
+
         let skills_root = normalize_path_lossy(&self.spirit_data_dir.join(SKILLS_DIR_NAME)).ok();
         skills_root
             .as_ref()
@@ -1215,7 +1221,7 @@ fn normalize_search_line(line: &str) -> &str {
         let normalized = normalize_path_lossy(&joined)?;
         if !self.is_allowed_write_path(&normalized) {
             return Err(anyhow!(
-                "仅允许修改工作目录内文件，或 Spirit 托管的用户规则/skills 路径: {}",
+                "仅允许修改工作目录内文件，或 Spirit 托管的用户规则/plan/skills 路径: {}",
                 normalized.display()
             ));
         }
@@ -1227,7 +1233,7 @@ fn normalize_search_line(line: &str) -> &str {
         let path = self.resolve_existing_path(input)?;
         if !self.is_allowed_write_path(&path) {
             return Err(anyhow!(
-                "仅允许修改工作目录内文件，或 Spirit 托管的用户规则/skills 路径: {}",
+                "仅允许修改工作目录内文件，或 Spirit 托管的用户规则/plan/skills 路径: {}",
                 path.display()
             ));
         }
@@ -1819,6 +1825,26 @@ mod tests {
     }
 
     #[test]
+    fn create_file_allows_spirit_user_plan_path() {
+        let workspace = make_temp_workspace("spirit-user-plan-write-workspace");
+        let spirit_dir = make_temp_workspace("spirit-user-plan-write-data");
+        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let target = spirit_dir.join(USER_PLAN_FILE_NAME);
+
+        runtime
+            .execute_create_file(
+                target.to_str().expect("target path utf8"),
+                "# Plan\n\n- implement phase 1\n",
+            )
+            .expect("create spirit-managed plan file");
+
+        assert!(target.is_file());
+
+        let _ = fs::remove_dir_all(workspace);
+        let _ = fs::remove_dir_all(spirit_dir);
+    }
+
+    #[test]
     fn authorize_read_allows_spirit_user_skill_resources_without_external_prompt() {
         let workspace = make_temp_workspace("spirit-user-skill-read-workspace");
         let spirit_dir = make_temp_workspace("spirit-user-skill-read-data");
@@ -1857,6 +1883,28 @@ mod tests {
                 .parent()
                 .expect("skill dir"),
         );
+    }
+
+    #[test]
+    fn authorize_read_allows_spirit_user_plan_without_external_prompt() {
+        let workspace = make_temp_workspace("spirit-user-plan-read-workspace");
+        let spirit_dir = make_temp_workspace("spirit-user-plan-read-data");
+        let plan_path = spirit_dir.join(USER_PLAN_FILE_NAME);
+        fs::write(&plan_path, "# Plan\n\n- phase 1\n").expect("write plan");
+
+        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let decision = runtime
+            .authorize(&ToolRequest::ReadFile {
+                path: plan_path.to_string_lossy().to_string(),
+                start_line: None,
+                end_line: None,
+            })
+            .expect("authorize read");
+
+        assert!(matches!(decision, AuthorizationDecision::Allowed));
+
+        let _ = fs::remove_dir_all(workspace);
+        let _ = fs::remove_dir_all(spirit_dir);
     }
 
     fn make_temp_workspace(prefix: &str) -> PathBuf {

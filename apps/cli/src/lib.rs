@@ -11,6 +11,7 @@ pub mod logging;
 pub mod mcp;
 pub mod mcp_types;
 pub mod model_registry;
+pub mod plan;
 pub mod ports;
 pub mod rules;
 pub mod runtime_handle;
