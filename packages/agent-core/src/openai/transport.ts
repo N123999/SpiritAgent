@@ -396,7 +396,7 @@ export class OpenAiTransport
 
       const assistantMessage = normalizeAssistantMessage(
         message,
-        shouldInjectSyntheticToolReasoning(config),
+        shouldInjectSyntheticToolReasoning(),
       );
       nextState.messages.push(assistantMessage);
 
@@ -480,7 +480,7 @@ export class OpenAiTransport
           nextState,
           requestTrace,
           completion,
-          shouldInjectSyntheticToolReasoning(config),
+          shouldInjectSyntheticToolReasoning(),
         ),
         completion: completion.promise,
         cancel: () => abortController.abort(),
@@ -1373,15 +1373,8 @@ function normalizeMessagesForRequest(messages: JsonValue[]): JsonValue[] {
   return messages.map((message) => cloneJsonValue(message));
 }
 
-function shouldInjectSyntheticToolReasoning(config: OpenAiTransportConfig): boolean {
-  return !isMiniMaxCompatibleConfig(config);
-}
-
-function isMiniMaxCompatibleConfig(config: OpenAiTransportConfig): boolean {
-  const normalizedModel = config.model.trim().toLowerCase();
-  const normalizedBaseUrl = config.baseUrl?.trim().toLowerCase();
-
-  return normalizedModel.startsWith('minimax') || normalizedBaseUrl?.includes('minimaxi.com') === true;
+function shouldInjectSyntheticToolReasoning(): boolean {
+  return true;
 }
 
 async function* emptyOpenAiEventStream(): AsyncGenerator<LlmStreamEvent, void, undefined> {}

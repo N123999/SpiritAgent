@@ -1864,8 +1864,8 @@ mod tests {
                     api_base: DEFAULT_API_BASE.to_string(),
                 },
                 ModelProfile {
-                    name: "deepseek-chat".to_string(),
-                    api_base: "https://api.deepseek.com/v1".to_string(),
+                    name: "gpt-4.1-mini".to_string(),
+                    api_base: DEFAULT_API_BASE.to_string(),
                 },
             ],
             active_model: "gpt-4o-mini".to_string(),
@@ -1918,7 +1918,7 @@ mod tests {
         runtime.apply_snapshot(busy_snapshot());
 
         let mut next = runtime.config().clone();
-        next.active_model = "deepseek-chat".to_string();
+        next.active_model = "gpt-4.1-mini".to_string();
 
         let err = runtime
             .validate_config_change(&next)
@@ -1937,8 +1937,8 @@ mod tests {
         let mut next = runtime.config().clone();
         next.ui_locale = Some("zh-CN".to_string());
         next.models.push(ModelProfile {
-            name: "Pro/moonshotai/Kimi-K2.5".to_string(),
-            api_base: "https://api.siliconflow.cn/v1".to_string(),
+            name: "gpt-4.1".to_string(),
+            api_base: DEFAULT_API_BASE.to_string(),
         });
 
         assert!(runtime.validate_config_change(&next).is_ok());
