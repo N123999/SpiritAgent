@@ -694,8 +694,10 @@ export function buildPlanSystemMessage(
     PLAN_SECTION_PREFIX,
     'The host exposes a shared implementation plan file as metadata only.',
     'Do not assume its contents unless you read the file.',
+    'Produce or rewrite this plan document only when the user clearly asks for planning, a design, or an implementation plan for a concrete task. Do not spontaneously draft a full “project plan” document or roadmap unless the user explicitly requests that kind of deliverable.',
     'When the user asks to continue, resume, or start implementing an existing plan, read this file before acting.',
     'While the user is still planning, you may update this file through the normal file-approval flow.',
+    'If an existing plan on disk is clearly about a different topic or intent than the user\'s current request, delete it (via approved delete_file) and create a new plan from scratch; do not stack unrelated plans in the same file.',
     '',
     `<plan path="${escapeRuleAttribute(planMetadata.path)}" />`,
   ].join('\n').trimEnd();
