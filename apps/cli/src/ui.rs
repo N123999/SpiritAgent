@@ -167,7 +167,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         input_cursor_row,
         input_cursor_col,
     );
-    let input_style = input_block_style(app.shell_mode_active, app.input_mode, show_bottom_form);
+    let input_border_style =
+        input_block_border_style(app.shell_mode_active, app.input_mode, show_bottom_form);
     let input_title = if app.shell_mode_active {
         t!("ui.input.title_shell").into_owned()
     } else {
@@ -181,8 +182,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(input_style)
-            .title(Line::from(Span::styled(input_title, input_style))),
+            .border_style(input_border_style)
+            .title(Line::from(Span::styled(input_title, input_border_style))),
     );
     frame.render_widget(input, chunks[1]);
 
@@ -235,11 +236,17 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             SLASH_SUGGESTION_VISIBLE_ITEMS,
             chunks[2].width.saturating_sub(2) as usize,
         );
+        let suggestion_frame_style = conversation_body_text_style();
+        let suggestion_title = input_suggestion_title(&app);
         let suggestions_widget = Paragraph::new(suggestions)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(input_suggestion_title(&app)),
+                    .border_style(suggestion_frame_style)
+                    .title(Line::from(Span::styled(
+                        suggestion_title,
+                        suggestion_frame_style,
+                    ))),
             )
             .wrap(Wrap { trim: true });
         frame.render_widget(suggestions_widget, chunks[2]);
@@ -261,14 +268,6 @@ fn conversation_body_text_style() -> Style {
     Style::default().fg(Color::Rgb(170, 170, 170))
 }
 
-fn shell_mode_input_style() -> Style {
-    Style::default().fg(Color::Rgb(184, 134, 11))
-}
-
-fn plan_mode_input_style() -> Style {
-    Style::default().fg(Color::Yellow)
-}
-
 fn input_mode_title(input_mode: MainInputMode) -> String {
     match input_mode {
         MainInputMode::Agent => t!("ui.input.title_agent").into_owned(),
@@ -276,21 +275,21 @@ fn input_mode_title(input_mode: MainInputMode) -> String {
     }
 }
 
-fn input_block_style(
+/// 输入框边框与标题（legend）；Agent 模式单独变淡，Shell / Plan 保持原有高对比描边。
+fn input_block_border_style(
     shell_mode_active: bool,
     input_mode: MainInputMode,
     bottom_form_open: bool,
 ) -> Style {
     if bottom_form_open {
-        return subtle_aux_text_style();
+        return subtle_aux_text_style().add_modifier(Modifier::DIM);
     }
     if shell_mode_active {
-        shell_mode_input_style()
-    } else {
-        match input_mode {
-            MainInputMode::Agent => Style::default().fg(Color::White),
-            MainInputMode::Plan => plan_mode_input_style(),
-        }
+        return Style::default().fg(Color::Rgb(184, 134, 11));
+    }
+    match input_mode {
+        MainInputMode::Agent => conversation_body_text_style(),
+        MainInputMode::Plan => Style::default().fg(Color::Yellow),
     }
 }
 
@@ -300,15 +299,14 @@ fn input_text_style(
     bottom_form_open: bool,
 ) -> Style {
     if bottom_form_open {
-        return subtle_aux_text_style();
+        return subtle_aux_text_style().add_modifier(Modifier::DIM);
     }
     if shell_mode_active {
-        shell_mode_input_style()
-    } else {
-        match input_mode {
-            MainInputMode::Agent => Style::default().fg(Color::White),
-            MainInputMode::Plan => plan_mode_input_style(),
-        }
+        return Style::default().fg(Color::Rgb(184, 134, 11));
+    }
+    match input_mode {
+        MainInputMode::Agent => Style::default().fg(Color::White),
+        MainInputMode::Plan => Style::default().fg(Color::Yellow),
     }
 }
 
@@ -2909,12 +2907,23 @@ mod tests {
     }
 
     #[test]
-    fn plan_mode_input_uses_yellow_style_and_plan_title() {
+    fn plan_mode_input_uses_yellow_border_and_text_and_plan_title() {
         let title = input_mode_title(MainInputMode::Plan);
-        let style = input_block_style(false, MainInputMode::Plan, false);
+        let border = input_block_border_style(false, MainInputMode::Plan, false);
+        let text = input_text_style(false, MainInputMode::Plan, false);
 
         assert_eq!(title, "Plan");
-        assert_eq!(style.fg, Some(Color::Yellow));
+        assert_eq!(border.fg, Some(Color::Yellow));
+        assert_eq!(text.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn agent_mode_input_softens_only_border_text_stays_white() {
+        let border = input_block_border_style(false, MainInputMode::Agent, false);
+        let text = input_text_style(false, MainInputMode::Agent, false);
+
+        assert_eq!(border.fg, conversation_body_text_style().fg);
+        assert_eq!(text.fg, Some(Color::White));
     }
 
     #[test]
