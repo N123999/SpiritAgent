@@ -9,6 +9,7 @@ import {
   buildSkillsCatalogSystemMessage,
   extractLastOpenAiAssistantText,
   OpenAiTransport,
+  buildToolAgentHostPrompt,
   rebuildOpenAiToolAgentStateAfterCompaction,
   startOpenAiToolAgentState,
   truncateOpenAiHistoryForCompaction,
@@ -125,6 +126,7 @@ async function createRuntime(
       enabledRules,
       enabledSkillCatalog,
       activeSkills,
+      config.model,
       planMetadata,
     );
 
@@ -147,6 +149,7 @@ async function createRuntime(
         enabledRules,
         enabledSkillCatalog,
         activeSkills,
+        config.model,
         planMetadata,
       ),
     resolveWorkspaceFilesFromInput: (text) => pendingWorkspaceFilesFromInput(workspaceRoot, text),
@@ -439,6 +442,7 @@ peer.on('runtime.exportState', async () => {
     requestTrace: [...target.requestTrace()],
     systemPrompts: {
       ...baseSystemPrompts,
+      tool_agent: buildToolAgentHostPrompt(config.model),
       ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
       ...(skillsCatalogSystemPrompt === undefined
         ? {}

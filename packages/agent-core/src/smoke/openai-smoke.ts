@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const transport = createOpenAiSmokeTransport();
   const config = createOpenAiSmokeConfig();
 
-  const finalState = startOpenAiToolAgentState([], 'Reply with exactly OK.');
+  const finalState = startOpenAiToolAgentState([], 'Reply with exactly OK.', process.cwd(), [], [], [], config.model);
   const finalRound = await transport.startToolAgentRound(config, finalState, []);
 
   printSmokeSection('final-response smoke', finalRound);
@@ -21,6 +21,11 @@ async function main(): Promise<void> {
   const toolState = startOpenAiToolAgentState(
     [],
     'You must call demo_lookup exactly once with query "Spirit Agent migration". Do not answer directly.',
+    process.cwd(),
+    [],
+    [],
+    [],
+    config.model,
   );
   const toolRound = await transport.startToolAgentRound(config, toolState, toolDefinition);
 

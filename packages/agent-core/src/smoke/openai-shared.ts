@@ -52,11 +52,21 @@ export function createOpenAiSmokeTransport(): OpenAiTransport {
 export function createOpenAiDemoRuntime(options: {
   onEvent?: (event: RuntimeEvent<DemoToolRequest>) => void;
 } = {}) {
+  const smokeConfig = createOpenAiSmokeConfig();
   return new AgentRuntime({
-    config: createOpenAiSmokeConfig(),
+    config: smokeConfig,
     llmTransport: createOpenAiSmokeTransport(),
     toolExecutor: new DemoToolExecutor(),
-    createToolAgentState: startOpenAiToolAgentState,
+    createToolAgentState: (messages, userInput) =>
+      startOpenAiToolAgentState(
+        messages,
+        userInput,
+        process.cwd(),
+        [],
+        [],
+        [],
+        smokeConfig.model,
+      ),
     appendToolResultMessage: appendOpenAiToolResultMessage,
     extractAssistantText: extractLastOpenAiAssistantText,
     ...(options.onEvent ? { onEvent: options.onEvent } : {}),

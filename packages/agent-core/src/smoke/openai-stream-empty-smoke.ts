@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   }
 
   const transport = new OpenAiTransport();
-  const state = startOpenAiToolAgentState([], '请测试空流式输出。');
+  const state = startOpenAiToolAgentState([], '请测试空流式输出。', process.cwd(), [], [], [], 'test-openai-compatible');
   const started = await transport.startToolAgentRoundStreaming(
     {
       apiKey: 'test-key',

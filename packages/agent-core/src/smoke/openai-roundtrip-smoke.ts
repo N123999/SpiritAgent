@@ -18,6 +18,11 @@ async function main(): Promise<void> {
   const initialState = startOpenAiToolAgentState(
     [],
     'First call demo_lookup exactly once with query "Spirit Agent migration". After the tool result is returned, answer with exactly "ROUNDTRIP_OK" and nothing else.',
+    process.cwd(),
+    [],
+    [],
+    [],
+    config.model,
   );
 
   const firstRound = await transport.startToolAgentRound(config, initialState, tools);
