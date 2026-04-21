@@ -4,6 +4,7 @@ import {
   formatPendingMcpResourceContext,
   formatPendingWorkspaceFileContext,
 } from './helpers.js';
+import { formatUserMessageContentForLlm } from './user-turn-timestamp.js';
 import type {
   AgentRuntimeOptions,
   PendingMcpResource,
@@ -49,9 +50,10 @@ export async function prepareSubmittedUserTurn<
     runtime.recordContextMessage('system', formatPendingMcpResourceContext(resource));
   }
 
+  const contentForLlm = formatUserMessageContentForLlm(userInput);
   runtime.historyStore.push({
     role: 'user',
-    content: userInput,
+    content: contentForLlm,
     imagePaths: images,
   });
   runtime.pendingUserTurnStore = userInput;

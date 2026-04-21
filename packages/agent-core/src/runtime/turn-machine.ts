@@ -9,6 +9,7 @@ import type {
 } from '../ports.js';
 
 import { renderError } from './helpers.js';
+import { formatUserMessageContentForLlm } from './user-turn-timestamp.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type {
   AgentRuntimeOptions,
@@ -123,14 +124,15 @@ export async function resumePendingApproval<
       return runTurnLoop(runtime, resumedState, pending.pendingUserInput, pending.turn);
     }
 
+    const guidanceForLlm = formatUserMessageContentForLlm(guidanceMessage);
     runtime.historyStore.push({
       role: 'user',
-      content: guidanceMessage,
+      content: guidanceForLlm,
       imagePaths: [],
     });
     runtime.pendingUserTurnStore = guidanceMessage;
     resumedState = runtime.options.appendUserMessage
-      ? runtime.options.appendUserMessage(resumedState, guidanceMessage)
+      ? runtime.options.appendUserMessage(resumedState, guidanceForLlm)
       : runtime.options.createToolAgentState(runtime.historyStore, guidanceMessage);
 
     return runTurnLoop(runtime, resumedState, guidanceMessage, pending.turn);

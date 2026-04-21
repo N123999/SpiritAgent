@@ -28,6 +28,7 @@ import {
   shortLabelForPendingMcpResource,
   toolNameFromRequest,
 } from './runtime/helpers.js';
+import { formatUserMessageContentForLlm } from './runtime/user-turn-timestamp.js';
 import { prepareSubmittedUserTurn as prepareSubmittedUserTurnInternal } from './runtime/context.js';
 import {
   continuePendingManualToolApproval as continuePendingManualToolApprovalInternal,
@@ -649,14 +650,15 @@ export class AgentRuntime<
         return;
       }
 
+      const guidanceForLlm = formatUserMessageContentForLlm(guidanceMessage);
       this.historyStore.push({
         role: 'user',
-        content: guidanceMessage,
+        content: guidanceForLlm,
         imagePaths: [],
       });
       this.pendingUserTurnStore = guidanceMessage;
       resumedState = this.options.appendUserMessage
-        ? this.options.appendUserMessage(resumedState, guidanceMessage)
+        ? this.options.appendUserMessage(resumedState, guidanceForLlm)
         : this.options.createToolAgentState(this.historyStore, guidanceMessage);
 
       if (pending.resumeAsStreaming) {
