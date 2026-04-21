@@ -1,0 +1,14 @@
+{
+  "name": "spirit-agent-repo",
+  "private": true,
+  "description": "Spirit Agent — root scripts for TS build + Rust CLI",
+  "scripts": {
+    "build:agent-core": "npm --prefix packages/agent-core run build",
+    "build": "npm run build:agent-core",
+    "dev": "npm run build:agent-core && cargo run -p spirit-agent",
+    "dev:cli": "cargo run -p spirit-agent"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
