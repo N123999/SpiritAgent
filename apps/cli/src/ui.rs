@@ -2918,7 +2918,7 @@ mod tests {
     }
 
     #[test]
-    fn footer_mentions_next_mode_toggle() {
+    fn footer_shows_mode_without_tab_toggle_hint() {
         let agent_footer = render_text_lines(vec![build_footer_line(
             &build_view_model(ChatMessage::new(MessageRole::Agent, "welcome")),
             80,
@@ -2928,8 +2928,10 @@ mod tests {
         plan_app.input_mode = MainInputMode::Plan;
         let plan_footer = render_text_lines(vec![build_footer_line(&plan_app, 80)]);
 
-        assert!(agent_footer[0].contains("Tab -> Plan"));
-        assert!(plan_footer[0].contains("Tab -> Agent"));
+        assert!(!agent_footer[0].contains("Tab"));
+        assert!(!plan_footer[0].contains("Tab"));
+        assert!(agent_footer[0].contains(" |  Agent"));
+        assert!(plan_footer[0].contains(" |  Plan"));
     }
 
     #[test]
