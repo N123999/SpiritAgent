@@ -59,7 +59,6 @@ export interface OpenAiTransportConfig {
   baseUrl?: string;
   organization?: string;
   project?: string;
-  temperature?: number;
   compactModel?: string;
   workspaceRoot?: string;
 }
@@ -118,7 +117,6 @@ export interface OpenAiRequestTrace extends JsonObject {
   model: string;
   stream: boolean;
   toolChoice?: 'auto';
-  temperature: number;
   messages: JsonValue[];
   tools?: JsonValue[];
 }
@@ -373,7 +371,6 @@ export class OpenAiTransport
     const payload: ChatCompletionCreateParamsNonStreaming = {
       model: config.model,
       messages: requestMessages as unknown as ChatCompletionMessageParam[],
-      temperature: config.temperature ?? 0.2,
       ...(normalizedTools.length > 0
         ? {
             tools: normalizedTools,
@@ -457,7 +454,6 @@ export class OpenAiTransport
     const payload: ChatCompletionCreateParamsStreaming = {
       model: config.model,
       messages: requestMessages as unknown as ChatCompletionMessageParam[],
-      temperature: config.temperature ?? 0.2,
       stream: true,
       ...(normalizedTools.length > 0
         ? {
@@ -541,7 +537,6 @@ export class OpenAiTransport
       try {
         const stream = await client.chat.completions.create({
           model: config.compactModel ?? config.model,
-          temperature: 0.2,
           stream: true,
           messages: compactionMessages,
         });
@@ -574,7 +569,6 @@ export class OpenAiTransport
     if (!summary.trim()) {
       const response = await client.chat.completions.create({
         model: config.compactModel ?? config.model,
-        temperature: 0.2,
         messages: compactionMessages,
       });
       summary = response.choices.at(0)?.message?.content ?? '';
@@ -788,7 +782,6 @@ function buildRequestTrace(
     stepIndex,
     model: config.model,
     stream,
-    temperature: config.temperature ?? 0.2,
     messages: messages.map((message) => cloneJsonValue(message)),
     ...(tools.length > 0
       ? {
