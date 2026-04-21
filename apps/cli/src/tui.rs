@@ -15,9 +15,10 @@ use std::{
 };
 
 use crate::{
+    ask_questions::AskQuestionsResult,
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
-    host_runtime::RuntimeEvent,
+    host_runtime::{RuntimeEvent, build_tool_result_block, format_tool_ui_message},
     locale,
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -29,7 +30,7 @@ use crate::{
     },
     rules::{self, RuleEntry, RuleScope, RuleStateFile},
     runtime_handle::RuntimeHandle,
-    shell::{bottom_form, file_reference, manual_shell, slash},
+    shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry, SkillScope, SkillStateFile},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
@@ -548,6 +549,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return false;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_prev_row(form);
+            return true;
+        }
         if matches!(form.kind, BottomFormKind::Rules) {
             form.scroll_offset = form.scroll_offset.saturating_sub(lines);
             return true;
@@ -561,6 +566,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return false;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_next_row(form);
+            return true;
+        }
         if matches!(form.kind, BottomFormKind::Rules) {
             form.scroll_offset = form.scroll_offset.saturating_add(lines);
             return true;
@@ -1142,6 +1151,9 @@ impl TuiShell {
         };
 
         match kind {
+            BottomFormKind::AskQuestions { .. } => {
+                self.complete_ask_questions_form(ask_questions::dismiss_result());
+            }
             BottomFormKind::McpAdd
             | BottomFormKind::ModelAdd
             | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
@@ -1154,6 +1166,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_next_row(form);
+            return;
+        }
         bottom_form::select_next_field(form);
     }
 
@@ -1161,6 +1177,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_prev_row(form);
+            return;
+        }
         bottom_form::select_prev_field(form);
     }
 
@@ -1168,6 +1188,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_left(form);
+            return;
+        }
         bottom_form::move_left(form);
     }
 
@@ -1175,6 +1199,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_right(form);
+            return;
+        }
         bottom_form::move_right(form);
     }
 
@@ -1182,6 +1210,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_home(form);
+            return;
+        }
         bottom_form::move_home(form);
     }
 
@@ -1189,6 +1221,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_end(form);
+            return;
+        }
         bottom_form::move_end(form);
     }
 
@@ -1196,6 +1232,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::insert_char(form, ch);
+            return;
+        }
         bottom_form::insert_char(form, ch);
     }
 
@@ -1203,6 +1243,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::insert_text(form, text);
+            return;
+        }
         bottom_form::insert_text(form, text);
     }
 
@@ -1210,6 +1254,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::backspace(form);
+            return;
+        }
         bottom_form::backspace(form);
     }
 
@@ -1217,6 +1265,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::delete(form);
+            return;
+        }
         bottom_form::delete(form);
     }
 
@@ -1235,6 +1287,23 @@ impl TuiShell {
         };
 
         match kind {
+            BottomFormKind::AskQuestions { .. } => {
+                if let Some(form) = self.bottom_form.as_mut() {
+                    match ask_questions::activate(form) {
+                        Ok(ask_questions::AskQuestionsActivateOutcome::None) => {}
+                        Ok(ask_questions::AskQuestionsActivateOutcome::Submit(result)) => {
+                            self.complete_ask_questions_form(result);
+                        }
+                        Err(err) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::Agent,
+                                content: err,
+                                tool_block: None,
+                            });
+                        }
+                    }
+                }
+            }
             BottomFormKind::McpAdd | BottomFormKind::ModelAdd => self.save_bottom_form(),
             BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {
@@ -2739,6 +2808,58 @@ impl TuiShell {
         self.refresh_suggestions();
     }
 
+    fn open_ask_questions_form(
+        &mut self,
+        tool_call_id: String,
+        tool_name: String,
+        questions: crate::ask_questions::AskQuestionsRequest,
+    ) {
+        self.cancel_model_add_pick();
+        self.bottom_form = Some(ask_questions::new_form(tool_call_id, tool_name, questions));
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+        self.scroll_history_to_bottom();
+    }
+
+    fn complete_ask_questions_form(&mut self, result: AskQuestionsResult) {
+        let Some(form) = self.bottom_form.take() else {
+            return;
+        };
+        let BottomFormKind::AskQuestions {
+            tool_call_id,
+            tool_name,
+            request,
+            ..
+        } = form.kind
+        else {
+            self.bottom_form = Some(form);
+            return;
+        };
+
+        let request_value = ToolRequest::AskQuestions {
+            questions: request.clone(),
+        };
+        let output = serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|_| "{\"status\":\"skipped\"}".to_string());
+        self.messages.push(ChatMessage::with_tool_block(
+            MessageRole::Agent,
+            format_tool_ui_message(&request_value, &tool_name, &output),
+            build_tool_result_block(
+                &request_value,
+                &tool_name,
+                Some(tool_call_id.as_str()),
+                &output,
+            ),
+        ));
+        self.scroll_history_to_bottom();
+        self.runtime.respond_to_pending_questions(&result);
+        self.apply_runtime_events();
+    }
+
     fn open_mcp_prompt_form(
         &mut self,
         server: &str,
@@ -3082,6 +3203,13 @@ impl TuiShell {
         for event in self.runtime.drain_events() {
             match event {
                 RuntimeEvent::PushMessage(msg) => self.messages.push(msg),
+                RuntimeEvent::OpenAskQuestions {
+                    tool_call_id,
+                    tool_name,
+                    questions,
+                } => {
+                    self.open_ask_questions_form(tool_call_id, tool_name, questions);
+                }
                 RuntimeEvent::BeginAssistantResponse => {
                     self.messages
                         .push(ChatMessage::new(MessageRole::Agent, String::new()));
