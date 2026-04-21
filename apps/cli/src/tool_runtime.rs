@@ -41,7 +41,7 @@ const MAX_DIRECTORY_LIST_RESULTS: usize = 4_000;
 const MAX_WEB_FETCH_OUTPUT_CHARS: usize = 24_000;
 const WEB_FETCH_TIMEOUT_SECS: u64 = 20;
 const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
-const UPDATE_FILE_LOG_PREVIEW_CHARS: usize = 180;
+const EDIT_FILE_LOG_PREVIEW_CHARS: usize = 180;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ToolRequest {
@@ -72,7 +72,7 @@ pub enum ToolRequest {
         path: String,
         content: String,
     },
-    UpdateFile {
+    EditFile {
         path: String,
         old_text: String,
         new_text: String,
@@ -322,13 +322,13 @@ impl ToolRuntime {
                 ),
                 trust_target: None,
             }),
-            ToolRequest::UpdateFile {
+            ToolRequest::EditFile {
                 path,
                 old_text,
                 new_text,
             } => Ok(AuthorizationDecision::NeedApproval {
                 prompt: format!(
-                    "高风险工具调用: 修改文件（精确替换）\n路径: {}\n旧文本长度: {} 字符\n新文本长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
+                    "高风险工具调用: 编辑文件（精确替换）\n路径: {}\n旧文本长度: {} 字符\n新文本长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
                     path,
                     old_text.chars().count(),
                     new_text.chars().count()
@@ -389,11 +389,11 @@ impl ToolRuntime {
             } => self.execute_read(path, *start_line, *end_line),
             ToolRequest::Search { query } => self.execute_search(query),
             ToolRequest::CreateFile { path, content } => self.execute_create_file(path, content),
-            ToolRequest::UpdateFile {
+            ToolRequest::EditFile {
                 path,
                 old_text,
                 new_text,
-            } => self.execute_update_file(path, old_text, new_text),
+            } => self.execute_edit_file(path, old_text, new_text),
             ToolRequest::DeleteFile { path } => self.execute_delete_file(path),
         }
     }
@@ -516,8 +516,8 @@ impl ToolRuntime {
             {
                 "type": "function",
                 "function": {
-                    "name": "update_file",
-                    "description": "Update an existing file inside the workspace or under Spirit-managed user rule/plan/skills paths by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
+                    "name": "edit_file",
+                    "description": "Edit an existing file inside the workspace or under Spirit-managed user rule/plan/skills paths by replacing one exact old_text snippet with new_text. This prevents accidental full-file overwrite.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -626,11 +626,11 @@ impl ToolRuntime {
                     content: content.to_string(),
                 })
             }
-            "update_file" => {
-                let path = required_string_arg(&args, "update_file", "path")?;
-                let old_text = required_string_arg(&args, "update_file", "old_text")?;
-                let new_text = required_string_arg(&args, "update_file", "new_text")?;
-                Ok(ToolRequest::UpdateFile {
+            "edit_file" => {
+                let path = required_string_arg(&args, "edit_file", "path")?;
+                let old_text = required_string_arg(&args, "edit_file", "old_text")?;
+                let new_text = required_string_arg(&args, "edit_file", "new_text")?;
+                Ok(ToolRequest::EditFile {
                     path: path.to_string(),
                     old_text: old_text.to_string(),
                     new_text: new_text.to_string(),
@@ -985,16 +985,16 @@ fn normalize_search_line(line: &str) -> &str {
         ))
     }
 
-    fn execute_update_file(&self, path: &str, old_text: &str, new_text: &str) -> Result<String> {
+    fn execute_edit_file(&self, path: &str, old_text: &str, new_text: &str) -> Result<String> {
         if old_text.is_empty() {
-            return Err(anyhow!("update_file 的 old_text 不能为空"));
+            return Err(anyhow!("edit_file 的 old_text 不能为空"));
         }
 
         let target = self.resolve_existing_workspace_file(path)?;
         let source = fs::read_to_string(&target)
             .with_context(|| format!("读取文件失败: {}", target.display()))?;
         logging::log_event(&format!(
-            "[tool:update_file] start path={} source_chars={} source_lines={} source_line_endings={} old_chars={} old_lines={} old_line_endings={} new_chars={} new_lines={} new_line_endings={} old_preview={} new_preview={}",
+            "[tool:edit_file] start path={} source_chars={} source_lines={} source_line_endings={} old_chars={} old_lines={} old_line_endings={} new_chars={} new_lines={} new_line_endings={} old_preview={} new_preview={}",
             target.display(),
             source.chars().count(),
             source.lines().count(),
@@ -1005,8 +1005,8 @@ fn normalize_search_line(line: &str) -> &str {
             new_text.chars().count(),
             new_text.lines().count(),
             line_ending_style(new_text),
-            escaped_preview(old_text, UPDATE_FILE_LOG_PREVIEW_CHARS),
-            escaped_preview(new_text, UPDATE_FILE_LOG_PREVIEW_CHARS)
+            escaped_preview(old_text, EDIT_FILE_LOG_PREVIEW_CHARS),
+            escaped_preview(new_text, EDIT_FILE_LOG_PREVIEW_CHARS)
         ));
         let occurrences = source.match_indices(old_text).count();
         if occurrences == 0 {
@@ -1032,14 +1032,14 @@ fn normalize_search_line(line: &str) -> &str {
                 source.match_indices(last_line).count()
             };
             logging::log_event(&format!(
-                "[tool:update_file] exact_match=0 path={} normalized_newline_hits={} trimmed_hits={} first_line_hits={} last_line_hits={} first_line={} last_line={}",
+                "[tool:edit_file] exact_match=0 path={} normalized_newline_hits={} trimmed_hits={} first_line_hits={} last_line_hits={} first_line={} last_line={}",
                 target.display(),
                 normalized_hits,
                 trimmed_hits,
                 first_line_hits,
                 last_line_hits,
-                escaped_preview(first_line, UPDATE_FILE_LOG_PREVIEW_CHARS / 2),
-                escaped_preview(last_line, UPDATE_FILE_LOG_PREVIEW_CHARS / 2)
+                escaped_preview(first_line, EDIT_FILE_LOG_PREVIEW_CHARS / 2),
+                escaped_preview(last_line, EDIT_FILE_LOG_PREVIEW_CHARS / 2)
             ));
 
             if normalized_hits == 1 {
@@ -1049,7 +1049,7 @@ fn normalize_search_line(line: &str) -> &str {
                     fs::write(&target, updated)
                         .with_context(|| format!("写入文件失败: {}", target.display()))?;
                     logging::log_event(&format!(
-                        "[tool:update_file] success path={} match_mode=normalized_newlines matched_line_endings={} replacement_line_endings={} old_chars={} new_chars={}",
+                        "[tool:edit_file] success path={} match_mode=normalized_newlines matched_line_endings={} replacement_line_endings={} old_chars={} new_chars={}",
                         target.display(),
                         matched_line_endings,
                         replacement_line_endings,
@@ -1057,31 +1057,31 @@ fn normalize_search_line(line: &str) -> &str {
                         new_text.chars().count()
                     ));
                     return Ok(format!(
-                        "[write]\naction: update_file\npath: {}\nreplaced_once: true\nmatch_mode: normalized_newlines\nold_chars: {}\nnew_chars: {}",
+                        "[write]\naction: edit_file\npath: {}\nreplaced_once: true\nmatch_mode: normalized_newlines\nold_chars: {}\nnew_chars: {}",
                         target.display(),
                         old_text.chars().count(),
                         new_text.chars().count()
                     ));
                 }
                 logging::log_event(&format!(
-                    "[tool:update_file] normalized_newline_match_detected_but_mapping_failed path={}",
+                    "[tool:edit_file] normalized_newline_match_detected_but_mapping_failed path={}",
                     target.display()
                 ));
             }
 
             return Err(anyhow!(
-                "update_file 失败：old_text 未匹配到目标文件内容（详情已写入 CLI 日志，可用 /log 查看）"
+                "edit_file 失败：old_text 未匹配到目标文件内容（详情已写入 CLI 日志，可用 /log 查看）"
             ));
         }
         if occurrences > 1 {
             logging::log_event(&format!(
-                "[tool:update_file] ambiguous_match path={} exact_hits={} old_preview={}",
+                "[tool:edit_file] ambiguous_match path={} exact_hits={} old_preview={}",
                 target.display(),
                 occurrences,
-                escaped_preview(old_text, UPDATE_FILE_LOG_PREVIEW_CHARS)
+                escaped_preview(old_text, EDIT_FILE_LOG_PREVIEW_CHARS)
             ));
             return Err(anyhow!(
-                "update_file 失败：old_text 命中 {} 处，请提供更精确片段（详情已写入 CLI 日志，可用 /log 查看）",
+                "edit_file 失败：old_text 命中 {} 处，请提供更精确片段（详情已写入 CLI 日志，可用 /log 查看）",
                 occurrences
             ));
         }
@@ -1090,13 +1090,13 @@ fn normalize_search_line(line: &str) -> &str {
         fs::write(&target, updated)
             .with_context(|| format!("写入文件失败: {}", target.display()))?;
         logging::log_event(&format!(
-            "[tool:update_file] success path={} exact_hits=1 old_chars={} new_chars={}",
+            "[tool:edit_file] success path={} exact_hits=1 old_chars={} new_chars={}",
             target.display(),
             old_text.chars().count(),
             new_text.chars().count()
         ));
         Ok(format!(
-            "[write]\naction: update_file\npath: {}\nreplaced_once: true\nold_chars: {}\nnew_chars: {}",
+            "[write]\naction: edit_file\npath: {}\nreplaced_once: true\nold_chars: {}\nnew_chars: {}",
             target.display(),
             old_text.chars().count(),
             new_text.chars().count()

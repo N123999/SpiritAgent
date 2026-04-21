@@ -232,12 +232,12 @@ impl SessionModel {
                     content.chars().count()
                 )
             }
-            ToolRequest::UpdateFile {
+            ToolRequest::EditFile {
                 path,
                 old_text,
                 new_text,
             } => format!(
-                "update_file path={} old_chars={} new_chars={}",
+                "edit_file path={} old_chars={} new_chars={}",
                 path,
                 old_text.chars().count(),
                 new_text.chars().count()

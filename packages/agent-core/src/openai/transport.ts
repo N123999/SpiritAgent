@@ -1175,7 +1175,7 @@ function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): 
       return nonEmpty('query');
     case 'create_file':
       return nonEmpty('path') && nonEmpty('content');
-    case 'update_file':
+    case 'edit_file':
       return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
     case 'delete_file':
       return nonEmpty('path');

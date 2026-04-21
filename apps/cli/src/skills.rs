@@ -335,11 +335,11 @@ pub fn build_create_skill_user_turn(workspace_root: &Path, request: &CreateSkill
     };
     let write_note = match request.scope {
         SkillScope::Workspace => format!(
-            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 update_file 写入 {}；不要在工具成功前声称已经创建。",
+            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 edit_file 写入 {}；不要在工具成功前声称已经创建。",
             target_path.display()
         ),
         SkillScope::User => format!(
-            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 update_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要在工具成功前声称已经创建。",
+            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 edit_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要在工具成功前声称已经创建。",
             target_path.display()
         ),
     };
@@ -1092,7 +1092,7 @@ mod tests {
 
         assert!(prompt.contains("SKILL.md"));
         assert!(prompt.contains("code-review"));
-        assert!(prompt.contains("create_file 或 update_file"));
+        assert!(prompt.contains("create_file 或 edit_file"));
         assert!(prompt.contains("YAML frontmatter"));
     }
 
@@ -1109,7 +1109,7 @@ mod tests {
 
         assert!(prompt.contains("Spirit 托管的用户目录"));
         assert!(prompt.contains("允许写入的托管范围"));
-        assert!(prompt.contains("create_file 或 update_file"));
+        assert!(prompt.contains("create_file 或 edit_file"));
     }
 
     #[test]

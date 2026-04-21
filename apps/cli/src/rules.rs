@@ -253,11 +253,11 @@ pub fn build_create_rule_user_turn(workspace_root: &Path, request: &CreateRuleRe
     };
     let write_note = match request.scope {
         RuleScope::Workspace => format!(
-            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 update_file 写入 {}。写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
+            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 edit_file 写入 {}。写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
             target_path.display()
         ),
         RuleScope::User => format!(
-            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 update_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
+            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 edit_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
             target_path.display()
         ),
     };
@@ -690,7 +690,7 @@ mod tests {
 
         assert!(prompt.contains("正常流式输出"));
         assert!(prompt.contains("给后续 LLM 看的"));
-        assert!(prompt.contains("create_file 或 update_file"));
+        assert!(prompt.contains("create_file 或 edit_file"));
         assert!(prompt.contains("不要假设自己已经拿到权限"));
         assert!(prompt.contains("补充构建命令和禁止事项"));
         assert!(prompt.contains(".spirit"));
@@ -709,7 +709,7 @@ mod tests {
 
         assert!(prompt.contains("Spirit 托管的用户目录"));
         assert!(prompt.contains("允许写入的托管范围"));
-        assert!(prompt.contains("create_file 或 update_file"));
+        assert!(prompt.contains("create_file 或 edit_file"));
         assert!(prompt.contains("rule.md"));
     }
 }

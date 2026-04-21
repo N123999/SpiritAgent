@@ -3383,7 +3383,7 @@ mod tests {
 
         assert!(runtime_turn.contains("Plan 模式规划请求"));
         assert!(runtime_turn.contains(raw_message));
-        assert!(runtime_turn.contains("create_file 或 update_file"));
+        assert!(runtime_turn.contains("create_file 或 edit_file"));
         assert!(runtime_turn.contains(START_IMPLEMENTING_REMINDER));
     }
 }

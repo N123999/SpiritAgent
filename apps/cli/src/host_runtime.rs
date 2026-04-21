@@ -25,7 +25,7 @@ pub(crate) fn openapi_tool_name(request: &ToolRequest) -> &'static str {
         ToolRequest::ReadFile { .. } => "read_file",
         ToolRequest::Search { .. } => "search_files",
         ToolRequest::CreateFile { .. } => "create_file",
-        ToolRequest::UpdateFile { .. } => "update_file",
+        ToolRequest::EditFile { .. } => "edit_file",
         ToolRequest::DeleteFile { .. } => "delete_file",
     }
 }
@@ -55,7 +55,7 @@ fn tool_request_args_excerpt(request: &ToolRequest) -> String {
         ToolRequest::CreateFile { path, content } => {
             json!({ "path": path, "content_chars": content.chars().count() })
         }
-        ToolRequest::UpdateFile {
+        ToolRequest::EditFile {
             path,
             old_text,
             new_text,
@@ -201,11 +201,11 @@ pub(crate) fn build_tool_result_block(
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
-        ToolRequest::UpdateFile { path, .. } => ToolUiBlock {
+        ToolRequest::EditFile { path, .. } => ToolUiBlock {
             tool_call_id: tool_call_id.map(String::from),
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
-            headline: "已更新文件".to_string(),
+            headline: "已编辑文件".to_string(),
             detail_lines: vec![format!("路径: {}", path)],
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
@@ -264,8 +264,8 @@ pub(crate) fn format_tool_ui_message(
         }
         ToolRequest::Search { .. } => output.to_string(),
         ToolRequest::CreateFile { path, .. } => format!("[tool] 已创建文件 {}", path),
-        ToolRequest::UpdateFile { path, .. } => {
-            format!("[tool] 已按精确片段替换更新文件 {}", path)
+        ToolRequest::EditFile { path, .. } => {
+            format!("[tool] 已编辑文件 {}", path)
         }
         ToolRequest::DeleteFile { path } => format!("[tool] 已删除文件 {}", path),
         ToolRequest::Shell { .. } => format!(
