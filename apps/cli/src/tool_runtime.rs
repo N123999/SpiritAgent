@@ -25,6 +25,7 @@ use windows_sys::Win32::{
 
 use crate::logging;
 use crate::{
+    ask_questions::AskQuestionsRequest,
     mcp::spirit_agent_data_dir,
     plan::USER_PLAN_FILE_NAME,
     rules::USER_RULE_FILE_NAME,
@@ -80,6 +81,9 @@ pub enum ToolRequest {
     DeleteFile {
         path: String,
     },
+    AskQuestions {
+        questions: AskQuestionsRequest,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -94,6 +98,9 @@ pub enum AuthorizationDecision {
     NeedApproval {
         prompt: String,
         trust_target: Option<TrustTarget>,
+    },
+    NeedQuestions {
+        questions: AskQuestionsRequest,
     },
 }
 
@@ -320,6 +327,9 @@ impl ToolRuntime {
                 Ok(self.authorize_external_read_path(&canonical, "读取工作目录外文件"))
             }
             ToolRequest::Search { .. } => Ok(AuthorizationDecision::Allowed),
+            ToolRequest::AskQuestions { questions } => Ok(AuthorizationDecision::NeedQuestions {
+                questions: questions.clone(),
+            }),
             ToolRequest::CreateFile { path, content } => Ok(AuthorizationDecision::NeedApproval {
                 prompt: format!(
                     "高风险工具调用: 创建文件\n路径: {}\n内容长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
@@ -394,6 +404,9 @@ impl ToolRuntime {
                 end_line,
             } => self.execute_read(path, *start_line, *end_line),
             ToolRequest::Search { query } => self.execute_search(query),
+            ToolRequest::AskQuestions { .. } => {
+                Err(anyhow!("ask_questions 应由运行时挂起并等待用户填写，不应直接执行"))
+            }
             ToolRequest::CreateFile { path, content } => self.execute_create_file(path, content),
             ToolRequest::EditFile {
                 path,
@@ -499,6 +512,83 @@ impl ToolRuntime {
                             "query": { "type": "string" }
                         },
                         "required": ["query"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ask_questions",
+                    "description": "Ask the user a structured follow-up questionnaire when their request is underspecified. The host UI will present the questionnaire, collect answers, and return a JSON tool result. Use this only when targeted structured questions are needed to continue.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string",
+                                "description": "Optional short title for the questionnaire panel."
+                            },
+                            "questions": {
+                                "type": "array",
+                                "description": "Ordered list of questions to ask. Keep it concise and only include the fields you need.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Stable machine-readable question id used in the returned JSON."
+                                        },
+                                        "title": {
+                                            "type": "string",
+                                            "description": "Question title shown to the user."
+                                        },
+                                        "kind": {
+                                            "type": "string",
+                                            "enum": ["single_select", "multi_select", "text"],
+                                            "description": "single_select confirms one answer, multi_select allows multiple answers, text asks for freeform text."
+                                        },
+                                        "required": {
+                                            "type": "boolean",
+                                            "description": "Whether the question must be answered before submission."
+                                        },
+                                        "options": {
+                                            "type": "array",
+                                            "description": "Preset options for single_select or multi_select questions.",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "label": {
+                                                        "type": "string",
+                                                        "description": "Visible option label."
+                                                    },
+                                                    "summary": {
+                                                        "type": "string",
+                                                        "description": "Optional short gray summary shown under single_select options."
+                                                    }
+                                                },
+                                                "required": ["label"],
+                                                "additionalProperties": false
+                                            }
+                                        },
+                                        "allowCustomInput": {
+                                            "type": "boolean",
+                                            "description": "Whether to show an additional custom input field for this question."
+                                        },
+                                        "customInputPlaceholder": {
+                                            "type": "string",
+                                            "description": "Optional placeholder for the custom input field."
+                                        },
+                                        "customInputLabel": {
+                                            "type": "string",
+                                            "description": "Optional label for the custom input field."
+                                        }
+                                    },
+                                    "required": ["id", "title", "kind"],
+                                    "additionalProperties": false
+                                }
+                            }
+                        },
+                        "required": ["questions"],
                         "additionalProperties": false
                     }
                 }
@@ -623,6 +713,12 @@ impl ToolRuntime {
                 Ok(ToolRequest::Search {
                     query: query.to_string(),
                 })
+            }
+            "ask_questions" => {
+                let request: AskQuestionsRequest = serde_json::from_value(args)
+                    .context("ask_questions 参数结构无效")?;
+                request.validate()?;
+                Ok(ToolRequest::AskQuestions { questions: request })
             }
             "create_file" => {
                 let path = required_string_arg(&args, "create_file", "path")?;

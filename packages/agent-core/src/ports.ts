@@ -108,9 +108,48 @@ export interface StartedToolAgentRound<State = JsonValue> {
   cancel?: () => void;
 }
 
+export type AskQuestionsQuestionKind = 'single_select' | 'multi_select' | 'text';
+
+export interface AskQuestionsOption {
+  label: string;
+  summary?: string;
+}
+
+export interface AskQuestionsQuestion {
+  id: string;
+  title: string;
+  kind: AskQuestionsQuestionKind;
+  required?: boolean;
+  options?: AskQuestionsOption[];
+  allowCustomInput?: boolean;
+  customInputPlaceholder?: string;
+  customInputLabel?: string;
+}
+
+export interface AskQuestionsRequest {
+  title?: string;
+  questions: AskQuestionsQuestion[];
+}
+
+export interface AskQuestionsAnswer {
+  questionId: string;
+  title: string;
+  kind: AskQuestionsQuestionKind;
+  answered: boolean;
+  selectedOptionIndexes?: number[];
+  selectedOptionLabels?: string[];
+  customInput?: string;
+  text?: string;
+}
+
+export type AskQuestionsResult =
+  | { status: 'skipped' }
+  | { status: 'answered'; answers: AskQuestionsAnswer[] };
+
 export type AuthorizationDecision<TrustTarget = string> =
   | { kind: 'allowed' }
-  | { kind: 'need-approval'; prompt: string; trustTarget?: TrustTarget };
+  | { kind: 'need-approval'; prompt: string; trustTarget?: TrustTarget }
+  | { kind: 'need-questions'; questions: AskQuestionsRequest };
 
 export interface ToolRequestExecutionMetadata {
   toolCallId?: string;

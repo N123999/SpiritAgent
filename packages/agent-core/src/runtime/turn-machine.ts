@@ -1,6 +1,7 @@
 import { setImmediate as waitForImmediate } from 'node:timers/promises';
 
 import type {
+  AskQuestionsResult,
   AuthorizationDecision,
   JsonValue,
   LlmMessage,
@@ -14,11 +15,13 @@ import type { ToolExecutionResult } from './tool-execution.js';
 import type {
   AgentRuntimeOptions,
   PendingApprovalState,
+  PendingQuestionsState,
   PendingToolAgentRound,
   RuntimeApprovalDecision,
   RuntimeCompactionRecord,
   RuntimeEvent,
   RuntimePendingApproval,
+  RuntimePendingQuestions,
   RuntimeTurnContext,
   RuntimeTurnResult,
 } from './types.js';
@@ -34,6 +37,7 @@ export interface TurnMachineRuntime<
   requestTraceStore: JsonValue[];
   pendingUserTurnStore: string | undefined;
   pendingApproval: PendingApprovalState<State, ToolRequest, TrustTarget> | undefined;
+  pendingQuestions: PendingQuestionsState<State, ToolRequest> | undefined;
   pendingToolAgentRound: PendingToolAgentRound<State, ToolRequest> | undefined;
   appendTrace(trace: JsonValue[], turn: RuntimeTurnContext<ToolRequest>): void;
   clearStreamingUiState(): void;
@@ -154,6 +158,49 @@ export async function resumePendingApproval<
     pending.remainingCalls,
     pending.turn,
   );
+}
+
+export async function resumePendingQuestions<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+  result: AskQuestionsResult,
+): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+  const pending = runtime.pendingQuestions;
+  if (!pending) {
+    throw new Error('当前没有待回答的问题表单。');
+  }
+
+  runtime.pendingQuestions = undefined;
+  const output = JSON.stringify(result);
+  pending.turn.toolExecutions.push({
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+    request: pending.request,
+    output,
+    failed: false,
+  });
+
+  const resumedState = runtime.options.appendToolResultMessage(
+    pending.state,
+    pending.toolCallId,
+    output,
+  );
+
+  if (pending.remainingCalls.length > 0) {
+    return processToolCalls(
+      runtime,
+      resumedState,
+      pending.pendingUserInput,
+      pending.remainingCalls,
+      pending.turn,
+    );
+  }
+
+  return runTurnLoop(runtime, resumedState, pending.pendingUserInput, pending.turn);
 }
 
 export async function runTurnLoop<
@@ -371,6 +418,34 @@ export async function processToolCalls<
       return {
         kind: 'requires-approval',
         approval,
+        requestTrace: [...turn.requestTrace],
+        toolExecutions: [...turn.toolExecutions],
+        compactions: [...turn.compactions],
+      };
+    }
+
+    if (authorization.kind === 'need-questions') {
+      const questions = createQuestions(request, call.id, call.name, authorization.questions);
+      runtime.pendingQuestions = {
+        pendingUserInput,
+        state: currentState,
+        request,
+        questions: authorization.questions,
+        toolCallId: call.id,
+        toolName: call.name,
+        remainingCalls: remaining,
+        turn,
+        resumeAsStreaming: false,
+        streamingEmitBeginResponse: true,
+      };
+      runtime.emitEvent({
+        kind: 'questions-requested',
+        questions,
+      });
+
+      return {
+        kind: 'requires-questions',
+        questions,
         requestTrace: [...turn.requestTrace],
         toolExecutions: [...turn.toolExecutions],
         compactions: [...turn.compactions],
@@ -689,6 +764,38 @@ export async function processToolCallsAsync<
       return;
     }
 
+    if (authorization.kind === 'need-questions') {
+      const questions = createQuestions(request, call.id, call.name, authorization.questions);
+      runtime.pendingQuestions = {
+        pendingUserInput,
+        state: currentState,
+        request,
+        questions: authorization.questions,
+        toolCallId: call.id,
+        toolName: call.name,
+        remainingCalls: remaining,
+        turn,
+        resumeAsStreaming,
+        streamingEmitBeginResponse,
+      };
+
+      if (resumeAsStreaming) {
+        runtime.emitEvent({
+          kind: 'questions-requested',
+          questions,
+        });
+      } else {
+        runtime.completeTurn({
+          kind: 'requires-questions',
+          questions,
+          requestTrace: [...turn.requestTrace],
+          toolExecutions: [...turn.toolExecutions],
+          compactions: [...turn.compactions],
+        });
+      }
+      return;
+    }
+
     if (runtime.options.toolExecutor.shouldExecuteInBackground?.(request) ?? false) {
       runtime.startBackgroundToolExecutionAsync(
         pendingUserInput,
@@ -774,5 +881,19 @@ function createApproval<ToolRequest, TrustTarget>(
     ...(trustTarget !== undefined ? { trustTarget } : {}),
     toolCallId,
     toolName,
+  };
+}
+
+function createQuestions<ToolRequest>(
+  request: ToolRequest,
+  toolCallId: string,
+  toolName: string,
+  questions: RuntimePendingQuestions<ToolRequest>['questions'],
+): RuntimePendingQuestions<ToolRequest> {
+  return {
+    request,
+    toolCallId,
+    toolName,
+    questions,
   };
 }

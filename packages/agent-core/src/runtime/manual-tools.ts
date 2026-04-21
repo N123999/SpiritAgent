@@ -112,6 +112,14 @@ export async function startManualToolCommand<
     };
   }
 
+  if (authorization.kind === 'need-questions') {
+    return {
+      kind: 'failed',
+      error: '手动工具命令不支持 ask_questions 交互。',
+      request,
+    };
+  }
+
   return startManualToolRequest(runtime, request, toolName);
 }
 

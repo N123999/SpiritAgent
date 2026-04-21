@@ -13,6 +13,7 @@ use std::{
 
 use crate::{
     adapters::WorkspaceToolExecutor,
+    ask_questions::AskQuestionsRequest,
     host_runtime::{
         RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
         tool_approval_block, tool_failed_block,
@@ -54,6 +55,7 @@ pub struct TsBridgeRuntime {
     plan_metadata: PlanMetadata,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
+    pending_questions_active: bool,
     pending_assistant_has_output: bool,
     is_busy_cache: bool,
     events: VecDeque<RuntimeEvent>,
@@ -130,7 +132,9 @@ struct BridgeRuntimeSnapshot {
     pending_aux_state: Option<PendingAssistantAux>,
     has_pending_approval: bool,
     has_pending_manual_approval: bool,
+    has_pending_questions: bool,
     current_pending_approval: Option<BridgePendingApproval>,
+    current_pending_questions: Option<BridgePendingQuestions>,
     is_busy: bool,
     background_tool_status: Option<String>,
 }
@@ -186,6 +190,15 @@ struct BridgePendingApproval {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BridgePendingQuestions {
+    request: Value,
+    tool_call_id: String,
+    tool_name: String,
+    questions: AskQuestionsRequest,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgeDrainEventsResult {
     events: Vec<BridgeRuntimeEvent>,
     snapshot: BridgeRuntimeSnapshot,
@@ -210,6 +223,8 @@ enum BridgeRuntimeEvent {
     RemovePendingAssistant,
     #[serde(rename = "approval-requested")]
     ApprovalRequested { approval: BridgePendingApproval },
+    #[serde(rename = "questions-requested")]
+    QuestionsRequested { questions: BridgePendingQuestions },
     #[serde(rename = "history-compacted")]
     HistoryCompacted {
         #[serde(alias = "droppedMessages")]
@@ -267,6 +282,7 @@ impl TsBridgeRuntime {
             plan_metadata,
             pending_aux_state: None,
             pending_approval_kind: None,
+            pending_questions_active: false,
             pending_assistant_has_output: false,
             is_busy_cache: false,
             events: VecDeque::new(),
@@ -304,6 +320,7 @@ impl TsBridgeRuntime {
             },
             pending_aux_state: None,
             pending_approval_kind: None,
+            pending_questions_active: false,
             pending_assistant_has_output: false,
             is_busy_cache: false,
             events: VecDeque::new(),
@@ -810,6 +827,24 @@ impl TsBridgeRuntime {
         }
     }
 
+    pub fn respond_to_pending_questions(&mut self, result: &crate::ask_questions::AskQuestionsResult) {
+        if self.bridge_failed {
+            return;
+        }
+
+        if let Err(err) = self.call_bridge(
+            "runtime.respondToPendingQuestions",
+            Some(json!({ "result": result })),
+        ) {
+            self.handle_bridge_error(err);
+            return;
+        }
+
+        if let Err(err) = self.sync_after_command() {
+            self.handle_bridge_error(err);
+        }
+    }
+
     pub fn execute_manual_tool_command(&mut self, message: &str) {
         if self.bridge_failed {
             return;
@@ -1277,11 +1312,12 @@ impl TsBridgeRuntime {
         } else {
             None
         };
+        self.pending_questions_active = snapshot.has_pending_questions;
         self.is_busy_cache = snapshot.is_busy;
     }
 
     fn should_poll_bridge(&self) -> bool {
-        self.is_busy_cache && self.pending_approval_kind.is_none()
+        self.is_busy_cache && self.pending_approval_kind.is_none() && !self.pending_questions_active
     }
 
     fn apply_bridge_events(&mut self, events: Vec<BridgeRuntimeEvent>) {
@@ -1327,6 +1363,13 @@ impl TsBridgeRuntime {
                             &approval.prompt,
                         ),
                     )));
+                }
+                BridgeRuntimeEvent::QuestionsRequested { questions } => {
+                    self.events.push_back(RuntimeEvent::OpenAskQuestions {
+                        tool_call_id: questions.tool_call_id,
+                        tool_name: questions.tool_name,
+                        questions: questions.questions,
+                    });
                 }
                 BridgeRuntimeEvent::HistoryCompacted {
                     dropped_messages,
@@ -1746,6 +1789,10 @@ fn authorization_decision_to_value(decision: AuthorizationDecision) -> Result<Va
             "prompt": prompt,
             "trustTarget": trust_target,
         })),
+        AuthorizationDecision::NeedQuestions { questions } => Ok(json!({
+            "kind": "need-questions",
+            "questions": questions,
+        })),
     }
 }
 
@@ -1910,7 +1957,9 @@ mod tests {
             pending_aux_state: None,
             has_pending_approval: false,
             has_pending_manual_approval: false,
+            has_pending_questions: false,
             current_pending_approval: None,
+            current_pending_questions: None,
             is_busy: true,
             background_tool_status: None,
         }

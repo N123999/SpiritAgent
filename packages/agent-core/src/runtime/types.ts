@@ -1,4 +1,5 @@
 import type {
+  AskQuestionsRequest,
   JsonValue,
   LlmMessage,
   LlmStreamEvent,
@@ -69,6 +70,10 @@ export type RuntimeEvent<ToolRequest> =
       approval: RuntimePendingApproval<ToolRequest, unknown>;
     }
   | {
+      kind: 'questions-requested';
+      questions: RuntimePendingQuestions<ToolRequest>;
+    }
+  | {
       kind: 'vision-fallback-retry';
       droppedImages: number;
       message: string;
@@ -88,6 +93,13 @@ export interface RuntimePendingApproval<ToolRequest, TrustTarget> {
   trustTarget?: TrustTarget;
   toolCallId?: string;
   toolName: string;
+}
+
+export interface RuntimePendingQuestions<ToolRequest> {
+  request: ToolRequest;
+  toolCallId: string;
+  toolName: string;
+  questions: AskQuestionsRequest;
 }
 
 export interface PendingMcpResource {
@@ -132,6 +144,13 @@ export type RuntimeTurnResult<State, ToolRequest, TrustTarget> =
   | {
       kind: 'requires-approval';
       approval: RuntimePendingApproval<ToolRequest, TrustTarget>;
+      requestTrace: JsonValue[];
+      toolExecutions: RuntimeToolExecution<ToolRequest>[];
+      compactions: RuntimeCompactionRecord[];
+    }
+  | {
+      kind: 'requires-questions';
+      questions: RuntimePendingQuestions<ToolRequest>;
       requestTrace: JsonValue[];
       toolExecutions: RuntimeToolExecution<ToolRequest>[];
       compactions: RuntimeCompactionRecord[];
@@ -260,6 +279,19 @@ export interface PendingApprovalState<State, ToolRequest, TrustTarget> {
   request: ToolRequest;
   prompt: string;
   trustTarget?: TrustTarget;
+  toolCallId: string;
+  toolName: string;
+  remainingCalls: ToolCallRequest[];
+  turn: RuntimeTurnContext<ToolRequest>;
+  resumeAsStreaming: boolean;
+  streamingEmitBeginResponse: boolean;
+}
+
+export interface PendingQuestionsState<State, ToolRequest> {
+  pendingUserInput: string;
+  state: State;
+  request: ToolRequest;
+  questions: AskQuestionsRequest;
   toolCallId: string;
   toolName: string;
   remainingCalls: ToolCallRequest[];
