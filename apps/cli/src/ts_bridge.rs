@@ -1763,14 +1763,28 @@ fn approval_decision_from_input(message: &str) -> Value {
 }
 
 fn should_execute_tool_in_background(request: &ToolRequest) -> bool {
-    matches!(request, ToolRequest::Search { .. })
+    matches!(
+        request,
+        ToolRequest::Search { .. } | ToolRequest::WebFetch { .. }
+    )
 }
 
 fn background_tool_status_text(request: &ToolRequest) -> Option<String> {
     match request {
         ToolRequest::Search { query } => Some(format!("搜索中: {}", query)),
+        ToolRequest::WebFetch { url } => Some(format!("抓取网页: {}", truncate_background_status_url(url))),
         _ => None,
     }
+}
+
+fn truncate_background_status_url(url: &str) -> String {
+    const MAX: usize = 120;
+    if url.chars().count() <= MAX {
+        return url.to_string();
+    }
+    let mut out: String = url.chars().take(MAX.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 fn execute_background_tool_request_sync(
@@ -1778,7 +1792,9 @@ fn execute_background_tool_request_sync(
     request: &ToolRequest,
 ) -> Result<String> {
     match request {
-        ToolRequest::Search { .. } => ToolRuntime::new_for_workspace(workspace_root.clone()).execute(request),
+        ToolRequest::Search { .. } | ToolRequest::WebFetch { .. } => {
+            ToolRuntime::new_for_workspace(workspace_root.clone()).execute(request)
+        }
         _ => Err(anyhow!("后台工具执行收到不支持的请求")),
     }
 }
