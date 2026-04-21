@@ -127,7 +127,8 @@ interface AggregatedStreamingToolCall {
   type: 'function';
   functionName: string;
   functionArguments: string;
-  nameEmitted: boolean;
+  /** True once we emitted a "准备调用工具" line (args JSON is complete enough for host.parse). */
+  readyPreviewEmitted: boolean;
 }
 
 export function startOpenAiToolAgentState(
@@ -1019,7 +1020,7 @@ function accumulateStreamingToolCallProgress(
       type: 'function',
       functionName: '',
       functionArguments: '',
-      nameEmitted: false,
+      readyPreviewEmitted: false,
     };
 
     if (delta.id) {
@@ -1032,9 +1033,13 @@ function accumulateStreamingToolCallProgress(
       current.functionArguments += delta.function.arguments;
     }
 
-    if (current.functionName && !current.nameEmitted) {
+    if (
+      current.functionName &&
+      !current.readyPreviewEmitted &&
+      hostToolArgumentsReadyForPreview(current.functionName, current.functionArguments)
+    ) {
       updates.push(buildToolProgressPreview(current.functionName, current.functionArguments));
-      current.nameEmitted = true;
+      current.readyPreviewEmitted = true;
     }
 
     toolCalls.set(delta.index, current);
@@ -1128,6 +1133,59 @@ function buildToolProgressPreview(name: string, argumentsJson: string): string {
   }
 
   return `准备调用工具: ${name}`;
+}
+
+/**
+ * Matches host `request_from_function_call` / `required_string_arg` closely enough that we only
+ * show "准备调用工具" once the streamed arguments can actually be parsed and approved — avoids
+ * implying a full tool call when the model will hit `[tool schema error]` before `authorize`.
+ */
+function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): boolean {
+  const trimmed = argumentsJson.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  let parsed: JsonValue;
+  try {
+    parsed = JSON.parse(trimmed) as JsonValue;
+  } catch {
+    return false;
+  }
+
+  if (!isJsonObject(parsed)) {
+    return false;
+  }
+
+  const nonEmpty = (key: string): boolean => {
+    const v = parsed[key];
+    return typeof v === 'string' && v.trim().length > 0;
+  };
+
+  switch (name) {
+    case 'run_shell_command':
+      return nonEmpty('command');
+    case 'web_fetch':
+      return nonEmpty('url');
+    case 'list_directory_files':
+      return nonEmpty('path');
+    case 'read_file':
+      return nonEmpty('path');
+    case 'search_files':
+      return nonEmpty('query');
+    case 'create_file':
+      return nonEmpty('path') && nonEmpty('content');
+    case 'update_file':
+      return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
+    case 'delete_file':
+      return nonEmpty('path');
+    default:
+      // Smoke demos, MCP tools, or future host tools: accept any object whose JSON is complete and
+      // has at least one non-empty string field (streaming partial JSON still fails parse).
+      return Object.values(parsed).some(
+        (v) => typeof v === 'string' && (v as string).trim().length > 0,
+      );
+  }
 }
 
 function tryCountContentLines(argumentsJson: string): number | undefined {
