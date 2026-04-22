@@ -263,6 +263,11 @@ peer.on('runtime.subagentSessionArchive', async (rawParams) => {
   return requireRuntime().childSessionArchive(params.sessionId) ?? null;
 });
 
+peer.on('runtime.subagentPendingAuxState', async (rawParams) => {
+  const params = rawParams as RuntimeSubagentSessionParams;
+  return requireRuntime().childSessionPendingAuxState(params.sessionId) ?? null;
+});
+
 peer.on('runtime.submitUserTurn', async (rawParams) => {
   const params = rawParams as RuntimeSubmitUserTurnParams;
   await toolExecutor.refreshCaches();

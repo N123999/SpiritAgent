@@ -268,6 +268,15 @@ export class AgentRuntime<
     };
   }
 
+  childSessionPendingAuxState(sessionId: string): PendingAssistantAux | undefined {
+    const pending = this.pendingSubagentExecution;
+    if (!pending || pending.childRecord.summary.sessionId !== sessionId) {
+      return undefined;
+    }
+
+    return pending.childRuntime.pendingAuxState();
+  }
+
   drainEvents(): RuntimeEvent<ToolRequest>[] {
     const events = [...this.eventQueueStore];
     this.eventQueueStore = [];

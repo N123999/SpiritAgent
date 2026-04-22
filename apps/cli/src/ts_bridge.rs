@@ -671,6 +671,24 @@ impl TsBridgeRuntime {
         }))
     }
 
+    pub fn subagent_pending_aux_state(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<PendingAssistantAux>> {
+        let value = self.call_bridge(
+            "runtime.subagentPendingAuxState",
+            Some(json!({
+                "sessionId": session_id,
+            })),
+        )?;
+
+        if value.is_null() {
+            return Ok(None);
+        }
+
+        Ok(Some(serde_json::from_value(value)?))
+    }
+
     pub fn subagent_live_messages(&self, session_id: &str) -> Vec<ChatMessage> {
         self.subagent_message_cache
             .get(session_id)

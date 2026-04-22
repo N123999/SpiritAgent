@@ -1995,7 +1995,7 @@ fn draw_subagent_viewer(
 
     frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: true }), chunks[0]);
 
-    let history_lines = build_subagent_history_lines(&view.messages, show_aux_details);
+    let history_lines = build_subagent_history_lines(view, show_aux_details);
     let (flat, _) = flatten_wrapped_history(history_lines, history_chunk.width.max(1), None);
     let history_view_height = history_chunk.height.max(1) as usize;
     let max_scroll = flat.len().saturating_sub(history_view_height);
@@ -2062,10 +2062,15 @@ fn draw_subagent_viewer(
 }
 
 fn build_subagent_history_lines(
-    messages: &[ChatMessage],
+    view: &SubagentSessionDetailView,
     show_aux_details: bool,
 ) -> Vec<Line<'static>> {
+    let messages = &view.messages;
     if messages.is_empty() {
+        if let Some(pending_aux) = view.pending_aux.as_ref() {
+            return render_subagent_pending_aux_lines(pending_aux, show_aux_details);
+        }
+
         return vec![Line::from(Span::styled(
             "子会话尚未产生可见消息。",
             subtle_aux_text_style(),
@@ -2081,7 +2086,44 @@ fn build_subagent_history_lines(
             lines.push(Line::from(""));
         }
     }
+
+    if let Some(pending_aux) = view.pending_aux.as_ref() {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        lines.extend(render_subagent_pending_aux_lines(pending_aux, show_aux_details));
+    }
+
     lines
+}
+
+fn render_subagent_pending_aux_lines(
+    pending_aux: &PendingAssistantAux,
+    show_aux_details: bool,
+) -> Vec<Line<'static>> {
+    let detail_text = if show_aux_details {
+        pending_aux.detail_text.as_deref()
+    } else {
+        None
+    };
+    let mut out = Vec::new();
+    let mut has_rendered_visible_line = false;
+    let mut push_message_line = |content_spans: Vec<Span<'static>>| {
+        let mut spans = if has_rendered_visible_line {
+            vec![Span::raw(message_gutter_padding())]
+        } else {
+            has_rendered_visible_line = true;
+            vec![Span::styled(
+                message_prefix_text(),
+                assistant_message_prefix_style(),
+            )]
+        };
+        spans.extend(content_spans);
+        out.push(Line::from(spans));
+    };
+
+    render_pending_aux_lines(&mut push_message_line, pending_aux, detail_text);
+    out
 }
 
 fn render_subagent_message_lines(msg: &ChatMessage, show_aux_details: bool) -> Vec<Line<'static>> {
@@ -3180,7 +3222,8 @@ mod tests {
         model_registry::AppConfig,
         view::{
             AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
-            MainInputMode,
+            MainInputMode, PendingAssistantAux, SubagentSessionDetailView,
+            SubagentSessionSummaryView,
         },
     };
 
@@ -3292,6 +3335,22 @@ mod tests {
             selected_field: 2,
             scroll_offset: 0,
             footer_hint: footer_hint.to_string(),
+        }
+    }
+
+    fn build_subagent_detail_view(pending_aux: Option<PendingAssistantAux>) -> SubagentSessionDetailView {
+        SubagentSessionDetailView {
+            summary: SubagentSessionSummaryView {
+                session_id: "subagent-1".to_string(),
+                title: "检查子会话状态".to_string(),
+                status: crate::ports::SubagentSessionStatus::Running,
+                updated_at_unix_ms: 0,
+                latest_message: None,
+            },
+            messages: vec![],
+            pending_aux,
+            final_output: None,
+            error: None,
         }
     }
 
@@ -3520,6 +3579,74 @@ mod tests {
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
         assert!(lines.iter().any(|line| line.contains("先检查当前渲染分支。")));
+    }
+
+    #[test]
+    fn subagent_pending_aux_detail_is_hidden_when_aux_details_collapsed() {
+        let view = build_subagent_detail_view(Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| Thinking...".to_string(),
+            detail_text: Some("先检查子会话当前进展。".to_string()),
+        }));
+
+        let lines = render_text_lines(build_subagent_history_lines(&view, false));
+
+        assert!(lines.iter().any(|line| line.contains("Thinking...")));
+        assert!(lines.iter().all(|line| !line.contains("先检查子会话当前进展。")));
+    }
+
+    #[test]
+    fn subagent_pending_aux_detail_is_visible_when_aux_details_expanded() {
+        let view = build_subagent_detail_view(Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| Thinking...".to_string(),
+            detail_text: Some("先检查子会话当前进展。".to_string()),
+        }));
+
+        let lines = render_text_lines(build_subagent_history_lines(&view, true));
+
+        assert!(lines.iter().any(|line| line.contains("Thinking...")));
+        assert!(lines.iter().any(|line| line.contains("先检查子会话当前进展。")));
+    }
+
+    #[test]
+    fn subagent_tool_card_hides_output_when_aux_details_collapsed() {
+        let tool = ToolUiBlock {
+            tool_call_id: Some("call-1".to_string()),
+            tool_name: "search_files".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "搜索完成".to_string(),
+            detail_lines: vec!["查询: 最近变更".to_string()],
+            args_excerpt: Some("{\n  \"limit\": 3\n}".to_string()),
+            output_excerpt: Some("命中 3 个结果。".to_string()),
+        };
+        let message = ChatMessage::with_tool_block(MessageRole::Agent, String::new(), tool);
+
+        let lines = render_text_lines(render_subagent_message_lines(&message, false));
+
+        assert!(lines.iter().any(|line| line.contains("搜索完成")));
+        assert!(lines.iter().all(|line| !line.contains("命中 3 个结果。")));
+        assert!(lines.iter().all(|line| !line.contains("\"limit\": 3")));
+    }
+
+    #[test]
+    fn subagent_tool_card_shows_output_when_aux_details_expanded() {
+        let tool = ToolUiBlock {
+            tool_call_id: Some("call-1".to_string()),
+            tool_name: "search_files".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "搜索完成".to_string(),
+            detail_lines: vec!["查询: 最近变更".to_string()],
+            args_excerpt: Some("{\n  \"limit\": 3\n}".to_string()),
+            output_excerpt: Some("命中 3 个结果。".to_string()),
+        };
+        let message = ChatMessage::with_tool_block(MessageRole::Agent, String::new(), tool);
+
+        let lines = render_text_lines(render_subagent_message_lines(&message, true));
+
+        assert!(lines.iter().any(|line| line.contains("搜索完成")));
+        assert!(lines.iter().any(|line| line.contains("命中 3 个结果。")));
+        assert!(lines.iter().any(|line| line.contains("\"limit\": 3")));
     }
 
     #[test]

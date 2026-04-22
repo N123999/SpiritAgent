@@ -117,6 +117,13 @@ impl RuntimeHandle {
         self.runtime.subagent_live_messages(session_id)
     }
 
+    pub fn subagent_pending_aux_state(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<PendingAssistantAux>> {
+        self.runtime.subagent_pending_aux_state(session_id)
+    }
+
     pub fn pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
         self.runtime.pending_subagent_approval()
     }

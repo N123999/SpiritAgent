@@ -185,6 +185,7 @@ pub struct SubagentSessionSummaryView {
 pub struct SubagentSessionDetailView {
     pub summary: SubagentSessionSummaryView,
     pub messages: Vec<ChatMessage>,
+    pub pending_aux: Option<PendingAssistantAux>,
     pub final_output: Option<String>,
     pub error: Option<String>,
 }

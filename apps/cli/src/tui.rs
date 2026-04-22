@@ -398,6 +398,7 @@ impl TuiShell {
     fn subagent_detail_view(
         archive: &SubagentSessionArchiveEntry,
         live_messages: &[ChatMessage],
+        pending_aux: Option<crate::view::PendingAssistantAux>,
     ) -> SubagentSessionDetailView {
         let mut messages = Vec::new();
         let title = archive.summary.title.trim();
@@ -437,6 +438,7 @@ impl TuiShell {
         SubagentSessionDetailView {
             summary: Self::subagent_summary_view(&archive.summary),
             messages,
+            pending_aux,
             final_output: archive.summary.final_output.clone(),
             error: archive.summary.error.clone(),
         }
@@ -3407,7 +3409,22 @@ impl TuiShell {
         match self.runtime.subagent_session_archive(session_id) {
             Ok(Some(archive)) => {
                 let live_messages = self.runtime.subagent_live_messages(session_id);
-                self.subagent_view = Some(Self::subagent_detail_view(&archive, &live_messages));
+                let pending_aux = match self.runtime.subagent_pending_aux_state(session_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("读取子会话状态失败: {}", err),
+                            tool_block: None,
+                        });
+                        None
+                    }
+                };
+                self.subagent_view = Some(Self::subagent_detail_view(
+                    &archive,
+                    &live_messages,
+                    pending_aux,
+                ));
                 self.subagent_history_offset_from_bottom = 0;
                 self.sync_subagent_approval_input_state();
             }
@@ -3440,7 +3457,22 @@ impl TuiShell {
         match self.runtime.subagent_session_archive(&session_id) {
             Ok(Some(archive)) => {
                 let live_messages = self.runtime.subagent_live_messages(&session_id);
-                self.subagent_view = Some(Self::subagent_detail_view(&archive, &live_messages));
+                let pending_aux = match self.runtime.subagent_pending_aux_state(&session_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("刷新子会话状态失败: {}", err),
+                            tool_block: None,
+                        });
+                        None
+                    }
+                };
+                self.subagent_view = Some(Self::subagent_detail_view(
+                    &archive,
+                    &live_messages,
+                    pending_aux,
+                ));
                 self.sync_subagent_approval_input_state();
             }
             Ok(None) => {
