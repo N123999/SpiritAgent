@@ -584,6 +584,9 @@ impl ToolRuntime {
                                         }
                                     },
                                     "required": ["id", "title", "kind"],
+                                    // [Bug] Kimi 系列模型嵌套数组对象设置 additionalProperties: false 时输出空对象 {}
+                                    // https://github.com/N123999/SpiritAgent/issues/2
+                                    // 暂时不删除此字段，待模型提供商修复。
                                     "additionalProperties": false
                                 }
                             }
