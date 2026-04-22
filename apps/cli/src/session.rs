@@ -229,6 +229,11 @@ impl SessionModel {
                 truncate_for_preview(&request.task, 240),
                 request.files_to_inspect.len()
             ),
+            ToolRequest::AskQuestions { questions } => format!(
+                "ask_questions title={} count={}",
+                questions.title.as_deref().unwrap_or(""),
+                questions.questions.len()
+            ),
             ToolRequest::Shell { command } => format!("run_shell_command command={}", command),
             ToolRequest::CreateFile { path, content } => {
                 format!(

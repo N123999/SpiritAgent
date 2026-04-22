@@ -105,6 +105,10 @@ export interface OpenAiActiveSkill {
 export interface OpenAiPlanMetadata {
   path: string;
   exists: boolean;
+  /** True when the CLI input mode is Plan (vs Agent). */
+  planMode?: boolean;
+  /** Plan-mode host instructions (Chinese); injected into system prompt only. */
+  planModeHostInstructions?: string;
 }
 
 export interface OpenAiToolAgentState {
@@ -691,21 +695,40 @@ export function buildSkillsCatalogSystemMessage(
 export function buildPlanSystemMessage(
   planMetadata?: OpenAiPlanMetadata,
 ): string | undefined {
-  if (!planMetadata?.exists) {
+  if (!planMetadata) {
     return undefined;
   }
 
-  return [
-    PLAN_SECTION_PREFIX,
-    'The host exposes a shared implementation plan file as metadata only.',
-    'Do not assume its contents unless you read the file.',
-    'Produce or rewrite this plan document only when the user clearly asks for planning, a design, or an implementation plan for a concrete task. Do not spontaneously draft a full “project plan” document or roadmap unless the user explicitly requests that kind of deliverable.',
-    'When the user asks to continue, resume, or start implementing an existing plan, read this file before acting.',
-    'While the user is still planning, you may update this file through the normal file-approval flow.',
-    'If an existing plan on disk is clearly about a different topic or intent than the user\'s current request, delete it (via approved delete_file) and create a new plan from scratch; do not stack unrelated plans in the same file.',
-    '',
-    `<plan path="${escapeRuleAttribute(planMetadata.path)}" />`,
-  ].join('\n').trimEnd();
+  const planMode = planMetadata.planMode === true;
+  const hostZh = planMetadata.planModeHostInstructions?.trim() ?? '';
+  if (!planMetadata.exists && !planMode) {
+    return undefined;
+  }
+
+  const lines: string[] = [PLAN_SECTION_PREFIX];
+
+  if (planMode && hostZh.length > 0) {
+    lines.push(hostZh, '');
+    lines.push(
+      'When the user\'s request is vague, ambiguous, or leaves important choices unresolved, you may use the `ask_questions` tool to ask clarifying questions.',
+      '',
+    );
+  }
+
+  if (planMetadata.exists) {
+    lines.push(
+      'The host exposes a shared implementation plan file as metadata only.',
+      'Do not assume its contents unless you read the file.',
+      'Produce or rewrite this plan document only when the user clearly asks for planning, a design, or an implementation plan for a concrete task. Do not spontaneously draft a full “project plan” document or roadmap unless the user explicitly requests that kind of deliverable.',
+      'When the user asks to continue, resume, or start implementing an existing plan, read this file before acting.',
+      'While the user is still planning, you may update this file through the normal file-approval flow.',
+      'If an existing plan on disk is clearly about a different topic or intent than the user\'s current request, delete it (via approved delete_file) and create a new plan from scratch; do not stack unrelated plans in the same file.',
+      '',
+      `<plan path="${escapeRuleAttribute(planMetadata.path)}" />`,
+    );
+  }
+
+  return lines.join('\n').trimEnd();
 }
 
 export function buildActiveSkillsSystemMessage(

@@ -52,6 +52,7 @@ import type {
   RuntimeReplaceRulesParams,
   RuntimeReplaceSkillsCatalogParams,
   RuntimeRespondToPendingApprovalParams,
+  RuntimeRespondToPendingQuestionsParams,
   RuntimeActivateSkillParams,
   RuntimeStartManualMcpToolParams,
   RuntimeStartManualToolCommandParams,
@@ -161,6 +162,7 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
   const pendingUserTurn = target.pendingUserTurn();
   const pendingAuxState = target.pendingAuxState();
   const currentPendingApproval = target.currentPendingApproval();
+  const currentPendingQuestions = target.currentPendingQuestions();
   const backgroundToolStatus = target.backgroundToolStatus();
 
   return {
@@ -175,11 +177,14 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
       content: resource.content,
     })),
     ...(pendingAuxState !== undefined ? { pendingAuxState } : {}),
-    hasPendingApproval: target.hasPendingApproval(),
-    hasPendingManualApproval: target.hasPendingManualApproval(),
-    ...(currentPendingApproval !== undefined ? { currentPendingApproval } : {}),
-    childSessions: [...target.childSessions()],
-    isBusy: target.isBusy(),
+  hasPendingApproval: target.hasPendingApproval(),
+  hasPendingManualApproval: target.hasPendingManualApproval(),
+  hasPendingQuestions: target.hasPendingQuestions(),
+  ...(currentPendingApproval !== undefined ? { currentPendingApproval } : {}),
+  childSessions: [...target.childSessions()],
+  ...(currentPendingQuestions !== undefined ? { currentPendingQuestions } : {}),
+  childSessions: [...target.childSessions()],
+  isBusy: target.isBusy(),
     ...(backgroundToolStatus !== undefined ? { backgroundToolStatus } : {}),
   };
 }
@@ -304,6 +309,12 @@ peer.on('runtime.snapshot', async () => buildSnapshot(requireRuntime()));
 peer.on('runtime.respondToPendingApproval', async (rawParams) => {
   const params = rawParams as RuntimeRespondToPendingApprovalParams;
   await requireRuntime().continuePendingApproval(params.decision);
+  return null;
+});
+
+peer.on('runtime.respondToPendingQuestions', async (rawParams) => {
+  const params = rawParams as RuntimeRespondToPendingQuestionsParams;
+  await requireRuntime().continuePendingQuestions(params.result);
   return null;
 });
 

@@ -1,6 +1,7 @@
 import { setImmediate as waitForImmediate } from 'node:timers/promises';
 
 import type {
+  AskQuestionsResult,
   RunSubagentRequest,
   AuthorizationDecision,
   AssistantAuxArchiveEntry,
@@ -46,6 +47,7 @@ import {
   processToolCalls as processToolCallsInternal,
   processToolCallsAsync as processToolCallsAsyncInternal,
   resumePendingApproval as resumePendingApprovalInternal,
+  resumePendingQuestions as resumePendingQuestionsInternal,
   runTurnLoop as runTurnLoopInternal,
   startToolAgentRoundAsync as startToolAgentRoundAsyncInternal,
   waitForCompletedTurnResult as waitForCompletedTurnResultInternal,
@@ -88,6 +90,7 @@ import type {
   PendingApprovalState,
   PendingBackgroundToolExecution,
   PendingHistoryCompaction,
+  PendingQuestionsState,
   PendingManualBackgroundToolExecution,
   PendingManualHistoryCompaction,
   PendingMcpResource,
@@ -105,6 +108,8 @@ import type {
   RuntimePendingApproval,
   RuntimeSubagentSessionArchiveEntry,
   RuntimeSubagentSessionSummary,
+  RuntimePendingQuestions,
+  RuntimePendingQuestions,
   RuntimeTurnContext,
   RuntimeTurnResult,
 } from './runtime/types.js';
@@ -134,6 +139,8 @@ export type {
   RuntimePendingApproval,
   RuntimeSubagentSessionArchiveEntry,
   RuntimeSubagentSessionSummary,
+  RuntimePendingQuestions,
+  RuntimePendingQuestions,
   RuntimeStatePreparationResult,
   RuntimeToolExecution,
   RuntimeTurnResult,
@@ -179,6 +186,7 @@ export class AgentRuntime<
   private compactionTextStore: string;
   private pendingUserTurnStore: string | undefined;
   private pendingApproval: PendingApprovalState<State, ToolRequest, TrustTarget> | undefined;
+  private pendingQuestions: PendingQuestionsState<State, ToolRequest> | undefined;
   private pendingManualApproval:
     | PendingManualApprovalState<ToolRequest, TrustTarget>
     | undefined;
@@ -383,6 +391,10 @@ export class AgentRuntime<
     );
   }
 
+  hasPendingQuestions(): boolean {
+    return this.pendingQuestions !== undefined;
+  }
+
   currentPendingApproval(): RuntimePendingApproval<ToolRequest, TrustTarget> | undefined {
     if (this.pendingApproval) {
       return {
@@ -421,6 +433,19 @@ export class AgentRuntime<
     return undefined;
   }
 
+  currentPendingQuestions(): RuntimePendingQuestions<ToolRequest> | undefined {
+    if (!this.pendingQuestions) {
+      return undefined;
+    }
+
+    return {
+      request: this.pendingQuestions.request,
+      toolCallId: this.pendingQuestions.toolCallId,
+      toolName: this.pendingQuestions.toolName,
+      questions: this.pendingQuestions.questions,
+    };
+  }
+
   isBusy(): boolean {
     return (
       this.pendingStreamingRound !== undefined ||
@@ -428,6 +453,9 @@ export class AgentRuntime<
       this.pendingBackgroundToolExecution !== undefined ||
       this.pendingHistoryCompaction !== undefined ||
       this.pendingSubagentExecution !== undefined ||
+      this.pendingQuestions !== undefined ||
+      this.pendingSubagentExecution !== undefined ||
+      this.pendingQuestions !== undefined ||
       this.hasPendingApproval()
     );
   }
@@ -665,6 +693,15 @@ export class AgentRuntime<
     );
   }
 
+  async resumePendingQuestions(
+    result: AskQuestionsResult,
+  ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+    return resumePendingQuestionsInternal(
+      this as unknown as TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+      result,
+    );
+  }
+
   async continuePendingApproval(
     decision: RuntimeApprovalDecision,
   ): Promise<void> {
@@ -811,6 +848,57 @@ export class AgentRuntime<
       pending.state,
       pending.toolCallId,
       deniedText,
+    );
+
+    if (pending.remainingCalls.length > 0) {
+      await this.processToolCallsAsync(
+        resumedState,
+        pending.pendingUserInput,
+        pending.remainingCalls,
+        pending.turn,
+        pending.resumeAsStreaming,
+        pending.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    if (pending.resumeAsStreaming) {
+      await this.startStreamingRound(
+        resumedState,
+        pending.pendingUserInput,
+        pending.turn,
+        pending.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    this.startToolAgentRoundAsync(resumedState, pending.pendingUserInput, pending.turn);
+  }
+
+  async continuePendingQuestions(
+    result: AskQuestionsResult,
+  ): Promise<void> {
+    const pending = this.pendingQuestions;
+    if (!pending) {
+      throw new Error('当前没有待回答的问题表单。');
+    }
+
+    this.pendingQuestions = undefined;
+    this.completedTurnResultStore = undefined;
+
+    const output = JSON.stringify(result);
+    pending.turn.toolExecutions.push({
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+      request: pending.request,
+      output,
+      failed: false,
+    });
+
+    const resumedState = this.options.appendToolResultMessage(
+      pending.state,
+      pending.toolCallId,
+      output,
     );
 
     if (pending.remainingCalls.length > 0) {
@@ -1365,6 +1453,14 @@ export class AgentRuntime<
       return;
     }
 
+    if (result.kind === 'requires-questions') {
+      this.emitEvent({
+        kind: 'questions-requested',
+        questions: result.questions,
+      });
+      return;
+    }
+
     this.emitEvent({
       kind: 'replace-pending-assistant',
       text: `LLM 调用失败: ${result.error}`,
@@ -1432,6 +1528,7 @@ export class AgentRuntime<
     this.pendingToolAgentRound = undefined;
     this.pendingBackgroundToolExecution = undefined;
     this.pendingHistoryCompaction = undefined;
+    this.pendingQuestions = undefined;
     this.completedTurnResultStore = undefined;
     this.completedManualToolCommandResultStore = undefined;
     this.completedManualHistoryCompactionResultStore = undefined;

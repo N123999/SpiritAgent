@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ask_questions::{AskQuestionsQuestionKind, AskQuestionsRequest};
 use crate::model_registry::AppConfig;
 use crate::ports::SubagentSessionStatus;
 use crate::session::PendingMcpResource;
@@ -70,6 +71,13 @@ pub struct McpPromptArgumentBinding {
 pub enum BottomFormKind {
     McpAdd,
     ModelAdd,
+    AskQuestions {
+        tool_call_id: String,
+        tool_name: String,
+        request: AskQuestionsRequest,
+        submit_selected: bool,
+        validation_message: Option<String>,
+    },
     McpPrompt {
         server: String,
         prompt: String,
@@ -97,6 +105,32 @@ pub struct BottomFormFieldView {
 }
 
 #[derive(Clone, Debug)]
+pub struct AskQuestionsOptionView {
+    pub label: String,
+    pub summary: Option<String>,
+    pub selected: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct AskQuestionsInputFieldView {
+    pub label: String,
+    pub placeholder: String,
+    pub value: String,
+    pub cursor: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct AskQuestionsQuestionView {
+    pub id: String,
+    pub kind: AskQuestionsQuestionKind,
+    pub required: bool,
+    pub options: Vec<AskQuestionsOptionView>,
+    pub selected_row: usize,
+    pub custom_input: Option<AskQuestionsInputFieldView>,
+    pub text_input: Option<AskQuestionsInputFieldView>,
+}
+
+#[derive(Clone, Debug)]
 pub enum BottomFormFieldEditorView {
     Section {
         text: String,
@@ -117,6 +151,9 @@ pub enum BottomFormFieldEditorView {
         checked: bool,
         disabled: bool,
         path: Option<String>,
+    },
+    AskQuestion {
+        question: AskQuestionsQuestionView,
     },
 }
 

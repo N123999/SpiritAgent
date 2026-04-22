@@ -1,4 +1,5 @@
 import type {
+  AskQuestionsResult,
   JsonValue,
   LlmMessage,
 } from '../ports.js';
@@ -8,6 +9,8 @@ import type {
   RuntimeApprovalDecision,
   RuntimeEvent,
   RuntimePendingApproval,
+  RuntimeSubagentSessionSummary,
+  RuntimePendingQuestions,
   RuntimeSubagentSessionSummary,
 } from '../runtime.js';
 import type {
@@ -60,7 +63,10 @@ export interface BridgeRuntimeSnapshot {
   pendingAuxState?: PendingAssistantAux;
   hasPendingApproval: boolean;
   hasPendingManualApproval: boolean;
+  hasPendingQuestions: boolean;
   currentPendingApproval?: RuntimePendingApproval<JsonValue, JsonValue>;
+  childSessions: RuntimeSubagentSessionSummary[];
+  currentPendingQuestions?: RuntimePendingQuestions<JsonValue>;
   childSessions: RuntimeSubagentSessionSummary[];
   isBusy: boolean;
   backgroundToolStatus?: string;
@@ -145,6 +151,10 @@ export interface RuntimeRespondToPendingApprovalParams {
 
 export interface RuntimeSubagentSessionParams {
   sessionId: string;
+}
+
+export interface RuntimeRespondToPendingQuestionsParams {
+  result: AskQuestionsResult;
 }
 
 export interface RuntimeStartManualToolCommandParams {

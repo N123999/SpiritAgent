@@ -1,3 +1,4 @@
+pub mod ask_questions;
 pub mod adapters;
 pub mod chat_store;
 pub mod cli;

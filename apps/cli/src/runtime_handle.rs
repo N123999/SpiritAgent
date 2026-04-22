@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::{path::PathBuf, sync::Arc};
 
 use crate::{
+    ask_questions::AskQuestionsResult,
     host_runtime::RuntimeEvent,
     mcp::McpServerConfig,
     mcp_types::{
@@ -218,6 +219,10 @@ impl RuntimeHandle {
 
     pub fn respond_to_pending_tool_approval(&mut self, message: &str) {
         self.runtime.respond_to_pending_tool_approval(message)
+    }
+
+    pub fn respond_to_pending_questions(&mut self, result: &AskQuestionsResult) {
+        self.runtime.respond_to_pending_questions(result)
     }
 
     pub fn execute_manual_tool_command(&mut self, message: &str) {

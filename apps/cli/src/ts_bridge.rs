@@ -13,6 +13,7 @@ use std::{
 
 use crate::{
     adapters::WorkspaceToolExecutor,
+    ask_questions::AskQuestionsRequest,
     host_runtime::{
         RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
         tool_approval_block, tool_failed_block,
@@ -58,6 +59,7 @@ pub struct TsBridgeRuntime {
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
     current_pending_approval: Option<BridgePendingApproval>,
+    pending_questions_active: bool,
     pending_assistant_has_output: bool,
     is_busy_cache: bool,
     child_sessions_cache: Vec<SubagentSessionSummary>,
@@ -142,9 +144,11 @@ struct BridgeRuntimeSnapshot {
     pending_aux_state: Option<PendingAssistantAux>,
     has_pending_approval: bool,
     has_pending_manual_approval: bool,
+    has_pending_questions: bool,
     current_pending_approval: Option<BridgePendingApproval>,
     #[serde(default)]
     child_sessions: Vec<BridgeSubagentSessionSummary>,
+    current_pending_questions: Option<BridgePendingQuestions>,
     is_busy: bool,
     background_tool_status: Option<String>,
 }
@@ -227,6 +231,15 @@ struct BridgePendingApproval {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BridgePendingQuestions {
+    request: Value,
+    tool_call_id: String,
+    tool_name: String,
+    questions: AskQuestionsRequest,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgeDrainEventsResult {
     events: Vec<BridgeRuntimeEvent>,
     snapshot: BridgeRuntimeSnapshot,
@@ -251,6 +264,8 @@ enum BridgeRuntimeEvent {
     RemovePendingAssistant,
     #[serde(rename = "approval-requested")]
     ApprovalRequested { approval: BridgePendingApproval },
+    #[serde(rename = "questions-requested")]
+    QuestionsRequested { questions: BridgePendingQuestions },
     #[serde(rename = "history-compacted")]
     HistoryCompacted {
         #[serde(alias = "droppedMessages")]
@@ -310,6 +325,7 @@ impl TsBridgeRuntime {
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
+            pending_questions_active: false,
             pending_assistant_has_output: false,
             is_busy_cache: false,
             child_sessions_cache: Vec::new(),
@@ -346,10 +362,13 @@ impl TsBridgeRuntime {
             plan_metadata: PlanMetadata {
                 path: PathBuf::new(),
                 exists: false,
+                plan_mode: false,
+                plan_mode_host_instructions: String::new(),
             },
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
+            pending_questions_active: false,
             pending_assistant_has_output: false,
             is_busy_cache: false,
             child_sessions_cache: Vec::new(),
@@ -969,6 +988,24 @@ impl TsBridgeRuntime {
         }
     }
 
+    pub fn respond_to_pending_questions(&mut self, result: &crate::ask_questions::AskQuestionsResult) {
+        if self.bridge_failed {
+            return;
+        }
+
+        if let Err(err) = self.call_bridge(
+            "runtime.respondToPendingQuestions",
+            Some(json!({ "result": result })),
+        ) {
+            self.handle_bridge_error(err);
+            return;
+        }
+
+        if let Err(err) = self.sync_after_command() {
+            self.handle_bridge_error(err);
+        }
+    }
+
     pub fn execute_manual_tool_command(&mut self, message: &str) {
         if self.bridge_failed {
             return;
@@ -1508,11 +1545,12 @@ impl TsBridgeRuntime {
                 .iter()
                 .any(|summary| summary.session_id == *session_id)
         });
+        self.pending_questions_active = snapshot.has_pending_questions;
         self.is_busy_cache = snapshot.is_busy;
     }
 
     fn should_poll_bridge(&self) -> bool {
-        self.is_busy_cache && self.pending_approval_kind.is_none()
+        self.is_busy_cache && self.pending_approval_kind.is_none() && !self.pending_questions_active
     }
 
     fn apply_bridge_events(&mut self, events: Vec<BridgeRuntimeEvent>) {
@@ -1582,6 +1620,13 @@ impl TsBridgeRuntime {
                             ),
                         )));
                     }
+                }
+                BridgeRuntimeEvent::QuestionsRequested { questions } => {
+                    self.events.push_back(RuntimeEvent::OpenAskQuestions {
+                        tool_call_id: questions.tool_call_id,
+                        tool_name: questions.tool_name,
+                        questions: questions.questions,
+                    });
                 }
                 BridgeRuntimeEvent::HistoryCompacted {
                     dropped_messages,
@@ -2071,6 +2116,10 @@ fn authorization_decision_to_value(decision: AuthorizationDecision) -> Result<Va
             "prompt": prompt,
             "trustTarget": trust_target,
         })),
+        AuthorizationDecision::NeedQuestions { questions } => Ok(json!({
+            "kind": "need-questions",
+            "questions": questions,
+        })),
     }
 }
 
@@ -2222,6 +2271,8 @@ mod tests {
             PlanMetadata {
                 path: PathBuf::new(),
                 exists: false,
+                plan_mode: false,
+                plan_mode_host_instructions: String::new(),
             },
         )
         .ok()
@@ -2235,7 +2286,9 @@ mod tests {
             pending_aux_state: None,
             has_pending_approval: false,
             has_pending_manual_approval: false,
+            has_pending_questions: false,
             current_pending_approval: None,
+            current_pending_questions: None,
             child_sessions: vec![],
             is_busy: true,
             background_tool_status: None,
