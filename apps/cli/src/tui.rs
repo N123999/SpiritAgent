@@ -35,8 +35,9 @@ use crate::{
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
-        InputSuggestionKind, MainInputMode, MessageRole, SubagentSessionDetailView,
-        SubagentSessionSummaryView, TuiViewModel,
+        InputSuggestionKind, MainInputMode, MessageRole, PendingSubagentApprovalView,
+        SubagentApprovalInputView, SubagentSessionDetailView, SubagentSessionSummaryView,
+        TuiViewModel,
     },
 };
 
@@ -92,6 +93,9 @@ pub struct TuiShell {
     subagent_picker_index: usize,
     subagent_view: Option<SubagentSessionDetailView>,
     subagent_history_offset_from_bottom: usize,
+    subagent_approval_input: String,
+    subagent_approval_input_cursor: usize,
+    subagent_approval_input_active: bool,
     image_picker_active: bool,
     image_picker_index: usize,
     image_picker_files: Vec<String>,
@@ -184,6 +188,9 @@ impl TuiShell {
             subagent_picker_index: 0,
             subagent_view: None,
             subagent_history_offset_from_bottom: 0,
+            subagent_approval_input: String::new(),
+            subagent_approval_input_cursor: 0,
+            subagent_approval_input_active: false,
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],
@@ -365,6 +372,7 @@ impl TuiShell {
             subagent_view: self.subagent_view.clone(),
             subagent_history_offset_from_bottom: self.subagent_history_offset_from_bottom,
             pending_subagent_approval: self.runtime.pending_subagent_approval(),
+            subagent_approval_input: self.subagent_approval_input_view(),
             image_picker_active: self.image_picker_active,
             image_picker_index: self.image_picker_index,
             image_picker_files: self.image_picker_files.clone(),
@@ -611,6 +619,123 @@ impl TuiShell {
 
     pub fn is_subagent_view_active(&self) -> bool {
         self.subagent_view.is_some()
+    }
+
+    pub fn has_active_subagent_viewer_approval(&self) -> bool {
+        self.active_view_pending_subagent_approval().is_some()
+    }
+
+    pub fn is_subagent_approval_input_active(&self) -> bool {
+        self.subagent_approval_input_active && self.has_active_subagent_viewer_approval()
+    }
+
+    pub fn begin_subagent_approval_input(&mut self) {
+        if self.active_view_pending_subagent_approval().is_none() {
+            return;
+        }
+
+        self.subagent_approval_input_active = true;
+        self.subagent_approval_input_cursor = self.subagent_approval_input_len_chars();
+    }
+
+    pub fn cancel_subagent_approval_input(&mut self) {
+        self.clear_subagent_approval_input_state();
+    }
+
+    pub fn respond_to_active_subagent_approval(&mut self, message: &str) {
+        if self.active_view_pending_subagent_approval().is_none() {
+            return;
+        }
+
+        self.runtime.respond_to_pending_tool_approval(message);
+        self.apply_runtime_events();
+        self.clear_subagent_approval_input_state();
+        self.refresh_active_subagent_view();
+    }
+
+    pub fn submit_subagent_approval_input(&mut self) {
+        if !self.is_subagent_approval_input_active() {
+            return;
+        }
+
+        let message = self.subagent_approval_input.trim().to_string();
+        if message.is_empty() {
+            return;
+        }
+
+        self.respond_to_active_subagent_approval(&message);
+    }
+
+    pub fn move_subagent_approval_cursor_left(&mut self) {
+        if self.is_subagent_approval_input_active() && self.subagent_approval_input_cursor > 0 {
+            self.subagent_approval_input_cursor -= 1;
+        }
+    }
+
+    pub fn move_subagent_approval_cursor_right(&mut self) {
+        if self.is_subagent_approval_input_active()
+            && self.subagent_approval_input_cursor < self.subagent_approval_input_len_chars()
+        {
+            self.subagent_approval_input_cursor += 1;
+        }
+    }
+
+    pub fn move_subagent_approval_cursor_home(&mut self) {
+        if self.is_subagent_approval_input_active() {
+            self.subagent_approval_input_cursor = 0;
+        }
+    }
+
+    pub fn move_subagent_approval_cursor_end(&mut self) {
+        if self.is_subagent_approval_input_active() {
+            self.subagent_approval_input_cursor = self.subagent_approval_input_len_chars();
+        }
+    }
+
+    pub fn insert_subagent_approval_char(&mut self, ch: char) {
+        if !self.is_subagent_approval_input_active() {
+            return;
+        }
+
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.insert(idx, ch);
+        self.subagent_approval_input_cursor += 1;
+    }
+
+    pub fn backspace_subagent_approval_input(&mut self) {
+        if !self.is_subagent_approval_input_active() || self.subagent_approval_input_cursor == 0 {
+            return;
+        }
+
+        self.subagent_approval_input_cursor -= 1;
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.remove(idx);
+    }
+
+    pub fn delete_subagent_approval_input(&mut self) {
+        if !self.is_subagent_approval_input_active()
+            || self.subagent_approval_input_cursor >= self.subagent_approval_input_len_chars()
+        {
+            return;
+        }
+
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.remove(idx);
+    }
+
+    pub fn paste_subagent_approval_from_clipboard(&mut self) -> Result<(), String> {
+        if self.active_view_pending_subagent_approval().is_none() {
+            return Ok(());
+        }
+
+        let text = arboard::Clipboard::new()
+            .map_err(|e| e.to_string())?
+            .get_text()
+            .map_err(|e| e.to_string())?;
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        self.begin_subagent_approval_input();
+        self.insert_text_into_subagent_approval(&normalized);
+        Ok(())
     }
 
     pub fn is_image_picker_active(&self) -> bool {
@@ -1210,6 +1335,7 @@ impl TuiShell {
     pub fn close_subagent_view(&mut self) {
         self.subagent_view = None;
         self.subagent_history_offset_from_bottom = 0;
+        self.clear_subagent_approval_input_state();
     }
 
     pub fn scroll_subagent_view_up(&mut self, lines: usize) {
@@ -3283,6 +3409,7 @@ impl TuiShell {
                 let live_messages = self.runtime.subagent_live_messages(session_id);
                 self.subagent_view = Some(Self::subagent_detail_view(&archive, &live_messages));
                 self.subagent_history_offset_from_bottom = 0;
+                self.sync_subagent_approval_input_state();
             }
             Ok(None) => {
                 self.messages.push(ChatMessage {
@@ -3314,6 +3441,7 @@ impl TuiShell {
             Ok(Some(archive)) => {
                 let live_messages = self.runtime.subagent_live_messages(&session_id);
                 self.subagent_view = Some(Self::subagent_detail_view(&archive, &live_messages));
+                self.sync_subagent_approval_input_state();
             }
             Ok(None) => {
                 self.close_subagent_view();
@@ -3327,6 +3455,65 @@ impl TuiShell {
                 self.close_subagent_view();
             }
         }
+    }
+
+    fn active_view_pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
+        let approval = self.runtime.pending_subagent_approval()?;
+        let session_id = self.subagent_view.as_ref()?.summary.session_id.as_str();
+        if approval.session_id == session_id {
+            Some(approval)
+        } else {
+            None
+        }
+    }
+
+    fn subagent_approval_input_view(&self) -> Option<SubagentApprovalInputView> {
+        if !self.is_subagent_approval_input_active() {
+            return None;
+        }
+
+        Some(SubagentApprovalInputView {
+            value: self.subagent_approval_input.clone(),
+            cursor: self.subagent_approval_input_cursor,
+        })
+    }
+
+    fn clear_subagent_approval_input_state(&mut self) {
+        self.subagent_approval_input.clear();
+        self.subagent_approval_input_cursor = 0;
+        self.subagent_approval_input_active = false;
+    }
+
+    fn sync_subagent_approval_input_state(&mut self) {
+        if self.active_view_pending_subagent_approval().is_none() {
+            self.clear_subagent_approval_input_state();
+            return;
+        }
+
+        self.subagent_approval_input_cursor = self
+            .subagent_approval_input_cursor
+            .min(self.subagent_approval_input_len_chars());
+    }
+
+    fn subagent_approval_input_len_chars(&self) -> usize {
+        self.subagent_approval_input.chars().count()
+    }
+
+    fn subagent_approval_cursor_byte_index(&self) -> usize {
+        cursor_byte_index_for_text(
+            &self.subagent_approval_input,
+            self.subagent_approval_input_cursor,
+        )
+    }
+
+    fn insert_text_into_subagent_approval(&mut self, text: &str) {
+        if !self.is_subagent_approval_input_active() || text.is_empty() {
+            return;
+        }
+
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.insert_str(idx, text);
+        self.subagent_approval_input_cursor += text.chars().count();
     }
 
     fn apply_runtime_events(&mut self) {
@@ -3407,6 +3594,8 @@ impl TuiShell {
                 }
             }
         }
+
+        self.sync_subagent_approval_input_state();
     }
 
     fn current_input_suggestion_kind(&self) -> Option<InputSuggestionKind> {
@@ -3438,14 +3627,7 @@ impl TuiShell {
     }
 
     fn cursor_byte_index(&self) -> usize {
-        if self.input_cursor == 0 {
-            return 0;
-        }
-        self.input
-            .char_indices()
-            .nth(self.input_cursor)
-            .map(|(idx, _)| idx)
-            .unwrap_or(self.input.len())
+        cursor_byte_index_for_text(&self.input, self.input_cursor)
     }
 
     fn set_input(&mut self, value: String) {
@@ -3670,6 +3852,17 @@ fn split_first_token(input: &str) -> Option<(&str, &str)> {
 
 fn is_subagents_command(message: &str) -> bool {
     message == "/subagents" || message.starts_with("/subagents ")
+}
+
+fn cursor_byte_index_for_text(text: &str, cursor_chars: usize) -> usize {
+    if cursor_chars == 0 {
+        return 0;
+    }
+
+    text.char_indices()
+        .nth(cursor_chars)
+        .map(|(idx, _)| idx)
+        .unwrap_or(text.len())
 }
 
 fn non_empty_opt(input: &str) -> Option<&str> {

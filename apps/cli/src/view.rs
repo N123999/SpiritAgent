@@ -197,6 +197,12 @@ pub struct PendingSubagentApprovalView {
     pub prompt: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct SubagentApprovalInputView {
+    pub value: String,
+    pub cursor: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageRole {
     User,
@@ -238,6 +244,7 @@ pub struct TuiViewModel {
     pub subagent_view: Option<SubagentSessionDetailView>,
     pub subagent_history_offset_from_bottom: usize,
     pub pending_subagent_approval: Option<PendingSubagentApprovalView>,
+    pub subagent_approval_input: Option<SubagentApprovalInputView>,
     pub image_picker_active: bool,
     pub image_picker_index: usize,
     pub image_picker_files: Vec<String>,

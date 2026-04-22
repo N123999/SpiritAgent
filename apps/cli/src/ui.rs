@@ -24,8 +24,8 @@ use crate::{
         AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind,
         BottomFormView,
         ChatMessage, InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole,
-        PendingAssistantAux, SubagentSessionDetailView, ToolUiBlock, ToolUiPhase,
-        TuiViewModel,
+        PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
+        SubagentSessionDetailView, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
 
@@ -269,7 +269,15 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     }
 
     if let Some(view) = &app.subagent_view {
-        draw_subagent_viewer(frame, shell, frame.area(), view, app.show_aux_details);
+        draw_subagent_viewer(
+            frame,
+            shell,
+            frame.area(),
+            view,
+            app.show_aux_details,
+            app.pending_subagent_approval.as_ref(),
+            app.subagent_approval_input.as_ref(),
+        );
     }
 }
 
@@ -1916,6 +1924,8 @@ fn draw_subagent_viewer(
     area: Rect,
     view: &SubagentSessionDetailView,
     show_aux_details: bool,
+    pending_subagent_approval: Option<&PendingSubagentApprovalView>,
+    approval_input: Option<&SubagentApprovalInputView>,
 ) {
     let popup = area;
     frame.render_widget(Clear, popup);
@@ -1927,14 +1937,44 @@ fn draw_subagent_viewer(
     frame.render_widget(block.clone(), popup);
 
     let inner = block.inner(popup);
+    let active_approval = pending_subagent_approval
+        .filter(|approval| approval.session_id == view.summary.session_id);
+    let approval_input_height = approval_input
+        .map(|input| {
+            (input_visual_line_count(&input.value, inner.width.saturating_sub(2) as usize)
+                .max(1)
+                .saturating_add(2)) as u16
+        })
+        .unwrap_or(0)
+        .clamp(3, 6);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(2),
-        ])
+        .constraints(if approval_input.is_some() {
+            vec![
+                Constraint::Length(3),
+                Constraint::Min(1),
+                Constraint::Length(approval_input_height),
+                Constraint::Length(2),
+            ]
+        } else {
+            vec![
+                Constraint::Length(3),
+                Constraint::Min(1),
+                Constraint::Length(2),
+            ]
+        })
         .split(inner);
+    let history_chunk = chunks[1];
+    let approval_chunk = if approval_input.is_some() {
+        chunks.get(2).copied()
+    } else {
+        None
+    };
+    let footer_chunk = if approval_input.is_some() {
+        chunks[3]
+    } else {
+        chunks[2]
+    };
 
     let (status_label, status_style) = subagent_status_badge(view.summary.status, false);
     let mut header_lines = vec![Line::from(vec![
@@ -1956,8 +1996,8 @@ fn draw_subagent_viewer(
     frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: true }), chunks[0]);
 
     let history_lines = build_subagent_history_lines(&view.messages, show_aux_details);
-    let (flat, _) = flatten_wrapped_history(history_lines, chunks[1].width.max(1), None);
-    let history_view_height = chunks[1].height.max(1) as usize;
+    let (flat, _) = flatten_wrapped_history(history_lines, history_chunk.width.max(1), None);
+    let history_view_height = history_chunk.height.max(1) as usize;
     let max_scroll = flat.len().saturating_sub(history_view_height);
     let offset_bottom = shell.clamp_subagent_history_scroll(max_scroll);
     let history_scroll = max_scroll.saturating_sub(offset_bottom);
@@ -1966,24 +2006,58 @@ fn draw_subagent_viewer(
         .skip(history_scroll)
         .take(history_view_height)
         .collect::<Vec<_>>();
-    frame.render_widget(Paragraph::new(visible), chunks[1]);
+    frame.render_widget(Paragraph::new(visible), history_chunk);
 
-    let footer_text = if let Some(error) = view.error.as_deref() {
+    if let (Some(editor), Some(editor_area), Some(approval)) =
+        (approval_input, approval_chunk, active_approval)
+    {
+        let editor_lines = wrap_editor_text_lines(
+            &editor.value,
+            editor_area.width.saturating_sub(2) as usize,
+        )
+        .into_iter()
+        .map(Line::from)
+        .collect::<Vec<_>>();
+        let editor_widget = Paragraph::new(editor_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .title(format!("审批意见: {}", approval.tool_name)),
+        );
+        frame.render_widget(editor_widget, editor_area);
+
+        let prefix: String = editor.value.chars().take(editor.cursor).collect();
+        let (cursor_row, cursor_col) = wrapped_text_cursor_position(
+            &prefix,
+            editor_area.width.saturating_sub(2) as usize,
+        );
+        frame.set_cursor_position((
+            editor_area.x + 1 + cursor_col as u16,
+            editor_area.y + 1 + cursor_row as u16,
+        ));
+    }
+
+    let footer_text = if active_approval.is_some() && approval_input.is_some() {
+        "Esc 取消输入  |  Enter 提交意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情".to_string()
+    } else if active_approval.is_some() {
+        "Esc 关闭  |  Enter 输入意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
+    } else if let Some(error) = view.error.as_deref() {
         format!(
             "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动  |  {}",
-            truncate_to_width(error, chunks[2].width.saturating_sub(32) as usize)
+            truncate_to_width(error, footer_chunk.width.saturating_sub(32) as usize)
         )
     } else if let Some(output) = view.final_output.as_deref() {
         format!(
             "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动  |  {}",
-            truncate_to_width(output, chunks[2].width.saturating_sub(32) as usize)
+            truncate_to_width(output, footer_chunk.width.saturating_sub(32) as usize)
         )
     } else {
         "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
     };
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(footer_text, subtle_aux_text_style()))),
-        chunks[2],
+        footer_chunk,
     );
 }
 
@@ -3156,6 +3230,7 @@ mod tests {
             subagent_view: None,
             subagent_history_offset_from_bottom: 0,
             pending_subagent_approval: None,
+            subagent_approval_input: None,
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],

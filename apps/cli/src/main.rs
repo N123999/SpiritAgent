@@ -573,9 +573,79 @@ fn process_key_event(
 
     if shell.is_subagent_view_active() {
         match key.code {
-            KeyCode::Esc => shell.close_subagent_view(),
+            KeyCode::Esc => {
+                if shell.is_subagent_approval_input_active() {
+                    shell.cancel_subagent_approval_input();
+                } else {
+                    shell.close_subagent_view();
+                }
+            }
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.toggle_aux_details()
+            }
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'v')
+                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval() =>
+            {
+                if let Err(e) = shell.paste_subagent_approval_from_clipboard() {
+                    logging::log_event(&format!("clipboard paste failed: {}", e));
+                }
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval()
+                    && !shell.is_subagent_approval_input_active()
+                    && ch.eq_ignore_ascii_case(&'y') =>
+            {
+                shell.respond_to_active_subagent_approval("y")
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval()
+                    && !shell.is_subagent_approval_input_active()
+                    && ch.eq_ignore_ascii_case(&'n') =>
+            {
+                shell.respond_to_active_subagent_approval("n")
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval()
+                    && !shell.is_subagent_approval_input_active()
+                    && ch.eq_ignore_ascii_case(&'t') =>
+            {
+                shell.respond_to_active_subagent_approval("t")
+            }
+            KeyCode::Enter if shell.has_active_subagent_viewer_approval() => {
+                if shell.is_subagent_approval_input_active() {
+                    shell.submit_subagent_approval_input();
+                } else {
+                    shell.begin_subagent_approval_input();
+                }
+            }
+            KeyCode::Backspace if shell.is_subagent_approval_input_active() => {
+                shell.backspace_subagent_approval_input()
+            }
+            KeyCode::Delete if shell.is_subagent_approval_input_active() => {
+                shell.delete_subagent_approval_input()
+            }
+            KeyCode::Left if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_left()
+            }
+            KeyCode::Right if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_right()
+            }
+            KeyCode::Home if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_home()
+            }
+            KeyCode::End if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_end()
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.is_subagent_approval_input_active() =>
+            {
+                shell.insert_subagent_approval_char(ch)
             }
             KeyCode::Up => shell.scroll_subagent_view_up(2),
             KeyCode::Down => shell.scroll_subagent_view_down(2),
