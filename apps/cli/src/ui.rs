@@ -2518,9 +2518,23 @@ fn draw_ask_questions_option_row(
     option: &AskQuestionsOptionView,
     is_selected_row: bool,
 ) -> Option<(u16, u16)> {
+    // 与 Agent 主输入区一致：描边用 `input_block_border_style`（即正文灰），已填/已选文字用白字。
+    // 仅键盘焦点、未勾选时整行（含字）用正文灰，略淡于已选白字。
+    let border_style = if option.selected || is_selected_row {
+        input_block_border_style(false, MainInputMode::Agent, false)
+    } else {
+        subtle_aux_text_style()
+    };
+    let label_style = if option.selected {
+        input_text_style(false, MainInputMode::Agent, false)
+    } else if is_selected_row {
+        conversation_body_text_style()
+    } else {
+        subtle_aux_text_style()
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(bottom_form_field_style(is_selected_row));
+        .border_style(border_style);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -2540,13 +2554,6 @@ fn draw_ask_questions_option_row(
             }
         }
         crate::ask_questions::AskQuestionsQuestionKind::Text => "   ",
-    };
-    let label_style = if is_selected_row {
-        Style::default().fg(Color::White)
-    } else if option.selected {
-        Style::default().fg(Color::Green)
-    } else {
-        subtle_aux_text_style()
     };
     let mut lines = vec![Line::from(Span::styled(
         format!("{} {}", marker, option.label),
@@ -2590,9 +2597,13 @@ fn build_ask_questions_tab_line(form: &BottomFormView, max_width: usize) -> Line
         }
 
         let style = if !ask_questions_form::submit_selected(form) && index == selected_question {
-            Style::default().fg(Color::Black).bg(Color::White)
+            if answered {
+                input_text_style(false, MainInputMode::Agent, false)
+            } else {
+                conversation_body_text_style()
+            }
         } else if answered {
-            Style::default().fg(Color::Green)
+            input_text_style(false, MainInputMode::Agent, false)
         } else {
             subtle_aux_text_style()
         };
@@ -2607,9 +2618,9 @@ fn build_ask_questions_tab_line(form: &BottomFormView, max_width: usize) -> Line
 
     if submit_width <= max_width.saturating_sub(used_width) || spans.is_empty() {
         let style = if ask_questions_form::submit_selected(form) {
-            Style::default().fg(Color::Black).bg(Color::White)
+            conversation_body_text_style()
         } else if ask_questions_form::answered_question_count(form) == form.fields.len() {
-            Style::default().fg(Color::Green)
+            input_text_style(false, MainInputMode::Agent, false)
         } else {
             subtle_aux_text_style()
         };
