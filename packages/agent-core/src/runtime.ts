@@ -947,7 +947,6 @@ export class AgentRuntime<
 
     const parentToolResultText = buildParentSubagentToolResultTextFromRequest(
       request,
-      'subagent',
       outcome.text,
       outcome.failed,
     );
@@ -1017,7 +1016,6 @@ export class AgentRuntime<
 
     const parentToolResultText = buildParentSubagentToolResultTextFromRequest(
       request,
-      'subagent',
       outcome.text,
       outcome.failed,
     );
@@ -1640,10 +1638,12 @@ export class AgentRuntime<
       this.refreshChildSessionRecord(record, childRuntime);
 
       if (result.kind === 'completed') {
+        const finalOutput = resolveSubagentResultText(result.assistantText, record, false);
         record.summary.status = 'completed';
-        record.summary.completedAtUnixMs = Date.now();
-        record.summary.finalOutput = result.assistantText;
-        return { kind: 'completed', text: result.assistantText, failed: false };
+        record.summary.updatedAtUnixMs = Date.now();
+        record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+        record.summary.finalOutput = finalOutput;
+        return { kind: 'completed', text: finalOutput, failed: false };
       }
 
       if (result.kind === 'requires-approval') {
@@ -1770,13 +1770,20 @@ export class AgentRuntime<
 
     this.pendingSubagentExecution = undefined;
     const output = result.kind === 'completed'
-      ? { text: result.assistantText, failed: false }
-      : { text: `[subagent failed] ${result.error}`, failed: true };
+      ? { text: resolveSubagentResultText(result.assistantText, pending.childRecord, false), failed: false }
+      : {
+          text: resolveSubagentResultText(
+            `[subagent failed] ${result.error}`,
+            pending.childRecord,
+            true,
+          ),
+          failed: true,
+        };
     const parentToolResultText = buildParentSubagentToolResultText(
-      pending.childRecord.summary.sessionId,
       pending.childRecord.summary.title,
       output.text,
       output.failed,
+      pending.childRecord.summary.sessionId,
     );
 
     pending.childRecord.summary.status = output.failed ? 'failed' : 'completed';
@@ -1912,32 +1919,51 @@ function buildRunSubagentUserTurn(request: RunSubagentRequest): string {
 }
 
 function buildParentSubagentToolResultText(
-  sessionId: string,
   title: string,
   outputText: string,
   failed: boolean,
+  sessionId?: string,
 ): string {
-  const header = failed
-    ? `[subagent failed] sessionId=${sessionId} title=${title}`
-    : `[subagent completed] sessionId=${sessionId} title=${title}`;
+  const normalizedTitle = title.trim() || 'SubAgent';
   const normalizedOutput = outputText.trim();
+  const header = failed ? '[subagent failed]' : '[subagent completed]';
+  const sessionLine = sessionId?.trim() ? `sessionId=${sessionId}\n` : '';
   if (!normalizedOutput) {
-    return header;
+    return `${header}\ntitle=${normalizedTitle}${sessionLine ? `\n${sessionLine.trimEnd()}` : ''}`;
   }
 
-  const label = failed ? 'Failure details:' : 'Final result:';
-  return `${header}\n\n${label}\n${truncateTextForParentSubagentResult(normalizedOutput, 6000)}`;
+  const label = failed ? 'error:' : 'final_output:';
+  return `${header}\ntitle=${normalizedTitle}\n${sessionLine}${label}\n${truncateTextForParentSubagentResult(normalizedOutput, 6000)}`;
 }
 
 function buildParentSubagentToolResultTextFromRequest<ToolRequest>(
   request: ToolRequest,
-  fallbackSessionId: string,
   outputText: string,
   failed: boolean,
 ): string {
   const subagent = extractRunSubagentRequest(request);
   const title = truncateTextForSubagentSummary(subagent?.task?.trim() ?? '', 72) || 'SubAgent';
-  return buildParentSubagentToolResultText(fallbackSessionId, title, outputText, failed);
+  return buildParentSubagentToolResultText(title, outputText, failed);
+}
+
+function resolveSubagentResultText(
+  outputText: string,
+  record: RuntimeSubagentSessionArchiveEntry,
+  failed: boolean,
+): string {
+  const normalizedOutput = outputText.trim();
+  if (normalizedOutput.length > 0) {
+    return normalizedOutput;
+  }
+
+  if (failed) {
+    return record.summary.error?.trim() || record.summary.latestMessage?.trim() || normalizedOutput;
+  }
+
+  return record.summary.finalOutput?.trim()
+    || latestAssistantMessage(record.llmHistory)?.trim()
+    || record.summary.latestMessage?.trim()
+    || normalizedOutput;
 }
 
 function truncateTextForParentSubagentResult(text: string, maxChars: number): string {
