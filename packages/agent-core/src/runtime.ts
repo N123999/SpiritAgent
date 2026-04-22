@@ -948,6 +948,7 @@ export class AgentRuntime<
     const parentToolResultText = buildParentSubagentToolResultTextFromRequest(
       request,
       'subagent',
+      outcome.text,
       outcome.failed,
     );
 
@@ -1017,6 +1018,7 @@ export class AgentRuntime<
     const parentToolResultText = buildParentSubagentToolResultTextFromRequest(
       request,
       'subagent',
+      outcome.text,
       outcome.failed,
     );
 
@@ -1773,6 +1775,7 @@ export class AgentRuntime<
     const parentToolResultText = buildParentSubagentToolResultText(
       pending.childRecord.summary.sessionId,
       pending.childRecord.summary.title,
+      output.text,
       output.failed,
     );
 
@@ -1911,21 +1914,39 @@ function buildRunSubagentUserTurn(request: RunSubagentRequest): string {
 function buildParentSubagentToolResultText(
   sessionId: string,
   title: string,
+  outputText: string,
   failed: boolean,
 ): string {
-  return failed
+  const header = failed
     ? `[subagent failed] sessionId=${sessionId} title=${title}`
     : `[subagent completed] sessionId=${sessionId} title=${title}`;
+  const normalizedOutput = outputText.trim();
+  if (!normalizedOutput) {
+    return header;
+  }
+
+  const label = failed ? 'Failure details:' : 'Final result:';
+  return `${header}\n\n${label}\n${truncateTextForParentSubagentResult(normalizedOutput, 6000)}`;
 }
 
 function buildParentSubagentToolResultTextFromRequest<ToolRequest>(
   request: ToolRequest,
   fallbackSessionId: string,
+  outputText: string,
   failed: boolean,
 ): string {
   const subagent = extractRunSubagentRequest(request);
   const title = truncateTextForSubagentSummary(subagent?.task?.trim() ?? '', 72) || 'SubAgent';
-  return buildParentSubagentToolResultText(fallbackSessionId, title, failed);
+  return buildParentSubagentToolResultText(fallbackSessionId, title, outputText, failed);
+}
+
+function truncateTextForParentSubagentResult(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) {
+    return text;
+  }
+
+  return `${chars.slice(0, maxChars).join('')}\n\n...<subagent result truncated>`;
 }
 
 function createSubagentToolExecutor<ToolRequest, TrustTarget>(
