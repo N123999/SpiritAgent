@@ -317,6 +317,8 @@ impl TsBridgeRuntime {
             plan_metadata: PlanMetadata {
                 path: PathBuf::new(),
                 exists: false,
+                plan_mode: false,
+                plan_mode_host_instructions: String::new(),
             },
             pending_aux_state: None,
             pending_approval_kind: None,
@@ -1944,6 +1946,8 @@ mod tests {
             PlanMetadata {
                 path: PathBuf::new(),
                 exists: false,
+                plan_mode: false,
+                plan_mode_host_instructions: String::new(),
             },
         )
         .ok()

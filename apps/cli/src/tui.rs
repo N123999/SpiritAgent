@@ -125,7 +125,7 @@ impl TuiShell {
         let skill_state = skills::load_skill_state().context("读取技能状态失败")?;
         let skill_entries = skills::discover_skill_entries(&workspace_root, &skill_state)
             .context("发现技能文件失败")?;
-        let plan_metadata = plan::current_plan_metadata();
+        let plan_metadata = plan::plan_metadata_snapshot(false, &workspace_root);
         let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
@@ -610,6 +610,7 @@ impl TuiShell {
 
         self.input_mode = mode;
         self.refresh_suggestions();
+        self.push_plan_metadata_snapshot();
     }
 
     pub fn toggle_input_mode(&mut self) {
@@ -3354,7 +3355,19 @@ impl TuiShell {
     }
 
     fn refresh_plan_metadata_from_disk(&mut self) {
-        let next = plan::current_plan_metadata();
+        let workspace_root = self.app_paths.workspace_root();
+        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
+        if next == self.plan_metadata {
+            return;
+        }
+
+        self.plan_metadata = next.clone();
+        self.runtime.replace_plan_metadata(next);
+    }
+
+    fn push_plan_metadata_snapshot(&mut self) {
+        let workspace_root = self.app_paths.workspace_root();
+        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
         if next == self.plan_metadata {
             return;
         }
@@ -3471,23 +3484,17 @@ impl TuiShell {
 }
 
 fn user_turn_text_for_mode(
-    workspace_root: &Path,
-    input_mode: MainInputMode,
+    _workspace_root: &Path,
+    _input_mode: MainInputMode,
     raw_message: &str,
 ) -> String {
-    match input_mode {
-        MainInputMode::Agent => raw_message.to_string(),
-        MainInputMode::Plan => plan::build_create_plan_user_turn(workspace_root, raw_message),
-    }
+    raw_message.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::user_turn_text_for_mode;
-    use crate::{
-        plan::START_IMPLEMENTING_REMINDER,
-        view::MainInputMode,
-    };
+    use crate::view::MainInputMode;
     use std::path::PathBuf;
 
     #[test]
@@ -3502,17 +3509,14 @@ mod tests {
     }
 
     #[test]
-    fn user_turn_text_for_plan_mode_builds_generation_prompt() {
+    fn user_turn_text_for_plan_mode_keeps_only_user_text() {
         let workspace_root = PathBuf::from("C:/workspace/demo");
         let raw_message = "实现计划模式";
 
         let runtime_turn =
             user_turn_text_for_mode(&workspace_root, MainInputMode::Plan, raw_message);
 
-        assert!(runtime_turn.contains("Plan 模式规划请求"));
-        assert!(runtime_turn.contains(raw_message));
-        assert!(runtime_turn.contains("create_file 或 edit_file"));
-        assert!(runtime_turn.contains(START_IMPLEMENTING_REMINDER));
+        assert_eq!(runtime_turn, raw_message);
     }
 }
 
