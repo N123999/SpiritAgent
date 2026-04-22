@@ -254,6 +254,8 @@ pub struct TuiViewModel {
     pub pending_response_active: bool,
     pub pending_assistant_msg_index: Option<usize>,
     pub pending_aux: Option<PendingAssistantAux>,
+    pub persisted_standalone_pending_aux: Option<PendingAssistantAux>,
+    pub persisted_standalone_pending_aux_anchor: Option<usize>,
     /// 对话区选区：折行后的全局行号 + 显示列（与 WordWrapper 一致）。
     pub conversation_sel_anchor: Option<(usize, usize)>,
     pub conversation_sel_head: Option<(usize, usize)>,

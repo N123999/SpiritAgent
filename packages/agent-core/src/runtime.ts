@@ -1220,6 +1220,12 @@ export class AgentRuntime<
     this.emitSyncTurnResultEvents(result);
   }
 
+  private storeCompletedTurnResult(
+    result: RuntimeTurnResult<State, ToolRequest, TrustTarget>,
+  ): void {
+    this.completedTurnResultStore = result;
+  }
+
   private async waitForCompletedTurnResult(): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
     return waitForCompletedTurnResultInternal(
       this as unknown as TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
@@ -1464,13 +1470,47 @@ export class AgentRuntime<
       return `${title}: 等待确认 ${childApproval.toolName}`;
     }
 
-    const progress = singleLineStatusText(
-      pending.childRuntime.pendingAssistantText()
-      || pending.childRuntime.thinkingText()
-      || pending.childRecord.summary.latestMessage
-      || '',
+    const pendingAssistantProgress = normalizeSubagentStatusProgress(
+      pending.childRuntime.pendingAssistantText(),
+      title,
     );
-    if (!progress || progress === title) {
+    if (pendingAssistantProgress) {
+      return `${title}: ${truncateTextForSubagentSummary(pendingAssistantProgress, 120)}`;
+    }
+
+    const backgroundProgress = normalizeSubagentStatusProgress(
+      pending.childRuntime.backgroundToolStatus(),
+      title,
+    );
+    if (backgroundProgress) {
+      return `${title}: ${truncateTextForSubagentSummary(backgroundProgress, 120)}`;
+    }
+
+    const thinkingProgress = normalizeSubagentStatusProgress(
+      pending.childRuntime.thinkingText(),
+      title,
+    );
+    if (thinkingProgress) {
+      return `${title}: ${truncateTextForSubagentSummary(thinkingProgress, 120)}`;
+    }
+
+    if (!pending.childRuntime.isBusy()) {
+      const completedProgress = normalizeSubagentStatusProgress(
+        resolveSubagentResultText('', pending.childRecord, false),
+        title,
+      );
+      if (completedProgress) {
+        return `${title}: ${truncateTextForSubagentSummary(completedProgress, 120)}`;
+      }
+
+      return `${title}: 已完成`;
+    }
+
+    const progress = normalizeSubagentStatusProgress(
+      pending.childRecord.summary.latestMessage,
+      title,
+    );
+    if (!progress) {
       return `${title}: 运行中`;
     }
 
@@ -1634,7 +1674,7 @@ export class AgentRuntime<
 
     if (resumeAsStreaming) {
       try {
-        await childRuntime.startUserTurn(childUserTurn);
+        await childRuntime.startUserTurnStreaming(childUserTurn);
         this.pendingSubagentExecution = {
           parentRequest,
           parentToolCallId,
@@ -1655,6 +1695,8 @@ export class AgentRuntime<
         record.summary.status = 'failed';
         record.summary.updatedAtUnixMs = Date.now();
         record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+        record.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+        delete record.summary.finalOutput;
         record.summary.error = failed;
         return { kind: 'completed', text: failed, failed: true };
       }
@@ -1669,7 +1711,9 @@ export class AgentRuntime<
         record.summary.status = 'completed';
         record.summary.updatedAtUnixMs = Date.now();
         record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+        record.summary.latestMessage = truncateTextForSubagentSummary(finalOutput, 180);
         record.summary.finalOutput = finalOutput;
+        delete record.summary.error;
         return { kind: 'completed', text: finalOutput, failed: false };
       }
 
@@ -1697,7 +1741,10 @@ export class AgentRuntime<
 
       const failed = `[subagent failed] ${result.error}`;
       record.summary.status = 'failed';
-      record.summary.completedAtUnixMs = Date.now();
+      record.summary.updatedAtUnixMs = Date.now();
+      record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+      record.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+      delete record.summary.finalOutput;
       record.summary.error = failed;
       return { kind: 'completed', text: failed, failed: true };
     } catch (error) {
@@ -1705,6 +1752,8 @@ export class AgentRuntime<
       record.summary.status = 'failed';
       record.summary.updatedAtUnixMs = Date.now();
       record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+      record.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+      delete record.summary.finalOutput;
       record.summary.error = failed;
       return { kind: 'completed', text: failed, failed: true };
     }
@@ -1816,6 +1865,7 @@ export class AgentRuntime<
     pending.childRecord.summary.status = output.failed ? 'failed' : 'completed';
     pending.childRecord.summary.updatedAtUnixMs = Date.now();
     pending.childRecord.summary.completedAtUnixMs = pending.childRecord.summary.updatedAtUnixMs;
+    pending.childRecord.summary.latestMessage = truncateTextForSubagentSummary(output.text, 180);
     if (output.failed) {
       pending.childRecord.summary.error = output.text;
       delete pending.childRecord.summary.finalOutput;
@@ -2004,6 +2054,15 @@ function truncateTextForParentSubagentResult(text: string, maxChars: number): st
 
 function singleLineStatusText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSubagentStatusProgress(text: string | undefined, title: string): string | undefined {
+  const normalized = singleLineStatusText(text ?? '');
+  if (!normalized || normalized === title || normalized === 'Thinking...' || normalized === 'Compressing...') {
+    return undefined;
+  }
+
+  return normalized;
 }
 
 function createSubagentToolExecutor<ToolRequest, TrustTarget>(

@@ -821,8 +821,26 @@ fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
 fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
     let mut lines = build_history_logo_lines(max_width);
     let (visible_messages, skipped, start_index) = visible_messages(app);
-    let has_pending_aux = app.pending_aux_state().is_some();
-    let mut rendered_messages: Vec<Vec<Line<'static>>> = Vec::new();
+    let effective_standalone_pending_aux = effective_standalone_pending_aux(app);
+    let has_pending_aux = effective_standalone_pending_aux.is_some();
+    let render_standalone_pending_aux = should_render_standalone_pending_aux(
+        app,
+        start_index,
+        visible_messages.len(),
+    );
+    let standalone_insert_before = standalone_pending_aux_insert_before_message_index(
+        app,
+        start_index,
+        visible_messages.len(),
+    );
+    let standalone_block = if render_standalone_pending_aux {
+        effective_standalone_pending_aux
+            .map(|pending_aux| render_standalone_pending_aux_lines(pending_aux, app.show_aux_details))
+    } else {
+        None
+    };
+    let mut rendered_blocks: Vec<Vec<Line<'static>>> = Vec::new();
+    let mut inserted_standalone_block = false;
 
     if !lines.is_empty() && (!visible_messages.is_empty() || has_pending_aux) {
         lines.push(Line::from(""));
@@ -845,21 +863,114 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
             continue;
         }
         let global_idx = start_index + idx;
+        if !inserted_standalone_block
+            && standalone_insert_before == Some(global_idx)
+            && standalone_block.is_some()
+        {
+            rendered_blocks.push(standalone_block.clone().unwrap_or_default());
+            inserted_standalone_block = true;
+        }
         let rendered = render_message_lines(app, msg, global_idx);
         if !rendered.is_empty() {
-            rendered_messages.push(rendered);
+            rendered_blocks.push(rendered);
         }
     }
 
-    let rendered_count = rendered_messages.len();
-    for (idx, message_lines) in rendered_messages.into_iter().enumerate() {
-        lines.extend(message_lines);
+    if !inserted_standalone_block {
+        if let Some(standalone_block) = standalone_block {
+            rendered_blocks.push(standalone_block);
+        }
+    }
+
+    let rendered_count = rendered_blocks.len();
+    for (idx, block_lines) in rendered_blocks.into_iter().enumerate() {
+        lines.extend(block_lines);
         if idx + 1 < rendered_count {
             lines.push(Line::from(""));
         }
     }
 
     lines
+}
+
+fn should_prefer_persisted_subagent_status(app: &TuiViewModel) -> bool {
+    let persisted_has_named_subagent_status = app
+        .persisted_standalone_pending_aux
+        .as_ref()
+        .and_then(|aux| parse_pending_subagent_status_text(&aux.status_text))
+        .is_some();
+    let live_has_named_subagent_status = app
+        .pending_aux_state()
+        .and_then(|aux| parse_pending_subagent_status_text(&aux.status_text))
+        .is_some();
+
+    persisted_has_named_subagent_status && !live_has_named_subagent_status
+}
+
+fn effective_standalone_pending_aux(app: &TuiViewModel) -> Option<&PendingAssistantAux> {
+    if should_prefer_persisted_subagent_status(app) {
+        return app.persisted_standalone_pending_aux.as_ref();
+    }
+
+    app.pending_aux_state()
+        .or(app.persisted_standalone_pending_aux.as_ref())
+}
+
+fn standalone_pending_aux_insert_before_message_index(
+    app: &TuiViewModel,
+    start_index: usize,
+    visible_message_count: usize,
+) -> Option<usize> {
+    if !should_prefer_persisted_subagent_status(app) {
+        return None;
+    }
+
+    if let Some(index) = app
+        .persisted_standalone_pending_aux_anchor
+        .or(app.pending_assistant_msg_index)
+    {
+        if index < start_index || index >= start_index.saturating_add(visible_message_count) {
+            return None;
+        }
+
+        return Some(index);
+    }
+
+    if visible_message_count == 0 {
+        return None;
+    }
+
+    Some(start_index + visible_message_count - 1)
+}
+
+fn should_render_standalone_pending_aux(
+    app: &TuiViewModel,
+    start_index: usize,
+    visible_message_count: usize,
+) -> bool {
+    if effective_standalone_pending_aux(app).is_none() {
+        return false;
+    }
+
+    if should_prefer_persisted_subagent_status(app) {
+        return match app.persisted_standalone_pending_aux_anchor {
+            Some(index) => {
+                index >= start_index && index < start_index.saturating_add(visible_message_count)
+            }
+            None => true,
+        };
+    }
+
+    if app.pending_aux_state().is_none() {
+        return true;
+    }
+
+    match app.pending_assistant_msg_index {
+        Some(index) => {
+            index < start_index || index >= start_index.saturating_add(visible_message_count)
+        }
+        None => true,
+    }
 }
 
 fn should_hide_pending_assistant_placeholder(
@@ -963,6 +1074,47 @@ fn render_pending_aux_lines(
     if let Some(detail_text) = detail_text {
         render_aux_text_lines(push_message_line, pending_aux.kind, detail_text);
     }
+}
+
+fn render_standalone_pending_aux_lines(
+    pending_aux: &PendingAssistantAux,
+    show_aux_details: bool,
+) -> Vec<Line<'static>> {
+    let synthetic_subagent_status_text = parse_pending_subagent_status_text(&pending_aux.status_text);
+    let detail_text = if synthetic_subagent_status_text.is_none() && show_aux_details {
+        pending_aux.detail_text.as_deref()
+    } else {
+        None
+    };
+    let mut out = Vec::new();
+    let mut has_rendered_visible_line = false;
+    let mut push_message_line = |content_spans: Vec<Span<'static>>| {
+        let mut spans = if has_rendered_visible_line {
+            vec![Span::raw(message_gutter_padding())]
+        } else {
+            has_rendered_visible_line = true;
+            vec![Span::styled(
+                message_prefix_text(),
+                assistant_message_prefix_style(),
+            )]
+        };
+        spans.extend(content_spans);
+        out.push(Line::from(spans));
+    };
+
+    if let Some(status_text) = synthetic_subagent_status_text {
+        let mut iter = markdown_lines(&status_text).into_iter();
+        if let Some(first) = iter.next() {
+            push_message_line(first);
+        }
+        for line in iter {
+            push_message_line(line);
+        }
+    } else {
+        render_pending_aux_lines(&mut push_message_line, pending_aux, detail_text);
+    }
+
+    out
 }
 
 fn render_message_lines(
@@ -3282,6 +3434,8 @@ mod tests {
             pending_response_active: false,
             pending_assistant_msg_index: None,
             pending_aux: None,
+            persisted_standalone_pending_aux: None,
+            persisted_standalone_pending_aux_anchor: None,
             conversation_sel_anchor: None,
             conversation_sel_head: None,
         }
@@ -3579,6 +3733,232 @@ mod tests {
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
         assert!(lines.iter().any(|line| line.contains("先检查当前渲染分支。")));
+    }
+
+    #[test]
+    fn standalone_subagent_pending_aux_renders_in_history() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "已开始处理。"));
+        app.pending_response_active = true;
+        app.pending_assistant_msg_index = None;
+        app.pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 官方新闻抓取: 正在执行".to_string(),
+            detail_text: None,
+        });
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+
+        assert!(lines.iter().any(|line| line.contains("已开始处理。")));
+        assert!(lines.iter().any(|line| line.contains("官方新闻抓取: 正在执行")));
+        assert!(lines.iter().all(|line| !line.contains("| 官方新闻抓取: 正在执行")));
+    }
+
+    #[test]
+    fn standalone_pending_aux_hides_detail_when_collapsed() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "已开始处理。"));
+        app.show_aux_details = false;
+        app.pending_response_active = true;
+        app.pending_assistant_msg_index = None;
+        app.pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| Thinking...".to_string(),
+            detail_text: Some("继续等待子会话返回。".to_string()),
+        });
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+
+        assert!(lines.iter().any(|line| line.contains("Thinking...")));
+        assert!(lines.iter().all(|line| !line.contains("继续等待子会话返回。")));
+    }
+
+    #[test]
+    fn persisted_standalone_subagent_pending_aux_renders_after_completion() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
+        app.pending_response_active = false;
+        app.pending_assistant_msg_index = None;
+        app.pending_aux = None;
+        app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 官方新闻抓取: 已完成".to_string(),
+            detail_text: None,
+        });
+        app.persisted_standalone_pending_aux_anchor = Some(0);
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+
+        assert!(lines.iter().any(|line| line.contains("子代理已完成任务。")));
+        assert!(lines.iter().any(|line| line.contains("官方新闻抓取: 已完成")));
+    }
+
+    #[test]
+    fn persisted_subagent_status_wins_over_generic_pending_thinking() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "父会话准备整理结果。"));
+        app.messages.push(ChatMessage::new(MessageRole::Agent, String::new()));
+        app.pending_response_active = true;
+        app.pending_assistant_msg_index = Some(1);
+        app.pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| Thinking...".to_string(),
+            detail_text: Some("继续等待父会话收尾。".to_string()),
+        });
+        app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 查看 OpenAI GPT-5.4 的新闻: 成功".to_string(),
+            detail_text: None,
+        });
+        app.persisted_standalone_pending_aux_anchor = Some(1);
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+        let status_idx = lines
+            .iter()
+            .position(|line| line.contains("查看 OpenAI GPT-5.4 的新闻: 成功"))
+            .expect("status line exists");
+        let thinking_idx = lines
+            .iter()
+            .position(|line| line.contains("Thinking..."))
+            .expect("thinking line exists");
+
+        assert!(status_idx < thinking_idx);
+    }
+
+    #[test]
+    fn persisted_subagent_status_renders_before_parent_streaming_reply() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
+        app.messages.push(ChatMessage::new(
+            MessageRole::Agent,
+            "工具调用成功！子代理已经返回了结构化结果。",
+        ));
+        app.pending_response_active = true;
+        app.pending_assistant_msg_index = Some(1);
+        app.pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| Thinking...".to_string(),
+            detail_text: Some("父会话还在组织总结。".to_string()),
+        });
+        app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 执行一次疯狂的压力测试: 成功".to_string(),
+            detail_text: None,
+        });
+        app.persisted_standalone_pending_aux_anchor = Some(1);
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+        let status_idx = lines
+            .iter()
+            .position(|line| line.contains("执行一次疯狂的压力测试: 成功"))
+            .expect("status line exists");
+        let thinking_idx = lines
+            .iter()
+            .position(|line| line.contains("Thinking..."))
+            .expect("thinking line exists");
+        let parent_idx = lines
+            .iter()
+            .position(|line| line.contains("工具调用成功！子代理已经返回了结构化结果。"))
+            .expect("parent reply line exists");
+
+        assert!(status_idx < parent_idx);
+        assert!(thinking_idx < parent_idx);
+    }
+
+    #[test]
+    fn persisted_subagent_status_stays_above_parent_reply_after_completion() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
+        app.messages.push(ChatMessage::new(
+            MessageRole::Agent,
+            "开发者调试测试任务：子代理测试任务执行成功。",
+        ));
+        app.pending_response_active = false;
+        app.pending_assistant_msg_index = None;
+        app.pending_aux = None;
+        app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理调试任务: 成功".to_string(),
+            detail_text: None,
+        });
+        app.persisted_standalone_pending_aux_anchor = Some(1);
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+        let status_idx = lines
+            .iter()
+            .position(|line| line.contains("子代理调试任务: 成功"))
+            .expect("status line exists");
+        let parent_idx = lines
+            .iter()
+            .position(|line| line.contains("开发者调试测试任务：子代理测试任务执行成功。"))
+            .expect("parent reply line exists");
+
+        assert!(status_idx < parent_idx);
+    }
+
+    #[test]
+    fn persisted_subagent_status_stays_anchored_after_later_user_message() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
+        app.messages.push(ChatMessage::new(
+            MessageRole::Agent,
+            "开发者调试测试任务：子代理测试任务执行成功。",
+        ));
+        app.messages
+            .push(ChatMessage::new(MessageRole::User, "/model"));
+        app.pending_response_active = false;
+        app.pending_assistant_msg_index = None;
+        app.pending_aux = None;
+        app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理调试任务: 成功".to_string(),
+            detail_text: None,
+        });
+        app.persisted_standalone_pending_aux_anchor = Some(1);
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+        let status_idx = lines
+            .iter()
+            .position(|line| line.contains("子代理调试任务: 成功"))
+            .expect("status line exists");
+        let parent_idx = lines
+            .iter()
+            .position(|line| line.contains("开发者调试测试任务：子代理测试任务执行成功。"))
+            .expect("parent reply line exists");
+        let later_user_idx = lines
+            .iter()
+            .position(|line| line.contains("/model"))
+            .expect("later user line exists");
+
+        assert!(status_idx < parent_idx);
+        assert!(parent_idx < later_user_idx);
+    }
+
+    #[test]
+    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
+        app.messages.push(ChatMessage::new(
+            MessageRole::Agent,
+            "开发者调试测试任务：子代理测试任务执行成功。",
+        ));
+        app.messages
+            .push(ChatMessage::new(MessageRole::User, "/model"));
+        app.pending_response_active = false;
+        app.pending_assistant_msg_index = None;
+        app.pending_aux = None;
+        app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理调试任务: 成功".to_string(),
+            detail_text: None,
+        });
+        app.persisted_standalone_pending_aux_anchor = Some(1);
+
+        let lines = render_text_lines(build_history_lines(&app, 120));
+        let status_idx = lines
+            .iter()
+            .position(|line| line.contains("子代理调试任务: 成功"))
+            .expect("status line exists");
+        let parent_idx = lines
+            .iter()
+            .position(|line| line.contains("开发者调试测试任务：子代理测试任务执行成功。"))
+            .expect("parent reply line exists");
+
+        assert!(lines[status_idx].starts_with("> "));
+        assert!(lines[parent_idx].starts_with("> "));
+        assert!(parent_idx > status_idx + 1);
     }
 
     #[test]
