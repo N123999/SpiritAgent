@@ -269,7 +269,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     }
 
     if let Some(view) = &app.subagent_view {
-        draw_subagent_viewer(frame, shell, content_area, view);
+        draw_subagent_viewer(frame, shell, frame.area(), view);
     }
 }
 
@@ -1881,7 +1881,7 @@ fn draw_subagent_viewer(
     area: Rect,
     view: &SubagentSessionDetailView,
 ) {
-    let popup = inset_rect(area, area.width / 12, area.height / 10).intersection(area);
+    let popup = area;
     frame.render_widget(Clear, popup);
 
     let block = Block::default()
@@ -1933,11 +1933,17 @@ fn draw_subagent_viewer(
     frame.render_widget(Paragraph::new(visible), chunks[1]);
 
     let footer_text = if let Some(error) = view.error.as_deref() {
-        format!("Esc 返回  |  PgUp/PgDn 滚动  |  {}", truncate_to_width(error, chunks[2].width.saturating_sub(24) as usize))
+        format!(
+            "Esc 关闭  |  滚轮 / PgUp/PgDn 滚动  |  {}",
+            truncate_to_width(error, chunks[2].width.saturating_sub(32) as usize)
+        )
     } else if let Some(output) = view.final_output.as_deref() {
-        format!("Esc 返回  |  PgUp/PgDn 滚动  |  {}", truncate_to_width(output, chunks[2].width.saturating_sub(24) as usize))
+        format!(
+            "Esc 关闭  |  滚轮 / PgUp/PgDn 滚动  |  {}",
+            truncate_to_width(output, chunks[2].width.saturating_sub(32) as usize)
+        )
     } else {
-        "Esc 返回  |  PgUp/PgDn 滚动".to_string()
+        "Esc 关闭  |  滚轮 / PgUp/PgDn 滚动".to_string()
     };
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(footer_text, subtle_aux_text_style()))),

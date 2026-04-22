@@ -19,7 +19,7 @@ use crate::{
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     session::SessionModel,
     ts_bridge::TsBridgeRuntime,
-    view::{PendingAssistantAux, PendingSubagentApprovalView},
+    view::{ChatMessage, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 #[derive(Clone, Debug)]
@@ -111,6 +111,10 @@ impl RuntimeHandle {
         session_id: &str,
     ) -> Result<Option<SubagentSessionArchiveEntry>> {
         self.runtime.subagent_session_archive(session_id)
+    }
+
+    pub fn subagent_live_messages(&self, session_id: &str) -> Vec<ChatMessage> {
+        self.runtime.subagent_live_messages(session_id)
     }
 
     pub fn pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {

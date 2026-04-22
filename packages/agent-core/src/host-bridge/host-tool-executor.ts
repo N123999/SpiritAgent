@@ -13,6 +13,8 @@ interface HostToolRequestMetadata {
   backgroundStatusText?: string;
   toolCallId?: string;
   toolName?: string;
+  subagentSessionId?: string;
+  subagentTitle?: string;
 }
 
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
@@ -86,6 +88,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       ...existing,
       ...(typeof metadata.toolCallId === 'string' ? { toolCallId: metadata.toolCallId } : {}),
       ...(typeof metadata.toolName === 'string' ? { toolName: metadata.toolName } : {}),
+      ...(typeof metadata.subagentSessionId === 'string'
+        ? { subagentSessionId: metadata.subagentSessionId }
+        : {}),
+      ...(typeof metadata.subagentTitle === 'string'
+        ? { subagentTitle: metadata.subagentTitle }
+        : {}),
     });
     return request;
   }
@@ -200,6 +208,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
           : {}),
         ...(typeof metadata.toolCallId === 'string' ? { toolCallId: metadata.toolCallId } : {}),
         ...(typeof metadata.toolName === 'string' ? { toolName: metadata.toolName } : {}),
+        ...(typeof metadata.subagentSessionId === 'string'
+          ? { subagentSessionId: metadata.subagentSessionId }
+          : {}),
+        ...(typeof metadata.subagentTitle === 'string'
+          ? { subagentTitle: metadata.subagentTitle }
+          : {}),
       },
     };
   }
@@ -222,6 +236,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
         output,
         ...(metadata?.toolCallId === undefined ? {} : { toolCallId: metadata.toolCallId }),
         toolName: metadata?.toolName ?? 'mcp_tool',
+        ...(metadata?.subagentSessionId === undefined
+          ? {}
+          : { subagentSessionId: metadata.subagentSessionId }),
+        ...(metadata?.subagentTitle === undefined
+          ? {}
+          : { subagentTitle: metadata.subagentTitle }),
       });
       return output;
     } catch (error) {
@@ -231,6 +251,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
         error: message,
         ...(metadata?.toolCallId === undefined ? {} : { toolCallId: metadata.toolCallId }),
         toolName: metadata?.toolName ?? 'mcp_tool',
+        ...(metadata?.subagentSessionId === undefined
+          ? {}
+          : { subagentSessionId: metadata.subagentSessionId }),
+        ...(metadata?.subagentTitle === undefined
+          ? {}
+          : { subagentTitle: metadata.subagentTitle }),
       });
       throw error;
     }
@@ -263,6 +289,12 @@ function hostToolRequestMetadata(request: JsonValue): HostToolRequestMetadata | 
       : {}),
     ...(typeof candidate.toolCallId === 'string' ? { toolCallId: candidate.toolCallId } : {}),
     ...(typeof candidate.toolName === 'string' ? { toolName: candidate.toolName } : {}),
+    ...(typeof candidate.subagentSessionId === 'string'
+      ? { subagentSessionId: candidate.subagentSessionId }
+      : {}),
+    ...(typeof candidate.subagentTitle === 'string'
+      ? { subagentTitle: candidate.subagentTitle }
+      : {}),
   };
 }
 

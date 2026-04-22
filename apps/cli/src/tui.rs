@@ -24,7 +24,7 @@ use crate::{
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     plan::{self, PlanMetadata},
     ports::{
-        AppPaths, ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatRepository, ConfigStore,
+        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore,
         McpStatusSnapshot, McpStatusState, SecretStore, SubagentSessionArchiveEntry,
         SubagentSessionSummary,
     },
@@ -387,26 +387,50 @@ impl TuiShell {
         }
     }
 
-    fn subagent_detail_view(archive: &SubagentSessionArchiveEntry) -> SubagentSessionDetailView {
+    fn subagent_detail_view(
+        archive: &SubagentSessionArchiveEntry,
+        live_messages: &[ChatMessage],
+    ) -> SubagentSessionDetailView {
+        let mut messages = Vec::new();
+        let title = archive.summary.title.trim();
+        if !title.is_empty() {
+            messages.push(ChatMessage::new(MessageRole::User, title.to_string()));
+        }
+
+        messages.extend(live_messages.iter().cloned());
+
+        let fallback_assistant = archive
+            .llm_history
+            .iter()
+            .rev()
+            .find(|message| message.role == "assistant" && !message.content.trim().is_empty())
+            .map(|message| message.content.clone());
+
+        if let Some(output) = archive.summary.final_output.as_ref().filter(|value| !value.trim().is_empty()) {
+            let already_present = messages.iter().any(|message| {
+                message.role == MessageRole::Agent
+                    && message.tool_block.is_none()
+                    && message.content.trim() == output.trim()
+            });
+            if !already_present {
+                messages.push(ChatMessage::new(MessageRole::Agent, output.clone()));
+            }
+        } else if let Some(content) = fallback_assistant {
+            let already_present = messages.iter().any(|message| {
+                message.role == MessageRole::Agent
+                    && message.tool_block.is_none()
+                    && message.content.trim() == content.trim()
+            });
+            if !already_present {
+                messages.push(ChatMessage::new(MessageRole::Agent, content));
+            }
+        }
+
         SubagentSessionDetailView {
             summary: Self::subagent_summary_view(&archive.summary),
-            messages: archive
-                .llm_history
-                .iter()
-                .map(Self::subagent_archive_message)
-                .collect(),
+            messages,
             final_output: archive.summary.final_output.clone(),
             error: archive.summary.error.clone(),
-        }
-    }
-
-    fn subagent_archive_message(message: &ArchivedLlmMessage) -> ChatMessage {
-        match message.role.as_str() {
-            "user" => ChatMessage::new(MessageRole::User, message.content.clone()),
-            "assistant" => ChatMessage::new(MessageRole::Agent, message.content.clone()),
-            "tool" => ChatMessage::new(MessageRole::Agent, format!("[tool]\n{}", message.content)),
-            "system" => ChatMessage::new(MessageRole::Agent, format!("[system]\n{}", message.content)),
-            _ => ChatMessage::new(MessageRole::Agent, message.content.clone()),
         }
     }
     pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
@@ -798,6 +822,19 @@ impl TuiShell {
         if self.shell_mode_active {
             self.scroll_history_to_bottom();
             self.start_manual_shell_execution(raw_message);
+            self.set_input(String::new());
+            self.refresh_suggestions();
+            return;
+        }
+
+        if is_subagents_command(trimmed_message) {
+            self.scroll_history_to_bottom();
+            self.messages.push(ChatMessage {
+                role: MessageRole::User,
+                content: trimmed_message.to_string(),
+                tool_block: None,
+            });
+            self.handle_slash_command(trimmed_message);
             self.set_input(String::new());
             self.refresh_suggestions();
             return;
@@ -3243,7 +3280,8 @@ impl TuiShell {
     fn open_subagent_view(&mut self, session_id: &str) {
         match self.runtime.subagent_session_archive(session_id) {
             Ok(Some(archive)) => {
-                self.subagent_view = Some(Self::subagent_detail_view(&archive));
+                let live_messages = self.runtime.subagent_live_messages(session_id);
+                self.subagent_view = Some(Self::subagent_detail_view(&archive, &live_messages));
                 self.subagent_history_offset_from_bottom = 0;
             }
             Ok(None) => {
@@ -3274,7 +3312,8 @@ impl TuiShell {
 
         match self.runtime.subagent_session_archive(&session_id) {
             Ok(Some(archive)) => {
-                self.subagent_view = Some(Self::subagent_detail_view(&archive));
+                let live_messages = self.runtime.subagent_live_messages(&session_id);
+                self.subagent_view = Some(Self::subagent_detail_view(&archive, &live_messages));
             }
             Ok(None) => {
                 self.close_subagent_view();
@@ -3627,6 +3666,10 @@ fn split_first_token(input: &str) -> Option<(&str, &str)> {
     }
 
     Some((trimmed, ""))
+}
+
+fn is_subagents_command(message: &str) -> bool {
+    message == "/subagents" || message.starts_with("/subagents ")
 }
 
 fn non_empty_opt(input: &str) -> Option<&str> {

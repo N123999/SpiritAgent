@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     env,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
@@ -61,6 +61,7 @@ pub struct TsBridgeRuntime {
     pending_assistant_has_output: bool,
     is_busy_cache: bool,
     child_sessions_cache: Vec<SubagentSessionSummary>,
+    subagent_message_cache: HashMap<String, Vec<ChatMessage>>,
     events: VecDeque<RuntimeEvent>,
     background_tool_completion_tx: Sender<BackgroundToolCompletion>,
     background_tool_completion_rx: Receiver<BackgroundToolCompletion>,
@@ -88,6 +89,8 @@ struct HostToolRequestMeta {
     background_status_text: Option<String>,
     tool_call_id: Option<String>,
     tool_name: Option<String>,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -115,6 +118,8 @@ struct LocalMcpToolResultEvent {
     output: String,
     tool_call_id: Option<String>,
     tool_name: String,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -124,6 +129,8 @@ struct LocalMcpToolFailedEvent {
     error: String,
     tool_call_id: Option<String>,
     tool_name: String,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -268,6 +275,7 @@ struct BackgroundToolCompletion {
     request: ToolRequest,
     ui_tool_name: String,
     tool_call_id: Option<String>,
+    subagent_session_id: Option<String>,
     result: std::result::Result<String, String>,
 }
 
@@ -305,6 +313,7 @@ impl TsBridgeRuntime {
             pending_assistant_has_output: false,
             is_busy_cache: false,
             child_sessions_cache: Vec::new(),
+            subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
             background_tool_completion_tx,
             background_tool_completion_rx,
@@ -344,6 +353,7 @@ impl TsBridgeRuntime {
             pending_assistant_has_output: false,
             is_busy_cache: false,
             child_sessions_cache: Vec::new(),
+            subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
             background_tool_completion_tx,
             background_tool_completion_rx,
@@ -661,6 +671,13 @@ impl TsBridgeRuntime {
         }))
     }
 
+    pub fn subagent_live_messages(&self, session_id: &str) -> Vec<ChatMessage> {
+        self.subagent_message_cache
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     pub fn pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
         let approval = self.current_pending_approval.as_ref()?;
         let session_id = approval.subagent_session_id.clone()?;
@@ -969,6 +986,7 @@ impl TsBridgeRuntime {
         if self.bridge_failed {
             return;
         }
+        self.subagent_message_cache.clear();
         if let Err(err) = self.call_bridge(
             "runtime.replaceFromArchive",
             Some(chat_archive_to_bridge_json(archive)),
@@ -1193,6 +1211,8 @@ impl TsBridgeRuntime {
             request,
             ui_tool_name,
             meta.tool_call_id,
+            meta.subagent_session_id,
+            meta.subagent_title,
             self.background_tool_completion_tx.clone(),
             Some(BackgroundRpcResponseTarget {
                 request_id,
@@ -1213,28 +1233,47 @@ impl TsBridgeRuntime {
     fn apply_background_tool_completion(&mut self, completion: BackgroundToolCompletion) {
         match completion.result {
             Ok(output) => {
-                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                    MessageRole::Agent,
-                    format_tool_ui_message(&completion.request, &completion.ui_tool_name, &output),
-                    build_tool_result_block(
+                if let Some(session_id) = completion.subagent_session_id.as_deref() {
+                    self.push_subagent_tool_result(
+                        session_id,
                         &completion.request,
                         &completion.ui_tool_name,
                         completion.tool_call_id.as_deref(),
                         &output,
-                    ),
-                )));
+                    );
+                } else {
+                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                        MessageRole::Agent,
+                        format_tool_ui_message(&completion.request, &completion.ui_tool_name, &output),
+                        build_tool_result_block(
+                            &completion.request,
+                            &completion.ui_tool_name,
+                            completion.tool_call_id.as_deref(),
+                            &output,
+                        ),
+                    )));
+                }
             }
             Err(err) => {
-                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                    MessageRole::Agent,
-                    format!("工具执行失败: {}", err),
-                    tool_failed_block(
+                if let Some(session_id) = completion.subagent_session_id.as_deref() {
+                    self.push_subagent_tool_failure(
+                        session_id,
                         &completion.ui_tool_name,
                         completion.tool_call_id.as_deref(),
-                        "工具执行失败",
                         &err,
-                    ),
-                )));
+                    );
+                } else {
+                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                        MessageRole::Agent,
+                        format!("工具执行失败: {}", err),
+                        tool_failed_block(
+                            &completion.ui_tool_name,
+                            completion.tool_call_id.as_deref(),
+                            "工具执行失败",
+                            &err,
+                        ),
+                    )));
+                }
             }
         }
     }
@@ -1281,42 +1320,70 @@ impl TsBridgeRuntime {
             }
             "host.execute" => {
                 let (request, meta) = request_with_meta_from_envelope(params)?;
+                let ui_tool_name = meta
+                    .as_ref()
+                    .and_then(|value| value.tool_name.clone())
+                    .unwrap_or_else(|| openapi_tool_name(&request).to_string());
                 let tool_call_id = meta.as_ref().and_then(|value| value.tool_call_id.as_deref());
+                let subagent_session_id = meta
+                    .as_ref()
+                    .and_then(|value| value.subagent_session_id.as_deref());
                 match self.tool_executor.execute(&request) {
                     Ok(output) => {
-                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                            MessageRole::Agent,
-                            format_tool_ui_message(&request, openapi_tool_name(&request), &output),
-                            build_tool_result_block(
+                        if let Some(session_id) = subagent_session_id {
+                            self.push_subagent_tool_result(
+                                session_id,
                                 &request,
-                                openapi_tool_name(&request),
+                                &ui_tool_name,
                                 tool_call_id,
                                 &output,
-                            ),
-                        )));
+                            );
+                        } else {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                format_tool_ui_message(&request, &ui_tool_name, &output),
+                                build_tool_result_block(
+                                    &request,
+                                    &ui_tool_name,
+                                    tool_call_id,
+                                    &output,
+                                ),
+                            )));
+                        }
                         logging::log_event(&format!(
-                            "[ts-bridge-host] host.execute success tool={} tool_call_id={} output_chars={}",
-                            openapi_tool_name(&request),
+                            "[ts-bridge-host] host.execute success tool={} tool_call_id={} subagent_session_id={} output_chars={}",
+                            ui_tool_name,
                             tool_call_id.unwrap_or("<none>"),
+                            subagent_session_id.unwrap_or("<none>"),
                             output.chars().count()
                         ));
                         Ok(Some(Value::String(output)))
                     }
                     Err(err) => {
-                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                            MessageRole::Agent,
-                            format!("工具执行失败: {}", err),
-                            tool_failed_block(
-                                openapi_tool_name(&request),
+                        if let Some(session_id) = subagent_session_id {
+                            self.push_subagent_tool_failure(
+                                session_id,
+                                &ui_tool_name,
                                 tool_call_id,
-                                "工具执行失败",
                                 &err.to_string(),
-                            ),
-                        )));
+                            );
+                        } else {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                format!("工具执行失败: {}", err),
+                                tool_failed_block(
+                                    &ui_tool_name,
+                                    tool_call_id,
+                                    "工具执行失败",
+                                    &err.to_string(),
+                                ),
+                            )));
+                        }
                         logging::log_event(&format!(
-                            "[ts-bridge-host] host.execute failed tool={} tool_call_id={} error={}",
-                            openapi_tool_name(&request),
+                            "[ts-bridge-host] host.execute failed tool={} tool_call_id={} subagent_session_id={} error={}",
+                            ui_tool_name,
                             tool_call_id.unwrap_or("<none>"),
+                            subagent_session_id.unwrap_or("<none>"),
                             err
                         ));
                         Err(err)
@@ -1418,6 +1485,11 @@ impl TsBridgeRuntime {
                 error: summary.error,
             })
             .collect();
+        self.subagent_message_cache.retain(|session_id, _| {
+            self.child_sessions_cache
+                .iter()
+                .any(|summary| summary.session_id == *session_id)
+        });
         self.is_busy_cache = snapshot.is_busy;
     }
 
@@ -1459,7 +1531,29 @@ impl TsBridgeRuntime {
                     self.events.push_back(RuntimeEvent::RemovePendingAssistant);
                 }
                 BridgeRuntimeEvent::ApprovalRequested { approval } => {
-                    if approval.subagent_session_id.is_none() {
+                    if let Some(session_id) = approval.subagent_session_id.as_deref() {
+                        match serde_json::from_value::<ToolRequest>(approval.request.clone()) {
+                            Ok(_) => self.push_subagent_live_message(
+                                session_id,
+                                ChatMessage::with_tool_block(
+                                    MessageRole::Agent,
+                                    approval.prompt.clone(),
+                                    tool_approval_block(
+                                        &approval.tool_name,
+                                        approval.tool_call_id.as_deref(),
+                                        &approval.prompt,
+                                    ),
+                                ),
+                            ),
+                            Err(err) => self.push_subagent_live_message(
+                                session_id,
+                                ChatMessage::new(
+                                    MessageRole::Agent,
+                                    format!("待确认工具调用（解析失败）: {}\n{}", err, approval.prompt),
+                                ),
+                            ),
+                        }
+                    } else {
                         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
                             MessageRole::Agent,
                             approval.prompt.clone(),
@@ -1491,6 +1585,17 @@ impl TsBridgeRuntime {
 
     fn push_local_mcp_tool_result(&mut self, event: LocalMcpToolResultEvent) {
         let request = tool_request_from_local_mcp(&event.request);
+        if let Some(session_id) = event.subagent_session_id.as_deref() {
+            self.push_subagent_tool_result(
+                session_id,
+                &request,
+                &event.tool_name,
+                event.tool_call_id.as_deref(),
+                &event.output,
+            );
+            return;
+        }
+
         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
             MessageRole::Agent,
             format_tool_ui_message(&request, &event.tool_name, &event.output),
@@ -1504,6 +1609,16 @@ impl TsBridgeRuntime {
     }
 
     fn push_local_mcp_tool_failure(&mut self, event: LocalMcpToolFailedEvent) {
+        if let Some(session_id) = event.subagent_session_id.as_deref() {
+            self.push_subagent_tool_failure(
+                session_id,
+                &event.tool_name,
+                event.tool_call_id.as_deref(),
+                &event.error,
+            );
+            return;
+        }
+
         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
             MessageRole::Agent,
             format!("工具执行失败: {}", event.error),
@@ -1514,6 +1629,48 @@ impl TsBridgeRuntime {
                 &event.error,
             ),
         )));
+    }
+
+    fn push_subagent_live_message(&mut self, session_id: &str, message: ChatMessage) {
+        self.subagent_message_cache
+            .entry(session_id.to_string())
+            .or_default()
+            .push(message);
+    }
+
+    fn push_subagent_tool_result(
+        &mut self,
+        session_id: &str,
+        request: &ToolRequest,
+        tool_name: &str,
+        tool_call_id: Option<&str>,
+        output: &str,
+    ) {
+        self.push_subagent_live_message(
+            session_id,
+            ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                format_tool_ui_message(request, tool_name, output),
+                build_tool_result_block(request, tool_name, tool_call_id, output),
+            ),
+        );
+    }
+
+    fn push_subagent_tool_failure(
+        &mut self,
+        session_id: &str,
+        tool_name: &str,
+        tool_call_id: Option<&str>,
+        error: &str,
+    ) {
+        self.push_subagent_live_message(
+            session_id,
+            ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                format!("工具执行失败: {}", error),
+                tool_failed_block(tool_name, tool_call_id, "工具执行失败", error),
+            ),
+        );
     }
 
     fn handle_bridge_error(&mut self, err: anyhow::Error) {
@@ -1767,6 +1924,8 @@ fn start_background_tool_worker(
     request: ToolRequest,
     ui_tool_name: String,
     tool_call_id: Option<String>,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
     completion_tx: Sender<BackgroundToolCompletion>,
     response_target: Option<BackgroundRpcResponseTarget>,
 ) {
@@ -1787,15 +1946,17 @@ fn start_background_tool_worker(
 
         match &result {
             Ok(output) => logging::log_event(&format!(
-                "[ts-bridge-host] background tool success tool={} tool_call_id={} output_chars={}",
+                "[ts-bridge-host] background tool success tool={} tool_call_id={} subagent_title={} output_chars={}",
                 ui_tool_name,
                 tool_call_id.as_deref().unwrap_or("<none>"),
+                subagent_title.as_deref().unwrap_or("<none>"),
                 output.chars().count()
             )),
             Err(err) => logging::log_event(&format!(
-                "[ts-bridge-host] background tool failed tool={} tool_call_id={} error={}",
+                "[ts-bridge-host] background tool failed tool={} tool_call_id={} subagent_title={} error={}",
                 ui_tool_name,
                 tool_call_id.as_deref().unwrap_or("<none>"),
+                subagent_title.as_deref().unwrap_or("<none>"),
                 err
             )),
         }
@@ -1804,6 +1965,7 @@ fn start_background_tool_worker(
             request,
             ui_tool_name,
             tool_call_id,
+            subagent_session_id,
             result,
         });
     });
@@ -1853,6 +2015,8 @@ fn envelope_for_request(request: ToolRequest) -> HostToolRequestEnvelope {
             background_status_text: background_tool_status_text(&request),
             tool_call_id: None,
             tool_name: None,
+            subagent_session_id: None,
+            subagent_title: None,
         },
         request,
     }

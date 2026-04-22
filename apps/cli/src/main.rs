@@ -365,12 +365,16 @@ fn process_event_batch(
                 flush_pending_text(shell, &mut pending_text);
                 match mouse.kind {
                     MouseEventKind::ScrollUp => {
-                        if !shell.scroll_active_bottom_form_up(3) {
+                        if shell.is_subagent_view_active() {
+                            shell.scroll_subagent_view_up(3)
+                        } else if !shell.scroll_active_bottom_form_up(3) {
                             shell.scroll_history_up(3)
                         }
                     }
                     MouseEventKind::ScrollDown => {
-                        if !shell.scroll_active_bottom_form_down(3) {
+                        if shell.is_subagent_view_active() {
+                            shell.scroll_subagent_view_down(3)
+                        } else if !shell.scroll_active_bottom_form_down(3) {
                             shell.scroll_history_down(3)
                         }
                     }

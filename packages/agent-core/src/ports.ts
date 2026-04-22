@@ -144,6 +144,8 @@ export type AuthorizationDecision<TrustTarget = string> =
 export interface ToolRequestExecutionMetadata {
   toolCallId?: string;
   toolName?: string;
+  subagentSessionId?: string;
+  subagentTitle?: string;
 }
 
 export interface ToolExecutor<
