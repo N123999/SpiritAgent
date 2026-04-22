@@ -150,6 +150,7 @@ interface PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
   childRecord: RuntimeSubagentSessionArchiveEntry;
   resumeAsStreaming: boolean;
   streamingEmitBeginResponse: boolean;
+  latestMessage?: string; // Added to store the latest message
 }
 
 type RunSubagentToolExecutionResult<ToolRequest, TrustTarget> =
@@ -335,6 +336,14 @@ export class AgentRuntime<
   }
 
   pendingAuxState(): PendingAssistantAux | undefined {
+    if (this.pendingSubagentExecution) {
+      const frame = ['|', '/', '-', '\\'][this.thinkingSpinnerIndexStore % 4] ?? '|';
+      return {
+        kind: 'thinking',
+        statusText: `${frame} ${this.currentSubagentStatusText()}`,
+      };
+    }
+
     const kind = this.currentAuxKind();
     if (!kind) {
       return undefined;
@@ -1416,7 +1425,7 @@ export class AgentRuntime<
   }
 
   private currentAuxKind(): AssistantAuxKind | undefined {
-    if (this.pendingSubagentExecution && !this.pendingSubagentExecution.childRuntime.currentPendingApproval()) {
+    if (this.pendingSubagentExecution) {
       return 'thinking';
     }
 
@@ -1427,27 +1436,37 @@ export class AgentRuntime<
 
   private currentAuxText(): string | undefined {
     if (this.pendingSubagentExecution) {
-      const childApproval = this.pendingSubagentExecution.childRuntime.currentPendingApproval();
-      if (childApproval) {
-        return `SubAgent 待确认: ${this.pendingSubagentExecution.childRecord.summary.title} / ${childApproval.toolName}`;
-      }
-
-      const pendingAssistant = this.pendingSubagentExecution.childRuntime.pendingAssistantText().trim();
-      if (pendingAssistant.length > 0) {
-        return truncateTextForSubagentSummary(pendingAssistant, 180);
-      }
-
-      const thinking = this.pendingSubagentExecution.childRuntime.thinkingText().trim();
-      if (thinking.length > 0) {
-        return truncateTextForSubagentSummary(thinking, 180);
-      }
-
-      return `SubAgent 运行中: ${this.pendingSubagentExecution.childRecord.summary.title}`;
+      return undefined;
     }
 
     return currentAuxTextInternal(
       this as unknown as StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
     );
+  }
+
+  private currentSubagentStatusText(): string {
+    const pending = this.pendingSubagentExecution;
+    if (!pending) {
+      return 'SubAgent: 运行中';
+    }
+
+    const title = pending.childRecord.summary.title.trim() || 'SubAgent';
+    const childApproval = pending.childRuntime.currentPendingApproval();
+    if (childApproval) {
+      return `${title}: 等待确认 ${childApproval.toolName}`;
+    }
+
+    const progress = singleLineStatusText(
+      pending.childRuntime.pendingAssistantText()
+      || pending.childRuntime.thinkingText()
+      || pending.childRecord.summary.latestMessage
+      || '',
+    );
+    if (!progress || progress === title) {
+      return `${title}: 运行中`;
+    }
+
+    return `${title}: ${truncateTextForSubagentSummary(progress, 120)}`;
   }
 
   private clearStreamingUiState(): void {
@@ -1609,23 +1628,28 @@ export class AgentRuntime<
       try {
         await childRuntime.startUserTurn(childUserTurn);
         this.pendingSubagentExecution = {
-          parentRequest,
+          const title = this.pendingSubagentExecution.childRecord.summary.title || 'SubAgent'; // Default title if undefined
           parentToolCallId,
           parentPendingUserInput,
-          parentState,
+            return buildSubagentStatusLine(title, `等待确认 / ${childApproval.toolName}`);
           parentRemainingCalls,
           parentTurn,
           childRuntime,
           childRecord: record,
-          resumeAsStreaming,
+            return buildSubagentStatusLine(title, truncateTextForSubagentSummary(pendingAssistant, 180));
           streamingEmitBeginResponse,
         };
         this.refreshChildSessionRecord(record, childRuntime);
         record.summary.status = childRuntime.currentPendingApproval() ? 'blocked' : 'running';
-        return { kind: 'started' };
+            return buildSubagentStatusLine(title, truncateTextForSubagentSummary(thinking, 180));
+          }
+
+          const latestMessage = this.pendingSubagentExecution.childRecord.summary.latestMessage?.trim();
+          if (latestMessage && latestMessage !== title) {
+            return buildSubagentStatusLine(title, truncateTextForSubagentSummary(latestMessage, 180));
       } catch (error) {
         const failed = `[subagent failed] ${renderError(error)}`;
-        record.summary.status = 'failed';
+          return buildSubagentStatusLine(title, '正在执行');
         record.summary.updatedAtUnixMs = Date.now();
         record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
         record.summary.error = failed;
@@ -1973,6 +1997,10 @@ function truncateTextForParentSubagentResult(text: string, maxChars: number): st
   }
 
   return `${chars.slice(0, maxChars).join('')}\n\n...<subagent result truncated>`;
+}
+
+function singleLineStatusText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function createSubagentToolExecutor<ToolRequest, TrustTarget>(
