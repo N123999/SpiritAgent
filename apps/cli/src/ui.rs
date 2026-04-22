@@ -269,7 +269,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     }
 
     if let Some(view) = &app.subagent_view {
-        draw_subagent_viewer(frame, shell, frame.area(), view);
+        draw_subagent_viewer(frame, shell, frame.area(), view, app.show_aux_details);
     }
 }
 
@@ -979,23 +979,41 @@ fn render_message_lines(
         MessageRole::User => (msg.content.clone(), None),
     };
 
-    let has_message_body = !message_body.trim().is_empty();
+    let mut pending_aux = if is_pending_assistant {
+        app.pending_aux_state()
+    } else {
+        None
+    };
+    let raw_pending_aux_detail_text = pending_aux.and_then(|aux| aux.detail_text.as_deref());
+    let synthetic_subagent_status_text = if message_body.trim().is_empty() {
+        raw_pending_aux_detail_text.and_then(parse_subagent_status_line)
+    } else {
+        None
+    };
+    if synthetic_subagent_status_text.is_some() {
+        pending_aux = None;
+    }
+
+    let effective_message_body = if !message_body.trim().is_empty() {
+        message_body.clone()
+    } else {
+        synthetic_subagent_status_text.clone().unwrap_or_default()
+    };
+    let has_message_body = !effective_message_body.trim().is_empty();
     let content_lines = if has_message_body {
         match msg.role {
-            MessageRole::User => plain_text_lines(&message_body),
-            MessageRole::Agent => markdown_lines(&message_body),
+            MessageRole::User => plain_text_lines(&effective_message_body),
+            MessageRole::Agent => markdown_lines(&effective_message_body),
         }
     } else {
         Vec::new()
     };
 
     let mut out = Vec::new();
-    let pending_aux = if is_pending_assistant {
-        app.pending_aux_state()
-    } else {
-        None
-    };
-    let stored_aux = if msg.role == MessageRole::Agent && app.show_aux_details {
+    let stored_aux = if synthetic_subagent_status_text.is_none()
+        && msg.role == MessageRole::Agent
+        && app.show_aux_details
+    {
         app.assistant_aux_for_message(message_index)
     } else {
         None
@@ -1017,8 +1035,8 @@ fn render_message_lines(
     } else {
         None
     };
-    let pending_aux_detail_text = if app.show_aux_details {
-        pending_aux.and_then(|aux| aux.detail_text.as_deref())
+    let pending_aux_detail_text = if synthetic_subagent_status_text.is_none() && app.show_aux_details {
+        raw_pending_aux_detail_text
     } else {
         None
     };
@@ -1093,6 +1111,12 @@ fn render_message_lines(
     }
 
     out
+}
+
+fn parse_subagent_status_line(text: &str) -> Option<String> {
+    text.trim()
+        .strip_prefix("[subagent-status] ")
+        .map(ToString::to_string)
 }
 
 fn split_embedded_thinking_content(text: &str) -> (String, Option<String>) {
@@ -1880,6 +1904,7 @@ fn draw_subagent_viewer(
     shell: &mut TuiShell,
     area: Rect,
     view: &SubagentSessionDetailView,
+    show_aux_details: bool,
 ) {
     let popup = area;
     frame.render_widget(Clear, popup);
@@ -1919,7 +1944,7 @@ fn draw_subagent_viewer(
 
     frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: true }), chunks[0]);
 
-    let history_lines = build_subagent_history_lines(&view.messages);
+    let history_lines = build_subagent_history_lines(&view.messages, show_aux_details);
     let (flat, _) = flatten_wrapped_history(history_lines, chunks[1].width.max(1), None);
     let history_view_height = chunks[1].height.max(1) as usize;
     let max_scroll = flat.len().saturating_sub(history_view_height);
@@ -1934,16 +1959,16 @@ fn draw_subagent_viewer(
 
     let footer_text = if let Some(error) = view.error.as_deref() {
         format!(
-            "Esc 关闭  |  滚轮 / PgUp/PgDn 滚动  |  {}",
+            "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动  |  {}",
             truncate_to_width(error, chunks[2].width.saturating_sub(32) as usize)
         )
     } else if let Some(output) = view.final_output.as_deref() {
         format!(
-            "Esc 关闭  |  滚轮 / PgUp/PgDn 滚动  |  {}",
+            "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动  |  {}",
             truncate_to_width(output, chunks[2].width.saturating_sub(32) as usize)
         )
     } else {
-        "Esc 关闭  |  滚轮 / PgUp/PgDn 滚动".to_string()
+        "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
     };
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(footer_text, subtle_aux_text_style()))),
@@ -1951,7 +1976,10 @@ fn draw_subagent_viewer(
     );
 }
 
-fn build_subagent_history_lines(messages: &[ChatMessage]) -> Vec<Line<'static>> {
+fn build_subagent_history_lines(
+    messages: &[ChatMessage],
+    show_aux_details: bool,
+) -> Vec<Line<'static>> {
     if messages.is_empty() {
         return vec![Line::from(Span::styled(
             "子会话尚未产生可见消息。",
@@ -1962,7 +1990,7 @@ fn build_subagent_history_lines(messages: &[ChatMessage]) -> Vec<Line<'static>> 
     let mut lines = Vec::new();
     let rendered_count = messages.len();
     for (idx, msg) in messages.iter().enumerate() {
-        let rendered = render_subagent_message_lines(msg);
+        let rendered = render_subagent_message_lines(msg, show_aux_details);
         lines.extend(rendered);
         if idx + 1 < rendered_count {
             lines.push(Line::from(""));
@@ -1971,14 +1999,14 @@ fn build_subagent_history_lines(messages: &[ChatMessage]) -> Vec<Line<'static>> 
     lines
 }
 
-fn render_subagent_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
+fn render_subagent_message_lines(msg: &ChatMessage, show_aux_details: bool) -> Vec<Line<'static>> {
     let prefix_style = match msg.role {
         MessageRole::User => conversation_body_text_style(),
         MessageRole::Agent => assistant_message_prefix_style(),
     };
 
     if let Some(ref tool) = msg.tool_block {
-        return render_tool_card_lines(prefix_style, tool, true);
+        return render_tool_card_lines(prefix_style, tool, show_aux_details);
     }
 
     let content_lines = match msg.role {

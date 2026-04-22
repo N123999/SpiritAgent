@@ -574,6 +574,9 @@ fn process_key_event(
     if shell.is_subagent_view_active() {
         match key.code {
             KeyCode::Esc => shell.close_subagent_view(),
+            KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.toggle_aux_details()
+            }
             KeyCode::Up => shell.scroll_subagent_view_up(2),
             KeyCode::Down => shell.scroll_subagent_view_down(2),
             KeyCode::PageUp => shell.scroll_subagent_view_up(8),
