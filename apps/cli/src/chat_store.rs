@@ -17,6 +17,8 @@ struct ChatFile {
     #[serde(default)]
     assistant_thinking: Vec<StoredAssistantThinking>,
     llm_history: Vec<StoredLlmMessage>,
+    #[serde(default)]
+    subagent_sessions: Vec<StoredSubagentSession>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -48,10 +50,34 @@ struct StoredLlmMessage {
     image_paths: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredSubagentSession {
+    summary: StoredSubagentSessionSummary,
+    #[serde(default)]
+    llm_history: Vec<StoredLlmMessage>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredSubagentSessionSummary {
+    session_id: String,
+    parent_tool_call_id: String,
+    title: String,
+    status: crate::ports::SubagentSessionStatus,
+    started_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+    completed_at_unix_ms: Option<u64>,
+    latest_message: Option<String>,
+    final_output: Option<String>,
+    error: Option<String>,
+}
+
 pub struct LoadedChat {
     pub messages: Vec<(String, String)>,
     pub assistant_aux: Vec<crate::ports::AssistantAuxArchiveEntry>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
+    pub subagent_sessions: Vec<crate::ports::SubagentSessionArchiveEntry>,
 }
 
 pub fn chat_dir_path() -> PathBuf {
@@ -93,6 +119,7 @@ pub fn save_chat(
     messages: &[(String, String)],
     assistant_aux: &[crate::ports::AssistantAuxArchiveEntry],
     llm_history: &[(String, String, Vec<String>)],
+    subagent_sessions: &[crate::ports::SubagentSessionArchiveEntry],
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
     if let Some(parent) = path.parent() {
@@ -138,6 +165,32 @@ pub fn save_chat(
                 role: role.clone(),
                 content: content.clone(),
                 image_paths: image_paths.clone(),
+            })
+            .collect(),
+        subagent_sessions: subagent_sessions
+            .iter()
+            .map(|entry| StoredSubagentSession {
+                summary: StoredSubagentSessionSummary {
+                    session_id: entry.summary.session_id.clone(),
+                    parent_tool_call_id: entry.summary.parent_tool_call_id.clone(),
+                    title: entry.summary.title.clone(),
+                    status: entry.summary.status,
+                    started_at_unix_ms: entry.summary.started_at_unix_ms,
+                    updated_at_unix_ms: entry.summary.updated_at_unix_ms,
+                    completed_at_unix_ms: entry.summary.completed_at_unix_ms,
+                    latest_message: entry.summary.latest_message.clone(),
+                    final_output: entry.summary.final_output.clone(),
+                    error: entry.summary.error.clone(),
+                },
+                llm_history: entry
+                    .llm_history
+                    .iter()
+                    .map(|message| StoredLlmMessage {
+                        role: message.role.clone(),
+                        content: message.content.clone(),
+                        image_paths: message.image_paths.clone(),
+                    })
+                    .collect(),
             })
             .collect(),
     };
@@ -196,6 +249,33 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
             .llm_history
             .into_iter()
             .map(|m| (m.role, m.content, m.image_paths))
+            .collect(),
+        subagent_sessions: parsed
+            .subagent_sessions
+            .into_iter()
+            .map(|entry| crate::ports::SubagentSessionArchiveEntry {
+                summary: crate::ports::SubagentSessionSummary {
+                    session_id: entry.summary.session_id,
+                    parent_tool_call_id: entry.summary.parent_tool_call_id,
+                    title: entry.summary.title,
+                    status: entry.summary.status,
+                    started_at_unix_ms: entry.summary.started_at_unix_ms,
+                    updated_at_unix_ms: entry.summary.updated_at_unix_ms,
+                    completed_at_unix_ms: entry.summary.completed_at_unix_ms,
+                    latest_message: entry.summary.latest_message,
+                    final_output: entry.summary.final_output,
+                    error: entry.summary.error,
+                },
+                llm_history: entry
+                    .llm_history
+                    .into_iter()
+                    .map(|message| crate::ports::ArchivedLlmMessage {
+                        role: message.role,
+                        content: message.content,
+                        image_paths: message.image_paths,
+                    })
+                    .collect(),
+            })
             .collect(),
     })
 }

@@ -19,12 +19,55 @@ pub struct AssistantAuxArchiveEntry {
     pub compaction: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubagentSessionStatus {
+    Running,
+    Completed,
+    Failed,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentSessionSummary {
+    pub session_id: String,
+    pub parent_tool_call_id: String,
+    pub title: String,
+    pub status: SubagentSessionStatus,
+    pub started_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+    pub completed_at_unix_ms: Option<u64>,
+    pub latest_message: Option<String>,
+    pub final_output: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedLlmMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(default)]
+    pub image_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentSessionArchiveEntry {
+    pub summary: SubagentSessionSummary,
+    #[serde(default)]
+    pub llm_history: Vec<ArchivedLlmMessage>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatArchive {
     pub messages: Vec<(String, String)>,
     pub assistant_aux: Vec<AssistantAuxArchiveEntry>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
+    #[serde(default)]
+    pub subagent_sessions: Vec<SubagentSessionArchiveEntry>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

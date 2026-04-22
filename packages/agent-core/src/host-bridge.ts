@@ -46,6 +46,7 @@ import type {
   RuntimeAttachMcpResourceParams,
   RuntimeInitParams,
   RuntimeNamedMcpServerParams,
+  RuntimeSubagentSessionParams,
   RuntimeReplaceConfigParams,
   RuntimeReplacePlanMetadataParams,
   RuntimeReplaceRulesParams,
@@ -176,12 +177,13 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
       content: resource.content,
     })),
     ...(pendingAuxState !== undefined ? { pendingAuxState } : {}),
-    hasPendingApproval: target.hasPendingApproval(),
-    hasPendingManualApproval: target.hasPendingManualApproval(),
-    hasPendingQuestions: target.hasPendingQuestions(),
-    ...(currentPendingApproval !== undefined ? { currentPendingApproval } : {}),
-    ...(currentPendingQuestions !== undefined ? { currentPendingQuestions } : {}),
-    isBusy: target.isBusy(),
+  hasPendingApproval: target.hasPendingApproval(),
+  hasPendingManualApproval: target.hasPendingManualApproval(),
+  hasPendingQuestions: target.hasPendingQuestions(),
+  ...(currentPendingApproval !== undefined ? { currentPendingApproval } : {}),
+  childSessions: [...target.childSessions()],
+  ...(currentPendingQuestions !== undefined ? { currentPendingQuestions } : {}),
+  isBusy: target.isBusy(),
     ...(backgroundToolStatus !== undefined ? { backgroundToolStatus } : {}),
   };
 }
@@ -258,6 +260,16 @@ peer.on('runtime.replaceHistory', async (rawParams) => {
 peer.on('runtime.replaceFromArchive', async (archive) => {
   requireRuntime().replaceFromArchive(archive as never);
   return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.subagentSessionArchive', async (rawParams) => {
+  const params = rawParams as RuntimeSubagentSessionParams;
+  return requireRuntime().childSessionArchive(params.sessionId) ?? null;
+});
+
+peer.on('runtime.subagentPendingAuxState', async (rawParams) => {
+  const params = rawParams as RuntimeSubagentSessionParams;
+  return requireRuntime().childSessionPendingAuxState(params.sessionId) ?? null;
 });
 
 peer.on('runtime.submitUserTurn', async (rawParams) => {

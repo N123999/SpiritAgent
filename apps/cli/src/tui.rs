@@ -25,8 +25,9 @@ use crate::{
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     plan::{self, PlanMetadata},
     ports::{
-        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
-        McpStatusState, SecretStore,
+        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore,
+        McpStatusSnapshot, McpStatusState, SecretStore, SubagentSessionArchiveEntry,
+        SubagentSessionSummary,
     },
     rules::{self, RuleEntry, RuleScope, RuleStateFile},
     runtime_handle::RuntimeHandle,
@@ -35,7 +36,10 @@ use crate::{
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
-        InputSuggestionKind, MainInputMode, MessageRole, TuiViewModel,
+        InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
+        PendingSubagentApprovalView,
+        SubagentApprovalInputView, SubagentSessionDetailView, SubagentSessionSummaryView,
+        TuiViewModel,
     },
 };
 
@@ -68,8 +72,11 @@ pub struct TuiShell {
     file_reference_indexing: bool,
     messages: Vec<ChatMessage>,
     assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
+    persisted_standalone_pending_aux: Option<PendingAssistantAux>,
+    persisted_standalone_pending_aux_anchor: Option<usize>,
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
+    last_completed_assistant_msg_index: Option<usize>,
     next_local_shell_tool_id: usize,
     pending_shell_executions: Vec<PendingShellExecution>,
     last_mcp_status_revision: u64,
@@ -87,6 +94,13 @@ pub struct TuiShell {
     chat_picker_active: bool,
     chat_picker_index: usize,
     chat_picker_files: Vec<String>,
+    subagent_picker_active: bool,
+    subagent_picker_index: usize,
+    subagent_view: Option<SubagentSessionDetailView>,
+    subagent_history_offset_from_bottom: usize,
+    subagent_approval_input: String,
+    subagent_approval_input_cursor: usize,
+    subagent_approval_input_active: bool,
     image_picker_active: bool,
     image_picker_index: usize,
     image_picker_files: Vec<String>,
@@ -157,8 +171,11 @@ impl TuiShell {
             file_reference_indexing: true,
             messages,
             assistant_aux_by_message: HashMap::new(),
+            persisted_standalone_pending_aux: None,
+            persisted_standalone_pending_aux_anchor: None,
             show_aux_details: true,
             pending_assistant_msg_index: None,
+            last_completed_assistant_msg_index: None,
             next_local_shell_tool_id: 0,
             pending_shell_executions: Vec::new(),
             last_mcp_status_revision: initial_mcp_status.revision,
@@ -175,6 +192,13 @@ impl TuiShell {
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
+            subagent_picker_active: false,
+            subagent_picker_index: 0,
+            subagent_view: None,
+            subagent_history_offset_from_bottom: 0,
+            subagent_approval_input: String::new(),
+            subagent_approval_input_cursor: 0,
+            subagent_approval_input_active: false,
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],
@@ -292,6 +316,7 @@ impl TuiShell {
         self.poll_pending_shell_executions();
         self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
+        self.refresh_active_subagent_view();
         self.refresh_plan_metadata_from_disk();
     }
 
@@ -313,6 +338,12 @@ impl TuiShell {
             .iter()
             .filter(|(index, _)| **index >= history_truncated_before)
             .map(|(index, value)| (*index, value.clone()))
+            .collect();
+        let subagent_sessions = self
+            .runtime
+            .subagent_sessions()
+            .iter()
+            .map(Self::subagent_summary_view)
             .collect();
 
         TuiViewModel {
@@ -343,6 +374,13 @@ impl TuiShell {
             chat_picker_active: self.chat_picker_active,
             chat_picker_index: self.chat_picker_index,
             chat_picker_files: self.chat_picker_files.clone(),
+            subagent_picker_active: self.subagent_picker_active,
+            subagent_picker_index: self.subagent_picker_index,
+            subagent_sessions,
+            subagent_view: self.subagent_view.clone(),
+            subagent_history_offset_from_bottom: self.subagent_history_offset_from_bottom,
+            pending_subagent_approval: self.runtime.pending_subagent_approval(),
+            subagent_approval_input: self.subagent_approval_input_view(),
             image_picker_active: self.image_picker_active,
             image_picker_index: self.image_picker_index,
             image_picker_files: self.image_picker_files.clone(),
@@ -351,8 +389,68 @@ impl TuiShell {
             pending_response_active: self.runtime.is_busy(),
             pending_assistant_msg_index: self.pending_assistant_msg_index,
             pending_aux: self.runtime.pending_aux_state(),
+            persisted_standalone_pending_aux: self.persisted_standalone_pending_aux.clone(),
+            persisted_standalone_pending_aux_anchor: self.persisted_standalone_pending_aux_anchor,
             conversation_sel_anchor: self.conversation_sel_anchor,
             conversation_sel_head: self.conversation_sel_head,
+        }
+    }
+    fn subagent_summary_view(summary: &SubagentSessionSummary) -> SubagentSessionSummaryView {
+        SubagentSessionSummaryView {
+            session_id: summary.session_id.clone(),
+            title: summary.title.clone(),
+            status: summary.status,
+            updated_at_unix_ms: summary.updated_at_unix_ms,
+            latest_message: summary.latest_message.clone(),
+        }
+    }
+
+    fn subagent_detail_view(
+        archive: &SubagentSessionArchiveEntry,
+        live_messages: &[ChatMessage],
+        pending_aux: Option<crate::view::PendingAssistantAux>,
+    ) -> SubagentSessionDetailView {
+        let mut messages = Vec::new();
+        let title = archive.summary.title.trim();
+        if !title.is_empty() {
+            messages.push(ChatMessage::new(MessageRole::User, title.to_string()));
+        }
+
+        messages.extend(live_messages.iter().cloned());
+
+        let fallback_assistant = archive
+            .llm_history
+            .iter()
+            .rev()
+            .find(|message| message.role == "assistant" && !message.content.trim().is_empty())
+            .map(|message| message.content.clone());
+
+        if let Some(output) = archive.summary.final_output.as_ref().filter(|value| !value.trim().is_empty()) {
+            let already_present = messages.iter().any(|message| {
+                message.role == MessageRole::Agent
+                    && message.tool_block.is_none()
+                    && message.content.trim() == output.trim()
+            });
+            if !already_present {
+                messages.push(ChatMessage::new(MessageRole::Agent, output.clone()));
+            }
+        } else if let Some(content) = fallback_assistant {
+            let already_present = messages.iter().any(|message| {
+                message.role == MessageRole::Agent
+                    && message.tool_block.is_none()
+                    && message.content.trim() == content.trim()
+            });
+            if !already_present {
+                messages.push(ChatMessage::new(MessageRole::Agent, content));
+            }
+        }
+
+        SubagentSessionDetailView {
+            summary: Self::subagent_summary_view(&archive.summary),
+            messages,
+            pending_aux,
+            final_output: archive.summary.final_output.clone(),
+            error: archive.summary.error.clone(),
         }
     }
     pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
@@ -482,6 +580,11 @@ impl TuiShell {
     pub(crate) fn clear_chat_for_slash(&mut self) {
         self.messages.clear();
         self.assistant_aux_by_message.clear();
+        self.persisted_standalone_pending_aux = None;
+        self.persisted_standalone_pending_aux_anchor = None;
+        self.last_completed_assistant_msg_index = None;
+        self.subagent_picker_active = false;
+        self.close_subagent_view();
         let mcp_status = self.runtime.mcp_status_snapshot();
         self.messages.push(welcome_message(
             &self.runtime.config().active_model,
@@ -489,6 +592,7 @@ impl TuiShell {
         ));
         self.last_mcp_status_revision = mcp_status.revision;
         self.pending_assistant_msg_index = None;
+        self.last_completed_assistant_msg_index = None;
     }
 
     pub(crate) fn compact_history_for_slash(&mut self) {
@@ -523,6 +627,131 @@ impl TuiShell {
 
     pub fn is_chat_picker_active(&self) -> bool {
         self.chat_picker_active
+    }
+
+    pub fn is_subagent_picker_active(&self) -> bool {
+        self.subagent_picker_active
+    }
+
+    pub fn is_subagent_view_active(&self) -> bool {
+        self.subagent_view.is_some()
+    }
+
+    pub fn has_active_subagent_viewer_approval(&self) -> bool {
+        self.active_view_pending_subagent_approval().is_some()
+    }
+
+    pub fn is_subagent_approval_input_active(&self) -> bool {
+        self.subagent_approval_input_active && self.has_active_subagent_viewer_approval()
+    }
+
+    pub fn begin_subagent_approval_input(&mut self) {
+        if self.active_view_pending_subagent_approval().is_none() {
+            return;
+        }
+
+        self.subagent_approval_input_active = true;
+        self.subagent_approval_input_cursor = self.subagent_approval_input_len_chars();
+    }
+
+    pub fn cancel_subagent_approval_input(&mut self) {
+        self.clear_subagent_approval_input_state();
+    }
+
+    pub fn respond_to_active_subagent_approval(&mut self, message: &str) {
+        if self.active_view_pending_subagent_approval().is_none() {
+            return;
+        }
+
+        self.runtime.respond_to_pending_tool_approval(message);
+        self.apply_runtime_events();
+        self.clear_subagent_approval_input_state();
+        self.refresh_active_subagent_view();
+    }
+
+    pub fn submit_subagent_approval_input(&mut self) {
+        if !self.is_subagent_approval_input_active() {
+            return;
+        }
+
+        let message = self.subagent_approval_input.trim().to_string();
+        if message.is_empty() {
+            return;
+        }
+
+        self.respond_to_active_subagent_approval(&message);
+    }
+
+    pub fn move_subagent_approval_cursor_left(&mut self) {
+        if self.is_subagent_approval_input_active() && self.subagent_approval_input_cursor > 0 {
+            self.subagent_approval_input_cursor -= 1;
+        }
+    }
+
+    pub fn move_subagent_approval_cursor_right(&mut self) {
+        if self.is_subagent_approval_input_active()
+            && self.subagent_approval_input_cursor < self.subagent_approval_input_len_chars()
+        {
+            self.subagent_approval_input_cursor += 1;
+        }
+    }
+
+    pub fn move_subagent_approval_cursor_home(&mut self) {
+        if self.is_subagent_approval_input_active() {
+            self.subagent_approval_input_cursor = 0;
+        }
+    }
+
+    pub fn move_subagent_approval_cursor_end(&mut self) {
+        if self.is_subagent_approval_input_active() {
+            self.subagent_approval_input_cursor = self.subagent_approval_input_len_chars();
+        }
+    }
+
+    pub fn insert_subagent_approval_char(&mut self, ch: char) {
+        if !self.is_subagent_approval_input_active() {
+            return;
+        }
+
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.insert(idx, ch);
+        self.subagent_approval_input_cursor += 1;
+    }
+
+    pub fn backspace_subagent_approval_input(&mut self) {
+        if !self.is_subagent_approval_input_active() || self.subagent_approval_input_cursor == 0 {
+            return;
+        }
+
+        self.subagent_approval_input_cursor -= 1;
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.remove(idx);
+    }
+
+    pub fn delete_subagent_approval_input(&mut self) {
+        if !self.is_subagent_approval_input_active()
+            || self.subagent_approval_input_cursor >= self.subagent_approval_input_len_chars()
+        {
+            return;
+        }
+
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.remove(idx);
+    }
+
+    pub fn paste_subagent_approval_from_clipboard(&mut self) -> Result<(), String> {
+        if self.active_view_pending_subagent_approval().is_none() {
+            return Ok(());
+        }
+
+        let text = arboard::Clipboard::new()
+            .map_err(|e| e.to_string())?
+            .get_text()
+            .map_err(|e| e.to_string())?;
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        self.begin_subagent_approval_input();
+        self.insert_text_into_subagent_approval(&normalized);
+        Ok(())
     }
 
     pub fn is_image_picker_active(&self) -> bool {
@@ -748,13 +977,28 @@ impl TuiShell {
             return;
         }
 
-        if self.runtime.has_pending_tool_approval() {
+        if is_subagents_command(trimmed_message) {
             self.scroll_history_to_bottom();
             self.messages.push(ChatMessage {
                 role: MessageRole::User,
                 content: trimmed_message.to_string(),
                 tool_block: None,
             });
+            self.handle_slash_command(trimmed_message);
+            self.set_input(String::new());
+            self.refresh_suggestions();
+            return;
+        }
+
+        if self.runtime.has_pending_tool_approval() {
+            self.scroll_history_to_bottom();
+            if self.runtime.pending_subagent_approval().is_none() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::User,
+                    content: trimmed_message.to_string(),
+                    tool_block: None,
+                });
+            }
             self.runtime
                 .respond_to_pending_tool_approval(trimmed_message);
             self.apply_runtime_events();
@@ -812,8 +1056,7 @@ impl TuiShell {
         } else {
             let workspace_root = self.app_paths.workspace_root();
             let runtime_turn = user_turn_text_for_mode(&workspace_root, self.input_mode, &raw_message);
-            self.runtime.submit_user_turn(runtime_turn, None);
-            self.apply_runtime_events();
+            self.submit_runtime_user_turn(runtime_turn, None);
         }
 
         self.set_input(String::new());
@@ -1067,6 +1310,72 @@ impl TuiShell {
 
     pub fn cancel_chat_picker(&mut self) {
         self.chat_picker_active = false;
+    }
+
+    pub fn open_subagent_picker(&mut self) {
+        self.subagent_picker_active = true;
+        self.subagent_picker_index = 0;
+    }
+
+    pub fn cancel_subagent_picker(&mut self) {
+        self.subagent_picker_active = false;
+    }
+
+    pub fn select_next_subagent(&mut self) {
+        let total = self.runtime.subagent_sessions().len();
+        if total == 0 {
+            return;
+        }
+        self.subagent_picker_index = (self.subagent_picker_index + 1) % total;
+    }
+
+    pub fn select_prev_subagent(&mut self) {
+        let total = self.runtime.subagent_sessions().len();
+        if total == 0 {
+            return;
+        }
+        if self.subagent_picker_index == 0 {
+            self.subagent_picker_index = total - 1;
+        } else {
+            self.subagent_picker_index -= 1;
+        }
+    }
+
+    pub fn confirm_subagent_picker(&mut self) {
+        let Some(summary) = self
+            .runtime
+            .subagent_sessions()
+            .get(self.subagent_picker_index)
+            .cloned()
+        else {
+            self.subagent_picker_active = false;
+            return;
+        };
+
+        self.subagent_picker_active = false;
+        self.open_subagent_view(&summary.session_id);
+    }
+
+    pub fn close_subagent_view(&mut self) {
+        self.subagent_view = None;
+        self.subagent_history_offset_from_bottom = 0;
+        self.clear_subagent_approval_input_state();
+    }
+
+    pub fn scroll_subagent_view_up(&mut self, lines: usize) {
+        self.subagent_history_offset_from_bottom =
+            self.subagent_history_offset_from_bottom.saturating_add(lines);
+    }
+
+    pub fn scroll_subagent_view_down(&mut self, lines: usize) {
+        self.subagent_history_offset_from_bottom =
+            self.subagent_history_offset_from_bottom.saturating_sub(lines);
+    }
+
+    pub(crate) fn clamp_subagent_history_scroll(&mut self, max_scroll: usize) -> usize {
+        self.subagent_history_offset_from_bottom =
+            self.subagent_history_offset_from_bottom.min(max_scroll);
+        self.subagent_history_offset_from_bottom
     }
 
     pub fn select_next_chat(&mut self) {
@@ -1687,6 +1996,34 @@ impl TuiShell {
         });
     }
 
+    pub(crate) fn handle_subagents_slash(&mut self, message: &str) {
+        let tail = message
+            .strip_prefix("/subagents")
+            .map(str::trim)
+            .unwrap_or("");
+
+        if tail.is_empty() || tail == "list" {
+            self.open_subagent_picker();
+            return;
+        }
+
+        if tail == "close" {
+            self.close_subagent_view();
+            return;
+        }
+
+        if let Some(session_id) = tail.strip_prefix("open ") {
+            self.open_subagent_view(session_id.trim());
+            return;
+        }
+
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: "用法: /subagents [list|open <session_id>|close]".to_string(),
+            tool_block: None,
+        });
+    }
+
     pub(crate) fn handle_image_slash(&mut self, message: &str) {
         let tail = message.strip_prefix("/image").map(str::trim).unwrap_or("");
 
@@ -1756,9 +2093,7 @@ impl TuiShell {
                 content: t!("tui.user.attached_image", prompt = prompt, path = raw_path).into_owned(),
                 tool_block: None,
             });
-            self.runtime
-                .submit_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
-            self.apply_runtime_events();
+            self.submit_runtime_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
             return;
         }
 
@@ -1938,8 +2273,7 @@ impl TuiShell {
             }
         }
         let generation_prompt = rules::build_create_rule_user_turn(&workspace_root, &request);
-        self.runtime.submit_user_turn(generation_prompt, None);
-        self.apply_runtime_events();
+        self.submit_runtime_user_turn(generation_prompt, None);
     }
 
     pub(crate) fn handle_create_skill_slash(&mut self, message: &str) {
@@ -1973,8 +2307,7 @@ impl TuiShell {
         }
 
         let generation_prompt = skills::build_create_skill_user_turn(&workspace_root, &request);
-        self.runtime.submit_user_turn(generation_prompt, None);
-        self.apply_runtime_events();
+    self.submit_runtime_user_turn(generation_prompt, None);
     }
 
     pub(crate) fn handle_start_implementing_slash(&mut self) {
@@ -1996,8 +2329,7 @@ impl TuiShell {
 
         self.set_input_mode(MainInputMode::Agent);
         let user_turn = plan::build_start_implementing_user_turn();
-        self.runtime.submit_user_turn(user_turn, None);
-        self.apply_runtime_events();
+    self.submit_runtime_user_turn(user_turn, None);
     }
 
     pub(crate) fn handle_skill_alias_slash(&mut self, message: &str) -> bool {
@@ -2040,8 +2372,7 @@ impl TuiShell {
         }
 
         let user_turn = skills::build_activate_skill_user_turn(skill_name, user_message);
-        self.runtime.submit_user_turn(user_turn, None);
-        self.apply_runtime_events();
+        self.submit_runtime_user_turn(user_turn, None);
     }
 
     pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
@@ -3136,6 +3467,8 @@ impl TuiShell {
     fn load_chat_by_path(&mut self, path: &str) {
         match self.chat_repository.load(path) {
             Ok(archive) => {
+                self.subagent_picker_active = false;
+                self.close_subagent_view();
                 let mut msgs = Vec::new();
                 for (role, content) in &archive.messages {
                     msgs.push(ChatMessage {
@@ -3181,7 +3514,10 @@ impl TuiShell {
                         }
                     })
                     .collect();
+                self.persisted_standalone_pending_aux = None;
+                self.persisted_standalone_pending_aux_anchor = None;
                 self.pending_assistant_msg_index = None;
+                self.last_completed_assistant_msg_index = None;
                 self.runtime.replace_session_from_archive(&archive);
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
@@ -3200,6 +3536,149 @@ impl TuiShell {
         }
     }
 
+    fn open_subagent_view(&mut self, session_id: &str) {
+        match self.runtime.subagent_session_archive(session_id) {
+            Ok(Some(archive)) => {
+                let live_messages = self.runtime.subagent_live_messages(session_id);
+                let pending_aux = match self.runtime.subagent_pending_aux_state(session_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("读取子会话状态失败: {}", err),
+                            tool_block: None,
+                        });
+                        None
+                    }
+                };
+                self.subagent_view = Some(Self::subagent_detail_view(
+                    &archive,
+                    &live_messages,
+                    pending_aux,
+                ));
+                self.subagent_history_offset_from_bottom = 0;
+                self.sync_subagent_approval_input_state();
+            }
+            Ok(None) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("未找到子会话: {}", session_id),
+                    tool_block: None,
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取子会话失败: {}", err),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn refresh_active_subagent_view(&mut self) {
+        let Some(session_id) = self
+            .subagent_view
+            .as_ref()
+            .map(|view| view.summary.session_id.clone())
+        else {
+            return;
+        };
+
+        match self.runtime.subagent_session_archive(&session_id) {
+            Ok(Some(archive)) => {
+                let live_messages = self.runtime.subagent_live_messages(&session_id);
+                let pending_aux = match self.runtime.subagent_pending_aux_state(&session_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: format!("刷新子会话状态失败: {}", err),
+                            tool_block: None,
+                        });
+                        None
+                    }
+                };
+                self.subagent_view = Some(Self::subagent_detail_view(
+                    &archive,
+                    &live_messages,
+                    pending_aux,
+                ));
+                self.sync_subagent_approval_input_state();
+            }
+            Ok(None) => {
+                self.close_subagent_view();
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("刷新子会话失败: {}", err),
+                    tool_block: None,
+                });
+                self.close_subagent_view();
+            }
+        }
+    }
+
+    fn active_view_pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
+        let approval = self.runtime.pending_subagent_approval()?;
+        let session_id = self.subagent_view.as_ref()?.summary.session_id.as_str();
+        if approval.session_id == session_id {
+            Some(approval)
+        } else {
+            None
+        }
+    }
+
+    fn subagent_approval_input_view(&self) -> Option<SubagentApprovalInputView> {
+        if !self.is_subagent_approval_input_active() {
+            return None;
+        }
+
+        Some(SubagentApprovalInputView {
+            value: self.subagent_approval_input.clone(),
+            cursor: self.subagent_approval_input_cursor,
+        })
+    }
+
+    fn clear_subagent_approval_input_state(&mut self) {
+        self.subagent_approval_input.clear();
+        self.subagent_approval_input_cursor = 0;
+        self.subagent_approval_input_active = false;
+    }
+
+    fn sync_subagent_approval_input_state(&mut self) {
+        if self.active_view_pending_subagent_approval().is_none() {
+            self.clear_subagent_approval_input_state();
+            return;
+        }
+
+        self.subagent_approval_input_cursor = self
+            .subagent_approval_input_cursor
+            .min(self.subagent_approval_input_len_chars());
+    }
+
+    fn subagent_approval_input_len_chars(&self) -> usize {
+        self.subagent_approval_input.chars().count()
+    }
+
+    fn subagent_approval_cursor_byte_index(&self) -> usize {
+        cursor_byte_index_for_text(
+            &self.subagent_approval_input,
+            self.subagent_approval_input_cursor,
+        )
+    }
+
+    fn insert_text_into_subagent_approval(&mut self, text: &str) {
+        if !self.is_subagent_approval_input_active() || text.is_empty() {
+            return;
+        }
+
+        let idx = self.subagent_approval_cursor_byte_index();
+        self.subagent_approval_input.insert_str(idx, text);
+        self.subagent_approval_input_cursor += text.chars().count();
+    }
+
     fn apply_runtime_events(&mut self) {
         for event in self.runtime.drain_events() {
             match event {
@@ -3212,11 +3691,32 @@ impl TuiShell {
                     self.open_ask_questions_form(tool_call_id, tool_name, questions);
                 }
                 RuntimeEvent::BeginAssistantResponse => {
+                    let should_reanchor_persisted_subagent_status =
+                        should_reanchor_persisted_subagent_status_on_begin_assistant_response(
+                            self.messages.last(),
+                            self.persisted_standalone_pending_aux.as_ref(),
+                        );
                     self.messages
                         .push(ChatMessage::new(MessageRole::Agent, String::new()));
                     let idx = self.messages.len() - 1;
                     self.assistant_aux_by_message.remove(&idx);
                     self.pending_assistant_msg_index = Some(idx);
+                    self.last_completed_assistant_msg_index = None;
+                    if should_reanchor_persisted_subagent_status {
+                        let previous_anchor = self.persisted_standalone_pending_aux_anchor;
+                        self.persisted_standalone_pending_aux_anchor = Some(idx);
+                        if previous_anchor != Some(idx) {
+                            logging::log_event(&format!(
+                                "[tui-subagent-anchor] begin-response-reanchor prev_anchor={:?} next_anchor={:?} status={}",
+                                previous_anchor,
+                                Some(idx),
+                                self.persisted_standalone_pending_aux
+                                    .as_ref()
+                                    .map(|aux| aux.status_text.as_str())
+                                    .unwrap_or("<none>"),
+                            ));
+                        }
+                    }
                 }
                 RuntimeEvent::UpdatePendingAssistantThinking(thinking) => {
                     if let Some(idx) = self.pending_assistant_msg_index {
@@ -3263,6 +3763,7 @@ impl TuiShell {
                     }
                 }
                 RuntimeEvent::AssistantResponseCompleted => {
+                    self.last_completed_assistant_msg_index = self.pending_assistant_msg_index;
                     self.pending_assistant_msg_index = None;
                 }
                 RuntimeEvent::RemovePendingAssistant => {
@@ -3278,6 +3779,7 @@ impl TuiShell {
                                         .is_some_and(|value| !value.trim().is_empty())
                             });
                         if !has_persisted_aux && idx < self.messages.len() {
+                                self.adjust_persisted_standalone_pending_aux_anchor_for_removed_message(idx);
                             self.assistant_aux_by_message.remove(&idx);
                             self.messages.remove(idx);
                         }
@@ -3285,6 +3787,77 @@ impl TuiShell {
                 }
             }
         }
+
+        self.sync_persisted_standalone_pending_aux();
+        self.sync_subagent_approval_input_state();
+    }
+
+    fn sync_persisted_standalone_pending_aux(&mut self) {
+        let live_pending_aux = self.runtime.pending_aux_state();
+        let next_persisted_standalone_pending_aux = next_persisted_standalone_pending_aux(
+            self.runtime.is_busy(),
+            self.pending_assistant_msg_index,
+            live_pending_aux.clone(),
+            self.persisted_standalone_pending_aux.clone(),
+        );
+        let previous_anchor = self.persisted_standalone_pending_aux_anchor;
+        let next_anchor = next_persisted_standalone_pending_aux_anchor(
+            self.pending_assistant_msg_index
+                .or(self.last_completed_assistant_msg_index),
+            live_pending_aux.as_ref(),
+            next_persisted_standalone_pending_aux.as_ref(),
+            self.persisted_standalone_pending_aux_anchor,
+        );
+        if previous_anchor != next_anchor
+            && next_persisted_standalone_pending_aux
+                .as_ref()
+                .is_some_and(is_standalone_subagent_status_aux)
+        {
+            logging::log_event(&format!(
+                "[tui-subagent-anchor] pending_idx={:?} prev_anchor={:?} next_anchor={:?} live_status={} persisted_status={}",
+                self.pending_assistant_msg_index
+                    .or(self.last_completed_assistant_msg_index),
+                previous_anchor,
+                next_anchor,
+                live_pending_aux
+                    .as_ref()
+                    .map(|aux| aux.status_text.as_str())
+                    .unwrap_or("<none>"),
+                next_persisted_standalone_pending_aux
+                    .as_ref()
+                    .map(|aux| aux.status_text.as_str())
+                    .unwrap_or("<none>"),
+            ));
+        }
+        self.persisted_standalone_pending_aux_anchor = next_anchor;
+        self.persisted_standalone_pending_aux = next_persisted_standalone_pending_aux;
+    }
+
+    fn submit_runtime_user_turn(
+        &mut self,
+        user_turn: String,
+        explicit_images: Option<Vec<String>>,
+    ) {
+        self.runtime.submit_user_turn(user_turn, explicit_images);
+        self.apply_runtime_events();
+    }
+
+    fn adjust_persisted_standalone_pending_aux_anchor_for_removed_message(
+        &mut self,
+        removed_message_index: usize,
+    ) {
+        self.persisted_standalone_pending_aux_anchor = match self
+            .persisted_standalone_pending_aux_anchor
+        {
+            Some(anchor) if anchor == removed_message_index => None,
+            Some(anchor) if anchor > removed_message_index => Some(anchor - 1),
+            other => other,
+        };
+        self.last_completed_assistant_msg_index = match self.last_completed_assistant_msg_index {
+            Some(index) if index == removed_message_index => None,
+            Some(index) if index > removed_message_index => Some(index - 1),
+            other => other,
+        };
     }
 
     fn current_input_suggestion_kind(&self) -> Option<InputSuggestionKind> {
@@ -3316,14 +3889,7 @@ impl TuiShell {
     }
 
     fn cursor_byte_index(&self) -> usize {
-        if self.input_cursor == 0 {
-            return 0;
-        }
-        self.input
-            .char_indices()
-            .nth(self.input_cursor)
-            .map(|(idx, _)| idx)
-            .unwrap_or(self.input.len())
+        cursor_byte_index_for_text(&self.input, self.input_cursor)
     }
 
     fn set_input(&mut self, value: String) {
@@ -3491,10 +4057,97 @@ fn user_turn_text_for_mode(
     raw_message.to_string()
 }
 
+fn is_standalone_subagent_status_aux(pending_aux: &PendingAssistantAux) -> bool {
+    let status = pending_aux
+        .status_text
+        .trim()
+        .strip_prefix("| ")
+        .or_else(|| pending_aux.status_text.trim().strip_prefix("/ "))
+        .or_else(|| pending_aux.status_text.trim().strip_prefix("- "))
+        .or_else(|| pending_aux.status_text.trim().strip_prefix("\\ "))
+        .unwrap_or(pending_aux.status_text.trim())
+        .trim();
+
+    !status.is_empty() && status != "Thinking..." && status != "Compressing..."
+}
+
+fn next_persisted_standalone_pending_aux(
+    is_busy: bool,
+    pending_assistant_msg_index: Option<usize>,
+    live_pending_aux: Option<PendingAssistantAux>,
+    persisted_standalone_pending_aux: Option<PendingAssistantAux>,
+) -> Option<PendingAssistantAux> {
+    let live_is_subagent_status = live_pending_aux
+        .as_ref()
+        .is_some_and(is_standalone_subagent_status_aux);
+    let persisted_is_subagent_status = persisted_standalone_pending_aux
+        .as_ref()
+        .is_some_and(is_standalone_subagent_status_aux);
+
+    if is_busy {
+        if live_is_subagent_status {
+            return live_pending_aux;
+        }
+
+        if pending_assistant_msg_index.is_none() {
+            return live_pending_aux;
+        }
+
+        return if persisted_is_subagent_status {
+            persisted_standalone_pending_aux
+        } else {
+            None
+        };
+    }
+
+    if live_pending_aux.is_some() {
+        return live_pending_aux;
+    }
+
+    persisted_standalone_pending_aux
+}
+
+fn next_persisted_standalone_pending_aux_anchor(
+    anchor_source_msg_index: Option<usize>,
+    live_pending_aux: Option<&PendingAssistantAux>,
+    persisted_standalone_pending_aux: Option<&PendingAssistantAux>,
+    persisted_standalone_pending_aux_anchor: Option<usize>,
+) -> Option<usize> {
+    if live_pending_aux.is_some_and(is_standalone_subagent_status_aux) {
+        return anchor_source_msg_index.or(persisted_standalone_pending_aux_anchor);
+    }
+
+    if persisted_standalone_pending_aux.is_none() {
+        return None;
+    }
+
+    if !persisted_standalone_pending_aux.is_some_and(is_standalone_subagent_status_aux) {
+        return None;
+    }
+
+    persisted_standalone_pending_aux_anchor
+}
+
+fn should_reanchor_persisted_subagent_status_on_begin_assistant_response(
+    last_message: Option<&ChatMessage>,
+    persisted_standalone_pending_aux: Option<&PendingAssistantAux>,
+) -> bool {
+    last_message.is_some_and(|message| message.role == MessageRole::Agent)
+        && persisted_standalone_pending_aux.is_some_and(is_standalone_subagent_status_aux)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::user_turn_text_for_mode;
-    use crate::view::MainInputMode;
+    use super::{
+        is_standalone_subagent_status_aux, next_persisted_standalone_pending_aux,
+        next_persisted_standalone_pending_aux_anchor,
+        should_reanchor_persisted_subagent_status_on_begin_assistant_response,
+        user_turn_text_for_mode,
+    };
+    use crate::{
+        plan::START_IMPLEMENTING_REMINDER,
+        view::{AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux},
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -3517,6 +4170,126 @@ mod tests {
             user_turn_text_for_mode(&workspace_root, MainInputMode::Plan, raw_message);
 
         assert_eq!(runtime_turn, raw_message);
+    }
+
+    #[test]
+    fn standalone_subagent_status_aux_detection_ignores_generic_spinner_text() {
+        assert!(!is_standalone_subagent_status_aux(&PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| Thinking...".to_string(),
+            detail_text: Some("继续处理中".to_string()),
+        }));
+    }
+
+    #[test]
+    fn standalone_subagent_status_aux_detection_accepts_named_status_text() {
+        assert!(is_standalone_subagent_status_aux(&PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 成功".to_string(),
+            detail_text: None,
+        }));
+    }
+
+    #[test]
+    fn completed_subagent_status_survives_parent_completion_while_busy() {
+        let persisted = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 成功".to_string(),
+            detail_text: None,
+        };
+
+        let next = next_persisted_standalone_pending_aux(
+            true,
+            Some(7),
+            None,
+            Some(persisted.clone()),
+        );
+
+        assert_eq!(next.as_ref().map(|aux| aux.status_text.as_str()), Some(persisted.status_text.as_str()));
+    }
+
+    #[test]
+    fn live_subagent_status_captures_pending_assistant_anchor() {
+        let live = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 执行中".to_string(),
+            detail_text: None,
+        };
+
+        let next = next_persisted_standalone_pending_aux_anchor(Some(7), Some(&live), Some(&live), None);
+
+        assert_eq!(next, Some(7));
+    }
+
+    #[test]
+    fn live_subagent_status_captures_last_completed_assistant_anchor() {
+        let live = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 执行中".to_string(),
+            detail_text: None,
+        };
+
+        let next = next_persisted_standalone_pending_aux_anchor(Some(4), Some(&live), Some(&live), None);
+
+        assert_eq!(next, Some(4));
+    }
+
+    #[test]
+    fn begin_assistant_response_reanchors_persisted_subagent_status_after_agent_message() {
+        let persisted = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 成功".to_string(),
+            detail_text: None,
+        };
+
+        let should_reanchor = should_reanchor_persisted_subagent_status_on_begin_assistant_response(
+            Some(&ChatMessage::new(MessageRole::Agent, "上一段父回复")),
+            Some(&persisted),
+        );
+
+        assert!(should_reanchor);
+    }
+
+    #[test]
+    fn begin_assistant_response_does_not_reanchor_persisted_subagent_status_after_user_message() {
+        let persisted = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 成功".to_string(),
+            detail_text: None,
+        };
+
+        let should_reanchor = should_reanchor_persisted_subagent_status_on_begin_assistant_response(
+            Some(&ChatMessage::new(MessageRole::User, "新用户输入")),
+            Some(&persisted),
+        );
+
+        assert!(!should_reanchor);
+    }
+
+    #[test]
+    fn live_subagent_status_keeps_existing_anchor_after_parent_completion() {
+        let live = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 成功".to_string(),
+            detail_text: None,
+        };
+
+        let next = next_persisted_standalone_pending_aux_anchor(None, Some(&live), Some(&live), Some(5));
+
+        assert_eq!(next, Some(5));
+    }
+
+    #[test]
+    fn completed_subagent_status_keeps_existing_anchor() {
+        let persisted = PendingAssistantAux {
+            kind: AssistantAuxKind::Thinking,
+            status_text: "| 子代理任务: 成功".to_string(),
+            detail_text: None,
+        };
+
+        let next = next_persisted_standalone_pending_aux_anchor(None, None, Some(&persisted), Some(5));
+
+        assert_eq!(next, Some(5));
     }
 }
 
@@ -3547,6 +4320,21 @@ fn split_first_token(input: &str) -> Option<(&str, &str)> {
     }
 
     Some((trimmed, ""))
+}
+
+fn is_subagents_command(message: &str) -> bool {
+    message == "/subagents" || message.starts_with("/subagents ")
+}
+
+fn cursor_byte_index_for_text(text: &str, cursor_chars: usize) -> usize {
+    if cursor_chars == 0 {
+        return 0;
+    }
+
+    text.char_indices()
+        .nth(cursor_chars)
+        .map(|(idx, _)| idx)
+        .unwrap_or(text.len())
 }
 
 fn non_empty_opt(input: &str) -> Option<&str> {

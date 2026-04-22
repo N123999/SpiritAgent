@@ -19,10 +19,31 @@ export interface AssistantAuxArchiveEntry {
   compaction?: string;
 }
 
+export type SubagentSessionStatus = 'running' | 'completed' | 'failed' | 'blocked';
+
+export interface SubagentSessionSummary {
+  sessionId: string;
+  parentToolCallId: string;
+  title: string;
+  status: SubagentSessionStatus;
+  startedAtUnixMs: number;
+  updatedAtUnixMs: number;
+  completedAtUnixMs?: number;
+  latestMessage?: string;
+  finalOutput?: string;
+  error?: string;
+}
+
+export interface SubagentSessionArchiveEntry {
+  summary: SubagentSessionSummary;
+  llmHistory: Array<{ role: ChatRole; content: string; imagePaths: string[] }>;
+}
+
 export interface ChatArchive {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   assistantAux: AssistantAuxArchiveEntry[];
   llmHistory: Array<{ role: ChatRole; content: string; imagePaths: string[] }>;
+  subagentSessions?: SubagentSessionArchiveEntry[];
 }
 
 export type McpStatusState = 'idle' | 'loading' | 'ready' | 'error';
@@ -146,6 +167,14 @@ export type AskQuestionsResult =
   | { status: 'skipped' }
   | { status: 'answered'; answers: AskQuestionsAnswer[] };
 
+export interface RunSubagentRequest {
+  task: string;
+  successCriteria?: string;
+  contextSummary?: string;
+  filesToInspect?: string[];
+  expectedOutput?: string;
+}
+
 export type AuthorizationDecision<TrustTarget = string> =
   | { kind: 'allowed' }
   | { kind: 'need-approval'; prompt: string; trustTarget?: TrustTarget }
@@ -154,6 +183,8 @@ export type AuthorizationDecision<TrustTarget = string> =
 export interface ToolRequestExecutionMetadata {
   toolCallId?: string;
   toolName?: string;
+  subagentSessionId?: string;
+  subagentTitle?: string;
 }
 
 export interface ToolExecutor<

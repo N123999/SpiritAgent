@@ -2,12 +2,14 @@ import { setImmediate as waitForImmediate } from 'node:timers/promises';
 
 import type {
   AskQuestionsResult,
+  RunSubagentRequest,
   AuthorizationDecision,
   AssistantAuxArchiveEntry,
   ChatArchive,
   JsonValue,
   LlmMessage,
   LlmStreamEvent,
+  ToolRequestExecutionMetadata,
   ToolAgentRoundCompletion,
   ToolCallRequest,
 } from './ports.js';
@@ -104,6 +106,8 @@ import type {
   RuntimeManualToolCommandResult,
   RuntimeManualToolCommandStartResult,
   RuntimePendingApproval,
+  RuntimeSubagentSessionArchiveEntry,
+  RuntimeSubagentSessionSummary,
   RuntimePendingQuestions,
   RuntimeTurnContext,
   RuntimeTurnResult,
@@ -132,11 +136,39 @@ export type {
   RuntimeManualToolCommandResult,
   RuntimeManualToolCommandStartResult,
   RuntimePendingApproval,
+  RuntimeSubagentSessionArchiveEntry,
+  RuntimeSubagentSessionSummary,
   RuntimePendingQuestions,
   RuntimeStatePreparationResult,
   RuntimeToolExecution,
   RuntimeTurnResult,
 } from './runtime/types.js';
+
+interface PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
+  parentRequest: ToolRequest;
+  parentToolCallId: string;
+  parentPendingUserInput: string;
+  parentState: State;
+  parentRemainingCalls: ToolCallRequest[];
+  parentTurn: RuntimeTurnContext<ToolRequest>;
+  childRuntime: AgentRuntime<Config, State, ToolRequest, TrustTarget>;
+  childRecord: RuntimeSubagentSessionArchiveEntry;
+  resumeAsStreaming: boolean;
+  streamingEmitBeginResponse: boolean;
+}
+
+type RunSubagentToolExecutionResult<ToolRequest, TrustTarget> =
+  | { kind: 'not-handled' }
+  | { kind: 'started' }
+  | { kind: 'completed'; text: string; failed: boolean }
+  | {
+      kind: 'requires-approval';
+      approval: RuntimePendingApproval<ToolRequest, TrustTarget>;
+    }
+  | {
+      kind: 'requires-questions';
+      questions: RuntimePendingQuestions<ToolRequest>;
+    };
 
 export class AgentRuntime<
   Config,
@@ -166,6 +198,10 @@ export class AgentRuntime<
     | PendingBackgroundToolExecution<State, ToolRequest>
     | undefined;
   private pendingHistoryCompaction: PendingHistoryCompaction<State, ToolRequest> | undefined;
+  private childSessionsStore: RuntimeSubagentSessionArchiveEntry[];
+  private pendingSubagentExecution:
+    | PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+    | undefined;
   private completedTurnResultStore:
     | RuntimeTurnResult<State, ToolRequest, TrustTarget>
     | undefined;
@@ -179,10 +215,13 @@ export class AgentRuntime<
   private pendingLastEventAtStore: number | undefined;
   private streamChunkCounterStore: number;
   private thinkingSpinnerIndexStore: number;
+  private readonly runtimeDepthStore: number;
+  private childSessionCounterStore: number;
 
   constructor(
     options: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>,
     initialHistory: LlmMessage[] = [],
+    runtimeDepth = 0,
   ) {
     this.options = options;
     this.historyStore = cloneHistory(initialHistory);
@@ -193,8 +232,11 @@ export class AgentRuntime<
     this.pendingAssistantTextStore = '';
     this.thinkingTextStore = '';
     this.compactionTextStore = '';
+    this.childSessionsStore = [];
     this.streamChunkCounterStore = 0;
     this.thinkingSpinnerIndexStore = 0;
+    this.runtimeDepthStore = runtimeDepth;
+    this.childSessionCounterStore = 0;
   }
 
   history(): readonly LlmMessage[] {
@@ -203,6 +245,46 @@ export class AgentRuntime<
 
   requestTrace(): readonly JsonValue[] {
     return this.requestTraceStore;
+  }
+
+  childSessions(): readonly RuntimeSubagentSessionSummary[] {
+    return this.childSessionsStore.map((entry) => ({ ...entry.summary }));
+  }
+
+  childSessionArchives(): readonly RuntimeSubagentSessionArchiveEntry[] {
+    return this.childSessionsStore.map((entry) => ({
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...(message.imagePaths ?? [])],
+      })),
+    }));
+  }
+
+  childSessionArchive(sessionId: string): RuntimeSubagentSessionArchiveEntry | undefined {
+    const entry = this.childSessionsStore.find((candidate) => candidate.summary.sessionId === sessionId);
+    if (!entry) {
+      return undefined;
+    }
+
+    return {
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...(message.imagePaths ?? [])],
+      })),
+    };
+  }
+
+  childSessionPendingAuxState(sessionId: string): PendingAssistantAux | undefined {
+    const pending = this.pendingSubagentExecution;
+    if (!pending || pending.childRecord.summary.sessionId !== sessionId) {
+      return undefined;
+    }
+
+    return pending.childRuntime.pendingAuxState();
   }
 
   drainEvents(): RuntimeEvent<ToolRequest>[] {
@@ -272,6 +354,14 @@ export class AgentRuntime<
   }
 
   pendingAuxState(): PendingAssistantAux | undefined {
+    if (this.pendingSubagentExecution) {
+      const frame = ['|', '/', '-', '\\'][this.thinkingSpinnerIndexStore % 4] ?? '|';
+      return {
+        kind: 'thinking',
+        statusText: `${frame} ${this.currentSubagentStatusText()}`,
+      };
+    }
+
     const kind = this.currentAuxKind();
     if (!kind) {
       return undefined;
@@ -296,11 +386,18 @@ export class AgentRuntime<
   }
 
   hasPendingApproval(): boolean {
-    return this.pendingApproval !== undefined || this.pendingManualApproval !== undefined;
+    return (
+      this.pendingApproval !== undefined ||
+      this.pendingManualApproval !== undefined ||
+      this.pendingSubagentExecution?.childRuntime.hasPendingApproval() === true
+    );
   }
 
   hasPendingQuestions(): boolean {
-    return this.pendingQuestions !== undefined;
+    return (
+      this.pendingQuestions !== undefined ||
+      this.pendingSubagentExecution?.childRuntime.hasPendingQuestions() === true
+    );
   }
 
   currentPendingApproval(): RuntimePendingApproval<ToolRequest, TrustTarget> | undefined {
@@ -327,19 +424,78 @@ export class AgentRuntime<
       };
     }
 
+    if (this.pendingSubagentExecution) {
+      const approval = this.pendingSubagentExecution.childRuntime.currentPendingApproval();
+      if (approval) {
+        return {
+          ...approval,
+          subagentSessionId: this.pendingSubagentExecution.childRecord.summary.sessionId,
+          subagentTitle: this.pendingSubagentExecution.childRecord.summary.title,
+        };
+      }
+    }
+
     return undefined;
   }
 
   currentPendingQuestions(): RuntimePendingQuestions<ToolRequest> | undefined {
-    if (!this.pendingQuestions) {
-      return undefined;
+    if (this.pendingQuestions) {
+      return {
+        request: this.pendingQuestions.request,
+        toolCallId: this.pendingQuestions.toolCallId,
+        toolName: this.pendingQuestions.toolName,
+        questions: this.pendingQuestions.questions,
+      };
     }
 
+    if (this.pendingSubagentExecution) {
+      return this.pendingSubagentExecution.childRuntime.currentPendingQuestions();
+    }
+
+    return undefined;
+  }
+
+  private updateSubagentQuestionsBlockedState(
+    record: RuntimeSubagentSessionArchiveEntry,
+    questions: RuntimePendingQuestions<ToolRequest>,
+  ): void {
+    record.summary.status = 'blocked';
+    record.summary.updatedAtUnixMs = Date.now();
+    record.summary.latestMessage = `等待补充信息: ${questions.toolName}`;
+    delete record.summary.completedAtUnixMs;
+    delete record.summary.finalOutput;
+    delete record.summary.error;
+  }
+
+  private cachePendingSubagentExecution(
+    pending: PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>,
+  ): void {
+    this.pendingSubagentExecution = pending;
+  }
+
+  private buildPendingSubagentExecution(
+    parentRequest: ToolRequest,
+    parentToolCallId: string,
+    parentPendingUserInput: string,
+    parentState: State,
+    parentRemainingCalls: ToolCallRequest[],
+    parentTurn: RuntimeTurnContext<ToolRequest>,
+    childRuntime: AgentRuntime<Config, State, ToolRequest, TrustTarget>,
+    childRecord: RuntimeSubagentSessionArchiveEntry,
+    resumeAsStreaming: boolean,
+    streamingEmitBeginResponse: boolean,
+  ): PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
     return {
-      request: this.pendingQuestions.request,
-      toolCallId: this.pendingQuestions.toolCallId,
-      toolName: this.pendingQuestions.toolName,
-      questions: this.pendingQuestions.questions,
+      parentRequest,
+      parentToolCallId,
+      parentPendingUserInput,
+      parentState,
+      parentRemainingCalls,
+      parentTurn,
+      childRuntime,
+      childRecord,
+      resumeAsStreaming,
+      streamingEmitBeginResponse,
     };
   }
 
@@ -349,13 +505,17 @@ export class AgentRuntime<
       this.pendingToolAgentRound !== undefined ||
       this.pendingBackgroundToolExecution !== undefined ||
       this.pendingHistoryCompaction !== undefined ||
+      this.pendingSubagentExecution !== undefined ||
       this.pendingQuestions !== undefined ||
       this.hasPendingApproval()
     );
   }
 
   hasPendingManualApproval(): boolean {
-    return this.pendingManualApproval !== undefined;
+    return (
+      this.pendingManualApproval !== undefined ||
+      this.pendingSubagentExecution?.childRuntime.hasPendingManualApproval() === true
+    );
   }
 
   replaceHistory(history: LlmMessage[]): void {
@@ -368,6 +528,8 @@ export class AgentRuntime<
     this.pendingUserTurnStore = undefined;
     this.pendingApproval = undefined;
     this.pendingManualApproval = undefined;
+    this.pendingSubagentExecution = undefined;
+    this.childSessionsStore = [];
   }
 
   replaceFromArchive(archive: ChatArchive): void {
@@ -385,6 +547,15 @@ export class AgentRuntime<
     this.pendingUserTurnStore = undefined;
     this.pendingApproval = undefined;
     this.pendingManualApproval = undefined;
+    this.pendingSubagentExecution = undefined;
+    this.childSessionsStore = (archive.subagentSessions ?? []).map((entry) => ({
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...message.imagePaths],
+      })),
+    }));
   }
 
   toArchive(
@@ -398,6 +569,14 @@ export class AgentRuntime<
         role: message.role,
         content: message.content,
         imagePaths: [...(message.imagePaths ?? [])],
+      })),
+      subagentSessions: this.childSessionsStore.map((entry) => ({
+        summary: { ...entry.summary },
+        llmHistory: entry.llmHistory.map((message) => ({
+          role: message.role,
+          content: message.content,
+          imagePaths: [...message.imagePaths],
+        })),
       })),
     };
   }
@@ -542,6 +721,7 @@ export class AgentRuntime<
     await this.pollPendingToolAgentRound();
     await this.pollPendingHistoryCompaction();
     await this.pollPendingBackgroundToolExecution();
+    await this.pollPendingSubagentExecution();
   }
 
   handleStreamStallTimeout(
@@ -578,6 +758,10 @@ export class AgentRuntime<
   ): Promise<void> {
     const pending = this.pendingApproval;
     if (!pending) {
+      if (this.pendingSubagentExecution) {
+        await this.continuePendingSubagentApproval(decision);
+        return;
+      }
       throw new Error('当前没有待确认的工具调用。');
     }
 
@@ -745,11 +929,26 @@ export class AgentRuntime<
   async continuePendingQuestions(
     result: AskQuestionsResult,
   ): Promise<void> {
-    const pending = this.pendingQuestions;
-    if (!pending) {
-      throw new Error('当前没有待回答的问题表单。');
+    if (!this.pendingQuestions) {
+      const pendingSubagent = this.pendingSubagentExecution;
+      if (!pendingSubagent || !pendingSubagent.childRuntime.hasPendingQuestions()) {
+        throw new Error('当前没有待回答的问题表单。');
+      }
+
+      this.completedTurnResultStore = undefined;
+      await pendingSubagent.childRuntime.continuePendingQuestions(result);
+      this.refreshChildSessionRecord(pendingSubagent.childRecord, pendingSubagent.childRuntime);
+      const childQuestions = pendingSubagent.childRuntime.currentPendingQuestions();
+      if (childQuestions) {
+        this.updateSubagentQuestionsBlockedState(pendingSubagent.childRecord, childQuestions);
+        return;
+      }
+
+      await this.pollPendingSubagentExecution();
+      return;
     }
 
+    const pending = this.pendingQuestions;
     this.pendingQuestions = undefined;
     this.completedTurnResultStore = undefined;
 
@@ -879,6 +1078,174 @@ export class AgentRuntime<
       remainingCalls,
       turn,
     );
+  }
+
+  private async maybeExecuteInternalToolCall(
+    pendingUserInput: string,
+    state: State,
+    request: ToolRequest,
+    toolCallId: string,
+    _toolName: string,
+    remainingCalls: ToolCallRequest[],
+    turn: RuntimeTurnContext<ToolRequest>,
+  ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget> | undefined> {
+    const outcome = await this.tryExecuteRunSubagentTool(
+      request,
+      toolCallId,
+      pendingUserInput,
+      state,
+      remainingCalls,
+      turn,
+    );
+    if (outcome.kind === 'not-handled') {
+      return undefined;
+    }
+
+    if (outcome.kind === 'requires-approval') {
+      const approval = this.currentPendingApproval() ?? outcome.approval;
+      return {
+        kind: 'requires-approval',
+        approval,
+        requestTrace: [...turn.requestTrace],
+        toolExecutions: [...turn.toolExecutions],
+        compactions: [...turn.compactions],
+      };
+    }
+
+    if (outcome.kind === 'requires-questions') {
+      return {
+        kind: 'requires-questions',
+        questions: this.currentPendingQuestions() ?? outcome.questions,
+        requestTrace: [...turn.requestTrace],
+        toolExecutions: [...turn.toolExecutions],
+        compactions: [...turn.compactions],
+      };
+    }
+
+    if (outcome.kind === 'started') {
+      throw new Error('run_subagent 非流式路径不应返回后台启动状态。');
+    }
+
+    const parentToolResultText = buildParentSubagentToolResultTextFromRequest(
+      request,
+      outcome.text,
+      outcome.failed,
+    );
+
+    turn.toolExecutions.push({
+      toolCallId,
+      toolName: 'run_subagent',
+      request,
+      output: outcome.text,
+      failed: outcome.failed,
+    });
+
+    const resumedState = this.options.appendToolResultMessage(
+      state,
+      toolCallId,
+      parentToolResultText,
+    );
+    if (remainingCalls.length > 0) {
+      return this.processToolCalls(
+        resumedState,
+        pendingUserInput,
+        remainingCalls,
+        turn,
+      );
+    }
+
+    return this.runTurnLoop(resumedState, pendingUserInput, turn);
+  }
+
+  private async maybeContinueInternalToolCallAsync(
+    pendingUserInput: string,
+    state: State,
+    request: ToolRequest,
+    toolCallId: string,
+    _toolName: string,
+    remainingCalls: ToolCallRequest[],
+    turn: RuntimeTurnContext<ToolRequest>,
+    resumeAsStreaming = false,
+    streamingEmitBeginResponse = true,
+  ): Promise<boolean> {
+    const outcome = await this.tryExecuteRunSubagentTool(
+      request,
+      toolCallId,
+      pendingUserInput,
+      state,
+      remainingCalls,
+      turn,
+      resumeAsStreaming,
+      streamingEmitBeginResponse,
+    );
+    if (outcome.kind === 'not-handled') {
+      return false;
+    }
+
+    if (outcome.kind === 'requires-approval') {
+      const approval = this.currentPendingApproval() ?? outcome.approval;
+      this.emitEvent({
+        kind: 'approval-requested',
+        approval,
+      });
+      return true;
+    }
+
+    if (outcome.kind === 'requires-questions') {
+      this.emitEvent({
+        kind: 'questions-requested',
+        questions: this.currentPendingQuestions() ?? outcome.questions,
+      });
+      return true;
+    }
+
+    if (outcome.kind === 'started') {
+      return true;
+    }
+
+    const parentToolResultText = buildParentSubagentToolResultTextFromRequest(
+      request,
+      outcome.text,
+      outcome.failed,
+    );
+
+    turn.toolExecutions.push({
+      toolCallId,
+      toolName: 'run_subagent',
+      request,
+      output: outcome.text,
+      failed: outcome.failed,
+    });
+
+    const resumedState = this.options.appendToolResultMessage(
+      state,
+      toolCallId,
+      parentToolResultText,
+    );
+    if (remainingCalls.length > 0) {
+      await this.processToolCallsAsync(
+        resumedState,
+        pendingUserInput,
+        remainingCalls,
+        turn,
+        resumeAsStreaming,
+        streamingEmitBeginResponse,
+      );
+      return true;
+    }
+
+    if (resumeAsStreaming) {
+      await this.startStreamingRound(
+        resumedState,
+        pendingUserInput,
+        turn,
+        streamingEmitBeginResponse,
+      );
+      return true;
+    }
+
+    this.startToolAgentRoundAsync(resumedState, pendingUserInput, turn);
+    return true;
   }
 
   private appendTrace(trace: JsonValue[], turn: RuntimeTurnContext<ToolRequest>): void {
@@ -1023,6 +1390,12 @@ export class AgentRuntime<
   private completeTurn(result: RuntimeTurnResult<State, ToolRequest, TrustTarget>): void {
     this.completedTurnResultStore = result;
     this.emitSyncTurnResultEvents(result);
+  }
+
+  private storeCompletedTurnResult(
+    result: RuntimeTurnResult<State, ToolRequest, TrustTarget>,
+  ): void {
+    this.completedTurnResultStore = result;
   }
 
   private async waitForCompletedTurnResult(): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
@@ -1247,15 +1620,82 @@ export class AgentRuntime<
   }
 
   private currentAuxKind(): AssistantAuxKind | undefined {
+    if (this.pendingSubagentExecution) {
+      return 'thinking';
+    }
+
     return currentAuxKindInternal(
       this as unknown as StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
     );
   }
 
   private currentAuxText(): string | undefined {
+    if (this.pendingSubagentExecution) {
+      return undefined;
+    }
+
     return currentAuxTextInternal(
       this as unknown as StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
     );
+  }
+
+  private currentSubagentStatusText(): string {
+    const pending = this.pendingSubagentExecution;
+    if (!pending) {
+      return 'SubAgent: 运行中';
+    }
+
+    const title = pending.childRecord.summary.title.trim() || 'SubAgent';
+    const childApproval = pending.childRuntime.currentPendingApproval();
+    if (childApproval) {
+      return `${title}: 等待确认 ${childApproval.toolName}`;
+    }
+
+    const pendingAssistantProgress = normalizeSubagentStatusProgress(
+      pending.childRuntime.pendingAssistantText(),
+      title,
+    );
+    if (pendingAssistantProgress) {
+      return `${title}: ${truncateTextForSubagentSummary(pendingAssistantProgress, 120)}`;
+    }
+
+    const backgroundProgress = normalizeSubagentStatusProgress(
+      pending.childRuntime.backgroundToolStatus(),
+      title,
+    );
+    if (backgroundProgress) {
+      return `${title}: ${truncateTextForSubagentSummary(backgroundProgress, 120)}`;
+    }
+
+    const thinkingProgress = normalizeSubagentStatusProgress(
+      pending.childRuntime.thinkingText(),
+      title,
+    );
+    if (thinkingProgress) {
+      return `${title}: ${truncateTextForSubagentSummary(thinkingProgress, 120)}`;
+    }
+
+    if (!pending.childRuntime.isBusy()) {
+      const completedProgress = normalizeSubagentStatusProgress(
+        resolveSubagentResultText('', pending.childRecord, false),
+        title,
+      );
+      if (completedProgress) {
+        return `${title}: ${truncateTextForSubagentSummary(completedProgress, 120)}`;
+      }
+
+      return `${title}: 已完成`;
+    }
+
+    const progress = normalizeSubagentStatusProgress(
+      pending.childRecord.summary.latestMessage,
+      title,
+    );
+    if (!progress) {
+      return `${title}: 运行中`;
+    }
+
+    return `${title}: ${truncateTextForSubagentSummary(progress, 120)}`;
   }
 
   private clearStreamingUiState(): void {
@@ -1338,4 +1778,614 @@ export class AgentRuntime<
     this.pendingMcpResourcesStore = [];
     return resources;
   }
+
+  private async tryExecuteRunSubagentTool(
+    request: ToolRequest,
+    parentToolCallId: string,
+    parentPendingUserInput: string,
+    parentState: State,
+    parentRemainingCalls: ToolCallRequest[],
+    parentTurn: RuntimeTurnContext<ToolRequest>,
+    resumeAsStreaming = false,
+    streamingEmitBeginResponse = true,
+  ): Promise<RunSubagentToolExecutionResult<ToolRequest, TrustTarget>> {
+    const subagent = extractRunSubagentRequest(request);
+    if (!subagent) {
+      return { kind: 'not-handled' };
+    }
+
+    return this.executeRunSubagentTool(
+      subagent,
+      parentToolCallId,
+      request,
+      parentPendingUserInput,
+      parentState,
+      parentRemainingCalls,
+      parentTurn,
+      resumeAsStreaming,
+      streamingEmitBeginResponse,
+    );
+  }
+
+  private async executeRunSubagentTool(
+    request: RunSubagentRequest,
+    parentToolCallId: string,
+    parentRequest: ToolRequest,
+    parentPendingUserInput: string,
+    parentState: State,
+    parentRemainingCalls: ToolCallRequest[],
+    parentTurn: RuntimeTurnContext<ToolRequest>,
+    resumeAsStreaming = false,
+    streamingEmitBeginResponse = true,
+  ): Promise<RunSubagentToolExecutionResult<ToolRequest, TrustTarget>> {
+    if (this.runtimeDepthStore >= 1) {
+      return {
+        kind: 'completed',
+        text: '[subagent blocked] 当前版本仅支持主会话创建一层子会话，不支持继续嵌套。',
+        failed: true,
+      };
+    }
+
+    const sessionId = this.nextChildSessionId();
+    const startedAtUnixMs = Date.now();
+    const record: RuntimeSubagentSessionArchiveEntry = {
+      summary: {
+        sessionId,
+        parentToolCallId,
+        title: truncateTextForSubagentSummary(request.task.trim(), 72) || 'SubAgent',
+        status: 'running',
+        startedAtUnixMs,
+        updatedAtUnixMs: startedAtUnixMs,
+      },
+      llmHistory: [],
+    };
+    const childRuntime = this.createChildRuntime(
+      record.summary.sessionId,
+      record.summary.title,
+    );
+    this.childSessionsStore.push(record);
+
+    const childUserTurn = buildRunSubagentUserTurn(request);
+    record.llmHistory = [{
+      role: 'user',
+      content: childUserTurn,
+      imagePaths: [],
+    }];
+    record.summary.latestMessage = truncateTextForSubagentSummary(request.task.trim(), 180);
+
+    if (resumeAsStreaming) {
+      try {
+        await childRuntime.startUserTurnStreaming(childUserTurn);
+        this.pendingSubagentExecution = {
+          parentRequest,
+          parentToolCallId,
+          parentPendingUserInput,
+          parentState,
+          parentRemainingCalls,
+          parentTurn,
+          childRuntime,
+          childRecord: record,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        };
+        this.refreshChildSessionRecord(record, childRuntime);
+        record.summary.status = childRuntime.currentPendingApproval() ? 'blocked' : 'running';
+        return { kind: 'started' };
+      } catch (error) {
+        const failed = `[subagent failed] ${renderError(error)}`;
+        record.summary.status = 'failed';
+        record.summary.updatedAtUnixMs = Date.now();
+        record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+        record.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+        delete record.summary.finalOutput;
+        record.summary.error = failed;
+        return { kind: 'completed', text: failed, failed: true };
+      }
+    }
+
+    try {
+      const result = await childRuntime.submitUserTurn(childUserTurn);
+      this.refreshChildSessionRecord(record, childRuntime);
+
+      if (result.kind === 'completed') {
+        const finalOutput = resolveSubagentResultText(result.assistantText, record, false);
+        record.summary.status = 'completed';
+        record.summary.updatedAtUnixMs = Date.now();
+        record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+        record.summary.latestMessage = truncateTextForSubagentSummary(finalOutput, 180);
+        record.summary.finalOutput = finalOutput;
+        delete record.summary.error;
+        return { kind: 'completed', text: finalOutput, failed: false };
+      }
+
+      if (result.kind === 'requires-approval') {
+        record.summary.status = 'blocked';
+        record.summary.updatedAtUnixMs = Date.now();
+        record.summary.latestMessage = `等待前台确认: ${result.approval.toolName}`;
+        delete record.summary.completedAtUnixMs;
+        delete record.summary.finalOutput;
+        delete record.summary.error;
+        this.cachePendingSubagentExecution(this.buildPendingSubagentExecution(
+          parentRequest,
+          parentToolCallId,
+          parentPendingUserInput,
+          parentState,
+          parentRemainingCalls,
+          parentTurn,
+          childRuntime,
+          record,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        ));
+        return { kind: 'requires-approval', approval: result.approval };
+      }
+
+      if (result.kind === 'requires-questions') {
+        this.updateSubagentQuestionsBlockedState(record, result.questions);
+        this.cachePendingSubagentExecution(this.buildPendingSubagentExecution(
+          parentRequest,
+          parentToolCallId,
+          parentPendingUserInput,
+          parentState,
+          parentRemainingCalls,
+          parentTurn,
+          childRuntime,
+          record,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        ));
+        return {
+          kind: 'requires-questions',
+          questions: childRuntime.currentPendingQuestions() ?? result.questions,
+        };
+      }
+
+      const failed = `[subagent failed] ${result.error}`;
+      record.summary.status = 'failed';
+      record.summary.updatedAtUnixMs = Date.now();
+      record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+      record.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+      delete record.summary.finalOutput;
+      record.summary.error = failed;
+      return { kind: 'completed', text: failed, failed: true };
+    } catch (error) {
+      const failed = `[subagent failed] ${renderError(error)}`;
+      record.summary.status = 'failed';
+      record.summary.updatedAtUnixMs = Date.now();
+      record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+      record.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+      delete record.summary.finalOutput;
+      record.summary.error = failed;
+      return { kind: 'completed', text: failed, failed: true };
+    }
+  }
+
+  private refreshChildSessionRecord(
+    record: RuntimeSubagentSessionArchiveEntry,
+    childRuntime: AgentRuntime<Config, State, ToolRequest, TrustTarget>,
+  ): void {
+    record.llmHistory = childRuntime.history().map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [...(message.imagePaths ?? [])],
+    }));
+    const pendingAssistant = childRuntime.pendingAssistantText().trim();
+    if (pendingAssistant.length > 0) {
+      record.llmHistory.push({
+        role: 'assistant',
+        content: pendingAssistant,
+        imagePaths: [],
+      });
+    }
+    record.summary.updatedAtUnixMs = Date.now();
+
+    const latestMessage = pendingAssistant.length > 0
+      ? truncateTextForSubagentSummary(pendingAssistant, 180)
+      : childRuntime.thinkingText().trim().length > 0
+        ? truncateTextForSubagentSummary(childRuntime.thinkingText().trim(), 180)
+      : latestAssistantMessage(record.llmHistory);
+    if (latestMessage !== undefined) {
+      record.summary.latestMessage = latestMessage;
+    } else {
+      delete record.summary.latestMessage;
+    }
+  }
+
+  private async continuePendingSubagentApproval(
+    decision: RuntimeApprovalDecision,
+  ): Promise<void> {
+    const pending = this.pendingSubagentExecution;
+    if (!pending) {
+      throw new Error('当前没有待确认的工具调用。');
+    }
+
+    this.completedTurnResultStore = undefined;
+    await pending.childRuntime.continuePendingApproval(decision);
+    this.refreshChildSessionRecord(pending.childRecord, pending.childRuntime);
+    pending.childRecord.summary.status = pending.childRuntime.currentPendingApproval() ? 'blocked' : 'running';
+    if (pending.childRuntime.currentPendingApproval()) {
+      pending.childRecord.summary.latestMessage = `等待前台确认: ${pending.childRuntime.currentPendingApproval()?.toolName}`;
+      return;
+    }
+
+    await this.pollPendingSubagentExecution();
+  }
+
+  private async pollPendingSubagentExecution(): Promise<void> {
+    const pending = this.pendingSubagentExecution;
+    if (!pending) {
+      return;
+    }
+
+    await pending.childRuntime.poll();
+    pending.childRuntime.drainEvents();
+    this.refreshChildSessionRecord(pending.childRecord, pending.childRuntime);
+
+    const childApproval = pending.childRuntime.currentPendingApproval();
+    if (childApproval) {
+      pending.childRecord.summary.status = 'blocked';
+      pending.childRecord.summary.latestMessage = `等待前台确认: ${childApproval.toolName}`;
+      delete pending.childRecord.summary.completedAtUnixMs;
+      delete pending.childRecord.summary.finalOutput;
+      delete pending.childRecord.summary.error;
+      return;
+    }
+
+    const result = pending.childRuntime.takeCompletedTurnResult();
+    if (!result) {
+      if (pending.childRuntime.isBusy()) {
+        pending.childRecord.summary.status = 'running';
+      }
+      return;
+    }
+
+    if (result.kind === 'requires-approval') {
+      pending.childRecord.summary.status = 'blocked';
+      pending.childRecord.summary.latestMessage = `等待前台确认: ${result.approval.toolName}`;
+      return;
+    }
+
+    if (result.kind === 'requires-questions') {
+      this.updateSubagentQuestionsBlockedState(
+        pending.childRecord,
+        pending.childRuntime.currentPendingQuestions() ?? result.questions,
+      );
+      return;
+    }
+
+    this.pendingSubagentExecution = undefined;
+    const output = result.kind === 'completed'
+      ? { text: resolveSubagentResultText(result.assistantText, pending.childRecord, false), failed: false }
+      : {
+          text: resolveSubagentResultText(
+            `[subagent failed] ${result.error}`,
+            pending.childRecord,
+            true,
+          ),
+          failed: true,
+        };
+    const parentToolResultText = buildParentSubagentToolResultText(
+      pending.childRecord.summary.title,
+      output.text,
+      output.failed,
+      pending.childRecord.summary.sessionId,
+    );
+
+    pending.childRecord.summary.status = output.failed ? 'failed' : 'completed';
+    pending.childRecord.summary.updatedAtUnixMs = Date.now();
+    pending.childRecord.summary.completedAtUnixMs = pending.childRecord.summary.updatedAtUnixMs;
+    pending.childRecord.summary.latestMessage = truncateTextForSubagentSummary(output.text, 180);
+    if (output.failed) {
+      pending.childRecord.summary.error = output.text;
+      delete pending.childRecord.summary.finalOutput;
+    } else {
+      pending.childRecord.summary.finalOutput = output.text;
+      delete pending.childRecord.summary.error;
+    }
+
+    pending.parentTurn.toolExecutions.push({
+      toolCallId: pending.parentToolCallId,
+      toolName: 'run_subagent',
+      request: pending.parentRequest,
+      output: output.text,
+      failed: output.failed,
+    });
+
+    const resumedState = this.options.appendToolResultMessage(
+      pending.parentState,
+      pending.parentToolCallId,
+      parentToolResultText,
+    );
+
+    if (pending.parentRemainingCalls.length > 0) {
+      await this.processToolCallsAsync(
+        resumedState,
+        pending.parentPendingUserInput,
+        pending.parentRemainingCalls,
+        pending.parentTurn,
+        pending.resumeAsStreaming,
+        pending.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    if (pending.resumeAsStreaming) {
+      await this.startStreamingRound(
+        resumedState,
+        pending.parentPendingUserInput,
+        pending.parentTurn,
+        pending.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    this.startToolAgentRoundAsync(
+      resumedState,
+      pending.parentPendingUserInput,
+      pending.parentTurn,
+    );
+  }
+
+  private createChildRuntime(
+    subagentSessionId: string,
+    subagentTitle: string,
+  ): AgentRuntime<Config, State, ToolRequest, TrustTarget> {
+    return new AgentRuntime<Config, State, ToolRequest, TrustTarget>(
+      {
+        ...this.options,
+        toolExecutor: createSubagentToolExecutor(
+          this.options.toolExecutor,
+          subagentSessionId,
+          subagentTitle,
+        ),
+      },
+      [],
+      this.runtimeDepthStore + 1,
+    );
+  }
+
+  private nextChildSessionId(): string {
+    this.childSessionCounterStore += 1;
+    return `subagent-${Date.now()}-${this.childSessionCounterStore}`;
+  }
+}
+
+function extractRunSubagentRequest<ToolRequest>(request: ToolRequest): RunSubagentRequest | undefined {
+  if (!isJsonObject(request) || !('RunSubagent' in request)) {
+    return undefined;
+  }
+
+  const candidate = request.RunSubagent;
+  if (!isJsonObject(candidate)) {
+    return undefined;
+  }
+
+  const value = isJsonObject(candidate.request) ? candidate.request : candidate;
+  const task = readOptionalStringField(value, 'task');
+  if (task === undefined) {
+    return undefined;
+  }
+
+  const successCriteria = readOptionalStringField(value, 'success_criteria', 'successCriteria');
+  const contextSummary = readOptionalStringField(value, 'context_summary', 'contextSummary');
+  const filesToInspect = readOptionalStringArrayField(value, 'files_to_inspect', 'filesToInspect');
+  const expectedOutput = readOptionalStringField(value, 'expected_output', 'expectedOutput');
+
+  return {
+    task,
+    ...(successCriteria !== undefined ? { successCriteria } : {}),
+    ...(contextSummary !== undefined ? { contextSummary } : {}),
+    ...(filesToInspect !== undefined ? { filesToInspect } : {}),
+    ...(expectedOutput !== undefined ? { expectedOutput } : {}),
+  };
+}
+
+function buildRunSubagentUserTurn(request: RunSubagentRequest): string {
+  const sections = [request.task.trim()];
+  if (request.contextSummary?.trim()) {
+    sections.push(`Context summary:\n${request.contextSummary.trim()}`);
+  }
+  if (request.successCriteria?.trim()) {
+    sections.push(`Success criteria:\n${request.successCriteria.trim()}`);
+  }
+  if (request.filesToInspect && request.filesToInspect.length > 0) {
+    sections.push(`Suggested files to inspect:\n- ${request.filesToInspect.join('\n- ')}`);
+  }
+  if (request.expectedOutput?.trim()) {
+    sections.push(`Expected output:\n${request.expectedOutput.trim()}`);
+  }
+  sections.push(
+    'You are already inside the delegated child session. Execute the delegated task directly.',
+  );
+  sections.push(
+    'Do not discuss whether subagent sessions, delegation, or system permissions are available. Do not add policy or configuration commentary.',
+  );
+  sections.push('Return only the requested result.');
+  return sections.filter((section) => section.trim().length > 0).join('\n\n');
+}
+
+function buildParentSubagentToolResultText(
+  title: string,
+  outputText: string,
+  failed: boolean,
+  sessionId?: string,
+): string {
+  const normalizedTitle = title.trim() || 'SubAgent';
+  const normalizedOutput = outputText.trim();
+  const header = failed ? '[subagent failed]' : '[subagent completed]';
+  const sessionLine = sessionId?.trim() ? `sessionId=${sessionId}\n` : '';
+  if (!normalizedOutput) {
+    return `${header}\ntitle=${normalizedTitle}${sessionLine ? `\n${sessionLine.trimEnd()}` : ''}`;
+  }
+
+  const label = failed ? 'error:' : 'final_output:';
+  return `${header}\ntitle=${normalizedTitle}\n${sessionLine}${label}\n${truncateTextForParentSubagentResult(normalizedOutput, 6000)}`;
+}
+
+function buildParentSubagentToolResultTextFromRequest<ToolRequest>(
+  request: ToolRequest,
+  outputText: string,
+  failed: boolean,
+): string {
+  const subagent = extractRunSubagentRequest(request);
+  const title = truncateTextForSubagentSummary(subagent?.task?.trim() ?? '', 72) || 'SubAgent';
+  return buildParentSubagentToolResultText(title, outputText, failed);
+}
+
+function resolveSubagentResultText(
+  outputText: string,
+  record: RuntimeSubagentSessionArchiveEntry,
+  failed: boolean,
+): string {
+  const normalizedOutput = outputText.trim();
+  if (normalizedOutput.length > 0) {
+    return normalizedOutput;
+  }
+
+  if (failed) {
+    return record.summary.error?.trim() || record.summary.latestMessage?.trim() || normalizedOutput;
+  }
+
+  return record.summary.finalOutput?.trim()
+    || latestAssistantMessage(record.llmHistory)?.trim()
+    || record.summary.latestMessage?.trim()
+    || normalizedOutput;
+}
+
+function truncateTextForParentSubagentResult(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) {
+    return text;
+  }
+
+  return `${chars.slice(0, maxChars).join('')}\n\n...<subagent result truncated>`;
+}
+
+function singleLineStatusText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSubagentStatusProgress(text: string | undefined, title: string): string | undefined {
+  const normalized = singleLineStatusText(text ?? '');
+  if (!normalized || normalized === title || normalized === 'Thinking...' || normalized === 'Compressing...') {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function createSubagentToolExecutor<ToolRequest, TrustTarget>(
+  base: AgentRuntimeOptions<unknown, unknown, ToolRequest, TrustTarget>['toolExecutor'],
+  subagentSessionId: string,
+  subagentTitle: string,
+): AgentRuntimeOptions<unknown, unknown, ToolRequest, TrustTarget>['toolExecutor'] {
+  return {
+    toolDefinitionsJson: () => filterSubagentToolDefinitions(base.toolDefinitionsJson()),
+    parseCommand: (message) => base.parseCommand(message),
+    requestFromFunctionCall: (name, argumentsJson) => base.requestFromFunctionCall(name, argumentsJson),
+    authorize: (request) => base.authorize(request),
+    trust: (target) => base.trust(target),
+    execute: (request) => base.execute(request),
+    startMcpBackgroundRefresh: () => base.startMcpBackgroundRefresh(),
+    mcpStatusSnapshot: () => base.mcpStatusSnapshot(),
+    addMcpServer: (name, config) => base.addMcpServer(name, config),
+    listMcpServers: () => base.listMcpServers(),
+    inspectMcpServer: (name) => base.inspectMcpServer(name),
+    listMcpTools: (name) => base.listMcpTools(name),
+    listMcpResources: (name) => base.listMcpResources(name),
+    readMcpResource: (name, uri) => base.readMcpResource(name, uri),
+    listCachedMcpPrompts: (name) => base.listCachedMcpPrompts(name),
+    listMcpPrompts: (name) => base.listMcpPrompts(name),
+    getMcpPrompt: (name, prompt, argsJson) => base.getMcpPrompt(name, prompt, argsJson),
+    ...(base.attachRequestMetadata
+      ? {
+          attachRequestMetadata: (request: ToolRequest, metadata: ToolRequestExecutionMetadata) =>
+            base.attachRequestMetadata!(request, {
+              ...metadata,
+              subagentSessionId,
+              subagentTitle,
+            }),
+        }
+      : {}),
+    ...(base.shouldExecuteInBackground
+      ? {
+          shouldExecuteInBackground: (request: ToolRequest) => base.shouldExecuteInBackground!(request),
+        }
+      : {}),
+    ...(base.backgroundStatusText
+      ? {
+          backgroundStatusText: (request: ToolRequest) => base.backgroundStatusText!(request),
+        }
+      : {}),
+  };
+}
+
+function filterSubagentToolDefinitions(value: JsonValue): JsonValue {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.filter((entry) => {
+    if (!isJsonObject(entry)) {
+      return true;
+    }
+
+    const fn = entry.function;
+    return !isJsonObject(fn) || fn.name !== 'run_subagent';
+  });
+}
+
+function latestAssistantMessage(history: LlmMessage[]): string | undefined {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message?.role === 'assistant' && message.content.trim().length > 0) {
+      return truncateTextForSubagentSummary(message.content.trim(), 180);
+    }
+  }
+
+  return undefined;
+}
+
+function truncateTextForSubagentSummary(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) {
+    return text;
+  }
+  return `${chars.slice(0, maxChars).join('')}...`;
+}
+
+function readOptionalStringField(
+  value: Record<string, JsonValue>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function readOptionalStringArrayField(
+  value: Record<string, JsonValue>,
+  ...keys: string[]
+): string[] | undefined {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+
+    return candidate.filter(
+      (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+    );
+  }
+
+  return undefined;
+}
+
+function isJsonObject(value: unknown): value is Record<string, JsonValue> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

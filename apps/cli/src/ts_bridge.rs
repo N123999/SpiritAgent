@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     env,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
@@ -27,13 +27,16 @@ use crate::{
     },
     model_registry::AppConfig,
     plan::PlanMetadata,
-    ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore, ToolExecutor},
+    ports::{
+        ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot,
+        SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary, ToolExecutor,
+    },
     rules::EnabledRule,
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
-    view::{ChatMessage, MessageRole, PendingAssistantAux},
+    view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 const ENV_RUNTIME_BACKEND_NODE_PATH: &str = "SPIRIT_NODE_PATH";
@@ -55,9 +58,12 @@ pub struct TsBridgeRuntime {
     plan_metadata: PlanMetadata,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
+    current_pending_approval: Option<BridgePendingApproval>,
     pending_questions_active: bool,
     pending_assistant_has_output: bool,
     is_busy_cache: bool,
+    child_sessions_cache: Vec<SubagentSessionSummary>,
+    subagent_message_cache: HashMap<String, Vec<ChatMessage>>,
     events: VecDeque<RuntimeEvent>,
     background_tool_completion_tx: Sender<BackgroundToolCompletion>,
     background_tool_completion_rx: Receiver<BackgroundToolCompletion>,
@@ -85,6 +91,8 @@ struct HostToolRequestMeta {
     background_status_text: Option<String>,
     tool_call_id: Option<String>,
     tool_name: Option<String>,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -112,6 +120,8 @@ struct LocalMcpToolResultEvent {
     output: String,
     tool_call_id: Option<String>,
     tool_name: String,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -121,6 +131,8 @@ struct LocalMcpToolFailedEvent {
     error: String,
     tool_call_id: Option<String>,
     tool_name: String,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -134,6 +146,8 @@ struct BridgeRuntimeSnapshot {
     has_pending_manual_approval: bool,
     has_pending_questions: bool,
     current_pending_approval: Option<BridgePendingApproval>,
+    #[serde(default)]
+    child_sessions: Vec<BridgeSubagentSessionSummary>,
     current_pending_questions: Option<BridgePendingQuestions>,
     is_busy: bool,
     background_tool_status: Option<String>,
@@ -152,6 +166,31 @@ struct BridgeExportState {
 struct BridgeChatArchive {
     messages: Vec<BridgeChatMessage>,
     assistant_aux: Vec<BridgeAssistantAuxEntry>,
+    llm_history: Vec<BridgeLlmMessage>,
+    #[serde(default)]
+    subagent_sessions: Vec<BridgeSubagentSessionArchiveEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeSubagentSessionSummary {
+    session_id: String,
+    parent_tool_call_id: String,
+    title: String,
+    status: crate::ports::SubagentSessionStatus,
+    started_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+    completed_at_unix_ms: Option<u64>,
+    latest_message: Option<String>,
+    final_output: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeSubagentSessionArchiveEntry {
+    summary: BridgeSubagentSessionSummary,
+    #[serde(default)]
     llm_history: Vec<BridgeLlmMessage>,
 }
 
@@ -186,6 +225,8 @@ struct BridgePendingApproval {
     trust_target: Option<Value>,
     tool_call_id: Option<String>,
     tool_name: String,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -249,6 +290,7 @@ struct BackgroundToolCompletion {
     request: ToolRequest,
     ui_tool_name: String,
     tool_call_id: Option<String>,
+    subagent_session_id: Option<String>,
     result: std::result::Result<String, String>,
 }
 
@@ -282,9 +324,12 @@ impl TsBridgeRuntime {
             plan_metadata,
             pending_aux_state: None,
             pending_approval_kind: None,
+            current_pending_approval: None,
             pending_questions_active: false,
             pending_assistant_has_output: false,
             is_busy_cache: false,
+            child_sessions_cache: Vec::new(),
+            subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
             background_tool_completion_tx,
             background_tool_completion_rx,
@@ -322,9 +367,12 @@ impl TsBridgeRuntime {
             },
             pending_aux_state: None,
             pending_approval_kind: None,
+            current_pending_approval: None,
             pending_questions_active: false,
             pending_assistant_has_output: false,
             is_busy_cache: false,
+            child_sessions_cache: Vec::new(),
+            subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
             background_tool_completion_tx,
             background_tool_completion_rx,
@@ -554,6 +602,33 @@ impl TsBridgeRuntime {
                 .into_iter()
                 .map(|message| (message.role, message.content, message.image_paths))
                 .collect(),
+            subagent_sessions: bridge_archive
+                .subagent_sessions
+                .into_iter()
+                .map(|entry| SubagentSessionArchiveEntry {
+                    summary: SubagentSessionSummary {
+                        session_id: entry.summary.session_id,
+                        parent_tool_call_id: entry.summary.parent_tool_call_id,
+                        title: entry.summary.title,
+                        status: entry.summary.status,
+                        started_at_unix_ms: entry.summary.started_at_unix_ms,
+                        updated_at_unix_ms: entry.summary.updated_at_unix_ms,
+                        completed_at_unix_ms: entry.summary.completed_at_unix_ms,
+                        latest_message: entry.summary.latest_message,
+                        final_output: entry.summary.final_output,
+                        error: entry.summary.error,
+                    },
+                    llm_history: entry
+                        .llm_history
+                        .into_iter()
+                        .map(|message| ArchivedLlmMessage {
+                            role: message.role,
+                            content: message.content,
+                            image_paths: message.image_paths,
+                        })
+                        .collect(),
+                })
+                .collect(),
         })
     }
 
@@ -568,6 +643,90 @@ impl TsBridgeRuntime {
                 McpStatusSnapshot::default()
             }
         }
+    }
+
+    pub fn subagent_sessions(&self) -> &[SubagentSessionSummary] {
+        &self.child_sessions_cache
+    }
+
+    pub fn subagent_session_archive(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<SubagentSessionArchiveEntry>> {
+        let value = self.call_bridge(
+            "runtime.subagentSessionArchive",
+            Some(json!({
+                "sessionId": session_id,
+            })),
+        )?;
+
+        if value.is_null() {
+            return Ok(None);
+        }
+
+        let archive: BridgeSubagentSessionArchiveEntry = serde_json::from_value(value)?;
+        Ok(Some(SubagentSessionArchiveEntry {
+            summary: SubagentSessionSummary {
+                session_id: archive.summary.session_id,
+                parent_tool_call_id: archive.summary.parent_tool_call_id,
+                title: archive.summary.title,
+                status: archive.summary.status,
+                started_at_unix_ms: archive.summary.started_at_unix_ms,
+                updated_at_unix_ms: archive.summary.updated_at_unix_ms,
+                completed_at_unix_ms: archive.summary.completed_at_unix_ms,
+                latest_message: archive.summary.latest_message,
+                final_output: archive.summary.final_output,
+                error: archive.summary.error,
+            },
+            llm_history: archive
+                .llm_history
+                .into_iter()
+                .map(|message| ArchivedLlmMessage {
+                    role: message.role,
+                    content: message.content,
+                    image_paths: message.image_paths,
+                })
+                .collect(),
+        }))
+    }
+
+    pub fn subagent_pending_aux_state(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<PendingAssistantAux>> {
+        let value = self.call_bridge(
+            "runtime.subagentPendingAuxState",
+            Some(json!({
+                "sessionId": session_id,
+            })),
+        )?;
+
+        if value.is_null() {
+            return Ok(None);
+        }
+
+        Ok(Some(serde_json::from_value(value)?))
+    }
+
+    pub fn subagent_live_messages(&self, session_id: &str) -> Vec<ChatMessage> {
+        self.subagent_message_cache
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
+        let approval = self.current_pending_approval.as_ref()?;
+        let session_id = approval.subagent_session_id.clone()?;
+        Some(PendingSubagentApprovalView {
+            session_id,
+            session_title: approval
+                .subagent_title
+                .clone()
+                .unwrap_or_else(|| "SubAgent".to_string()),
+            tool_name: approval.tool_name.clone(),
+            prompt: approval.prompt.clone(),
+        })
     }
 
     pub fn has_pending_tool_approval(&self) -> bool {
@@ -882,6 +1041,7 @@ impl TsBridgeRuntime {
         if self.bridge_failed {
             return;
         }
+        self.subagent_message_cache.clear();
         if let Err(err) = self.call_bridge(
             "runtime.replaceFromArchive",
             Some(chat_archive_to_bridge_json(archive)),
@@ -1106,6 +1266,8 @@ impl TsBridgeRuntime {
             request,
             ui_tool_name,
             meta.tool_call_id,
+            meta.subagent_session_id,
+            meta.subagent_title,
             self.background_tool_completion_tx.clone(),
             Some(BackgroundRpcResponseTarget {
                 request_id,
@@ -1126,28 +1288,47 @@ impl TsBridgeRuntime {
     fn apply_background_tool_completion(&mut self, completion: BackgroundToolCompletion) {
         match completion.result {
             Ok(output) => {
-                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                    MessageRole::Agent,
-                    format_tool_ui_message(&completion.request, &completion.ui_tool_name, &output),
-                    build_tool_result_block(
+                if let Some(session_id) = completion.subagent_session_id.as_deref() {
+                    self.push_subagent_tool_result(
+                        session_id,
                         &completion.request,
                         &completion.ui_tool_name,
                         completion.tool_call_id.as_deref(),
                         &output,
-                    ),
-                )));
+                    );
+                } else {
+                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                        MessageRole::Agent,
+                        format_tool_ui_message(&completion.request, &completion.ui_tool_name, &output),
+                        build_tool_result_block(
+                            &completion.request,
+                            &completion.ui_tool_name,
+                            completion.tool_call_id.as_deref(),
+                            &output,
+                        ),
+                    )));
+                }
             }
             Err(err) => {
-                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                    MessageRole::Agent,
-                    format!("工具执行失败: {}", err),
-                    tool_failed_block(
+                if let Some(session_id) = completion.subagent_session_id.as_deref() {
+                    self.push_subagent_tool_failure(
+                        session_id,
                         &completion.ui_tool_name,
                         completion.tool_call_id.as_deref(),
-                        "工具执行失败",
                         &err,
-                    ),
-                )));
+                    );
+                } else {
+                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                        MessageRole::Agent,
+                        format!("工具执行失败: {}", err),
+                        tool_failed_block(
+                            &completion.ui_tool_name,
+                            completion.tool_call_id.as_deref(),
+                            "工具执行失败",
+                            &err,
+                        ),
+                    )));
+                }
             }
         }
     }
@@ -1194,42 +1375,70 @@ impl TsBridgeRuntime {
             }
             "host.execute" => {
                 let (request, meta) = request_with_meta_from_envelope(params)?;
+                let ui_tool_name = meta
+                    .as_ref()
+                    .and_then(|value| value.tool_name.clone())
+                    .unwrap_or_else(|| openapi_tool_name(&request).to_string());
                 let tool_call_id = meta.as_ref().and_then(|value| value.tool_call_id.as_deref());
+                let subagent_session_id = meta
+                    .as_ref()
+                    .and_then(|value| value.subagent_session_id.as_deref());
                 match self.tool_executor.execute(&request) {
                     Ok(output) => {
-                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                            MessageRole::Agent,
-                            format_tool_ui_message(&request, openapi_tool_name(&request), &output),
-                            build_tool_result_block(
+                        if let Some(session_id) = subagent_session_id {
+                            self.push_subagent_tool_result(
+                                session_id,
                                 &request,
-                                openapi_tool_name(&request),
+                                &ui_tool_name,
                                 tool_call_id,
                                 &output,
-                            ),
-                        )));
+                            );
+                        } else {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                format_tool_ui_message(&request, &ui_tool_name, &output),
+                                build_tool_result_block(
+                                    &request,
+                                    &ui_tool_name,
+                                    tool_call_id,
+                                    &output,
+                                ),
+                            )));
+                        }
                         logging::log_event(&format!(
-                            "[ts-bridge-host] host.execute success tool={} tool_call_id={} output_chars={}",
-                            openapi_tool_name(&request),
+                            "[ts-bridge-host] host.execute success tool={} tool_call_id={} subagent_session_id={} output_chars={}",
+                            ui_tool_name,
                             tool_call_id.unwrap_or("<none>"),
+                            subagent_session_id.unwrap_or("<none>"),
                             output.chars().count()
                         ));
                         Ok(Some(Value::String(output)))
                     }
                     Err(err) => {
-                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                            MessageRole::Agent,
-                            format!("工具执行失败: {}", err),
-                            tool_failed_block(
-                                openapi_tool_name(&request),
+                        if let Some(session_id) = subagent_session_id {
+                            self.push_subagent_tool_failure(
+                                session_id,
+                                &ui_tool_name,
                                 tool_call_id,
-                                "工具执行失败",
                                 &err.to_string(),
-                            ),
-                        )));
+                            );
+                        } else {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                format!("工具执行失败: {}", err),
+                                tool_failed_block(
+                                    &ui_tool_name,
+                                    tool_call_id,
+                                    "工具执行失败",
+                                    &err.to_string(),
+                                ),
+                            )));
+                        }
                         logging::log_event(&format!(
-                            "[ts-bridge-host] host.execute failed tool={} tool_call_id={} error={}",
-                            openapi_tool_name(&request),
+                            "[ts-bridge-host] host.execute failed tool={} tool_call_id={} subagent_session_id={} error={}",
+                            ui_tool_name,
                             tool_call_id.unwrap_or("<none>"),
+                            subagent_session_id.unwrap_or("<none>"),
                             err
                         ));
                         Err(err)
@@ -1305,6 +1514,7 @@ impl TsBridgeRuntime {
         }
 
         self.pending_aux_state = snapshot.pending_aux_state;
+        self.current_pending_approval = snapshot.current_pending_approval;
         self.pending_approval_kind = if snapshot.has_pending_approval {
             Some(if snapshot.has_pending_manual_approval {
                 PendingApprovalKind::Manual
@@ -1314,6 +1524,27 @@ impl TsBridgeRuntime {
         } else {
             None
         };
+        self.child_sessions_cache = snapshot
+            .child_sessions
+            .into_iter()
+            .map(|summary| SubagentSessionSummary {
+                session_id: summary.session_id,
+                parent_tool_call_id: summary.parent_tool_call_id,
+                title: summary.title,
+                status: summary.status,
+                started_at_unix_ms: summary.started_at_unix_ms,
+                updated_at_unix_ms: summary.updated_at_unix_ms,
+                completed_at_unix_ms: summary.completed_at_unix_ms,
+                latest_message: summary.latest_message,
+                final_output: summary.final_output,
+                error: summary.error,
+            })
+            .collect();
+        self.subagent_message_cache.retain(|session_id, _| {
+            self.child_sessions_cache
+                .iter()
+                .any(|summary| summary.session_id == *session_id)
+        });
         self.pending_questions_active = snapshot.has_pending_questions;
         self.is_busy_cache = snapshot.is_busy;
     }
@@ -1356,15 +1587,39 @@ impl TsBridgeRuntime {
                     self.events.push_back(RuntimeEvent::RemovePendingAssistant);
                 }
                 BridgeRuntimeEvent::ApprovalRequested { approval } => {
-                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                        MessageRole::Agent,
-                        approval.prompt.clone(),
-                        tool_approval_block(
-                            &approval.tool_name,
-                            approval.tool_call_id.as_deref(),
-                            &approval.prompt,
-                        ),
-                    )));
+                    if let Some(session_id) = approval.subagent_session_id.as_deref() {
+                        match serde_json::from_value::<ToolRequest>(approval.request.clone()) {
+                            Ok(_) => self.push_subagent_live_message(
+                                session_id,
+                                ChatMessage::with_tool_block(
+                                    MessageRole::Agent,
+                                    approval.prompt.clone(),
+                                    tool_approval_block(
+                                        &approval.tool_name,
+                                        approval.tool_call_id.as_deref(),
+                                        &approval.prompt,
+                                    ),
+                                ),
+                            ),
+                            Err(err) => self.push_subagent_live_message(
+                                session_id,
+                                ChatMessage::new(
+                                    MessageRole::Agent,
+                                    format!("待确认工具调用（解析失败）: {}\n{}", err, approval.prompt),
+                                ),
+                            ),
+                        }
+                    } else {
+                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                            MessageRole::Agent,
+                            approval.prompt.clone(),
+                            tool_approval_block(
+                                &approval.tool_name,
+                                approval.tool_call_id.as_deref(),
+                                &approval.prompt,
+                            ),
+                        )));
+                    }
                 }
                 BridgeRuntimeEvent::QuestionsRequested { questions } => {
                     self.events.push_back(RuntimeEvent::OpenAskQuestions {
@@ -1393,6 +1648,17 @@ impl TsBridgeRuntime {
 
     fn push_local_mcp_tool_result(&mut self, event: LocalMcpToolResultEvent) {
         let request = tool_request_from_local_mcp(&event.request);
+        if let Some(session_id) = event.subagent_session_id.as_deref() {
+            self.push_subagent_tool_result(
+                session_id,
+                &request,
+                &event.tool_name,
+                event.tool_call_id.as_deref(),
+                &event.output,
+            );
+            return;
+        }
+
         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
             MessageRole::Agent,
             format_tool_ui_message(&request, &event.tool_name, &event.output),
@@ -1406,6 +1672,16 @@ impl TsBridgeRuntime {
     }
 
     fn push_local_mcp_tool_failure(&mut self, event: LocalMcpToolFailedEvent) {
+        if let Some(session_id) = event.subagent_session_id.as_deref() {
+            self.push_subagent_tool_failure(
+                session_id,
+                &event.tool_name,
+                event.tool_call_id.as_deref(),
+                &event.error,
+            );
+            return;
+        }
+
         self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
             MessageRole::Agent,
             format!("工具执行失败: {}", event.error),
@@ -1416,6 +1692,48 @@ impl TsBridgeRuntime {
                 &event.error,
             ),
         )));
+    }
+
+    fn push_subagent_live_message(&mut self, session_id: &str, message: ChatMessage) {
+        self.subagent_message_cache
+            .entry(session_id.to_string())
+            .or_default()
+            .push(message);
+    }
+
+    fn push_subagent_tool_result(
+        &mut self,
+        session_id: &str,
+        request: &ToolRequest,
+        tool_name: &str,
+        tool_call_id: Option<&str>,
+        output: &str,
+    ) {
+        self.push_subagent_live_message(
+            session_id,
+            ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                format_tool_ui_message(request, tool_name, output),
+                build_tool_result_block(request, tool_name, tool_call_id, output),
+            ),
+        );
+    }
+
+    fn push_subagent_tool_failure(
+        &mut self,
+        session_id: &str,
+        tool_name: &str,
+        tool_call_id: Option<&str>,
+        error: &str,
+    ) {
+        self.push_subagent_live_message(
+            session_id,
+            ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                format!("工具执行失败: {}", error),
+                tool_failed_block(tool_name, tool_call_id, "工具执行失败", error),
+            ),
+        );
     }
 
     fn handle_bridge_error(&mut self, err: anyhow::Error) {
@@ -1669,6 +1987,8 @@ fn start_background_tool_worker(
     request: ToolRequest,
     ui_tool_name: String,
     tool_call_id: Option<String>,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
     completion_tx: Sender<BackgroundToolCompletion>,
     response_target: Option<BackgroundRpcResponseTarget>,
 ) {
@@ -1689,15 +2009,17 @@ fn start_background_tool_worker(
 
         match &result {
             Ok(output) => logging::log_event(&format!(
-                "[ts-bridge-host] background tool success tool={} tool_call_id={} output_chars={}",
+                "[ts-bridge-host] background tool success tool={} tool_call_id={} subagent_title={} output_chars={}",
                 ui_tool_name,
                 tool_call_id.as_deref().unwrap_or("<none>"),
+                subagent_title.as_deref().unwrap_or("<none>"),
                 output.chars().count()
             )),
             Err(err) => logging::log_event(&format!(
-                "[ts-bridge-host] background tool failed tool={} tool_call_id={} error={}",
+                "[ts-bridge-host] background tool failed tool={} tool_call_id={} subagent_title={} error={}",
                 ui_tool_name,
                 tool_call_id.as_deref().unwrap_or("<none>"),
+                subagent_title.as_deref().unwrap_or("<none>"),
                 err
             )),
         }
@@ -1706,6 +2028,7 @@ fn start_background_tool_worker(
             request,
             ui_tool_name,
             tool_call_id,
+            subagent_session_id,
             result,
         });
     });
@@ -1755,6 +2078,8 @@ fn envelope_for_request(request: ToolRequest) -> HostToolRequestEnvelope {
             background_status_text: background_tool_status_text(&request),
             tool_call_id: None,
             tool_name: None,
+            subagent_session_id: None,
+            subagent_title: None,
         },
         request,
     }
@@ -1964,6 +2289,7 @@ mod tests {
             has_pending_questions: false,
             current_pending_approval: None,
             current_pending_questions: None,
+            child_sessions: vec![],
             is_busy: true,
             background_tool_status: None,
         }
@@ -2130,6 +2456,29 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
                 "role": role,
                 "content": content,
                 "imagePaths": image_paths,
+            })
+        }).collect::<Vec<_>>(),
+        "subagentSessions": archive.subagent_sessions.iter().map(|entry| {
+            json!({
+                "summary": {
+                    "sessionId": entry.summary.session_id,
+                    "parentToolCallId": entry.summary.parent_tool_call_id,
+                    "title": entry.summary.title,
+                    "status": entry.summary.status,
+                    "startedAtUnixMs": entry.summary.started_at_unix_ms,
+                    "updatedAtUnixMs": entry.summary.updated_at_unix_ms,
+                    "completedAtUnixMs": entry.summary.completed_at_unix_ms,
+                    "latestMessage": entry.summary.latest_message,
+                    "finalOutput": entry.summary.final_output,
+                    "error": entry.summary.error,
+                },
+                "llmHistory": entry.llm_history.iter().map(|message| {
+                    json!({
+                        "role": message.role,
+                        "content": message.content,
+                        "imagePaths": message.image_paths,
+                    })
+                }).collect::<Vec<_>>(),
             })
         }).collect::<Vec<_>>(),
     })

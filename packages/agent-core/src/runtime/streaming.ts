@@ -10,6 +10,7 @@ import type {
   PendingStreamingRound,
   PendingToolAgentRound,
   RuntimeEvent,
+  RuntimeTurnResult,
   RuntimeTurnContext,
 } from './types.js';
 
@@ -37,6 +38,7 @@ export interface StreamingRuntime<
   streamChunkCounterStore: number;
   emitEvent(event: RuntimeEvent<ToolRequest>): void;
   appendTrace(trace: unknown[], turn: RuntimeTurnContext<ToolRequest>): void;
+  storeCompletedTurnResult(result: RuntimeTurnResult<State, ToolRequest, TrustTarget>): void;
   tryFallbackToTextOnlyAndBuildRetryState(error: string, pendingUserInput: string): State | undefined;
   startHistoryCompactionAsync(
     retryState: State,
@@ -400,6 +402,36 @@ export async function handlePendingStreamEvent<
     }
 
     clearStreamingUiState(runtime);
+
+    if (pending.completionHandled && pending.completion?.kind === 'success') {
+      const round = pending.completion.result;
+      if (round.step.kind === 'tool-calls') {
+        clearPendingStreamingState(runtime);
+        await runtime.processToolCallsAsync(
+          round.state,
+          pending.pendingUserInput,
+          round.step.calls,
+          pending.turn,
+          true,
+          true,
+        );
+        return true;
+      }
+
+      const assistantText = runtime.options.extractAssistantText(round.state)?.trim();
+      if (assistantText) {
+        runtime.storeCompletedTurnResult({
+          kind: 'completed',
+          assistantText,
+          state: round.state,
+          requestTrace: [...pending.turn.requestTrace],
+          toolExecutions: [...pending.turn.toolExecutions],
+          compactions: [...pending.turn.compactions],
+        });
+      }
+      clearPendingStreamingState(runtime);
+    }
+
     return true;
   }
 
@@ -529,6 +561,13 @@ export async function handlePendingStreamingCompletion<
     }
     runtime.pendingUserTurnStore = undefined;
     clearPendingStreamingState(runtime);
+    runtime.storeCompletedTurnResult({
+      kind: 'failed',
+      error: completion.error,
+      requestTrace: [...pending.turn.requestTrace],
+      toolExecutions: [...pending.turn.toolExecutions],
+      compactions: [...pending.turn.compactions],
+    });
     runtime.emitEvent({ kind: 'assistant-response-completed' });
     return;
   }
@@ -558,6 +597,15 @@ export async function handlePendingStreamingCompletion<
     return;
   }
 
+  const completedResult: RuntimeTurnResult<State, ToolRequest, TrustTarget> = {
+    kind: 'completed',
+    assistantText,
+    state: round.state,
+    requestTrace: [...pending.turn.requestTrace],
+    toolExecutions: [...pending.turn.toolExecutions],
+    compactions: [...pending.turn.compactions],
+  };
+
   if (!pending.streamEnded && !runtime.pendingAssistantTextStore.trim()) {
     runtime.pendingAssistantTextStore = assistantText;
     runtime.emitEvent({ kind: 'assistant-chunk', text: assistantText });
@@ -568,12 +616,14 @@ export async function handlePendingStreamingCompletion<
     });
     runtime.pendingUserTurnStore = undefined;
     clearPendingStreamingState(runtime);
+    runtime.storeCompletedTurnResult(completedResult);
     runtime.emitEvent({ kind: 'assistant-response-completed' });
     return;
   }
 
   if (pending.streamEnded) {
     clearPendingStreamingState(runtime);
+    runtime.storeCompletedTurnResult(completedResult);
   }
 }
 

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ask_questions::{AskQuestionsQuestionKind, AskQuestionsRequest};
 use crate::model_registry::AppConfig;
+use crate::ports::SubagentSessionStatus;
 use crate::session::PendingMcpResource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -208,6 +209,38 @@ impl ChatMessage {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SubagentSessionSummaryView {
+    pub session_id: String,
+    pub title: String,
+    pub status: SubagentSessionStatus,
+    pub updated_at_unix_ms: u64,
+    pub latest_message: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubagentSessionDetailView {
+    pub summary: SubagentSessionSummaryView,
+    pub messages: Vec<ChatMessage>,
+    pub pending_aux: Option<PendingAssistantAux>,
+    pub final_output: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PendingSubagentApprovalView {
+    pub session_id: String,
+    pub session_title: String,
+    pub tool_name: String,
+    pub prompt: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubagentApprovalInputView {
+    pub value: String,
+    pub cursor: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageRole {
     User,
@@ -243,6 +276,13 @@ pub struct TuiViewModel {
     pub chat_picker_active: bool,
     pub chat_picker_index: usize,
     pub chat_picker_files: Vec<String>,
+    pub subagent_picker_active: bool,
+    pub subagent_picker_index: usize,
+    pub subagent_sessions: Vec<SubagentSessionSummaryView>,
+    pub subagent_view: Option<SubagentSessionDetailView>,
+    pub subagent_history_offset_from_bottom: usize,
+    pub pending_subagent_approval: Option<PendingSubagentApprovalView>,
+    pub subagent_approval_input: Option<SubagentApprovalInputView>,
     pub image_picker_active: bool,
     pub image_picker_index: usize,
     pub image_picker_files: Vec<String>,
@@ -251,6 +291,8 @@ pub struct TuiViewModel {
     pub pending_response_active: bool,
     pub pending_assistant_msg_index: Option<usize>,
     pub pending_aux: Option<PendingAssistantAux>,
+    pub persisted_standalone_pending_aux: Option<PendingAssistantAux>,
+    pub persisted_standalone_pending_aux_anchor: Option<usize>,
     /// 对话区选区：折行后的全局行号 + 显示列（与 WordWrapper 一致）。
     pub conversation_sel_anchor: Option<(usize, usize)>,
     pub conversation_sel_head: Option<(usize, usize)>,

@@ -365,12 +365,16 @@ fn process_event_batch(
                 flush_pending_text(shell, &mut pending_text);
                 match mouse.kind {
                     MouseEventKind::ScrollUp => {
-                        if !shell.scroll_active_bottom_form_up(3) {
+                        if shell.is_subagent_view_active() {
+                            shell.scroll_subagent_view_up(3)
+                        } else if !shell.scroll_active_bottom_form_up(3) {
                             shell.scroll_history_up(3)
                         }
                     }
                     MouseEventKind::ScrollDown => {
-                        if !shell.scroll_active_bottom_form_down(3) {
+                        if shell.is_subagent_view_active() {
+                            shell.scroll_subagent_view_down(3)
+                        } else if !shell.scroll_active_bottom_form_down(3) {
                             shell.scroll_history_down(3)
                         }
                     }
@@ -395,6 +399,8 @@ fn process_event_batch(
                 if shell.is_model_list_overlay_active()
                     || shell.is_language_picker_active()
                     || shell.is_chat_picker_active()
+                    || shell.is_subagent_picker_active()
+                    || shell.is_subagent_view_active()
                     || shell.is_image_picker_active()
                 {
                     continue;
@@ -424,6 +430,8 @@ fn process_event_batch(
                 if !shell.is_model_list_overlay_active()
                     && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
+                    && !shell.is_subagent_picker_active()
+                    && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
                     && !shell.is_bottom_form_active()
                     && pending_text.is_empty()
@@ -439,6 +447,8 @@ fn process_event_batch(
                 if !shell.is_model_list_overlay_active()
                     && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
+                    && !shell.is_subagent_picker_active()
+                    && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
                     && let Some(ch) = batched_text_char(&key)
                 {
@@ -539,6 +549,108 @@ fn process_key_event(
             KeyCode::Up => shell.select_prev_chat(),
             KeyCode::Down => shell.select_next_chat(),
             KeyCode::Enter => shell.confirm_chat_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_subagent_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_subagent_picker(),
+            KeyCode::Up => shell.select_prev_subagent(),
+            KeyCode::Down => shell.select_next_subagent(),
+            KeyCode::Enter => shell.confirm_subagent_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_subagent_view_active() {
+        match key.code {
+            KeyCode::Esc => {
+                if shell.is_subagent_approval_input_active() {
+                    shell.cancel_subagent_approval_input();
+                } else {
+                    shell.close_subagent_view();
+                }
+            }
+            KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.toggle_aux_details()
+            }
+            KeyCode::Char(ch)
+                if ch.eq_ignore_ascii_case(&'v')
+                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval() =>
+            {
+                if let Err(e) = shell.paste_subagent_approval_from_clipboard() {
+                    logging::log_event(&format!("clipboard paste failed: {}", e));
+                }
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval()
+                    && !shell.is_subagent_approval_input_active()
+                    && ch.eq_ignore_ascii_case(&'y') =>
+            {
+                shell.respond_to_active_subagent_approval("y")
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval()
+                    && !shell.is_subagent_approval_input_active()
+                    && ch.eq_ignore_ascii_case(&'n') =>
+            {
+                shell.respond_to_active_subagent_approval("n")
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.has_active_subagent_viewer_approval()
+                    && !shell.is_subagent_approval_input_active()
+                    && ch.eq_ignore_ascii_case(&'t') =>
+            {
+                shell.respond_to_active_subagent_approval("t")
+            }
+            KeyCode::Enter if shell.has_active_subagent_viewer_approval() => {
+                if shell.is_subagent_approval_input_active() {
+                    shell.submit_subagent_approval_input();
+                } else {
+                    shell.begin_subagent_approval_input();
+                }
+            }
+            KeyCode::Backspace if shell.is_subagent_approval_input_active() => {
+                shell.backspace_subagent_approval_input()
+            }
+            KeyCode::Delete if shell.is_subagent_approval_input_active() => {
+                shell.delete_subagent_approval_input()
+            }
+            KeyCode::Left if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_left()
+            }
+            KeyCode::Right if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_right()
+            }
+            KeyCode::Home if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_home()
+            }
+            KeyCode::End if shell.is_subagent_approval_input_active() => {
+                shell.move_subagent_approval_cursor_end()
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.is_subagent_approval_input_active() =>
+            {
+                shell.insert_subagent_approval_char(ch)
+            }
+            KeyCode::Up => shell.scroll_subagent_view_up(2),
+            KeyCode::Down => shell.scroll_subagent_view_down(2),
+            KeyCode::PageUp => shell.scroll_subagent_view_up(8),
+            KeyCode::PageDown => shell.scroll_subagent_view_down(8),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.request_quit();
             }
