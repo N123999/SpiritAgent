@@ -150,7 +150,6 @@ interface PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
   childRecord: RuntimeSubagentSessionArchiveEntry;
   resumeAsStreaming: boolean;
   streamingEmitBeginResponse: boolean;
-  latestMessage?: string; // Added to store the latest message
 }
 
 type RunSubagentToolExecutionResult<ToolRequest, TrustTarget> =
@@ -1628,28 +1627,23 @@ export class AgentRuntime<
       try {
         await childRuntime.startUserTurn(childUserTurn);
         this.pendingSubagentExecution = {
-          const title = this.pendingSubagentExecution.childRecord.summary.title || 'SubAgent'; // Default title if undefined
+          parentRequest,
           parentToolCallId,
           parentPendingUserInput,
-            return buildSubagentStatusLine(title, `等待确认 / ${childApproval.toolName}`);
+          parentState,
           parentRemainingCalls,
           parentTurn,
           childRuntime,
           childRecord: record,
-            return buildSubagentStatusLine(title, truncateTextForSubagentSummary(pendingAssistant, 180));
+          resumeAsStreaming,
           streamingEmitBeginResponse,
         };
         this.refreshChildSessionRecord(record, childRuntime);
         record.summary.status = childRuntime.currentPendingApproval() ? 'blocked' : 'running';
-            return buildSubagentStatusLine(title, truncateTextForSubagentSummary(thinking, 180));
-          }
-
-          const latestMessage = this.pendingSubagentExecution.childRecord.summary.latestMessage?.trim();
-          if (latestMessage && latestMessage !== title) {
-            return buildSubagentStatusLine(title, truncateTextForSubagentSummary(latestMessage, 180));
+        return { kind: 'started' };
       } catch (error) {
         const failed = `[subagent failed] ${renderError(error)}`;
-          return buildSubagentStatusLine(title, '正在执行');
+        record.summary.status = 'failed';
         record.summary.updatedAtUnixMs = Date.now();
         record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
         record.summary.error = failed;

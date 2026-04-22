@@ -984,9 +984,9 @@ fn render_message_lines(
     } else {
         None
     };
-    let raw_pending_aux_detail_text = pending_aux.and_then(|aux| aux.detail_text.as_deref());
+    let raw_pending_aux_status_text = pending_aux.map(|aux| aux.status_text.as_str());
     let synthetic_subagent_status_text = if message_body.trim().is_empty() {
-        raw_pending_aux_detail_text.and_then(parse_subagent_status_line)
+        raw_pending_aux_status_text.and_then(parse_pending_subagent_status_text)
     } else {
         None
     };
@@ -1036,7 +1036,7 @@ fn render_message_lines(
         None
     };
     let pending_aux_detail_text = if synthetic_subagent_status_text.is_none() && app.show_aux_details {
-        raw_pending_aux_detail_text
+        pending_aux.and_then(|aux| aux.detail_text.as_deref())
     } else {
         None
     };
@@ -1113,10 +1113,21 @@ fn render_message_lines(
     out
 }
 
-fn parse_subagent_status_line(text: &str) -> Option<String> {
-    text.trim()
-        .strip_prefix("[subagent-status] ")
-        .map(ToString::to_string)
+fn parse_pending_subagent_status_text(text: &str) -> Option<String> {
+    let status = text
+        .trim()
+        .strip_prefix("| ")
+        .or_else(|| text.trim().strip_prefix("/ "))
+        .or_else(|| text.trim().strip_prefix("- "))
+        .or_else(|| text.trim().strip_prefix("\\ "))
+        .unwrap_or(text.trim())
+        .trim();
+
+    if status.is_empty() || status == "Thinking..." || status == "Compressing..." {
+        return None;
+    }
+
+    Some(status.to_string())
 }
 
 fn split_embedded_thinking_content(text: &str) -> (String, Option<String>) {
