@@ -9,7 +9,6 @@ import type {
   RuntimeApprovalDecision,
   RuntimeEvent,
   RuntimePendingApproval,
-  RuntimeSubagentSessionSummary,
   RuntimePendingQuestions,
   RuntimeSubagentSessionSummary,
 } from '../runtime.js';
@@ -65,7 +64,6 @@ export interface BridgeRuntimeSnapshot {
   hasPendingManualApproval: boolean;
   hasPendingQuestions: boolean;
   currentPendingApproval?: RuntimePendingApproval<JsonValue, JsonValue>;
-  childSessions: RuntimeSubagentSessionSummary[];
   currentPendingQuestions?: RuntimePendingQuestions<JsonValue>;
   childSessions: RuntimeSubagentSessionSummary[];
   isBusy: boolean;

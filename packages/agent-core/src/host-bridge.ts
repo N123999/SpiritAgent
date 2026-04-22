@@ -183,7 +183,6 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
   ...(currentPendingApproval !== undefined ? { currentPendingApproval } : {}),
   childSessions: [...target.childSessions()],
   ...(currentPendingQuestions !== undefined ? { currentPendingQuestions } : {}),
-  childSessions: [...target.childSessions()],
   isBusy: target.isBusy(),
     ...(backgroundToolStatus !== undefined ? { backgroundToolStatus } : {}),
   };
