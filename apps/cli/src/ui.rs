@@ -16,6 +16,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::{
     conversation_select::flatten_wrapped_history,
     logging,
+    ports::SubagentSessionStatus,
     shell::manual_shell,
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
@@ -23,7 +24,8 @@ use crate::{
         AssistantAuxKind, BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind,
         BottomFormView,
         ChatMessage, InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole,
-        PendingAssistantAux, ToolUiBlock, ToolUiPhase, TuiViewModel,
+        PendingAssistantAux, SubagentSessionDetailView, ToolUiBlock, ToolUiPhase,
+        TuiViewModel,
     },
 };
 
@@ -71,10 +73,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
     let show_chat_picker = app.chat_picker_active;
+    let show_subagent_picker = app.subagent_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_bottom_form = app.bottom_form.is_some();
     let show_picker =
-        show_model_picker || show_language_picker || show_chat_picker || show_image_picker;
+        show_model_picker || show_language_picker || show_chat_picker || show_subagent_picker || show_image_picker;
     let show_suggestions = app.input_suggestion_kind.is_some() && !show_picker && !show_bottom_form;
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -224,6 +227,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.sessions")))
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
+    } else if show_subagent_picker {
+        let picker_lines = build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
+        let picker_widget = Paragraph::new(picker_lines)
+            .block(Block::default().borders(Borders::ALL).title("SubAgent 会话"))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(picker_widget, chunks[2]);
     } else if show_image_picker {
         let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
@@ -257,6 +266,10 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
         frame.render_widget(Clear, root_chunks[1]);
+    }
+
+    if let Some(view) = &app.subagent_view {
+        draw_subagent_viewer(frame, shell, content_area, view);
     }
 }
 
@@ -403,6 +416,26 @@ fn input_cursor_position(app: &TuiViewModel, max_width: usize) -> (u16, u16) {
 fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: bool) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
+    if let Some(approval) = &app.pending_subagent_approval {
+        let summary = format!(
+            "SubAgent 待确认: {} / {}",
+            approval.session_title, approval.tool_name
+        );
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(&summary, max_width),
+            deemphasize_pending_style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+                bottom_form_open,
+            ),
+        )));
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(&approval.prompt, max_width),
+            deemphasize_pending_style(Style::default().fg(Color::LightYellow), bottom_form_open),
+        )));
+    }
+
     if !app.pending_image_paths.is_empty() {
         let count = app.pending_image_paths.len();
         let summary = format!(
@@ -457,6 +490,9 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
 
 fn pending_input_header_line_count(app: &TuiViewModel) -> usize {
     let mut lines = 0;
+    if app.pending_subagent_approval.is_some() {
+        lines += 2;
+    }
     if !app.pending_image_paths.is_empty() {
         lines += 2;
     }
@@ -1786,6 +1822,212 @@ fn build_chat_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'st
     lines
 }
 
+fn build_subagent_picker_lines(
+    app: &TuiViewModel,
+    max_items: usize,
+    max_width: usize,
+) -> Vec<Line<'static>> {
+    if app.subagent_sessions.is_empty() {
+        return vec![Line::from("当前没有子会话。")];
+    }
+
+    let selected = app
+        .subagent_picker_index
+        .min(app.subagent_sessions.len().saturating_sub(1));
+    let total = app.subagent_sessions.len();
+    let window = max_items.max(1);
+    let start = if selected + 1 > window {
+        selected + 1 - window
+    } else {
+        0
+    };
+    let end = (start + window).min(total);
+
+    let mut lines = Vec::new();
+    for idx in start..end {
+        let item = &app.subagent_sessions[idx];
+        let is_selected = idx == selected;
+        let marker = if is_selected { "> " } else { "  " };
+        let (status_label, status_style) = subagent_status_badge(item.status, is_selected);
+        let title_style = if is_selected {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        let title = truncate_to_width(&item.title, max_width.saturating_sub(12).max(8));
+        lines.push(Line::from(vec![
+            Span::styled(marker, title_style),
+            Span::styled(format!("[{}] ", status_label), status_style),
+            Span::styled(title, title_style),
+        ]));
+
+        if let Some(latest) = item.latest_message.as_deref() {
+            lines.push(Line::from(Span::styled(
+                format!("    {}", truncate_to_width(latest, max_width.saturating_sub(4))),
+                subtle_aux_text_style(),
+            )));
+        }
+    }
+
+    lines
+}
+
+fn draw_subagent_viewer(
+    frame: &mut ratatui::Frame<'_>,
+    shell: &mut TuiShell,
+    area: Rect,
+    view: &SubagentSessionDetailView,
+) {
+    let popup = inset_rect(area, area.width / 12, area.height / 10).intersection(area);
+    frame.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(conversation_body_text_style())
+        .title(format!("SubAgent: {}", view.summary.title));
+    frame.render_widget(block.clone(), popup);
+
+    let inner = block.inner(popup);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    let (status_label, status_style) = subagent_status_badge(view.summary.status, false);
+    let mut header_lines = vec![Line::from(vec![
+        Span::styled("状态: ", subtle_aux_text_style()),
+        Span::styled(status_label.to_string(), status_style),
+        Span::styled(
+            format!("   sessionId: {}", view.summary.session_id),
+            subtle_aux_text_style(),
+        ),
+    ])];
+
+    if let Some(latest) = view.summary.latest_message.as_deref() {
+        header_lines.push(Line::from(Span::styled(
+            truncate_to_width(&format!("最新进展: {}", latest), chunks[0].width.saturating_sub(1) as usize),
+            subtle_aux_text_style(),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: true }), chunks[0]);
+
+    let history_lines = build_subagent_history_lines(&view.messages);
+    let (flat, _) = flatten_wrapped_history(history_lines, chunks[1].width.max(1), None);
+    let history_view_height = chunks[1].height.max(1) as usize;
+    let max_scroll = flat.len().saturating_sub(history_view_height);
+    let offset_bottom = shell.clamp_subagent_history_scroll(max_scroll);
+    let history_scroll = max_scroll.saturating_sub(offset_bottom);
+    let visible = flat
+        .into_iter()
+        .skip(history_scroll)
+        .take(history_view_height)
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(visible), chunks[1]);
+
+    let footer_text = if let Some(error) = view.error.as_deref() {
+        format!("Esc 返回  |  PgUp/PgDn 滚动  |  {}", truncate_to_width(error, chunks[2].width.saturating_sub(24) as usize))
+    } else if let Some(output) = view.final_output.as_deref() {
+        format!("Esc 返回  |  PgUp/PgDn 滚动  |  {}", truncate_to_width(output, chunks[2].width.saturating_sub(24) as usize))
+    } else {
+        "Esc 返回  |  PgUp/PgDn 滚动".to_string()
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(footer_text, subtle_aux_text_style()))),
+        chunks[2],
+    );
+}
+
+fn build_subagent_history_lines(messages: &[ChatMessage]) -> Vec<Line<'static>> {
+    if messages.is_empty() {
+        return vec![Line::from(Span::styled(
+            "子会话尚未产生可见消息。",
+            subtle_aux_text_style(),
+        ))];
+    }
+
+    let mut lines = Vec::new();
+    let rendered_count = messages.len();
+    for (idx, msg) in messages.iter().enumerate() {
+        let rendered = render_subagent_message_lines(msg);
+        lines.extend(rendered);
+        if idx + 1 < rendered_count {
+            lines.push(Line::from(""));
+        }
+    }
+    lines
+}
+
+fn render_subagent_message_lines(msg: &ChatMessage) -> Vec<Line<'static>> {
+    let prefix_style = match msg.role {
+        MessageRole::User => conversation_body_text_style(),
+        MessageRole::Agent => assistant_message_prefix_style(),
+    };
+
+    if let Some(ref tool) = msg.tool_block {
+        return render_tool_card_lines(prefix_style, tool, true);
+    }
+
+    let content_lines = match msg.role {
+        MessageRole::User => plain_text_lines(&msg.content),
+        MessageRole::Agent => markdown_lines(&msg.content),
+    };
+
+    let mut out = Vec::new();
+    let mut has_rendered_visible_line = false;
+    let mut push_message_line = |content_spans: Vec<Span<'static>>| {
+        let mut spans = if has_rendered_visible_line {
+            vec![Span::raw(message_gutter_padding())]
+        } else {
+            has_rendered_visible_line = true;
+            vec![Span::styled(message_prefix_text(), prefix_style)]
+        };
+        spans.extend(content_spans);
+        out.push(Line::from(spans));
+    };
+
+    let mut iter = content_lines.into_iter();
+    if let Some(first) = iter.next() {
+        push_message_line(first);
+    } else if msg.role == MessageRole::User {
+        push_message_line(Vec::new());
+    }
+
+    for line in iter {
+        push_message_line(line);
+    }
+
+    out
+}
+
+fn subagent_status_badge(status: SubagentSessionStatus, selected: bool) -> (String, Style) {
+    let base = match status {
+        SubagentSessionStatus::Running => Style::default().fg(Color::Yellow),
+        SubagentSessionStatus::Completed => Style::default().fg(Color::Green),
+        SubagentSessionStatus::Failed => Style::default().fg(Color::Red),
+        SubagentSessionStatus::Blocked => Style::default().fg(Color::LightYellow),
+    };
+    let style = if selected {
+        base.add_modifier(Modifier::BOLD | Modifier::REVERSED)
+    } else {
+        base.add_modifier(Modifier::BOLD)
+    };
+    let label = match status {
+        SubagentSessionStatus::Running => "running",
+        SubagentSessionStatus::Completed => "completed",
+        SubagentSessionStatus::Failed => "failed",
+        SubagentSessionStatus::Blocked => "blocked",
+    };
+    (label.to_string(), style)
+}
+
 fn build_language_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
     let locales = crate::locale::supported_ui_locales();
     let selected = app
@@ -2863,6 +3105,12 @@ mod tests {
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
+            subagent_picker_active: false,
+            subagent_picker_index: 0,
+            subagent_sessions: vec![],
+            subagent_view: None,
+            subagent_history_offset_from_bottom: 0,
+            pending_subagent_approval: None,
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],

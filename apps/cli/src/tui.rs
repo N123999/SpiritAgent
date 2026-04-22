@@ -24,8 +24,9 @@ use crate::{
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     plan::{self, PlanMetadata},
     ports::{
-        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
-        McpStatusState, SecretStore,
+        AppPaths, ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatRepository, ConfigStore,
+        McpStatusSnapshot, McpStatusState, SecretStore, SubagentSessionArchiveEntry,
+        SubagentSessionSummary,
     },
     rules::{self, RuleEntry, RuleScope, RuleStateFile},
     runtime_handle::RuntimeHandle,
@@ -34,7 +35,8 @@ use crate::{
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
-        InputSuggestionKind, MainInputMode, MessageRole, TuiViewModel,
+        InputSuggestionKind, MainInputMode, MessageRole, SubagentSessionDetailView,
+        SubagentSessionSummaryView, TuiViewModel,
     },
 };
 
@@ -86,6 +88,10 @@ pub struct TuiShell {
     chat_picker_active: bool,
     chat_picker_index: usize,
     chat_picker_files: Vec<String>,
+    subagent_picker_active: bool,
+    subagent_picker_index: usize,
+    subagent_view: Option<SubagentSessionDetailView>,
+    subagent_history_offset_from_bottom: usize,
     image_picker_active: bool,
     image_picker_index: usize,
     image_picker_files: Vec<String>,
@@ -174,6 +180,10 @@ impl TuiShell {
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
+            subagent_picker_active: false,
+            subagent_picker_index: 0,
+            subagent_view: None,
+            subagent_history_offset_from_bottom: 0,
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],
@@ -291,6 +301,7 @@ impl TuiShell {
         self.poll_pending_shell_executions();
         self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
+        self.refresh_active_subagent_view();
         self.refresh_plan_metadata_from_disk();
     }
 
@@ -312,6 +323,12 @@ impl TuiShell {
             .iter()
             .filter(|(index, _)| **index >= history_truncated_before)
             .map(|(index, value)| (*index, value.clone()))
+            .collect();
+        let subagent_sessions = self
+            .runtime
+            .subagent_sessions()
+            .iter()
+            .map(Self::subagent_summary_view)
             .collect();
 
         TuiViewModel {
@@ -342,6 +359,12 @@ impl TuiShell {
             chat_picker_active: self.chat_picker_active,
             chat_picker_index: self.chat_picker_index,
             chat_picker_files: self.chat_picker_files.clone(),
+            subagent_picker_active: self.subagent_picker_active,
+            subagent_picker_index: self.subagent_picker_index,
+            subagent_sessions,
+            subagent_view: self.subagent_view.clone(),
+            subagent_history_offset_from_bottom: self.subagent_history_offset_from_bottom,
+            pending_subagent_approval: self.runtime.pending_subagent_approval(),
             image_picker_active: self.image_picker_active,
             image_picker_index: self.image_picker_index,
             image_picker_files: self.image_picker_files.clone(),
@@ -352,6 +375,38 @@ impl TuiShell {
             pending_aux: self.runtime.pending_aux_state(),
             conversation_sel_anchor: self.conversation_sel_anchor,
             conversation_sel_head: self.conversation_sel_head,
+        }
+    }
+    fn subagent_summary_view(summary: &SubagentSessionSummary) -> SubagentSessionSummaryView {
+        SubagentSessionSummaryView {
+            session_id: summary.session_id.clone(),
+            title: summary.title.clone(),
+            status: summary.status,
+            updated_at_unix_ms: summary.updated_at_unix_ms,
+            latest_message: summary.latest_message.clone(),
+        }
+    }
+
+    fn subagent_detail_view(archive: &SubagentSessionArchiveEntry) -> SubagentSessionDetailView {
+        SubagentSessionDetailView {
+            summary: Self::subagent_summary_view(&archive.summary),
+            messages: archive
+                .llm_history
+                .iter()
+                .map(Self::subagent_archive_message)
+                .collect(),
+            final_output: archive.summary.final_output.clone(),
+            error: archive.summary.error.clone(),
+        }
+    }
+
+    fn subagent_archive_message(message: &ArchivedLlmMessage) -> ChatMessage {
+        match message.role.as_str() {
+            "user" => ChatMessage::new(MessageRole::User, message.content.clone()),
+            "assistant" => ChatMessage::new(MessageRole::Agent, message.content.clone()),
+            "tool" => ChatMessage::new(MessageRole::Agent, format!("[tool]\n{}", message.content)),
+            "system" => ChatMessage::new(MessageRole::Agent, format!("[system]\n{}", message.content)),
+            _ => ChatMessage::new(MessageRole::Agent, message.content.clone()),
         }
     }
     pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
@@ -481,6 +536,8 @@ impl TuiShell {
     pub(crate) fn clear_chat_for_slash(&mut self) {
         self.messages.clear();
         self.assistant_aux_by_message.clear();
+        self.subagent_picker_active = false;
+        self.close_subagent_view();
         let mcp_status = self.runtime.mcp_status_snapshot();
         self.messages.push(welcome_message(
             &self.runtime.config().active_model,
@@ -522,6 +579,14 @@ impl TuiShell {
 
     pub fn is_chat_picker_active(&self) -> bool {
         self.chat_picker_active
+    }
+
+    pub fn is_subagent_picker_active(&self) -> bool {
+        self.subagent_picker_active
+    }
+
+    pub fn is_subagent_view_active(&self) -> bool {
+        self.subagent_view.is_some()
     }
 
     pub fn is_image_picker_active(&self) -> bool {
@@ -740,11 +805,13 @@ impl TuiShell {
 
         if self.runtime.has_pending_tool_approval() {
             self.scroll_history_to_bottom();
-            self.messages.push(ChatMessage {
-                role: MessageRole::User,
-                content: trimmed_message.to_string(),
-                tool_block: None,
-            });
+            if self.runtime.pending_subagent_approval().is_none() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::User,
+                    content: trimmed_message.to_string(),
+                    tool_block: None,
+                });
+            }
             self.runtime
                 .respond_to_pending_tool_approval(trimmed_message);
             self.apply_runtime_events();
@@ -1057,6 +1124,71 @@ impl TuiShell {
 
     pub fn cancel_chat_picker(&mut self) {
         self.chat_picker_active = false;
+    }
+
+    pub fn open_subagent_picker(&mut self) {
+        self.subagent_picker_active = true;
+        self.subagent_picker_index = 0;
+    }
+
+    pub fn cancel_subagent_picker(&mut self) {
+        self.subagent_picker_active = false;
+    }
+
+    pub fn select_next_subagent(&mut self) {
+        let total = self.runtime.subagent_sessions().len();
+        if total == 0 {
+            return;
+        }
+        self.subagent_picker_index = (self.subagent_picker_index + 1) % total;
+    }
+
+    pub fn select_prev_subagent(&mut self) {
+        let total = self.runtime.subagent_sessions().len();
+        if total == 0 {
+            return;
+        }
+        if self.subagent_picker_index == 0 {
+            self.subagent_picker_index = total - 1;
+        } else {
+            self.subagent_picker_index -= 1;
+        }
+    }
+
+    pub fn confirm_subagent_picker(&mut self) {
+        let Some(summary) = self
+            .runtime
+            .subagent_sessions()
+            .get(self.subagent_picker_index)
+            .cloned()
+        else {
+            self.subagent_picker_active = false;
+            return;
+        };
+
+        self.subagent_picker_active = false;
+        self.open_subagent_view(&summary.session_id);
+    }
+
+    pub fn close_subagent_view(&mut self) {
+        self.subagent_view = None;
+        self.subagent_history_offset_from_bottom = 0;
+    }
+
+    pub fn scroll_subagent_view_up(&mut self, lines: usize) {
+        self.subagent_history_offset_from_bottom =
+            self.subagent_history_offset_from_bottom.saturating_add(lines);
+    }
+
+    pub fn scroll_subagent_view_down(&mut self, lines: usize) {
+        self.subagent_history_offset_from_bottom =
+            self.subagent_history_offset_from_bottom.saturating_sub(lines);
+    }
+
+    pub(crate) fn clamp_subagent_history_scroll(&mut self, max_scroll: usize) -> usize {
+        self.subagent_history_offset_from_bottom =
+            self.subagent_history_offset_from_bottom.min(max_scroll);
+        self.subagent_history_offset_from_bottom
     }
 
     pub fn select_next_chat(&mut self) {
@@ -1613,6 +1745,34 @@ impl TuiShell {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
             content: "用法: /sessions [save [path]|load <file>]".to_string(),
+            tool_block: None,
+        });
+    }
+
+    pub(crate) fn handle_subagents_slash(&mut self, message: &str) {
+        let tail = message
+            .strip_prefix("/subagents")
+            .map(str::trim)
+            .unwrap_or("");
+
+        if tail.is_empty() || tail == "list" {
+            self.open_subagent_picker();
+            return;
+        }
+
+        if tail == "close" {
+            self.close_subagent_view();
+            return;
+        }
+
+        if let Some(session_id) = tail.strip_prefix("open ") {
+            self.open_subagent_view(session_id.trim());
+            return;
+        }
+
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: "用法: /subagents [list|open <session_id>|close]".to_string(),
             tool_block: None,
         });
     }
@@ -3014,6 +3174,8 @@ impl TuiShell {
     fn load_chat_by_path(&mut self, path: &str) {
         match self.chat_repository.load(path) {
             Ok(archive) => {
+                self.subagent_picker_active = false;
+                self.close_subagent_view();
                 let mut msgs = Vec::new();
                 for (role, content) in &archive.messages {
                     msgs.push(ChatMessage {
@@ -3074,6 +3236,56 @@ impl TuiShell {
                     content: t!("tui.session.load_failed", err = err).into_owned(),
                     tool_block: None,
                 });
+            }
+        }
+    }
+
+    fn open_subagent_view(&mut self, session_id: &str) {
+        match self.runtime.subagent_session_archive(session_id) {
+            Ok(Some(archive)) => {
+                self.subagent_view = Some(Self::subagent_detail_view(&archive));
+                self.subagent_history_offset_from_bottom = 0;
+            }
+            Ok(None) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("未找到子会话: {}", session_id),
+                    tool_block: None,
+                });
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("读取子会话失败: {}", err),
+                    tool_block: None,
+                });
+            }
+        }
+    }
+
+    fn refresh_active_subagent_view(&mut self) {
+        let Some(session_id) = self
+            .subagent_view
+            .as_ref()
+            .map(|view| view.summary.session_id.clone())
+        else {
+            return;
+        };
+
+        match self.runtime.subagent_session_archive(&session_id) {
+            Ok(Some(archive)) => {
+                self.subagent_view = Some(Self::subagent_detail_view(&archive));
+            }
+            Ok(None) => {
+                self.close_subagent_view();
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: format!("刷新子会话失败: {}", err),
+                    tool_block: None,
+                });
+                self.close_subagent_view();
             }
         }
     }

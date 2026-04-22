@@ -26,13 +26,16 @@ use crate::{
     },
     model_registry::AppConfig,
     plan::PlanMetadata,
-    ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore, ToolExecutor},
+    ports::{
+        ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot,
+        SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary, ToolExecutor,
+    },
     rules::EnabledRule,
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
-    view::{ChatMessage, MessageRole, PendingAssistantAux},
+    view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 const ENV_RUNTIME_BACKEND_NODE_PATH: &str = "SPIRIT_NODE_PATH";
@@ -54,8 +57,10 @@ pub struct TsBridgeRuntime {
     plan_metadata: PlanMetadata,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
+    current_pending_approval: Option<BridgePendingApproval>,
     pending_assistant_has_output: bool,
     is_busy_cache: bool,
+    child_sessions_cache: Vec<SubagentSessionSummary>,
     events: VecDeque<RuntimeEvent>,
     background_tool_completion_tx: Sender<BackgroundToolCompletion>,
     background_tool_completion_rx: Receiver<BackgroundToolCompletion>,
@@ -131,6 +136,8 @@ struct BridgeRuntimeSnapshot {
     has_pending_approval: bool,
     has_pending_manual_approval: bool,
     current_pending_approval: Option<BridgePendingApproval>,
+    #[serde(default)]
+    child_sessions: Vec<BridgeSubagentSessionSummary>,
     is_busy: bool,
     background_tool_status: Option<String>,
 }
@@ -148,6 +155,31 @@ struct BridgeExportState {
 struct BridgeChatArchive {
     messages: Vec<BridgeChatMessage>,
     assistant_aux: Vec<BridgeAssistantAuxEntry>,
+    llm_history: Vec<BridgeLlmMessage>,
+    #[serde(default)]
+    subagent_sessions: Vec<BridgeSubagentSessionArchiveEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeSubagentSessionSummary {
+    session_id: String,
+    parent_tool_call_id: String,
+    title: String,
+    status: crate::ports::SubagentSessionStatus,
+    started_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+    completed_at_unix_ms: Option<u64>,
+    latest_message: Option<String>,
+    final_output: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeSubagentSessionArchiveEntry {
+    summary: BridgeSubagentSessionSummary,
+    #[serde(default)]
     llm_history: Vec<BridgeLlmMessage>,
 }
 
@@ -182,6 +214,8 @@ struct BridgePendingApproval {
     trust_target: Option<Value>,
     tool_call_id: Option<String>,
     tool_name: String,
+    subagent_session_id: Option<String>,
+    subagent_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -267,8 +301,10 @@ impl TsBridgeRuntime {
             plan_metadata,
             pending_aux_state: None,
             pending_approval_kind: None,
+            current_pending_approval: None,
             pending_assistant_has_output: false,
             is_busy_cache: false,
+            child_sessions_cache: Vec::new(),
             events: VecDeque::new(),
             background_tool_completion_tx,
             background_tool_completion_rx,
@@ -304,8 +340,10 @@ impl TsBridgeRuntime {
             },
             pending_aux_state: None,
             pending_approval_kind: None,
+            current_pending_approval: None,
             pending_assistant_has_output: false,
             is_busy_cache: false,
+            child_sessions_cache: Vec::new(),
             events: VecDeque::new(),
             background_tool_completion_tx,
             background_tool_completion_rx,
@@ -535,6 +573,33 @@ impl TsBridgeRuntime {
                 .into_iter()
                 .map(|message| (message.role, message.content, message.image_paths))
                 .collect(),
+            subagent_sessions: bridge_archive
+                .subagent_sessions
+                .into_iter()
+                .map(|entry| SubagentSessionArchiveEntry {
+                    summary: SubagentSessionSummary {
+                        session_id: entry.summary.session_id,
+                        parent_tool_call_id: entry.summary.parent_tool_call_id,
+                        title: entry.summary.title,
+                        status: entry.summary.status,
+                        started_at_unix_ms: entry.summary.started_at_unix_ms,
+                        updated_at_unix_ms: entry.summary.updated_at_unix_ms,
+                        completed_at_unix_ms: entry.summary.completed_at_unix_ms,
+                        latest_message: entry.summary.latest_message,
+                        final_output: entry.summary.final_output,
+                        error: entry.summary.error,
+                    },
+                    llm_history: entry
+                        .llm_history
+                        .into_iter()
+                        .map(|message| ArchivedLlmMessage {
+                            role: message.role,
+                            content: message.content,
+                            image_paths: message.image_paths,
+                        })
+                        .collect(),
+                })
+                .collect(),
         })
     }
 
@@ -549,6 +614,65 @@ impl TsBridgeRuntime {
                 McpStatusSnapshot::default()
             }
         }
+    }
+
+    pub fn subagent_sessions(&self) -> &[SubagentSessionSummary] {
+        &self.child_sessions_cache
+    }
+
+    pub fn subagent_session_archive(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<SubagentSessionArchiveEntry>> {
+        let value = self.call_bridge(
+            "runtime.subagentSessionArchive",
+            Some(json!({
+                "sessionId": session_id,
+            })),
+        )?;
+
+        if value.is_null() {
+            return Ok(None);
+        }
+
+        let archive: BridgeSubagentSessionArchiveEntry = serde_json::from_value(value)?;
+        Ok(Some(SubagentSessionArchiveEntry {
+            summary: SubagentSessionSummary {
+                session_id: archive.summary.session_id,
+                parent_tool_call_id: archive.summary.parent_tool_call_id,
+                title: archive.summary.title,
+                status: archive.summary.status,
+                started_at_unix_ms: archive.summary.started_at_unix_ms,
+                updated_at_unix_ms: archive.summary.updated_at_unix_ms,
+                completed_at_unix_ms: archive.summary.completed_at_unix_ms,
+                latest_message: archive.summary.latest_message,
+                final_output: archive.summary.final_output,
+                error: archive.summary.error,
+            },
+            llm_history: archive
+                .llm_history
+                .into_iter()
+                .map(|message| ArchivedLlmMessage {
+                    role: message.role,
+                    content: message.content,
+                    image_paths: message.image_paths,
+                })
+                .collect(),
+        }))
+    }
+
+    pub fn pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
+        let approval = self.current_pending_approval.as_ref()?;
+        let session_id = approval.subagent_session_id.clone()?;
+        Some(PendingSubagentApprovalView {
+            session_id,
+            session_title: approval
+                .subagent_title
+                .clone()
+                .unwrap_or_else(|| "SubAgent".to_string()),
+            tool_name: approval.tool_name.clone(),
+            prompt: approval.prompt.clone(),
+        })
     }
 
     pub fn has_pending_tool_approval(&self) -> bool {
@@ -1268,6 +1392,7 @@ impl TsBridgeRuntime {
         }
 
         self.pending_aux_state = snapshot.pending_aux_state;
+        self.current_pending_approval = snapshot.current_pending_approval;
         self.pending_approval_kind = if snapshot.has_pending_approval {
             Some(if snapshot.has_pending_manual_approval {
                 PendingApprovalKind::Manual
@@ -1277,6 +1402,22 @@ impl TsBridgeRuntime {
         } else {
             None
         };
+        self.child_sessions_cache = snapshot
+            .child_sessions
+            .into_iter()
+            .map(|summary| SubagentSessionSummary {
+                session_id: summary.session_id,
+                parent_tool_call_id: summary.parent_tool_call_id,
+                title: summary.title,
+                status: summary.status,
+                started_at_unix_ms: summary.started_at_unix_ms,
+                updated_at_unix_ms: summary.updated_at_unix_ms,
+                completed_at_unix_ms: summary.completed_at_unix_ms,
+                latest_message: summary.latest_message,
+                final_output: summary.final_output,
+                error: summary.error,
+            })
+            .collect();
         self.is_busy_cache = snapshot.is_busy;
     }
 
@@ -1318,15 +1459,17 @@ impl TsBridgeRuntime {
                     self.events.push_back(RuntimeEvent::RemovePendingAssistant);
                 }
                 BridgeRuntimeEvent::ApprovalRequested { approval } => {
-                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                        MessageRole::Agent,
-                        approval.prompt.clone(),
-                        tool_approval_block(
-                            &approval.tool_name,
-                            approval.tool_call_id.as_deref(),
-                            &approval.prompt,
-                        ),
-                    )));
+                    if approval.subagent_session_id.is_none() {
+                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                            MessageRole::Agent,
+                            approval.prompt.clone(),
+                            tool_approval_block(
+                                &approval.tool_name,
+                                approval.tool_call_id.as_deref(),
+                                &approval.prompt,
+                            ),
+                        )));
+                    }
                 }
                 BridgeRuntimeEvent::HistoryCompacted {
                     dropped_messages,
@@ -1911,6 +2054,7 @@ mod tests {
             has_pending_approval: false,
             has_pending_manual_approval: false,
             current_pending_approval: None,
+            child_sessions: vec![],
             is_busy: true,
             background_tool_status: None,
         }
@@ -2077,6 +2221,29 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
                 "role": role,
                 "content": content,
                 "imagePaths": image_paths,
+            })
+        }).collect::<Vec<_>>(),
+        "subagentSessions": archive.subagent_sessions.iter().map(|entry| {
+            json!({
+                "summary": {
+                    "sessionId": entry.summary.session_id,
+                    "parentToolCallId": entry.summary.parent_tool_call_id,
+                    "title": entry.summary.title,
+                    "status": entry.summary.status,
+                    "startedAtUnixMs": entry.summary.started_at_unix_ms,
+                    "updatedAtUnixMs": entry.summary.updated_at_unix_ms,
+                    "completedAtUnixMs": entry.summary.completed_at_unix_ms,
+                    "latestMessage": entry.summary.latest_message,
+                    "finalOutput": entry.summary.final_output,
+                    "error": entry.summary.error,
+                },
+                "llmHistory": entry.llm_history.iter().map(|message| {
+                    json!({
+                        "role": message.role,
+                        "content": message.content,
+                        "imagePaths": message.image_paths,
+                    })
+                }).collect::<Vec<_>>(),
             })
         }).collect::<Vec<_>>(),
     })

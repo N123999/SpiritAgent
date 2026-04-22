@@ -3,6 +3,8 @@ import type {
   LlmMessage,
   LlmStreamEvent,
   LlmTransport,
+  SubagentSessionArchiveEntry,
+  SubagentSessionStatus,
   ToolAgentRoundCompletion,
   ToolCallRequest,
   ToolExecutor,
@@ -88,6 +90,25 @@ export interface RuntimePendingApproval<ToolRequest, TrustTarget> {
   trustTarget?: TrustTarget;
   toolCallId?: string;
   toolName: string;
+  subagentSessionId?: string;
+  subagentTitle?: string;
+}
+
+export interface RuntimeSubagentSessionSummary {
+  sessionId: string;
+  parentToolCallId: string;
+  title: string;
+  status: SubagentSessionStatus;
+  startedAtUnixMs: number;
+  updatedAtUnixMs: number;
+  completedAtUnixMs?: number;
+  latestMessage?: string;
+  finalOutput?: string;
+  error?: string;
+}
+
+export interface RuntimeSubagentSessionArchiveEntry extends SubagentSessionArchiveEntry {
+  summary: RuntimeSubagentSessionSummary;
 }
 
 export interface PendingMcpResource {

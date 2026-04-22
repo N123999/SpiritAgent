@@ -142,6 +142,7 @@ impl ChatRepository for JsonChatRepository {
             &archive.messages,
             &archive.assistant_aux,
             &archive.llm_history,
+            &archive.subagent_sessions,
         )
     }
 
@@ -151,6 +152,7 @@ impl ChatRepository for JsonChatRepository {
             messages: loaded.messages,
             assistant_aux: loaded.assistant_aux,
             llm_history: loaded.llm_history,
+            subagent_sessions: loaded.subagent_sessions,
         })
     }
 }

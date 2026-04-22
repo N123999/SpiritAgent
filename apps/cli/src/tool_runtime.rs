@@ -44,6 +44,16 @@ const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Appl
 const EDIT_FILE_LOG_PREVIEW_CHARS: usize = 180;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunSubagentRequest {
+    pub task: String,
+    pub success_criteria: Option<String>,
+    pub context_summary: Option<String>,
+    #[serde(default)]
+    pub files_to_inspect: Vec<String>,
+    pub expected_output: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ToolRequest {
     Shell {
         command: String,
@@ -79,6 +89,9 @@ pub enum ToolRequest {
     },
     DeleteFile {
         path: String,
+    },
+    RunSubagent {
+        request: RunSubagentRequest,
     },
 }
 
@@ -320,6 +333,7 @@ impl ToolRuntime {
                 Ok(self.authorize_external_read_path(&canonical, "读取工作目录外文件"))
             }
             ToolRequest::Search { .. } => Ok(AuthorizationDecision::Allowed),
+            ToolRequest::RunSubagent { .. } => Ok(AuthorizationDecision::Allowed),
             ToolRequest::CreateFile { path, content } => Ok(AuthorizationDecision::NeedApproval {
                 prompt: format!(
                     "高风险工具调用: 创建文件\n路径: {}\n内容长度: {} 字符\n\n输入 y 允许一次，n 拒绝。",
@@ -401,6 +415,9 @@ impl ToolRuntime {
                 new_text,
             } => self.execute_edit_file(path, old_text, new_text),
             ToolRequest::DeleteFile { path } => self.execute_delete_file(path),
+            ToolRequest::RunSubagent { .. } => Err(anyhow!(
+                "run_subagent 应由 Agent runtime 接管，不应落到宿主 ToolRuntime::execute"
+            )),
         }
     }
 
@@ -499,6 +516,28 @@ impl ToolRuntime {
                             "query": { "type": "string" }
                         },
                         "required": ["query"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_subagent",
+                    "description": "Delegate a scoped task to a child agent session. Use this when the task can be isolated from the main conversation and you want the child agent to return only its final result.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "task": { "type": "string" },
+                            "success_criteria": { "type": "string" },
+                            "context_summary": { "type": "string" },
+                            "files_to_inspect": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                            },
+                            "expected_output": { "type": "string" }
+                        },
+                        "required": ["task"],
                         "additionalProperties": false
                     }
                 }
@@ -622,6 +661,18 @@ impl ToolRuntime {
                     .ok_or_else(|| anyhow!("search_files 缺少 query"))?;
                 Ok(ToolRequest::Search {
                     query: query.to_string(),
+                })
+            }
+            "run_subagent" => {
+                let task = required_string_arg(&args, "run_subagent", "task")?;
+                Ok(ToolRequest::RunSubagent {
+                    request: RunSubagentRequest {
+                        task: task.to_string(),
+                        success_criteria: optional_string_arg(&args, "success_criteria")?,
+                        context_summary: optional_string_arg(&args, "context_summary")?,
+                        files_to_inspect: optional_string_array_arg(&args, "files_to_inspect")?,
+                        expected_output: optional_string_arg(&args, "expected_output")?,
+                    },
                 })
             }
             "create_file" => {
@@ -1256,6 +1307,38 @@ fn required_string_arg<'a>(args: &'a Value, tool: &str, key: &str) -> Result<&'a
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("{} 缺少 {}", tool, key))
+}
+
+fn optional_string_arg(args: &Value, key: &str) -> Result<Option<String>> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(|text| Some(text.to_string()))
+            .ok_or_else(|| anyhow!("{} 必须是非空字符串", key)),
+    }
+}
+
+fn optional_string_array_arg(args: &Value, key: &str) -> Result<Vec<String>> {
+    let Some(value) = args.get(key) else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = value.as_array() else {
+        return Err(anyhow!("{} 必须是字符串数组", key));
+    };
+
+    let mut out = Vec::new();
+    for item in items {
+        let text = item
+            .as_str()
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .ok_or_else(|| anyhow!("{} 必须只包含非空字符串", key))?;
+        out.push(text.to_string());
+    }
+    Ok(out)
 }
 
 fn parse_web_fetch_url(url: &str) -> Result<Url> {

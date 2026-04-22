@@ -23,12 +23,42 @@ import type {
   RuntimeTurnResult,
 } from './types.js';
 
-export interface TurnMachineRuntime<
+export interface InternalToolCallRuntime<
   Config,
   State,
   ToolRequest,
   TrustTarget = string,
 > {
+  maybeExecuteInternalToolCall?: (
+    pendingUserInput: string,
+    state: State,
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    remainingCalls: ToolCallRequest[],
+    turn: RuntimeTurnContext<ToolRequest>,
+    resumeAsStreaming?: boolean,
+    streamingEmitBeginResponse?: boolean,
+  ) => Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget> | undefined>;
+  maybeContinueInternalToolCallAsync?: (
+    pendingUserInput: string,
+    state: State,
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    remainingCalls: ToolCallRequest[],
+    turn: RuntimeTurnContext<ToolRequest>,
+    resumeAsStreaming?: boolean,
+    streamingEmitBeginResponse?: boolean,
+  ) => Promise<boolean>;
+}
+
+export interface TurnMachineRuntime<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+> extends InternalToolCallRuntime<Config, State, ToolRequest, TrustTarget> {
   options: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>;
   historyStore: LlmMessage[];
   requestTraceStore: JsonValue[];
@@ -407,6 +437,19 @@ export async function executeAuthorizedToolCall<
   remainingCalls: ToolCallRequest[],
   turn: RuntimeTurnContext<ToolRequest>,
 ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+  const internal = await runtime.maybeExecuteInternalToolCall?.(
+    pendingUserInput,
+    state,
+    request,
+    toolCallId,
+    toolName,
+    remainingCalls,
+    turn,
+  );
+  if (internal) {
+    return internal;
+  }
+
   const execution = await runtime.performToolExecution(request, toolName);
 
   turn.toolExecutions.push({
@@ -701,6 +744,21 @@ export async function processToolCallsAsync<
         resumeAsStreaming,
         streamingEmitBeginResponse,
       );
+      return;
+    }
+
+    const internalHandled = await runtime.maybeContinueInternalToolCallAsync?.(
+      pendingUserInput,
+      currentState,
+      request,
+      call.id,
+      call.name,
+      remaining,
+      turn,
+      resumeAsStreaming,
+      streamingEmitBeginResponse,
+    );
+    if (internalHandled) {
       return;
     }
 

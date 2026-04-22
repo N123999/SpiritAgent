@@ -8,6 +8,7 @@ import type {
   RuntimeApprovalDecision,
   RuntimeEvent,
   RuntimePendingApproval,
+  RuntimeSubagentSessionSummary,
 } from '../runtime.js';
 import type {
   OpenAiActiveSkill,
@@ -60,6 +61,7 @@ export interface BridgeRuntimeSnapshot {
   hasPendingApproval: boolean;
   hasPendingManualApproval: boolean;
   currentPendingApproval?: RuntimePendingApproval<JsonValue, JsonValue>;
+  childSessions: RuntimeSubagentSessionSummary[];
   isBusy: boolean;
   backgroundToolStatus?: string;
 }
@@ -139,6 +141,10 @@ export interface RuntimeApplyMcpPromptParams {
 
 export interface RuntimeRespondToPendingApprovalParams {
   decision: RuntimeApprovalDecision;
+}
+
+export interface RuntimeSubagentSessionParams {
+  sessionId: string;
 }
 
 export interface RuntimeStartManualToolCommandParams {

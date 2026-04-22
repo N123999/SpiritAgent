@@ -11,12 +11,15 @@ use crate::{
     },
     model_registry::AppConfig,
     plan::PlanMetadata,
-    ports::{AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore},
+    ports::{
+        AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
+        SubagentSessionArchiveEntry, SubagentSessionSummary,
+    },
     rules::EnabledRule,
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     session::SessionModel,
     ts_bridge::TsBridgeRuntime,
-    view::PendingAssistantAux,
+    view::{PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 #[derive(Clone, Debug)]
@@ -97,6 +100,21 @@ impl RuntimeHandle {
 
     pub fn mcp_status_snapshot(&mut self) -> McpStatusSnapshot {
         self.runtime.mcp_status_snapshot()
+    }
+
+    pub fn subagent_sessions(&self) -> &[SubagentSessionSummary] {
+        self.runtime.subagent_sessions()
+    }
+
+    pub fn subagent_session_archive(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<SubagentSessionArchiveEntry>> {
+        self.runtime.subagent_session_archive(session_id)
+    }
+
+    pub fn pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
+        self.runtime.pending_subagent_approval()
     }
 
     pub fn has_pending_tool_approval(&self) -> bool {

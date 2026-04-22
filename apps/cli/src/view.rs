@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::model_registry::AppConfig;
+use crate::ports::SubagentSessionStatus;
 use crate::session::PendingMcpResource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,6 +172,31 @@ impl ChatMessage {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SubagentSessionSummaryView {
+    pub session_id: String,
+    pub title: String,
+    pub status: SubagentSessionStatus,
+    pub updated_at_unix_ms: u64,
+    pub latest_message: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubagentSessionDetailView {
+    pub summary: SubagentSessionSummaryView,
+    pub messages: Vec<ChatMessage>,
+    pub final_output: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PendingSubagentApprovalView {
+    pub session_id: String,
+    pub session_title: String,
+    pub tool_name: String,
+    pub prompt: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageRole {
     User,
@@ -206,6 +232,12 @@ pub struct TuiViewModel {
     pub chat_picker_active: bool,
     pub chat_picker_index: usize,
     pub chat_picker_files: Vec<String>,
+    pub subagent_picker_active: bool,
+    pub subagent_picker_index: usize,
+    pub subagent_sessions: Vec<SubagentSessionSummaryView>,
+    pub subagent_view: Option<SubagentSessionDetailView>,
+    pub subagent_history_offset_from_bottom: usize,
+    pub pending_subagent_approval: Option<PendingSubagentApprovalView>,
     pub image_picker_active: bool,
     pub image_picker_index: usize,
     pub image_picker_files: Vec<String>,

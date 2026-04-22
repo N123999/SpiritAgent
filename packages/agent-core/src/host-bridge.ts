@@ -46,6 +46,7 @@ import type {
   RuntimeAttachMcpResourceParams,
   RuntimeInitParams,
   RuntimeNamedMcpServerParams,
+  RuntimeSubagentSessionParams,
   RuntimeReplaceConfigParams,
   RuntimeReplacePlanMetadataParams,
   RuntimeReplaceRulesParams,
@@ -177,6 +178,7 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
     hasPendingApproval: target.hasPendingApproval(),
     hasPendingManualApproval: target.hasPendingManualApproval(),
     ...(currentPendingApproval !== undefined ? { currentPendingApproval } : {}),
+    childSessions: [...target.childSessions()],
     isBusy: target.isBusy(),
     ...(backgroundToolStatus !== undefined ? { backgroundToolStatus } : {}),
   };
@@ -254,6 +256,11 @@ peer.on('runtime.replaceHistory', async (rawParams) => {
 peer.on('runtime.replaceFromArchive', async (archive) => {
   requireRuntime().replaceFromArchive(archive as never);
   return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.subagentSessionArchive', async (rawParams) => {
+  const params = rawParams as RuntimeSubagentSessionParams;
+  return requireRuntime().childSessionArchive(params.sessionId) ?? null;
 });
 
 peer.on('runtime.submitUserTurn', async (rawParams) => {

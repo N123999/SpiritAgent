@@ -41,6 +41,7 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/model",
     "/compact",
     "/sessions",
+    "/subagents",
     "/image",
     "/mcp",
     "/create-rule",
@@ -60,6 +61,7 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/model",
     "/compact",
     "/sessions",
+    "/subagents",
     "/image",
     "/mcp",
     "/create-rule",
@@ -117,7 +119,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 
 fn command_replacement(command: &str) -> String {
     match command {
-        "/model" | "/sessions" | "/image" | "/mcp" | "/create-rule" | "/log"
+        "/model" | "/sessions" | "/subagents" | "/image" | "/mcp" | "/create-rule" | "/log"
         | "/language" | "/create-skill" => {
             format!("{} ", command)
         }
@@ -152,6 +154,10 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
 
     if query == "/sessions" || query.starts_with("/sessions ") {
         return vec![primary_help_suggestion("/sessions", query)];
+    }
+
+    if query == "/subagents" || query.starts_with("/subagents ") {
+        return vec![primary_help_suggestion("/subagents", query)];
     }
 
     if query == "/image" || query.starts_with("/image ") {
@@ -325,6 +331,7 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "- /sessions".to_string(),
         "- /sessions save [path]".to_string(),
         "- /sessions load <file>".to_string(),
+        "- /subagents [list|open <session_id>|close]".to_string(),
         "- /image <path> [prompt]".to_string(),
         "- /image pick".to_string(),
         "- /image clear".to_string(),
@@ -340,6 +347,7 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "".to_string(),
         "说明:".to_string(),
         "- /sessions 打开已保存会话列表选择器。".to_string(),
+        "- /subagents 打开当前会话里的 SubAgent 列表；回车可进入只读子会话视图，Esc 返回主会话。".to_string(),
         "- /image pick 打开当前目录图片选择器。".to_string(),
         "- /image 不带 prompt 时会把图片加入待发送队列。".to_string(),
         "- 输入 @<文件名> 会打开工作区文件引用建议，回车后会把选中文件写回输入框，格式为 @路径 加一个空格。".to_string(),
@@ -385,6 +393,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/model" => shell.handle_model_slash(&parts[1..]),
         "/compact" => shell.compact_history_for_slash(),
         "/sessions" => shell.handle_sessions_slash(message),
+        "/subagents" => shell.handle_subagents_slash(message),
         "/image" => shell.handle_image_slash(message),
         "/mcp" => shell.handle_mcp_slash(message),
         "/create-rule" => shell.handle_create_rule_slash(message),

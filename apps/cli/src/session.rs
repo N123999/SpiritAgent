@@ -224,6 +224,11 @@ impl SessionModel {
                     .unwrap_or_else(|| "default".to_string())
             ),
             ToolRequest::Search { query } => format!("search_files query={}", query),
+            ToolRequest::RunSubagent { request } => format!(
+                "run_subagent task={} files_to_inspect={}",
+                truncate_for_preview(&request.task, 240),
+                request.files_to_inspect.len()
+            ),
             ToolRequest::Shell { command } => format!("run_shell_command command={}", command),
             ToolRequest::CreateFile { path, content } => {
                 format!(
@@ -295,6 +300,7 @@ impl SessionModel {
                 .iter()
                 .map(|m| (m.role.to_string(), m.content.clone(), m.image_paths.clone()))
                 .collect(),
+            subagent_sessions: Vec::new(),
         }
     }
 

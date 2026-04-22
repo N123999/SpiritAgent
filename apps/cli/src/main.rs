@@ -395,6 +395,8 @@ fn process_event_batch(
                 if shell.is_model_list_overlay_active()
                     || shell.is_language_picker_active()
                     || shell.is_chat_picker_active()
+                    || shell.is_subagent_picker_active()
+                    || shell.is_subagent_view_active()
                     || shell.is_image_picker_active()
                 {
                     continue;
@@ -424,6 +426,8 @@ fn process_event_batch(
                 if !shell.is_model_list_overlay_active()
                     && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
+                    && !shell.is_subagent_picker_active()
+                    && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
                     && !shell.is_bottom_form_active()
                     && pending_text.is_empty()
@@ -439,6 +443,8 @@ fn process_event_batch(
                 if !shell.is_model_list_overlay_active()
                     && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
+                    && !shell.is_subagent_picker_active()
+                    && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
                     && let Some(ch) = batched_text_char(&key)
                 {
@@ -539,6 +545,35 @@ fn process_key_event(
             KeyCode::Up => shell.select_prev_chat(),
             KeyCode::Down => shell.select_next_chat(),
             KeyCode::Enter => shell.confirm_chat_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_subagent_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_subagent_picker(),
+            KeyCode::Up => shell.select_prev_subagent(),
+            KeyCode::Down => shell.select_next_subagent(),
+            KeyCode::Enter => shell.confirm_subagent_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_subagent_view_active() {
+        match key.code {
+            KeyCode::Esc => shell.close_subagent_view(),
+            KeyCode::Up => shell.scroll_subagent_view_up(2),
+            KeyCode::Down => shell.scroll_subagent_view_down(2),
+            KeyCode::PageUp => shell.scroll_subagent_view_up(8),
+            KeyCode::PageDown => shell.scroll_subagent_view_down(8),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.request_quit();
             }
