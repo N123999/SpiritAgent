@@ -383,6 +383,7 @@ pub(crate) fn move_left(form: &mut BottomFormView) {
             sync_model_add_form_fields(form);
         }
         BottomFormFieldEditorView::Checkbox { .. } => {}
+        BottomFormFieldEditorView::AskQuestion { .. } => {}
     }
 }
 
@@ -406,6 +407,7 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
             sync_model_add_form_fields(form);
         }
         BottomFormFieldEditorView::Checkbox { .. } => {}
+        BottomFormFieldEditorView::AskQuestion { .. } => {}
     }
 }
 
@@ -755,7 +757,9 @@ fn is_field_selectable(field: &BottomFormFieldView) -> bool {
     match &field.editor {
         BottomFormFieldEditorView::Section { .. } => false,
         BottomFormFieldEditorView::Checkbox { disabled, .. } => !*disabled,
-        BottomFormFieldEditorView::Text { .. } | BottomFormFieldEditorView::Choice { .. } => true,
+        BottomFormFieldEditorView::Text { .. }
+        | BottomFormFieldEditorView::Choice { .. }
+        | BottomFormFieldEditorView::AskQuestion { .. } => true,
     }
 }
 
@@ -795,6 +799,7 @@ fn normalize_inserted_text(form: &BottomFormView, text: &str) -> String {
     match form.kind {
         BottomFormKind::McpPrompt { .. } => text.replace("\r\n", "\n").replace('\r', "\n"),
         BottomFormKind::McpAdd
+        | BottomFormKind::AskQuestions { .. }
         | BottomFormKind::ModelAdd
         | BottomFormKind::Rules
         | BottomFormKind::Skills => text.replace("\r\n", " ").replace(['\r', '\n'], " "),

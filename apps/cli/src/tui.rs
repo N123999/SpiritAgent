@@ -15,9 +15,10 @@ use std::{
 };
 
 use crate::{
+    ask_questions::AskQuestionsResult,
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
-    host_runtime::RuntimeEvent,
+    host_runtime::{RuntimeEvent, build_tool_result_block, format_tool_ui_message},
     locale,
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -29,7 +30,7 @@ use crate::{
     },
     rules::{self, RuleEntry, RuleScope, RuleStateFile},
     runtime_handle::RuntimeHandle,
-    shell::{bottom_form, file_reference, manual_shell, slash},
+    shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry, SkillScope, SkillStateFile},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
@@ -124,7 +125,7 @@ impl TuiShell {
         let skill_state = skills::load_skill_state().context("读取技能状态失败")?;
         let skill_entries = skills::discover_skill_entries(&workspace_root, &skill_state)
             .context("发现技能文件失败")?;
-        let plan_metadata = plan::current_plan_metadata();
+        let plan_metadata = plan::plan_metadata_snapshot(false, &workspace_root);
         let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
@@ -548,6 +549,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return false;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_prev_row(form);
+            return true;
+        }
         if matches!(form.kind, BottomFormKind::Rules) {
             form.scroll_offset = form.scroll_offset.saturating_sub(lines);
             return true;
@@ -561,6 +566,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return false;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_next_row(form);
+            return true;
+        }
         if matches!(form.kind, BottomFormKind::Rules) {
             form.scroll_offset = form.scroll_offset.saturating_add(lines);
             return true;
@@ -601,6 +610,7 @@ impl TuiShell {
 
         self.input_mode = mode;
         self.refresh_suggestions();
+        self.push_plan_metadata_snapshot();
     }
 
     pub fn toggle_input_mode(&mut self) {
@@ -1142,6 +1152,9 @@ impl TuiShell {
         };
 
         match kind {
+            BottomFormKind::AskQuestions { .. } => {
+                self.complete_ask_questions_form(ask_questions::dismiss_result());
+            }
             BottomFormKind::McpAdd
             | BottomFormKind::ModelAdd
             | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
@@ -1154,6 +1167,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_next_row(form);
+            return;
+        }
         bottom_form::select_next_field(form);
     }
 
@@ -1161,6 +1178,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::select_prev_row(form);
+            return;
+        }
         bottom_form::select_prev_field(form);
     }
 
@@ -1168,6 +1189,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_left(form);
+            return;
+        }
         bottom_form::move_left(form);
     }
 
@@ -1175,6 +1200,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_right(form);
+            return;
+        }
         bottom_form::move_right(form);
     }
 
@@ -1182,6 +1211,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_home(form);
+            return;
+        }
         bottom_form::move_home(form);
     }
 
@@ -1189,6 +1222,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::move_end(form);
+            return;
+        }
         bottom_form::move_end(form);
     }
 
@@ -1196,6 +1233,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::insert_char(form, ch);
+            return;
+        }
         bottom_form::insert_char(form, ch);
     }
 
@@ -1203,6 +1244,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::insert_text(form, text);
+            return;
+        }
         bottom_form::insert_text(form, text);
     }
 
@@ -1210,6 +1255,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::backspace(form);
+            return;
+        }
         bottom_form::backspace(form);
     }
 
@@ -1217,6 +1266,10 @@ impl TuiShell {
         let Some(form) = self.bottom_form.as_mut() else {
             return;
         };
+        if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
+            ask_questions::delete(form);
+            return;
+        }
         bottom_form::delete(form);
     }
 
@@ -1235,6 +1288,23 @@ impl TuiShell {
         };
 
         match kind {
+            BottomFormKind::AskQuestions { .. } => {
+                if let Some(form) = self.bottom_form.as_mut() {
+                    match ask_questions::activate(form) {
+                        Ok(ask_questions::AskQuestionsActivateOutcome::None) => {}
+                        Ok(ask_questions::AskQuestionsActivateOutcome::Submit(result)) => {
+                            self.complete_ask_questions_form(result);
+                        }
+                        Err(err) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::Agent,
+                                content: err,
+                                tool_block: None,
+                            });
+                        }
+                    }
+                }
+            }
             BottomFormKind::McpAdd | BottomFormKind::ModelAdd => self.save_bottom_form(),
             BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {
@@ -2739,6 +2809,58 @@ impl TuiShell {
         self.refresh_suggestions();
     }
 
+    fn open_ask_questions_form(
+        &mut self,
+        tool_call_id: String,
+        tool_name: String,
+        questions: crate::ask_questions::AskQuestionsRequest,
+    ) {
+        self.cancel_model_add_pick();
+        self.bottom_form = Some(ask_questions::new_form(tool_call_id, tool_name, questions));
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+        self.scroll_history_to_bottom();
+    }
+
+    fn complete_ask_questions_form(&mut self, result: AskQuestionsResult) {
+        let Some(form) = self.bottom_form.take() else {
+            return;
+        };
+        let BottomFormKind::AskQuestions {
+            tool_call_id,
+            tool_name,
+            request,
+            ..
+        } = form.kind
+        else {
+            self.bottom_form = Some(form);
+            return;
+        };
+
+        let request_value = ToolRequest::AskQuestions {
+            questions: request.clone(),
+        };
+        let output = serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|_| "{\"status\":\"skipped\"}".to_string());
+        self.messages.push(ChatMessage::with_tool_block(
+            MessageRole::Agent,
+            format_tool_ui_message(&request_value, &tool_name, &output),
+            build_tool_result_block(
+                &request_value,
+                &tool_name,
+                Some(tool_call_id.as_str()),
+                &output,
+            ),
+        ));
+        self.scroll_history_to_bottom();
+        self.runtime.respond_to_pending_questions(&result);
+        self.apply_runtime_events();
+    }
+
     fn open_mcp_prompt_form(
         &mut self,
         server: &str,
@@ -3082,6 +3204,13 @@ impl TuiShell {
         for event in self.runtime.drain_events() {
             match event {
                 RuntimeEvent::PushMessage(msg) => self.messages.push(msg),
+                RuntimeEvent::OpenAskQuestions {
+                    tool_call_id,
+                    tool_name,
+                    questions,
+                } => {
+                    self.open_ask_questions_form(tool_call_id, tool_name, questions);
+                }
                 RuntimeEvent::BeginAssistantResponse => {
                     self.messages
                         .push(ChatMessage::new(MessageRole::Agent, String::new()));
@@ -3226,7 +3355,19 @@ impl TuiShell {
     }
 
     fn refresh_plan_metadata_from_disk(&mut self) {
-        let next = plan::current_plan_metadata();
+        let workspace_root = self.app_paths.workspace_root();
+        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
+        if next == self.plan_metadata {
+            return;
+        }
+
+        self.plan_metadata = next.clone();
+        self.runtime.replace_plan_metadata(next);
+    }
+
+    fn push_plan_metadata_snapshot(&mut self) {
+        let workspace_root = self.app_paths.workspace_root();
+        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
         if next == self.plan_metadata {
             return;
         }
@@ -3343,23 +3484,17 @@ impl TuiShell {
 }
 
 fn user_turn_text_for_mode(
-    workspace_root: &Path,
-    input_mode: MainInputMode,
+    _workspace_root: &Path,
+    _input_mode: MainInputMode,
     raw_message: &str,
 ) -> String {
-    match input_mode {
-        MainInputMode::Agent => raw_message.to_string(),
-        MainInputMode::Plan => plan::build_create_plan_user_turn(workspace_root, raw_message),
-    }
+    raw_message.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::user_turn_text_for_mode;
-    use crate::{
-        plan::START_IMPLEMENTING_REMINDER,
-        view::MainInputMode,
-    };
+    use crate::view::MainInputMode;
     use std::path::PathBuf;
 
     #[test]
@@ -3374,17 +3509,14 @@ mod tests {
     }
 
     #[test]
-    fn user_turn_text_for_plan_mode_builds_generation_prompt() {
+    fn user_turn_text_for_plan_mode_keeps_only_user_text() {
         let workspace_root = PathBuf::from("C:/workspace/demo");
         let raw_message = "实现计划模式";
 
         let runtime_turn =
             user_turn_text_for_mode(&workspace_root, MainInputMode::Plan, raw_message);
 
-        assert!(runtime_turn.contains("Plan 模式规划请求"));
-        assert!(runtime_turn.contains(raw_message));
-        assert!(runtime_turn.contains("create_file 或 edit_file"));
-        assert!(runtime_turn.contains(START_IMPLEMENTING_REMINDER));
+        assert_eq!(runtime_turn, raw_message);
     }
 }
 

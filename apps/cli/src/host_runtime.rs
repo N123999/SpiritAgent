@@ -1,12 +1,18 @@
 use serde_json::json;
 
 use crate::{
+    ask_questions::AskQuestionsRequest,
     tool_runtime::ToolRequest,
     view::{ChatMessage, ToolUiBlock, ToolUiPhase},
 };
 
 pub enum RuntimeEvent {
     PushMessage(ChatMessage),
+    OpenAskQuestions {
+        tool_call_id: String,
+        tool_name: String,
+        questions: AskQuestionsRequest,
+    },
     BeginAssistantResponse,
     UpdatePendingAssistantThinking(String),
     UpdatePendingAssistantCompaction(String),
@@ -27,6 +33,7 @@ pub(crate) fn openapi_tool_name(request: &ToolRequest) -> &'static str {
         ToolRequest::CreateFile { .. } => "create_file",
         ToolRequest::EditFile { .. } => "edit_file",
         ToolRequest::DeleteFile { .. } => "delete_file",
+        ToolRequest::AskQuestions { .. } => "ask_questions",
     }
 }
 
@@ -52,6 +59,10 @@ fn tool_request_args_excerpt(request: &ToolRequest) -> String {
             end_line,
         } => json!({ "path": path, "start_line": start_line, "end_line": end_line }),
         ToolRequest::Search { query } => json!({ "query": query }),
+        ToolRequest::AskQuestions { questions } => json!({
+            "title": questions.title,
+            "questionCount": questions.questions.len(),
+        }),
         ToolRequest::CreateFile { path, content } => {
             json!({ "path": path, "content_chars": content.chars().count() })
         }
@@ -192,6 +203,15 @@ pub(crate) fn build_tool_result_block(
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
+        ToolRequest::AskQuestions { questions } => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "问卷答案已返回".to_string(),
+            detail_lines: vec![format!("问题数: {}", questions.questions.len())],
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+        },
         ToolRequest::CreateFile { path, .. } => ToolUiBlock {
             tool_call_id: tool_call_id.map(String::from),
             tool_name: tool_name.to_string(),
@@ -263,6 +283,11 @@ pub(crate) fn format_tool_ui_message(
             format!("[tool] 阅读文件 {} {} - {}", path, start, end)
         }
         ToolRequest::Search { .. } => output.to_string(),
+        ToolRequest::AskQuestions { .. } => format!(
+            "[tool] {} 已返回结构化答案。\n{}",
+            tool_name,
+            truncate_for_preview(output, 1200)
+        ),
         ToolRequest::CreateFile { path, .. } => format!("[tool] 已创建文件 {}", path),
         ToolRequest::EditFile { path, .. } => {
             format!("[tool] 已编辑文件 {}", path)

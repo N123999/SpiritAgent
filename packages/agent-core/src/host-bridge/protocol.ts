@@ -1,4 +1,5 @@
 import type {
+  AskQuestionsResult,
   JsonValue,
   LlmMessage,
 } from '../ports.js';
@@ -8,6 +9,7 @@ import type {
   RuntimeApprovalDecision,
   RuntimeEvent,
   RuntimePendingApproval,
+  RuntimePendingQuestions,
 } from '../runtime.js';
 import type {
   OpenAiActiveSkill,
@@ -59,7 +61,9 @@ export interface BridgeRuntimeSnapshot {
   pendingAuxState?: PendingAssistantAux;
   hasPendingApproval: boolean;
   hasPendingManualApproval: boolean;
+  hasPendingQuestions: boolean;
   currentPendingApproval?: RuntimePendingApproval<JsonValue, JsonValue>;
+  currentPendingQuestions?: RuntimePendingQuestions<JsonValue>;
   isBusy: boolean;
   backgroundToolStatus?: string;
 }
@@ -139,6 +143,10 @@ export interface RuntimeApplyMcpPromptParams {
 
 export interface RuntimeRespondToPendingApprovalParams {
   decision: RuntimeApprovalDecision;
+}
+
+export interface RuntimeRespondToPendingQuestionsParams {
+  result: AskQuestionsResult;
 }
 
 export interface RuntimeStartManualToolCommandParams {
