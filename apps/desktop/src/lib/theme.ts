@@ -52,27 +52,34 @@ export function desktopNativeThemeForPreference(
   return "light";
 }
 
-export function syncDesktopAppTheme(pref: ThemePreference): void {
-  if (typeof window === "undefined" || !window.spiritDesktop) {
-    return;
-  }
-  const theme = desktopNativeThemeForPreference(pref);
-  void window.spiritDesktop.setNativeTheme(theme);
-}
-
 /** 在 `document.documentElement` 上切换 `dark` 类，与 shadcn / tw-animate 的 `.dark` 变体一致。 */
 export function applyThemeToDocument(pref: ThemePreference): void {
   if (typeof document === "undefined") {
     return;
   }
   document.documentElement.classList.toggle("dark", resolveDark(pref));
-  syncDesktopAppTheme(pref);
-  syncDesktopWindowFrame(resolveDark(pref));
+  const nativeTheme = desktopNativeThemeForPreference(pref);
+  syncDesktopWindowFrame(resolveDark(pref), nativeTheme);
 }
 
-export function syncDesktopWindowFrame(dark: boolean): void {
+/** 与 Tauri `sync_tauri_frame_styling` 对齐：同一 IPC 内先设 `nativeTheme.themeSource` 再刷背景，避免与系统主题错位。 */
+export function syncDesktopWindowFrame(
+  dark: boolean,
+  nativeTheme: "system" | "light" | "dark",
+): void {
   if (typeof window === "undefined" || !window.spiritDesktop) {
+    if (
+      typeof navigator !== "undefined" &&
+      /\bElectron\//.test(navigator.userAgent) &&
+      import.meta.env.DEV
+    ) {
+      console.warn(
+        "[spirit-desktop] 无 spiritDesktop 预加载桥，窗口/Mica IPC 未发送（检查 preload 与 webPreferences）",
+      );
+    }
     return;
   }
-  void window.spiritDesktop.syncWindowFrame({ dark });
+  void window.spiritDesktop.syncWindowFrame({ dark, nativeTheme }).catch((err) => {
+    console.error("[spirit-desktop] syncWindowFrame IPC 失败:", err);
+  });
 }

@@ -33,7 +33,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useTheme } from "@/hooks/useTheme";
-import { resolveDark, syncDesktopWindowFrame, type ThemePreference } from "@/lib/theme";
+import {
+  desktopNativeThemeForPreference,
+  resolveDark,
+  syncDesktopWindowFrame,
+  type ThemePreference,
+} from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { SessionSidebar, mcpBadgeText } from "@/components/session-sidebar";
 import type {
@@ -293,24 +298,35 @@ function AskQuestionField({
   );
 }
 
+function isElectronChrome(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (window.spiritDesktop) {
+    return true;
+  }
+  return typeof navigator !== "undefined" && /\bElectron\//.test(navigator.userAgent);
+}
+
 export default function App() {
   const { theme, setTheme } = useTheme();
   const runtime = useDesktopRuntime();
   const snapshot = runtime.snapshot;
-  const isDesktopShell = runtime.hostKind === "electron";
+  /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
+  const isElectronShell = isElectronChrome();
   const useMicaBackdrop =
-    isDesktopShell && (snapshot?.config.windowsMica !== false);
+    isElectronShell && (snapshot?.config.windowsMica !== false);
 
   useEffect(() => {
     if (typeof document === "undefined") {
       return;
     }
-    if (isDesktopShell) {
+    if (isElectronShell) {
       document.documentElement.classList.add("spirit-desktop-native");
     } else {
       document.documentElement.classList.remove("spirit-desktop-native");
     }
-  }, [isDesktopShell]);
+  }, [isElectronShell]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -325,13 +341,13 @@ export default function App() {
 
   // 与 `config.windows_mica` 持久化对齐（保存 Mica 开关后桌面宿主会先按系统主题同步一帧，此处用 `html.dark` 再拉齐）
   useEffect(() => {
-    if (runtime.hostKind !== "electron") {
+    if (!isElectronShell) {
       return;
     }
-    syncDesktopWindowFrame(resolveDark(theme));
-    // theme 由下方 `applyThemeToDocument` 处理；此处仅随 Mica 配置变更
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 windowsMica
-  }, [runtime.hostKind, snapshot?.config.windowsMica]);
+    syncDesktopWindowFrame(resolveDark(theme), desktopNativeThemeForPreference(theme));
+    // 主题变更由 `applyThemeToDocument` 同步边框；此处仅随 Mica 配置变更
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 windowsMica / Electron 壳
+  }, [isElectronShell, snapshot?.config.windowsMica]);
 
   const models = snapshot?.config.models ?? [];
   const messages = snapshot?.conversation.messages ?? [];
@@ -383,7 +399,8 @@ export default function App() {
           />
         </div>
 
-        <div className="z-20 flex shrink-0 self-start bg-transparent pt-2.5 pr-0">
+        {/* 勿用透明：Mica 在「系统浅 / 应用深」时此处会透出亮色底，形成侧栏与主区之间的白条 */}
+        <div className="z-20 flex h-full shrink-0 flex-col self-stretch bg-background pt-2.5 pr-0">
           <Button
             type="button"
             variant="ghost"
@@ -594,7 +611,7 @@ export default function App() {
                 </label>
               </RadioGroup>
             </div>
-            {isDesktopShell ? (
+            {isElectronShell ? (
               <div className="space-y-2">
                 <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
                   <Checkbox

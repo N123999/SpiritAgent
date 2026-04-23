@@ -1,9 +1,12 @@
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
 
 import { invokeDesktopHostCommand } from '../src/host/service.js';
+import { configFilePath } from '../src/host/storage.js';
+import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,25 +17,157 @@ function currentWindowBackground(): string {
   return nativeTheme.shouldUseDarkColors ? '#171717' : '#fafafa';
 }
 
+/** 与 Tauri `frame_chrome` 一致：开 Mica 时用透明背景把绘制交给 DWM，避免与系统浅色不同步时出现大块「假白」。 */
+function electronRootBackgroundForBackdrop(mica: boolean, darkContent: boolean): string {
+  if (process.platform === 'win32' && mica) {
+    return '#00000000';
+  }
+  return darkContent ? '#171717' : '#fafafa';
+}
+
+function readWindowsMicaFromDisk(): boolean {
+  const filePath = configFilePath();
+  if (!existsSync(filePath)) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as {
+      windowsMica?: boolean;
+    };
+    return parsed.windowsMica !== false;
+  } catch {
+    return true;
+  }
+}
+
+/** 与 `src/lib/theme.ts` 中 `THEME_STORAGE_KEY` 保持一致 */
+const RENDERER_THEME_STORAGE_KEY = 'spirit-agent-desktop-theme';
+
+type RendererThemePrefs = {
+  dark: boolean;
+  nativeTheme: 'system' | 'light' | 'dark';
+  pref: string;
+};
+
+const READ_RENDERER_THEME_PREFS_JS = `(() => {
+  const raw = localStorage.getItem(${JSON.stringify(RENDERER_THEME_STORAGE_KEY)});
+  const pref =
+    raw === 'dark' || raw === 'light' || raw === 'system' ? raw : 'system';
+  const resolveDark = (p) => {
+    if (p === 'dark') return true;
+    if (p === 'light') return false;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  };
+  const nativeFor = (p) =>
+    p === 'system' ? 'system' : p === 'dark' ? 'dark' : 'light';
+  return { dark: resolveDark(pref), nativeTheme: nativeFor(pref), pref };
+})()`;
+
+async function readRendererThemePrefs(
+  window: BrowserWindow,
+): Promise<RendererThemePrefs | null> {
+  try {
+    return (await window.webContents.executeJavaScript(
+      READ_RENDERER_THEME_PREFS_JS,
+    )) as RendererThemePrefs;
+  } catch (err) {
+    console.error('[spirit-desktop] readRendererThemePrefs failed', err);
+    return null;
+  }
+}
+
+function applyRendererThemePrefs(window: BrowserWindow, prefs: RendererThemePrefs): void {
+  nativeTheme.themeSource = prefs.nativeTheme;
+  applyWin32Backdrop(window, prefs.dark);
+}
+
+/**
+ * 不依赖 preload IPC：从 localStorage 读主题并同步 Mica/DWM。
+ */
+async function syncBrowserWindowFrameFromRendererStorage(
+  window: BrowserWindow,
+): Promise<RendererThemePrefs | null> {
+  const prefs = await readRendererThemePrefs(window);
+  if (!prefs) {
+    return null;
+  }
+  applyRendererThemePrefs(window, prefs);
+  return prefs;
+}
+
+function applyWin32Backdrop(window: BrowserWindow, darkContent: boolean): void {
+  const mica = readWindowsMicaFromDisk();
+
+  if (process.platform === 'win32') {
+    try {
+      window.setBackgroundMaterial(mica ? 'mica' : 'none');
+    } catch (err) {
+      console.error('[spirit-desktop] setBackgroundMaterial failed', err);
+    }
+  }
+
+  window.setBackgroundColor(electronRootBackgroundForBackdrop(mica, darkContent));
+
+  if (process.platform === 'win32') {
+    syncWindowsImmersiveDarkMode(window, darkContent);
+  }
+
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  try {
+    if (mica) {
+      // 开 Mica 时勿用实色盖住标题栏区，交给 DWM + themeSource（对标 DWMWA_COLOR_DEFAULT）
+      window.setTitleBarOverlay({
+        color: '#00000000',
+        symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
+      });
+    } else {
+      window.setTitleBarOverlay({
+        color: darkContent ? '#171717' : '#fafafa',
+        symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
+      });
+    }
+  } catch {
+    // 未启用 overlay 或平台限制时忽略
+  }
+}
+
 async function createMainWindow(): Promise<BrowserWindow> {
+  const micaOnDisk = readWindowsMicaFromDisk();
+  const initialDark = nativeTheme.shouldUseDarkColors;
+  const initialBg = electronRootBackgroundForBackdrop(
+    process.platform === 'win32' && micaOnDisk,
+    initialDark,
+  );
+  const preloadPath = path.join(__dirname, 'preload.cjs');
+  if (!existsSync(preloadPath)) {
+    console.error(
+      '[spirit-desktop] preload 缺失（需 build:electron 生成 preload.cjs）:',
+      preloadPath,
+    );
+  }
+
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1100,
     minHeight: 720,
-    backgroundColor: currentWindowBackground(),
+    backgroundColor: initialBg,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     titleBarOverlay:
       process.platform === 'win32'
         ? {
-            color: currentWindowBackground(),
-            symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f5' : '#1f1f1f',
+            color: micaOnDisk ? '#00000000' : currentWindowBackground(),
+            symbolColor: initialDark ? '#f5f5f5' : '#1f1f1f',
           }
         : undefined,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
     },
   });
 
@@ -42,6 +177,8 @@ async function createMainWindow(): Promise<BrowserWindow> {
     await window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
+  await syncBrowserWindowFrameFromRendererStorage(window);
+
   return window;
 }
 
@@ -50,17 +187,18 @@ app.whenReady().then(async () => {
     invokeDesktopHostCommand(command, payload),
   );
 
-  ipcMain.handle('desktop:set-native-theme', (_event, theme: 'system' | 'light' | 'dark') => {
-    nativeTheme.themeSource = theme;
-  });
-
-  ipcMain.handle('desktop:sync-window-frame', (event, request: { dark: boolean }) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window) {
-      return;
-    }
-    window.setBackgroundColor(request.dark ? '#171717' : '#fafafa');
-  });
+  ipcMain.handle(
+    'desktop:sync-window-frame',
+    (event, request: { dark: boolean; nativeTheme: 'system' | 'light' | 'dark' }) => {
+      nativeTheme.themeSource = request.nativeTheme;
+      const window = BrowserWindow.fromWebContents(event.sender);
+      if (!window) {
+        console.warn('[spirit-desktop] desktop:sync-window-frame: no BrowserWindow for sender');
+        return;
+      }
+      applyWin32Backdrop(window, request.dark);
+    },
+  );
 
   await createMainWindow();
 

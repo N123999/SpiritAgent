@@ -15,5 +15,6 @@
     "src/env.d.ts",
     "src/host/**/*.ts",
     "src/types.ts"
-  ]
+  ],
+  "exclude": ["electron/preload.ts"]
 }

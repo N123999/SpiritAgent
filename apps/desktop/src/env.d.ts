@@ -19,8 +19,10 @@ declare global {
     resetSession(): Promise<DesktopSnapshot>;
     listSessions(): Promise<SessionListItem[]>;
     openSession(path: string): Promise<DesktopSnapshot>;
-    setNativeTheme(theme: 'system' | 'light' | 'dark'): Promise<void>;
-    syncWindowFrame(request: { dark: boolean }): Promise<void>;
+    syncWindowFrame(request: {
+      dark: boolean;
+      nativeTheme: 'system' | 'light' | 'dark';
+    }): Promise<void>;
   }
 
   interface Window {

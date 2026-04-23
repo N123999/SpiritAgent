@@ -7,6 +7,12 @@ import './styles.css';
 
 // 首屏前应用已存主题，避免 portaled 浮层与根主题不一致
 if (typeof document !== 'undefined') {
+  if (import.meta.env.DEV && /\bElectron\//.test(navigator.userAgent)) {
+    console.info(
+      '[spirit-desktop] 首屏前 spiritDesktop:',
+      Boolean(window.spiritDesktop),
+    );
+  }
   applyThemeToDocument(getStoredTheme());
 }
 

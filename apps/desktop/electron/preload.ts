@@ -28,10 +28,10 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openSession(path: string) {
     return ipcRenderer.invoke('desktop:invoke', 'openSession', { path });
   },
-  setNativeTheme(theme: 'system' | 'light' | 'dark') {
-    return ipcRenderer.invoke('desktop:set-native-theme', theme);
-  },
-  syncWindowFrame(request: { dark: boolean }) {
+  syncWindowFrame(request: {
+    dark: boolean;
+    nativeTheme: 'system' | 'light' | 'dark';
+  }) {
     return ipcRenderer.invoke('desktop:sync-window-frame', request);
   },
 });
