@@ -40,6 +40,7 @@ import {
   type ThemePreference,
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { DesktopTitleBar } from "@/components/desktop-title-bar";
 import { SessionSidebar, mcpBadgeText } from "@/components/session-sidebar";
 import type {
   AskQuestionsQuestionSpec,
@@ -308,6 +309,14 @@ function isElectronChrome(): boolean {
   return typeof navigator !== "undefined" && /\bElectron\//.test(navigator.userAgent);
 }
 
+/** Windows Electron：使用 `titleBarOverlay` + 自绘顶栏；macOS 仍走系统菜单栏 */
+function isWin32ElectronShell(): boolean {
+  if (!isElectronChrome() || typeof navigator === "undefined") {
+    return false;
+  }
+  return /Windows/i.test(navigator.userAgent);
+}
+
 export default function App() {
   const { theme, setTheme } = useTheme();
   const runtime = useDesktopRuntime();
@@ -357,6 +366,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarNarrow, setSidebarNarrow] = useState(false);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
+  const winElectronChrome = isWin32ElectronShell();
 
   return (
     <div
@@ -365,19 +375,21 @@ export default function App() {
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
+      {winElectronChrome ? <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* 整窗内容区上沿：与系统标题栏分层（全宽，避免仅主区 border-t 在 Mica/浅灰上几乎不可见） */}
-        <div
-          className={cn(
-            "h-px w-full shrink-0",
-            // 与 SessionSidebar 竖线：关 Mica 时略提高对比，避免深色下「贴成一块」
-            useMicaBackdrop
-              ? "bg-black/5 dark:bg-white/10"
-              : "bg-border/30 dark:bg-white/12",
-          )}
-          role="separator"
-          aria-orientation="horizontal"
-        />
+        {!winElectronChrome ? (
+          <div
+            className={cn(
+              "h-px w-full shrink-0",
+              // 与 SessionSidebar 竖线：关 Mica 时略提高对比，避免深色下「贴成一块」
+              useMicaBackdrop
+                ? "bg-black/5 dark:bg-white/10"
+                : "bg-border/30 dark:bg-white/12",
+            )}
+            role="separator"
+            aria-orientation="horizontal"
+          />
+        ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div
           className={cn(

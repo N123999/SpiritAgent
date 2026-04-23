@@ -2,11 +2,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
+import { BrowserWindow, Menu, app, ipcMain, nativeTheme } from 'electron';
 
 import { invokeDesktopHostCommand } from '../src/host/service.js';
 import { configFilePath } from '../src/host/storage.js';
+import { type ApplicationMenuSection, popupApplicationMenuSection } from './application-menu.js';
 import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
+
+/** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
+const TITLE_BAR_OVERLAY_HEIGHT = 32;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -120,11 +124,13 @@ function applyWin32Backdrop(window: BrowserWindow, darkContent: boolean): void {
     if (mica) {
       // 开 Mica 时勿用实色盖住标题栏区，交给 DWM + themeSource（对标 DWMWA_COLOR_DEFAULT）
       window.setTitleBarOverlay({
+        height: TITLE_BAR_OVERLAY_HEIGHT,
         color: '#00000000',
         symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
       });
     } else {
       window.setTitleBarOverlay({
+        height: TITLE_BAR_OVERLAY_HEIGHT,
         color: darkContent ? '#171717' : '#fafafa',
         symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
       });
@@ -155,10 +161,12 @@ async function createMainWindow(): Promise<BrowserWindow> {
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: initialBg,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    titleBarStyle:
+      process.platform === 'darwin' ? 'hiddenInset' : process.platform === 'win32' ? 'hidden' : undefined,
     titleBarOverlay:
       process.platform === 'win32'
         ? {
+            height: TITLE_BAR_OVERLAY_HEIGHT,
             color: micaOnDisk ? '#00000000' : currentWindowBackground(),
             symbolColor: initialDark ? '#f5f5f5' : '#1f1f1f',
           }
@@ -183,8 +191,26 @@ async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') {
+    Menu.setApplicationMenu(null);
+  }
+
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
     invokeDesktopHostCommand(command, payload),
+  );
+
+  ipcMain.handle(
+    'desktop:application-menu-popup',
+    (
+      event,
+      payload: { section: ApplicationMenuSection; clientX: number; clientY: number },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) {
+        return;
+      }
+      popupApplicationMenuSection(win, payload.section, payload.clientX, payload.clientY);
+    },
   );
 
   ipcMain.handle(

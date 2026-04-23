@@ -53,6 +53,15 @@ body {
   margin: 0;
 }
 
+/* Electron Windows 自绘标题栏：拖拽区与可点击菜单互斥 */
+.electron-drag {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 /* Desktop 且开启 Mica 风格时：根层透明，便于宿主窗口绘制原生背景；Web 版保持实色。 */
 html.spirit-desktop-native.spirit-desktop-mica,
 html.spirit-desktop-native.spirit-desktop-mica body,

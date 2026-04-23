@@ -23,6 +23,11 @@ declare global {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';
     }): Promise<void>;
+    popupApplicationMenu(
+      section: 'file' | 'edit' | 'view' | 'window' | 'help',
+      clientX: number,
+      clientY: number,
+    ): Promise<void>;
   }
 
   interface Window {

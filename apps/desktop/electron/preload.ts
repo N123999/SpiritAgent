@@ -34,4 +34,11 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   }) {
     return ipcRenderer.invoke('desktop:sync-window-frame', request);
   },
+  popupApplicationMenu(
+    section: 'file' | 'edit' | 'view' | 'window' | 'help',
+    clientX: number,
+    clientY: number,
+  ) {
+    return ipcRenderer.invoke('desktop:application-menu-popup', { section, clientX, clientY });
+  },
 });
