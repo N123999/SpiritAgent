@@ -14,7 +14,6 @@ import type {
 type BusyAction =
   | ""
   | "bootstrap"
-  | "save"
   | "send"
   | "approve"
   | "questions"
@@ -314,7 +313,6 @@ export function useDesktopRuntime() {
       const s = { ...settingsRef.current, ...patch };
       settingsRef.current = s;
       setSettings(s);
-      setBusyAction("save");
       try {
         const next = await api.updateConfig({
           activeModel: s.activeModel,
@@ -333,8 +331,6 @@ export function useDesktopRuntime() {
         }));
       } catch (error) {
         setRuntimeError(describeError(error));
-      } finally {
-        setBusyAction("");
       }
     },
     [api, applySnapshot],

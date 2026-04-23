@@ -243,13 +243,6 @@ export function SettingsView({
               </div>
             ) : null}
 
-            {busyAction === "save" ? (
-              <p className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                正在保存…
-              </p>
-            ) : null}
-
             {tab === "basic" ? (
               <BasicSettingsPanel
                 settings={settings}
