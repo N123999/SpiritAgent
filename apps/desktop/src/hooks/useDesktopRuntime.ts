@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
 import type {
   AskQuestionsAnswer,
@@ -303,36 +304,41 @@ export function useDesktopRuntime() {
     [api, applySnapshot, snapshot],
   );
 
-  const saveSettings = useCallback(async () => {
-    if (!api) {
-      return;
-    }
+  /** 合并补丁并立即写回宿主（设置页可编辑项） */
+  const saveSettingsPatch = useCallback(
+    async (patch: Partial<SettingsFormState>) => {
+      if (!api) {
+        return;
+      }
 
-    setBusyAction("save");
-    try {
-      const next = await api.updateConfig({
-        activeModel: settings.activeModel,
-        apiBase: settings.apiBase,
-        windowsMica: settings.windowsMica,
-        ...(settings.uiLocale.trim()
-          ? { uiLocale: settings.uiLocale.trim() }
-          : { uiLocale: undefined }),
-        ...(settings.apiKey.trim()
-          ? { apiKey: settings.apiKey.trim() }
-          : { apiKey: undefined }),
-      });
-      applySnapshot(next);
-      setRuntimeError("");
-      setSettings((current) => ({
-        ...current,
-        apiKey: "",
-      }));
-    } catch (error) {
-      setRuntimeError(describeError(error));
-    } finally {
-      setBusyAction("");
-    }
-  }, [api, applySnapshot, settings]);
+      const s = { ...settingsRef.current, ...patch };
+      settingsRef.current = s;
+      setSettings(s);
+      setBusyAction("save");
+      try {
+        const next = await api.updateConfig({
+          activeModel: s.activeModel,
+          apiBase: s.apiBase,
+          windowsMica: s.windowsMica,
+          ...(s.uiLocale.trim()
+            ? { uiLocale: s.uiLocale.trim() }
+            : { uiLocale: undefined }),
+          ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : { apiKey: undefined }),
+        });
+        applySnapshot(next);
+        setRuntimeError("");
+        setSettings((current) => ({
+          ...current,
+          apiKey: "",
+        }));
+      } catch (error) {
+        setRuntimeError(describeError(error));
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
 
   const sendMessage = useCallback(async () => {
     if (!api) {
@@ -507,7 +513,7 @@ export function useDesktopRuntime() {
     bootstrap,
     openSession,
     resetSession,
-    saveSettings,
+    saveSettingsPatch,
     sendMessage,
     skipQuestions,
     submitApproval,

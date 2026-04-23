@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ChevronDown, LoaderCircle, PanelLeftClose, PanelLeftOpen, RefreshCw, Send } from "lucide-react";
+import { ChevronDown, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { SettingsView } from "@/components/settings-view";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useTheme } from "@/hooks/useTheme";
 import {
@@ -41,7 +42,11 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
-import { SessionSidebar, mcpBadgeText } from "@/components/session-sidebar";
+import {
+  SessionSidebar,
+  mcpBadgeText,
+  type SettingsSidebarTab,
+} from "@/components/session-sidebar";
 import type {
   AskQuestionsQuestionSpec,
   ConversationMessageSnapshot,
@@ -363,10 +368,14 @@ export default function App() {
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
   const pendingQuestions = runtime.pendingQuestions;
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeSurface, setActiveSurface] = useState<"conversation" | "settings">(
+    "conversation",
+  );
+  const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
   const [sidebarNarrow, setSidebarNarrow] = useState(false);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
   const winElectronChrome = isWin32ElectronShell();
+  const settingsMode = activeSurface === "settings";
 
   return (
     <div
@@ -399,11 +408,18 @@ export default function App() {
         >
           <SessionSidebar
             narrow={sidebarNarrow}
+            mode={settingsMode ? "settings" : "sessions"}
             sessions={runtime.sessions}
             activeFilePath={activeFilePath}
             onNewSession={() => void runtime.resetSession()}
             onSelectSession={(path) => void runtime.openSession(path)}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => {
+              setSidebarNarrow(false);
+              setActiveSurface("settings");
+            }}
+            onBackToSessions={() => setActiveSurface("conversation")}
+            settingsTab={settingsTab}
+            onSettingsTabChange={setSettingsTab}
             hostStatus={runtime.summary.hostStatus}
             mcpState={mcpBadgeText(snapshot)}
             micaStyle={useMicaBackdrop}
@@ -428,319 +444,179 @@ export default function App() {
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-          <ScrollArea
-            className="min-h-0 flex-1"
-            type="hover"
-            scrollHideDelay={450}
-          >
-            {messages.length === 0 ? (
-              <div className="box-border flex min-h-[calc(100dvh-13rem)] w-full items-center justify-center px-4">
-                <p className="text-center text-2xl font-normal tracking-tight text-foreground">
-                  {"Let's build"}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4 overflow-x-hidden px-4 py-3">
-                {messages.map((message) => (
-                  <MessageCard key={message.id} message={message} />
-                ))}
-              </div>
-            )}
-          </ScrollArea>
+          {settingsMode ? (
+            <SettingsView
+              tab={settingsTab}
+              theme={theme}
+              onThemeChange={setTheme}
+              settings={runtime.settings}
+              snapshot={snapshot}
+              runtimeError={runtime.runtimeError}
+              apiReady={runtime.apiReady}
+              busyAction={runtime.busyAction}
+              isElectronShell={isElectronShell}
+              onSavePatch={runtime.saveSettingsPatch}
+              onBootstrap={runtime.bootstrap}
+              onResetSession={runtime.resetSession}
+            />
+          ) : (
+            <>
+              <ScrollArea
+                className="min-h-0 flex-1"
+                type="hover"
+                scrollHideDelay={450}
+              >
+                {messages.length === 0 ? (
+                  <div className="box-border flex min-h-[calc(100dvh-13rem)] w-full items-center justify-center px-4">
+                    <p className="text-center text-2xl font-normal tracking-tight text-foreground">
+                      {"Let's build"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 overflow-x-hidden px-4 py-3">
+                    {messages.map((message) => (
+                      <MessageCard key={message.id} message={message} />
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
 
-            <div
-              className={cn(
-                "shrink-0 space-y-4 border-t px-4 py-4",
-                useMicaBackdrop
-                  ? "border-border/15"
-                  : "border-border/30 dark:border-white/10",
-              )}
-            >
-              {runtime.runtimeError ? (
-                <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-                  {runtime.runtimeError}
-                </div>
-              ) : null}
+              <div
+                className={cn(
+                  "shrink-0 space-y-4 border-t px-4 py-4",
+                  useMicaBackdrop
+                    ? "border-border/15"
+                    : "border-border/30 dark:border-white/10",
+                )}
+              >
+                {runtime.runtimeError ? (
+                  <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+                    {runtime.runtimeError}
+                  </div>
+                ) : null}
 
-              {pendingApproval ? (
-                <Card className="border-border/60 bg-background/70">
-                  <CardHeader>
-                    <CardTitle>{pendingApproval.toolName}</CardTitle>
-                    <CardDescription>{pendingApproval.prompt}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-3 sm:flex-row">
-                    <Input
-                      value={runtime.approvalMessage}
-                      onChange={(event) => runtime.setApprovalMessage(event.target.value)}
-                      placeholder="输入审批回复（如 y / n / t）"
-                    />
-                    <Button
-                      onClick={() => void runtime.submitApproval()}
-                      disabled={runtime.busyAction === "approve"}
-                    >
-                      提交审批
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : null}
+                {pendingApproval ? (
+                  <Card className="border-border/60 bg-background/70">
+                    <CardHeader>
+                      <CardTitle>{pendingApproval.toolName}</CardTitle>
+                      <CardDescription>{pendingApproval.prompt}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 sm:flex-row">
+                      <Input
+                        value={runtime.approvalMessage}
+                        onChange={(event) => runtime.setApprovalMessage(event.target.value)}
+                        placeholder="输入审批回复（如 y / n / t）"
+                      />
+                      <Button
+                        onClick={() => void runtime.submitApproval()}
+                        disabled={runtime.busyAction === "approve"}
+                      >
+                        提交审批
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : null}
 
-              <div className="grid gap-2">
-                <div
-                  className="relative overflow-hidden rounded-xl border border-border/60 bg-muted/20"
-                >
-                  <Textarea
-                    value={runtime.composer}
-                    onChange={(event) => runtime.setComposer(event.target.value)}
-                    placeholder="输入消息…"
-                    className="min-h-[7.5rem] w-full resize-y border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:min-h-[8.5rem]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        if (
-                          runtime.summary.canSend &&
-                          runtime.busyAction !== "send" &&
-                          runtime.busyAction !== "session"
-                        ) {
-                          void runtime.sendMessage();
+                <div className="grid gap-2">
+                  <div
+                    className="relative overflow-hidden rounded-xl border border-border/60 bg-muted/20"
+                  >
+                    <Textarea
+                      value={runtime.composer}
+                      onChange={(event) => runtime.setComposer(event.target.value)}
+                      placeholder="输入消息…"
+                      className="min-h-[7.5rem] w-full resize-y border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:min-h-[8.5rem]"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          if (
+                            runtime.summary.canSend &&
+                            runtime.busyAction !== "send" &&
+                            runtime.busyAction !== "session"
+                          ) {
+                            void runtime.sendMessage();
+                          }
                         }
-                      }
-                    }}
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-2 px-2.5 py-1.5">
-                    {models.length > 0 ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            aria-label="选择模型"
-                            className="inline-flex h-8 max-w-[10rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-1 pl-1.5 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/20 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                          >
-                            <span
-                              className="min-w-0 flex-1 truncate"
-                              title={runtime.settings.activeModel}
-                            >
-                              {runtime.settings.activeModel}
-                            </span>
-                            <ChevronDown
-                              className="size-3.5 shrink-0 text-muted-foreground/80"
-                              aria-hidden
-                            />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" side="top" className="max-w-md">
-                          {models.map((model) => (
-                            <DropdownMenuItem
-                              key={model.name}
-                              onSelect={() => {
-                                runtime.setActiveModel(model.name);
-                              }}
-                              className={cn(
-                                model.name === runtime.settings.activeModel &&
-                                  "bg-accent/40",
-                              )}
+                      }}
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-2 px-2.5 py-1.5">
+                      {models.length > 0 ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="选择模型"
+                              className="inline-flex h-8 max-w-[10rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-1 pl-1.5 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/20 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                             >
                               <span
-                                className="block w-full min-w-0 break-all pr-1 text-left"
-                                title={model.name}
+                                className="min-w-0 flex-1 truncate"
+                                title={runtime.settings.activeModel}
                               >
-                                {model.name}
+                                {runtime.settings.activeModel}
                               </span>
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <span className="px-1.5 text-xs text-muted-foreground">无可用模型</span>
-                    )}
-                    <Button
-                      type="button"
-                      size="icon"
-                      className="h-9 w-9 shrink-0 rounded-xl shadow-sm"
-                      onClick={() => void runtime.sendMessage()}
-                      disabled={
-                        !runtime.summary.canSend ||
-                        runtime.busyAction === "send" ||
-                        runtime.busyAction === "session"
-                      }
-                      title="发送（Ctrl+Enter）"
-                    >
-                      {runtime.busyAction === "send" ? (
-                        <LoaderCircle className="size-4 animate-spin" />
+                              <ChevronDown
+                                className="size-3.5 shrink-0 text-muted-foreground/80"
+                                aria-hidden
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" side="top" className="max-w-md">
+                            {models.map((model) => (
+                              <DropdownMenuItem
+                                key={model.name}
+                                onSelect={() => {
+                                  runtime.setActiveModel(model.name);
+                                }}
+                                className={cn(
+                                  model.name === runtime.settings.activeModel &&
+                                    "bg-accent/40",
+                                )}
+                              >
+                                <span
+                                  className="block w-full min-w-0 break-all pr-1 text-left"
+                                  title={model.name}
+                                >
+                                  {model.name}
+                                </span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
-                        <Send className="size-4" />
+                        <span className="px-1.5 text-xs text-muted-foreground">无可用模型</span>
                       )}
-                    </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 rounded-xl shadow-sm"
+                        onClick={() => void runtime.sendMessage()}
+                        disabled={
+                          !runtime.summary.canSend ||
+                          runtime.busyAction === "send" ||
+                          runtime.busyAction === "session"
+                        }
+                        title="发送（Ctrl+Enter）"
+                      >
+                        {runtime.busyAction === "send" ? (
+                          <LoaderCircle className="size-4 animate-spin" />
+                        ) : (
+                          <Send className="size-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
+                  {snapshot?.conversation.pendingQuestions ? (
+                    <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
+                      请先完成上方问卷
+                    </p>
+                  ) : null}
                 </div>
-                {snapshot?.conversation.pendingQuestions ? (
-                  <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
-                    请先完成上方问卷
-                  </p>
-                ) : null}
               </div>
-            </div>
+            </>
+          )}
         </div>
         </div>
       </div>
-
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="spirit-scroll max-h-[90vh] max-w-md overflow-y-auto sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>设置</DialogTitle>
-            <DialogDescription>工作区与连接；保存后生效。</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-3">
-              <div>
-                <Label className="text-foreground">主题</Label>
-                <p className="mt-1 text-xs text-muted-foreground">立即生效</p>
-              </div>
-              <RadioGroup
-                value={theme}
-                onValueChange={(v) => setTheme(v as ThemePreference)}
-                className="grid gap-2"
-              >
-                <label
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50"
-                  htmlFor="theme-system"
-                >
-                  <RadioGroupItem value="system" id="theme-system" />
-                  <span>跟随系统</span>
-                </label>
-                <label
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50"
-                  htmlFor="theme-light"
-                >
-                  <RadioGroupItem value="light" id="theme-light" />
-                  <span>浅色</span>
-                </label>
-                <label
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50"
-                  htmlFor="theme-dark"
-                >
-                  <RadioGroupItem value="dark" id="theme-dark" />
-                  <span>深色</span>
-                </label>
-              </RadioGroup>
-            </div>
-            {isElectronShell ? (
-              <div className="space-y-2">
-                <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
-                  <Checkbox
-                    id="dlg-windows-mica"
-                    checked={runtime.settings.windowsMica}
-                    onCheckedChange={(v) =>
-                      runtime.setSettings((current) => ({
-                        ...current,
-                        windowsMica: v === true,
-                      }))
-                    }
-                    className="mt-0.5"
-                  />
-                  <div className="min-w-0 space-y-1">
-                    <Label
-                      htmlFor="dlg-windows-mica"
-                      className="cursor-pointer text-foreground"
-                    >
-                      Windows 云母（Mica）背景
-                    </Label>
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      关闭后窗口使用实色背景。仅对 Windows 11 桌面版生效，需点击保存。
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            <div className="space-y-2">
-              <Label>Workspace</Label>
-              <div className="rounded-lg border border-border/50 bg-muted/20 p-2.5 text-xs leading-relaxed text-muted-foreground">
-                {snapshot?.workspaceRoot ?? "Bootstrapping…"}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dlg-api-base">API Base</Label>
-              <Input
-                id="dlg-api-base"
-                value={runtime.settings.apiBase}
-                onChange={(event) =>
-                  runtime.setSettings((current) => ({
-                    ...current,
-                    apiBase: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dlg-locale">UI locale</Label>
-              <Input
-                id="dlg-locale"
-                value={runtime.settings.uiLocale}
-                onChange={(event) =>
-                  runtime.setSettings((current) => ({
-                    ...current,
-                    uiLocale: event.target.value,
-                  }))
-                }
-                placeholder="zh-CN / en"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dlg-key">API Key</Label>
-              <Input
-                id="dlg-key"
-                type="password"
-                value={runtime.settings.apiKey}
-                onChange={(event) =>
-                  runtime.setSettings((current) => ({
-                    ...current,
-                    apiKey: event.target.value,
-                  }))
-                }
-                placeholder={
-                  snapshot?.config.activeApiKeyConfigured
-                    ? "已配置，可留空保持不变"
-                    : "输入 API Key"
-                }
-              />
-            </div>
-            {snapshot ? (
-              <p className="text-xs text-muted-foreground">
-                Rules {snapshot.rules.enabled}/{snapshot.rules.discovered} · Skills{" "}
-                {snapshot.skills.enabled}/{snapshot.skills.discovered} · MCP 工具{" "}
-                {snapshot.mcpStatus.cachedTools}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button
-                onClick={() => void runtime.saveSettings().then(() => setSettingsOpen(false))}
-                disabled={!runtime.apiReady || runtime.busyAction === "save"}
-              >
-                {runtime.busyAction === "save" ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : null}
-                保存
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void runtime.bootstrap()}
-                disabled={!runtime.apiReady || runtime.busyAction === "bootstrap"}
-              >
-                <RefreshCw className="size-4" />
-                重新装配
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void runtime.resetSession()}
-                disabled={!runtime.apiReady || runtime.busyAction === "reset"}
-              >
-                重置会话
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(pendingQuestions)}>
         <DialogContent className="max-w-4xl p-0" showCloseButton={false}>
