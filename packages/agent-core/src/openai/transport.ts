@@ -1204,32 +1204,25 @@ function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): 
 
   switch (name) {
     case 'run_shell_command':
-    case 'run_in_terminal':
       return nonEmpty('command');
     case 'web_fetch':
-    case 'fetch_webpage':
       return nonEmpty('url');
     case 'list_directory_files':
-    case 'list_dir':
       return nonEmpty('path');
     case 'read_file':
-      return nonEmpty('filePath') || nonEmpty('path');
+      return nonEmpty('path');
     case 'search_files':
-    case 'grep_search':
       return nonEmpty('query');
+    case 'run_subagent':
+      return nonEmpty('task');
     case 'create_file':
-      return (nonEmpty('filePath') || nonEmpty('path')) && nonEmpty('content');
+      return nonEmpty('path') && nonEmpty('content');
     case 'edit_file':
-      return (
-        (nonEmpty('filePath') || nonEmpty('path')) &&
-        nonEmpty('old_text') &&
-        nonEmpty('new_text')
-      );
+      return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
     case 'delete_file':
-    case 'delete_path':
-      return nonEmpty('path') || nonEmpty('filePath');
-    case 'create_directory':
-      return nonEmpty('dirPath') || nonEmpty('path');
+      return nonEmpty('path');
+    case 'ask_questions':
+      return Array.isArray(parsed.questions) && parsed.questions.length > 0;
     default:
       // Smoke demos, MCP tools, or future host tools: accept any object whose JSON is complete and
       // has at least one non-empty string field (streaming partial JSON still fails parse).

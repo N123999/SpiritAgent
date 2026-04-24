@@ -18,38 +18,34 @@ export type HostCommandName =
   | 'listSessions'
   | 'openSession';
 
+/** 与 `apps/cli/src/tool_runtime.rs` 中 `ToolRequest` 对齐的宿主工具请求。 */
 export type DesktopToolRequest =
-  | { name: 'list_dir'; path: string }
+  | { name: 'run_shell_command'; command: string }
+  | { name: 'web_fetch'; url: string }
+  | { name: 'list_directory_files'; path: string }
   | {
       name: 'read_file';
-      filePath: string;
-      startLine?: number;
-      endLine?: number;
+      path: string;
+      start_line?: number;
+      end_line?: number;
     }
+  | { name: 'search_files'; query: string }
   | {
-      name: 'grep_search';
-      query: string;
-      isRegexp?: boolean;
-      includePattern?: string;
-      maxResults?: number;
+      name: 'run_subagent';
+      task: string;
+      success_criteria?: string;
+      context_summary?: string;
+      files_to_inspect: string[];
+      expected_output?: string;
     }
-  | {
-      name: 'run_in_terminal';
-      command: string;
-      explanation?: string;
-      goal?: string;
-      timeoutMs?: number;
-    }
-  | { name: 'create_directory'; dirPath: string }
-  | { name: 'create_file'; filePath: string; content: string }
-  | { name: 'write_file'; filePath: string; content: string }
-  | { name: 'delete_path'; path: string }
-  | { name: 'fetch_webpage'; url: string; query?: string }
   | {
       name: 'ask_questions';
       title?: string;
       questions: AskQuestionsQuestionSpec[];
-    };
+    }
+  | { name: 'create_file'; path: string; content: string }
+  | { name: 'edit_file'; path: string; old_text: string; new_text: string }
+  | { name: 'delete_file'; path: string };
 
 export interface StoredDesktopSession extends ChatArchive {
   savedAtUnixMs: number;

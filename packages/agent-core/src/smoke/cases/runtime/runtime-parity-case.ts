@@ -51,7 +51,7 @@ class ApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
   }
 
   async authorize(request: ScriptedToolRequest): Promise<AuthorizationDecision> {
-    if (request.name === 'write_file') {
+    if (request.name === 'create_file') {
       return {
         kind: 'need-approval',
         prompt: '写文件需要审批。',
@@ -142,8 +142,8 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
                     id: 'call-write',
                     type: 'function',
                     function: {
-                      name: 'write_file',
-                      arguments: '{"path":"demo.txt"}',
+                      name: 'create_file',
+                      arguments: '{"path":"demo.txt","content":"x"}',
                     },
                   },
                 ],
@@ -156,8 +156,8 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
             calls: [
               {
                 id: 'call-write',
-                name: 'write_file',
-                argumentsJson: '{"path":"demo.txt"}',
+                name: 'create_file',
+                argumentsJson: '{"path":"demo.txt","content":"x"}',
               },
               {
                 id: 'call-search',
@@ -1439,7 +1439,7 @@ class StreamingApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
   }
 
   async authorize(request: ScriptedToolRequest): Promise<AuthorizationDecision> {
-    if (request.name === 'write_file') {
+    if (request.name === 'create_file') {
       return {
         kind: 'need-approval',
         prompt: '写文件需要审批。',
@@ -1550,8 +1550,8 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
                       id: 'call-stream-approval',
                       type: 'function',
                       function: {
-                        name: 'write_file',
-                        arguments: '{"path":"demo.txt"}',
+                        name: 'create_file',
+                        arguments: '{"path":"demo.txt","content":"x"}',
                       },
                     },
                   ],
@@ -1564,8 +1564,8 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
               calls: [
                 {
                   id: 'call-stream-approval',
-                  name: 'write_file',
-                  argumentsJson: '{"path":"demo.txt"}',
+                  name: 'create_file',
+                  argumentsJson: '{"path":"demo.txt","content":"x"}',
                 },
               ],
             },
@@ -1580,7 +1580,7 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
         isJsonObject(message) &&
         message.role === 'tool' &&
         typeof message.content === 'string' &&
-        message.content === 'approved output for write_file',
+        message.content === 'approved output for create_file',
     );
 
     if (!hasApprovedToolResult) {
@@ -2692,7 +2692,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   }
   if (
     !drainedStreamingApprovalEvents.some(
-      (event) => event.kind === 'approval-requested' && event.approval.toolName === 'write_file',
+      (event) => event.kind === 'approval-requested' && event.approval.toolName === 'create_file',
     )
   ) {
     throw new Error('streaming approval smoke 缺少 approval-requested 事件。');
