@@ -127,7 +127,6 @@ export function useDesktopRuntime() {
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, QuestionDraft>>({});
-  const pollTimerRef = useRef<number | null>(null);
   const settingsRef = useRef(settings);
 
   useEffect(() => {
@@ -215,42 +214,37 @@ export function useDesktopRuntime() {
     });
   }, [pendingQuestions]);
 
-  const poll = useCallback(async () => {
-    if (!api) {
-      return;
-    }
-
-    try {
-      const next = await api.poll();
-      applySnapshot(next);
-    } catch (error) {
-      setRuntimeError(describeError(error));
-    }
-  }, [api, applySnapshot]);
-
+  /** `isBusy` 期间连续 poll 直至空闲，无固定间隔（便于观察流式与 IPC 真实性能）。 */
   useEffect(() => {
-    if (pollTimerRef.current) {
-      window.clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-
     if (!api || !snapshot?.conversation.isBusy) {
       return;
     }
 
-    pollTimerRef.current = window.setTimeout(() => {
-      void poll();
-    }, 900);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        while (!cancelled) {
+          const next = await api.poll();
+          if (cancelled) {
+            break;
+          }
+          applySnapshot(next);
+          if (!next.conversation.isBusy) {
+            break;
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRuntimeError(describeError(error));
+        }
+      }
+    })();
 
     return () => {
-      if (pollTimerRef.current) {
-        window.clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
+      cancelled = true;
     };
-    // 必须依赖 snapshot 整体，而不仅是 isBusy：忙时 isBusy 常为 true 不变，只有第一次
-    // 会 schedule poll；下一次 poll 回来若 isBusy 仍为 true，需靠 snapshot 引用变化重新 schedule。
-  }, [api, poll, snapshot]);
+  }, [api, applySnapshot, snapshot?.conversation.isBusy]);
 
   const updateQuestionDraft = useCallback(
     (questionId: string, updater: (draft: QuestionDraft) => QuestionDraft) => {
