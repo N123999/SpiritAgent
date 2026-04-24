@@ -1335,7 +1335,9 @@ impl TsBridgeRuntime {
 
     fn dispatch_host_method(&mut self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
         match method {
-            "host.toolDefinitionsJson" => Ok(Some(self.tool_executor.tool_definitions_json())),
+            "host.builtinToolDefinitionEnvironment" => {
+                Ok(Some(self.tool_executor.tool_definition_environment_json()))
+            }
             "host.parseCommand" => {
                 let message = params
                     .and_then(|value| value.get("message").cloned())

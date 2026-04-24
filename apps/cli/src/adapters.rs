@@ -169,13 +169,13 @@ impl WorkspaceToolExecutor {
             workspace_root: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
     }
+
+    pub fn tool_definition_environment_json(&self) -> Value {
+        self.inner.tool_definition_environment_json()
+    }
 }
 
 impl ToolExecutor for WorkspaceToolExecutor {
-    fn tool_definitions_json(&self) -> Value {
-        self.inner.tool_definitions_json()
-    }
-
     fn parse_command(&self, message: &str) -> Result<ToolRequest> {
         self.inner.parse_tool_command(message)
     }

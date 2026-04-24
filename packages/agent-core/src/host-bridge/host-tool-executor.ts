@@ -5,6 +5,10 @@ import type {
   ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '../ports.js';
+import {
+  buildBuiltinHostToolDefinitions,
+  type BuiltinHostToolDefinitionEnvironment,
+} from '../host-tools.js';
 import { McpService, type McpToolRequest } from '../mcp/service.js';
 import { JsonRpcPeer } from './framing.js';
 
@@ -28,7 +32,11 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
   async refreshCaches(): Promise<void> {
     if (!this.hostToolDefinitionsLoaded) {
-      this.hostToolDefinitionsCache = await this.peer.call<JsonValue>('host.toolDefinitionsJson');
+      this.hostToolDefinitionsCache = buildBuiltinHostToolDefinitions(
+        parseBuiltinHostToolDefinitionEnvironment(
+          await this.peer.call<JsonValue>('host.builtinToolDefinitionEnvironment'),
+        ),
+      );
       this.hostToolDefinitionsLoaded = true;
     }
 
@@ -314,4 +322,27 @@ function renderError(error: unknown): string {
   }
 
   return String(error);
+}
+
+function parseBuiltinHostToolDefinitionEnvironment(
+  value: JsonValue,
+): BuiltinHostToolDefinitionEnvironment {
+  if (!isJsonObject(value)) {
+    throw new Error('host.builtinToolDefinitionEnvironment 必须返回 JSON object');
+  }
+
+  const shellDisplayName =
+    typeof value.shellDisplayName === 'string' && value.shellDisplayName.trim().length > 0
+      ? value.shellDisplayName.trim()
+      : 'the current shell';
+  const shellCommandParameterDescription =
+    typeof value.shellCommandParameterDescription === 'string' &&
+    value.shellCommandParameterDescription.trim().length > 0
+      ? value.shellCommandParameterDescription.trim()
+      : 'The command to execute in the current shell. Do not assume Bash-only syntax unless the shell is POSIX compatible.';
+
+  return {
+    shellDisplayName,
+    shellCommandParameterDescription,
+  };
 }

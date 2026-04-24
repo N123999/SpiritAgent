@@ -2,7 +2,6 @@ use anyhow::Result;
 #[cfg(feature = "tui")]
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::PathBuf;
 
 use crate::{
@@ -195,7 +194,6 @@ pub trait ChatRepository: Send + Sync {
 }
 
 pub trait ToolExecutor: Send {
-    fn tool_definitions_json(&self) -> Value;
     fn parse_command(&self, message: &str) -> Result<ToolRequest>;
     fn request_from_function_call(&self, name: &str, arguments_json: &str) -> Result<ToolRequest>;
     fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision>;
