@@ -402,7 +402,7 @@ export default function App() {
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div
           className={cn(
-            "h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
+            "h-full min-w-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
             sidebarNarrow ? "w-12" : "w-[min(16rem,40vw)]",
           )}
         >

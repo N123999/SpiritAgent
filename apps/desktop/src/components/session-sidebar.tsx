@@ -144,7 +144,7 @@ export function SessionSidebar({
         )}
         aria-hidden={!settingsMode && narrow}
       >
-        <ScrollArea className="h-full min-h-0" type="hover" scrollHideDelay={450}>
+        <ScrollArea className="h-full min-h-0 min-w-0" type="hover" scrollHideDelay={450}>
           {settingsMode ? (
             <nav className="flex flex-col gap-1 p-1.5" aria-label="设置页签">
               {settingsTabs.map((tab) => {
@@ -184,12 +184,12 @@ export function SessionSidebar({
               })}
             </nav>
           ) : (
-            <div className="p-1.5">
+            <div className="min-w-0 p-1.5">
               <p className="px-1 pb-1.5 text-[0.65rem] text-sidebar-faint-foreground">已保存</p>
               {sessions.length === 0 ? (
                 <p className="px-2 py-2 text-center text-xs text-sidebar-faint-foreground">暂无</p>
               ) : (
-                <nav className="flex flex-col gap-0.5" aria-label="已保存会话">
+                <nav className="flex min-w-0 flex-col gap-0.5" aria-label="已保存会话">
                   {sessions.map((session) => {
                     const selected =
                       activeFilePath !== null && samePath(session.path, activeFilePath);
@@ -200,7 +200,7 @@ export function SessionSidebar({
                         disabled={disabled || busy}
                         onClick={() => onSelectSession(session.path)}
                         className={cn(
-                          "group flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm",
+                          "group flex w-full min-w-0 items-center overflow-hidden rounded-md px-2.5 py-2 text-left text-sm",
                           "text-sidebar-list-foreground outline-none transition-[color,background,box-shadow] duration-150",
                           "hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.07]",
                           "hover:text-sidebar-foreground",
@@ -209,7 +209,7 @@ export function SessionSidebar({
                         )}
                       >
                         <span
-                          className="w-full truncate text-xs font-medium"
+                          className="min-w-0 flex-1 basis-0 truncate text-xs font-medium"
                           title={session.displayName}
                         >
                           {session.displayName}

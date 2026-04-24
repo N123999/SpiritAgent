@@ -41,12 +41,13 @@ const ScrollArea = React.forwardRef<
       ref={ref}
       type={type}
       scrollHideDelay={scrollHideDelay}
-      className={cn("relative overflow-hidden", className)}
+      className={cn("relative min-w-0 overflow-hidden", className)}
       {...props}
     >
       <Viewport
-        // Radix 在 Viewport 内会包一层，保证子代可滚动且 min-height 不撑破 flex
-        className="h-full w-full min-h-0 rounded-[inherit] [display:block] [&>div]:!min-h-0"
+        // Radix 内层默认 display:table + min-width:100% 会按「内容固有宽度」撑开，flex 内 truncate/ellipsis 失效（radix-ui/primitives#926）。
+        // 用 !block + min-w-0 + 宽度约束覆盖表格格式化上下文，与官方 issue 中推荐一致。
+        className="h-full w-full min-h-0 min-w-0 rounded-[inherit] [display:block] [&>div]:!block [&>div]:!min-h-0 [&>div]:min-w-0 [&>div]:w-full"
       >
         {children}
       </Viewport>
