@@ -8,14 +8,11 @@ export interface HostRuntimeModules<
   Rule,
   Skill,
   PlanMetadata,
-  ToolRequest,
-  QuestionsRequest,
-  QuestionsResult,
-  McpStatus,
+  QuestionSpec,
 > {
   storage: HostStateStorage<Config, Session>;
   discovery: HostInstructionDiscovery<Rule, Skill, PlanMetadata>;
-  tools: HostBuiltinToolService<ToolRequest, QuestionsRequest, QuestionsResult, McpStatus>;
+  tools: HostBuiltinToolService<QuestionSpec>;
 }
 
 export function defineHostRuntimeModules<
@@ -24,10 +21,7 @@ export function defineHostRuntimeModules<
   Rule,
   Skill,
   PlanMetadata,
-  ToolRequest,
-  QuestionsRequest,
-  QuestionsResult,
-  McpStatus,
+  QuestionSpec,
 >(
   modules: HostRuntimeModules<
     Config,
@@ -35,10 +29,7 @@ export function defineHostRuntimeModules<
     Rule,
     Skill,
     PlanMetadata,
-    ToolRequest,
-    QuestionsRequest,
-    QuestionsResult,
-    McpStatus
+    QuestionSpec
   >,
 ): HostRuntimeModules<
   Config,
@@ -46,10 +37,7 @@ export function defineHostRuntimeModules<
   Rule,
   Skill,
   PlanMetadata,
-  ToolRequest,
-  QuestionsRequest,
-  QuestionsResult,
-  McpStatus
+  QuestionSpec
 > {
   return modules;
 }
