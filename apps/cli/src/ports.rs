@@ -4,11 +4,7 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::{
-    mcp::McpServerConfig,
-    model_registry::AppConfig,
-    tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
-};
+use crate::model_registry::AppConfig;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,13 +187,4 @@ pub trait ChatRepository: Send + Sync {
     fn list(&self) -> Result<Vec<String>>;
     fn save(&self, path: Option<&str>, archive: &ChatArchive) -> Result<PathBuf>;
     fn load(&self, path: &str) -> Result<ChatArchive>;
-}
-
-pub trait ToolExecutor: Send {
-    fn parse_command(&self, message: &str) -> Result<ToolRequest>;
-    fn request_from_function_call(&self, name: &str, arguments_json: &str) -> Result<ToolRequest>;
-    fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision>;
-    fn trust(&mut self, target: &TrustTarget) -> Result<()>;
-    fn execute(&mut self, request: &ToolRequest) -> Result<String>;
-    fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf>;
 }

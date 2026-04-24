@@ -22,22 +22,6 @@ pub enum RuntimeEvent {
     RemovePendingAssistant,
 }
 
-pub(crate) fn openapi_tool_name(request: &ToolRequest) -> &'static str {
-    match request {
-        ToolRequest::Shell { .. } => "run_shell_command",
-        ToolRequest::McpTool { .. } => "mcp_tool",
-        ToolRequest::WebFetch { .. } => "web_fetch",
-        ToolRequest::ListDirectory { .. } => "list_directory_files",
-        ToolRequest::ReadFile { .. } => "read_file",
-        ToolRequest::Search { .. } => "search_files",
-        ToolRequest::RunSubagent { .. } => "run_subagent",
-        ToolRequest::CreateFile { .. } => "create_file",
-        ToolRequest::EditFile { .. } => "edit_file",
-        ToolRequest::DeleteFile { .. } => "delete_file",
-        ToolRequest::AskQuestions { .. } => "ask_questions",
-    }
-}
-
 fn tool_request_args_excerpt(request: &ToolRequest) -> String {
     let value = match request {
         ToolRequest::Shell { command } => json!({ "command": command }),

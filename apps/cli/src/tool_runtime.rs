@@ -304,7 +304,7 @@ impl ToolRuntime {
     pub fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
         match request {
             ToolRequest::McpTool { .. } => {
-                Err(anyhow!("MCP 工具权限检查应由 WorkspaceToolExecutor 处理"))
+                Err(anyhow!("MCP 工具权限检查应由宿主 bridge 处理"))
             }
             ToolRequest::Shell { command } => {
                 if self
@@ -407,7 +407,7 @@ impl ToolRuntime {
     pub fn execute(&self, request: &ToolRequest) -> Result<String> {
         match request {
             ToolRequest::McpTool { .. } => {
-                Err(anyhow!("MCP 工具执行应由 WorkspaceToolExecutor 处理"))
+                Err(anyhow!("MCP 工具执行应由宿主 bridge 处理"))
             }
             ToolRequest::Shell { command } => self.execute_shell(command),
             ToolRequest::WebFetch { url } => self.execute_web_fetch(url),
