@@ -134,6 +134,7 @@ export interface HostMcpStatusSnapshot {
 
 export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionSpec> {
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment;
+  parseCommand(message: string): Promise<HostToolRequest<QuestionSpec>>;
   requestFromFunctionCall(name: string, argumentsJson: string): Promise<HostToolRequest<QuestionSpec>>;
   authorize(request: HostToolRequest<QuestionSpec>): Promise<HostAuthorizationDecision<QuestionSpec>>;
   trust(target: string): Promise<void>;
@@ -259,6 +260,63 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
     return detectShellForTools();
+  }
+
+  async parseCommand(message: string): Promise<HostToolRequest<QuestionSpec>> {
+    const raw = message.startsWith('/tool') ? message.slice('/tool'.length).trim() : '';
+    if (!raw) {
+      throw new Error(
+        '用法:\n/tool shell <command>\n/tool web <url>\n/tool list <absolute-dir>\n/tool read <path> [start] [end]\n/tool search <query>',
+      );
+    }
+
+    const tokens = tokenize(raw);
+    const subcommand = tokens[0];
+    if (!subcommand) {
+      throw new Error('缺少子命令');
+    }
+
+    switch (subcommand) {
+      case 'shell': {
+        const command = raw.slice('shell'.length).trim();
+        if (!command) {
+          throw new Error('用法: /tool shell <command>');
+        }
+        return { name: 'run_shell_command', command };
+      }
+      case 'web':
+        if (tokens.length < 2) {
+          throw new Error('用法: /tool web <url>');
+        }
+        return { name: 'web_fetch', url: tokens[1]! };
+      case 'list':
+        if (tokens.length < 2) {
+          throw new Error('用法: /tool list <absolute-dir>');
+        }
+        return { name: 'list_directory_files', path: tokens[1]! };
+      case 'read': {
+        if (tokens.length < 2) {
+          throw new Error('用法: /tool read <path> [start] [end]');
+        }
+        const startLine = parseOptionalManualLine(tokens[2], 'start line');
+        const endLine = parseOptionalManualLine(tokens[3], 'end line');
+        return {
+          name: 'read_file',
+          path: tokens[1]!,
+          ...(startLine !== undefined ? { start_line: startLine } : {}),
+          ...(endLine !== undefined ? { end_line: endLine } : {}),
+        };
+      }
+      case 'search': {
+        const query = raw.slice('search'.length).trim();
+        if (!query) {
+          throw new Error('用法: /tool search <query>');
+        }
+        return { name: 'search_files', query };
+      }
+      default:
+        throw new Error(`未知 /tool 子命令: ${subcommand}\n可用: shell | web | list | read | search`);
+    }
   }
 
   async requestFromFunctionCall(
@@ -1368,4 +1426,45 @@ function pathHasPrefix(candidate: string, prefix: string): boolean {
   const c = pathCompareKey(candidate);
   const p = pathCompareKey(prefix);
   return c === p || c.startsWith(`${p}/`);
+}
+
+function tokenize(input: string): string[] {
+  const tokens: string[] = [];
+  let buffer = '';
+  let inQuotes = false;
+
+  for (const character of input) {
+    if (character === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (/\s/u.test(character) && !inQuotes) {
+      if (buffer.length > 0) {
+        tokens.push(buffer);
+        buffer = '';
+      }
+      continue;
+    }
+    buffer += character;
+  }
+
+  if (buffer.length > 0) {
+    tokens.push(buffer);
+  }
+
+  return tokens;
+}
+
+function parseOptionalManualLine(
+  value: string | undefined,
+  label: string,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${label} 非法: ${value}`);
+  }
+  return parsed;
 }

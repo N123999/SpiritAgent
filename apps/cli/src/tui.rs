@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env, fs,
     fs::OpenOptions,
     path::Path,
@@ -29,10 +29,10 @@ use crate::{
         McpStatusSnapshot, McpStatusState, SecretStore, SubagentSessionArchiveEntry,
         SubagentSessionSummary,
     },
-    rules::{self, RuleEntry, RuleScope, RuleStateFile},
+    rules::{self, RuleEntry, RuleScope},
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
-    skills::{self, SkillEntry, SkillScope, SkillStateFile},
+    skills::{self, SkillEntry, SkillScope},
     tool_runtime::{ToolRequest, ToolRuntime},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
@@ -118,9 +118,7 @@ pub struct TuiShell {
     secret_store: Arc<dyn SecretStore>,
     app_paths: Arc<dyn AppPaths>,
     plan_metadata: PlanMetadata,
-    rule_state: RuleStateFile,
     rule_entries: Vec<RuleEntry>,
-    skill_state: SkillStateFile,
     skill_entries: Vec<SkillEntry>,
 }
 
@@ -139,22 +137,21 @@ impl TuiShell {
         });
         locale::apply_ui_locale(&config);
         let workspace_root = app_paths.workspace_root();
-        let rule_state = rules::load_rule_state().context("读取规则状态失败")?;
-        let rule_entries = rules::discover_rule_entries(&workspace_root, &rule_state)
-            .context("发现规则文件失败")?;
-        let skill_state = skills::load_skill_state().context("读取技能状态失败")?;
-        let skill_entries = skills::discover_skill_entries(&workspace_root, &skill_state)
-            .context("发现技能文件失败")?;
-        let plan_metadata = plan::plan_metadata_snapshot(false, &workspace_root);
         let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
             workspace_root.clone(),
-            rules::enabled_rules(&rule_entries),
-            skills::enabled_skill_catalog(&skill_entries),
-            plan_metadata.clone(),
+            Vec::new(),
+            Vec::new(),
+            plan::current_plan_metadata(),
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
+        let cli_metadata = runtime
+            .load_cli_host_metadata(false)
+            .context("读取共享宿主 metadata 失败")?;
+        let rule_entries = cli_metadata.rule_entries;
+        let skill_entries = cli_metadata.skill_entries;
+        let plan_metadata = cli_metadata.plan_metadata;
         let initial_mcp_status = runtime.mcp_status_snapshot();
         let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
         thread::spawn(move || {
@@ -222,18 +219,12 @@ impl TuiShell {
             secret_store,
             app_paths,
             plan_metadata,
-            rule_state,
             rule_entries,
-            skill_state,
             skill_entries,
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
         Ok(shell)
-    }
-
-    pub fn rule_state(&self) -> &RuleStateFile {
-        &self.rule_state
     }
 
     pub fn rule_entries(&self) -> &[RuleEntry] {
@@ -254,18 +245,26 @@ impl TuiShell {
     }
 
     pub fn refresh_rules_from_disk(&mut self) -> Result<()> {
-        self.rule_state = rules::load_rule_state().context("读取规则状态失败")?;
-        self.rule_entries = rules::discover_rule_entries(&self.app_paths.workspace_root(), &self.rule_state)
-            .context("发现规则文件失败")?;
+        let metadata = self
+            .runtime
+            .load_cli_host_metadata(self.is_plan_mode_active())
+            .context("读取共享规则 metadata 失败")?;
+        self.rule_entries = metadata.rule_entries;
+        self.skill_entries = metadata.skill_entries;
+        self.plan_metadata = metadata.plan_metadata;
         self.runtime
             .replace_rules(rules::enabled_rules(&self.rule_entries));
         Ok(())
     }
 
     pub fn refresh_skills_from_disk(&mut self) -> Result<()> {
-        self.skill_state = skills::load_skill_state().context("读取技能状态失败")?;
-        self.skill_entries = skills::discover_skill_entries(&self.app_paths.workspace_root(), &self.skill_state)
-            .context("发现技能文件失败")?;
+        let metadata = self
+            .runtime
+            .load_cli_host_metadata(self.is_plan_mode_active())
+            .context("读取共享技能 metadata 失败")?;
+        self.rule_entries = metadata.rule_entries;
+        self.skill_entries = metadata.skill_entries;
+        self.plan_metadata = metadata.plan_metadata;
         self.runtime
             .replace_skills_catalog(skills::enabled_skill_catalog(&self.skill_entries));
         if self.current_slash_query().is_some() {
@@ -1705,14 +1704,12 @@ impl TuiShell {
             return;
         };
 
-        for entry in &self.rule_entries {
-            self.rule_state.enabled_overrides.remove(&entry.source.id);
-        }
+        let mut enabled_overrides = BTreeMap::new();
         for (rule_id, enabled) in bottom_form::rules_form_overrides(form) {
-            self.rule_state.set_enabled(rule_id, enabled);
+            enabled_overrides.insert(rule_id, enabled);
         }
 
-        match rules::save_rule_state(&self.rule_state) {
+        match self.runtime.write_rule_state(enabled_overrides) {
             Ok(path) => match self.refresh_rules_from_disk() {
                 Ok(()) => {
                     self.messages.push(ChatMessage {
@@ -1745,14 +1742,12 @@ impl TuiShell {
             return;
         };
 
-        for entry in &self.skill_entries {
-            self.skill_state.enabled_overrides.remove(&entry.source.id);
-        }
+        let mut enabled_overrides = BTreeMap::new();
         for (skill_id, enabled) in bottom_form::skills_form_overrides(form) {
-            self.skill_state.set_enabled(skill_id, enabled);
+            enabled_overrides.insert(skill_id, enabled);
         }
 
-        match skills::save_skill_state(&self.skill_state) {
+        match self.runtime.write_skill_state(enabled_overrides) {
             Ok(path) => match self.refresh_skills_from_disk() {
                 Ok(()) => {
                     self.messages.push(ChatMessage {
@@ -3927,8 +3922,9 @@ impl TuiShell {
     }
 
     fn refresh_plan_metadata_from_disk(&mut self) {
-        let workspace_root = self.app_paths.workspace_root();
-        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
+        let Ok(next) = self.runtime.load_plan_metadata(self.is_plan_mode_active()) else {
+            return;
+        };
         if next == self.plan_metadata {
             return;
         }
@@ -3938,8 +3934,9 @@ impl TuiShell {
     }
 
     fn push_plan_metadata_snapshot(&mut self) {
-        let workspace_root = self.app_paths.workspace_root();
-        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
+        let Ok(next) = self.runtime.load_plan_metadata(self.is_plan_mode_active()) else {
+            return;
+        };
         if next == self.plan_metadata {
             return;
         }
@@ -4151,7 +4148,6 @@ mod tests {
         user_turn_text_for_mode,
     };
     use crate::{
-        plan::START_IMPLEMENTING_REMINDER,
         view::{AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux},
     };
     use std::path::PathBuf;

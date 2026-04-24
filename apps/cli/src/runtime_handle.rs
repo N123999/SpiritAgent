@@ -19,7 +19,7 @@ use crate::{
     rules::EnabledRule,
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     session::SessionModel,
-    ts_bridge::TsBridgeRuntime,
+    ts_bridge::{CliHostMetadataSnapshot, TsBridgeRuntime},
     view::{ChatMessage, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
@@ -81,6 +81,32 @@ impl RuntimeHandle {
 
     pub fn activate_skill(&mut self, skill: ActiveSkillPayload) -> Result<()> {
         self.runtime.activate_skill(skill)
+    }
+
+    pub fn load_cli_host_metadata(&mut self, plan_mode: bool) -> Result<CliHostMetadataSnapshot> {
+        self.runtime.load_cli_host_metadata(plan_mode)
+    }
+
+    pub fn load_plan_metadata(&mut self, plan_mode: bool) -> Result<PlanMetadata> {
+        self.runtime.load_plan_metadata(plan_mode)
+    }
+
+    pub fn write_rule_state(
+        &mut self,
+        enabled_overrides: std::collections::BTreeMap<String, bool>,
+    ) -> Result<PathBuf> {
+        self.runtime.write_rule_state(enabled_overrides)
+    }
+
+    pub fn write_skill_state(
+        &mut self,
+        enabled_overrides: std::collections::BTreeMap<String, bool>,
+    ) -> Result<PathBuf> {
+        self.runtime.write_skill_state(enabled_overrides)
+    }
+
+    pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
+        self.runtime.reload_host_metadata(plan_mode)
     }
 
     pub fn session(&self) -> &SessionModel {

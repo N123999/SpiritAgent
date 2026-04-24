@@ -20,7 +20,7 @@ use crate::{
     },
     llm_types::LlmMessage,
     logging,
-    mcp::McpServerConfig,
+    mcp::{McpServerConfig, spirit_agent_data_dir},
     mcp_types::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
@@ -31,16 +31,18 @@ use crate::{
         ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot,
         SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary, ToolExecutor,
     },
-    rules::EnabledRule,
+    rules::{EnabledRule, RuleEntry},
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
-    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
+    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry, SkillEntry},
     tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
     view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 const ENV_RUNTIME_BACKEND_NODE_PATH: &str = "SPIRIT_NODE_PATH";
 const ENV_RUNTIME_BRIDGE_PATH: &str = "SPIRIT_AGENT_CORE_BRIDGE_PATH";
+const ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH: &str = "SPIRIT_HOST_INTERNAL_MODULE_PATH";
+const ENV_RUNTIME_HOST_INTERNAL_SPIRIT_DATA_DIR: &str = "SPIRIT_HOST_INTERNAL_SPIRIT_DATA_DIR";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const MODEL_SWITCH_BUSY_MESSAGE: &str =
@@ -243,6 +245,14 @@ struct BridgePendingQuestions {
 struct BridgeDrainEventsResult {
     events: Vec<BridgeRuntimeEvent>,
     snapshot: BridgeRuntimeSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliHostMetadataSnapshot {
+    pub rule_entries: Vec<RuleEntry>,
+    pub skill_entries: Vec<SkillEntry>,
+    pub plan_metadata: PlanMetadata,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -543,6 +553,69 @@ impl TsBridgeRuntime {
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
+        Ok(())
+    }
+
+    pub fn load_cli_host_metadata(&mut self, plan_mode: bool) -> Result<CliHostMetadataSnapshot> {
+        let value = self.call_bridge(
+            "hostInternal.loadCliMetadata",
+            Some(json!({
+                "planMode": plan_mode,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn load_plan_metadata(&mut self, plan_mode: bool) -> Result<PlanMetadata> {
+        let value = self.call_bridge(
+            "hostInternal.loadPlanMetadata",
+            Some(json!({
+                "planMode": plan_mode,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn write_rule_state(
+        &mut self,
+        enabled_overrides: std::collections::BTreeMap<String, bool>,
+    ) -> Result<PathBuf> {
+        let value = self.call_bridge(
+            "hostInternal.writeRuleState",
+            Some(json!({
+                "enabledOverrides": enabled_overrides,
+            })),
+        )?;
+        let path = value
+            .as_str()
+            .ok_or_else(|| anyhow!("hostInternal.writeRuleState 返回值无效"))?;
+        Ok(PathBuf::from(path))
+    }
+
+    pub fn write_skill_state(
+        &mut self,
+        enabled_overrides: std::collections::BTreeMap<String, bool>,
+    ) -> Result<PathBuf> {
+        let value = self.call_bridge(
+            "hostInternal.writeSkillState",
+            Some(json!({
+                "enabledOverrides": enabled_overrides,
+            })),
+        )?;
+        let path = value
+            .as_str()
+            .ok_or_else(|| anyhow!("hostInternal.writeSkillState 返回值无效"))?;
+        Ok(PathBuf::from(path))
+    }
+
+    pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
+        let value = self.call_bridge(
+            "runtime.reloadHostMetadata",
+            Some(json!({
+                "planMode": plan_mode,
+            })),
+        )?;
+        self.apply_snapshot(serde_json::from_value(value)?);
         Ok(())
     }
 
@@ -1789,11 +1862,20 @@ impl TsBridgeRuntime {
 impl JsonRpcProcess {
     fn spawn(script_path: PathBuf) -> Result<Self> {
         let node_path = env::var(ENV_RUNTIME_BACKEND_NODE_PATH).unwrap_or_else(|_| "node".to_string());
-        let mut child = Command::new(&node_path)
+        let mut command = Command::new(&node_path);
+        command
             .arg(script_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        let host_internal_path = resolve_host_internal_module_path()?;
+        command.env(ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH, host_internal_path);
+        command.env(
+            ENV_RUNTIME_HOST_INTERNAL_SPIRIT_DATA_DIR,
+            spirit_agent_data_dir(),
+        );
+
+        let mut child = command
             .spawn()
             .with_context(|| format!("启动 TS bridge 失败: {}", node_path))?;
 
@@ -1899,6 +1981,37 @@ fn resolve_bridge_script(workspace_root: &Path) -> Result<PathBuf> {
 
     Err(anyhow!(
         "未找到 TS bridge 入口 host-bridge.js。请先在 packages/agent-core 执行 npm run build。"
+    ))
+}
+
+fn resolve_host_internal_module_path() -> Result<PathBuf> {
+    if let Ok(path) = env::var(ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH) {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        return Err(anyhow!(
+            "环境变量 {} 指向的 host-internal 模块不存在: {}",
+            ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH,
+            candidate.display()
+        ));
+    }
+
+    let from_crate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("packages")
+        .join("host-internal")
+        .join("dist")
+        .join("index.js");
+    if from_crate.exists() {
+        return Ok(from_crate);
+    }
+
+    Err(anyhow!(
+        "未找到 host-internal bridge 模块。请先构建 packages/host-internal，或设置 {} 指向其 dist/index.js。默认查找路径: {}",
+        ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH,
+        from_crate.display()
     ))
 }
 

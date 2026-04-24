@@ -21,21 +21,40 @@ interface HostToolRequestMetadata {
   subagentTitle?: string;
 }
 
+export interface LocalHostToolService {
+  toolDefinitionEnvironment(): BuiltinHostToolDefinitionEnvironment;
+  parseCommand(message: string): Promise<JsonValue>;
+  requestFromFunctionCall(name: string, argumentsJson: string): Promise<JsonValue>;
+  authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>>;
+  trust(target: string): Promise<void>;
+  execute(request: JsonValue): Promise<string>;
+}
+
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
   private hostToolDefinitionsCache: JsonValue = [];
   private hostToolDefinitionsLoaded = false;
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly mcp = new McpService();
+  private localHostService: LocalHostToolService | undefined;
 
   constructor(protected readonly peer: JsonRpcPeer) {}
+
+  setLocalHostService(service: LocalHostToolService | undefined): void {
+    this.localHostService = service;
+    this.hostToolDefinitionsLoaded = false;
+    this.hostToolDefinitionsCache = [];
+    this.refreshMergedToolDefinitions();
+  }
 
   async refreshCaches(): Promise<void> {
     if (!this.hostToolDefinitionsLoaded) {
       this.hostToolDefinitionsCache = buildBuiltinHostToolDefinitions(
-        parseBuiltinHostToolDefinitionEnvironment(
-          await this.peer.call<JsonValue>('host.builtinToolDefinitionEnvironment'),
-        ),
+        this.localHostService
+          ? this.localHostService.toolDefinitionEnvironment()
+          : parseBuiltinHostToolDefinitionEnvironment(
+              await this.peer.call<JsonValue>('host.builtinToolDefinitionEnvironment'),
+            ),
       );
       this.hostToolDefinitionsLoaded = true;
     }
@@ -49,6 +68,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async parseCommand(message: string): Promise<JsonValue> {
+    if (this.localHostService) {
+      return this.unwrapHostToolRequest(await this.localHostService.parseCommand(message));
+    }
+
     return this.unwrapHostToolRequest(await this.peer.call<JsonValue>('host.parseCommand', { message }));
   }
 
@@ -56,6 +79,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
     if (localMcpRequest) {
       return localMcpRequest;
+    }
+
+    if (this.localHostService) {
+      return this.unwrapHostToolRequest(
+        await this.localHostService.requestFromFunctionCall(name, argumentsJson),
+      );
     }
 
     return this.unwrapHostToolRequest(
@@ -69,18 +98,31 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       return { kind: 'allowed' };
     }
 
+    if (this.localHostService) {
+      return this.localHostService.authorize(request);
+    }
+
     return this.peer.call<AuthorizationDecision<JsonValue>>('host.authorize', {
       request: this.serializeRequest(request),
     });
   }
 
   async trust(target: JsonValue): Promise<void> {
+    if (this.localHostService && typeof target === 'string') {
+      await this.localHostService.trust(target);
+      return;
+    }
+
     await this.peer.call('host.trust', { target });
   }
 
   async execute(request: JsonValue): Promise<string> {
     if (this.mcp.isToolRequest(request)) {
       return this.executeLocalMcpTool(request);
+    }
+
+    if (this.localHostService) {
+      return this.localHostService.execute(request);
     }
 
     return this.peer.call<string>('host.execute', { request: this.serializeRequest(request) });
