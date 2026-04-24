@@ -87,6 +87,16 @@ export type RuntimeEvent<ToolRequest> =
       request: ToolRequest;
       statusText?: string;
       failed?: boolean;
+    }
+  | {
+      kind: 'streaming-tool-preview';
+      toolCallId: string;
+      toolName: string;
+      argumentsJson: string;
+    }
+  | {
+      kind: 'tool-execution-finished';
+      execution: RuntimeToolExecution<ToolRequest>;
     };
 
 export interface RuntimePendingApproval<ToolRequest, TrustTarget> {

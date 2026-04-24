@@ -191,7 +191,11 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
 async function drainEvents(): Promise<DrainEventsResult> {
   const target = requireRuntime();
   await toolExecutor.refreshCaches();
-  const events = target.drainEvents();
+  const raw = target.drainEvents();
+  // 与 `BridgeRuntimeEvent`（Rust）对齐，避免未声明的 kind 导致 CLI drain 反序列化失败。
+  const events = raw.filter(
+    (event) => event.kind !== 'tool-execution-finished' && event.kind !== 'streaming-tool-preview',
+  );
   if (events.length > 0) {
     logBridge('drainEvents', {
       count: events.length,

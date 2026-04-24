@@ -22,6 +22,7 @@ import type {
   RuntimeEvent,
   RuntimePendingApproval,
   RuntimePendingQuestions,
+  RuntimeToolExecution,
   RuntimeTurnContext,
   RuntimeTurnResult,
 } from './types.js';
@@ -206,12 +207,17 @@ export async function resumePendingQuestions<
 
   runtime.pendingQuestions = undefined;
   const output = JSON.stringify(result);
-  pending.turn.toolExecutions.push({
+  const questionsExecution: RuntimeToolExecution<ToolRequest> = {
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
     request: pending.request,
     output,
     failed: false,
+  };
+  pending.turn.toolExecutions.push(questionsExecution);
+  runtime.emitEvent({
+    kind: 'tool-execution-finished',
+    execution: questionsExecution,
   });
 
   const resumedState = runtime.options.appendToolResultMessage(
@@ -527,13 +533,15 @@ export async function executeAuthorizedToolCall<
 
   const execution = await runtime.performToolExecution(request, toolName);
 
-  turn.toolExecutions.push({
+  const finished: RuntimeToolExecution<ToolRequest> = {
     toolCallId,
     toolName,
     request,
     output: execution.output,
     failed: execution.failed,
-  });
+  };
+  turn.toolExecutions.push(finished);
+  runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
 
   const resumedState = runtime.options.appendToolResultMessage(state, toolCallId, execution.output);
   if (remainingCalls.length > 0) {
@@ -870,13 +878,15 @@ export async function processToolCallsAsync<
     }
 
     const execution = await runtime.performToolExecution(request, call.name);
-    turn.toolExecutions.push({
+    const finished: RuntimeToolExecution<ToolRequest> = {
       toolCallId: call.id,
       toolName: call.name,
       request,
       output: execution.output,
       failed: execution.failed,
-    });
+    };
+    turn.toolExecutions.push(finished);
+    runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
     currentState = runtime.options.appendToolResultMessage(currentState, call.id, execution.output);
   }
 

@@ -357,6 +357,21 @@ export async function handlePendingStreamEvent<
     return false;
   }
 
+  if (event.kind === 'streaming-tool-preview') {
+    runtime.emitEvent({
+      kind: 'streaming-tool-preview',
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      argumentsJson: event.argumentsJson,
+    });
+    mergeToolProgressIntoThinking(runtime, event.previewLine);
+    runtime.emitEvent({
+      kind: 'update-pending-assistant-thinking',
+      text: runtime.thinkingTextStore,
+    });
+    return false;
+  }
+
   if (event.kind === 'tool-progress') {
     mergeToolProgressIntoThinking(runtime, event.text);
     runtime.emitEvent({
@@ -578,6 +593,16 @@ export async function handlePendingStreamingCompletion<
   if (round.step.kind === 'tool-calls') {
     if (!pending.streamEnded && !runtime.pendingAssistantTextStore.trim()) {
       runtime.emitEvent({ kind: 'remove-pending-assistant' });
+    } else if (!pending.streamEnded && runtime.pendingAssistantTextStore.trim()) {
+      // 与流式 `done` 分支一致：completion 先于 `done` 事件到达时，须把已输出的正文写入 history，
+      // 否则 `clearPendingStreamingState` 会丢弃例如「OK」等前缀。
+      runtime.historyStore.push({
+        role: 'assistant',
+        content: runtime.pendingAssistantTextStore,
+        imagePaths: [],
+      });
+      runtime.pendingUserTurnStore = undefined;
+      runtime.emitEvent({ kind: 'assistant-response-completed' });
     }
     clearPendingStreamingState(runtime);
     await runtime.processToolCallsAsync(

@@ -130,7 +130,13 @@ impl TuiShell {
         let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
-        let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
+        let config = config_store.load().unwrap_or_else(|err| {
+            logging::log_event(&format!(
+                "[config] 读取失败，已回退到内置默认模型（{}）。原因: {err:#}",
+                AppConfig::default().active_model
+            ));
+            AppConfig::default()
+        });
         locale::apply_ui_locale(&config);
         let workspace_root = app_paths.workspace_root();
         let rule_state = rules::load_rule_state().context("读取规则状态失败")?;

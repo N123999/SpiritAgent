@@ -13,13 +13,16 @@ const KEYRING_ACCOUNT_API_KEY: &str = "openai_api_key";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelProfile {
     pub name: String,
+    #[serde(rename = "apiBase", alias = "api_base")]
     pub api_base: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub models: Vec<ModelProfile>,
+    #[serde(rename = "activeModel", alias = "active_model")]
     pub active_model: String,
+    #[serde(rename = "uiLocale", alias = "ui_locale", default, skip_serializing_if = "Option::is_none")]
     pub ui_locale: Option<String>,
 }
 

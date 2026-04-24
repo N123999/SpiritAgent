@@ -22,6 +22,7 @@ import {
   type RuntimeApprovalDecision,
   type RuntimePendingApproval,
   type RuntimePendingQuestions,
+  type RuntimeEvent,
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
 
@@ -230,6 +231,8 @@ class DesktopHostService {
 
       try {
         await runtime.startUserTurnStreaming(trimmed);
+        await runtime.poll();
+        this.applyRuntimeHostEvents(runtime.drainEvents());
       } catch (error) {
         state.messages.pop();
         throw error;
@@ -237,6 +240,7 @@ class DesktopHostService {
 
       this.consumeCompletedTurnResult();
       this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
       return this.buildSnapshot();
     });
   }
@@ -247,9 +251,11 @@ class DesktopHostService {
       if (this.runtime) {
         this.runtime.tickThinkingSpinner();
         await this.runtime.poll();
+        this.applyRuntimeHostEvents(this.runtime.drainEvents());
       }
       this.consumeCompletedTurnResult();
       this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       return this.buildSnapshot();
     });
@@ -260,8 +266,11 @@ class DesktopHostService {
       await this.ensureInitialized();
       const runtime = this.requireRuntime();
       await runtime.continuePendingApproval(parseApprovalDecision(message));
+      await runtime.poll();
+      this.applyRuntimeHostEvents(runtime.drainEvents());
       this.consumeCompletedTurnResult();
       this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
       return this.buildSnapshot();
     });
   }
@@ -271,8 +280,11 @@ class DesktopHostService {
       await this.ensureInitialized();
       const runtime = this.requireRuntime();
       await runtime.continuePendingQuestions(toRuntimeAskQuestionsResult(result));
+      await runtime.poll();
+      this.applyRuntimeHostEvents(runtime.drainEvents());
       this.consumeCompletedTurnResult();
       this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       return this.buildSnapshot();
     });
@@ -655,6 +667,7 @@ class DesktopHostService {
       case 'requires-approval':
       case 'requires-questions':
         this.syncPendingToolStates();
+        this.syncAssistantPrefixFromHistoryBeforeToolRow();
         this.lastRuntimeError = '';
         break;
       default:
@@ -677,6 +690,124 @@ class DesktopHostService {
         argsExcerpt: truncateJson(execution.request),
         outputExcerpt: truncateText(execution.output, 4_000),
       });
+    }
+  }
+
+  private applyRuntimeHostEvents(events: RuntimeEvent<DesktopToolRequest>[]): void {
+    for (const ev of events) {
+      if (ev.kind === 'tool-execution-finished') {
+        this.integrateToolExecutions([ev.execution]);
+        continue;
+      }
+      if (ev.kind !== 'streaming-tool-preview') {
+        continue;
+      }
+      let argsExcerpt: string;
+      try {
+        argsExcerpt = truncateJson(JSON.parse(ev.argumentsJson) as unknown);
+      } catch {
+        argsExcerpt = truncateText(ev.argumentsJson, 4_000);
+      }
+      this.upsertToolMessage(ev.toolCallId, {
+        toolCallId: ev.toolCallId,
+        toolName: ev.toolName,
+        phase: 'running',
+        headline: `调用中: ${ev.toolName}`,
+        detailLines: [],
+        argsExcerpt,
+      });
+    }
+  }
+
+  /**
+   * 将 `runtime.history()` 里「当前用户轮次、首条 tool 之前」的助手正文同步到 `state.messages`，
+   * 避免仅有工具卡片行（content 为空）时丢失流式已输出的前缀（如「OK」）。
+   */
+  private syncAssistantPrefixFromHistoryBeforeToolRow(): void {
+    if (!this.runtime) {
+      return;
+    }
+    const pendingTrim = this.runtime.pendingAssistantText().trim();
+    if (pendingTrim) {
+      return;
+    }
+
+    const hist = this.runtime.history();
+    const prefix = assistantPrefixBeforeFirstToolInCurrentTurn(hist);
+    const state = this.requireState();
+    const n = state.messages.length;
+    const last = n > 0 ? state.messages[n - 1] : undefined;
+
+    if (!prefix) {
+      return;
+    }
+
+    if (n === 0) {
+      return;
+    }
+
+    const hasPlainPrefix = state.messages.some(
+      (m) => m.role === 'assistant' && m.content === prefix && !m.tool,
+    );
+    if (hasPlainPrefix) {
+      return;
+    }
+
+    if (last!.role === 'user') {
+      state.messages.push({
+        id: this.allocateMessageId(),
+        role: 'assistant',
+        content: prefix,
+        pending: false,
+      });
+      return;
+    }
+
+    if (last!.role === 'assistant' && last!.tool) {
+      const prev = n >= 2 ? state.messages[n - 2] : undefined;
+      if (prev?.role === 'assistant' && prev.content === prefix && !prev.tool) {
+        return;
+      }
+      state.messages.splice(n - 1, 0, {
+        id: this.allocateMessageId(),
+        role: 'assistant',
+        content: prefix,
+        pending: false,
+      });
+      return;
+    }
+
+    if (last!.role === 'assistant' && !last!.tool && last!.content.trim() && last!.content !== prefix) {
+      let toolIdx = -1;
+      for (let i = n - 2; i >= 0; i -= 1) {
+        const m = state.messages[i];
+        if (m.role === 'assistant' && m.tool) {
+          toolIdx = i;
+          break;
+        }
+      }
+      if (toolIdx >= 0) {
+        const beforeTool = toolIdx > 0 ? state.messages[toolIdx - 1] : undefined;
+        if (beforeTool?.role === 'assistant' && beforeTool.content === prefix && !beforeTool.tool) {
+          return;
+        }
+        state.messages.splice(toolIdx, 0, {
+          id: this.allocateMessageId(),
+          role: 'assistant',
+          content: prefix,
+          pending: false,
+        });
+        return;
+      }
+      if (!last!.content.startsWith(prefix)) {
+        state.messages.splice(n - 1, 0, {
+          id: this.allocateMessageId(),
+          role: 'assistant',
+          content: prefix,
+          pending: false,
+        });
+      }
+      return;
     }
   }
 
@@ -848,6 +979,44 @@ class DesktopHostService {
       release?.();
     }
   }
+}
+
+/**
+ * 自「最后一条 user」起至首条 `tool` 前，取**第一个**非空 assistant 正文。
+ * OpenAI 路径下 tool 结果通常不在 `history()` 的 LlmMessage 里，若仍用「最后一个」assistant
+ * 会误取工具执行后的终稿，从而覆盖/错配流式阶段已显示的前缀（如「好的，我来查看…」）。
+ */
+function assistantPrefixBeforeFirstToolInCurrentTurn(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+): string | undefined {
+  let lastUserIdx = -1;
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    if (hist[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  let firstToolIdx = -1;
+  for (let i = lastUserIdx + 1; i < hist.length; i += 1) {
+    if (hist[i]?.role === 'tool') {
+      firstToolIdx = i;
+      break;
+    }
+  }
+
+  const end = firstToolIdx >= 0 ? firstToolIdx : hist.length;
+  for (let i = lastUserIdx + 1; i < end; i += 1) {
+    const m = hist[i];
+    if (!m) {
+      continue;
+    }
+    if (m.role === 'assistant' && m.content.trim()) {
+      return m.content.trim();
+    }
+  }
+
+  return undefined;
 }
 
 const desktopHostService = new DesktopHostService();
