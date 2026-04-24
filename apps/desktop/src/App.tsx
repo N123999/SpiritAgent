@@ -107,10 +107,22 @@ function messageRoleVariant(
   return role === "user" ? "secondary" : "outline";
 }
 
-function MessageCard({ message }: { message: ConversationMessageSnapshot }) {
+/** 复合 DOM id/`key`，避免 `message.id` 碰撞导致子树被 React 错误复用。 */
+function conversationMessageDomId(message: ConversationMessageSnapshot, index: number): string {
+  const toolPart = message.tool?.toolCallId ?? (message.tool ? `${message.tool.toolName}:${message.tool.phase}` : "");
+  return `message-${index}-${message.id}-${message.pending ? "p" : "m"}-${toolPart}`;
+}
+
+function MessageCard({
+  message,
+  listIndex,
+}: {
+  message: ConversationMessageSnapshot;
+  listIndex: number;
+}) {
   return (
     <div
-      id={`message-${message.id}`}
+      id={conversationMessageDomId(message, listIndex)}
       className="scroll-mt-6 space-y-3 rounded-xl border border-border/20 bg-muted/5 p-4"
     >
       <div className="space-y-3">
@@ -126,6 +138,26 @@ function MessageCard({ message }: { message: ConversationMessageSnapshot }) {
           ) : null}
         </div>
         <div className="space-y-4">
+        {message.aux?.thinking ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-muted/30 p-4">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Thinking
+            </p>
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
+              {message.aux.thinking}
+            </pre>
+          </div>
+        ) : null}
+        {message.aux?.compaction ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-muted/30 p-4">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Compaction
+            </p>
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
+              {message.aux.compaction}
+            </pre>
+          </div>
+        ) : null}
         {message.content.trim() ? (
           <pre className="whitespace-pre-wrap break-words rounded-xl bg-muted/40 p-4 text-sm leading-7">
             {message.content}
@@ -151,26 +183,6 @@ function MessageCard({ message }: { message: ConversationMessageSnapshot }) {
                 {message.tool.outputExcerpt}
               </pre>
             ) : null}
-          </div>
-        ) : null}
-        {message.aux?.thinking ? (
-          <div className="rounded-xl border border-dashed border-border/60 bg-muted/30 p-4">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Thinking
-            </p>
-            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
-              {message.aux.thinking}
-            </pre>
-          </div>
-        ) : null}
-        {message.aux?.compaction ? (
-          <div className="rounded-xl border border-dashed border-border/60 bg-muted/30 p-4">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Compaction
-            </p>
-            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
-              {message.aux.compaction}
-            </pre>
           </div>
         ) : null}
         </div>
@@ -481,8 +493,12 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-4 overflow-x-hidden px-4 py-3">
-                    {messages.map((message) => (
-                      <MessageCard key={message.id} message={message} />
+                    {messages.map((message, index) => (
+                      <MessageCard
+                        key={conversationMessageDomId(message, index)}
+                        listIndex={index}
+                        message={message}
+                      />
                     ))}
                   </div>
                 )}

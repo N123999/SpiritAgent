@@ -100,6 +100,12 @@ class DesktopHostService {
   private activeApiKeyConfigured = false;
   private modelKeyPresence: Record<string, boolean> = {};
   private latestPendingAssistantAux: MessageAuxSnapshot | undefined;
+  /** 思考段 finalize 去重、插入锚点与 apply 批次（见 `applyRuntimeHostEvents` / `appendAssistantThinkingSegment`）。 */
+  private lastFinalizedThinkingSegment = '';
+  private streamAssistantThinkingAnchor: number | undefined;
+  private streamAssistantAnchorSetInApplyBatchId = 0;
+  private lastApplyEventBatchId = 0;
+  private messageOrderDebugLastVerboseLogMs = 0;
   private messageIdCounter = 1;
   private serialized = Promise.resolve();
 
@@ -227,6 +233,7 @@ class DesktopHostService {
         content: trimmed,
         pending: false,
       });
+      this.resetStreamingPlacementState(false);
       await this.persistCurrentSessionIfNeeded();
 
       try {
@@ -303,6 +310,7 @@ class DesktopHostService {
       state.archiveHistory = [];
       state.archiveSubagentSessions = [];
       this.latestPendingAssistantAux = undefined;
+      this.resetStreamingPlacementState(true);
       this.messageIdCounter = 1;
       await this.refreshRuntime();
       this.lastRuntimeError = '';
@@ -343,6 +351,7 @@ class DesktopHostService {
       this.messageIdCounter =
         Math.max(0, ...state.messages.map((message) => message.id)) + 1;
       this.latestPendingAssistantAux = undefined;
+      this.resetStreamingPlacementState(true);
       await this.refreshRuntime();
       this.lastRuntimeError = '';
       return this.buildSnapshot();
@@ -608,8 +617,15 @@ class DesktopHostService {
     const state = this.requireState();
     const messages = state.messages.map((message) => ({ ...message }));
     const pendingMessage = this.buildPendingAssistantMessage();
-    if (pendingMessage) {
+    if (!pendingMessage) {
+      return messages;
+    }
+    /** 有 running/待审批工具则插在首条之前；否则接在末尾（避免挂起思考盖住已完成工具卡）。 */
+    const beforeFirstRunning = indexForPendingInsertBeforeFirstActiveToolAfterLastUser(messages);
+    if (beforeFirstRunning === undefined) {
       messages.push(pendingMessage);
+    } else {
+      messages.splice(beforeFirstRunning, 0, pendingMessage);
     }
     return messages;
   }
@@ -634,7 +650,7 @@ class DesktopHostService {
     }
 
     return {
-      id: 0,
+      id: -1,
       role: 'assistant',
       content: pendingText,
       ...(aux ? { aux } : {}),
@@ -694,7 +710,29 @@ class DesktopHostService {
   }
 
   private applyRuntimeHostEvents(events: RuntimeEvent<DesktopToolRequest>[]): void {
+    const state = this.requireState();
+    // 空 drain 不递增批次：否则同一 poll 里后续 consume→integrate 的 upsert 会误判批次并清空 preview 记下的锚点。
+    const batchId =
+      events.length > 0 ? (this.lastApplyEventBatchId += 1) : this.lastApplyEventBatchId;
+    // 严格按事件时序单遍处理；begin 一律 anchor := min(已有, messages.length)：
+    // - 同批内 preview 先于 begin：保留首条工具下标。
+    // - 同批内 finalize/tool-done 先于 begin 导致 at 已含新工具：保留先前跨 poll preview 写下的较小下标。
     for (const ev of events) {
+      if (ev.kind === 'begin-assistant-response') {
+        const at = state.messages.length;
+        this.streamAssistantThinkingAnchor =
+          this.streamAssistantThinkingAnchor === undefined
+            ? at
+            : Math.min(this.streamAssistantThinkingAnchor, at);
+        this.streamAssistantAnchorSetInApplyBatchId = batchId;
+        continue;
+      }
+      if (ev.kind === 'assistant-thinking-segment-finalized') {
+        if (ev.text.trim()) {
+          this.appendAssistantThinkingSegment(ev.text);
+        }
+        continue;
+      }
       if (ev.kind === 'tool-execution-finished') {
         this.integrateToolExecutions([ev.execution]);
         continue;
@@ -717,6 +755,13 @@ class DesktopHostService {
         argsExcerpt,
       });
     }
+    this.logMessageOrderApplyBatch(
+      batchId,
+      events,
+      state,
+      this.streamAssistantThinkingAnchor,
+      this.streamAssistantAnchorSetInApplyBatchId,
+    );
   }
 
   /**
@@ -760,24 +805,45 @@ class DesktopHostService {
         content: prefix,
         pending: false,
       });
+      this.logMessageOrderPrefixSync('push-after-user', state);
       return;
     }
 
     if (last!.role === 'assistant' && last!.tool) {
-      const prev = n >= 2 ? state.messages[n - 2] : undefined;
-      if (prev?.role === 'assistant' && prev.content === prefix && !prev.tool) {
+      const firstToolIdx = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
+      if (firstToolIdx === undefined) {
         return;
       }
-      state.messages.splice(n - 1, 0, {
+      const beforeFirst = firstToolIdx > 0 ? state.messages[firstToolIdx - 1] : undefined;
+      if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
+        return;
+      }
+      state.messages.splice(firstToolIdx, 0, {
         id: this.allocateMessageId(),
         role: 'assistant',
         content: prefix,
         pending: false,
       });
+      this.logMessageOrderPrefixSync(`splice-before-first-tool@${firstToolIdx}`, state);
       return;
     }
 
     if (last!.role === 'assistant' && !last!.tool && last!.content.trim() && last!.content !== prefix) {
+      const firstToolIdx = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
+      if (firstToolIdx !== undefined) {
+        const beforeFirst = firstToolIdx > 0 ? state.messages[firstToolIdx - 1] : undefined;
+        if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
+          return;
+        }
+        state.messages.splice(firstToolIdx, 0, {
+          id: this.allocateMessageId(),
+          role: 'assistant',
+          content: prefix,
+          pending: false,
+        });
+        this.logMessageOrderPrefixSync(`splice-before-first-tool@${firstToolIdx}`, state);
+        return;
+      }
       let toolIdx = -1;
       for (let i = n - 2; i >= 0; i -= 1) {
         const m = state.messages[i];
@@ -797,6 +863,7 @@ class DesktopHostService {
           content: prefix,
           pending: false,
         });
+        this.logMessageOrderPrefixSync(`splice-before-tool@${toolIdx}`, state);
         return;
       }
       if (!last!.content.startsWith(prefix)) {
@@ -806,6 +873,7 @@ class DesktopHostService {
           content: prefix,
           pending: false,
         });
+        this.logMessageOrderPrefixSync(`splice-before-tail@${n - 1}`, state);
       }
       return;
     }
@@ -848,6 +916,12 @@ class DesktopHostService {
       return;
     }
 
+    const batchId = this.lastApplyEventBatchId;
+    if (this.streamAssistantThinkingAnchor === undefined) {
+      this.streamAssistantThinkingAnchor = state.messages.length;
+    }
+    this.streamAssistantAnchorSetInApplyBatchId = batchId;
+    const pushAt = state.messages.length;
     state.messages.push({
       id: this.allocateMessageId(),
       role: 'assistant',
@@ -855,6 +929,7 @@ class DesktopHostService {
       tool,
       pending: false,
     });
+    this.logMessageOrderToolPreviewNew(tool.toolName, pushAt);
   }
 
   private appendAssistantMessage(content: string, aux?: MessageAuxSnapshot): void {
@@ -866,6 +941,38 @@ class DesktopHostService {
       ...(aux ? { aux } : {}),
       pending: false,
     });
+  }
+
+  /** 将本段模型思考固化为独立消息，并从挂起 aux 中剥离同文以避免与终稿重复。 */
+  private appendAssistantThinkingSegment(text: string): void {
+    this.lastFinalizedThinkingSegment = text.trim();
+    const state = this.requireState();
+    const msg: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'assistant',
+      content: '',
+      aux: { thinking: text },
+      pending: false,
+    };
+    let insertAt = this.streamAssistantThinkingAnchor;
+    this.streamAssistantThinkingAnchor = undefined;
+    if (insertAt === undefined) {
+      insertAt = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
+    }
+    let placed: string;
+    if (insertAt !== undefined) {
+      const clamped = Math.max(0, Math.min(insertAt, state.messages.length));
+      state.messages.splice(clamped, 0, msg);
+      placed = `splice@${clamped}`;
+    } else {
+      state.messages.push(msg);
+      placed = 'push-end';
+    }
+    this.logMessageOrderThinkingFinalized(placed, state.messages.length, text);
+    this.latestPendingAssistantAux = stripPendingThinkingMatchingFinalized(
+      this.latestPendingAssistantAux,
+      text,
+    );
   }
 
   private ensureActiveSession(seedText: string): void {
@@ -960,10 +1067,114 @@ class DesktopHostService {
     return next;
   }
 
+  /**
+   * @param full `false`：仅清思考插入锚点（新用户轮次，避免误插旧工具链）。`true`：另清 finalize 去重与 apply 批次计数（重置会话 / 打开存档）。
+   */
+  private resetStreamingPlacementState(full: boolean): void {
+    if (!full) {
+      this.streamAssistantThinkingAnchor = undefined;
+      return;
+    }
+    this.lastFinalizedThinkingSegment = '';
+    this.streamAssistantThinkingAnchor = undefined;
+    this.streamAssistantAnchorSetInApplyBatchId = 0;
+    this.lastApplyEventBatchId = 0;
+    this.messageOrderDebugLastVerboseLogMs = 0;
+  }
+
   private takeLatestPendingAux(): MessageAuxSnapshot | undefined {
     const current = this.latestPendingAssistantAux;
     this.latestPendingAssistantAux = undefined;
+    if (!current) {
+      this.lastFinalizedThinkingSegment = '';
+      return undefined;
+    }
+    if (
+      this.lastFinalizedThinkingSegment &&
+      current.thinking?.trim() === this.lastFinalizedThinkingSegment.trim()
+    ) {
+      const { thinking: _thinking, ...rest } = current;
+      this.lastFinalizedThinkingSegment = '';
+      return Object.keys(rest).length > 0 ? rest : undefined;
+    }
+    this.lastFinalizedThinkingSegment = '';
     return current;
+  }
+
+  private logMessageOrderApplyBatch(
+    batchId: number,
+    events: RuntimeEvent<DesktopToolRequest>[],
+    state: HostState,
+    anchorEnd: number | undefined,
+    anchorSourceBatchEnd: number,
+  ): void {
+    const mode = messageOrderDebugLevel();
+    if (mode === 'off') return;
+
+    const tags: string[] = [];
+    let previewCount = 0;
+    for (const ev of events) {
+      if (ev.kind === 'begin-assistant-response') {
+        tags.push('begin');
+      } else if (ev.kind === 'assistant-thinking-segment-finalized') {
+        tags.push(ev.text.trim() ? 'finalize' : 'finalize-empty');
+      } else if (ev.kind === 'tool-execution-finished') {
+        tags.push(`tool-done:${ev.execution.toolName}`);
+      } else if (ev.kind === 'streaming-tool-preview') {
+        previewCount += 1;
+      }
+    }
+
+    const hasOrderTags = tags.length > 0;
+    if (!hasOrderTags && previewCount === 0) {
+      return;
+    }
+
+    if (mode === 'compact' && !hasOrderTags) {
+      return;
+    }
+
+    if (!hasOrderTags && previewCount > 0 && mode === 'verbose') {
+      const now = Date.now();
+      if (now - this.messageOrderDebugLastVerboseLogMs < 1200) {
+        return;
+      }
+      this.messageOrderDebugLastVerboseLogMs = now;
+      tags.push(`preview×${previewCount}`);
+    } else if (hasOrderTags && previewCount > 0 && mode === 'verbose') {
+      tags.push(`pv×${previewCount}`);
+    }
+
+    const tail = summarizeMessagesTailForOrderDebug(state.messages, 12);
+    console.log(
+      `[desktop-host][msg-order] apply#${batchId} kinds=${tags.join(',')} anchor=${anchorEnd ?? '∅'} anchorBatch=${anchorSourceBatchEnd} len=${state.messages.length} tail=${tail}`,
+    );
+  }
+
+  private logMessageOrderThinkingFinalized(placed: string, lenAfter: number, text: string): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    const one = text.replace(/\s+/g, ' ').trim();
+    const clip = one.slice(0, 72);
+    console.log(
+      `[desktop-host][msg-order] thinking-finalized ${placed} len=${lenAfter} text≈${clip}${one.length > 72 ? '…' : ''}`,
+    );
+  }
+
+  private logMessageOrderPrefixSync(how: string, state: HostState): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    const tail = summarizeMessagesTailForOrderDebug(state.messages, 10);
+    console.log(`[desktop-host][msg-order] prefix-sync ${how} len=${state.messages.length} tail=${tail}`);
+  }
+
+  private logMessageOrderToolPreviewNew(toolName: string, pushAt: number): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    console.log(`[desktop-host][msg-order] tool-preview-new ${toolName} push@${pushAt}`);
   }
 
   private async runSerialized<T>(work: () => Promise<T>): Promise<T> {
@@ -979,6 +1190,66 @@ class DesktopHostService {
       release?.();
     }
   }
+}
+
+/** 环境变量 `SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG`：不设为关；`1`/compact/on 紧凑；`2`/verbose 更详并节流纯 preview；`0`/off 显式关闭。 */
+type MessageOrderDebugLevel = 'off' | 'compact' | 'verbose';
+
+function messageOrderDebugLevel(): MessageOrderDebugLevel {
+  const raw = process.env.SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG?.trim().toLowerCase() ?? '';
+  if (raw === '') {
+    return 'off';
+  }
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on' || raw === 'compact') {
+    return 'compact';
+  }
+  if (raw === '0' || raw === 'false' || raw === 'off' || raw === 'no') {
+    return 'off';
+  }
+  if (raw === '2' || raw === 'verbose' || raw === 'debug' || raw === 'all') {
+    return 'verbose';
+  }
+  return 'off';
+}
+
+function summarizeMessagesTailForOrderDebug(
+  messages: ConversationMessageSnapshot[],
+  max: number,
+): string {
+  if (messages.length === 0) {
+    return '∅';
+  }
+  const slice = messages.slice(Math.max(0, messages.length - max));
+  return slice.map(formatMessageOrderToken).join('«');
+}
+
+function formatMessageOrderToken(m: ConversationMessageSnapshot): string {
+  if (m.role === 'user') {
+    return 'U';
+  }
+  const toolName = m.tool?.toolName;
+  if (toolName) {
+    const phase = m.tool?.phase ?? '?';
+    const p =
+      phase === 'running' ? '~' : phase === 'succeeded' ? '=' : phase === 'failed' ? '!' : phase === 'pending-approval' ? '?' : '.';
+    return `${p}${truncateOneLineForDebug(toolName, 20)}`;
+  }
+  if (m.aux?.thinking && !m.content.trim()) {
+    return `H#${m.id}`;
+  }
+  const c = m.content.trim();
+  if (!c) {
+    return 'Aε';
+  }
+  return `a:${truncateOneLineForDebug(c, 18)}`;
+}
+
+function truncateOneLineForDebug(s: string, max: number): string {
+  const t = s.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) {
+    return t;
+  }
+  return `${t.slice(0, max)}…`;
 }
 
 /**
@@ -1110,6 +1381,65 @@ function mergeAux(
   return kind === 'thinking'
     ? { ...(current ?? {}), thinking: text }
     : { ...(current ?? {}), compaction: text };
+}
+
+function stripPendingThinkingMatchingFinalized(
+  aux: MessageAuxSnapshot | undefined,
+  finalizedText: string,
+): MessageAuxSnapshot | undefined {
+  if (!aux?.thinking) {
+    return aux;
+  }
+  if (aux.thinking.trim() !== finalizedText.trim()) {
+    return aux;
+  }
+  const { thinking: _t, ...rest } = aux;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+/** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为 push 末尾）。 */
+function indexForThinkingInsertBeforeFirstToolAfterLastUser(
+  messages: ConversationMessageSnapshot[],
+): number | undefined {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  for (let i = lastUser + 1; i < messages.length; i += 1) {
+    const m = messages[i];
+    if (m?.role === 'assistant' && m.tool) {
+      return i;
+    }
+  }
+  return undefined;
+}
+
+function toolPhaseIsActiveForPendingOrder(phase: ToolBlockSnapshot['phase'] | undefined): boolean {
+  return phase === 'running' || phase === 'pending-approval';
+}
+
+/**
+ * 最后一条 user 之后、首条**仍进行中**的助手工具行之前。
+ * 无进行中工具时返回 `undefined`，表示挂起助手应接在整段消息末尾（已完成工具之后）。
+ */
+function indexForPendingInsertBeforeFirstActiveToolAfterLastUser(
+  messages: ConversationMessageSnapshot[],
+): number | undefined {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  for (let i = lastUser + 1; i < messages.length; i += 1) {
+    const m = messages[i];
+    if (m?.role === 'assistant' && m.tool && toolPhaseIsActiveForPendingOrder(m.tool.phase)) {
+      return i;
+    }
+  }
+  return undefined;
 }
 
 function restoreMessagesFromArchive(

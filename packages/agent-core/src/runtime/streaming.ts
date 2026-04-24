@@ -293,6 +293,12 @@ export function clearStreamingUiState<
 >(
   runtime: StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
 ): void {
+  if (runtime.thinkingTextStore.trim()) {
+    runtime.emitEvent({
+      kind: 'assistant-thinking-segment-finalized',
+      text: runtime.thinkingTextStore,
+    });
+  }
   runtime.pendingStartedAtStore = undefined;
   runtime.pendingLastEventAtStore = undefined;
   runtime.streamChunkCounterStore = 0;
