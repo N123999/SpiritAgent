@@ -164,6 +164,10 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
   html.dark {
     color-scheme: dark;
   }
+  /* WebView2：`<pre>` 默认易触发中文衬线回退，与 UI 无衬线栈不一致 */
+  pre {
+    @apply font-sans;
+  }
 }
 
 /* WebView2 / Chrome：用细轨道 + 无箭头，替代系统默认“经典”滚动条 */
