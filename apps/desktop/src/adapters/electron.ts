@@ -15,6 +15,12 @@ export async function createElectronHostApi(): Promise<HostApi> {
     updateConfig(request) {
       return bridge.updateConfig(request);
     },
+    addModel(request) {
+      return bridge.addModel(request);
+    },
+    removeModel(name) {
+      return bridge.removeModel(name);
+    },
     submitUserTurn(text) {
       return bridge.submitUserTurn(text);
     },

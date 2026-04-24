@@ -11,6 +11,17 @@ export interface UpdateConfigRequest {
   windowsMica?: boolean;
 }
 
+/** 与 CLI `model add` 一致：新增模型、写入密钥，并将当前模型切到新模型。 */
+export interface AddModelRequest {
+  name: string;
+  apiBase: string;
+  apiKey: string;
+}
+
+export interface RemoveModelRequest {
+  name: string;
+}
+
 /** 与 CLI `chat_store` 已保存的 `*.json` 文件一致。 */
 export interface ActiveSessionSnapshot {
   filePath: string;
@@ -49,6 +60,8 @@ export interface DesktopConfigSnapshot {
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;
+  /** 宿主快照：是否在本地为该模型名单独保存过 API Key（不含明文）。 */
+  keyConfigured?: boolean;
 }
 
 export interface DiscoverySummary {

@@ -1,5 +1,6 @@
 import type { HostApi } from '../host-api';
 import type {
+  AddModelRequest,
   AskQuestionsResult,
   BootstrapRequest,
   DesktopSnapshot,
@@ -20,6 +21,12 @@ export function createWebHostApi(): HostApi {
     },
     updateConfig(request: UpdateConfigRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/config', request);
+    },
+    addModel(request: AddModelRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/models', request);
+    },
+    removeModel(name: string) {
+      return post<DesktopSnapshot>(baseUrl, '/api/models/remove', { name });
     },
     submitUserTurn(text: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/submit', { text });

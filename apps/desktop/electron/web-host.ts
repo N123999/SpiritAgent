@@ -42,6 +42,17 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === 'POST' && request.url === '/api/models') {
+      writeJson(response, 200, await invokeDesktopHostCommand('addModel', { request: jsonBody }));
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/api/models/remove') {
+      const name = typeof jsonBody?.name === 'string' ? jsonBody.name : '';
+      writeJson(response, 200, await invokeDesktopHostCommand('removeModel', { request: { name } }));
+      return;
+    }
+
     if (request.method === 'POST' && request.url === '/api/submit') {
       writeJson(response, 200, await invokeDesktopHostCommand('submitUserTurn', { text: typeof jsonBody?.text === 'string' ? jsonBody.text : '' }));
       return;

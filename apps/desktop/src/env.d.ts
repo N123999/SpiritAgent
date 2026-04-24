@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  AddModelRequest,
   AskQuestionsResult,
   BootstrapRequest,
   DesktopSnapshot,
@@ -12,6 +13,8 @@ declare global {
   interface SpiritDesktopApi {
     bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
     updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
+    addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
+    removeModel(name: string): Promise<DesktopSnapshot>;
     submitUserTurn(text: string): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
     replyPendingApproval(message: string): Promise<DesktopSnapshot>;

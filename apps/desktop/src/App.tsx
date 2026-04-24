@@ -423,7 +423,11 @@ export default function App() {
             hostStatus={runtime.summary.hostStatus}
             mcpState={mcpBadgeText(snapshot)}
             micaStyle={useMicaBackdrop}
-            busy={runtime.busyAction === "session" || runtime.busyAction === "reset"}
+            busy={
+              runtime.busyAction === "session" ||
+              runtime.busyAction === "reset" ||
+              runtime.busyAction === "models"
+            }
           />
         </div>
 
@@ -454,10 +458,13 @@ export default function App() {
               runtimeError={runtime.runtimeError}
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
+              modelsBusy={runtime.busyAction === "models"}
               isElectronShell={isElectronShell}
               onSavePatch={runtime.saveSettingsPatch}
               onBootstrap={runtime.bootstrap}
               onResetSession={runtime.resetSession}
+              onAddModel={runtime.addModel}
+              onRemoveModel={runtime.removeModel}
             />
           ) : (
             <>

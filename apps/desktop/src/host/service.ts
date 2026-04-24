@@ -27,23 +27,28 @@ import {
 
 import type {
   ActiveSessionSnapshot,
+  AddModelRequest,
   AskQuestionsResult,
   BootstrapRequest,
   ConversationMessageSnapshot,
   DesktopSnapshot,
   MessageAuxSnapshot,
   PendingQuestionsSnapshot,
+  RemoveModelRequest,
   SessionListItem,
   ToolBlockSnapshot,
   UpdateConfigRequest,
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
 import {
+  DEFAULT_API_BASE,
   defaultNewSessionPath,
   discoverWorkspaceRoot,
   loadConfig,
   loadHostMetadata,
   loadStoredSession,
+  modelSecretKeyPresence,
+  removeModelApiKey,
   resolveApiKeyForModel,
   saveApiKeyForModel,
   saveConfig,
@@ -64,6 +69,8 @@ type DesktopRuntime = AgentRuntime<
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
   updateConfig: { request: UpdateConfigRequest };
+  addModel: { request: AddModelRequest };
+  removeModel: { request: RemoveModelRequest };
   submitUserTurn: { text: string };
   poll: undefined;
   replyPendingApproval: { message: string };
@@ -90,6 +97,7 @@ class DesktopHostService {
   private initialized = false;
   private lastRuntimeError = '';
   private activeApiKeyConfigured = false;
+  private modelKeyPresence: Record<string, boolean> = {};
   private latestPendingAssistantAux: MessageAuxSnapshot | undefined;
   private messageIdCounter = 1;
   private serialized = Promise.resolve();
@@ -133,6 +141,69 @@ class DesktopHostService {
 
       await this.refreshRuntime();
       this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async addModel(request: AddModelRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const name = request.name.trim();
+      const apiBaseRaw = request.apiBase.trim();
+      const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+      const apiKey = request.apiKey.trim();
+
+      if (!name) {
+        throw new Error('模型名称不能为空。');
+      }
+      if (!apiKey) {
+        throw new Error('API Key 不能为空。');
+      }
+      if (state.config.models.some((model) => model.name === name)) {
+        throw new Error(`模型已存在: ${name}`);
+      }
+
+      state.config.models.push({ name, apiBase });
+      state.config.activeModel = name;
+      await saveConfig(state.config);
+      await saveApiKeyForModel(name, apiKey);
+
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async removeModel(request: RemoveModelRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+
+      const name = request.name.trim();
+      if (!name) {
+        throw new Error('模型名称不能为空。');
+      }
+      if (name === state.config.activeModel) {
+        throw new Error('不能删除当前模型，请先切换到其他模型。');
+      }
+
+      const before = state.config.models.length;
+      state.config.models = state.config.models.filter((model) => model.name !== name);
+      if (state.config.models.length === before) {
+        throw new Error(`模型不存在: ${name}`);
+      }
+
+      await saveConfig(state.config);
+      await removeModelApiKey(name);
+      await this.refreshModelKeyPresence();
       await this.persistCurrentSessionIfNeeded();
       return this.buildSnapshot();
     });
@@ -276,6 +347,14 @@ class DesktopHostService {
         const typedPayload = payload as CommandPayloads['updateConfig'];
         return this.updateConfig(typedPayload.request);
       }
+      case 'addModel': {
+        const typedPayload = payload as CommandPayloads['addModel'];
+        return this.addModel(typedPayload.request);
+      }
+      case 'removeModel': {
+        const typedPayload = payload as CommandPayloads['removeModel'];
+        return this.removeModel(typedPayload.request);
+      }
       case 'submitUserTurn': {
         const typedPayload = payload as CommandPayloads['submitUserTurn'];
         return this.submitUserTurn(typedPayload.text);
@@ -337,6 +416,7 @@ class DesktopHostService {
     if (!apiKey) {
       this.runtime = undefined;
       this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
+      await this.refreshModelKeyPresence();
       return;
     }
 
@@ -362,6 +442,18 @@ class DesktopHostService {
     }
     this.runtime = runtime;
     this.lastRuntimeError = '';
+    await this.refreshModelKeyPresence();
+  }
+
+  private async refreshModelKeyPresence(): Promise<void> {
+    const state = this.state;
+    if (!state) {
+      this.modelKeyPresence = {};
+      return;
+    }
+    this.modelKeyPresence = await modelSecretKeyPresence(
+      state.config.models.map((model) => model.name),
+    );
   }
 
   private createRuntime(
@@ -431,7 +523,11 @@ class DesktopHostService {
       runtimeReady: this.runtime !== undefined,
       ...(this.lastRuntimeError ? { runtimeError: this.lastRuntimeError } : {}),
       config: {
-        models: state.config.models.map((model) => ({ ...model })),
+        models: state.config.models.map((model) => ({
+          name: model.name,
+          apiBase: model.apiBase,
+          keyConfigured: this.modelKeyPresence[model.name] ?? false,
+        })),
         activeModel: state.config.activeModel,
         ...(state.config.uiLocale ? { uiLocale: state.config.uiLocale } : {}),
         activeApiKeyConfigured: this.activeApiKeyConfigured,

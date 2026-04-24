@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { LoaderCircle, RefreshCw, RotateCcw } from "lucide-react";
 
@@ -14,9 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import type { DesktopSnapshot } from "@/types";
+import type { AddModelRequest, DesktopSnapshot } from "@/types";
 
 export type SettingsFormState = {
   activeModel: string;
@@ -35,10 +42,13 @@ type SettingsViewProps = {
   runtimeError: string;
   apiReady: boolean;
   busyAction: string;
+  modelsBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
   onBootstrap: () => Promise<void>;
   onResetSession: () => Promise<void>;
+  onAddModel: (request: AddModelRequest) => Promise<void>;
+  onRemoveModel: (name: string) => Promise<void>;
 };
 
 const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
@@ -49,6 +59,7 @@ const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
 
 const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   basic: "工作区与连接",
+  models: "模型",
   appearance: "主题与窗口效果",
 };
 
@@ -165,6 +176,232 @@ function BasicSettingsPanel({
   );
 }
 
+function ModelsSettingsPanel({
+  snapshot,
+  modelsBusy,
+  onAddModel,
+  onRemoveModel,
+}: Pick<
+  SettingsViewProps,
+  "snapshot" | "modelsBusy" | "onAddModel" | "onRemoveModel"
+>) {
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newApiBase, setNewApiBase] = useState("");
+  const [newApiKey, setNewApiKey] = useState("");
+
+  const models = snapshot?.config.models ?? [];
+  const activeModel = snapshot?.config.activeModel ?? "";
+
+  const resetForm = () => {
+    setNewName("");
+    setNewApiBase("");
+    setNewApiKey("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">模型</h1>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            resetForm();
+            setAddDialogOpen(true);
+          }}
+          disabled={modelsBusy}
+        >
+          添加模型
+        </Button>
+      </div>
+
+      <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+        {models.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">暂无已保存模型</p>
+        ) : (
+          models.map((model) => {
+            const isActive = model.name === activeModel;
+            return (
+              <div
+                key={model.name}
+                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{model.name}</span>
+                    {isActive ? (
+                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                        当前
+                      </span>
+                    ) : null}
+                    {model.keyConfigured ? (
+                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                        已存密钥
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground" title={model.apiBase}>
+                    {model.apiBase}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="shrink-0 self-start sm:self-center"
+                  disabled={modelsBusy || isActive}
+                  title={isActive ? "不能删除当前模型" : undefined}
+                  onClick={() => setDeleteTarget(model.name)}
+                >
+                  删除
+                </Button>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>删除模型</DialogTitle>
+            <DialogDescription>
+              确定删除模型「{deleteTarget ?? ""}」？配置与单独保存的密钥将一并移除。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={modelsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={modelsBusy || !deleteTarget}
+              onClick={() => {
+                const name = deleteTarget;
+                if (!name) {
+                  return;
+                }
+                void (async () => {
+                  try {
+                    await onRemoveModel(name);
+                    setDeleteTarget(null);
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>添加模型</DialogTitle>
+            <DialogDescription>保存名称、接口地址与密钥；添加后会设为当前模型。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-1">
+            <div className="grid gap-2">
+              <Label htmlFor="new-model-name">名称</Label>
+              <Input
+                id="new-model-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="例如 my-openai"
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-model-base">端点</Label>
+              <Input
+                id="new-model-base"
+                value={newApiBase}
+                onChange={(e) => setNewApiBase(e.target.value)}
+                placeholder="留空则使用默认根地址"
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-model-key">API Key</Label>
+              <Input
+                id="new-model-key"
+                type="password"
+                value={newApiKey}
+                onChange={(e) => setNewApiKey(e.target.value)}
+                placeholder="输入密钥"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAddDialogOpen(false)}
+              disabled={modelsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={modelsBusy}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await onAddModel({
+                      name: newName,
+                      apiBase: newApiBase,
+                      apiKey: newApiKey,
+                    });
+                    setAddDialogOpen(false);
+                    resetForm();
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              保存
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function AppearanceSettingsPanel({
   theme,
   onThemeChange,
@@ -227,19 +464,24 @@ export function SettingsView({
   runtimeError,
   apiReady,
   busyAction,
+  modelsBusy,
   isElectronShell,
   onSavePatch,
   onBootstrap,
   onResetSession,
+  onAddModel,
+  onRemoveModel,
 }: SettingsViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
-              {settingsPageTitle[tab]}
-            </h1>
+            {tab !== "models" ? (
+              <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
+                {settingsPageTitle[tab]}
+              </h1>
+            ) : null}
 
             {runtimeError ? (
               <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -252,6 +494,13 @@ export function SettingsView({
                 settings={settings}
                 snapshot={snapshot}
                 onSavePatch={onSavePatch}
+              />
+            ) : tab === "models" ? (
+              <ModelsSettingsPanel
+                snapshot={snapshot}
+                modelsBusy={modelsBusy}
+                onAddModel={onAddModel}
+                onRemoveModel={onRemoveModel}
               />
             ) : (
               <AppearanceSettingsPanel

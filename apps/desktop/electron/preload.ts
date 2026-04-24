@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   updateConfig(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'updateConfig', { request });
   },
+  addModel(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'addModel', { request });
+  },
+  removeModel(name: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'removeModel', { request: { name } });
+  },
   submitUserTurn(text: string) {
     return ipcRenderer.invoke('desktop:invoke', 'submitUserTurn', { text });
   },

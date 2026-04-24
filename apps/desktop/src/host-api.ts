@@ -1,4 +1,5 @@
 import type {
+  AddModelRequest,
   AskQuestionsResult,
   BootstrapRequest,
   DesktopSnapshot,
@@ -13,6 +14,8 @@ export interface HostApi {
   kind: 'electron' | 'web';
   bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
   updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
+  addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
+  removeModel(name: string): Promise<DesktopSnapshot>;
   submitUserTurn(text: string): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
   replyPendingApproval(message: string): Promise<DesktopSnapshot>;

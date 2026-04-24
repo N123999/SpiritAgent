@@ -188,6 +188,16 @@ export async function hasApiKeyForModel(modelName: string): Promise<boolean> {
   return Boolean(await resolveApiKeyForModel(modelName));
 }
 
+/** 各模型名是否在 secrets 中单独保存过 API Key（不含环境变量与 global 回退）。 */
+export async function modelSecretKeyPresence(modelNames: string[]): Promise<Record<string, boolean>> {
+  const secrets = await loadSecrets();
+  const out: Record<string, boolean> = {};
+  for (const name of modelNames) {
+    out[name] = Boolean(secrets.modelApiKeys?.[name]?.trim());
+  }
+  return out;
+}
+
 export async function saveApiKeyForModel(modelName: string, apiKey: string): Promise<void> {
   const secrets = await loadSecrets();
   const trimmed = apiKey.trim();
@@ -198,6 +208,25 @@ export async function saveApiKeyForModel(modelName: string, apiKey: string): Pro
       [modelName]: trimmed,
     },
   } satisfies DesktopSecretsFile;
+  const filePath = secretsFilePath();
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+}
+
+/** 移除该模型在 secrets 中单独保存的 API Key（与 CLI `remove_model_api_key` 语义对齐）。 */
+export async function removeModelApiKey(modelName: string): Promise<void> {
+  const secrets = await loadSecrets();
+  const prev = secrets.modelApiKeys ?? {};
+  if (!Object.prototype.hasOwnProperty.call(prev, modelName)) {
+    return;
+  }
+  const { [modelName]: _removed, ...rest } = prev;
+  const next: DesktopSecretsFile = { ...secrets };
+  if (Object.keys(rest).length > 0) {
+    next.modelApiKeys = rest;
+  } else {
+    delete next.modelApiKeys;
+  }
   const filePath = secretsFilePath();
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');

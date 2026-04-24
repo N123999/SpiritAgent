@@ -8,6 +8,8 @@ import type {
 export type HostCommandName =
   | 'bootstrap'
   | 'updateConfig'
+  | 'addModel'
+  | 'removeModel'
   | 'submitUserTurn'
   | 'poll'
   | 'replyPendingApproval'

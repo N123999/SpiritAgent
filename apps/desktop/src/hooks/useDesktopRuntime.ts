@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
 import type {
+  AddModelRequest,
   AskQuestionsAnswer,
   AskQuestionsQuestionSpec,
   AskQuestionsRequest,
@@ -18,7 +19,8 @@ type BusyAction =
   | "approve"
   | "questions"
   | "reset"
-  | "session";
+  | "session"
+  | "models";
 
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
@@ -304,6 +306,51 @@ export function useDesktopRuntime() {
   );
 
   /** 合并补丁并立即写回宿主（设置页可编辑项） */
+  const addModel = useCallback(
+    async (request: AddModelRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("models");
+      try {
+        const next = await api.addModel(request);
+        applySnapshot(next);
+        setRuntimeError("");
+        setSettings((current) => ({ ...current, apiKey: "" }));
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const removeModel = useCallback(
+    async (name: string) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("models");
+      try {
+        const next = await api.removeModel(name);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const saveSettingsPatch = useCallback(
     async (patch: Partial<SettingsFormState>) => {
       if (!api) {
@@ -507,6 +554,8 @@ export function useDesktopRuntime() {
     setSettings,
     updateQuestionDraft,
     bootstrap,
+    addModel,
+    removeModel,
     openSession,
     resetSession,
     saveSettingsPatch,

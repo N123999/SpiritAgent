@@ -1,4 +1,12 @@
-import { ArrowLeft, Palette, Plus, Settings2, SlidersHorizontal } from "lucide-react";
+import {
+  ArrowLeft,
+  Layers,
+  Palette,
+  Plus,
+  Settings2,
+  SlidersHorizontal,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,19 +37,25 @@ type SessionSidebarProps = {
   disabled?: boolean;
 };
 
-export type SettingsSidebarTab = "basic" | "appearance";
+export type SettingsSidebarTab = "basic" | "appearance" | "models";
 
 const settingsTabs: Array<{
   id: SettingsSidebarTab;
   label: string;
   description: string;
-  icon: typeof SlidersHorizontal;
+  icon: LucideIcon;
 }> = [
   {
     id: "basic",
     label: "基础",
     description: "工作区与连接",
     icon: SlidersHorizontal,
+  },
+  {
+    id: "models",
+    label: "模型",
+    description: "列表与密钥",
+    icon: Layers,
   },
   {
     id: "appearance",
