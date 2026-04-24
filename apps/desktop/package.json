@@ -23,6 +23,7 @@
     "@napi-rs/keyring": "^1.2.0",
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@spirit-agent/agent-core": "file:../../packages/agent-core",
+    "@spirit-agent/host-internal": "file:../../packages/host-internal",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "koffi": "^2.16.1",

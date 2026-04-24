@@ -9,12 +9,13 @@ import {
 import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
-
-import type {
-  OpenAiEnabledRule,
-  OpenAiEnabledSkillCatalogEntry,
-  OpenAiPlanMetadata,
-} from '@spirit-agent/agent-core';
+import {
+  loadHostInstructionMetadata,
+  resolveInstructionPaths,
+  type HostInstructionMetadataSummary,
+  type HostRuleDiscoveryResult,
+  type HostSkillDiscoveryResult,
+} from '@spirit-agent/host-internal';
 
 import type {
   ConversationMessageSnapshot,
@@ -28,16 +29,6 @@ export const DEFAULT_MODEL = 'gpt-4o-mini';
 const APP_DATA_DIR_NAME = 'SpiritAgent';
 const CONFIG_FILE_NAME = 'config.json';
 const CHATS_DIR_NAME = 'chats';
-const PLAN_FILE_NAME = 'plan.md';
-const RULES_STATE_FILE_NAME = 'rules-state.json';
-const SKILLS_STATE_FILE_NAME = 'skills-state.json';
-const USER_RULE_FILE_NAME = 'rule.md';
-const WORKSPACE_RULE_FILE_NAME = 'AGENTS.md';
-const WORKSPACE_SPIRIT_RULE_FILE_NAME = path.join('.spirit', 'rule.md');
-const WORKSPACE_SPIRIT_SKILLS_DIR = path.join('.spirit', 'skills');
-const WORKSPACE_AGENTS_SKILLS_DIR = path.join('.agents', 'skills');
-const USER_SKILLS_DIR_NAME = 'skills';
-const SKILL_FILE_NAME = 'SKILL.md';
 
 export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
@@ -54,32 +45,9 @@ function modelKeyAccount(modelName: string): string {
   return `model::${modelName}`;
 }
 
-interface ToggleStateFile {
-  enabledOverrides?: Record<string, boolean>;
-}
-
-export interface RuleDiscoveryResult {
-  discovered: number;
-  enabled: number;
-  enabledRules: OpenAiEnabledRule[];
-}
-
-export interface SkillDiscoveryResult {
-  discovered: number;
-  enabled: number;
-  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[];
-}
-
-export interface HostMetadataSummary {
-  rules: RuleDiscoveryResult;
-  skills: SkillDiscoveryResult;
-  planMetadata: OpenAiPlanMetadata;
-}
-
-interface ParsedSkillDocument {
-  name: string;
-  description: string;
-}
+export type RuleDiscoveryResult = HostRuleDiscoveryResult;
+export type SkillDiscoveryResult = HostSkillDiscoveryResult;
+export type HostMetadataSummary = HostInstructionMetadataSummary;
 
 export function spiritAgentDataDir(): string {
   if (process.env.APPDATA?.trim()) {
@@ -102,7 +70,10 @@ export function configFilePath(): string {
 }
 
 export function planFilePath(): string {
-  return path.join(spiritAgentDataDir(), PLAN_FILE_NAME);
+  return resolveInstructionPaths({
+    workspaceRoot: path.resolve('.'),
+    spiritDataDir: spiritAgentDataDir(),
+  }).planFile;
 }
 
 function readModelKeyFromKeyring(modelName: string): string | undefined {
@@ -123,22 +94,6 @@ function readGlobalKeyFromKeyring(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function rulesStateFilePath(): string {
-  return path.join(spiritAgentDataDir(), RULES_STATE_FILE_NAME);
-}
-
-function skillsStateFilePath(): string {
-  return path.join(spiritAgentDataDir(), SKILLS_STATE_FILE_NAME);
-}
-
-function userRulePath(): string {
-  return path.join(spiritAgentDataDir(), USER_RULE_FILE_NAME);
-}
-
-function userSkillsDir(): string {
-  return path.join(spiritAgentDataDir(), USER_SKILLS_DIR_NAME);
 }
 
 export function defaultNewSessionPath(): string {
@@ -229,22 +184,16 @@ export async function removeModelApiKey(modelName: string): Promise<void> {
   }
 }
 
-export async function loadHostMetadata(workspaceRoot: string): Promise<HostMetadataSummary> {
-  const [rules, skills] = await Promise.all([
-    discoverRules(workspaceRoot),
-    discoverSkills(workspaceRoot),
-  ]);
-
-  return {
-    rules,
-    skills,
-    planMetadata: {
-      path: planFilePath(),
-      exists: existsSync(planFilePath()),
-      planMode: false,
-      planModeHostInstructions: '',
-    },
-  };
+export async function loadHostMetadata(
+  workspaceRoot: string,
+  planMode = false,
+): Promise<HostMetadataSummary> {
+  return loadHostInstructionMetadata({
+    workspaceRoot,
+    spiritDataDir: spiritAgentDataDir(),
+  }, {
+    planMode,
+  });
 }
 
 export async function listStoredSessions(): Promise<SessionListItem[]> {
@@ -358,189 +307,6 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
   };
 }
 
-async function discoverRules(workspaceRoot: string): Promise<RuleDiscoveryResult> {
-  const overrides = await loadToggleState(rulesStateFilePath());
-  const candidates = [
-    {
-      scope: 'workspace' as const,
-      title: '工作区 Spirit 规则',
-      filePath: path.join(workspaceRoot, WORKSPACE_SPIRIT_RULE_FILE_NAME),
-    },
-    {
-      scope: 'workspace' as const,
-      title: '工作区 AGENTS 规则',
-      filePath: path.join(workspaceRoot, WORKSPACE_RULE_FILE_NAME),
-    },
-    {
-      scope: 'user' as const,
-      title: '用户规则',
-      filePath: userRulePath(),
-    },
-  ];
-
-  const enabledRules: OpenAiEnabledRule[] = [];
-  let discovered = 0;
-  let enabled = 0;
-
-  for (const candidate of candidates) {
-    if (!existsSync(candidate.filePath)) {
-      continue;
-    }
-    discovered += 1;
-    const id = stableIdFromPath(candidate.filePath);
-    const isEnabled = overrides[id] ?? true;
-    if (!isEnabled) {
-      continue;
-    }
-    enabled += 1;
-    const content = await readFile(candidate.filePath, 'utf8');
-    enabledRules.push({
-      id,
-      scope: candidate.scope,
-      title: candidate.title,
-      path: candidate.filePath,
-      content,
-    });
-  }
-
-  return {
-    discovered,
-    enabled,
-    enabledRules,
-  };
-}
-
-async function discoverSkills(workspaceRoot: string): Promise<SkillDiscoveryResult> {
-  const overrides = await loadToggleState(skillsStateFilePath());
-  const roots = [
-    {
-      scope: 'workspace' as const,
-      rootPath: path.join(workspaceRoot, WORKSPACE_SPIRIT_SKILLS_DIR),
-    },
-    {
-      scope: 'workspace' as const,
-      rootPath: path.join(workspaceRoot, WORKSPACE_AGENTS_SKILLS_DIR),
-    },
-    {
-      scope: 'user' as const,
-      rootPath: userSkillsDir(),
-    },
-  ];
-
-  const seenNames = new Set<string>();
-  const enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [];
-  let discovered = 0;
-  let enabled = 0;
-
-  for (const root of roots) {
-    if (!existsSync(root.rootPath)) {
-      continue;
-    }
-
-    const entries = await readdir(root.rootPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-
-      const skillPath = path.join(root.rootPath, entry.name, SKILL_FILE_NAME);
-      if (!existsSync(skillPath)) {
-        continue;
-      }
-
-      discovered += 1;
-      const document = parseSkillDocument(await readFile(skillPath, 'utf8'), entry.name);
-      if (seenNames.has(document.name)) {
-        continue;
-      }
-
-      seenNames.add(document.name);
-      const id = stableIdFromPath(skillPath);
-      const isEnabled = overrides[id] ?? true;
-      if (!isEnabled) {
-        continue;
-      }
-
-      enabled += 1;
-      enabledSkillCatalog.push({
-        id,
-        scope: root.scope,
-        name: document.name,
-        description: document.description,
-        path: skillPath,
-      });
-    }
-  }
-
-  return {
-    discovered,
-    enabled,
-    enabledSkillCatalog,
-  };
-}
-
-async function loadToggleState(filePath: string): Promise<Record<string, boolean>> {
-  if (!existsSync(filePath)) {
-    return {};
-  }
-
-  try {
-    const raw = await readFile(filePath, 'utf8');
-    const parsed = JSON.parse(raw) as ToggleStateFile;
-    return parsed.enabledOverrides ?? {};
-  } catch {
-    return {};
-  }
-}
-
-function parseSkillDocument(content: string, fallbackName: string): ParsedSkillDocument {
-  const trimmed = content.trim();
-  if (!trimmed.startsWith('---')) {
-    return {
-      name: fallbackName,
-      description: firstMeaningfulLine(trimmed) ?? `${fallbackName} skill`,
-    };
-  }
-
-  const lines = trimmed.split(/\r?\n/u);
-  let closingIndex = -1;
-  for (let index = 1; index < lines.length; index += 1) {
-    if (lines[index] === '---') {
-      closingIndex = index;
-      break;
-    }
-  }
-
-  if (closingIndex < 0) {
-    return {
-      name: fallbackName,
-      description: firstMeaningfulLine(trimmed) ?? `${fallbackName} skill`,
-    };
-  }
-
-  const frontmatter = lines.slice(1, closingIndex);
-  const body = lines.slice(closingIndex + 1).join('\n').trim();
-  const name =
-    frontmatter
-      .find((line) => line.startsWith('name:'))
-      ?.slice('name:'.length)
-      .trim() || fallbackName;
-  const description =
-    frontmatter
-      .find((line) => line.startsWith('description:'))
-      ?.slice('description:'.length)
-      .trim() || firstMeaningfulLine(body) || `${name} skill`;
-
-  return { name, description };
-}
-
-function firstMeaningfulLine(content: string): string | undefined {
-  return content
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0 && !line.startsWith('#'));
-}
-
 function resolveSessionPath(filePath: string | undefined): string {
   const candidate = filePath?.trim() ? filePath.trim() : defaultNewSessionPath();
   const absolute = path.isAbsolute(candidate)
@@ -570,6 +336,3 @@ function normalizeDisplayName(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function stableIdFromPath(filePath: string): string {
-  return path.resolve(filePath).replace(/\\/gu, '/').toLowerCase();
-}
