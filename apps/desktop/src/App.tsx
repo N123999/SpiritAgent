@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { ChevronDown, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send } from "lucide-react";
+import { ChevronDown, ChevronRight, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Card,
   CardContent,
@@ -113,6 +114,64 @@ function conversationMessageDomId(message: ConversationMessageSnapshot, index: n
   return `message-${index}-${message.id}-${message.pending ? "p" : "m"}-${toolPart}`;
 }
 
+function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
+  const hasExpandableContent =
+    tool.detailLines.length > 0 ||
+    Boolean(tool.argsExcerpt?.trim()) ||
+    Boolean(tool.outputExcerpt?.trim());
+
+  if (!hasExpandableContent) {
+    return (
+      <div className="rounded-xl border border-border/50 bg-background/50 px-3 py-2.5">
+        <p className="text-sm font-medium">{tool.headline}</p>
+      </div>
+    );
+  }
+
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="overflow-hidden rounded-xl border border-border/50 bg-background/50"
+    >
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className={cn(
+            "h-auto min-h-10 w-full justify-start gap-2 px-3 py-2.5 text-left font-normal hover:bg-muted/50",
+            open ? "rounded-none rounded-t-xl" : "rounded-none rounded-xl",
+          )}
+        >
+          {open ? (
+            <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          ) : (
+            <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          )}
+          <span className="min-w-0 flex-1 text-sm font-medium leading-snug">{tool.headline}</span>
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 border-t border-border/40 px-3 pb-3 pt-2">
+        {tool.detailLines.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            {tool.detailLines.map((line, i) => (
+              <li key={`${i}:${line}`}>{line}</li>
+            ))}
+          </ul>
+        ) : null}
+        {tool.argsExcerpt ? (
+          <pre className="overflow-x-auto rounded-lg bg-muted/50 p-3 text-xs leading-6">{tool.argsExcerpt}</pre>
+        ) : null}
+        {tool.outputExcerpt ? (
+          <pre className="overflow-x-auto rounded-lg bg-muted/50 p-3 text-xs leading-6">{tool.outputExcerpt}</pre>
+        ) : null}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function MessageCard({
   message,
   listIndex,
@@ -163,28 +222,7 @@ function MessageCard({
             {message.content}
           </pre>
         ) : null}
-        {message.tool ? (
-          <div className="space-y-3 rounded-xl border border-border/50 bg-background/50 p-4">
-            <p className="font-medium">{message.tool.headline}</p>
-            {message.tool.detailLines.length > 0 ? (
-              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                {message.tool.detailLines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            ) : null}
-            {message.tool.argsExcerpt ? (
-              <pre className="overflow-x-auto rounded-lg bg-muted/50 p-3 text-xs leading-6">
-                {message.tool.argsExcerpt}
-              </pre>
-            ) : null}
-            {message.tool.outputExcerpt ? (
-              <pre className="overflow-x-auto rounded-lg bg-muted/50 p-3 text-xs leading-6">
-                {message.tool.outputExcerpt}
-              </pre>
-            ) : null}
-          </div>
-        ) : null}
+        {message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
         </div>
       </div>
     </div>
