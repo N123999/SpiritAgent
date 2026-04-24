@@ -17,16 +17,16 @@ const __dirname = path.dirname(__filename);
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
-function currentWindowBackground(): string {
-  return nativeTheme.shouldUseDarkColors ? '#171717' : '#fafafa';
-}
+/** 与 `src/styles.css` 中 `.dark` 的 `--background`（oklch(0.145 0 0) ≈ #0a0a0a）一致；关 Mica 时 titleBarOverlay 与窗口底色用此值，勿用通用 #171717 */
+const WIN32_APP_BACKGROUND_DARK = '#0a0a0a';
+const WIN32_APP_BACKGROUND_LIGHT = '#fafafa';
 
 /** 与 Tauri `frame_chrome` 一致：开 Mica 时用透明背景把绘制交给 DWM，避免与系统浅色不同步时出现大块「假白」。 */
 function electronRootBackgroundForBackdrop(mica: boolean, darkContent: boolean): string {
   if (process.platform === 'win32' && mica) {
     return '#00000000';
   }
-  return darkContent ? '#171717' : '#fafafa';
+  return darkContent ? WIN32_APP_BACKGROUND_DARK : WIN32_APP_BACKGROUND_LIGHT;
 }
 
 function readWindowsMicaFromDisk(): boolean {
@@ -121,20 +121,13 @@ function applyWin32Backdrop(window: BrowserWindow, darkContent: boolean): void {
   }
 
   try {
-    if (mica) {
-      // 开 Mica 时勿用实色盖住标题栏区，交给 DWM + themeSource（对标 DWMWA_COLOR_DEFAULT）
-      window.setTitleBarOverlay({
-        height: TITLE_BAR_OVERLAY_HEIGHT,
-        color: '#00000000',
-        symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
-      });
-    } else {
-      window.setTitleBarOverlay({
-        height: TITLE_BAR_OVERLAY_HEIGHT,
-        color: darkContent ? '#171717' : '#fafafa',
-        symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
-      });
-    }
+    // 关 Mica 时若用实色 overlay，会盖住 WebView 标题栏最底一行（含 `border-b`），金刚键下缺一块线。
+    // 透明叠加：底色与底边由页面自绘透出，系统只画三个按钮图标（与开 Mica 时一致）。
+    window.setTitleBarOverlay({
+      height: TITLE_BAR_OVERLAY_HEIGHT,
+      color: '#00000000',
+      symbolColor: darkContent ? '#f5f5f5' : '#1f1f1f',
+    });
   } catch {
     // 未启用 overlay 或平台限制时忽略
   }
@@ -167,7 +160,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
       process.platform === 'win32'
         ? {
             height: TITLE_BAR_OVERLAY_HEIGHT,
-            color: micaOnDisk ? '#00000000' : currentWindowBackground(),
+            color: '#00000000',
             symbolColor: initialDark ? '#f5f5f5' : '#1f1f1f',
           }
         : undefined,
