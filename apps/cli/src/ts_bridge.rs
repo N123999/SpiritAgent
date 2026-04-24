@@ -34,7 +34,7 @@ use crate::{
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry, SkillEntry},
-    tool_runtime::ToolRequest,
+    tool_runtime::{ToolRequest, ToolRuntime},
     view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
@@ -220,6 +220,16 @@ struct BridgePendingQuestions {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BridgeToolExecution {
+    tool_call_id: String,
+    tool_name: String,
+    request: Value,
+    output: String,
+    failed: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgeDrainEventsResult {
     events: Vec<BridgeRuntimeEvent>,
     snapshot: BridgeRuntimeSnapshot,
@@ -271,6 +281,8 @@ enum BridgeRuntimeEvent {
         status_text: Option<String>,
         failed: Option<bool>,
     },
+    #[serde(rename = "tool-execution-finished")]
+    ToolExecutionFinished { execution: BridgeToolExecution },
 }
 
 impl TsBridgeRuntime {
@@ -1409,7 +1421,7 @@ impl TsBridgeRuntime {
                 }
                 BridgeRuntimeEvent::ApprovalRequested { approval } => {
                     if let Some(session_id) = approval.subagent_session_id.as_deref() {
-                        match serde_json::from_value::<ToolRequest>(approval.request.clone()) {
+                        match tool_request_from_host_value(approval.request.clone()) {
                             Ok(_) => self.push_subagent_live_message(
                                 session_id,
                                 ChatMessage::with_tool_block(
@@ -1463,6 +1475,67 @@ impl TsBridgeRuntime {
                     )));
                 }
                 BridgeRuntimeEvent::BackgroundToolStatus { .. } => {}
+                BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
+                    match tool_request_from_host_value(execution.request) {
+                        Ok(request) => {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                if execution.failed {
+                                    format!("工具执行失败: {}", execution.output)
+                                } else {
+                                    format_tool_ui_message(
+                                        &request,
+                                        &execution.tool_name,
+                                        &execution.output,
+                                    )
+                                },
+                                if execution.failed {
+                                    tool_failed_block(
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        "工具执行失败",
+                                        &execution.output,
+                                    )
+                                } else {
+                                    build_tool_result_block(
+                                        &request,
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        &execution.output,
+                                    )
+                                },
+                            )));
+                        }
+                        Err(err) => {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                if execution.failed {
+                                    format!("工具执行失败（请求解析失败）: {}", execution.output)
+                                } else {
+                                    format!(
+                                        "工具执行完成（请求解析失败）: {}\n{}",
+                                        err, execution.output
+                                    )
+                                },
+                                if execution.failed {
+                                    tool_failed_block(
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        "工具执行失败",
+                                        &execution.output,
+                                    )
+                                } else {
+                                    tool_failed_block(
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        "工具执行完成但请求解析失败",
+                                        &err.to_string(),
+                                    )
+                                },
+                            )));
+                        }
+                    }
+                }
             }
         }
     }
@@ -1884,8 +1957,9 @@ fn build_mcp_only_transport_config(workspace_root: &Path) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        BridgeRuntimeEvent, BridgeRuntimeSnapshot, ENV_RUNTIME_BACKEND_NODE_PATH,
-        MODEL_SWITCH_BUSY_MESSAGE, TsBridgeRuntime, resolve_bridge_script,
+        BridgeRuntimeEvent, BridgeRuntimeSnapshot, BridgeToolExecution,
+        ENV_RUNTIME_BACKEND_NODE_PATH, MODEL_SWITCH_BUSY_MESSAGE, TsBridgeRuntime,
+        resolve_bridge_script,
     };
     use crate::{
         host_runtime::RuntimeEvent,
@@ -1894,7 +1968,7 @@ mod tests {
         ports::SecretStore,
     };
     use anyhow::{Result, anyhow};
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::{env, path::PathBuf, process::Command, sync::Arc};
 
     struct StubSecretStore;
@@ -2109,6 +2183,78 @@ mod tests {
         }
     }
 
+    #[test]
+    fn tool_execution_finished_event_appends_separate_tool_message() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_bridge_events(vec![BridgeRuntimeEvent::ToolExecutionFinished {
+            execution: BridgeToolExecution {
+                tool_call_id: "call_123".to_string(),
+                tool_name: "web_fetch".to_string(),
+                request: json!({
+                    "name": "web_fetch",
+                    "url": "https://example.com"
+                }),
+                output: "example output".to_string(),
+                failed: false,
+            },
+        }]);
+
+        let events = runtime.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::PushMessage(message)
+                if message
+                    .tool_block
+                    .as_ref()
+                    .is_some_and(|block| block.tool_name == "web_fetch" && block.tool_call_id.as_deref() == Some("call_123"))
+        )));
+    }
+
+    #[test]
+    fn tool_execution_finished_event_deserializes_host_request_shape() {
+        let value = json!({
+            "kind": "tool-execution-finished",
+            "execution": {
+                "toolCallId": "call_123",
+                "toolName": "run_shell_command",
+                "request": {
+                    "name": "run_shell_command",
+                    "command": "echo DeepSeek-V4 牛逼"
+                },
+                "output": "DeepSeek-V4 牛逼",
+                "failed": false
+            }
+        });
+
+        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
+                assert_eq!(execution.tool_name, "run_shell_command");
+                assert_eq!(execution.tool_call_id, "call_123");
+                assert_eq!(
+                    execution.request.get("name").and_then(Value::as_str),
+                    Some("run_shell_command")
+                );
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_request_from_host_value_rejects_legacy_rust_enum_shape() {
+        let err = super::tool_request_from_host_value(json!({
+            "WebFetch": {
+                "url": "https://example.com"
+            }
+        }))
+        .expect_err("legacy rust enum shape should be rejected");
+
+        assert!(err.to_string().contains("工具请求缺少 name"));
+    }
+
 }
 
 fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
@@ -2166,4 +2312,17 @@ fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolRequest {
         tool_name: request.tool_name.clone(),
         arguments: request.arguments.clone(),
     }
+}
+
+fn tool_request_from_host_value(value: Value) -> anyhow::Result<ToolRequest> {
+    let Value::Object(mut object) = value else {
+        return Err(anyhow!("工具请求必须是 JSON object"));
+    };
+
+    let name = object
+        .remove("name")
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .ok_or_else(|| anyhow!("工具请求缺少 name"))?;
+
+    ToolRuntime::request_from_function_call(&name, &Value::Object(object).to_string())
 }
