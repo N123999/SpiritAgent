@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import type { DesktopSnapshot } from "@/types";
@@ -175,21 +182,18 @@ function AppearanceSettingsPanel({
         description="立即应用到界面；与宿主配置无关。"
         htmlFor="settings-theme-select"
       >
-        <select
-          id="settings-theme-select"
-          className={cn(
-            "h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-          )}
-          value={theme}
-          onChange={(event) => onThemeChange(event.target.value as ThemePreference)}
-        >
-          {themeSelectOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <Select value={theme} onValueChange={(v) => onThemeChange(v as ThemePreference)}>
+          <SelectTrigger id="settings-theme-select" className="w-full sm:min-w-[12rem]">
+            <SelectValue placeholder="选择主题" />
+          </SelectTrigger>
+          <SelectContent>
+            {themeSelectOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </SettingsRow>
 
       <SettingsRow
