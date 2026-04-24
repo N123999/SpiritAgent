@@ -109,6 +109,7 @@ import type {
   RuntimeSubagentSessionArchiveEntry,
   RuntimeSubagentSessionSummary,
   RuntimePendingQuestions,
+  RuntimeToolExecution,
   RuntimeTurnContext,
   RuntimeTurnResult,
 } from './runtime/types.js';
@@ -789,13 +790,15 @@ export class AgentRuntime<
       }
 
       const execution = await this.performToolExecution(pending.request, pending.toolName);
-      pending.turn.toolExecutions.push({
+      const finished: RuntimeToolExecution<ToolRequest> = {
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: pending.request,
         output: execution.output,
         failed: execution.failed,
-      });
+      };
+      pending.turn.toolExecutions.push(finished);
+      this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
 
       const resumedState = this.options.appendToolResultMessage(
         pending.state,
@@ -953,13 +956,15 @@ export class AgentRuntime<
     this.completedTurnResultStore = undefined;
 
     const output = JSON.stringify(result);
-    pending.turn.toolExecutions.push({
+    const questionsFinished: RuntimeToolExecution<ToolRequest> = {
       toolCallId: pending.toolCallId,
       toolName: pending.toolName,
       request: pending.request,
       output,
       failed: false,
-    });
+    };
+    pending.turn.toolExecutions.push(questionsFinished);
+    this.emitEvent({ kind: 'tool-execution-finished', execution: questionsFinished });
 
     const resumedState = this.options.appendToolResultMessage(
       pending.state,
