@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
+    "@napi-rs/keyring": "^1.2.0",
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@spirit-agent/agent-core": "file:../../packages/agent-core",
     "class-variance-authority": "^0.7.1",

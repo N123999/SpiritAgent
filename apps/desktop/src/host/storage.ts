@@ -8,6 +8,8 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 
+import { Entry } from '@napi-rs/keyring';
+
 import type {
   OpenAiEnabledRule,
   OpenAiEnabledSkillCatalogEntry,
@@ -25,7 +27,6 @@ export const DEFAULT_API_BASE = 'https://api.openai.com/v1';
 export const DEFAULT_MODEL = 'gpt-4o-mini';
 const APP_DATA_DIR_NAME = 'SpiritAgent';
 const CONFIG_FILE_NAME = 'config.json';
-const SECRETS_FILE_NAME = 'desktop-secrets.json';
 const CHATS_DIR_NAME = 'chats';
 const PLAN_FILE_NAME = 'plan.md';
 const RULES_STATE_FILE_NAME = 'rules-state.json';
@@ -45,9 +46,12 @@ export interface DesktopConfigFile {
   windowsMica?: boolean;
 }
 
-interface DesktopSecretsFile {
-  globalApiKey?: string;
-  modelApiKeys?: Record<string, string>;
+/** 与 `apps/cli/src/model_registry.rs` 中 keyring 命名一致。 */
+const KEYRING_SERVICE = 'SpiritAgent';
+const KEYRING_GLOBAL_ACCOUNT = 'openai_api_key';
+
+function modelKeyAccount(modelName: string): string {
+  return `model::${modelName}`;
 }
 
 interface ToggleStateFile {
@@ -101,8 +105,24 @@ export function planFilePath(): string {
   return path.join(spiritAgentDataDir(), PLAN_FILE_NAME);
 }
 
-function secretsFilePath(): string {
-  return path.join(spiritAgentDataDir(), SECRETS_FILE_NAME);
+function readModelKeyFromKeyring(modelName: string): string | undefined {
+  try {
+    const value = new Entry(KEYRING_SERVICE, modelKeyAccount(modelName)).getPassword();
+    const trimmed = value?.trim();
+    return trimmed || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readGlobalKeyFromKeyring(): string | undefined {
+  try {
+    const value = new Entry(KEYRING_SERVICE, KEYRING_GLOBAL_ACCOUNT).getPassword();
+    const trimmed = value?.trim();
+    return trimmed || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function rulesStateFilePath(): string {
@@ -174,62 +194,39 @@ export async function resolveApiKeyForModel(modelName: string): Promise<string |
     return envKey;
   }
 
-  const secrets = await loadSecrets();
-  const modelKey = secrets.modelApiKeys?.[modelName]?.trim();
+  const modelKey = readModelKeyFromKeyring(modelName);
   if (modelKey) {
     return modelKey;
   }
 
-  const globalKey = secrets.globalApiKey?.trim();
-  return globalKey || undefined;
+  return readGlobalKeyFromKeyring();
 }
 
 export async function hasApiKeyForModel(modelName: string): Promise<boolean> {
   return Boolean(await resolveApiKeyForModel(modelName));
 }
 
-/** 各模型名是否在 secrets 中单独保存过 API Key（不含环境变量与 global 回退）。 */
+/** 各模型是否在系统钥匙串中有单独条目（与 CLI `has_model_api_key` 一致；不含环境变量与全局回退）。 */
 export async function modelSecretKeyPresence(modelNames: string[]): Promise<Record<string, boolean>> {
-  const secrets = await loadSecrets();
   const out: Record<string, boolean> = {};
   for (const name of modelNames) {
-    out[name] = Boolean(secrets.modelApiKeys?.[name]?.trim());
+    out[name] = Boolean(readModelKeyFromKeyring(name));
   }
   return out;
 }
 
 export async function saveApiKeyForModel(modelName: string, apiKey: string): Promise<void> {
-  const secrets = await loadSecrets();
   const trimmed = apiKey.trim();
-  const next = {
-    ...secrets,
-    modelApiKeys: {
-      ...(secrets.modelApiKeys ?? {}),
-      [modelName]: trimmed,
-    },
-  } satisfies DesktopSecretsFile;
-  const filePath = secretsFilePath();
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  new Entry(KEYRING_SERVICE, modelKeyAccount(modelName)).setPassword(trimmed);
 }
 
-/** 移除该模型在 secrets 中单独保存的 API Key（与 CLI `remove_model_api_key` 语义对齐）。 */
+/** 与 CLI `remove_model_api_key` 一致：删除该模型在钥匙串中的专属条目。 */
 export async function removeModelApiKey(modelName: string): Promise<void> {
-  const secrets = await loadSecrets();
-  const prev = secrets.modelApiKeys ?? {};
-  if (!Object.prototype.hasOwnProperty.call(prev, modelName)) {
-    return;
+  try {
+    new Entry(KEYRING_SERVICE, modelKeyAccount(modelName)).deletePassword();
+  } catch {
+    /* 无条目时与 CLI 行为一致 */
   }
-  const { [modelName]: _removed, ...rest } = prev;
-  const next: DesktopSecretsFile = { ...secrets };
-  if (Object.keys(rest).length > 0) {
-    next.modelApiKeys = rest;
-  } else {
-    delete next.modelApiKeys;
-  }
-  const filePath = secretsFilePath();
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
 }
 
 export async function loadHostMetadata(workspaceRoot: string): Promise<HostMetadataSummary> {
@@ -359,20 +356,6 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
       : {}),
     windowsMica: raw.windowsMica !== false,
   };
-}
-
-async function loadSecrets(): Promise<DesktopSecretsFile> {
-  const filePath = secretsFilePath();
-  if (!existsSync(filePath)) {
-    return {};
-  }
-
-  try {
-    const raw = await readFile(filePath, 'utf8');
-    return JSON.parse(raw) as DesktopSecretsFile;
-  } catch {
-    return {};
-  }
 }
 
 async function discoverRules(workspaceRoot: string): Promise<RuleDiscoveryResult> {

@@ -60,7 +60,7 @@ export interface DesktopConfigSnapshot {
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;
-  /** 宿主快照：是否在本地为该模型名单独保存过 API Key（不含明文）。 */
+  /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
   keyConfigured?: boolean;
 }
 
