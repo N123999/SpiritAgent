@@ -123,6 +123,7 @@ export function useDesktopRuntime() {
     uiLocale: "",
     apiKey: "",
     windowsMica: true,
+    planMode: false,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -147,6 +148,7 @@ export function useDesktopRuntime() {
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
         windowsMica: next.config.windowsMica !== false,
+        planMode: next.config.planMode === true,
       };
     });
   }, []);
@@ -283,6 +285,7 @@ export function useDesktopRuntime() {
             activeModel: next.activeModel,
             apiBase: next.apiBase,
             windowsMica: next.windowsMica,
+            planMode: next.planMode,
             ...(next.uiLocale.trim()
               ? { uiLocale: next.uiLocale.trim() }
               : { uiLocale: undefined }),
@@ -359,6 +362,7 @@ export function useDesktopRuntime() {
           activeModel: s.activeModel,
           apiBase: s.apiBase,
           windowsMica: s.windowsMica,
+          planMode: s.planMode,
           ...(s.uiLocale.trim()
             ? { uiLocale: s.uiLocale.trim() }
             : { uiLocale: undefined }),

@@ -9,6 +9,8 @@ export interface UpdateConfigRequest {
   apiKey?: string;
   /** 与 Rust `UpdateConfigRequest.windows_mica` 一致；缺省不修改已保存的 Mica 开关。 */
   windowsMica?: boolean;
+  /** 缺省时不修改已保存的 Plan 模式。 */
+  planMode?: boolean;
 }
 
 /** 与 CLI `model add` 一致：新增模型、写入密钥，并将当前模型切到新模型。 */
@@ -55,6 +57,8 @@ export interface DesktopConfigSnapshot {
   activeApiKeyConfigured: boolean;
   /** 桌面宿主在 Windows 上是否使用 Mica 风格；无字段时按 true 处理。 */
   windowsMica?: boolean;
+  /** 与 CLI Plan 模式一致：影响宿主指令元数据与运行时 plan 元数据。 */
+  planMode: boolean;
 }
 
 export interface ModelProfileSnapshot {

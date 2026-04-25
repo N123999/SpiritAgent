@@ -125,7 +125,9 @@ class DesktopHostService {
         this.runtime?.isBusy() &&
         (request.activeModel.trim() !== state.config.activeModel ||
           request.apiBase.trim() !== currentApiBase(state.config) ||
-          Boolean(request.apiKey?.trim()))
+          Boolean(request.apiKey?.trim()) ||
+          (request.planMode !== undefined &&
+            Boolean(request.planMode) !== Boolean(state.config.planMode)))
       ) {
         throw new Error('当前已有响应或审批在处理中，请稍候。');
       }
@@ -141,6 +143,9 @@ class DesktopHostService {
       state.config.activeModel = activeModel;
       state.config.uiLocale = request.uiLocale?.trim() || undefined;
       state.config.windowsMica = request.windowsMica !== false;
+      if (request.planMode !== undefined) {
+        state.config.planMode = request.planMode;
+      }
       await saveConfig(state.config);
       if (request.apiKey?.trim()) {
         await saveApiKeyForModel(activeModel, request.apiKey);
@@ -413,7 +418,7 @@ class DesktopHostService {
     }
 
     const config = await loadConfig();
-    const metadata = await loadHostMetadata(workspaceRoot);
+    const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
     const state = this.state;
 
     this.state = {
@@ -431,7 +436,10 @@ class DesktopHostService {
 
   private async refreshRuntime(): Promise<void> {
     const state = this.requireState();
-    state.metadata = await loadHostMetadata(state.workspaceRoot);
+    state.metadata = await loadHostMetadata(
+      state.workspaceRoot,
+      state.config.planMode === true,
+    );
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
     if (!apiKey) {
@@ -553,6 +561,7 @@ class DesktopHostService {
         ...(state.config.uiLocale ? { uiLocale: state.config.uiLocale } : {}),
         activeApiKeyConfigured: this.activeApiKeyConfigured,
         windowsMica: state.config.windowsMica !== false,
+        planMode: state.config.planMode === true,
       },
       rules: {
         discovered: state.metadata.rules.discovered,

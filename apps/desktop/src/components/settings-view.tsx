@@ -31,6 +31,7 @@ export type SettingsFormState = {
   uiLocale: string;
   apiKey: string;
   windowsMica: boolean;
+  planMode: boolean;
 };
 
 type SettingsViewProps = {

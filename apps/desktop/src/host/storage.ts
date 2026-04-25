@@ -35,6 +35,7 @@ export interface DesktopConfigFile {
   activeModel: string;
   uiLocale?: string;
   windowsMica?: boolean;
+  planMode?: boolean;
 }
 
 /** 与 `apps/cli/src/model_registry.rs` 中 keyring 命名一致。 */
@@ -276,6 +277,7 @@ function defaultConfig(): DesktopConfigFile {
     ],
     activeModel: DEFAULT_MODEL,
     windowsMica: true,
+    planMode: false,
   };
 }
 
@@ -304,6 +306,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
       ? { uiLocale: raw.uiLocale.trim() }
       : {}),
     windowsMica: raw.windowsMica !== false,
+    planMode: raw.planMode === true,
   };
 }
 

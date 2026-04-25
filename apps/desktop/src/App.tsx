@@ -579,51 +579,95 @@ export default function App() {
                     />
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-3 pb-2 pt-10">
                       <div className="pointer-events-auto flex w-full max-w-full items-center justify-between gap-2">
-                      {models.length > 0 ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label="选择模型"
-                              className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                            >
-                              <span
-                                className="min-w-0 flex-1 truncate"
-                                title={runtime.settings.activeModel}
-                              >
-                                {runtime.settings.activeModel}
-                              </span>
-                              <ChevronDown
-                                className="size-3 shrink-0 text-muted-foreground/80"
-                                aria-hidden
-                              />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" side="top" className="max-w-md text-xs">
-                            {models.map((model) => (
-                              <DropdownMenuItem
-                                key={model.name}
-                                onSelect={() => {
-                                  runtime.setActiveModel(model.name);
-                                }}
-                                className={cn(
-                                  model.name === runtime.settings.activeModel &&
-                                    "bg-accent/40",
-                                )}
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <div
+                          role="tablist"
+                          aria-label="Agent 或 Plan 模式"
+                          className="inline-flex h-7 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={!runtime.settings.planMode}
+                            className={cn(
+                              "rounded-md px-2 text-xs font-medium transition-colors",
+                              !runtime.settings.planMode
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                            disabled={
+                              Boolean(snapshot?.conversation.isBusy) ||
+                              Boolean(runtime.busyAction)
+                            }
+                            onClick={() => void runtime.saveSettingsPatch({ planMode: false })}
+                          >
+                            Agent
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={runtime.settings.planMode}
+                            className={cn(
+                              "rounded-md px-2 text-xs font-medium transition-colors",
+                              runtime.settings.planMode
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                            disabled={
+                              Boolean(snapshot?.conversation.isBusy) ||
+                              Boolean(runtime.busyAction)
+                            }
+                            onClick={() => void runtime.saveSettingsPatch({ planMode: true })}
+                          >
+                            Plan
+                          </button>
+                        </div>
+                        {models.length > 0 ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label="选择模型"
+                                className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                               >
                                 <span
-                                  className="block w-full min-w-0 break-all pr-1 text-left"
-                                  title={model.name}
+                                  className="min-w-0 flex-1 truncate"
+                                  title={runtime.settings.activeModel}
                                 >
-                                  {model.name}
+                                  {runtime.settings.activeModel}
                                 </span>
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <span className="px-1 text-xs text-muted-foreground">无可用模型</span>
-                      )}
+                                <ChevronDown
+                                  className="size-3 shrink-0 text-muted-foreground/80"
+                                  aria-hidden
+                                />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" side="top" className="max-w-md text-xs">
+                              {models.map((model) => (
+                                <DropdownMenuItem
+                                  key={model.name}
+                                  onSelect={() => {
+                                    runtime.setActiveModel(model.name);
+                                  }}
+                                  className={cn(
+                                    model.name === runtime.settings.activeModel &&
+                                      "bg-accent/40",
+                                  )}
+                                >
+                                  <span
+                                    className="block w-full min-w-0 break-all pr-1 text-left"
+                                    title={model.name}
+                                  >
+                                    {model.name}
+                                  </span>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <span className="px-1 text-xs text-muted-foreground">无可用模型</span>
+                        )}
+                      </div>
                       <Button
                         type="button"
                         className="size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5"
