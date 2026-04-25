@@ -31,6 +31,7 @@ import {
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
+  restoreHostFileChanges,
   type HostRecordedFileChange,
 } from '@spirit-agent/host-internal';
 
@@ -47,6 +48,7 @@ import type {
   FileRewindWarning,
   MessageAuxSnapshot,
   PendingQuestionsSnapshot,
+  RewindAndSubmitMessageRequest,
   RemoveModelRequest,
   SessionListItem,
   ToolBlockSnapshot,
@@ -76,10 +78,13 @@ import {
   createDesktopRewindMetadata,
   createRewindCheckpointMetadata,
   fileChangeMetadata,
+  loadRewindCheckpointSnapshot,
+  loadRewindFileChange,
   nextDesktopRewindSequence,
   saveRewindCheckpointSnapshot,
   saveRewindFileChange,
   toDesktopFileChange,
+  type DesktopRewindCheckpointSnapshot,
   type StoredDesktopRewindMetadata,
 } from './rewind.js';
 
@@ -104,6 +109,7 @@ type CommandPayloads = {
   resetSession: undefined;
   listSessions: undefined;
   openSession: { path: string };
+  rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
 };
 
 interface HostState {
@@ -345,41 +351,116 @@ description: ${frontmatterDescription}
   async submitUserTurn(text: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
-      const runtime = this.requireRuntime();
-      const trimmed = text.trim();
-      if (!trimmed) {
-        throw new Error('消息不能为空。');
-      }
-
-      const state = this.requireState();
-      this.ensureActiveSession(trimmed);
-      const userMessage: ConversationMessageSnapshot = {
-        id: this.allocateMessageId(),
-        role: 'user',
-        content: trimmed,
-        pending: false,
-      };
-      state.messages.push(userMessage);
-      this.resetStreamingPlacementState(false);
-      await this.persistCurrentSessionIfNeeded();
-
-      try {
-        await runtime.startUserTurnStreaming(trimmed);
-        this.refreshArchiveFromRuntime();
-        await this.recordRewindCheckpoint(userMessage.id);
-        await runtime.poll();
-        this.applyRuntimeHostEvents(runtime.drainEvents());
-      } catch (error) {
-        state.messages.pop();
-        throw error;
-      }
-
-      this.consumeCompletedTurnResult();
-      this.syncPendingToolStates();
-      this.syncAssistantPrefixFromHistoryBeforeToolRow();
-      await this.flushDeferredRuntimeRefreshIfIdle();
-      return this.buildSnapshot();
+      return this.submitUserTurnAfterInitialized(text);
     });
+  }
+
+  async rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const runtime = this.requireRuntime();
+      if (runtime.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+      if (!Number.isFinite(request.messageId)) {
+        throw new Error('消息 id 无效。');
+      }
+
+      const checkpoint = state.rewind.checkpoints.find(
+        (candidate) => candidate.messageId === request.messageId,
+      );
+      if (!checkpoint) {
+        throw new Error('该消息没有可用的回溯检查点。');
+      }
+
+      const snapshot = await loadRewindCheckpointSnapshot(
+        spiritAgentDataDir(),
+        state.rewind.sessionId,
+        checkpoint.id,
+      );
+      if (!snapshot) {
+        throw new Error('回溯检查点文件不存在，无法回溯。');
+      }
+
+      const changesToRestore = state.rewind.fileChanges
+        .filter((change) => change.sequence > checkpoint.sequence)
+        .sort((left, right) => left.sequence - right.sequence);
+      const loadedChanges: HostRecordedFileChange[] = [];
+      const missingWarnings: FileRewindWarning[] = [];
+      for (const metadata of changesToRestore) {
+        const stored = await loadRewindFileChange(
+          spiritAgentDataDir(),
+          state.rewind.sessionId,
+          metadata.id,
+        );
+        if (stored) {
+          loadedChanges.push(stored);
+        } else {
+          missingWarnings.push({
+            changeId: metadata.id,
+            path: metadata.resolvedPath,
+            action: metadata.kind,
+            message: '文件变更快照缺失，已跳过该项回溯。',
+          });
+        }
+      }
+
+      const restoreResult = await restoreHostFileChanges(loadedChanges);
+      state.rewindWarnings = [
+        ...missingWarnings,
+        ...restoreResult.warnings.map((warning) => ({ ...warning })),
+      ];
+
+      this.restoreBeforeRewindCheckpoint(snapshot, checkpoint.sequence);
+      return this.submitUserTurnAfterInitialized(request.text, {
+        preserveRewindWarnings: true,
+      });
+    });
+  }
+
+  private async submitUserTurnAfterInitialized(
+    text: string,
+    options: { preserveRewindWarnings?: boolean } = {},
+  ): Promise<DesktopSnapshot> {
+    const runtime = this.requireRuntime();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new Error('消息不能为空。');
+    }
+
+    const state = this.requireState();
+    if (!options.preserveRewindWarnings) {
+      state.rewindWarnings = [];
+    }
+    this.ensureActiveSession(trimmed);
+    const beforeUserCheckpoint = this.buildRewindCheckpointSnapshot();
+    const userMessage: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'user',
+      content: trimmed,
+      pending: false,
+    };
+    state.messages.push(userMessage);
+    this.resetStreamingPlacementState(false);
+    await this.persistCurrentSessionIfNeeded();
+
+    try {
+      await runtime.startUserTurnStreaming(trimmed);
+      this.refreshArchiveFromRuntime();
+      await this.recordRewindCheckpoint(userMessage.id, beforeUserCheckpoint);
+      await runtime.poll();
+      this.applyRuntimeHostEvents(runtime.drainEvents());
+    } catch (error) {
+      state.messages.pop();
+      throw error;
+    }
+
+    this.consumeCompletedTurnResult();
+    this.syncPendingToolStates();
+    this.syncAssistantPrefixFromHistoryBeforeToolRow();
+    await this.flushDeferredRuntimeRefreshIfIdle();
+    return this.buildSnapshot();
   }
 
   async poll(): Promise<DesktopSnapshot> {
@@ -557,6 +638,10 @@ description: ${frontmatterDescription}
       case 'openSession': {
         const typedPayload = payload as CommandPayloads['openSession'];
         return this.openSession(typedPayload.path);
+      }
+      case 'rewindAndSubmitMessage': {
+        const typedPayload = payload as CommandPayloads['rewindAndSubmitMessage'];
+        return this.rewindAndSubmitMessage(typedPayload.request);
       }
       default:
         throw new Error(`Unsupported host command: ${command satisfies never}`);
@@ -1313,7 +1398,10 @@ description: ${frontmatterDescription}
     );
   }
 
-  private async recordRewindCheckpoint(messageId: number): Promise<void> {
+  private async recordRewindCheckpoint(
+    messageId: number,
+    beforeUserCheckpoint?: DesktopRewindCheckpointSnapshot,
+  ): Promise<void> {
     const state = this.requireState();
     if (!state.activeSession) {
       return;
@@ -1343,6 +1431,12 @@ description: ${frontmatterDescription}
       {
         archive,
         desktopMessages: state.messages.map((message) => ({ ...message })),
+        ...(beforeUserCheckpoint
+          ? {
+              beforeArchive: cloneChatArchive(beforeUserCheckpoint.archive),
+              beforeDesktopMessages: beforeUserCheckpoint.desktopMessages.map((message) => ({ ...message })),
+            }
+          : {}),
       },
     );
 
@@ -1355,6 +1449,57 @@ description: ${frontmatterDescription}
       state.rewind.checkpoints.push(checkpoint);
     }
     state.rewind.checkpoints.sort((left, right) => left.sequence - right.sequence);
+  }
+
+  private buildRewindCheckpointSnapshot(): DesktopRewindCheckpointSnapshot {
+    const state = this.requireState();
+    const archive = this.runtime
+      ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
+      : {
+          messages: this.archiveMessages(),
+          assistantAux: this.archiveAssistantAux(),
+          llmHistory: state.archiveHistory,
+          subagentSessions: state.archiveSubagentSessions ?? [],
+        } satisfies ChatArchive;
+    return {
+      archive,
+      desktopMessages: state.messages.map((message) => ({ ...message })),
+    };
+  }
+
+  private restoreBeforeRewindCheckpoint(
+    snapshot: DesktopRewindCheckpointSnapshot,
+    checkpointSequence: number,
+  ): void {
+    const state = this.requireState();
+    const archive = snapshot.beforeArchive ?? archiveBeforeLastUser(snapshot.archive);
+    const desktopMessages = snapshot.beforeDesktopMessages ?? snapshot.desktopMessages.slice(0, -1);
+
+    state.messages = desktopMessages.map((message) => ({ ...message }));
+    state.archiveHistory = archive.llmHistory.map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [...message.imagePaths],
+    }));
+    state.archiveSubagentSessions = (archive.subagentSessions ?? []).map((entry) => ({
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...message.imagePaths],
+      })),
+    }));
+    state.rewind.checkpoints = state.rewind.checkpoints.filter(
+      (checkpoint) => checkpoint.sequence < checkpointSequence,
+    );
+    state.rewind.fileChanges = state.rewind.fileChanges.filter(
+      (change) => change.sequence <= checkpointSequence,
+    );
+    this.pendingUnboundFileChangeIds = [];
+    this.latestPendingAssistantAux = undefined;
+    this.messageIdCounter = Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+    this.resetStreamingPlacementState(true);
+    this.requireRuntime().replaceFromArchive(archive);
   }
 
   private messageSnapshot(message: ConversationMessageSnapshot): ConversationMessageSnapshot {
@@ -1718,6 +1863,50 @@ function currentApiBase(config: DesktopConfigFile): string {
     config.models[0]?.apiBase ||
     ''
   );
+}
+
+function cloneChatArchive(archive: ChatArchive): ChatArchive {
+  return {
+    messages: archive.messages.map((message) => ({ ...message })),
+    assistantAux: archive.assistantAux.map((entry) => ({ ...entry })),
+    llmHistory: archive.llmHistory.map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [...message.imagePaths],
+    })),
+    subagentSessions: (archive.subagentSessions ?? []).map((entry) => ({
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...message.imagePaths],
+      })),
+    })),
+  };
+}
+
+function archiveBeforeLastUser(archive: ChatArchive): ChatArchive {
+  const cloned = cloneChatArchive(archive);
+  const messageIndex = findLastIndex(cloned.messages, (message) => message.role === 'user');
+  const historyIndex = findLastIndex(cloned.llmHistory, (message) => message.role === 'user');
+  return {
+    ...cloned,
+    messages: messageIndex >= 0 ? cloned.messages.slice(0, messageIndex) : cloned.messages,
+    assistantAux:
+      messageIndex >= 0
+        ? cloned.assistantAux.filter((entry) => entry.messageIndex < messageIndex)
+        : cloned.assistantAux,
+    llmHistory: historyIndex >= 0 ? cloned.llmHistory.slice(0, historyIndex) : cloned.llmHistory,
+  };
+}
+
+function findLastIndex<T>(items: readonly T[], predicate: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index]!)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function parseApprovalDecision(message: string): RuntimeApprovalDecision {

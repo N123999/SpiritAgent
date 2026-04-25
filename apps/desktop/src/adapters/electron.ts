@@ -30,6 +30,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     submitUserTurn(text) {
       return bridge.submitUserTurn(text);
     },
+    rewindAndSubmitMessage(request) {
+      return bridge.rewindAndSubmitMessage(request);
+    },
     poll() {
       return bridge.poll();
     },

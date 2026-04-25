@@ -96,6 +96,16 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === 'POST' && request.url === '/api/rewind-submit') {
+      writeJson(response, 200, await invokeDesktopHostCommand('rewindAndSubmitMessage', {
+        request: {
+          messageId: typeof jsonBody?.messageId === 'number' ? jsonBody.messageId : NaN,
+          text: typeof jsonBody?.text === 'string' ? jsonBody.text : '',
+        },
+      }));
+      return;
+    }
+
     if (request.method === 'POST' && request.url === '/api/poll') {
       writeJson(response, 200, await invokeDesktopHostCommand('poll'));
       return;

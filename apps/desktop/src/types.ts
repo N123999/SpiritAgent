@@ -40,6 +40,11 @@ export interface DeleteSkillRequest {
   rootKind: DesktopSkillRootKind;
 }
 
+export interface RewindAndSubmitMessageRequest {
+  messageId: number;
+  text: string;
+}
+
 export interface DesktopSkillListItem {
   id: string;
   name: string;

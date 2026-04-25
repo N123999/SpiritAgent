@@ -46,6 +46,8 @@ export interface DesktopStoredFileChange extends HostRecordedFileChange {
 export interface DesktopRewindCheckpointSnapshot {
   archive: ChatArchive;
   desktopMessages: ConversationMessageSnapshot[];
+  beforeArchive?: ChatArchive;
+  beforeDesktopMessages?: ConversationMessageSnapshot[];
 }
 
 export function createDesktopRewindMetadata(): StoredDesktopRewindMetadata {

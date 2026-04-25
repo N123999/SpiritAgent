@@ -5,6 +5,7 @@ import type {
   CreateSkillRequest,
   DeleteSkillRequest,
   DesktopSnapshot,
+  RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
 } from './types';
@@ -21,6 +22,7 @@ export interface HostApi {
   createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
   deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
   submitUserTurn(text: string): Promise<DesktopSnapshot>;
+  rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
   replyPendingApproval(message: string): Promise<DesktopSnapshot>;
   replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
