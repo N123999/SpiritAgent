@@ -31,6 +31,7 @@ import {
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
+  type HostRecordedFileChange,
 } from '@spirit-agent/host-internal';
 
 import type {
@@ -43,6 +44,7 @@ import type {
   DeleteSkillRequest,
   DesktopSkillRootKind,
   DesktopSnapshot,
+  FileRewindWarning,
   MessageAuxSnapshot,
   PendingQuestionsSnapshot,
   RemoveModelRequest,
@@ -70,6 +72,16 @@ import {
   type HostMetadataSummary,
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
+import {
+  createDesktopRewindMetadata,
+  createRewindCheckpointMetadata,
+  fileChangeMetadata,
+  nextDesktopRewindSequence,
+  saveRewindCheckpointSnapshot,
+  saveRewindFileChange,
+  toDesktopFileChange,
+  type StoredDesktopRewindMetadata,
+} from './rewind.js';
 
 type DesktopRuntime = AgentRuntime<
   OpenAiTransportConfig,
@@ -102,6 +114,8 @@ interface HostState {
   activeSession?: ActiveSessionSnapshot;
   archiveHistory: ChatArchive['llmHistory'];
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
+  rewind: StoredDesktopRewindMetadata;
+  rewindWarnings: FileRewindWarning[];
 }
 
 class DesktopHostService {
@@ -120,6 +134,7 @@ class DesktopHostService {
   private lastApplyEventBatchId = 0;
   private messageOrderDebugLastVerboseLogMs = 0;
   private messageIdCounter = 1;
+  private pendingUnboundFileChangeIds: string[] = [];
   private serialized = Promise.resolve();
   /** 忙时改 planMode / 模型或 endpoint 时推迟 `refreshRuntime`，避免替换 runtime 导致流式输出丢失；空闲后由 `flushDeferredRuntimeRefreshIfIdle` 应用。 */
   private deferredRuntimeRefreshWhileBusy = false;
@@ -338,17 +353,20 @@ description: ${frontmatterDescription}
 
       const state = this.requireState();
       this.ensureActiveSession(trimmed);
-      state.messages.push({
+      const userMessage: ConversationMessageSnapshot = {
         id: this.allocateMessageId(),
         role: 'user',
         content: trimmed,
         pending: false,
-      });
+      };
+      state.messages.push(userMessage);
       this.resetStreamingPlacementState(false);
       await this.persistCurrentSessionIfNeeded();
 
       try {
         await runtime.startUserTurnStreaming(trimmed);
+        this.refreshArchiveFromRuntime();
+        await this.recordRewindCheckpoint(userMessage.id);
         await runtime.poll();
         this.applyRuntimeHostEvents(runtime.drainEvents());
       } catch (error) {
@@ -436,6 +454,9 @@ description: ${frontmatterDescription}
       state.activeSession = undefined;
       state.archiveHistory = [];
       state.archiveSubagentSessions = [];
+      state.rewind = createDesktopRewindMetadata();
+      state.rewindWarnings = [];
+      this.pendingUnboundFileChangeIds = [];
       this.latestPendingAssistantAux = undefined;
       this.resetStreamingPlacementState(true);
       this.messageIdCounter = 1;
@@ -476,6 +497,9 @@ description: ${frontmatterDescription}
           imagePaths: [...message.imagePaths],
         })),
       }));
+      state.rewind = loaded.rewind ?? createDesktopRewindMetadata();
+      state.rewindWarnings = [];
+      this.pendingUnboundFileChangeIds = [];
       this.messageIdCounter =
         Math.max(0, ...state.messages.map((message) => message.id)) + 1;
       this.latestPendingAssistantAux = undefined;
@@ -560,6 +584,8 @@ description: ${frontmatterDescription}
       activeSession: state?.activeSession,
       archiveHistory: state?.archiveHistory ?? [],
       archiveSubagentSessions: state?.archiveSubagentSessions ?? [],
+      rewind: state?.rewind ?? createDesktopRewindMetadata(),
+      rewindWarnings: state?.rewindWarnings ?? [],
     };
     this.initialized = true;
     await this.refreshRuntime();
@@ -639,7 +665,9 @@ description: ${frontmatterDescription}
     return new AgentRuntime({
       config: transportConfig,
       llmTransport: this.transport,
-      toolExecutor: new DesktopToolExecutor(workspaceRoot),
+      toolExecutor: new DesktopToolExecutor(workspaceRoot, {
+        recordFileChange: (change) => this.recordHostFileChange(change),
+      }),
       createToolAgentState: (messages, userInput) =>
         startOpenAiToolAgentState(
           messages,
@@ -769,6 +797,9 @@ description: ${frontmatterDescription}
           ? { pendingQuestions: mapPendingQuestions(pendingQuestions) }
           : {}),
         isBusy: this.runtime?.isBusy() ?? false,
+        ...(state.rewindWarnings.length > 0
+          ? { rewindWarnings: state.rewindWarnings.map((warning) => ({ ...warning })) }
+          : {}),
       },
       ...(state.activeSession ? { activeSession: { ...state.activeSession } } : {}),
     };
@@ -776,7 +807,7 @@ description: ${frontmatterDescription}
 
   private messagesWithPendingAssistant(): ConversationMessageSnapshot[] {
     const state = this.requireState();
-    const messages = state.messages.map((message) => ({ ...message }));
+    const messages = state.messages.map((message) => this.messageSnapshot(message));
     const pendingMessage = this.buildPendingAssistantMessage();
     if (!pendingMessage) {
       return messages;
@@ -856,7 +887,7 @@ description: ${frontmatterDescription}
 
   private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
     for (const execution of executions) {
-      this.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
+      const message = this.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
         toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
         toolName: execution.toolName,
         phase: execution.failed ? 'failed' : 'succeeded',
@@ -867,6 +898,7 @@ description: ${frontmatterDescription}
         argsExcerpt: truncateJson(execution.request),
         outputExcerpt: truncateText(execution.output, 4_000),
       });
+      this.bindFileChangesToToolMessage(execution, message.id);
     }
   }
 
@@ -1112,7 +1144,10 @@ description: ${frontmatterDescription}
     }
   }
 
-  private upsertToolMessage(toolCallId: string, tool: ToolBlockSnapshot): void {
+  private upsertToolMessage(
+    toolCallId: string,
+    tool: ToolBlockSnapshot,
+  ): ConversationMessageSnapshot {
     const state = this.requireState();
     const existing = state.messages.find(
       (message) => message.tool?.toolCallId === toolCallId,
@@ -1120,7 +1155,7 @@ description: ${frontmatterDescription}
 
     if (existing) {
       existing.tool = tool;
-      return;
+      return existing;
     }
 
     const batchId = this.lastApplyEventBatchId;
@@ -1129,14 +1164,16 @@ description: ${frontmatterDescription}
     }
     this.streamAssistantAnchorSetInApplyBatchId = batchId;
     const pushAt = state.messages.length;
-    state.messages.push({
+    const message: ConversationMessageSnapshot = {
       id: this.allocateMessageId(),
       role: 'assistant',
       content: '',
       tool,
       pending: false,
-    });
+    };
+    state.messages.push(message);
     this.logMessageOrderToolPreviewNew(tool.toolName, pushAt);
+    return message;
   }
 
   private appendAssistantMessage(content: string, aux?: MessageAuxSnapshot): void {
@@ -1227,6 +1264,116 @@ description: ${frontmatterDescription}
     state.archiveSubagentSessions = archive.subagentSessions ?? [];
   }
 
+  private async recordHostFileChange(change: HostRecordedFileChange): Promise<void> {
+    const state = this.state;
+    if (!state?.activeSession) {
+      return;
+    }
+
+    const stored = toDesktopFileChange(change, nextDesktopRewindSequence(state.rewind));
+    await saveRewindFileChange(spiritAgentDataDir(), state.rewind.sessionId, stored);
+    const metadata = fileChangeMetadata(stored);
+    state.rewind.fileChanges.push(metadata);
+    if (!metadata.toolCallId) {
+      this.pendingUnboundFileChangeIds.push(metadata.id);
+    }
+  }
+
+  private bindFileChangesToToolMessage(
+    execution: RuntimeToolExecution<DesktopToolRequest>,
+    messageId: number,
+  ): void {
+    const state = this.requireState();
+    const targetIds = new Set<string>();
+    const toolCallId = execution.toolCallId || `tool:${execution.toolName}`;
+    for (const change of state.rewind.fileChanges) {
+      if (change.messageId !== undefined) {
+        continue;
+      }
+      if (change.toolCallId === toolCallId) {
+        targetIds.add(change.id);
+      }
+    }
+    if (targetIds.size === 0) {
+      for (const id of this.pendingUnboundFileChangeIds) {
+        targetIds.add(id);
+      }
+    }
+    if (targetIds.size === 0) {
+      return;
+    }
+
+    for (const change of state.rewind.fileChanges) {
+      if (targetIds.has(change.id)) {
+        change.messageId = messageId;
+      }
+    }
+    this.pendingUnboundFileChangeIds = this.pendingUnboundFileChangeIds.filter(
+      (id) => !targetIds.has(id),
+    );
+  }
+
+  private async recordRewindCheckpoint(messageId: number): Promise<void> {
+    const state = this.requireState();
+    if (!state.activeSession) {
+      return;
+    }
+    const messageIndex = state.messages.findIndex((message) => message.id === messageId);
+    if (messageIndex < 0) {
+      return;
+    }
+
+    const checkpoint = createRewindCheckpointMetadata(
+      messageId,
+      messageIndex,
+      nextDesktopRewindSequence(state.rewind),
+    );
+    const archive = this.runtime
+      ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
+      : {
+          messages: this.archiveMessages(),
+          assistantAux: this.archiveAssistantAux(),
+          llmHistory: state.archiveHistory,
+          subagentSessions: state.archiveSubagentSessions ?? [],
+        } satisfies ChatArchive;
+    await saveRewindCheckpointSnapshot(
+      spiritAgentDataDir(),
+      state.rewind.sessionId,
+      checkpoint.id,
+      {
+        archive,
+        desktopMessages: state.messages.map((message) => ({ ...message })),
+      },
+    );
+
+    const existing = state.rewind.checkpoints.findIndex(
+      (candidate) => candidate.messageId === messageId,
+    );
+    if (existing >= 0) {
+      state.rewind.checkpoints.splice(existing, 1, checkpoint);
+    } else {
+      state.rewind.checkpoints.push(checkpoint);
+    }
+    state.rewind.checkpoints.sort((left, right) => left.sequence - right.sequence);
+  }
+
+  private messageSnapshot(message: ConversationMessageSnapshot): ConversationMessageSnapshot {
+    const { canRewind: _canRewind, ...base } = message;
+    return {
+      ...base,
+      ...(this.canRewindMessage(message) ? { canRewind: true } : {}),
+    };
+  }
+
+  private canRewindMessage(message: ConversationMessageSnapshot): boolean {
+    if (message.pending || message.role !== 'user') {
+      return false;
+    }
+    return this.requireState().rewind.checkpoints.some(
+      (checkpoint) => checkpoint.messageId === message.id,
+    );
+  }
+
   private async persistCurrentSessionIfNeeded(): Promise<void> {
     const state = this.requireState();
     if (!state.activeSession || this.runtime?.isBusy()) {
@@ -1247,6 +1394,7 @@ description: ${frontmatterDescription}
       savedAtUnixMs: Date.now(),
       sessionDisplayName: state.activeSession.displayName,
       desktopMessages: state.messages.map((message) => ({ ...message })),
+      rewind: state.rewind,
     };
     state.activeSession.filePath = await saveStoredSession(state.activeSession.filePath, stored);
   }

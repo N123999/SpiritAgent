@@ -3,9 +3,11 @@ import {
   AuthorizationDecision,
   JsonValue,
   McpStatusSnapshot,
+  ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '@spirit-agent/agent-core';
 import {
+  type HostFileChangeObserver,
   NodeHostToolService,
   createNoopMcpAdapter,
 } from '@spirit-agent/host-internal';
@@ -19,12 +21,16 @@ export class DesktopToolExecutor
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
 
-  constructor(private readonly workspaceRoot: string) {
+  constructor(
+    private readonly workspaceRoot: string,
+    fileChangeObserver?: HostFileChangeObserver,
+  ) {
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
     }, {
       mcp: createNoopMcpAdapter(),
+      ...(fileChangeObserver ? { fileChangeObserver } : {}),
     });
   }
 
@@ -55,6 +61,13 @@ export class DesktopToolExecutor
 
   async execute(request: DesktopToolRequest): Promise<string> {
     return this.tools.execute(request);
+  }
+
+  attachRequestMetadata(
+    request: DesktopToolRequest,
+    metadata: ToolRequestExecutionMetadata,
+  ): DesktopToolRequest {
+    return this.tools.attachRequestMetadata(request, metadata);
   }
 
   startMcpBackgroundRefresh(): void {

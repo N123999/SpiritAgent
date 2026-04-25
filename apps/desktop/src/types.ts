@@ -124,6 +124,7 @@ export interface ConversationSnapshot {
   pendingToolApproval?: PendingToolApprovalSnapshot;
   pendingQuestions?: PendingQuestionsSnapshot;
   isBusy: boolean;
+  rewindWarnings?: FileRewindWarning[];
 }
 
 export interface ConversationMessageSnapshot {
@@ -133,6 +134,25 @@ export interface ConversationMessageSnapshot {
   tool?: ToolBlockSnapshot;
   aux?: MessageAuxSnapshot;
   pending: boolean;
+  canRewind?: boolean;
+}
+
+export interface MessageRewindDraftState {
+  messageId: number;
+  text: string;
+}
+
+export interface MessageRewindResult {
+  restored: number;
+  skipped: number;
+  warnings: FileRewindWarning[];
+}
+
+export interface FileRewindWarning {
+  changeId?: string;
+  path: string;
+  action: 'create_file' | 'edit_file' | 'delete_file';
+  message: string;
 }
 
 export interface ToolBlockSnapshot {

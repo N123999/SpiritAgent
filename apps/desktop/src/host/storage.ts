@@ -23,6 +23,7 @@ import type {
   SessionListItem,
 } from '../types.js';
 import type { StoredDesktopSession } from './contracts.js';
+import { normalizeDesktopRewindMetadata } from './rewind.js';
 
 export const DEFAULT_API_BASE = 'https://api.openai.com/v1';
 export const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -254,6 +255,7 @@ export async function loadStoredSession(filePath: string): Promise<StoredDesktop
     ...(Array.isArray(parsed.desktopMessages)
       ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
       : {}),
+    rewind: normalizeDesktopRewindMetadata(parsed.rewind),
   } satisfies StoredDesktopSession;
 }
 
