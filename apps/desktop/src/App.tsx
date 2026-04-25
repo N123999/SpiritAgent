@@ -528,7 +528,7 @@ export default function App() {
                       )}
                     >
                       <p className="text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-                        {"Let's build"}
+                        Start something.
                       </p>
                     </div>
                   ) : (
