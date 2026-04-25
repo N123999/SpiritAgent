@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { LoaderCircle, RefreshCw, RotateCcw } from "lucide-react";
+import { LoaderCircle, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,8 @@ type SettingsViewProps = {
   onRemoveModel: (name: string) => Promise<void>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
   onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
+  /** Skills 页「生成 Skill」：回到主对话区；后续可接斜杠命令。 */
+  onGenerateSkillNavigate?: () => void;
 };
 
 const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
@@ -215,9 +217,19 @@ const skillCreateRootOptions: Array<{
 function SkillsSettingsPanel({
   snapshot,
   skillsBusy,
+  apiReady,
   onCreateSkill,
   onDeleteSkill,
-}: Pick<SettingsViewProps, "snapshot" | "skillsBusy" | "onCreateSkill" | "onDeleteSkill">) {
+  onGenerateSkillNavigate,
+}: Pick<
+  SettingsViewProps,
+  | "snapshot"
+  | "skillsBusy"
+  | "apiReady"
+  | "onCreateSkill"
+  | "onDeleteSkill"
+  | "onGenerateSkillNavigate"
+>) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteSkillRequest | null>(null);
   const [newName, setNewName] = useState("");
@@ -239,18 +251,34 @@ function SkillsSettingsPanel({
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Skills</h1>
           <p className="text-sm text-muted-foreground">用户与工作区内已发现的 Skills。</p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="shrink-0"
-          onClick={() => {
-            resetForm();
-            setAddDialogOpen(true);
-          }}
-          disabled={skillsBusy}
-        >
-          新建 Skill
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {onGenerateSkillNavigate ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              disabled={!apiReady}
+              title="进入主对话区；空闲时会新开会话，后续可在此接斜杠生成 Skill"
+              onClick={() => onGenerateSkillNavigate()}
+            >
+              <Sparkles className="size-3.5 shrink-0" aria-hidden />
+              生成 Skill
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0"
+            onClick={() => {
+              resetForm();
+              setAddDialogOpen(true);
+            }}
+            disabled={skillsBusy}
+          >
+            新建 Skill
+          </Button>
+        </div>
       </div>
 
       <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
@@ -757,6 +785,7 @@ export function SettingsView({
   onRemoveModel,
   onCreateSkill,
   onDeleteSkill,
+  onGenerateSkillNavigate,
 }: SettingsViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -792,8 +821,10 @@ export function SettingsView({
               <SkillsSettingsPanel
                 snapshot={snapshot}
                 skillsBusy={skillsBusy}
+                apiReady={apiReady}
                 onCreateSkill={onCreateSkill}
                 onDeleteSkill={onDeleteSkill}
+                onGenerateSkillNavigate={onGenerateSkillNavigate}
               />
             ) : (
               <AppearanceSettingsPanel

@@ -486,6 +486,19 @@ export default function App() {
               onRemoveModel={runtime.removeModel}
               onCreateSkill={runtime.createSkill}
               onDeleteSkill={runtime.deleteSkill}
+              onGenerateSkillNavigate={() => {
+                setActiveSurface("conversation");
+                const c = snapshot?.conversation;
+                if (
+                  runtime.apiReady &&
+                  c &&
+                  !c.isBusy &&
+                  !c.pendingToolApproval &&
+                  !c.pendingQuestions
+                ) {
+                  void runtime.resetSession().catch(() => {});
+                }
+              }}
             />
           ) : (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col text-sm">
