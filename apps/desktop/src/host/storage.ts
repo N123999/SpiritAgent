@@ -27,6 +27,8 @@ import { normalizeDesktopRewindMetadata } from './rewind.js';
 
 export const DEFAULT_API_BASE = 'https://api.openai.com/v1';
 export const DEFAULT_MODEL = 'gpt-4o-mini';
+export const DEFAULT_DESKTOP_WEB_HOST = '127.0.0.1';
+export const DEFAULT_DESKTOP_WEB_PORT = 7788;
 const APP_DATA_DIR_NAME = 'SpiritAgent';
 const CONFIG_FILE_NAME = 'config.json';
 const CHATS_DIR_NAME = 'chats';
@@ -37,6 +39,14 @@ export interface DesktopConfigFile {
   uiLocale?: string;
   windowsMica?: boolean;
   planMode?: boolean;
+  webHost: DesktopWebHostConfigFile;
+}
+
+export interface DesktopWebHostConfigFile {
+  enabled: boolean;
+  host: string;
+  port: number;
+  authTokenHash?: string;
 }
 
 /** 与 `apps/cli/src/model_registry.rs` 中 keyring 命名一致。 */
@@ -280,6 +290,15 @@ function defaultConfig(): DesktopConfigFile {
     activeModel: DEFAULT_MODEL,
     windowsMica: true,
     planMode: false,
+    webHost: defaultWebHostConfig(),
+  };
+}
+
+export function defaultWebHostConfig(): DesktopWebHostConfigFile {
+  return {
+    enabled: false,
+    host: DEFAULT_DESKTOP_WEB_HOST,
+    port: DEFAULT_DESKTOP_WEB_PORT,
   };
 }
 
@@ -309,7 +328,35 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
       : {}),
     windowsMica: raw.windowsMica !== false,
     planMode: raw.planMode === true,
+    webHost: normalizeWebHostConfig(raw.webHost),
   };
+}
+
+export function normalizeWebHostConfig(
+  raw?: Partial<DesktopWebHostConfigFile>,
+): DesktopWebHostConfigFile {
+  const defaultConfig = defaultWebHostConfig();
+  const host = typeof raw?.host === 'string' && raw.host.trim()
+    ? raw.host.trim()
+    : defaultConfig.host;
+  const port = normalizePort(raw?.port, defaultConfig.port);
+  const authTokenHash = typeof raw?.authTokenHash === 'string' && raw.authTokenHash.trim()
+    ? raw.authTokenHash.trim()
+    : undefined;
+
+  return {
+    enabled: raw?.enabled === true,
+    host,
+    port,
+    ...(authTokenHash ? { authTokenHash } : {}),
+  };
+}
+
+function normalizePort(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    return fallback;
+  }
+  return value >= 1 && value <= 65535 ? value : fallback;
 }
 
 function resolveSessionPath(filePath: string | undefined): string {

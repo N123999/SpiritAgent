@@ -15,6 +15,12 @@ export type DesktopHostCommandInvoker = (
   payload?: unknown,
 ) => Promise<unknown>;
 
+export type DesktopHostCommandResultHandler = (
+  command: HostCommandName,
+  payload: unknown,
+  result: unknown,
+) => void | Promise<void>;
+
 export interface DesktopHttpHostState {
   host: string;
   port: number;
@@ -27,6 +33,7 @@ export interface DesktopHttpHostOptions {
   host: string;
   port: number;
   invokeHostCommand: DesktopHostCommandInvoker;
+  onHostCommandResult?: DesktopHostCommandResultHandler;
   logger?: Pick<Console, 'error' | 'log'>;
 }
 
@@ -61,6 +68,7 @@ export function createDesktopHttpHost(options: DesktopHttpHostOptions): DesktopH
       const nextServer = createServer(
         createDesktopHttpRequestHandler({
           invokeHostCommand: options.invokeHostCommand,
+          onHostCommandResult: options.onHostCommandResult,
         }),
       );
       server = nextServer;
@@ -131,10 +139,22 @@ export function createDesktopHttpHost(options: DesktopHttpHostOptions): DesktopH
 
 export function createDesktopHttpRequestHandler({
   invokeHostCommand,
+  onHostCommandResult,
 }: {
   invokeHostCommand: DesktopHostCommandInvoker;
+  onHostCommandResult?: DesktopHostCommandResultHandler;
 }) {
   return async (request: IncomingMessage, response: ServerResponse) => {
+    const runHostCommand = async (command: HostCommandName, payload?: unknown) => {
+      const result = await invokeHostCommand(command, payload);
+      if (onHostCommandResult) {
+        response.once('finish', () => {
+          void onHostCommandResult(command, payload, result);
+        });
+      }
+      return result;
+    };
+
     try {
       if (!request.url) {
         writeJson(response, 400, { error: '缺少请求路径' });
@@ -158,28 +178,28 @@ export function createDesktopHttpRequestHandler({
       }
 
       if (request.method === 'GET' && pathname === '/api/sessions') {
-        writeJson(response, 200, await invokeHostCommand('listSessions'));
+        writeJson(response, 200, await runHostCommand('listSessions'));
         return;
       }
 
       if (request.method === 'POST' && pathname === '/api/bootstrap') {
-        writeJson(response, 200, await invokeHostCommand('bootstrap', { request: jsonBody ?? {} }));
+        writeJson(response, 200, await runHostCommand('bootstrap', { request: jsonBody ?? {} }));
         return;
       }
 
       if (request.method === 'POST' && pathname === '/api/config') {
-        writeJson(response, 200, await invokeHostCommand('updateConfig', { request: jsonBody }));
+        writeJson(response, 200, await runHostCommand('updateConfig', { request: jsonBody }));
         return;
       }
 
       if (request.method === 'POST' && pathname === '/api/models') {
-        writeJson(response, 200, await invokeHostCommand('addModel', { request: jsonBody }));
+        writeJson(response, 200, await runHostCommand('addModel', { request: jsonBody }));
         return;
       }
 
       if (request.method === 'POST' && pathname === '/api/models/remove') {
         const name = typeof jsonBody?.name === 'string' ? jsonBody.name : '';
-        writeJson(response, 200, await invokeHostCommand('removeModel', { request: { name } }));
+        writeJson(response, 200, await runHostCommand('removeModel', { request: { name } }));
         return;
       }
 
@@ -188,7 +208,7 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('createSkill', {
+          await runHostCommand('createSkill', {
             request: {
               name: typeof jsonBody?.name === 'string' ? jsonBody.name : '',
               rootKind,
@@ -206,7 +226,7 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('deleteSkill', { request: { name, rootKind } }),
+          await runHostCommand('deleteSkill', { request: { name, rootKind } }),
         );
         return;
       }
@@ -215,7 +235,7 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('submitUserTurn', {
+          await runHostCommand('submitUserTurn', {
             text: typeof jsonBody?.text === 'string' ? jsonBody.text : '',
           }),
         );
@@ -226,7 +246,7 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('rewindAndSubmitMessage', {
+          await runHostCommand('rewindAndSubmitMessage', {
             request: {
               messageId: typeof jsonBody?.messageId === 'number' ? jsonBody.messageId : NaN,
               text: typeof jsonBody?.text === 'string' ? jsonBody.text : '',
@@ -237,7 +257,7 @@ export function createDesktopHttpRequestHandler({
       }
 
       if (request.method === 'POST' && pathname === '/api/poll') {
-        writeJson(response, 200, await invokeHostCommand('poll'));
+        writeJson(response, 200, await runHostCommand('poll'));
         return;
       }
 
@@ -245,7 +265,7 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('replyPendingApproval', {
+          await runHostCommand('replyPendingApproval', {
             message: typeof jsonBody?.message === 'string' ? jsonBody.message : '',
           }),
         );
@@ -256,13 +276,13 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('replyPendingQuestions', { result: jsonBody?.result }),
+          await runHostCommand('replyPendingQuestions', { result: jsonBody?.result }),
         );
         return;
       }
 
       if (request.method === 'POST' && pathname === '/api/reset') {
-        writeJson(response, 200, await invokeHostCommand('resetSession'));
+        writeJson(response, 200, await runHostCommand('resetSession'));
         return;
       }
 
@@ -270,7 +290,7 @@ export function createDesktopHttpRequestHandler({
         writeJson(
           response,
           200,
-          await invokeHostCommand('openSession', {
+          await runHostCommand('openSession', {
             path: typeof jsonBody?.path === 'string' ? jsonBody.path : '',
           }),
         );

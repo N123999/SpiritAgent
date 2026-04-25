@@ -45,6 +45,7 @@ import type {
   DeleteSkillRequest,
   DesktopSkillRootKind,
   DesktopSnapshot,
+  DesktopWebHostSnapshot,
   FileRewindWarning,
   MessageAuxSnapshot,
   PendingAssistantAux,
@@ -71,10 +72,16 @@ import {
   saveStoredSession,
   listStoredSessions,
   spiritAgentDataDir,
+  normalizeWebHostConfig,
   type DesktopConfigFile,
+  type DesktopWebHostConfigFile,
   type HostMetadataSummary,
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
+import {
+  DESKTOP_WEB_HOST_POLICY,
+  getDesktopWebHostRuntimeStatus,
+} from './web-host-state.js';
 import {
   createDesktopRewindMetadata,
   createRewindCheckpointMetadata,
@@ -185,6 +192,16 @@ class DesktopHostService {
       state.config.windowsMica = request.windowsMica !== false;
       if (request.planMode !== undefined) {
         state.config.planMode = request.planMode;
+      }
+      if (request.webHost !== undefined) {
+        const nextWebHost = normalizeWebHostConfig({
+          ...state.config.webHost,
+          ...request.webHost,
+        });
+        if (request.webHost.resetPairing === true) {
+          delete nextWebHost.authTokenHash;
+        }
+        state.config.webHost = nextWebHost;
       }
       await saveConfig(state.config);
       if (request.apiKey?.trim()) {
@@ -828,6 +845,7 @@ description: ${frontmatterDescription}
         windowsMica: state.config.windowsMica !== false,
         planMode: state.config.planMode === true,
       },
+      webHost: buildWebHostSnapshot(state.config.webHost),
       rules: {
         discovered: state.metadata.rules.discovered,
         enabled: state.metadata.rules.enabled,
@@ -2583,6 +2601,33 @@ export async function invokeDesktopHostCommand(
   payload?: unknown,
 ): Promise<unknown> {
   return desktopHostService.invoke(command, payload);
+}
+
+function buildWebHostSnapshot(config: DesktopWebHostConfigFile): DesktopWebHostSnapshot {
+  const runtimeStatus = getDesktopWebHostRuntimeStatus();
+  const status = config.enabled
+    ? {
+        ...runtimeStatus,
+        host: runtimeStatus.host || config.host,
+        port: runtimeStatus.port || config.port,
+      }
+    : {
+        state: 'disabled' as const,
+        host: config.host,
+        port: config.port,
+      };
+
+  return {
+    config: {
+      enabled: config.enabled,
+      host: config.host,
+      port: config.port,
+      paired: Boolean(config.authTokenHash),
+      authMode: 'pairing',
+    },
+    status,
+    policy: DESKTOP_WEB_HOST_POLICY,
+  };
 }
 
 function currentApiBase(config: DesktopConfigFile): string {

@@ -11,6 +11,15 @@ export interface UpdateConfigRequest {
   windowsMica?: boolean;
   /** 缺省时不修改已保存的 Plan 模式。 */
   planMode?: boolean;
+  /** 缺省时不修改已保存的 Desktop Web 远程访问配置。 */
+  webHost?: DesktopWebHostConfigUpdate;
+}
+
+export interface DesktopWebHostConfigUpdate {
+  enabled?: boolean;
+  host?: string;
+  port?: number;
+  resetPairing?: boolean;
 }
 
 /** 与 CLI `model add` 一致：新增模型、写入密钥，并将当前模型切到新模型。 */
@@ -72,6 +81,7 @@ export interface DesktopSnapshot {
   runtimeReady: boolean;
   runtimeError?: string;
   config: DesktopConfigSnapshot;
+  webHost: DesktopWebHostSnapshot;
   rules: DiscoverySummary;
   skills: DiscoverySummary;
   /** 当前工作区与用户目录下发现的全部 Skills，供设置页列表。 */
@@ -236,4 +246,34 @@ export interface AskQuestionsAnswer {
 export interface AskQuestionsResult {
   status: 'answered' | 'skipped';
   answers?: AskQuestionsAnswer[];
+}
+
+export interface DesktopWebHostSnapshot {
+  config: DesktopWebHostConfigSnapshot;
+  status: DesktopWebHostStatusSnapshot;
+  policy: DesktopWebHostPolicySnapshot;
+}
+
+export interface DesktopWebHostConfigSnapshot {
+  enabled: boolean;
+  host: string;
+  port: number;
+  paired: boolean;
+  authMode: 'pairing';
+}
+
+export interface DesktopWebHostStatusSnapshot {
+  state: 'disabled' | 'stopped' | 'starting' | 'running' | 'error';
+  host: string;
+  port: number;
+  url?: string;
+  error?: string;
+  pairingCode?: string;
+}
+
+export interface DesktopWebHostPolicySnapshot {
+  healthRequiresAuth: true;
+  cors: 'same-origin';
+  allowHttpLan: true;
+  allowRemoteControl: true;
 }

@@ -4,8 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 import { BrowserWindow, Menu, app, ipcMain, nativeTheme } from 'electron';
 
+import type { DesktopSnapshot } from '../src/types.js';
 import { invokeDesktopHostCommand } from '../src/host/service.js';
-import { configFilePath } from '../src/host/storage.js';
+import {
+  configFilePath,
+  loadConfig,
+  type DesktopWebHostConfigFile,
+} from '../src/host/storage.js';
+import { setDesktopWebHostRuntimeStatus } from '../src/host/web-host-state.js';
 import { type ApplicationMenuSection, popupApplicationMenuSection } from './application-menu.js';
 import {
   createDesktopHttpHost,
@@ -23,19 +29,20 @@ const __dirname = path.dirname(__filename);
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 let desktopWebHost: DesktopHttpHost | undefined;
+let desktopWebHostConfig: DesktopWebHostConfigFile | undefined;
 let quittingAfterDesktopWebHostStop = false;
 
 function shouldStartDesktopWebHostFromEnv(): boolean {
   return process.env.SPIRIT_DESKTOP_WEB_HOST === '1';
 }
 
-function getDesktopWebHost(): DesktopHttpHost {
+function getDesktopWebHost(config: DesktopWebHostConfigFile): DesktopHttpHost {
   if (!desktopWebHost) {
-    const { host, port } = resolveDesktopWebHostFromEnv();
     desktopWebHost = createDesktopHttpHost({
-      host,
-      port,
-      invokeHostCommand: invokeMainDesktopHostCommand,
+      host: config.host,
+      port: config.port,
+      invokeHostCommand: invokeDesktopHostCommand,
+      onHostCommandResult: handleDesktopWebHostCommandResult,
     });
   }
   return desktopWebHost;
@@ -45,7 +52,23 @@ async function startDesktopWebHostFromEnv(): Promise<void> {
   if (!shouldStartDesktopWebHostFromEnv()) {
     return;
   }
-  await getDesktopWebHost().start();
+  const { host, port } = resolveDesktopWebHostFromEnv();
+  const config = await loadConfig();
+  await syncDesktopWebHostWithConfig({
+    ...config.webHost,
+    enabled: true,
+    host,
+    port,
+  });
+}
+
+async function syncInitialDesktopWebHost(): Promise<void> {
+  if (shouldStartDesktopWebHostFromEnv()) {
+    await startDesktopWebHostFromEnv();
+    return;
+  }
+  const config = await loadConfig();
+  await syncDesktopWebHostWithConfig(config.webHost);
 }
 
 async function stopDesktopWebHostIfRunning(): Promise<void> {
@@ -55,11 +78,107 @@ async function stopDesktopWebHostIfRunning(): Promise<void> {
   await desktopWebHost.stop();
 }
 
-function invokeMainDesktopHostCommand(
+async function invokeMainDesktopHostCommand(
   command: Parameters<typeof invokeDesktopHostCommand>[0],
   payload?: unknown,
 ) {
-  return invokeDesktopHostCommand(command, payload);
+  const result = await invokeDesktopHostCommand(command, payload);
+  if (isDesktopSnapshot(result) && (command === 'bootstrap' || command === 'updateConfig')) {
+    await syncDesktopWebHostWithConfig(result.webHost.config);
+    if (command === 'updateConfig') {
+      return invokeDesktopHostCommand('poll');
+    }
+  }
+  return result;
+}
+
+async function handleDesktopWebHostCommandResult(
+  command: Parameters<typeof invokeDesktopHostCommand>[0],
+  _payload: unknown,
+  result: unknown,
+): Promise<void> {
+  if (command !== 'updateConfig' || !isDesktopSnapshot(result)) {
+    return;
+  }
+  await syncDesktopWebHostWithConfig(result.webHost.config);
+}
+
+async function syncDesktopWebHostWithConfig(
+  config: DesktopWebHostConfigFile,
+): Promise<void> {
+  const previousConfig = desktopWebHostConfig;
+  const changedEndpoint =
+    previousConfig?.host !== config.host || previousConfig?.port !== config.port;
+  desktopWebHostConfig = config;
+
+  if (!config.enabled) {
+    await stopDesktopWebHostIfRunning();
+    setDesktopWebHostRuntimeStatus({
+      state: 'disabled',
+      host: config.host,
+      port: config.port,
+    });
+    return;
+  }
+
+  if (desktopWebHost?.isRunning() && !changedEndpoint) {
+    const state = desktopWebHost.getState();
+    setDesktopWebHostRuntimeStatus(state.running
+      ? {
+          state: 'running',
+          host: config.host,
+          port: config.port,
+          url: state.url,
+        }
+      : {
+          state: 'stopped',
+          host: config.host,
+          port: config.port,
+        });
+    return;
+  }
+
+  if (desktopWebHost?.isRunning()) {
+    await desktopWebHost.stop();
+  }
+  if (changedEndpoint) {
+    desktopWebHost = undefined;
+  }
+
+  setDesktopWebHostRuntimeStatus({
+    state: 'starting',
+    host: config.host,
+    port: config.port,
+  });
+
+  try {
+    const state = await getDesktopWebHost(config).start();
+    setDesktopWebHostRuntimeStatus({
+      state: 'running',
+      host: state.host,
+      port: state.port,
+      ...(state.url ? { url: state.url } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[spirit-desktop] start desktop web host failed', error);
+    setDesktopWebHostRuntimeStatus({
+      state: 'error',
+      host: config.host,
+      port: config.port,
+      error: message,
+    });
+  }
+}
+
+function isDesktopSnapshot(value: unknown): value is DesktopSnapshot {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'webHost' in value &&
+    'config' in value &&
+    'conversation' in value
+  );
 }
 
 /** Windows 任务栏 / 窗口角标：与 Vite 页 `public/favicon.ico` 同源（main 位于 dist-electron/electron）。 */
@@ -280,7 +399,7 @@ app.whenReady().then(async () => {
     },
   );
 
-  await startDesktopWebHostFromEnv();
+  await syncInitialDesktopWebHost();
   await createMainWindow();
 
   app.on('activate', async () => {
