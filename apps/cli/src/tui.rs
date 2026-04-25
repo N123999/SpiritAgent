@@ -3732,6 +3732,22 @@ impl TuiShell {
                         }
                     }
                 }
+                RuntimeEvent::AssistantThinkingSegmentFinalized(thinking) => {
+                    if let Some(idx) = self
+                        .pending_assistant_msg_index
+                        .or(self.last_completed_assistant_msg_index)
+                    {
+                        let entry = self.assistant_aux_by_message.entry(idx).or_default();
+                        entry.thinking = if thinking.trim().is_empty() {
+                            None
+                        } else {
+                            Some(thinking)
+                        };
+                        if entry.thinking.is_none() && entry.compaction.is_none() {
+                            self.assistant_aux_by_message.remove(&idx);
+                        }
+                    }
+                }
                 RuntimeEvent::UpdatePendingAssistantCompaction(compaction) => {
                     if let Some(idx) = self.pending_assistant_msg_index {
                         let entry = self.assistant_aux_by_message.entry(idx).or_default();

@@ -15,6 +15,7 @@ pub enum RuntimeEvent {
     },
     BeginAssistantResponse,
     UpdatePendingAssistantThinking(String),
+    AssistantThinkingSegmentFinalized(String),
     UpdatePendingAssistantCompaction(String),
     AssistantChunk(String),
     ReplacePendingAssistant(String),

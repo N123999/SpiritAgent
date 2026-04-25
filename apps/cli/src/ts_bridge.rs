@@ -252,6 +252,8 @@ enum BridgeRuntimeEvent {
     BeginAssistantResponse,
     #[serde(rename = "update-pending-assistant-thinking")]
     UpdatePendingAssistantThinking { text: String },
+    #[serde(rename = "assistant-thinking-segment-finalized")]
+    AssistantThinkingSegmentFinalized { text: String },
     #[serde(rename = "update-pending-assistant-compaction")]
     UpdatePendingAssistantCompaction { text: String },
     #[serde(rename = "assistant-chunk")]
@@ -1422,6 +1424,10 @@ impl TsBridgeRuntime {
                     self.events
                         .push_back(RuntimeEvent::UpdatePendingAssistantThinking(text));
                 }
+                BridgeRuntimeEvent::AssistantThinkingSegmentFinalized { text } => {
+                    self.events
+                        .push_back(RuntimeEvent::AssistantThinkingSegmentFinalized(text));
+                }
                 BridgeRuntimeEvent::UpdatePendingAssistantCompaction { text } => {
                     self.events
                         .push_back(RuntimeEvent::UpdatePendingAssistantCompaction(text));
@@ -2251,6 +2257,40 @@ mod tests {
             }
             other => panic!("unexpected event variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn bridge_runtime_event_accepts_assistant_thinking_segment_finalized() {
+        let value = json!({
+            "kind": "assistant-thinking-segment-finalized",
+            "text": "先分析一下用户意图",
+        });
+
+        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::AssistantThinkingSegmentFinalized { text } => {
+                assert_eq!(text, "先分析一下用户意图");
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assistant_thinking_segment_finalized_is_forwarded_to_runtime_events() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_bridge_events(vec![BridgeRuntimeEvent::AssistantThinkingSegmentFinalized {
+            text: "整理完成态 thinking".to_string(),
+        }]);
+
+        let events = runtime.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::AssistantThinkingSegmentFinalized(text)
+                if text == "整理完成态 thinking"
+        )));
     }
 
     #[test]
