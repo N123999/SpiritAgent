@@ -212,4 +212,41 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
   .spirit-scroll:hover::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--foreground) 28%, transparent);
   }
+
+  /* 骨架屏式：宽柔渐变 + 平移 background，避免窄条「镀铬高光」的复古感 */
+  @keyframes spirit-launch-shimmer-bg {
+    0% {
+      background-position: 125% 50%;
+    }
+    100% {
+      background-position: -125% 50%;
+    }
+  }
+
+  .spirit-launch-shimmer-sweep {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      118deg,
+      transparent 0%,
+      transparent 28%,
+      color-mix(in oklab, var(--foreground) 4%, transparent) 42%,
+      color-mix(in oklab, var(--foreground) 7%, transparent) 50%,
+      color-mix(in oklab, var(--foreground) 4%, transparent) 58%,
+      transparent 72%,
+      transparent 100%
+    );
+    background-size: 240% 160%;
+    background-position: 125% 50%;
+    background-repeat: no-repeat;
+    animation: spirit-launch-shimmer-bg 2.9s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+    will-change: background-position;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spirit-launch-shimmer-sweep {
+      animation: none;
+      opacity: 0;
+    }
+  }
 }

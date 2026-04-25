@@ -44,6 +44,7 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
+import { LaunchSplash } from "@/components/launch-splash";
 import {
   SessionSidebar,
   mcpBadgeText,
@@ -394,6 +395,11 @@ export default function App() {
   const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
 
+  const launchSplashActive =
+    snapshot === null &&
+    !runtime.hostConnectionError.trim() &&
+    !runtime.runtimeError.trim();
+
   return (
     <div
       className={cn(
@@ -401,6 +407,7 @@ export default function App() {
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
+      <LaunchSplash active={launchSplashActive} />
       {winElectronChrome ? <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {!winElectronChrome ? (

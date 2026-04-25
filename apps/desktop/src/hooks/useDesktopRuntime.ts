@@ -578,9 +578,9 @@ export function useDesktopRuntime() {
 
   return {
     apiReady: hostReady,
+    hostConnectionError: hostError,
     busyAction,
     composer,
-    hostError,
     hostKind: kind,
     pendingQuestions,
     questionDrafts,
