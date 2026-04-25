@@ -244,6 +244,15 @@ pub struct CliHostMetadataSnapshot {
     pub plan_metadata: PlanMetadata,
 }
 
+fn bootstrap_plan_metadata() -> PlanMetadata {
+    PlanMetadata {
+        path: PathBuf::new(),
+        exists: false,
+        plan_mode: false,
+        plan_mode_host_instructions: String::new(),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 enum BridgeRuntimeEvent {
@@ -293,9 +302,6 @@ impl TsBridgeRuntime {
         config: AppConfig,
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
-        enabled_rules: Vec<EnabledRule>,
-        enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
-        plan_metadata: PlanMetadata,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
         let mut runtime = Self {
@@ -304,9 +310,9 @@ impl TsBridgeRuntime {
             secret_store,
             workspace_root,
             session: SessionModel::new(),
-            enabled_rules,
-            enabled_skill_catalog,
-            plan_metadata,
+            enabled_rules: Vec::new(),
+            enabled_skill_catalog: Vec::new(),
+            plan_metadata: bootstrap_plan_metadata(),
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
@@ -340,12 +346,7 @@ impl TsBridgeRuntime {
             session: SessionModel::new(),
             enabled_rules: Vec::new(),
             enabled_skill_catalog: Vec::new(),
-            plan_metadata: PlanMetadata {
-                path: PathBuf::new(),
-                exists: false,
-                plan_mode: false,
-                plan_mode_host_instructions: String::new(),
-            },
+            plan_metadata: bootstrap_plan_metadata(),
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
@@ -552,7 +553,9 @@ impl TsBridgeRuntime {
                 "planMode": plan_mode,
             })),
         )?;
-        Ok(serde_json::from_value(value)?)
+        let metadata: CliHostMetadataSnapshot = serde_json::from_value(value)?;
+        self.plan_metadata = metadata.plan_metadata.clone();
+        Ok(metadata)
     }
 
     pub fn load_plan_metadata(&mut self, plan_mode: bool) -> Result<PlanMetadata> {
@@ -1999,7 +2002,6 @@ mod tests {
     use crate::{
         host_runtime::RuntimeEvent,
         model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
-        plan::PlanMetadata,
         ports::SecretStore,
     };
     use anyhow::{Result, anyhow};
@@ -2069,19 +2071,7 @@ mod tests {
             ui_locale: None,
         };
 
-        TsBridgeRuntime::new(
-            config,
-            Arc::new(StubSecretStore),
-            workspace_root,
-            vec![],
-            vec![],
-            PlanMetadata {
-                path: PathBuf::new(),
-                exists: false,
-                plan_mode: false,
-                plan_mode_host_instructions: String::new(),
-            },
-        )
+        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root)
         .ok()
     }
 

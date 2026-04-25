@@ -39,19 +39,9 @@ impl RuntimeHandle {
         config: AppConfig,
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
-        enabled_rules: Vec<EnabledRule>,
-        enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
-        plan_metadata: PlanMetadata,
     ) -> Result<Self> {
         Ok(Self {
-            runtime: TsBridgeRuntime::new(
-                config,
-                secret_store,
-                workspace_root,
-                enabled_rules,
-                enabled_skill_catalog,
-                plan_metadata,
-            )?,
+            runtime: TsBridgeRuntime::new(config, secret_store, workspace_root)?,
         })
     }
 

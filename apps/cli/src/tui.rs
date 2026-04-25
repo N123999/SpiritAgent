@@ -132,9 +132,6 @@ impl TuiShell {
             config.clone(),
             Arc::clone(&secret_store),
             workspace_root.clone(),
-            Vec::new(),
-            Vec::new(),
-            plan::current_plan_metadata(),
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
         let cli_metadata = runtime
@@ -234,6 +231,9 @@ impl TuiShell {
     }
 
     pub fn refresh_rules_from_disk(&mut self) -> Result<()> {
+        self.runtime
+            .reload_host_metadata(self.is_plan_mode_active())
+            .context("刷新共享规则 runtime metadata 失败")?;
         let metadata = self
             .runtime
             .load_cli_host_metadata(self.is_plan_mode_active())
@@ -241,12 +241,13 @@ impl TuiShell {
         self.rule_entries = metadata.rule_entries;
         self.skill_entries = metadata.skill_entries;
         self.plan_metadata = metadata.plan_metadata;
-        self.runtime
-            .replace_rules(rules::enabled_rules(&self.rule_entries));
         Ok(())
     }
 
     pub fn refresh_skills_from_disk(&mut self) -> Result<()> {
+        self.runtime
+            .reload_host_metadata(self.is_plan_mode_active())
+            .context("刷新共享技能 runtime metadata 失败")?;
         let metadata = self
             .runtime
             .load_cli_host_metadata(self.is_plan_mode_active())
@@ -254,8 +255,6 @@ impl TuiShell {
         self.rule_entries = metadata.rule_entries;
         self.skill_entries = metadata.skill_entries;
         self.plan_metadata = metadata.plan_metadata;
-        self.runtime
-            .replace_skills_catalog(skills::enabled_skill_catalog(&self.skill_entries));
         if self.current_slash_query().is_some() {
             self.refresh_suggestions();
         }
