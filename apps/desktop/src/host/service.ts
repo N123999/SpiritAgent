@@ -770,7 +770,7 @@ class DesktopHostService {
         toolCallId: ev.toolCallId,
         toolName: ev.toolName,
         phase: 'running',
-        headline: `调用中: ${ev.toolName}`,
+        headline: headlineForStreamingToolPreview(state.messages, ev.toolCallId, ev.toolName),
         detailLines: [],
         argsExcerpt,
       });
@@ -1501,6 +1501,43 @@ function indexForThinkingInsertAfterLastUser(messages: ConversationMessageSnapsh
     }
   }
   return lastUser < 0 ? 0 : lastUser + 1;
+}
+
+/** 末条 user 之后是否已有其它工具卡为「待审批」或「执行中」（不含当前 toolCallId）。 */
+function hasBlockingToolAheadOfSameTurnPreview(
+  messages: ConversationMessageSnapshot[],
+  thisToolCallId: string,
+): boolean {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  for (let i = lastUser + 1; i < messages.length; i += 1) {
+    const m = messages[i];
+    if (m?.role !== 'assistant' || !m.tool) {
+      continue;
+    }
+    if (m.tool.toolCallId === thisToolCallId) {
+      continue;
+    }
+    const p = m.tool.phase;
+    if (p === 'pending-approval' || p === 'running') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function headlineForStreamingToolPreview(
+  messages: ConversationMessageSnapshot[],
+  toolCallId: string,
+  toolName: string,
+): string {
+  return hasBlockingToolAheadOfSameTurnPreview(messages, toolCallId)
+    ? `排队中: ${toolName}`
+    : `调用中: ${toolName}`;
 }
 
 function toolPhaseIsActiveForPendingOrder(phase: ToolBlockSnapshot['phase'] | undefined): boolean {
