@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ChevronDown, ChevronRight, LoaderCircle, PanelLeftClose, PanelLeftOpen, Send } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, LoaderCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,34 +55,6 @@ import type {
   ToolBlockSnapshot,
 } from "@/types";
 
-function toolPhaseVariant(
-  phase: ToolBlockSnapshot["phase"],
-): "secondary" | "outline" | "default" | "destructive" {
-  switch (phase) {
-    case "pending-approval":
-      return "secondary";
-    case "running":
-      return "outline";
-    case "failed":
-      return "destructive";
-    default:
-      return "default";
-  }
-}
-
-function toolPhaseLabel(phase: ToolBlockSnapshot["phase"]): string {
-  switch (phase) {
-    case "pending-approval":
-      return "待审批";
-    case "running":
-      return "进行中";
-    case "failed":
-      return "失败";
-    default:
-      return "完成";
-  }
-}
-
 function mcpStateVariant(
   state: DesktopSnapshot["mcpStatus"]["state"],
 ): "outline" | "secondary" | "default" | "destructive" {
@@ -98,24 +70,14 @@ function mcpStateVariant(
   }
 }
 
-function messageRoleLabel(role: ConversationMessageSnapshot["role"]) {
-  return role === "user" ? "User" : "Assistant";
-}
-
-function messageRoleVariant(
-  role: ConversationMessageSnapshot["role"],
-): "outline" | "secondary" {
-  return role === "user" ? "secondary" : "outline";
-}
-
 /** 复合 DOM id/`key`，避免 `message.id` 碰撞导致子树被 React 错误复用。 */
 function conversationMessageDomId(message: ConversationMessageSnapshot, index: number): string {
   const toolPart = message.tool?.toolCallId ?? (message.tool ? `${message.tool.toolName}:${message.tool.phase}` : "");
   return `message-${index}-${message.id}-${message.pending ? "p" : "m"}-${toolPart}`;
 }
 
-/** 主会话列最大宽度（居中）：大屏约 1024px，小屏占视口宽度 */
-const CONVERSATION_MAX_W = "max-w-[min(90vw,64rem)]";
+/** 主会话列最大宽度（居中） */
+const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
 
 function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
   const hasExpandableContent =
@@ -126,7 +88,7 @@ function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
   if (!hasExpandableContent) {
     return (
       <div className="border-l-2 border-border/40 py-1 pl-2.5">
-        <p className="text-xs font-medium text-foreground/90">{tool.headline}</p>
+        <p className="text-sm font-medium text-foreground/90">{tool.headline}</p>
       </div>
     );
   }
@@ -146,24 +108,24 @@ function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
           ) : (
             <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground" aria-hidden />
           )}
-          <span className="min-w-0 flex-1 text-xs font-medium leading-snug">{tool.headline}</span>
+          <span className="min-w-0 flex-1 text-sm font-medium leading-snug">{tool.headline}</span>
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-2 pb-1 pl-4 pt-0.5">
         {tool.detailLines.length > 0 ? (
-          <ul className="list-disc space-y-0.5 pl-3.5 text-[11px] leading-relaxed text-muted-foreground">
+          <ul className="list-disc space-y-0.5 pl-3.5 text-xs leading-relaxed text-muted-foreground">
             {tool.detailLines.map((line, i) => (
               <li key={`${i}:${line}`}>{line}</li>
             ))}
           </ul>
         ) : null}
         {tool.argsExcerpt ? (
-          <pre className="overflow-x-auto rounded-md border border-border/30 bg-muted/25 p-2 font-mono text-[11px] leading-relaxed">
+          <pre className="overflow-x-auto rounded-md border border-border/30 bg-muted/25 p-2 font-mono text-xs leading-relaxed">
             {tool.argsExcerpt}
           </pre>
         ) : null}
         {tool.outputExcerpt ? (
-          <pre className="overflow-x-auto rounded-md border border-border/30 bg-muted/25 p-2 font-mono text-[11px] leading-relaxed">
+          <pre className="overflow-x-auto rounded-md border border-border/30 bg-muted/25 p-2 font-mono text-xs leading-relaxed">
             {tool.outputExcerpt}
           </pre>
         ) : null}
@@ -179,55 +141,57 @@ function MessageCard({
   message: ConversationMessageSnapshot;
   listIndex: number;
 }) {
-  const badgeSm = "h-4 gap-0.5 rounded-md px-1.5 py-0 text-[10px] font-medium leading-none";
+  const isUser = message.role === "user";
+  const userBubble =
+    "rounded-2xl rounded-br-md border border-border/50 bg-muted px-3 py-2.5 shadow-sm";
 
   return (
     <div
       id={conversationMessageDomId(message, listIndex)}
-      className="scroll-mt-4 space-y-2 border-b border-border/15 pb-3 last:border-b-0 last:pb-0"
+      className={cn("scroll-mt-4 flex w-full pb-3 last:pb-0", isUser ? "justify-end" : "justify-start")}
     >
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant={messageRoleVariant(message.role)} className={badgeSm}>
-          {messageRoleLabel(message.role)}
-        </Badge>
-        {message.pending ? (
-          <Badge variant="secondary" className={badgeSm}>
-            Streaming
-          </Badge>
-        ) : null}
-        {message.tool ? (
-          <Badge variant={toolPhaseVariant(message.tool.phase)} className={badgeSm}>
-            {message.tool.toolName} · {toolPhaseLabel(message.tool.phase)}
-          </Badge>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        {message.aux?.thinking ? (
+      <div
+        className={cn(
+          "min-w-0 space-y-2",
+          isUser ? "max-w-[min(72%,22rem)]" : "w-full",
+        )}
+      >
+        {!isUser && message.aux?.thinking ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
-            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Thinking
             </p>
-            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-[11px] leading-relaxed text-muted-foreground">
+            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
               {message.aux.thinking}
             </pre>
           </div>
         ) : null}
-        {message.aux?.compaction ? (
+        {!isUser && message.aux?.compaction ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
-            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Compaction
             </p>
-            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-[11px] leading-relaxed text-muted-foreground">
+            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
               {message.aux.compaction}
             </pre>
           </div>
         ) : null}
-        {message.content.trim() ? (
+        {isUser && message.content.trim() ? (
+          <pre
+            className={cn(
+              "whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground",
+              userBubble,
+            )}
+          >
+            {message.content}
+          </pre>
+        ) : null}
+        {!isUser && message.content.trim() ? (
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/95">
             {message.content}
           </pre>
         ) : null}
-        {message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
+        {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
       </div>
     </div>
   );
@@ -521,7 +485,7 @@ export default function App() {
               onRemoveModel={runtime.removeModel}
             />
           ) : (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col text-xs">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col text-sm">
               <ScrollArea
                 className="min-h-0 flex-1"
                 type="hover"
@@ -534,13 +498,18 @@ export default function App() {
                       CONVERSATION_MAX_W,
                     )}
                   >
-                    <p className="text-center text-base font-normal tracking-tight text-foreground">
+                    <p className="text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
                       {"Let's build"}
                     </p>
                   </div>
                 ) : (
-                  <div className={cn("mx-auto w-full overflow-x-hidden px-3 py-2", CONVERSATION_MAX_W)}>
-                    <div className="space-y-1">
+                  <div
+                    className={cn(
+                      "mx-auto w-full overflow-x-hidden px-3 pb-2 pt-6 sm:pt-7",
+                      CONVERSATION_MAX_W,
+                    )}
+                  >
+                    <div className="space-y-3">
                       {messages.map((message, index) => (
                         <MessageCard
                           key={conversationMessageDomId(message, index)}
@@ -553,26 +522,19 @@ export default function App() {
                 )}
               </ScrollArea>
 
-              <div
-                className={cn(
-                  "shrink-0 border-t py-2",
-                  useMicaBackdrop
-                    ? "border-border/15"
-                    : "border-border/30 dark:border-white/10",
-                )}
-              >
+              <div className="shrink-0 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
                 <div className={cn("mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
                 {runtime.runtimeError ? (
-                  <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-[11px] leading-relaxed text-destructive">
+                  <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
                     {runtime.runtimeError}
                   </div>
                 ) : null}
 
                 {pendingApproval ? (
-                  <Card className="border-border/50 bg-muted/15 text-xs shadow-none">
+                  <Card className="border-border/50 bg-muted/15 text-sm shadow-none">
                     <CardHeader className="space-y-1 px-3 py-2">
-                      <CardTitle className="text-sm leading-tight">{pendingApproval.toolName}</CardTitle>
-                      <CardDescription className="text-[11px] leading-relaxed">
+                      <CardTitle className="text-base leading-tight">{pendingApproval.toolName}</CardTitle>
+                      <CardDescription className="text-xs leading-relaxed">
                         {pendingApproval.prompt}
                       </CardDescription>
                     </CardHeader>
@@ -581,11 +543,11 @@ export default function App() {
                         value={runtime.approvalMessage}
                         onChange={(event) => runtime.setApprovalMessage(event.target.value)}
                         placeholder="输入审批回复（如 y / n / t）"
-                        className="h-8 text-xs"
+                        className="h-8 text-sm"
                       />
                       <Button
                         size="sm"
-                        className="h-8 shrink-0 text-xs"
+                        className="h-8 shrink-0 text-sm"
                         onClick={() => void runtime.submitApproval()}
                         disabled={runtime.busyAction === "approve"}
                       >
@@ -596,12 +558,12 @@ export default function App() {
                 ) : null}
 
                 <div className="grid gap-1.5">
-                  <div className="relative overflow-hidden rounded-lg border border-border/50 bg-muted/15">
+                  <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-muted/25 shadow-sm transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12">
                     <Textarea
                       value={runtime.composer}
                       onChange={(event) => runtime.setComposer(event.target.value)}
                       placeholder="输入消息…"
-                      className="min-h-[5.25rem] w-full resize-y border-0 bg-transparent px-2.5 pb-10 pt-2 text-xs leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:min-h-[6rem]"
+                      className="min-h-[5.25rem] w-full resize-y rounded-none border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none md:min-h-[6rem]"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                           e.preventDefault();
@@ -615,14 +577,15 @@ export default function App() {
                         }
                       }}
                     />
-                    <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-1.5 px-2 py-1">
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-3 pb-2 pt-10">
+                      <div className="pointer-events-auto flex w-full max-w-full items-center justify-between gap-2">
                       {models.length > 0 ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
                               aria-label="选择模型"
-                              className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-[11px] font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/25 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                              className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                             >
                               <span
                                 className="min-w-0 flex-1 truncate"
@@ -659,12 +622,11 @@ export default function App() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
-                        <span className="px-1 text-[11px] text-muted-foreground">无可用模型</span>
+                        <span className="px-1 text-xs text-muted-foreground">无可用模型</span>
                       )}
                       <Button
                         type="button"
-                        size="icon-sm"
-                        className="h-7 w-7 shrink-0 rounded-lg shadow-sm [&_svg]:size-3.5"
+                        className="size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5"
                         onClick={() => void runtime.sendMessage()}
                         disabled={
                           !runtime.summary.canSend ||
@@ -676,13 +638,14 @@ export default function App() {
                         {runtime.busyAction === "send" ? (
                           <LoaderCircle className="size-3.5 animate-spin" />
                         ) : (
-                          <Send className="size-3.5" />
+                          <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
                         )}
                       </Button>
+                      </div>
                     </div>
                   </div>
                   {snapshot?.conversation.pendingQuestions ? (
-                    <p className="px-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                    <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
                       请先完成上方问卷
                     </p>
                   ) : null}
