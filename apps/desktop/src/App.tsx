@@ -158,7 +158,7 @@ function MessageCard({
       >
         {!isUser && message.aux?.thinking ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground">
               Thinking
             </p>
             <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
@@ -168,7 +168,7 @@ function MessageCard({
         ) : null}
         {!isUser && message.aux?.compaction ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground">
               Compaction
             </p>
             <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
