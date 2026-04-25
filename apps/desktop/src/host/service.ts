@@ -277,7 +277,18 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       const runtime = this.requireRuntime();
-      await runtime.continuePendingApproval(parseApprovalDecision(message));
+      const decision = parseApprovalDecision(message);
+      const state = this.requireState();
+      if (decision.kind === 'guidance' && decision.userMessage.trim()) {
+        state.messages.push({
+          id: this.allocateMessageId(),
+          role: 'user',
+          content: decision.userMessage.trim(),
+          pending: false,
+        });
+        this.resetStreamingPlacementState(false);
+      }
+      await runtime.continuePendingApproval(decision);
       await runtime.poll();
       this.applyRuntimeHostEvents(runtime.drainEvents());
       this.consumeCompletedTurnResult();
@@ -774,20 +785,33 @@ class DesktopHostService {
   }
 
   /**
-   * 将 `runtime.history()` 里「当前用户轮次、首条 tool 之前」的助手正文同步到 `state.messages`，
-   * 避免仅有工具卡片行（content 为空）时丢失流式已输出的前缀（如「OK」）。
+   * 将 `runtime.history()` 中的助手正文同步到 `state.messages`（首轮：首条 tool 前前缀；待审批/问卷：
+   * 用 `lastAssistantPlainTextInHistory` 兜底，因 OpenAI 路径下 `history()` 常不含 `role: tool`）。
    */
   private syncAssistantPrefixFromHistoryBeforeToolRow(): void {
     if (!this.runtime) {
       return;
     }
     const pendingTrim = this.runtime.pendingAssistantText().trim();
-    if (pendingTrim) {
+    const awaitingInteractive =
+      Boolean(this.runtime.currentPendingApproval()) ||
+      Boolean(this.runtime.currentPendingQuestions());
+
+    if (pendingTrim && !awaitingInteractive) {
       return;
     }
 
     const hist = this.runtime.history();
-    const prefix = assistantPrefixBeforeFirstToolInCurrentTurn(hist);
+    const prefixFromBeforeFirst = assistantPrefixBeforeFirstToolInCurrentTurn(hist);
+    const prefixFromLastAssistant = lastAssistantPlainTextInHistory(hist);
+    const prefix = (
+      awaitingInteractive && pendingTrim
+        ? pendingTrim
+        : awaitingInteractive
+          ? (prefixFromLastAssistant ?? prefixFromBeforeFirst)
+          : prefixFromBeforeFirst
+    )
+      ?.trim() ?? '';
     const state = this.requireState();
     const n = state.messages.length;
     const last = n > 0 ? state.messages[n - 1] : undefined;
@@ -804,6 +828,39 @@ class DesktopHostService {
       (m) => m.role === 'assistant' && m.content === prefix && !m.tool,
     );
     if (hasPlainPrefix) {
+      return;
+    }
+
+    if (awaitingInteractive) {
+      const approval = this.runtime.currentPendingApproval();
+      const questions = this.runtime.currentPendingQuestions();
+      const key = approval
+        ? toolMessageKey(approval)
+        : questions
+          ? toolMessageKey(questions)
+          : undefined;
+      if (key) {
+        const idx = state.messages.findIndex(
+          (m) => m.role === 'assistant' && m.tool?.toolCallId === key,
+        );
+        if (idx >= 0) {
+          const before = idx > 0 ? state.messages[idx - 1] : undefined;
+          if (
+            before?.role === 'assistant' &&
+            !before.tool &&
+            before.content.trim() === prefix
+          ) {
+            return;
+          }
+          state.messages.splice(idx, 0, {
+            id: this.allocateMessageId(),
+            role: 'assistant',
+            content: prefix,
+            pending: false,
+          });
+          this.logMessageOrderPrefixSync(`splice-before-approval@${idx}`, state);
+        }
+      }
       return;
     }
 
@@ -968,15 +1025,12 @@ class DesktopHostService {
     if (insertAt === undefined) {
       insertAt = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
     }
-    let placed: string;
-    if (insertAt !== undefined) {
-      const clamped = Math.max(0, Math.min(insertAt, state.messages.length));
-      state.messages.splice(clamped, 0, msg);
-      placed = `splice@${clamped}`;
-    } else {
-      state.messages.push(msg);
-      placed = 'push-end';
+    if (insertAt === undefined) {
+      insertAt = indexForThinkingInsertAfterLastUser(state.messages);
     }
+    const clamped = Math.max(0, Math.min(insertAt, state.messages.length));
+    state.messages.splice(clamped, 0, msg);
+    const placed = `splice@${clamped}`;
     this.logMessageOrderThinkingFinalized(placed, state.messages.length, text);
     this.latestPendingAssistantAux = stripPendingThinkingMatchingFinalized(
       this.latestPendingAssistantAux,
@@ -1261,6 +1315,19 @@ function truncateOneLineForDebug(s: string, max: number): string {
   return `${t.slice(0, max)}…`;
 }
 
+/** 自 history 尾部向前找**最后一条**非空 `assistant` 正文（OpenAI 路径下 `historyStore` 常无 `role: tool`，需用此作待审批时的兜底）。 */
+function lastAssistantPlainTextInHistory(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+): string | undefined {
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    const m = hist[i];
+    if (m?.role === 'assistant' && m.content.trim()) {
+      return m.content.trim();
+    }
+  }
+  return undefined;
+}
+
 /**
  * 自「最后一条 user」起至首条 `tool` 前，取**第一个**非空 assistant 正文。
  * OpenAI 路径下 tool 结果通常不在 `history()` 的 LlmMessage 里，若仍用「最后一个」assistant
@@ -1406,7 +1473,7 @@ function stripPendingThinkingMatchingFinalized(
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
-/** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为 push 末尾）。 */
+/** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为插在「最后一条 user」之后）。 */
 function indexForThinkingInsertBeforeFirstToolAfterLastUser(
   messages: ConversationMessageSnapshot[],
 ): number | undefined {
@@ -1423,6 +1490,17 @@ function indexForThinkingInsertBeforeFirstToolAfterLastUser(
     }
   }
   return undefined;
+}
+
+/** 与 `historyStore` 中最后一条 user 对齐：在其后插入思考，避免审批指导后尚无新工具行时误用 `push` 落到整段末尾。 */
+function indexForThinkingInsertAfterLastUser(messages: ConversationMessageSnapshot[]): number {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  return lastUser < 0 ? 0 : lastUser + 1;
 }
 
 function toolPhaseIsActiveForPendingOrder(phase: ToolBlockSnapshot['phase'] | undefined): boolean {
