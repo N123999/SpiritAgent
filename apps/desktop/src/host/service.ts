@@ -133,6 +133,8 @@ class DesktopHostService {
   private activeApiKeyConfigured = false;
   private modelKeyPresence: Record<string, boolean> = {};
   private latestPendingAssistantAux: MessageAuxSnapshot | undefined;
+  private pendingAssistantMessageId: number | undefined;
+  private lastSettledAssistantMessageId: number | undefined;
   /** 思考段 finalize 去重、插入锚点与 apply 批次（见 `applyRuntimeHostEvents` / `appendAssistantThinkingSegment`）。 */
   private lastFinalizedThinkingSegment = '';
   private streamAssistantThinkingAnchor: number | undefined;
@@ -452,6 +454,7 @@ description: ${frontmatterDescription}
       await runtime.poll();
       this.applyRuntimeHostEvents(runtime.drainEvents());
     } catch (error) {
+      this.handleMessageRemoved(state.messages.length - 1, userMessage.id, 'send-user-rollback');
       state.messages.pop();
       throw error;
     }
@@ -791,18 +794,17 @@ description: ${frontmatterDescription}
   }
 
   private buildSnapshot(): DesktopSnapshot {
-    this.pruneEmptyAssistantMessages('buildSnapshot');
     const state = this.requireState();
     const pendingApproval = this.runtime?.currentPendingApproval();
     const pendingQuestions = this.runtime?.currentPendingQuestions();
     const pendingAux = this.runtime?.pendingAuxState();
     if (pendingAux) {
-      this.latestPendingAssistantAux = mergeAux(
-        this.latestPendingAssistantAux,
+      this.updatePendingAssistantAux(
         pendingAux.kind,
         pendingAux.detailText ?? pendingAux.statusText,
       );
     }
+    this.pruneEmptyAssistantMessages('buildSnapshot');
 
     return {
       workspaceRoot: state.workspaceRoot,
@@ -893,50 +895,10 @@ description: ${frontmatterDescription}
 
   private messagesWithPendingAssistant(): ConversationMessageSnapshot[] {
     const state = this.requireState();
-    const messages = state.messages.flatMap((message) => {
+    return state.messages.flatMap((message) => {
       const snapshot = this.messageSnapshot(message);
-      return snapshot ? [snapshot] : [];
+      return snapshot && !shouldHideEmptyPendingAssistantSnapshot(snapshot) ? [snapshot] : [];
     });
-    const pendingMessage = this.buildPendingAssistantMessage();
-    if (!pendingMessage) {
-      return messages;
-    }
-    /** 有 running/待审批工具则插在首条之前；否则接在末尾（避免挂起思考盖住已完成工具卡）。 */
-    const beforeFirstRunning = indexForPendingInsertBeforeFirstActiveToolAfterLastUser(messages);
-    if (beforeFirstRunning === undefined) {
-      messages.push(pendingMessage);
-    } else {
-      messages.splice(beforeFirstRunning, 0, pendingMessage);
-    }
-    return messages;
-  }
-
-  private buildPendingAssistantMessage(): ConversationMessageSnapshot | undefined {
-    if (!this.runtime?.isBusy()) {
-      return undefined;
-    }
-
-    const pendingText = this.runtime.pendingAssistantText();
-    const pendingAux = this.runtime.pendingAuxState();
-    const aux = pendingAux
-      ? mapPendingAuxToMessageAux(pendingAux.kind, pendingAux.detailText ?? pendingAux.statusText)
-      : this.latestPendingAssistantAux;
-
-    if (!pendingText && !aux) {
-      return undefined;
-    }
-
-    if (aux) {
-      this.latestPendingAssistantAux = aux;
-    }
-
-    return {
-      id: -1,
-      role: 'assistant',
-      content: pendingText,
-      ...(aux ? { aux } : {}),
-      pending: true,
-    };
   }
 
   private consumeCompletedTurnResult(): void {
@@ -953,12 +915,20 @@ description: ${frontmatterDescription}
     switch (result.kind) {
       case 'completed':
         if (result.assistantText.trim()) {
-          this.appendAssistantMessage(result.assistantText, this.takeLatestPendingAux());
+          const aux = this.takeLatestPendingAux();
+          if (!this.materializeExistingCompletedAssistantMessage(result.assistantText, aux)) {
+            this.appendAssistantMessage(result.assistantText, aux);
+          }
         }
         this.lastRuntimeError = '';
         break;
       case 'failed':
-        this.appendAssistantMessage(result.error, this.takeLatestPendingAux());
+        {
+          const aux = this.takeLatestPendingAux();
+          if (!this.materializeExistingCompletedAssistantMessage(result.error, aux)) {
+            this.appendAssistantMessage(result.error, aux);
+          }
+        }
         this.lastRuntimeError = result.error;
         break;
       case 'requires-approval':
@@ -1002,11 +972,38 @@ description: ${frontmatterDescription}
     for (const ev of events) {
       if (ev.kind === 'begin-assistant-response') {
         const at = state.messages.length;
+        this.pendingAssistantMessageId = undefined;
+        this.latestPendingAssistantAux = undefined;
         this.streamAssistantThinkingAnchor =
           this.streamAssistantThinkingAnchor === undefined
             ? at
             : Math.min(this.streamAssistantThinkingAnchor, at);
         this.streamAssistantAnchorSetInApplyBatchId = batchId;
+        this.ensurePendingAssistantMessage();
+        continue;
+      }
+      if (ev.kind === 'update-pending-assistant-thinking') {
+        this.updatePendingAssistantAux('thinking', ev.text);
+        continue;
+      }
+      if (ev.kind === 'update-pending-assistant-compaction') {
+        this.updatePendingAssistantAux('compressing', ev.text);
+        continue;
+      }
+      if (ev.kind === 'assistant-chunk') {
+        this.appendPendingAssistantChunk(ev.text);
+        continue;
+      }
+      if (ev.kind === 'replace-pending-assistant') {
+        this.replacePendingAssistantText(ev.text);
+        continue;
+      }
+      if (ev.kind === 'assistant-response-completed') {
+        this.completePendingAssistantMessage();
+        continue;
+      }
+      if (ev.kind === 'remove-pending-assistant') {
+        this.removePendingAssistantMessage();
         continue;
       }
       if (ev.kind === 'assistant-thinking-segment-finalized') {
@@ -1064,17 +1061,21 @@ description: ${frontmatterDescription}
     }
 
     const hist = this.runtime.history();
+    const state = this.requireState();
+    const prefixFromUnsyncedLatest = latestUnsyncedAssistantTextInCurrentTurn(
+      hist,
+      state.messages,
+    );
     const prefixFromBeforeFirst = assistantPrefixBeforeFirstToolInCurrentTurn(hist);
     const prefixFromLastAssistant = lastAssistantPlainTextInHistory(hist);
     const prefix = (
       awaitingInteractive && pendingTrim
         ? pendingTrim
         : awaitingInteractive
-          ? (prefixFromLastAssistant ?? prefixFromBeforeFirst)
-          : prefixFromBeforeFirst
+          ? (prefixFromUnsyncedLatest ?? prefixFromLastAssistant ?? prefixFromBeforeFirst)
+          : (prefixFromUnsyncedLatest ?? prefixFromBeforeFirst)
     )
       ?.trim() ?? '';
-    const state = this.requireState();
     const n = state.messages.length;
     const last = n > 0 ? state.messages[n - 1] : undefined;
 
@@ -1090,6 +1091,34 @@ description: ${frontmatterDescription}
       (m) => m.role === 'assistant' && m.content === prefix && !m.tool,
     );
     if (hasPlainPrefix) {
+      return;
+    }
+
+    const isLaterUnsyncedPrefix =
+      !awaitingInteractive &&
+      prefixFromUnsyncedLatest !== undefined &&
+      prefix === prefixFromUnsyncedLatest &&
+      prefixFromUnsyncedLatest !== prefixFromBeforeFirst;
+
+    if (isLaterUnsyncedPrefix) {
+      const anchor = this.streamAssistantThinkingAnchor ?? state.messages.length;
+      const insertAt = Math.max(0, Math.min(anchor, state.messages.length));
+      const before = insertAt > 0 ? state.messages[insertAt - 1] : undefined;
+      if (
+        before?.role === 'assistant' &&
+        !before.tool &&
+        before.content.trim() === prefix
+      ) {
+        return;
+      }
+      this.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
+      state.messages.splice(insertAt, 0, {
+        id: this.allocateMessageId(),
+        role: 'assistant',
+        content: prefix,
+        pending: false,
+      });
+      this.logMessageOrderPrefixSync(`splice-at-anchor@${insertAt}`, state);
       return;
     }
 
@@ -1114,6 +1143,7 @@ description: ${frontmatterDescription}
           ) {
             return;
           }
+          this.shiftStreamAssistantThinkingAnchorForInsertion(idx);
           state.messages.splice(idx, 0, {
             id: this.allocateMessageId(),
             role: 'assistant',
@@ -1146,6 +1176,7 @@ description: ${frontmatterDescription}
       if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
         return;
       }
+      this.shiftStreamAssistantThinkingAnchorForInsertion(firstToolIdx);
       state.messages.splice(firstToolIdx, 0, {
         id: this.allocateMessageId(),
         role: 'assistant',
@@ -1163,6 +1194,7 @@ description: ${frontmatterDescription}
         if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
           return;
         }
+        this.shiftStreamAssistantThinkingAnchorForInsertion(firstToolIdx);
         state.messages.splice(firstToolIdx, 0, {
           id: this.allocateMessageId(),
           role: 'assistant',
@@ -1185,6 +1217,7 @@ description: ${frontmatterDescription}
         if (beforeTool?.role === 'assistant' && beforeTool.content === prefix && !beforeTool.tool) {
           return;
         }
+        this.shiftStreamAssistantThinkingAnchorForInsertion(toolIdx);
         state.messages.splice(toolIdx, 0, {
           id: this.allocateMessageId(),
           role: 'assistant',
@@ -1195,6 +1228,7 @@ description: ${frontmatterDescription}
         return;
       }
       if (!last!.content.startsWith(prefix)) {
+        this.shiftStreamAssistantThinkingAnchorForInsertion(n - 1);
         state.messages.splice(n - 1, 0, {
           id: this.allocateMessageId(),
           role: 'assistant',
@@ -1267,12 +1301,19 @@ description: ${frontmatterDescription}
 
   private appendAssistantMessage(content: string, aux?: MessageAuxSnapshot): void {
     const state = this.requireState();
-    state.messages.push({
+    const finalAux = this.normalizeCompletedAssistantAux(aux);
+    const message: ConversationMessageSnapshot = {
       id: this.allocateMessageId(),
       role: 'assistant',
       content,
-      ...(aux ? { aux } : {}),
+      ...(finalAux ? { aux: finalAux } : {}),
       pending: false,
+    };
+    state.messages.push(message);
+    this.logAssistantAuxDecision('append-assistant', {
+      messageId: message.id,
+      aux: message.aux,
+      content,
     });
   }
 
@@ -1280,6 +1321,7 @@ description: ${frontmatterDescription}
   private appendAssistantThinkingSegment(text: string): void {
     this.lastFinalizedThinkingSegment = text.trim();
     const state = this.requireState();
+    this.stripFinalizedThinkingFromAssistantAnchors(text);
     const msg: ConversationMessageSnapshot = {
       id: this.allocateMessageId(),
       role: 'assistant',
@@ -1303,6 +1345,265 @@ description: ${frontmatterDescription}
       this.latestPendingAssistantAux,
       text,
     );
+  }
+
+  private findPendingAssistantMessageIndex(): number | undefined {
+    const state = this.requireState();
+    if (this.pendingAssistantMessageId !== undefined) {
+      const index = state.messages.findIndex(
+        (message) =>
+          message.id === this.pendingAssistantMessageId &&
+          message.role === 'assistant' &&
+          message.pending &&
+          !message.tool,
+      );
+      if (index >= 0) {
+        return index;
+      }
+      this.pendingAssistantMessageId = undefined;
+    }
+
+    const fallbackIndex = state.messages.findIndex(
+      (message) => message.role === 'assistant' && message.pending && !message.tool,
+    );
+    if (fallbackIndex >= 0) {
+      this.pendingAssistantMessageId = state.messages[fallbackIndex]!.id;
+      return fallbackIndex;
+    }
+    return undefined;
+  }
+
+  private ensurePendingAssistantMessage(): ConversationMessageSnapshot {
+    const state = this.requireState();
+    const existingIndex = this.findPendingAssistantMessageIndex();
+    if (existingIndex !== undefined) {
+      return state.messages[existingIndex]!;
+    }
+
+    const message: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'assistant',
+      content: '',
+      ...(this.latestPendingAssistantAux ? { aux: { ...this.latestPendingAssistantAux } } : {}),
+      pending: true,
+    };
+    state.messages.push(message);
+    this.pendingAssistantMessageId = message.id;
+    return message;
+  }
+
+  private updatePendingAssistantAux(
+    kind: 'thinking' | 'compressing',
+    text: string,
+  ): void {
+    const normalized = text.trim();
+    const existingIndex = this.findPendingAssistantMessageIndex();
+    const message =
+      existingIndex !== undefined
+        ? this.requireState().messages[existingIndex]!
+        : normalized && this.runtime?.isBusy()
+          ? this.ensurePendingAssistantMessage()
+          : undefined;
+    const currentAux = message?.aux ?? this.latestPendingAssistantAux;
+    const nextAux = normalizeMessageAuxSnapshot({
+      ...(kind === 'thinking'
+        ? normalized
+          ? { thinking: text }
+          : {}
+        : currentAux?.thinking
+          ? { thinking: currentAux.thinking }
+          : {}),
+      ...(kind === 'compressing'
+        ? normalized
+          ? { compaction: text }
+          : {}
+        : currentAux?.compaction
+          ? { compaction: currentAux.compaction }
+          : {}),
+    });
+
+    if (message) {
+      if (nextAux) {
+        message.aux = nextAux;
+      } else {
+        delete message.aux;
+      }
+    }
+
+    if (nextAux) {
+      this.latestPendingAssistantAux = nextAux;
+    } else {
+      this.latestPendingAssistantAux = undefined;
+    }
+  }
+
+  private appendPendingAssistantChunk(chunk: string): void {
+    const message = this.ensurePendingAssistantMessage();
+    message.content += chunk;
+  }
+
+  private replacePendingAssistantText(text: string): void {
+    const message = this.ensurePendingAssistantMessage();
+    message.content = text;
+  }
+
+  private completePendingAssistantMessage(): void {
+    const index = this.findPendingAssistantMessageIndex();
+    if (index === undefined) {
+      this.pendingAssistantMessageId = undefined;
+      return;
+    }
+    const message = this.requireState().messages[index]!;
+    message.pending = false;
+    this.lastSettledAssistantMessageId = message.id;
+    this.pendingAssistantMessageId = undefined;
+    this.latestPendingAssistantAux = undefined;
+  }
+
+  private removePendingAssistantMessage(): void {
+    const index = this.findPendingAssistantMessageIndex();
+    if (index === undefined) {
+      this.pendingAssistantMessageId = undefined;
+      this.latestPendingAssistantAux = undefined;
+      return;
+    }
+
+    const state = this.requireState();
+    const message = state.messages[index]!;
+    const aux = normalizeMessageAuxSnapshot(message.aux);
+    if (!message.content.trim() && !aux) {
+      this.handleMessageRemoved(index, message.id, 'remove-pending-assistant');
+      state.messages.splice(index, 1);
+    } else {
+      message.pending = false;
+      if (aux) {
+        message.aux = aux;
+      } else {
+        delete message.aux;
+      }
+      this.lastSettledAssistantMessageId = message.id;
+    }
+    this.pendingAssistantMessageId = undefined;
+    this.latestPendingAssistantAux = undefined;
+  }
+
+  private materializeExistingCompletedAssistantMessage(
+    content: string,
+    aux?: MessageAuxSnapshot,
+  ): boolean {
+    const state = this.requireState();
+    const normalized = content.trim();
+    const finalAux = this.normalizeCompletedAssistantAux(aux);
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index]!;
+      if (message.role !== 'assistant' || message.tool) {
+        continue;
+      }
+      if (message.pending) {
+        continue;
+      }
+      if (message.content.trim() !== normalized) {
+        continue;
+      }
+      if (finalAux) {
+        message.aux = normalizeMessageAuxSnapshot({
+          ...(message.aux?.thinking ? { thinking: message.aux.thinking } : {}),
+          ...(message.aux?.compaction ? { compaction: message.aux.compaction } : {}),
+          ...(finalAux.thinking ? { thinking: finalAux.thinking } : {}),
+          ...(finalAux.compaction ? { compaction: finalAux.compaction } : {}),
+        });
+      }
+      if (hasStandaloneThinkingMessageInCurrentTurn(state.messages)) {
+        message.aux = stripThinkingFromAux(message.aux);
+        if (!message.aux) {
+          delete message.aux;
+        }
+      }
+      this.logAssistantAuxDecision('materialize-completed', {
+        messageId: message.id,
+        aux: message.aux,
+        content,
+      });
+      return true;
+    }
+    return false;
+  }
+
+  private normalizeCompletedAssistantAux(aux?: MessageAuxSnapshot): MessageAuxSnapshot | undefined {
+    const normalized = normalizeMessageAuxSnapshot(aux);
+    if (!normalized?.thinking) {
+      return normalized;
+    }
+    const state = this.requireState();
+    if (!hasStandaloneThinkingMessageInCurrentTurn(state.messages)) {
+      return normalized;
+    }
+    const stripped = stripThinkingFromAux(normalized);
+    this.logAssistantAuxDecision('strip-completed-thinking-aux', {
+      aux: normalized,
+      extra: stripped ? `kept=${describeAuxForDebug(stripped)}` : 'kept=none',
+    });
+    return stripped;
+  }
+
+  private findLastSettledAssistantMessageIndex(): number | undefined {
+    if (this.lastSettledAssistantMessageId === undefined) {
+      return undefined;
+    }
+
+    const state = this.requireState();
+    const index = state.messages.findIndex(
+      (message) =>
+        message.id === this.lastSettledAssistantMessageId &&
+        message.role === 'assistant' &&
+        !message.tool &&
+        !message.pending,
+    );
+    if (index < 0 || !messageIndexIsInCurrentTurn(state.messages, index)) {
+      this.lastSettledAssistantMessageId = undefined;
+      return undefined;
+    }
+    return index;
+  }
+
+  private stripFinalizedThinkingFromAssistantAnchors(text: string): void {
+    const state = this.requireState();
+    const targets: Array<{ kind: 'pending' | 'settled'; index: number | undefined }> = [
+      { kind: 'pending', index: this.findPendingAssistantMessageIndex() },
+      { kind: 'settled', index: this.findLastSettledAssistantMessageIndex() },
+    ];
+
+    for (const target of targets) {
+      if (target.index === undefined) {
+        continue;
+      }
+      const message = state.messages[target.index];
+      if (!message) {
+        continue;
+      }
+      const beforeAux = normalizeMessageAuxSnapshot(message.aux);
+      const afterAux = stripPendingThinkingMatchingFinalized(beforeAux, text);
+      const changed = describeOptionalAuxForDebug(beforeAux) !== describeOptionalAuxForDebug(afterAux);
+      if (!changed) {
+        continue;
+      }
+      if (afterAux) {
+        message.aux = afterAux;
+      } else {
+        delete message.aux;
+      }
+      this.logAssistantAuxDecision('strip-finalized-thinking-anchor', {
+        messageId: message.id,
+        aux: beforeAux,
+        finalizedThinking: text,
+        extra: `target=${target.kind} next=${describeOptionalAuxForDebug(afterAux)}`,
+      });
+      return;
+    }
+
+    this.logAssistantAuxDecision('strip-finalized-thinking-miss', {
+      finalizedThinking: text,
+    });
   }
 
   private ensureActiveSession(seedText: string): void {
@@ -1530,13 +1831,15 @@ description: ${frontmatterDescription}
   private pruneEmptyAssistantMessages(reason: string): void {
     const state = this.requireState();
     const removedIds: number[] = [];
-    state.messages = state.messages.filter((message) => {
+    state.messages = state.messages.filter((message, index) => {
       const drop = shouldDropEmptyAssistantMessage(
         message,
         normalizeToolBlockSnapshot(message.tool),
         normalizeMessageAuxSnapshot(message.aux),
       );
       if (drop) {
+        const currentIndex = index - removedIds.length;
+        this.handleMessageRemoved(currentIndex, message.id, `prune:${reason}`);
         removedIds.push(message.id);
       }
       return !drop;
@@ -1546,6 +1849,45 @@ description: ${frontmatterDescription}
         `[desktop-host][messages] dropped ${removedIds.length} empty assistant message(s) during ${reason}: ${removedIds.join(', ')}`,
       );
     }
+  }
+
+  private shiftStreamAssistantThinkingAnchorForInsertion(insertAt: number): void {
+    if (
+      this.streamAssistantThinkingAnchor !== undefined &&
+      insertAt <= this.streamAssistantThinkingAnchor
+    ) {
+      this.streamAssistantThinkingAnchor += 1;
+    }
+  }
+
+  private shiftStreamAssistantThinkingAnchorForRemoval(removeAt: number, removeCount = 1): void {
+    if (this.streamAssistantThinkingAnchor === undefined || removeCount <= 0) {
+      return;
+    }
+
+    const anchor = this.streamAssistantThinkingAnchor;
+    if (removeAt + removeCount <= anchor) {
+      this.streamAssistantThinkingAnchor = anchor - removeCount;
+      return;
+    }
+
+    if (removeAt < anchor) {
+      this.streamAssistantThinkingAnchor = removeAt;
+    }
+  }
+
+  private handleMessageRemoved(messageIndex: number, messageId: number, reason: string): void {
+    this.shiftStreamAssistantThinkingAnchorForRemoval(messageIndex);
+    if (this.pendingAssistantMessageId === messageId) {
+      this.pendingAssistantMessageId = undefined;
+    }
+    if (this.lastSettledAssistantMessageId === messageId) {
+      this.lastSettledAssistantMessageId = undefined;
+    }
+    this.logAssistantAuxDecision('remove-message-anchor-shift', {
+      messageId,
+      extra: `reason=${reason} nextAnchor=${this.streamAssistantThinkingAnchor ?? '∅'}`,
+    });
   }
 
   private canRewindMessage(message: ConversationMessageSnapshot): boolean {
@@ -1651,6 +1993,8 @@ description: ${frontmatterDescription}
    * @param full `false`：仅清思考插入锚点（新用户轮次，避免误插旧工具链）。`true`：另清 finalize 去重与 apply 批次计数（重置会话 / 打开存档）。
    */
   private resetStreamingPlacementState(full: boolean): void {
+    this.pendingAssistantMessageId = undefined;
+    this.lastSettledAssistantMessageId = undefined;
     if (!full) {
       this.streamAssistantThinkingAnchor = undefined;
       return;
@@ -1666,6 +2010,9 @@ description: ${frontmatterDescription}
     const current = this.latestPendingAssistantAux;
     this.latestPendingAssistantAux = undefined;
     if (!current) {
+      this.logAssistantAuxDecision('take-pending-aux-none', {
+        finalizedThinking: this.lastFinalizedThinkingSegment,
+      });
       this.lastFinalizedThinkingSegment = '';
       return undefined;
     }
@@ -1674,11 +2021,62 @@ description: ${frontmatterDescription}
       current.thinking?.trim() === this.lastFinalizedThinkingSegment.trim()
     ) {
       const { thinking: _thinking, ...rest } = current;
+      this.logAssistantAuxDecision('take-pending-aux-strip-exact', {
+        aux: current,
+        finalizedThinking: this.lastFinalizedThinkingSegment,
+        extra: Object.keys(rest).length > 0 ? `kept=${describeAuxForDebug(rest)}` : 'kept=none',
+      });
       this.lastFinalizedThinkingSegment = '';
       return Object.keys(rest).length > 0 ? rest : undefined;
     }
+    if (current.thinking && hasStandaloneThinkingMessageInCurrentTurn(this.requireState().messages)) {
+      const stripped = stripThinkingFromAux(current);
+      this.logAssistantAuxDecision('take-pending-aux-strip-standalone', {
+        aux: current,
+        finalizedThinking: this.lastFinalizedThinkingSegment,
+        extra: stripped ? `kept=${describeAuxForDebug(stripped)}` : 'kept=none',
+      });
+      this.lastFinalizedThinkingSegment = '';
+      return stripped;
+    }
+    this.logAssistantAuxDecision('take-pending-aux-carry', {
+      aux: current,
+      finalizedThinking: this.lastFinalizedThinkingSegment,
+    });
     this.lastFinalizedThinkingSegment = '';
     return current;
+  }
+
+  private logAssistantAuxDecision(
+    stage: string,
+    details: {
+      messageId?: number;
+      aux?: MessageAuxSnapshot;
+      content?: string;
+      finalizedThinking?: string;
+      extra?: string;
+    },
+  ): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    const parts = [stage];
+    if (details.messageId !== undefined) {
+      parts.push(`msg=${details.messageId}`);
+    }
+    if (details.aux) {
+      parts.push(`aux=${describeAuxForDebug(details.aux)}`);
+    }
+    if (details.finalizedThinking?.trim()) {
+      parts.push(`final≈${truncateOneLineForDebug(details.finalizedThinking, 42)}`);
+    }
+    if (details.content?.trim()) {
+      parts.push(`content≈${truncateOneLineForDebug(details.content, 42)}`);
+    }
+    if (details.extra) {
+      parts.push(details.extra);
+    }
+    console.log(`[desktop-host][aux] ${parts.join(' ')}`);
   }
 
   private logMessageOrderApplyBatch(
@@ -1696,10 +2094,18 @@ description: ${frontmatterDescription}
     for (const ev of events) {
       if (ev.kind === 'begin-assistant-response') {
         tags.push('begin');
+      } else if (ev.kind === 'assistant-response-completed') {
+        tags.push('resp-done');
+      } else if (ev.kind === 'remove-pending-assistant') {
+        tags.push('rm-pending');
       } else if (ev.kind === 'assistant-thinking-segment-finalized') {
         tags.push(ev.text.trim() ? 'finalize' : 'finalize-empty');
       } else if (ev.kind === 'tool-execution-finished') {
         tags.push(`tool-done:${ev.execution.toolName}`);
+      } else if (ev.kind === 'approval-requested') {
+        tags.push(`approval:${ev.approval.toolName}`);
+      } else if (ev.kind === 'questions-requested') {
+        tags.push(`questions:${ev.questions.toolName}`);
       } else if (ev.kind === 'streaming-tool-preview') {
         previewCount += 1;
       }
@@ -1817,11 +2223,17 @@ function formatMessageOrderToken(m: ConversationMessageSnapshot): string {
   if (m.aux?.thinking && !m.content.trim()) {
     return `H#${m.id}`;
   }
+  if (m.aux?.compaction && !m.content.trim()) {
+    return `C#${m.id}`;
+  }
   const c = m.content.trim();
   if (!c) {
     return 'Aε';
   }
-  return `a:${truncateOneLineForDebug(c, 18)}`;
+  const hasThinking = Boolean(m.aux?.thinking?.trim());
+  const hasCompaction = Boolean(m.aux?.compaction?.trim());
+  const prefix = hasThinking ? (hasCompaction ? 'aTC' : 'aT') : hasCompaction ? 'aC' : 'a';
+  return `${prefix}#${m.id}:${truncateOneLineForDebug(c, 18)}`;
 }
 
 function truncateOneLineForDebug(s: string, max: number): string {
@@ -1881,6 +2293,76 @@ function assistantPrefixBeforeFirstToolInCurrentTurn(
   }
 
   return undefined;
+}
+
+function latestUnsyncedAssistantTextInCurrentTurn(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+): string | undefined {
+  const historyTexts = assistantPlainTextsInCurrentTurnHistory(hist);
+  if (historyTexts.length === 0) {
+    return undefined;
+  }
+
+  const existing = new Set(assistantPlainTextsInCurrentTurnMessages(messages));
+  for (let i = historyTexts.length - 1; i >= 0; i -= 1) {
+    const text = historyTexts[i]!;
+    if (!existing.has(text)) {
+      return text;
+    }
+  }
+
+  return undefined;
+}
+
+function assistantPlainTextsInCurrentTurnHistory(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+): string[] {
+  let lastUserIdx = -1;
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    if (hist[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  const texts: string[] = [];
+  for (let i = lastUserIdx + 1; i < hist.length; i += 1) {
+    const item = hist[i];
+    if (!item || item.role !== 'assistant') {
+      continue;
+    }
+    const text = item.content.trim();
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
+
+function assistantPlainTextsInCurrentTurnMessages(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+): string[] {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  const texts: string[] = [];
+  for (let i = lastUserIdx + 1; i < messages.length; i += 1) {
+    const item = messages[i];
+    if (!item || item.role !== 'assistant' || item.tool) {
+      continue;
+    }
+    const text = item.content.trim();
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts;
 }
 
 function formatYamlScalarForSkillFrontmatter(value: string): string {
@@ -2008,23 +2490,6 @@ function mapPendingQuestions(
   };
 }
 
-function mapPendingAuxToMessageAux(
-  kind: 'thinking' | 'compressing',
-  text: string,
-): MessageAuxSnapshot {
-  return kind === 'thinking' ? { thinking: text } : { compaction: text };
-}
-
-function mergeAux(
-  current: MessageAuxSnapshot | undefined,
-  kind: 'thinking' | 'compressing',
-  text: string,
-): MessageAuxSnapshot {
-  return kind === 'thinking'
-    ? { ...(current ?? {}), thinking: text }
-    : { ...(current ?? {}), compaction: text };
-}
-
 function stripPendingThinkingMatchingFinalized(
   aux: MessageAuxSnapshot | undefined,
   finalizedText: string,
@@ -2037,6 +2502,69 @@ function stripPendingThinkingMatchingFinalized(
   }
   const { thinking: _t, ...rest } = aux;
   return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function stripThinkingFromAux(aux: MessageAuxSnapshot | undefined): MessageAuxSnapshot | undefined {
+  if (!aux?.thinking) {
+    return normalizeMessageAuxSnapshot(aux);
+  }
+  const { thinking: _thinking, ...rest } = aux;
+  return normalizeMessageAuxSnapshot(rest);
+}
+
+function messageIndexIsInCurrentTurn(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+  index: number,
+): boolean {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  return index > lastUserIdx;
+}
+
+function hasStandaloneThinkingMessageInCurrentTurn(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+): boolean {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  for (let i = lastUserIdx + 1; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (
+      message?.role === 'assistant' &&
+      !message.tool &&
+      !message.content.trim() &&
+      Boolean(message.aux?.thinking?.trim())
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function describeAuxForDebug(aux: MessageAuxSnapshot): string {
+  const parts: string[] = [];
+  if (aux.thinking?.trim()) {
+    parts.push(`T≈${truncateOneLineForDebug(aux.thinking, 28)}`);
+  }
+  if (aux.compaction?.trim()) {
+    parts.push(`C≈${truncateOneLineForDebug(aux.compaction, 28)}`);
+  }
+  return parts.join('+') || 'none';
+}
+
+function describeOptionalAuxForDebug(aux: MessageAuxSnapshot | undefined): string {
+  return aux ? describeAuxForDebug(aux) : 'none';
 }
 
 function normalizeToolBlockSnapshot(
@@ -2092,6 +2620,16 @@ function shouldDropEmptyAssistantMessage(
     !message.content.trim() &&
     !tool &&
     !aux
+  );
+}
+
+function shouldHideEmptyPendingAssistantSnapshot(message: ConversationMessageSnapshot): boolean {
+  return (
+    message.role === 'assistant' &&
+    message.pending &&
+    !message.content.trim() &&
+    !message.tool &&
+    !normalizeMessageAuxSnapshot(message.aux)
   );
 }
 
@@ -2177,32 +2715,6 @@ function headlineForStreamingToolPreview(
   return hasBlockingToolAheadOfSameTurnPreview(messages, toolCallId)
     ? `排队中: ${toolName}`
     : `调用中: ${toolName}`;
-}
-
-function toolPhaseIsActiveForPendingOrder(phase: ToolBlockSnapshot['phase'] | undefined): boolean {
-  return phase === 'running' || phase === 'pending-approval';
-}
-
-/**
- * 最后一条 user 之后、首条**仍进行中**的助手工具行之前。
- * 无进行中工具时返回 `undefined`，表示挂起助手应接在整段消息末尾（已完成工具之后）。
- */
-function indexForPendingInsertBeforeFirstActiveToolAfterLastUser(
-  messages: ConversationMessageSnapshot[],
-): number | undefined {
-  let lastUser = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i]?.role === 'user') {
-      lastUser = i;
-    }
-  }
-  for (let i = lastUser + 1; i < messages.length; i += 1) {
-    const m = messages[i];
-    if (m?.role === 'assistant' && m.tool && toolPhaseIsActiveForPendingOrder(m.tool.phase)) {
-      return i;
-    }
-  }
-  return undefined;
 }
 
 function restoreMessagesFromArchive(

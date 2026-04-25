@@ -265,6 +265,7 @@ function ComposerSurface({
 function MessageCard({
   message,
   listIndex,
+  compactAfterPrevious,
   rewindText,
   rewindSelected,
   rewindCanSubmit,
@@ -280,6 +281,7 @@ function MessageCard({
 }: {
   message: ConversationMessageSnapshot;
   listIndex: number;
+  compactAfterPrevious: boolean;
   rewindText: string;
   rewindSelected: boolean;
   rewindCanSubmit: boolean;
@@ -303,6 +305,7 @@ function MessageCard({
       id={conversationMessageDomId(message, listIndex)}
       className={cn(
         "scroll-mt-4 flex w-full pb-3 last:pb-0",
+        compactAfterPrevious && "-mt-4",
         isUser ? "justify-end" : "justify-start",
         rewindSelected && "relative z-40",
       )}
@@ -382,6 +385,30 @@ function MessageCard({
         {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
       </div>
     </div>
+  );
+}
+
+function isStandaloneAssistantAuxMessage(
+  message: ConversationMessageSnapshot | undefined,
+): boolean {
+  return Boolean(
+    message &&
+      message.role === "assistant" &&
+      !message.tool &&
+      !message.content.trim() &&
+      (message.aux?.thinking?.trim() || message.aux?.compaction?.trim()),
+  );
+}
+
+function shouldCompactAfterPreviousMessage(
+  previous: ConversationMessageSnapshot | undefined,
+  current: ConversationMessageSnapshot,
+): boolean {
+  return Boolean(
+    isStandaloneAssistantAuxMessage(previous) &&
+      current.role === "assistant" &&
+      !current.tool &&
+      current.content.trim(),
   );
 }
 
@@ -777,6 +804,7 @@ export default function App() {
                             key={conversationMessageDomId(message, index)}
                             listIndex={index}
                             message={message}
+                            compactAfterPrevious={shouldCompactAfterPreviousMessage(messages[index - 1], message)}
                             rewindSelected={rewindDraft?.messageId === message.id}
                             rewindText={
                               rewindDraft?.messageId === message.id ? rewindDraft.text : ""
