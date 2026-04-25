@@ -18,7 +18,7 @@ use crate::{
     ask_questions::AskQuestionsResult,
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
-    host_runtime::{RuntimeEvent, build_tool_result_block, format_tool_ui_message},
+    host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
     locale,
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -33,7 +33,6 @@ use crate::{
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry, SkillScope},
-    tool_runtime::ToolRequest,
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
         InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
@@ -3170,9 +3169,13 @@ impl TuiShell {
             return;
         };
 
-        let request_value = ToolRequest::AskQuestions {
-            questions: request.clone(),
-        };
+        let request_value = ToolUiRequest::new(
+            "ask_questions",
+            serde_json::json!({
+                "title": request.title,
+                "questionCount": request.questions.len(),
+            }),
+        );
         let output = serde_json::to_string_pretty(&result)
             .unwrap_or_else(|_| "{\"status\":\"skipped\"}".to_string());
         self.messages.push(ChatMessage::with_tool_block(

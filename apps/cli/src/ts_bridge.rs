@@ -14,8 +14,8 @@ use std::{
 use crate::{
     ask_questions::AskQuestionsRequest,
     host_runtime::{
-        RuntimeEvent, build_tool_result_block, format_tool_ui_message, tool_approval_block,
-        tool_failed_block,
+        RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message,
+        tool_approval_block, tool_failed_block,
     },
     llm_types::LlmMessage,
     logging,
@@ -34,7 +34,6 @@ use crate::{
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
     skills::{ActiveSkillPayload, EnabledSkillCatalogEntry, SkillEntry},
-    tool_runtime::{ToolRequest, ToolRuntime},
     view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
@@ -1629,7 +1628,7 @@ impl TsBridgeRuntime {
     fn push_subagent_tool_result(
         &mut self,
         session_id: &str,
-        request: &ToolRequest,
+        request: &ToolUiRequest,
         tool_name: &str,
         tool_call_id: Option<&str>,
         output: &str,
@@ -2365,6 +2364,29 @@ mod tests {
         assert!(err.to_string().contains("工具请求缺少 name"));
     }
 
+    #[test]
+    fn tool_request_from_host_value_keeps_name_and_args_without_rust_semantics() {
+        let request = super::tool_request_from_host_value(json!({
+            "name": "host_internal_preview",
+            "preview": "dry-run",
+            "nested": {
+                "count": 2
+            }
+        }))
+        .expect("ui request should parse");
+
+        assert_eq!(request.name, "host_internal_preview");
+        assert_eq!(
+            request.arguments,
+            json!({
+                "preview": "dry-run",
+                "nested": {
+                    "count": 2
+                }
+            })
+        );
+    }
+
 }
 
 fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
@@ -2423,16 +2445,19 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
     value
 }
 
-fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolRequest {
-    ToolRequest::McpTool {
-        server: request.server.clone(),
-        display_name: request.display_name.clone(),
-        tool_name: request.tool_name.clone(),
-        arguments: request.arguments.clone(),
-    }
+fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolUiRequest {
+    ToolUiRequest::new(
+        "mcp_tool",
+        json!({
+            "server": request.server,
+            "display_name": request.display_name,
+            "tool_name": request.tool_name,
+            "arguments": request.arguments,
+        }),
+    )
 }
 
-fn tool_request_from_host_value(value: Value) -> anyhow::Result<ToolRequest> {
+fn tool_request_from_host_value(value: Value) -> anyhow::Result<ToolUiRequest> {
     let Value::Object(mut object) = value else {
         return Err(anyhow!("工具请求必须是 JSON object"));
     };
@@ -2442,5 +2467,5 @@ fn tool_request_from_host_value(value: Value) -> anyhow::Result<ToolRequest> {
         .and_then(|value| value.as_str().map(ToOwned::to_owned))
         .ok_or_else(|| anyhow!("工具请求缺少 name"))?;
 
-    ToolRuntime::request_from_function_call(&name, &Value::Object(object).to_string())
+    Ok(ToolUiRequest::new(name, Value::Object(object)))
 }
