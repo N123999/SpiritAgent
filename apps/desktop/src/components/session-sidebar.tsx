@@ -5,6 +5,7 @@ import {
   Plus,
   Settings2,
   SlidersHorizontal,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -37,7 +38,7 @@ type SessionSidebarProps = {
   disabled?: boolean;
 };
 
-export type SettingsSidebarTab = "basic" | "appearance" | "models";
+export type SettingsSidebarTab = "basic" | "appearance" | "models" | "skills";
 
 const settingsTabs: Array<{
   id: SettingsSidebarTab;
@@ -56,6 +57,12 @@ const settingsTabs: Array<{
     label: "模型",
     description: "列表与密钥",
     icon: Layers,
+  },
+  {
+    id: "skills",
+    label: "Skills",
+    description: "用户技能目录",
+    icon: Sparkles,
   },
   {
     id: "appearance",

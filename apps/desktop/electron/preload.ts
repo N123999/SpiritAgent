@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   removeModel(name: string) {
     return ipcRenderer.invoke('desktop:invoke', 'removeModel', { request: { name } });
   },
+  createSkill(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'createSkill', { request });
+  },
+  deleteSkill(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'deleteSkill', { request });
+  },
   submitUserTurn(text: string) {
     return ipcRenderer.invoke('desktop:invoke', 'submitUserTurn', { text });
   },

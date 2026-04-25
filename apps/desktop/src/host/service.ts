@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
@@ -25,6 +27,11 @@ import {
   type RuntimeEvent,
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
+import {
+  resolveInstructionPaths,
+  SKILL_FILE_NAME,
+  validateSkillName,
+} from '@spirit-agent/host-internal';
 
 import type {
   ActiveSessionSnapshot,
@@ -32,6 +39,9 @@ import type {
   AskQuestionsResult,
   BootstrapRequest,
   ConversationMessageSnapshot,
+  CreateSkillRequest,
+  DeleteSkillRequest,
+  DesktopSkillRootKind,
   DesktopSnapshot,
   MessageAuxSnapshot,
   PendingQuestionsSnapshot,
@@ -55,6 +65,7 @@ import {
   saveConfig,
   saveStoredSession,
   listStoredSessions,
+  spiritAgentDataDir,
   type DesktopConfigFile,
   type HostMetadataSummary,
 } from './storage.js';
@@ -72,6 +83,8 @@ type CommandPayloads = {
   updateConfig: { request: UpdateConfigRequest };
   addModel: { request: AddModelRequest };
   removeModel: { request: RemoveModelRequest };
+  createSkill: { request: CreateSkillRequest };
+  deleteSkill: { request: DeleteSkillRequest };
   submitUserTurn: { text: string };
   poll: undefined;
   replyPendingApproval: { message: string };
@@ -237,6 +250,78 @@ class DesktopHostService {
       await saveConfig(state.config);
       await removeModelApiKey(name);
       await this.refreshModelKeyPresence();
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有回复或审批在进行，请稍后再添加 Skill。');
+      }
+
+      const rootKind = this.parseSkillRootKind(request.rootKind);
+      const name = request.name.trim().toLowerCase();
+      const nameIssue = validateSkillName(name);
+      if (nameIssue) {
+        throw new Error(nameIssue);
+      }
+
+      const description = (request.description ?? '').trim();
+      if (!description) {
+        throw new Error('描述不能为空。');
+      }
+      const skillDir = this.resolveSkillDir(name, rootKind);
+      if (existsSync(skillDir)) {
+        throw new Error(`该位置已存在同名 Skill：${name}`);
+      }
+
+      const frontmatterDescription = formatYamlScalarForSkillFrontmatter(description);
+      const fileContent = `---
+name: ${name}
+description: ${frontmatterDescription}
+---
+
+在此编写技能正文：步骤、示例、边界条件与相对路径引用。
+`;
+
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(path.join(skillDir, SKILL_FILE_NAME), fileContent, 'utf8');
+
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有回复或审批在进行，请稍后再删除 Skill。');
+      }
+
+      const rootKind = this.parseSkillRootKind(request.rootKind);
+      const name = request.name.trim().toLowerCase();
+      const nameIssue = validateSkillName(name);
+      if (nameIssue) {
+        throw new Error(nameIssue);
+      }
+
+      const skillDir = this.resolveSkillDir(name, rootKind);
+      this.assertPathUnderSkillRoot(skillDir, rootKind);
+
+      if (!existsSync(skillDir)) {
+        throw new Error(`Skill 不存在：${name}`);
+      }
+
+      await rm(skillDir, { recursive: true, force: true });
+
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
       await this.persistCurrentSessionIfNeeded();
       return this.buildSnapshot();
     });
@@ -418,6 +503,14 @@ class DesktopHostService {
       case 'removeModel': {
         const typedPayload = payload as CommandPayloads['removeModel'];
         return this.removeModel(typedPayload.request);
+      }
+      case 'createSkill': {
+        const typedPayload = payload as CommandPayloads['createSkill'];
+        return this.createSkill(typedPayload.request);
+      }
+      case 'deleteSkill': {
+        const typedPayload = payload as CommandPayloads['deleteSkill'];
+        return this.deleteSkill(typedPayload.request);
       }
       case 'submitUserTurn': {
         const typedPayload = payload as CommandPayloads['submitUserTurn'];
@@ -621,6 +714,15 @@ class DesktopHostService {
         discovered: state.metadata.skills.discovered,
         enabled: state.metadata.skills.enabled,
       },
+      skillsList: state.metadata.skills.entries.map((entry) => ({
+        id: entry.source.id,
+        name: entry.source.name,
+        description: entry.source.description,
+        shortLabel: entry.source.shortLabel,
+        scope: entry.source.scope,
+        rootKind: entry.source.rootKind,
+        enabled: entry.enabled,
+      })),
       plan: {
         path: state.metadata.planMetadata.path,
         exists: state.metadata.planMetadata.exists,
@@ -1149,6 +1251,49 @@ class DesktopHostService {
     state.activeSession.filePath = await saveStoredSession(state.activeSession.filePath, stored);
   }
 
+  private instructionPaths() {
+    const state = this.requireState();
+    return resolveInstructionPaths({
+      workspaceRoot: state.workspaceRoot,
+      spiritDataDir: spiritAgentDataDir(),
+    });
+  }
+
+  private parseSkillRootKind(value: unknown): DesktopSkillRootKind {
+    if (value === 'user' || value === 'workspaceSpirit' || value === 'workspaceAgents') {
+      return value;
+    }
+    throw new Error('无效的 Skill 根类型。');
+  }
+
+  private resolveSkillRootDir(rootKind: DesktopSkillRootKind): string {
+    const paths = this.instructionPaths();
+    switch (rootKind) {
+      case 'user':
+        return paths.userSkillsDir;
+      case 'workspaceSpirit':
+        return paths.workspaceSpiritSkillsDir;
+      case 'workspaceAgents':
+        return paths.workspaceAgentsSkillsDir;
+      default: {
+        const _exhaustive: never = rootKind;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private resolveSkillDir(skillDirectoryName: string, rootKind: DesktopSkillRootKind): string {
+    return path.join(this.resolveSkillRootDir(rootKind), skillDirectoryName);
+  }
+
+  private assertPathUnderSkillRoot(targetDir: string, rootKind: DesktopSkillRootKind): void {
+    const root = path.resolve(this.resolveSkillRootDir(rootKind));
+    const resolved = path.resolve(targetDir);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw new Error('Skill 路径不在允许的根目录内。');
+    }
+  }
+
   private requireState(): HostState {
     if (!this.state) {
       throw new Error('宿主尚未初始化。');
@@ -1403,6 +1548,11 @@ function assistantPrefixBeforeFirstToolInCurrentTurn(
   }
 
   return undefined;
+}
+
+function formatYamlScalarForSkillFrontmatter(value: string): string {
+  const flat = value.replace(/\r?\n/g, ' ').trim() || '说明';
+  return `"${flat.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
 }
 
 const desktopHostService = new DesktopHostService();

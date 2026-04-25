@@ -24,6 +24,32 @@ export interface RemoveModelRequest {
   name: string;
 }
 
+export type DesktopSkillScope = 'workspace' | 'user';
+export type DesktopSkillRootKind = 'workspaceSpirit' | 'workspaceAgents' | 'user';
+
+/** 创建 `skills/<name>/SKILL.md`，根目录由 `rootKind` 决定（用户目录或工作区 `.spirit` / `.agents`）。 */
+export interface CreateSkillRequest {
+  name: string;
+  rootKind: DesktopSkillRootKind;
+  /** 写入 frontmatter，必填。 */
+  description: string;
+}
+
+export interface DeleteSkillRequest {
+  name: string;
+  rootKind: DesktopSkillRootKind;
+}
+
+export interface DesktopSkillListItem {
+  id: string;
+  name: string;
+  description: string;
+  shortLabel: string;
+  scope: DesktopSkillScope;
+  rootKind: DesktopSkillRootKind;
+  enabled: boolean;
+}
+
 /** 与 CLI `chat_store` 已保存的 `*.json` 文件一致。 */
 export interface ActiveSessionSnapshot {
   filePath: string;
@@ -43,6 +69,8 @@ export interface DesktopSnapshot {
   config: DesktopConfigSnapshot;
   rules: DiscoverySummary;
   skills: DiscoverySummary;
+  /** 当前工作区与用户目录下发现的全部 Skills，供设置页列表。 */
+  skillsList: DesktopSkillListItem[];
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
   conversation: ConversationSnapshot;

@@ -477,12 +477,15 @@ export default function App() {
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
               modelsBusy={runtime.busyAction === "models"}
+              skillsBusy={runtime.busyAction === "skills"}
               isElectronShell={isElectronShell}
               onSavePatch={runtime.saveSettingsPatch}
               onBootstrap={runtime.bootstrap}
               onResetSession={runtime.resetSession}
               onAddModel={runtime.addModel}
               onRemoveModel={runtime.removeModel}
+              onCreateSkill={runtime.createSkill}
+              onDeleteSkill={runtime.deleteSkill}
             />
           ) : (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col text-sm">

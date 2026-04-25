@@ -8,6 +8,8 @@ import type {
   AskQuestionsQuestionSpec,
   AskQuestionsRequest,
   AskQuestionsResult,
+  CreateSkillRequest,
+  DeleteSkillRequest,
   DesktopSnapshot,
   SessionListItem,
 } from "@/types";
@@ -20,7 +22,8 @@ type BusyAction =
   | "questions"
   | "reset"
   | "session"
-  | "models";
+  | "models"
+  | "skills";
 
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
@@ -348,6 +351,50 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const createSkill = useCallback(
+    async (request: CreateSkillRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("skills");
+      try {
+        const next = await api.createSkill(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const deleteSkill = useCallback(
+    async (request: DeleteSkillRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("skills");
+      try {
+        const next = await api.deleteSkill(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const saveSettingsPatch = useCallback(
     async (patch: Partial<SettingsFormState>) => {
       if (!api) {
@@ -554,6 +601,8 @@ export function useDesktopRuntime() {
     bootstrap,
     addModel,
     removeModel,
+    createSkill,
+    deleteSkill,
     openSession,
     resetSession,
     saveSettingsPatch,

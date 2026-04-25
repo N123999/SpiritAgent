@@ -4,6 +4,8 @@ import type {
   AddModelRequest,
   AskQuestionsResult,
   BootstrapRequest,
+  CreateSkillRequest,
+  DeleteSkillRequest,
   DesktopSnapshot,
   SessionListItem,
   UpdateConfigRequest,
@@ -15,6 +17,8 @@ declare global {
     updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
     addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
     removeModel(name: string): Promise<DesktopSnapshot>;
+    createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
+    deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitUserTurn(text: string): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
     replyPendingApproval(message: string): Promise<DesktopSnapshot>;

@@ -53,6 +53,44 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === 'POST' && request.url === '/api/skills') {
+      const rootKind =
+        jsonBody?.rootKind === 'user' ||
+        jsonBody?.rootKind === 'workspaceSpirit' ||
+        jsonBody?.rootKind === 'workspaceAgents'
+          ? jsonBody.rootKind
+          : 'user';
+      writeJson(
+        response,
+        200,
+        await invokeDesktopHostCommand('createSkill', {
+          request: {
+            name: typeof jsonBody?.name === 'string' ? jsonBody.name : '',
+            rootKind,
+            description:
+              typeof jsonBody?.description === 'string' ? jsonBody.description : '',
+          },
+        }),
+      );
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/api/skills/remove') {
+      const name = typeof jsonBody?.name === 'string' ? jsonBody.name : '';
+      const rootKind =
+        jsonBody?.rootKind === 'user' ||
+        jsonBody?.rootKind === 'workspaceSpirit' ||
+        jsonBody?.rootKind === 'workspaceAgents'
+          ? jsonBody.rootKind
+          : 'user';
+      writeJson(
+        response,
+        200,
+        await invokeDesktopHostCommand('deleteSkill', { request: { name, rootKind } }),
+      );
+      return;
+    }
+
     if (request.method === 'POST' && request.url === '/api/submit') {
       writeJson(response, 200, await invokeDesktopHostCommand('submitUserTurn', { text: typeof jsonBody?.text === 'string' ? jsonBody.text : '' }));
       return;

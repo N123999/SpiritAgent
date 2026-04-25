@@ -23,7 +23,14 @@ import {
 } from "@/components/ui/dialog";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import type { AddModelRequest, DesktopSnapshot } from "@/types";
+import type {
+  AddModelRequest,
+  CreateSkillRequest,
+  DeleteSkillRequest,
+  DesktopSkillListItem,
+  DesktopSkillRootKind,
+  DesktopSnapshot,
+} from "@/types";
 
 export type SettingsFormState = {
   activeModel: string;
@@ -44,12 +51,15 @@ type SettingsViewProps = {
   apiReady: boolean;
   busyAction: string;
   modelsBusy: boolean;
+  skillsBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
   onBootstrap: () => Promise<void>;
   onResetSession: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
   onRemoveModel: (name: string) => Promise<void>;
+  onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
+  onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
 };
 
 const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
@@ -61,8 +71,23 @@ const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
 const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   basic: "工作区与连接",
   models: "模型",
+  skills: "Skills",
   appearance: "主题与窗口效果",
 };
+
+function skillRootKindLabel(rootKind: DesktopSkillRootKind): string {
+  if (rootKind === "user") {
+    return "用户目录";
+  }
+  if (rootKind === "workspaceSpirit") {
+    return "工作区 .spirit";
+  }
+  return "工作区 .agents";
+}
+
+function skillLocationLabel(item: DesktopSkillListItem): string {
+  return skillRootKindLabel(item.rootKind);
+}
 
 function SettingsRow({
   label,
@@ -173,6 +198,263 @@ function BasicSettingsPanel({
           </span>
         </p>
       </div>
+    </div>
+  );
+}
+
+const skillCreateRootOptions: Array<{
+  kind: DesktopSkillRootKind;
+  label: string;
+  hint: string;
+}> = [
+  { kind: "user", label: "用户", hint: "Spirit 用户目录 skills/" },
+  { kind: "workspaceSpirit", label: ".spirit", hint: "工作区 .spirit/skills/" },
+  { kind: "workspaceAgents", label: ".agents", hint: "工作区 .agents/skills/" },
+];
+
+function SkillsSettingsPanel({
+  snapshot,
+  skillsBusy,
+  onCreateSkill,
+  onDeleteSkill,
+}: Pick<SettingsViewProps, "snapshot" | "skillsBusy" | "onCreateSkill" | "onDeleteSkill">) {
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteSkillRequest | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [createRootKind, setCreateRootKind] = useState<DesktopSkillRootKind>("user");
+
+  const items = snapshot?.skillsList ?? [];
+
+  const resetForm = () => {
+    setNewName("");
+    setNewDescription("");
+    setCreateRootKind("user");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">Skills</h1>
+          <p className="text-sm text-muted-foreground">用户与工作区内已发现的 Skills。</p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="shrink-0"
+          onClick={() => {
+            resetForm();
+            setAddDialogOpen(true);
+          }}
+          disabled={skillsBusy}
+        >
+          新建 Skill
+        </Button>
+      </div>
+
+      <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+        {items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">未发现 Skill</p>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+            >
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{item.name}</span>
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                    {skillLocationLabel(item)}
+                  </span>
+                  {!item.enabled ? (
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                      已关闭
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">{item.description}</p>
+                <p className="truncate font-mono text-[0.65rem] text-muted-foreground/90" title={item.shortLabel}>
+                  {item.shortLabel}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="shrink-0 self-start sm:self-center"
+                disabled={skillsBusy}
+                onClick={() => setDeleteTarget({ name: item.name, rootKind: item.rootKind })}
+              >
+                删除
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>删除 Skill</DialogTitle>
+            <DialogDescription>
+              确定删除「{deleteTarget?.name ?? ""}」（
+              {deleteTarget ? skillRootKindLabel(deleteTarget.rootKind) : ""}
+              ）？将移除整个目录（含 SKILL.md）。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={skillsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={skillsBusy || !deleteTarget}
+              onClick={() => {
+                const target = deleteTarget;
+                if (!target) {
+                  return;
+                }
+                void (async () => {
+                  try {
+                    await onDeleteSkill(target);
+                    setDeleteTarget(null);
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {skillsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>新建 Skill</DialogTitle>
+            <DialogDescription>填写位置、名称与描述，新增一条供助手参考的技能。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-1">
+            <div className="grid gap-2">
+              <Label>保存位置</Label>
+              <div
+                role="tablist"
+                aria-label="Skill 保存位置"
+                className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+              >
+                {skillCreateRootOptions.map((opt) => (
+                  <button
+                    key={opt.kind}
+                    type="button"
+                    role="tab"
+                    aria-selected={createRootKind === opt.kind}
+                    className={cn(
+                      "rounded-md px-2.5 text-xs font-medium transition-colors",
+                      createRootKind === opt.kind
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    disabled={skillsBusy}
+                    title={opt.hint}
+                    onClick={() => setCreateRootKind(opt.kind)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {skillCreateRootOptions.find((o) => o.kind === createRootKind)?.hint}
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-skill-name">名称</Label>
+              <Input
+                id="new-skill-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="例如 code-review"
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-skill-desc">描述</Label>
+              <Input
+                id="new-skill-desc"
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="简要说明何时用、做什么"
+                autoComplete="off"
+                required
+              />
+            </div>
+          </div>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAddDialogOpen(false)}
+              disabled={skillsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={
+                skillsBusy || !newName.trim() || !newDescription.trim()
+              }
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const payload: CreateSkillRequest = {
+                      name: newName,
+                      rootKind: createRootKind,
+                      description: newDescription.trim(),
+                    };
+                    await onCreateSkill(payload);
+                    setAddDialogOpen(false);
+                    resetForm();
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {skillsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              创建
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -466,19 +748,22 @@ export function SettingsView({
   apiReady,
   busyAction,
   modelsBusy,
+  skillsBusy,
   isElectronShell,
   onSavePatch,
   onBootstrap,
   onResetSession,
   onAddModel,
   onRemoveModel,
+  onCreateSkill,
+  onDeleteSkill,
 }: SettingsViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {tab !== "models" ? (
+            {tab !== "models" && tab !== "skills" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {settingsPageTitle[tab]}
               </h1>
@@ -502,6 +787,13 @@ export function SettingsView({
                 modelsBusy={modelsBusy}
                 onAddModel={onAddModel}
                 onRemoveModel={onRemoveModel}
+              />
+            ) : tab === "skills" ? (
+              <SkillsSettingsPanel
+                snapshot={snapshot}
+                skillsBusy={skillsBusy}
+                onCreateSkill={onCreateSkill}
+                onDeleteSkill={onDeleteSkill}
               />
             ) : (
               <AppearanceSettingsPanel

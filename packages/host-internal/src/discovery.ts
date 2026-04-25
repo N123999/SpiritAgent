@@ -99,6 +99,8 @@ export interface HostSkillDiscoveryResult {
   discovered: number;
   enabled: number;
   enabledSkillCatalog: HostEnabledSkillCatalogEntry[];
+  /** 全部发现项（含未启用），供宿主设置页等列清单。 */
+  entries: readonly HostSkillEntry[];
 }
 
 export interface HostPlanMetadata {
@@ -300,6 +302,7 @@ export async function loadSkillDiscoveryResult(
     discovered: entries.length,
     enabled: enabledSkillCatalogResult.length,
     enabledSkillCatalog: enabledSkillCatalogResult,
+    entries,
   };
 }
 
@@ -502,7 +505,7 @@ function unquoteYamlScalar(value: string): string {
   return value;
 }
 
-function validateSkillName(name: string): string | undefined {
+export function validateSkillName(name: string): string | undefined {
   if (!name || [...name].length > SKILL_NAME_MAX_CHARS) {
     return `skill-name 必须为 1-${SKILL_NAME_MAX_CHARS} 个字符`;
   }

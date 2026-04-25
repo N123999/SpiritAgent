@@ -11,6 +11,8 @@ export type HostCommandName =
   | 'updateConfig'
   | 'addModel'
   | 'removeModel'
+  | 'createSkill'
+  | 'deleteSkill'
   | 'submitUserTurn'
   | 'poll'
   | 'replyPendingApproval'

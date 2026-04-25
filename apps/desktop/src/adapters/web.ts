@@ -3,6 +3,8 @@ import type {
   AddModelRequest,
   AskQuestionsResult,
   BootstrapRequest,
+  CreateSkillRequest,
+  DeleteSkillRequest,
   DesktopSnapshot,
   SessionListItem,
   UpdateConfigRequest,
@@ -27,6 +29,12 @@ export function createWebHostApi(): HostApi {
     },
     removeModel(name: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/models/remove', { name });
+    },
+    createSkill(request: CreateSkillRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/skills', request);
+    },
+    deleteSkill(request: DeleteSkillRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/skills/remove', request);
     },
     submitUserTurn(text: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/submit', { text });
