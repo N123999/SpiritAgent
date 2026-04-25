@@ -10,6 +10,7 @@ import type {
 export type HostCommandName =
   | 'bootstrap'
   | 'updateConfig'
+  | 'setWebHostAuthTokenHash'
   | 'addModel'
   | 'removeModel'
   | 'createSkill'

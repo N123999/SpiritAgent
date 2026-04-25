@@ -15,6 +15,7 @@ import { setDesktopWebHostRuntimeStatus } from '../src/host/web-host-state.js';
 import { type ApplicationMenuSection, popupApplicationMenuSection } from './application-menu.js';
 import {
   createDesktopHttpHost,
+  createDesktopWebPairingCode,
   resolveDesktopWebHostFromEnv,
   type DesktopHttpHost,
 } from './http-host.js';
@@ -30,6 +31,7 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 let desktopWebHost: DesktopHttpHost | undefined;
 let desktopWebHostConfig: DesktopWebHostConfigFile | undefined;
+let desktopWebHostPairingCode = createDesktopWebPairingCode();
 let quittingAfterDesktopWebHostStop = false;
 
 function shouldStartDesktopWebHostFromEnv(): boolean {
@@ -43,9 +45,22 @@ function getDesktopWebHost(config: DesktopWebHostConfigFile): DesktopHttpHost {
       port: config.port,
       invokeHostCommand: invokeDesktopHostCommand,
       onHostCommandResult: handleDesktopWebHostCommandResult,
+      auth: {
+        getTokenHash: () => desktopWebHostConfig?.authTokenHash,
+        getPairingCode: () => desktopWebHostPairingCode,
+        completePairing: completeDesktopWebHostPairing,
+      },
+      static: {
+        root: rendererDistPath(),
+        spaFallback: true,
+      },
     });
   }
   return desktopWebHost;
+}
+
+function rendererDistPath(): string {
+  return path.join(__dirname, '..', 'dist');
 }
 
 async function startDesktopWebHostFromEnv(): Promise<void> {
@@ -84,7 +99,8 @@ async function invokeMainDesktopHostCommand(
 ) {
   const result = await invokeDesktopHostCommand(command, payload);
   if (isDesktopSnapshot(result) && (command === 'bootstrap' || command === 'updateConfig')) {
-    await syncDesktopWebHostWithConfig(result.webHost.config);
+    const config = await loadConfig();
+    await syncDesktopWebHostWithConfig(config.webHost);
     if (command === 'updateConfig') {
       return invokeDesktopHostCommand('poll');
     }
@@ -100,7 +116,8 @@ async function handleDesktopWebHostCommandResult(
   if (command !== 'updateConfig' || !isDesktopSnapshot(result)) {
     return;
   }
-  await syncDesktopWebHostWithConfig(result.webHost.config);
+  const config = await loadConfig();
+  await syncDesktopWebHostWithConfig(config.webHost);
 }
 
 async function syncDesktopWebHostWithConfig(
@@ -110,6 +127,11 @@ async function syncDesktopWebHostWithConfig(
   const changedEndpoint =
     previousConfig?.host !== config.host || previousConfig?.port !== config.port;
   desktopWebHostConfig = config;
+  if (config.authTokenHash) {
+    desktopWebHostPairingCode = '';
+  } else if (!desktopWebHostPairingCode) {
+    desktopWebHostPairingCode = createDesktopWebPairingCode();
+  }
 
   if (!config.enabled) {
     await stopDesktopWebHostIfRunning();
@@ -129,6 +151,7 @@ async function syncDesktopWebHostWithConfig(
           host: config.host,
           port: config.port,
           url: state.url,
+          ...(config.authTokenHash ? {} : { pairingCode: desktopWebHostPairingCode }),
         }
       : {
           state: 'stopped',
@@ -158,6 +181,7 @@ async function syncDesktopWebHostWithConfig(
       host: state.host,
       port: state.port,
       ...(state.url ? { url: state.url } : {}),
+      ...(config.authTokenHash ? {} : { pairingCode: desktopWebHostPairingCode }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -167,6 +191,22 @@ async function syncDesktopWebHostWithConfig(
       host: config.host,
       port: config.port,
       error: message,
+    });
+  }
+}
+
+async function completeDesktopWebHostPairing(authTokenHash: string): Promise<void> {
+  await invokeDesktopHostCommand('setWebHostAuthTokenHash', { authTokenHash });
+  const config = await loadConfig();
+  desktopWebHostConfig = config.webHost;
+  desktopWebHostPairingCode = '';
+  if (desktopWebHost?.isRunning()) {
+    const state = desktopWebHost.getState();
+    setDesktopWebHostRuntimeStatus({
+      state: 'running',
+      host: config.webHost.host,
+      port: config.webHost.port,
+      ...(state.url ? { url: state.url } : {}),
     });
   }
 }

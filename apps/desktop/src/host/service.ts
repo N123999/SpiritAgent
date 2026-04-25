@@ -106,6 +106,7 @@ type DesktopRuntime = AgentRuntime<
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
   updateConfig: { request: UpdateConfigRequest };
+  setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   removeModel: { request: RemoveModelRequest };
   createSkill: { request: CreateSkillRequest };
@@ -233,6 +234,19 @@ class DesktopHostService {
       this.lastRuntimeError = '';
       // 勿在此处 persist：仅改 config（如 planMode）不应刷新 savedAtUnixMs，否则会话在侧栏会误排到首位
       await this.flushDeferredRuntimeRefreshIfIdle();
+      return this.buildSnapshot();
+    });
+  }
+
+  async setWebHostAuthTokenHash(authTokenHash: string): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      state.config.webHost = normalizeWebHostConfig({
+        ...state.config.webHost,
+        authTokenHash,
+      });
+      await saveConfig(state.config);
       return this.buildSnapshot();
     });
   }
@@ -625,6 +639,10 @@ description: ${frontmatterDescription}
       case 'updateConfig': {
         const typedPayload = payload as CommandPayloads['updateConfig'];
         return this.updateConfig(typedPayload.request);
+      }
+      case 'setWebHostAuthTokenHash': {
+        const typedPayload = payload as CommandPayloads['setWebHostAuthTokenHash'];
+        return this.setWebHostAuthTokenHash(typedPayload.authTokenHash);
       }
       case 'addModel': {
         const typedPayload = payload as CommandPayloads['addModel'];
@@ -2610,6 +2628,7 @@ function buildWebHostSnapshot(config: DesktopWebHostConfigFile): DesktopWebHostS
         ...runtimeStatus,
         host: runtimeStatus.host || config.host,
         port: runtimeStatus.port || config.port,
+        ...(config.authTokenHash ? { pairingCode: undefined } : {}),
       }
     : {
         state: 'disabled' as const,

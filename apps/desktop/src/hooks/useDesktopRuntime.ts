@@ -41,6 +41,14 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function toUniqueIndexes(indexes: number[]): number[] {
   return Array.from(new Set(indexes)).sort((left, right) => left - right);
 }
@@ -119,6 +127,7 @@ export function useDesktopRuntime() {
   const { api, error: hostError, kind, ready: hostReady } = useHostApi();
   const [snapshot, setSnapshot] = useState<DesktopSnapshot | null>(null);
   const [runtimeError, setRuntimeError] = useState("");
+  const [webHostPairingRequired, setWebHostPairingRequired] = useState(false);
   const [composer, setComposer] = useState("");
   const [approvalMessage, setApprovalMessage] = useState("approve");
   const [questionError, setQuestionError] = useState("");
@@ -186,13 +195,39 @@ export function useDesktopRuntime() {
       const next = await api.bootstrap();
       applySnapshot(next);
       setRuntimeError("");
+      setWebHostPairingRequired(false);
       void refreshSessions();
     } catch (error) {
+      setWebHostPairingRequired(errorCode(error) === "PAIRING_REQUIRED");
       setRuntimeError(describeError(error));
     } finally {
       setBusyAction("");
     }
   }, [api, applySnapshot, refreshSessions]);
+
+  const pairWebHost = useCallback(
+    async (code: string): Promise<boolean> => {
+      if (!api?.pairWebHost) {
+        setRuntimeError("当前宿主不支持 Web 配对。");
+        return false;
+      }
+
+      setBusyAction("bootstrap");
+      try {
+        await api.pairWebHost(code);
+        setWebHostPairingRequired(false);
+        setRuntimeError("");
+        await bootstrap();
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, bootstrap],
+  );
 
   useEffect(() => {
     if (api && hostReady) {
@@ -634,6 +669,7 @@ export function useDesktopRuntime() {
     settings,
     snapshot,
     summary,
+    webHostPairingRequired,
     approvalMessage,
     setActiveModel,
     setApprovalMessage,
@@ -647,6 +683,7 @@ export function useDesktopRuntime() {
     createSkill,
     deleteSkill,
     openSession,
+    pairWebHost,
     resetSession,
     rewindAndSubmitMessage,
     saveSettingsPatch,

@@ -555,6 +555,70 @@ function isWin32ElectronShell(): boolean {
   return /Windows/i.test(navigator.userAgent);
 }
 
+function WebHostPairingGate({
+  busy,
+  error,
+  onPair,
+}: {
+  busy: boolean;
+  error: string;
+  onPair(code: string): Promise<boolean>;
+}) {
+  const [code, setCode] = useState("");
+  const [localError, setLocalError] = useState("");
+
+  const submit = () => {
+    const normalized = code.trim();
+    if (!normalized) {
+      setLocalError("请输入配对码。");
+      return;
+    }
+    void onPair(normalized).then((ok) => {
+      if (!ok) {
+        setLocalError("配对失败，请检查配对码。");
+      }
+    });
+  };
+
+  return (
+    <div className="flex h-[100dvh] items-center justify-center bg-background px-4 text-foreground">
+      <Card className="w-full max-w-sm rounded-lg">
+        <CardHeader>
+          <CardTitle>首次配对</CardTitle>
+          <CardDescription>输入 Desktop 设置页显示的配对码。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2">
+            <Label htmlFor="web-host-pairing-code">配对码</Label>
+            <Input
+              id="web-host-pairing-code"
+              value={code}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              onChange={(event) => {
+                setLocalError("");
+                setCode(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !busy) {
+                  submit();
+                }
+              }}
+            />
+          </div>
+          {localError || (error && !error.includes("需要完成首次配对")) ? (
+            <p className="text-sm text-destructive">{localError || error}</p>
+          ) : null}
+          <Button type="button" className="w-full" disabled={busy} onClick={submit}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+            配对
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function App() {
   const { theme, setTheme } = useTheme();
   const runtime = useDesktopRuntime();
@@ -651,6 +715,16 @@ export default function App() {
     snapshot === null &&
     !runtime.hostConnectionError.trim() &&
     !runtime.runtimeError.trim();
+
+  if (runtime.webHostPairingRequired && runtime.hostKind === "web" && !snapshot) {
+    return (
+      <WebHostPairingGate
+        busy={runtime.busyAction === "bootstrap"}
+        error={runtime.runtimeError}
+        onPair={runtime.pairWebHost}
+      />
+    );
+  }
 
   return (
     <div

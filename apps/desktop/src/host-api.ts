@@ -29,6 +29,7 @@ export interface HostApi {
   resetSession(): Promise<DesktopSnapshot>;
   listSessions(): Promise<SessionListItem[]>;
   openSession(path: string): Promise<DesktopSnapshot>;
+  pairWebHost?(code: string): Promise<void>;
 }
 
 export async function createHostApi(): Promise<HostApi> {

@@ -265,6 +265,9 @@ function BasicSettingsPanel({
           <p>
             配对：{webHost?.config.paired ? "已完成" : "等待首次配对"}
           </p>
+          {webHost?.status.pairingCode ? (
+            <p className="font-mono text-foreground">{webHost.status.pairingCode}</p>
+          ) : null}
         </div>
       </div>
 

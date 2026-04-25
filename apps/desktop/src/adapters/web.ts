@@ -13,6 +13,11 @@ import type {
 
 const DEFAULT_HOST_URL =
   import.meta.env.VITE_SPIRIT_HOST_URL?.toString().trim() || '';
+const WEB_HOST_TOKEN_STORAGE_KEY = 'spirit-agent-web-host-token';
+
+type WebHostPairingResponse = {
+  token: string;
+};
 
 export function createWebHostApi(): HostApi {
   const baseUrl = DEFAULT_HOST_URL || '';
@@ -61,13 +66,21 @@ export function createWebHostApi(): HostApi {
     openSession(path: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/sessions/open', { path });
     },
+    async pairWebHost(code: string) {
+      const result = await post<WebHostPairingResponse>(baseUrl, '/api/pairing', { code }, {
+        auth: false,
+      });
+      storeWebHostToken(result.token);
+    },
   };
 }
 
 async function get<T>(baseUrl: string, path: string): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`);
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: authHeaders(),
+  });
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw await responseError(response);
   }
   return (await response.json()) as T;
 }
@@ -76,18 +89,59 @@ async function post<T>(
   baseUrl: string,
   path: string,
   body?: unknown,
+  options?: { auth?: boolean },
 ): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(options?.auth === false ? {} : authHeaders()),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw await responseError(response);
   }
 
   return (await response.json()) as T;
+}
+
+function authHeaders(): Record<string, string> {
+  const token = readWebHostToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function readWebHostToken(): string | undefined {
+  try {
+    return localStorage.getItem(WEB_HOST_TOKEN_STORAGE_KEY)?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeWebHostToken(token: string): void {
+  try {
+    localStorage.setItem(WEB_HOST_TOKEN_STORAGE_KEY, token);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+async function responseError(response: Response): Promise<Error> {
+  const text = await response.text();
+  try {
+    const parsed = JSON.parse(text) as { error?: string; code?: string };
+    const error = new Error(parsed.error ?? text) as Error & {
+      code?: string;
+      status?: number;
+    };
+    error.code = parsed.code;
+    error.status = response.status;
+    return error;
+  } catch {
+    const error = new Error(text) as Error & { status?: number };
+    error.status = response.status;
+    return error;
+  }
 }
