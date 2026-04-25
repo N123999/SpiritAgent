@@ -7,6 +7,11 @@ import { BrowserWindow, Menu, app, ipcMain, nativeTheme } from 'electron';
 import { invokeDesktopHostCommand } from '../src/host/service.js';
 import { configFilePath } from '../src/host/storage.js';
 import { type ApplicationMenuSection, popupApplicationMenuSection } from './application-menu.js';
+import {
+  createDesktopHttpHost,
+  resolveDesktopWebHostFromEnv,
+  type DesktopHttpHost,
+} from './http-host.js';
 import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 
 /** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
@@ -16,6 +21,46 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+
+let desktopWebHost: DesktopHttpHost | undefined;
+let quittingAfterDesktopWebHostStop = false;
+
+function shouldStartDesktopWebHostFromEnv(): boolean {
+  return process.env.SPIRIT_DESKTOP_WEB_HOST === '1';
+}
+
+function getDesktopWebHost(): DesktopHttpHost {
+  if (!desktopWebHost) {
+    const { host, port } = resolveDesktopWebHostFromEnv();
+    desktopWebHost = createDesktopHttpHost({
+      host,
+      port,
+      invokeHostCommand: invokeMainDesktopHostCommand,
+    });
+  }
+  return desktopWebHost;
+}
+
+async function startDesktopWebHostFromEnv(): Promise<void> {
+  if (!shouldStartDesktopWebHostFromEnv()) {
+    return;
+  }
+  await getDesktopWebHost().start();
+}
+
+async function stopDesktopWebHostIfRunning(): Promise<void> {
+  if (!desktopWebHost?.isRunning()) {
+    return;
+  }
+  await desktopWebHost.stop();
+}
+
+function invokeMainDesktopHostCommand(
+  command: Parameters<typeof invokeDesktopHostCommand>[0],
+  payload?: unknown,
+) {
+  return invokeDesktopHostCommand(command, payload);
+}
 
 /** Windows 任务栏 / 窗口角标：与 Vite 页 `public/favicon.ico` 同源（main 位于 dist-electron/electron）。 */
 function resolveWindowIconPath(): string | undefined {
@@ -205,7 +250,7 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
-    invokeDesktopHostCommand(command, payload),
+    invokeMainDesktopHostCommand(command, payload),
   );
 
   ipcMain.handle(
@@ -235,12 +280,25 @@ app.whenReady().then(async () => {
     },
   );
 
+  await startDesktopWebHostFromEnv();
   await createMainWindow();
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       await createMainWindow();
     }
+  });
+});
+
+app.on('before-quit', (event) => {
+  if (quittingAfterDesktopWebHostStop || !desktopWebHost?.isRunning()) {
+    return;
+  }
+
+  event.preventDefault();
+  quittingAfterDesktopWebHostStop = true;
+  void stopDesktopWebHostIfRunning().finally(() => {
+    app.quit();
   });
 });
 
