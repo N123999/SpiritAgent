@@ -2088,13 +2088,15 @@ export class AgentRuntime<
       delete pending.childRecord.summary.error;
     }
 
-    pending.parentTurn.toolExecutions.push({
+    const finishedExecution = {
       toolCallId: pending.parentToolCallId,
       toolName: 'run_subagent',
       request: pending.parentRequest,
       output: output.text,
       failed: output.failed,
-    });
+    };
+    pending.parentTurn.toolExecutions.push(finishedExecution);
+    this.emitEvent({ kind: 'tool-execution-finished', execution: finishedExecution });
 
     const resumedState = this.options.appendToolResultMessage(
       pending.parentState,
