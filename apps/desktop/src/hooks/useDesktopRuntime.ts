@@ -11,6 +11,7 @@ import type {
   CreateSkillRequest,
   DeleteSkillRequest,
   DesktopSnapshot,
+  RewindAndSubmitMessageRequest,
   SessionListItem,
 } from "@/types";
 
@@ -18,6 +19,7 @@ type BusyAction =
   | ""
   | "bootstrap"
   | "send"
+  | "rewind"
   | "approve"
   | "questions"
   | "reset"
@@ -450,6 +452,31 @@ export function useDesktopRuntime() {
       setBusyAction("");
     }
   }, [api, applySnapshot, composer]);
+  
+  const rewindAndSubmitMessage = useCallback(
+    async (request: RewindAndSubmitMessageRequest): Promise<boolean> => {
+      if (!api) {
+        return false;
+      }
+
+      setBusyAction("rewind");
+      try {
+        const next = await api.rewindAndSubmitMessage(request);
+        applySnapshot(next);
+        setComposer("");
+        setQuestionError("");
+        setRuntimeError("");
+        void refreshSessions();
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot, refreshSessions],
+  );
 
   const submitApproval = useCallback(async () => {
     if (!api) {
@@ -605,6 +632,7 @@ export function useDesktopRuntime() {
     deleteSkill,
     openSession,
     resetSession,
+    rewindAndSubmitMessage,
     saveSettingsPatch,
     sendMessage,
     skipQuestions,

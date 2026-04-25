@@ -54,6 +54,7 @@ import type {
   AskQuestionsQuestionSpec,
   ConversationMessageSnapshot,
   DesktopSnapshot,
+  MessageRewindDraftState,
   ToolBlockSnapshot,
 } from "@/types";
 
@@ -136,21 +137,175 @@ function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
   );
 }
 
+type ComposerSurfaceProps = {
+  value: string;
+  placeholder: string;
+  models: DesktopSnapshot["config"]["models"];
+  activeModel: string;
+  planMode: boolean;
+  canSend: boolean;
+  busy: boolean;
+  onChange(value: string): void;
+  onSubmit(): void;
+  onModelSelect(name: string): void;
+  onPlanModeChange(planMode: boolean): void;
+};
+
+function ComposerSurface({
+  value,
+  placeholder,
+  models,
+  activeModel,
+  planMode,
+  canSend,
+  busy,
+  onChange,
+  onSubmit,
+  onModelSelect,
+  onPlanModeChange,
+}: ComposerSurfaceProps) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
+      <Textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-h-[5.25rem] w-full resize-y rounded-none border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none md:min-h-[6rem]"
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            if (canSend && !busy) {
+              onSubmit();
+            }
+          }
+        }}
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-3 pb-2 pt-10">
+        <div className="pointer-events-auto flex w-full max-w-full items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="运行方式"
+                  className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  <span className="min-w-0 flex-1 truncate" title={planMode ? "Plan" : "Agent"}>
+                    {planMode ? "Plan" : "Agent"}
+                  </span>
+                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="min-w-[8rem] text-xs">
+                <DropdownMenuItem
+                  onSelect={() => onPlanModeChange(false)}
+                  className={cn(!planMode && "bg-accent/40")}
+                >
+                  Agent
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onPlanModeChange(true)}
+                  className={cn(planMode && "bg-accent/40")}
+                >
+                  Plan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {models.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="选择模型"
+                    className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <span className="min-w-0 flex-1 truncate" title={activeModel}>
+                      {activeModel}
+                    </span>
+                    <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="max-w-md text-xs">
+                  {models.map((model) => (
+                    <DropdownMenuItem
+                      key={model.name}
+                      onSelect={() => onModelSelect(model.name)}
+                      className={cn(model.name === activeModel && "bg-accent/40")}
+                    >
+                      <span className="block w-full min-w-0 break-all pr-1 text-left" title={model.name}>
+                        {model.name}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <span className="px-1 text-xs text-muted-foreground">无可用模型</span>
+            )}
+          </div>
+          <Button
+            type="button"
+            className="size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5"
+            onClick={onSubmit}
+            disabled={!canSend || busy}
+            title="发送（Ctrl+Enter）"
+          >
+            {busy ? (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            ) : (
+              <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageCard({
   message,
   listIndex,
+  rewindText,
+  rewindSelected,
+  rewindCanSubmit,
+  rewindBusy,
+  models,
+  activeModel,
+  planMode,
+  onRewindChange,
+  onRewindStart,
+  onRewindSubmit,
+  onModelSelect,
+  onPlanModeChange,
 }: {
   message: ConversationMessageSnapshot;
   listIndex: number;
+  rewindText: string;
+  rewindSelected: boolean;
+  rewindCanSubmit: boolean;
+  rewindBusy: boolean;
+  models: DesktopSnapshot["config"]["models"];
+  activeModel: string;
+  planMode: boolean;
+  onRewindChange(value: string): void;
+  onRewindStart(message: ConversationMessageSnapshot): void;
+  onRewindSubmit(): void;
+  onModelSelect(name: string): void;
+  onPlanModeChange(planMode: boolean): void;
 }) {
   const isUser = message.role === "user";
+  const canStartRewind = isUser && message.canRewind === true && !message.pending;
   const userBubble =
     "rounded-2xl rounded-br-md border border-border/50 bg-muted px-3 py-2.5 shadow-sm";
 
   return (
     <div
       id={conversationMessageDomId(message, listIndex)}
-      className={cn("scroll-mt-4 flex w-full pb-3 last:pb-0", isUser ? "justify-end" : "justify-start")}
+      className={cn(
+        "scroll-mt-4 flex w-full pb-3 last:pb-0",
+        isUser ? "justify-end" : "justify-start",
+        rewindSelected && "relative z-40",
+      )}
     >
       <div
         className={cn(
@@ -158,6 +313,21 @@ function MessageCard({
           isUser ? "max-w-[min(72%,22rem)]" : "w-full",
         )}
       >
+        {rewindSelected ? (
+          <ComposerSurface
+            value={rewindText}
+            onChange={onRewindChange}
+            onSubmit={onRewindSubmit}
+            placeholder="输入消息…"
+            models={models}
+            activeModel={activeModel}
+            planMode={planMode}
+            onModelSelect={onModelSelect}
+            onPlanModeChange={onPlanModeChange}
+            canSend={rewindCanSubmit}
+            busy={rewindBusy}
+          />
+        ) : null}
         {!isUser && message.aux?.thinking ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
             <p className="text-xs font-medium tracking-wide text-muted-foreground">
@@ -178,12 +348,26 @@ function MessageCard({
             </pre>
           </div>
         ) : null}
-        {isUser && message.content.trim() ? (
+        {isUser && message.content.trim() && !rewindSelected ? (
           <pre
             className={cn(
               "whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground",
               userBubble,
+              canStartRewind && "cursor-pointer transition-colors hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
             )}
+            role={canStartRewind ? "button" : undefined}
+            tabIndex={canStartRewind ? 0 : undefined}
+            onClick={canStartRewind ? () => onRewindStart(message) : undefined}
+            onKeyDown={
+              canStartRewind
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onRewindStart(message);
+                    }
+                  }
+                : undefined
+            }
           >
             {message.content}
           </pre>
@@ -383,8 +567,10 @@ export default function App() {
 
   const models = snapshot?.config.models ?? [];
   const messages = snapshot?.conversation.messages ?? [];
+  const rewindWarnings = snapshot?.conversation.rewindWarnings ?? [];
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
   const pendingQuestions = runtime.pendingQuestions;
+  const [rewindDraft, setRewindDraft] = useState<MessageRewindDraftState | null>(null);
 
   const [activeSurface, setActiveSurface] = useState<"conversation" | "settings">(
     "conversation",
@@ -394,6 +580,41 @@ export default function App() {
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
   const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
+
+  useEffect(() => {
+    if (!rewindDraft) {
+      return;
+    }
+    const stillAvailable = messages.some(
+      (message) => message.id === rewindDraft.messageId && message.canRewind === true,
+    );
+    if (!stillAvailable) {
+      setRewindDraft(null);
+    }
+  }, [messages, rewindDraft]);
+
+  const startMessageRewind = (message: ConversationMessageSnapshot) => {
+    if (!runtime.summary.canSend || runtime.busyAction || message.canRewind !== true) {
+      return;
+    }
+    setRewindDraft({ messageId: message.id, text: message.content });
+  };
+
+  const submitMessageRewind = () => {
+    if (!rewindDraft) {
+      return;
+    }
+    void runtime
+      .rewindAndSubmitMessage({
+        messageId: rewindDraft.messageId,
+        text: rewindDraft.text,
+      })
+      .then((ok) => {
+        if (ok) {
+          setRewindDraft(null);
+        }
+      });
+  };
 
   const launchSplashActive =
     snapshot === null &&
@@ -508,6 +729,14 @@ export default function App() {
             />
           ) : (
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
+              {rewindDraft ? (
+                <button
+                  type="button"
+                  aria-label="取消回溯编辑"
+                  className="fixed inset-0 z-30 cursor-default bg-background/35 backdrop-blur-sm"
+                  onClick={() => setRewindDraft(null)}
+                />
+              ) : null}
               <ScrollArea
                 className="min-h-0 flex-1 bg-background"
                 type="hover"
@@ -544,6 +773,31 @@ export default function App() {
                             key={conversationMessageDomId(message, index)}
                             listIndex={index}
                             message={message}
+                            rewindSelected={rewindDraft?.messageId === message.id}
+                            rewindText={
+                              rewindDraft?.messageId === message.id ? rewindDraft.text : ""
+                            }
+                            rewindCanSubmit={
+                              runtime.summary.canSend &&
+                              runtime.busyAction !== "rewind" &&
+                              runtime.busyAction !== "session" &&
+                              Boolean(rewindDraft?.text.trim())
+                            }
+                            rewindBusy={runtime.busyAction === "rewind"}
+                            models={models}
+                            activeModel={runtime.settings.activeModel}
+                            planMode={runtime.settings.planMode}
+                            onRewindStart={startMessageRewind}
+                            onRewindChange={(value) => {
+                              setRewindDraft((current) =>
+                                current ? { ...current, text: value } : current,
+                              );
+                            }}
+                            onRewindSubmit={submitMessageRewind}
+                            onModelSelect={runtime.setActiveModel}
+                            onPlanModeChange={(planMode) => {
+                              void runtime.saveSettingsPatch({ planMode });
+                            }}
                           />
                         ))}
                       </div>
@@ -557,6 +811,15 @@ export default function App() {
                 {runtime.runtimeError ? (
                   <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
                     {runtime.runtimeError}
+                  </div>
+                ) : null}
+
+                {rewindWarnings.length > 0 ? (
+                  <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
+                    <p>回溯完成，{rewindWarnings.length} 项文件变更需要注意。</p>
+                    <p className="mt-1 truncate" title={rewindWarnings[0]?.message}>
+                      {rewindWarnings[0]?.path}: {rewindWarnings[0]?.message}
+                    </p>
                   </div>
                 ) : null}
 
@@ -588,136 +851,25 @@ export default function App() {
                 ) : null}
 
                 <div className="grid gap-1.5">
-                  <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
-                    <Textarea
-                      value={runtime.composer}
-                      onChange={(event) => runtime.setComposer(event.target.value)}
-                      placeholder="输入消息…"
-                      className="min-h-[5.25rem] w-full resize-y rounded-none border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none md:min-h-[6rem]"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                          e.preventDefault();
-                          if (
-                            runtime.summary.canSend &&
-                            runtime.busyAction !== "send" &&
-                            runtime.busyAction !== "session"
-                          ) {
-                            void runtime.sendMessage();
-                          }
-                        }
-                      }}
-                    />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-3 pb-2 pt-10">
-                      <div className="pointer-events-auto flex w-full max-w-full items-center justify-between gap-2">
-                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label="运行方式"
-                              className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                            >
-                              <span
-                                className="min-w-0 flex-1 truncate"
-                                title={runtime.settings.planMode ? "Plan" : "Agent"}
-                              >
-                                {runtime.settings.planMode ? "Plan" : "Agent"}
-                              </span>
-                              <ChevronDown
-                                className="size-3 shrink-0 text-muted-foreground/80"
-                                aria-hidden
-                              />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" side="top" className="min-w-[8rem] text-xs">
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                void runtime.saveSettingsPatch({ planMode: false });
-                              }}
-                              className={cn(
-                                !runtime.settings.planMode && "bg-accent/40",
-                              )}
-                            >
-                              Agent
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                void runtime.saveSettingsPatch({ planMode: true });
-                              }}
-                              className={cn(
-                                runtime.settings.planMode && "bg-accent/40",
-                              )}
-                            >
-                              Plan
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        {models.length > 0 ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                aria-label="选择模型"
-                                className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                              >
-                                <span
-                                  className="min-w-0 flex-1 truncate"
-                                  title={runtime.settings.activeModel}
-                                >
-                                  {runtime.settings.activeModel}
-                                </span>
-                                <ChevronDown
-                                  className="size-3 shrink-0 text-muted-foreground/80"
-                                  aria-hidden
-                                />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" side="top" className="max-w-md text-xs">
-                              {models.map((model) => (
-                                <DropdownMenuItem
-                                  key={model.name}
-                                  onSelect={() => {
-                                    runtime.setActiveModel(model.name);
-                                  }}
-                                  className={cn(
-                                    model.name === runtime.settings.activeModel &&
-                                      "bg-accent/40",
-                                  )}
-                                >
-                                  <span
-                                    className="block w-full min-w-0 break-all pr-1 text-left"
-                                    title={model.name}
-                                  >
-                                    {model.name}
-                                  </span>
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : (
-                          <span className="px-1 text-xs text-muted-foreground">无可用模型</span>
-                        )}
-                      </div>
-                      <Button
-                        type="button"
-                        className="size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5"
-                        onClick={() => void runtime.sendMessage()}
-                        disabled={
-                          !runtime.summary.canSend ||
-                          runtime.busyAction === "send" ||
-                          runtime.busyAction === "session"
-                        }
-                        title="发送（Ctrl+Enter）"
-                      >
-                        {runtime.busyAction === "send" ? (
-                          <LoaderCircle className="size-3.5 animate-spin" />
-                        ) : (
-                          <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
-                        )}
-                      </Button>
-                      </div>
-                    </div>
-                  </div>
+                  <ComposerSurface
+                    value={runtime.composer}
+                    onChange={runtime.setComposer}
+                    onSubmit={() => void runtime.sendMessage()}
+                    placeholder="输入消息…"
+                    models={models}
+                    activeModel={runtime.settings.activeModel}
+                    planMode={runtime.settings.planMode}
+                    onModelSelect={runtime.setActiveModel}
+                    onPlanModeChange={(planMode) => {
+                      void runtime.saveSettingsPatch({ planMode });
+                    }}
+                    canSend={
+                      runtime.summary.canSend &&
+                      runtime.busyAction !== "send" &&
+                      runtime.busyAction !== "session"
+                    }
+                    busy={runtime.busyAction === "send"}
+                  />
                   {snapshot?.conversation.pendingQuestions ? (
                     <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
                       请先完成上方问卷
