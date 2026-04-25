@@ -44,8 +44,6 @@ const ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH: &str = "SPIRIT_HOST_INTERNAL_MODULE
 const ENV_RUNTIME_HOST_INTERNAL_SPIRIT_DATA_DIR: &str = "SPIRIT_HOST_INTERNAL_SPIRIT_DATA_DIR";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
-const MODEL_SWITCH_BUSY_MESSAGE: &str =
-    "当前有进行中的对话，暂不支持在 TS backend 下切换模型。请等待当前回合结束后再试。";
 
 pub struct TsBridgeRuntime {
     process: JsonRpcProcess,
@@ -66,6 +64,8 @@ pub struct TsBridgeRuntime {
     subagent_message_cache: HashMap<String, Vec<ChatMessage>>,
     events: VecDeque<RuntimeEvent>,
     bridge_failed: bool,
+    /// 忙时切换模型/endpoint 已写入 `config`，但尚未对 TS `runtime.replaceConfig`；空闲后由 `flush_deferred_transport_replace` 应用。
+    deferred_transport_replace: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,6 +314,7 @@ impl TsBridgeRuntime {
             subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
             bridge_failed: false,
+            deferred_transport_replace: false,
         };
         logging::log_event(&format!(
             "[ts-bridge-host] runtime init workspace_root={}",
@@ -352,6 +353,7 @@ impl TsBridgeRuntime {
             subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
             bridge_failed: false,
+            deferred_transport_replace: false,
         };
         runtime.initialize_bridge_with_transport_config(build_mcp_only_transport_config(
             &runtime.workspace_root,
@@ -368,31 +370,12 @@ impl TsBridgeRuntime {
             return Ok(());
         }
 
-        if self.is_busy_cache || self.session.pending_user_turn().is_some() {
-            return Err(anyhow!(MODEL_SWITCH_BUSY_MESSAGE));
-        }
-
         self.resolve_transport_config_json_for(config).map(|_| ())
     }
 
-    pub fn replace_config(&mut self, config: AppConfig) {
-        let transport_config_changed = self.transport_config_will_change(&config);
-        if let Err(err) = self.validate_config_change(&config) {
-            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                MessageRole::Agent,
-                err.to_string(),
-            )));
-            return;
-        }
-
-        if !transport_config_changed {
-            self.config = config;
-            return;
-        }
-
+    fn apply_transport_to_bridge(&mut self) {
         let pending_images = self.session.pending_image_paths().to_vec();
         let pending_resources = self.session.pending_mcp_resources().to_vec();
-        self.config = config;
         let transport_config = match self.resolve_transport_config_json() {
             Ok(value) => value,
             Err(err) => {
@@ -425,6 +408,44 @@ impl TsBridgeRuntime {
                 return;
             }
         }
+    }
+
+    fn flush_deferred_transport_replace(&mut self) {
+        if !self.deferred_transport_replace {
+            return;
+        }
+        if self.is_busy_cache || self.session.pending_user_turn().is_some() {
+            return;
+        }
+        self.deferred_transport_replace = false;
+        self.apply_transport_to_bridge();
+    }
+
+    pub fn replace_config(&mut self, config: AppConfig) {
+        let transport_config_changed = self.transport_config_will_change(&config);
+        if let Err(err) = self.validate_config_change(&config) {
+            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                MessageRole::Agent,
+                err.to_string(),
+            )));
+            return;
+        }
+
+        if !transport_config_changed {
+            self.config = config;
+            return;
+        }
+
+        let busy_defer = self.is_busy_cache || self.session.pending_user_turn().is_some();
+        self.config = config;
+
+        if busy_defer {
+            self.deferred_transport_replace = true;
+            return;
+        }
+
+        self.deferred_transport_replace = false;
+        self.apply_transport_to_bridge();
     }
 
     pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
@@ -1380,6 +1401,7 @@ impl TsBridgeRuntime {
         });
         self.pending_questions_active = snapshot.has_pending_questions;
         self.is_busy_cache = snapshot.is_busy;
+        self.flush_deferred_transport_replace();
     }
 
     fn should_poll_bridge(&self) -> bool {
@@ -1675,6 +1697,12 @@ impl TsBridgeRuntime {
                 format!("TS runtime 执行失败: {}", summary)
             },
         )));
+        self.flush_deferred_transport_replace();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn deferred_transport_replace_for_test(&self) -> bool {
+        self.deferred_transport_replace
     }
 }
 
@@ -1958,8 +1986,7 @@ fn build_mcp_only_transport_config(workspace_root: &Path) -> Value {
 mod tests {
     use super::{
         BridgeRuntimeEvent, BridgeRuntimeSnapshot, BridgeToolExecution,
-        ENV_RUNTIME_BACKEND_NODE_PATH, MODEL_SWITCH_BUSY_MESSAGE, TsBridgeRuntime,
-        resolve_bridge_script,
+        ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime, resolve_bridge_script,
     };
     use crate::{
         host_runtime::RuntimeEvent,
@@ -2076,8 +2103,25 @@ mod tests {
         assert!(!runtime.has_pending_tool_approval());
     }
 
+    fn idle_snapshot() -> BridgeRuntimeSnapshot {
+        BridgeRuntimeSnapshot {
+            pending_user_turn: None,
+            pending_image_paths: vec![],
+            pending_mcp_resources: vec![],
+            pending_aux_state: None,
+            has_pending_approval: false,
+            has_pending_manual_approval: false,
+            has_pending_questions: false,
+            current_pending_approval: None,
+            current_pending_questions: None,
+            child_sessions: vec![],
+            is_busy: false,
+            background_tool_status: None,
+        }
+    }
+
     #[test]
-    fn validate_config_change_blocks_active_model_switch_while_busy() {
+    fn validate_config_change_allows_transport_switch_while_busy() {
         let Some(mut runtime) = make_test_runtime() else {
             return;
         };
@@ -2087,10 +2131,33 @@ mod tests {
         let mut next = runtime.config().clone();
         next.active_model = "gpt-4.1-mini".to_string();
 
-        let err = runtime
-            .validate_config_change(&next)
-            .expect_err("busy runtime should reject active model switch");
-        assert_eq!(err.to_string(), MODEL_SWITCH_BUSY_MESSAGE);
+        assert!(
+            runtime.validate_config_change(&next).is_ok(),
+            "忙时仍应通过校验，bridge 替换推迟到空闲"
+        );
+    }
+
+    #[test]
+    fn replace_config_defers_bridge_transport_while_busy_and_flushes_when_idle() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_snapshot(busy_snapshot());
+        assert!(!runtime.deferred_transport_replace_for_test());
+
+        let mut next = runtime.config().clone();
+        next.active_model = "gpt-4.1-mini".to_string();
+        runtime.replace_config(next);
+
+        assert!(runtime.deferred_transport_replace_for_test());
+        assert_eq!(runtime.config().active_model, "gpt-4.1-mini");
+
+        runtime.apply_snapshot(idle_snapshot());
+        assert!(
+            !runtime.deferred_transport_replace_for_test(),
+            "空闲后应完成对 TS 的 replaceConfig"
+        );
     }
 
     #[test]
