@@ -310,7 +310,11 @@ function MessageCard({
       <div
         className={cn(
           "min-w-0 space-y-2",
-          isUser ? "max-w-[min(72%,22rem)]" : "w-full",
+          isUser
+            ? rewindSelected
+              ? "ml-auto w-full max-w-[min(100%,36rem)]"
+              : "max-w-[min(72%,22rem)]"
+            : "w-full",
         )}
       >
         {rewindSelected ? (
