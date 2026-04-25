@@ -12,6 +12,14 @@ import {
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import {
+  readHostFileSnapshot,
+  type HostFileChangeKind,
+  type HostFileChangeObserver,
+  type HostFileChangeRequestSummary,
+  type HostRecordedFileChange,
+  type HostToolRequestMetadata,
+} from './file-rewind.js';
 import { resolveInstructionPaths, type InstructionDiscoveryContext } from './storage.js';
 
 const exec = promisify(execCallback);
@@ -152,6 +160,11 @@ export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionS
   getMcpPrompt(name: string, prompt: string, argsJson?: string): Promise<HostJsonValue>;
 }
 
+export type HostFileToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> = Extract<
+  HostToolRequest<QuestionSpec>,
+  { name: 'create_file' | 'edit_file' | 'delete_file' }
+>;
+
 export interface HostMcpAdapter {
   startBackgroundRefresh(): void;
   statusSnapshot(): HostMcpStatusSnapshot;
@@ -246,16 +259,19 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly spiritDataDir: string;
   private readonly permissionStorePath: string;
   private readonly mcp: HostMcpAdapter;
+  private readonly fileChangeObserver: HostFileChangeObserver | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
+  private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
 
   constructor(
     private readonly context: InstructionDiscoveryContext,
-    options: { mcp?: HostMcpAdapter } = {},
+    options: { mcp?: HostMcpAdapter; fileChangeObserver?: HostFileChangeObserver } = {},
   ) {
     this.workspaceRoot = path.resolve(context.workspaceRoot);
     this.spiritDataDir = path.resolve(context.spiritDataDir);
     this.permissionStorePath = path.join(this.spiritDataDir, PERMISSIONS_FILE);
     this.mcp = options.mcp ?? createNoopMcpAdapter();
+    this.fileChangeObserver = options.fileChangeObserver;
   }
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
@@ -499,12 +515,22 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       case 'ask_questions':
         throw new Error('ask_questions 应由运行时挂起并等待用户填写，不应直接执行');
       case 'create_file':
-        return this.executeCreateFile(request.path, request.content);
+        return this.executeCreateFile(request);
       case 'edit_file':
-        return this.executeEditFile(request.path, request.old_text, request.new_text);
+        return this.executeEditFile(request);
       case 'delete_file':
-        return this.executeDeleteFile(request.path);
+        return this.executeDeleteFile(request);
     }
+  }
+
+  attachRequestMetadata(
+    request: HostToolRequest<QuestionSpec>,
+    metadata: HostToolRequestMetadata,
+  ): HostToolRequest<QuestionSpec> {
+    if (typeof request === 'object' && request !== null) {
+      this.requestMetadata.set(request, metadata);
+    }
+    return request;
   }
 
   startMcpBackgroundRefresh(): void {
@@ -905,21 +931,29 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }
   }
 
-  private async executeCreateFile(inputPath: string, content: string): Promise<string> {
+  private async executeCreateFile(
+    request: Extract<HostToolRequest<QuestionSpec>, { name: 'create_file' }>,
+  ): Promise<string> {
+    const inputPath = request.path;
+    const content = request.content;
     const target = this.resolveWorkspaceWriteTarget(inputPath);
     if (existsSync(target)) {
       throw new Error(`文件已存在: ${target}`);
     }
+    const before = await readHostFileSnapshot(target);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, content, 'utf8');
+    const after = await readHostFileSnapshot(target);
+    await this.recordFileChange(request, target, before, after);
     return `[write]\naction: create_file\npath: ${target}\nchars: ${[...content].length}`;
   }
 
   private async executeEditFile(
-    inputPath: string,
-    oldText: string,
-    newText: string,
+    request: Extract<HostToolRequest<QuestionSpec>, { name: 'edit_file' }>,
   ): Promise<string> {
+    const inputPath = request.path;
+    const oldText = request.old_text;
+    const newText = request.new_text;
     if (!oldText.length) {
       throw new Error('edit_file 的 old_text 不能为空');
     }
@@ -933,6 +967,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }
 
     const source = await readFile(target, 'utf8');
+    const before = await readHostFileSnapshot(target);
     const occurrences = countSubstringOccurrences(source, oldText);
     if (occurrences === 0) {
       const normalizedSource = normalizeLineEndings(source);
@@ -942,6 +977,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         const replaced = replaceSingleMatchAllowingNewlineDifferences(source, oldText, newText);
         if (replaced) {
           await writeFile(target, replaced.updated, 'utf8');
+          const after = await readHostFileSnapshot(target);
+          await this.recordFileChange(request, target, before, after);
           return `[write]\naction: edit_file\npath: ${target}\nreplaced_once: true\nmatch_mode: normalized_newlines\nold_chars: ${[...oldText].length}\nnew_chars: ${[...newText].length}`;
         }
       }
@@ -954,10 +991,15 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }
 
     await writeFile(target, source.replace(oldText, newText), 'utf8');
+    const after = await readHostFileSnapshot(target);
+    await this.recordFileChange(request, target, before, after);
     return `[write]\naction: edit_file\npath: ${target}\nreplaced_once: true\nold_chars: ${[...oldText].length}\nnew_chars: ${[...newText].length}`;
   }
 
-  private async executeDeleteFile(inputPath: string): Promise<string> {
+  private async executeDeleteFile(
+    request: Extract<HostToolRequest<QuestionSpec>, { name: 'delete_file' }>,
+  ): Promise<string> {
+    const inputPath = request.path;
     const target = this.resolveWorkspaceWriteTarget(inputPath);
     if (!existsSync(target)) {
       throw new Error(`路径不存在或无法访问: ${target}`);
@@ -966,8 +1008,79 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     if (!st.isFile()) {
       throw new Error(`目标不是文件: ${target}`);
     }
+    const before = await readHostFileSnapshot(target);
     await unlink(target);
+    const after = await readHostFileSnapshot(target);
+    await this.recordFileChange(request, target, before, after);
     return `[write]\naction: delete_file\npath: ${target}`;
+  }
+
+  private async recordFileChange(
+    request: HostFileToolRequest<QuestionSpec>,
+    resolvedPath: string,
+    before: HostRecordedFileChange['before'],
+    after: HostRecordedFileChange['after'],
+  ): Promise<void> {
+    if (!this.fileChangeObserver) {
+      return;
+    }
+
+    const metadata = this.requestMetadataFor(request);
+    const requestSummary = summarizeFileToolRequest(request);
+    const change: HostRecordedFileChange = {
+      kind: request.name,
+      path: request.path,
+      resolvedPath,
+      toolName: metadata?.toolName ?? request.name,
+      ...(metadata?.toolCallId ? { toolCallId: metadata.toolCallId } : {}),
+      ...(metadata?.subagentSessionId ? { subagentSessionId: metadata.subagentSessionId } : {}),
+      ...(metadata?.subagentTitle ? { subagentTitle: metadata.subagentTitle } : {}),
+      request: requestSummary,
+      before,
+      after,
+      createdAtUnixMs: Date.now(),
+    };
+
+    try {
+      await this.fileChangeObserver.recordFileChange(change);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`文件变更已写入，但记录回溯快照失败: ${message}`);
+    }
+  }
+
+  private requestMetadataFor(
+    request: HostToolRequest<QuestionSpec>,
+  ): HostToolRequestMetadata | undefined {
+    if (typeof request !== 'object' || request === null) {
+      return undefined;
+    }
+    return this.requestMetadata.get(request);
+  }
+}
+
+function summarizeFileToolRequest<QuestionSpec>(
+  request: HostFileToolRequest<QuestionSpec>,
+): HostFileChangeRequestSummary {
+  switch (request.name) {
+    case 'create_file':
+      return {
+        name: request.name,
+        path: request.path,
+        contentChars: [...request.content].length,
+      };
+    case 'edit_file':
+      return {
+        name: request.name,
+        path: request.path,
+        oldChars: [...request.old_text].length,
+        newChars: [...request.new_text].length,
+      };
+    case 'delete_file':
+      return {
+        name: request.name,
+        path: request.path,
+      };
   }
 }
 
