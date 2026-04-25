@@ -129,6 +129,9 @@ export function useDesktopRuntime() {
     apiKey: "",
     windowsMica: true,
     planMode: false,
+    webHostEnabled: false,
+    webHostHost: "127.0.0.1",
+    webHostPort: 7788,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -154,6 +157,9 @@ export function useDesktopRuntime() {
         apiKey: current.apiKey,
         windowsMica: next.config.windowsMica !== false,
         planMode: next.config.planMode === true,
+        webHostEnabled: next.webHost.config.enabled,
+        webHostHost: next.webHost.config.host,
+        webHostPort: next.webHost.config.port,
       };
     });
   }, []);
@@ -291,6 +297,11 @@ export function useDesktopRuntime() {
             apiBase: next.apiBase,
             windowsMica: next.windowsMica,
             planMode: next.planMode,
+            webHost: {
+              enabled: next.webHostEnabled,
+              host: next.webHostHost,
+              port: next.webHostPort,
+            },
             ...(next.uiLocale.trim()
               ? { uiLocale: next.uiLocale.trim() }
               : { uiLocale: undefined }),
@@ -412,6 +423,11 @@ export function useDesktopRuntime() {
           apiBase: s.apiBase,
           windowsMica: s.windowsMica,
           planMode: s.planMode,
+          webHost: {
+            enabled: s.webHostEnabled,
+            host: s.webHostHost,
+            port: s.webHostPort,
+          },
           ...(s.uiLocale.trim()
             ? { uiLocale: s.uiLocale.trim() }
             : { uiLocale: undefined }),

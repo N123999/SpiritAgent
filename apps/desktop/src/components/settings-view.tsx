@@ -39,6 +39,9 @@ export type SettingsFormState = {
   apiKey: string;
   windowsMica: boolean;
   planMode: boolean;
+  webHostEnabled: boolean;
+  webHostHost: string;
+  webHostPort: number;
 };
 
 type SettingsViewProps = {
@@ -91,6 +94,21 @@ function skillLocationLabel(item: DesktopSkillListItem): string {
   return skillRootKindLabel(item.rootKind);
 }
 
+function webHostStatusLabel(state: DesktopSnapshot["webHost"]["status"]["state"]): string {
+  switch (state) {
+    case "running":
+      return "运行中";
+    case "starting":
+      return "启动中";
+    case "error":
+      return "启动失败";
+    case "stopped":
+      return "已停止";
+    default:
+      return "关闭";
+  }
+}
+
 function SettingsRow({
   label,
   description,
@@ -131,6 +149,11 @@ function BasicSettingsPanel({
   snapshot,
   onSavePatch,
 }: Pick<SettingsViewProps, "settings" | "snapshot" | "onSavePatch">) {
+  const webHost = snapshot?.webHost;
+  const webHostUrl =
+    webHost?.status.url ?? `http://${settings.webHostHost}:${settings.webHostPort}`;
+  const webHostStatus = webHostStatusLabel(webHost?.status.state ?? "disabled");
+
   return (
     <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
       <SettingsRow label="Workspace" description="当前工作区根目录（只读）。">
@@ -176,6 +199,74 @@ function BasicSettingsPanel({
           }
         />
       </SettingsRow>
+
+      <SettingsRow
+        label="Web 远程访问"
+        description="默认仅本机；改为局域网监听地址后可用 HTTP 同 LAN 访问。"
+        htmlFor="settings-web-host-enabled"
+      >
+        <div className="flex items-center justify-end gap-3">
+          <span className="truncate text-sm text-muted-foreground">
+            {settings.webHostEnabled ? webHostStatus : "关闭"}
+          </span>
+          <Checkbox
+            id="settings-web-host-enabled"
+            checked={settings.webHostEnabled}
+            onCheckedChange={(value) =>
+              void onSavePatch({ webHostEnabled: value === true })
+            }
+            className="size-5"
+          />
+        </div>
+      </SettingsRow>
+
+      <SettingsRow
+        label="监听地址"
+        description="127.0.0.1 仅本机；局域网访问需改为可被手机访问的地址。"
+        htmlFor="settings-web-host-host"
+      >
+        <Input
+          id="settings-web-host-host"
+          className="sm:text-right"
+          value={settings.webHostHost}
+          onChange={(event) => void onSavePatch({ webHostHost: event.target.value })}
+          disabled={!settings.webHostEnabled}
+        />
+      </SettingsRow>
+
+      <SettingsRow label="端口" description="默认 7788。" htmlFor="settings-web-host-port">
+        <Input
+          id="settings-web-host-port"
+          className="sm:text-right"
+          type="number"
+          min={1}
+          max={65535}
+          value={settings.webHostPort}
+          onChange={(event) => {
+            const port = Number.parseInt(event.target.value, 10);
+            if (Number.isInteger(port)) {
+              void onSavePatch({ webHostPort: port });
+            }
+          }}
+          disabled={!settings.webHostEnabled}
+        />
+      </SettingsRow>
+
+      <div className="py-4">
+        <p className="text-sm font-medium text-foreground">远程访问状态</p>
+        <div className="mt-2 grid gap-1 text-sm text-muted-foreground sm:text-right">
+          <p className="truncate">
+            <span className="text-foreground">{settings.webHostEnabled ? webHostStatus : "关闭"}</span>
+            {settings.webHostEnabled ? ` · ${webHostUrl}` : null}
+          </p>
+          {webHost?.status.error ? (
+            <p className="break-words text-destructive">{webHost.status.error}</p>
+          ) : null}
+          <p>
+            配对：{webHost?.config.paired ? "已完成" : "等待首次配对"}
+          </p>
+        </div>
+      </div>
 
       <div className="py-4">
         <p className="text-sm font-medium text-foreground">运行时概览</p>
