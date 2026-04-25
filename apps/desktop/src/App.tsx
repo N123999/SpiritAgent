@@ -500,45 +500,53 @@ export default function App() {
               }}
             />
           ) : (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col text-sm">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
               <ScrollArea
-                className="min-h-0 flex-1"
+                className="min-h-0 flex-1 bg-background"
                 type="hover"
                 scrollHideDelay={450}
               >
-                {messages.length === 0 ? (
-                  <div
-                    className={cn(
-                      "mx-auto box-border flex min-h-[calc(100dvh-11rem)] w-full items-center justify-center px-3",
-                      CONVERSATION_MAX_W,
-                    )}
-                  >
-                    <p className="text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-                      {"Let's build"}
-                    </p>
-                  </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "mx-auto w-full overflow-x-hidden px-3 pb-2 pt-6 sm:pt-7",
-                      CONVERSATION_MAX_W,
-                    )}
-                  >
-                    <div className="space-y-3">
-                      {messages.map((message, index) => (
-                        <MessageCard
-                          key={conversationMessageDomId(message, index)}
-                          listIndex={index}
-                          message={message}
-                        />
-                      ))}
+                {/* min-h-full：短内容仍铺满视口；大 pb 为底部透明叠层留出可滚入的「床」，避免正文被输入区挡住 */}
+                <div
+                  className={cn(
+                    "min-h-full w-full bg-background",
+                    "pb-[calc(12rem+env(safe-area-inset-bottom,0px))]",
+                  )}
+                >
+                  {messages.length === 0 ? (
+                    <div
+                      className={cn(
+                        "mx-auto box-border flex min-h-[calc(100dvh-11rem)] w-full items-center justify-center px-3",
+                        CONVERSATION_MAX_W,
+                      )}
+                    >
+                      <p className="text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+                        {"Let's build"}
+                      </p>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div
+                      className={cn(
+                        "mx-auto w-full overflow-x-hidden px-3 pt-6 sm:pt-7",
+                        CONVERSATION_MAX_W,
+                      )}
+                    >
+                      <div className="space-y-3">
+                        {messages.map((message, index) => (
+                          <MessageCard
+                            key={conversationMessageDomId(message, index)}
+                            listIndex={index}
+                            message={message}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </ScrollArea>
 
-              <div className="shrink-0 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
-                <div className={cn("mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+                <div className={cn("pointer-events-auto mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
                 {runtime.runtimeError ? (
                   <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
                     {runtime.runtimeError}
@@ -573,7 +581,7 @@ export default function App() {
                 ) : null}
 
                 <div className="grid gap-1.5">
-                  <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-muted/25 shadow-sm transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12">
+                  <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
                     <Textarea
                       value={runtime.composer}
                       onChange={(event) => runtime.setComposer(event.target.value)}
