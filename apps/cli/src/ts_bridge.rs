@@ -149,6 +149,8 @@ struct BridgeChatArchive {
     llm_history: Vec<BridgeLlmMessage>,
     #[serde(default)]
     subagent_sessions: Vec<BridgeSubagentSessionArchiveEntry>,
+    #[serde(default)]
+    rewind: Option<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -688,6 +690,7 @@ impl TsBridgeRuntime {
                         .collect(),
                 })
                 .collect(),
+            rewind: bridge_archive.rewind,
         })
     }
 
@@ -2325,7 +2328,7 @@ mod tests {
 }
 
 fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
-    json!({
+    let mut value = json!({
         "messages": archive.messages.iter().map(|(role, content)| {
             json!({
                 "role": role,
@@ -2369,7 +2372,15 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
                 }).collect::<Vec<_>>(),
             })
         }).collect::<Vec<_>>(),
-    })
+    });
+
+    if let Some(rewind) = &archive.rewind {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("rewind".to_string(), rewind.clone());
+        }
+    }
+
+    value
 }
 
 fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolRequest {

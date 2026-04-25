@@ -2,8 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::{env, path::PathBuf};
 
 use crate::{
-    chat_store,
-    logging,
+    chat_store, logging,
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
         remove_model_api_key, save_config, save_model_api_key,
@@ -140,6 +139,7 @@ impl ChatRepository for JsonChatRepository {
             &archive.assistant_aux,
             &archive.llm_history,
             &archive.subagent_sessions,
+            archive.rewind.as_ref(),
         )
     }
 
@@ -150,6 +150,7 @@ impl ChatRepository for JsonChatRepository {
             assistant_aux: loaded.assistant_aux,
             llm_history: loaded.llm_history,
             subagent_sessions: loaded.subagent_sessions,
+            rewind: loaded.rewind,
         })
     }
 }
