@@ -791,6 +791,7 @@ description: ${frontmatterDescription}
   }
 
   private buildSnapshot(): DesktopSnapshot {
+    this.pruneEmptyAssistantMessages('buildSnapshot');
     const state = this.requireState();
     const pendingApproval = this.runtime?.currentPendingApproval();
     const pendingQuestions = this.runtime?.currentPendingQuestions();
@@ -892,7 +893,10 @@ description: ${frontmatterDescription}
 
   private messagesWithPendingAssistant(): ConversationMessageSnapshot[] {
     const state = this.requireState();
-    const messages = state.messages.map((message) => this.messageSnapshot(message));
+    const messages = state.messages.flatMap((message) => {
+      const snapshot = this.messageSnapshot(message);
+      return snapshot ? [snapshot] : [];
+    });
     const pendingMessage = this.buildPendingAssistantMessage();
     if (!pendingMessage) {
       return messages;
@@ -1402,6 +1406,7 @@ description: ${frontmatterDescription}
     messageId: number,
     beforeUserCheckpoint?: DesktopRewindCheckpointSnapshot,
   ): Promise<void> {
+    this.pruneEmptyAssistantMessages('recordRewindCheckpoint');
     const state = this.requireState();
     if (!state.activeSession) {
       return;
@@ -1452,6 +1457,7 @@ description: ${frontmatterDescription}
   }
 
   private buildRewindCheckpointSnapshot(): DesktopRewindCheckpointSnapshot {
+    this.pruneEmptyAssistantMessages('buildRewindCheckpointSnapshot');
     const state = this.requireState();
     const archive = this.runtime
       ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
@@ -1499,15 +1505,47 @@ description: ${frontmatterDescription}
     this.latestPendingAssistantAux = undefined;
     this.messageIdCounter = Math.max(0, ...state.messages.map((message) => message.id)) + 1;
     this.resetStreamingPlacementState(true);
+    this.pruneEmptyAssistantMessages('restoreBeforeRewindCheckpoint');
     this.requireRuntime().replaceFromArchive(archive);
   }
 
-  private messageSnapshot(message: ConversationMessageSnapshot): ConversationMessageSnapshot {
+  private messageSnapshot(
+    message: ConversationMessageSnapshot,
+  ): ConversationMessageSnapshot | undefined {
+    const tool = normalizeToolBlockSnapshot(message.tool);
+    const aux = normalizeMessageAuxSnapshot(message.aux);
+    if (shouldDropEmptyAssistantMessage(message, tool, aux)) {
+      return undefined;
+    }
+
     const { canRewind: _canRewind, ...base } = message;
     return {
       ...base,
+      ...(tool ? { tool } : {}),
+      ...(aux ? { aux } : {}),
       ...(this.canRewindMessage(message) ? { canRewind: true } : {}),
     };
+  }
+
+  private pruneEmptyAssistantMessages(reason: string): void {
+    const state = this.requireState();
+    const removedIds: number[] = [];
+    state.messages = state.messages.filter((message) => {
+      const drop = shouldDropEmptyAssistantMessage(
+        message,
+        normalizeToolBlockSnapshot(message.tool),
+        normalizeMessageAuxSnapshot(message.aux),
+      );
+      if (drop) {
+        removedIds.push(message.id);
+      }
+      return !drop;
+    });
+    if (removedIds.length > 0) {
+      console.warn(
+        `[desktop-host][messages] dropped ${removedIds.length} empty assistant message(s) during ${reason}: ${removedIds.join(', ')}`,
+      );
+    }
   }
 
   private canRewindMessage(message: ConversationMessageSnapshot): boolean {
@@ -1524,6 +1562,8 @@ description: ${frontmatterDescription}
     if (!state.activeSession || this.runtime?.isBusy()) {
       return;
     }
+
+    this.pruneEmptyAssistantMessages('persistCurrentSessionIfNeeded');
 
     const archive = this.runtime
       ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
@@ -1997,6 +2037,79 @@ function stripPendingThinkingMatchingFinalized(
   }
   const { thinking: _t, ...rest } = aux;
   return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function normalizeToolBlockSnapshot(
+  tool: ToolBlockSnapshot | undefined,
+): ToolBlockSnapshot | undefined {
+  if (!tool) {
+    return undefined;
+  }
+
+  const toolName = tool.toolName.trim() || 'unknown-tool';
+  const headline = tool.headline.trim() || defaultToolHeadline(tool.phase, toolName);
+  const detailLines = tool.detailLines.filter((line) => line.trim().length > 0);
+  const argsExcerpt = tool.argsExcerpt?.trim() ? tool.argsExcerpt : undefined;
+  const outputExcerpt = tool.outputExcerpt?.trim() ? tool.outputExcerpt : undefined;
+
+  return {
+    ...tool,
+    toolName,
+    headline,
+    detailLines,
+    ...(argsExcerpt ? { argsExcerpt } : {}),
+    ...(outputExcerpt ? { outputExcerpt } : {}),
+  };
+}
+
+function normalizeMessageAuxSnapshot(
+  aux: MessageAuxSnapshot | undefined,
+): MessageAuxSnapshot | undefined {
+  if (!aux) {
+    return undefined;
+  }
+
+  const thinking = aux.thinking?.trim() ? aux.thinking : undefined;
+  const compaction = aux.compaction?.trim() ? aux.compaction : undefined;
+  if (!thinking && !compaction) {
+    return undefined;
+  }
+
+  return {
+    ...(thinking ? { thinking } : {}),
+    ...(compaction ? { compaction } : {}),
+  };
+}
+
+function shouldDropEmptyAssistantMessage(
+  message: ConversationMessageSnapshot,
+  tool: ToolBlockSnapshot | undefined,
+  aux: MessageAuxSnapshot | undefined,
+): boolean {
+  return (
+    message.role === 'assistant' &&
+    !message.pending &&
+    !message.content.trim() &&
+    !tool &&
+    !aux
+  );
+}
+
+function defaultToolHeadline(
+  phase: ToolBlockSnapshot['phase'],
+  toolName: string,
+): string {
+  switch (phase) {
+    case 'pending-approval':
+      return `等待确认: ${toolName}`;
+    case 'running':
+      return `调用中: ${toolName}`;
+    case 'failed':
+      return `工具执行失败: ${toolName}`;
+    case 'succeeded':
+    default:
+      return `工具执行完成: ${toolName}`;
+  }
 }
 
 /** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为插在「最后一条 user」之后）。 */
