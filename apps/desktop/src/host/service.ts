@@ -186,7 +186,7 @@ class DesktopHostService {
         await this.refreshRuntime();
       }
       this.lastRuntimeError = '';
-      await this.persistCurrentSessionIfNeeded();
+      // 勿在此处 persist：仅改 config（如 planMode）不应刷新 savedAtUnixMs，否则会话在侧栏会误排到首位
       await this.flushDeferredRuntimeRefreshIfIdle();
       return this.buildSnapshot();
     });
