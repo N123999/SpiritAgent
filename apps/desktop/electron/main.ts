@@ -17,6 +17,19 @@ const __dirname = path.dirname(__filename);
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
+/** Windows 任务栏 / 窗口角标：与 Vite 页 `public/favicon.ico` 同源（main 位于 dist-electron/electron）。 */
+function resolveWindowIconPath(): string | undefined {
+  const fromMain = path.join(__dirname, '..', '..', 'public', 'favicon.ico');
+  if (existsSync(fromMain)) {
+    return fromMain;
+  }
+  const fromCwd = path.join(process.cwd(), 'public', 'favicon.ico');
+  if (existsSync(fromCwd)) {
+    return fromCwd;
+  }
+  return undefined;
+}
+
 /** 与 `src/styles.css` 中 `.dark` 的 `--background`（oklch(0.145 0 0) ≈ #0a0a0a）一致；关 Mica 时 titleBarOverlay 与窗口底色用此值，勿用通用 #171717 */
 const WIN32_APP_BACKGROUND_DARK = '#0a0a0a';
 const WIN32_APP_BACKGROUND_LIGHT = '#fafafa';
@@ -148,11 +161,14 @@ async function createMainWindow(): Promise<BrowserWindow> {
     );
   }
 
+  const windowIcon = resolveWindowIconPath();
+
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1100,
     minHeight: 720,
+    ...(windowIcon ? { icon: windowIcon } : {}),
     backgroundColor: initialBg,
     titleBarStyle:
       process.platform === 'darwin' ? 'hiddenInset' : process.platform === 'win32' ? 'hidden' : undefined,
