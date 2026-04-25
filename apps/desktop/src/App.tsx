@@ -828,7 +828,7 @@ export default function App() {
                 ) : null}
 
                 {pendingApproval ? (
-                  <Card className="border-border/50 bg-muted/15 text-sm shadow-none">
+                  <Card className="border-border/50 bg-background/55 text-sm shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
                     <CardHeader className="space-y-1 px-3 py-2">
                       <CardTitle className="text-base leading-tight">{pendingApproval.toolName}</CardTitle>
                       <CardDescription className="text-xs leading-relaxed">
