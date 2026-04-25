@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownMessage } from "@/components/markdown-message";
 import { SettingsView } from "@/components/settings-view";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useTheme } from "@/hooks/useTheme";
@@ -187,9 +188,7 @@ function MessageCard({
           </pre>
         ) : null}
         {!isUser && message.content.trim() ? (
-          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/95">
-            {message.content}
-          </pre>
+          <MarkdownMessage content={message.content} className="font-sans" />
         ) : null}
         {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
       </div>
