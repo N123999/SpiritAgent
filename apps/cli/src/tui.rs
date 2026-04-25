@@ -33,7 +33,7 @@ use crate::{
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry, SkillScope},
-    tool_runtime::{ToolRequest, ToolRuntime},
+    tool_runtime::ToolRequest,
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
         InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
@@ -44,12 +44,6 @@ use crate::{
 };
 
 const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
-
-struct PendingShellExecution {
-    tool_call_id: String,
-    command: String,
-    result_rx: Receiver<anyhow::Result<String>>,
-}
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
 #[derive(Clone, Copy, Debug, Default)]
@@ -77,8 +71,6 @@ pub struct TuiShell {
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
     last_completed_assistant_msg_index: Option<usize>,
-    next_local_shell_tool_id: usize,
-    pending_shell_executions: Vec<PendingShellExecution>,
     last_mcp_status_revision: u64,
     slash: slash::SlashState,
     model_picker_active: bool,
@@ -179,8 +171,6 @@ impl TuiShell {
             show_aux_details: true,
             pending_assistant_msg_index: None,
             last_completed_assistant_msg_index: None,
-            next_local_shell_tool_id: 0,
-            pending_shell_executions: Vec::new(),
             last_mcp_status_revision: initial_mcp_status.revision,
             slash: slash::SlashState::new(),
             model_picker_active: false,
@@ -318,7 +308,6 @@ impl TuiShell {
     pub fn poll_runtime(&mut self) {
         self.runtime.poll();
         self.apply_runtime_events();
-        self.poll_pending_shell_executions();
         self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
         self.refresh_active_subagent_view();
@@ -974,8 +963,33 @@ impl TuiShell {
 
         self.clear_conversation_selection();
 
+        if self.runtime.has_pending_tool_approval() {
+            self.scroll_history_to_bottom();
+            if self.runtime.pending_subagent_approval().is_none() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::User,
+                    content: trimmed_message.to_string(),
+                    tool_block: None,
+                });
+            }
+            self.runtime
+                .respond_to_pending_tool_approval(trimmed_message);
+            self.apply_runtime_events();
+            self.set_input(String::new());
+            self.refresh_suggestions();
+            return;
+        }
+
         if self.shell_mode_active {
             self.scroll_history_to_bottom();
+            if self.runtime.is_busy() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!("tui.busy.pending_reply").into_owned(),
+                    tool_block: None,
+                });
+                return;
+            }
             self.start_manual_shell_execution(raw_message);
             self.set_input(String::new());
             self.refresh_suggestions();
@@ -990,23 +1004,6 @@ impl TuiShell {
                 tool_block: None,
             });
             self.handle_slash_command(trimmed_message);
-            self.set_input(String::new());
-            self.refresh_suggestions();
-            return;
-        }
-
-        if self.runtime.has_pending_tool_approval() {
-            self.scroll_history_to_bottom();
-            if self.runtime.pending_subagent_approval().is_none() {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::User,
-                    content: trimmed_message.to_string(),
-                    tool_block: None,
-                });
-            }
-            self.runtime
-                .respond_to_pending_tool_approval(trimmed_message);
-            self.apply_runtime_events();
             self.set_input(String::new());
             self.refresh_suggestions();
             return;
@@ -3982,89 +3979,10 @@ impl TuiShell {
         }
     }
 
-    fn next_local_shell_tool_call_id(&mut self) -> String {
-        let id = manual_shell::local_tool_call_id(self.next_local_shell_tool_id);
-        self.next_local_shell_tool_id += 1;
-        id
-    }
-
     fn start_manual_shell_execution(&mut self, command: String) {
-        let tool_call_id = self.next_local_shell_tool_call_id();
-        let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<String>>();
-        let request = ToolRequest::Shell {
-            command: command.clone(),
-        };
-
-        thread::spawn(move || {
-            let runtime = ToolRuntime::new();
-            let outcome = runtime.execute(&request);
-            let _ = result_tx.send(outcome);
-        });
-
-        self.messages.push(ChatMessage::with_tool_block(
-            MessageRole::Agent,
-            String::new(),
-            manual_shell::running_block(&tool_call_id, &command),
-        ));
-        self.pending_shell_executions.push(PendingShellExecution {
-            tool_call_id,
-            command,
-            result_rx,
-        });
-    }
-
-    fn poll_pending_shell_executions(&mut self) {
-        let mut still_pending = Vec::new();
-        let pending_executions = std::mem::take(&mut self.pending_shell_executions);
-
-        for pending in pending_executions {
-            match pending.result_rx.try_recv() {
-                Ok(Ok(output)) => {
-                    let block = manual_shell::success_block(
-                        &pending.tool_call_id,
-                        &pending.command,
-                        &output,
-                    );
-                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
-                }
-                Ok(Err(err)) => {
-                    let block = manual_shell::failed_block(
-                        &pending.tool_call_id,
-                        &pending.command,
-                        &err.to_string(),
-                    );
-                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
-                }
-                Err(TryRecvError::Empty) => still_pending.push(pending),
-                Err(TryRecvError::Disconnected) => {
-                    let block = manual_shell::failed_block(
-                        &pending.tool_call_id,
-                        &pending.command,
-                        t!("tui.shell.background_disconnected").as_ref(),
-                    );
-                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
-                }
-            }
-        }
-
-        self.pending_shell_executions = still_pending;
-    }
-
-    fn finish_pending_shell_execution(
-        &mut self,
-        tool_call_id: &str,
-        block: crate::view::ToolUiBlock,
-    ) {
-        if let Some(message) = self.messages.iter_mut().find(|message| {
-            message.tool_block.as_ref().and_then(|tool| tool.tool_call_id.as_deref())
-                == Some(tool_call_id)
-        }) {
-            message.tool_block = Some(block);
-            return;
-        }
-
-        self.messages
-            .push(ChatMessage::with_tool_block(MessageRole::Agent, String::new(), block));
+        self.runtime
+            .execute_manual_tool_command(&manual_shell_tool_command(&command));
+        self.apply_runtime_events();
     }
 }
 
@@ -4074,6 +3992,10 @@ fn user_turn_text_for_mode(
     raw_message: &str,
 ) -> String {
     raw_message.to_string()
+}
+
+fn manual_shell_tool_command(command: &str) -> String {
+    format!("/tool shell {}", command)
 }
 
 fn is_standalone_subagent_status_aux(pending_aux: &PendingAssistantAux) -> bool {
@@ -4160,6 +4082,7 @@ mod tests {
     use super::{
         is_standalone_subagent_status_aux, next_persisted_standalone_pending_aux,
         next_persisted_standalone_pending_aux_anchor,
+        manual_shell_tool_command,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
         user_turn_text_for_mode,
     };
@@ -4188,6 +4111,14 @@ mod tests {
             user_turn_text_for_mode(&workspace_root, MainInputMode::Plan, raw_message);
 
         assert_eq!(runtime_turn, raw_message);
+    }
+
+    #[test]
+    fn manual_shell_tool_command_wraps_input_for_bridge() {
+        assert_eq!(
+            manual_shell_tool_command("echo hello world"),
+            "/tool shell echo hello world"
+        );
     }
 
     #[test]
