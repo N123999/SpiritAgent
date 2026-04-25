@@ -580,48 +580,48 @@ export default function App() {
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-3 pb-2 pt-10">
                       <div className="pointer-events-auto flex w-full max-w-full items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                        <div
-                          role="tablist"
-                          aria-label="Agent 或 Plan 模式"
-                          className="inline-flex h-7 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
-                        >
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={!runtime.settings.planMode}
-                            className={cn(
-                              "rounded-md px-2 text-xs font-medium transition-colors",
-                              !runtime.settings.planMode
-                                ? "bg-background text-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            disabled={
-                              Boolean(snapshot?.conversation.isBusy) ||
-                              Boolean(runtime.busyAction)
-                            }
-                            onClick={() => void runtime.saveSettingsPatch({ planMode: false })}
-                          >
-                            Agent
-                          </button>
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={runtime.settings.planMode}
-                            className={cn(
-                              "rounded-md px-2 text-xs font-medium transition-colors",
-                              runtime.settings.planMode
-                                ? "bg-background text-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            disabled={
-                              Boolean(snapshot?.conversation.isBusy) ||
-                              Boolean(runtime.busyAction)
-                            }
-                            onClick={() => void runtime.saveSettingsPatch({ planMode: true })}
-                          >
-                            Plan
-                          </button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="运行方式"
+                              className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                            >
+                              <span
+                                className="min-w-0 flex-1 truncate"
+                                title={runtime.settings.planMode ? "Plan" : "Agent"}
+                              >
+                                {runtime.settings.planMode ? "Plan" : "Agent"}
+                              </span>
+                              <ChevronDown
+                                className="size-3 shrink-0 text-muted-foreground/80"
+                                aria-hidden
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" side="top" className="min-w-[8rem] text-xs">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void runtime.saveSettingsPatch({ planMode: false });
+                              }}
+                              className={cn(
+                                !runtime.settings.planMode && "bg-accent/40",
+                              )}
+                            >
+                              Agent
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void runtime.saveSettingsPatch({ planMode: true });
+                              }}
+                              className={cn(
+                                runtime.settings.planMode && "bg-accent/40",
+                              )}
+                            >
+                              Plan
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {models.length > 0 ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>

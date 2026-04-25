@@ -125,9 +125,7 @@ class DesktopHostService {
         this.runtime?.isBusy() &&
         (request.activeModel.trim() !== state.config.activeModel ||
           request.apiBase.trim() !== currentApiBase(state.config) ||
-          Boolean(request.apiKey?.trim()) ||
-          (request.planMode !== undefined &&
-            Boolean(request.planMode) !== Boolean(state.config.planMode)))
+          Boolean(request.apiKey?.trim()))
       ) {
         throw new Error('当前已有响应或审批在处理中，请稍候。');
       }
