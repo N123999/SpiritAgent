@@ -107,14 +107,6 @@ export interface RuntimeReplaceConfigParams {
   transportConfig: OpenAiTransportConfig;
 }
 
-export interface RuntimeReplaceRulesParams {
-  enabledRules: OpenAiEnabledRule[];
-}
-
-export interface RuntimeReplaceSkillsCatalogParams {
-  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[];
-}
-
 export interface RuntimeReplacePlanMetadataParams {
   planMetadata: OpenAiPlanMetadata;
 }

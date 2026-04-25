@@ -16,8 +16,7 @@ use crate::{
         AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
         SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
-    rules::EnabledRule,
-    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
+    skills::ActiveSkillPayload,
     session::SessionModel,
     ts_bridge::{CliHostMetadataSnapshot, TsBridgeRuntime},
     view::{ChatMessage, PendingAssistantAux, PendingSubagentApprovalView},
@@ -55,14 +54,6 @@ impl RuntimeHandle {
 
     pub fn replace_config(&mut self, config: AppConfig) {
         self.runtime.replace_config(config)
-    }
-
-    pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
-        self.runtime.replace_rules(rules)
-    }
-
-    pub fn replace_skills_catalog(&mut self, catalog: Vec<EnabledSkillCatalogEntry>) {
-        self.runtime.replace_skills_catalog(catalog)
     }
 
     pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {

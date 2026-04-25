@@ -53,8 +53,6 @@ import type {
   RuntimeSubagentSessionParams,
   RuntimeReplaceConfigParams,
   RuntimeReplacePlanMetadataParams,
-  RuntimeReplaceRulesParams,
-  RuntimeReplaceSkillsCatalogParams,
   RuntimeRespondToPendingApprovalParams,
   RuntimeRespondToPendingQuestionsParams,
   RuntimeActivateSkillParams,
@@ -332,25 +330,6 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   const target = requireRuntime();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   return buildSnapshot(runtime);
-});
-
-peer.on('runtime.replaceRules', async (rawParams) => {
-  const params = rawParams as RuntimeReplaceRulesParams;
-  const loadedFromInternal = await reloadHostMetadataFromInternal(planMetadata?.planMode ?? false);
-  if (!loadedFromInternal) {
-    enabledRules = [...params.enabledRules];
-  }
-  return buildSnapshot(requireRuntime());
-});
-
-peer.on('runtime.replaceSkillsCatalog', async (rawParams) => {
-  const params = rawParams as RuntimeReplaceSkillsCatalogParams;
-  const loadedFromInternal = await reloadHostMetadataFromInternal(planMetadata?.planMode ?? false);
-  if (!loadedFromInternal) {
-    enabledSkillCatalog = [...params.enabledSkillCatalog];
-    activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
-  }
-  return buildSnapshot(requireRuntime());
 });
 
 peer.on('runtime.replacePlanMetadata', async (rawParams) => {

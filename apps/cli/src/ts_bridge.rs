@@ -452,58 +452,6 @@ impl TsBridgeRuntime {
         self.apply_transport_to_bridge();
     }
 
-    pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
-        self.enabled_rules = rules;
-        if self.bridge_failed {
-            return;
-        }
-
-        let snapshot = match self.call_bridge(
-            "runtime.replaceRules",
-            Some(json!({
-                "enabledRules": self.enabled_rules,
-            })),
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.handle_bridge_error(err);
-                return;
-            }
-        };
-
-        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
-            Ok(snapshot) => self.apply_snapshot(snapshot),
-            Err(err) => self.handle_bridge_error(anyhow!("解析 TS replaceRules snapshot 失败: {}", err)),
-        }
-    }
-
-    pub fn replace_skills_catalog(&mut self, catalog: Vec<EnabledSkillCatalogEntry>) {
-        self.enabled_skill_catalog = catalog;
-        if self.bridge_failed {
-            return;
-        }
-
-        let snapshot = match self.call_bridge(
-            "runtime.replaceSkillsCatalog",
-            Some(json!({
-                "enabledSkillCatalog": self.enabled_skill_catalog,
-            })),
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.handle_bridge_error(err);
-                return;
-            }
-        };
-
-        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
-            Ok(snapshot) => self.apply_snapshot(snapshot),
-            Err(err) => {
-                self.handle_bridge_error(anyhow!("解析 TS replaceSkillsCatalog snapshot 失败: {}", err))
-            }
-        }
-    }
-
     pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {
         self.plan_metadata = metadata;
         if self.bridge_failed {
