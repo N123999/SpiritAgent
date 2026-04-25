@@ -108,6 +108,8 @@ class DesktopHostService {
   private messageOrderDebugLastVerboseLogMs = 0;
   private messageIdCounter = 1;
   private serialized = Promise.resolve();
+  /** 忙时仅改 planMode 时推迟 `refreshRuntime`，避免替换 runtime 导致流式输出丢失；空闲后由 `flushDeferredRuntimeRefreshIfIdle` 应用。 */
+  private deferredRuntimeRefreshForPlanMode = false;
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
@@ -120,6 +122,10 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       const state = this.requireState();
+      const wasBusy = this.runtime?.isBusy() === true;
+      const prevActiveModel = state.config.activeModel;
+      const prevApiBase = currentApiBase(state.config);
+      const prevPlanMode = state.config.planMode === true;
 
       if (
         this.runtime?.isBusy() &&
@@ -149,9 +155,27 @@ class DesktopHostService {
         await saveApiKeyForModel(activeModel, request.apiKey);
       }
 
-      await this.refreshRuntime();
+      const planModeNow = state.config.planMode === true;
+      const modelOrEndpointChanged =
+        state.config.activeModel !== prevActiveModel ||
+        currentApiBase(state.config) !== prevApiBase;
+
+      if (planModeNow !== prevPlanMode) {
+        state.metadata = await loadHostMetadata(state.workspaceRoot, planModeNow);
+      }
+
+      const deferRuntimeRefresh =
+        wasBusy && planModeNow !== prevPlanMode && !modelOrEndpointChanged;
+
+      if (deferRuntimeRefresh) {
+        this.deferredRuntimeRefreshForPlanMode = true;
+      } else {
+        this.deferredRuntimeRefreshForPlanMode = false;
+        await this.refreshRuntime();
+      }
       this.lastRuntimeError = '';
       await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
       return this.buildSnapshot();
     });
   }
@@ -251,6 +275,7 @@ class DesktopHostService {
       this.consumeCompletedTurnResult();
       this.syncPendingToolStates();
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      await this.flushDeferredRuntimeRefreshIfIdle();
       return this.buildSnapshot();
     });
   }
@@ -267,6 +292,7 @@ class DesktopHostService {
       this.syncPendingToolStates();
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
       return this.buildSnapshot();
     });
   }
@@ -292,6 +318,7 @@ class DesktopHostService {
       this.consumeCompletedTurnResult();
       this.syncPendingToolStates();
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      await this.flushDeferredRuntimeRefreshIfIdle();
       return this.buildSnapshot();
     });
   }
@@ -307,6 +334,7 @@ class DesktopHostService {
       this.syncPendingToolStates();
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
       return this.buildSnapshot();
     });
   }
@@ -318,6 +346,7 @@ class DesktopHostService {
         throw new Error('当前已有响应或审批在处理中，请稍候。');
       }
 
+      this.deferredRuntimeRefreshForPlanMode = false;
       const state = this.requireState();
       state.messages = [];
       state.activeSession = undefined;
@@ -339,6 +368,7 @@ class DesktopHostService {
   async openSession(filePath: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
+      this.deferredRuntimeRefreshForPlanMode = false;
       const loaded = await loadStoredSession(filePath);
       const state = this.requireState();
       state.messages = loaded.desktopMessages
@@ -481,6 +511,18 @@ class DesktopHostService {
     this.runtime = runtime;
     this.lastRuntimeError = '';
     await this.refreshModelKeyPresence();
+  }
+
+  private async flushDeferredRuntimeRefreshIfIdle(): Promise<void> {
+    if (!this.deferredRuntimeRefreshForPlanMode) {
+      return;
+    }
+    if (this.runtime?.isBusy()) {
+      return;
+    }
+    this.deferredRuntimeRefreshForPlanMode = false;
+    await this.refreshRuntime();
+    this.lastRuntimeError = '';
   }
 
   private async refreshModelKeyPresence(): Promise<void> {
