@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
-import { matchSkillSlashInput } from "@/lib/skill-slash";
+import { isCreateSkillSlashInput, matchSkillSlashInput } from "@/lib/skill-slash";
 import type {
   AddModelRequest,
   AskQuestionsAnswer,
@@ -524,7 +524,11 @@ export function useDesktopRuntime() {
     setBusyAction("send");
     try {
       const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
-      const next = skillSlash
+      const next = isCreateSkillSlashInput(text)
+        ? await api.submitCreateSkillSlash({
+            rawText: text,
+          })
+        : skillSlash
         ? await api.submitSkillSlash({
             skillName: skillSlash.skillName,
             rawText: text,

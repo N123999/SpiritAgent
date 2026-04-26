@@ -16,6 +16,17 @@ export function skillSlashAlias(skillName: string): string {
   return `/${skillName}`
 }
 
+export const CREATE_SKILL_SLASH_ALIAS = '/create-skill'
+
+const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
+  {
+    id: 'command:create-skill',
+    alias: CREATE_SKILL_SLASH_ALIAS,
+    name: '/create-skill',
+    description: '创建或收紧一个 SKILL.md',
+  },
+] as const
+
 export function currentSkillSlashQuery(input: string): string | undefined {
   if (!input.startsWith('/') || input.includes('\n')) {
     return undefined
@@ -41,15 +52,28 @@ export function buildSkillSlashSuggestions(
     return []
   }
 
-  return skills
-    .filter((skill) => skill.enabled)
-    .filter((skill) => skillSlashAlias(skill.name).startsWith(query))
-    .map((skill) => ({
-      id: skill.id,
-      alias: skillSlashAlias(skill.name),
-      name: skill.name,
-      description: skill.description,
-    }))
+  return [
+    ...STATIC_SLASH_SUGGESTIONS.filter((suggestion) => suggestion.alias.startsWith(query)),
+    ...skills
+      .filter((skill) => skill.enabled)
+      .filter((skill) => skillSlashAlias(skill.name).startsWith(query))
+      .map((skill) => ({
+        id: skill.id,
+        alias: skillSlashAlias(skill.name),
+        name: skill.name,
+        description: skill.description,
+      })),
+  ]
+}
+
+export function isCreateSkillSlashInput(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed.startsWith(CREATE_SKILL_SLASH_ALIAS)) {
+    return false
+  }
+
+  const remainder = trimmed.slice(CREATE_SKILL_SLASH_ALIAS.length)
+  return remainder.length === 0 || /^\s/u.test(remainder)
 }
 
 export function matchSkillSlashInput(

@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   deleteSkill(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'deleteSkill', { request });
   },
+  submitCreateSkillSlash(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'submitCreateSkillSlash', { request });
+  },
   submitSkillSlash(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'submitSkillSlash', { request });
   },

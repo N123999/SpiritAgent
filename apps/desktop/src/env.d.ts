@@ -9,6 +9,7 @@ import type {
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
+  SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
 } from './types';
@@ -21,6 +22,7 @@ declare global {
     removeModel(name: string): Promise<DesktopSnapshot>;
     createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
+    submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
     submitUserTurn(text: string): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;

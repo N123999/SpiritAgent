@@ -55,6 +55,10 @@ export interface SubmitSkillSlashRequest {
   extraNote?: string;
 }
 
+export interface SubmitCreateSkillSlashRequest {
+  rawText: string;
+}
+
 export interface RewindAndSubmitMessageRequest {
   messageId: number;
   text: string;

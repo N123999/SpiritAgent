@@ -55,6 +55,7 @@ import type {
   RewindAndSubmitMessageRequest,
   RemoveModelRequest,
   SessionListItem,
+  SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
   UpdateConfigRequest,
@@ -114,6 +115,7 @@ type CommandPayloads = {
   removeModel: { request: RemoveModelRequest };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
+  submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
   submitSkillSlash: { request: SubmitSkillSlashRequest };
   submitUserTurn: { text: string };
   poll: undefined;
@@ -417,6 +419,46 @@ description: ${frontmatterDescription}
     });
   }
 
+  async submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const runtime = this.requireRuntime();
+      if (runtime.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const rawText = request.rawText.trim();
+      if (!rawText) {
+        throw new Error('消息不能为空。');
+      }
+
+      const parsed = parseCreateSkillSlashRequest(rawText);
+      if (parsed instanceof Error) {
+        return this.appendInlineAssistantReply(rawText, parsed.message);
+      }
+
+      if (parsed.scope === 'workspace') {
+        try {
+          await mkdir(this.instructionPaths().workspaceSpiritSkillsDir, { recursive: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return this.appendInlineAssistantReply(
+            rawText,
+            `创建工作区 .spirit/skills 目录失败: ${message}`,
+          );
+        }
+      }
+
+      const state = this.requireState();
+      return this.submitUserTurnAfterInitialized(
+        buildCreateSkillUserTurn(state.workspaceRoot, this.instructionPaths(), parsed),
+        {
+          displayText: rawText,
+        },
+      );
+    });
+  }
+
   async submitUserTurn(text: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -540,6 +582,25 @@ description: ${frontmatterDescription}
     this.syncPendingToolStates();
     this.syncAssistantPrefixFromHistoryBeforeToolRow();
     await this.flushDeferredRuntimeRefreshIfIdle();
+    return this.buildSnapshot();
+  }
+
+  private async appendInlineAssistantReply(
+    displayText: string,
+    assistantText: string,
+  ): Promise<DesktopSnapshot> {
+    const state = this.requireState();
+    state.rewindWarnings = [];
+    this.ensureActiveSession(displayText);
+    state.messages.push({
+      id: this.allocateMessageId(),
+      role: 'user',
+      content: displayText,
+      pending: false,
+    });
+    this.resetStreamingPlacementState(false);
+    this.appendAssistantMessage(assistantText);
+    await this.persistCurrentSessionIfNeeded();
     return this.buildSnapshot();
   }
 
@@ -702,6 +763,10 @@ description: ${frontmatterDescription}
       case 'deleteSkill': {
         const typedPayload = payload as CommandPayloads['deleteSkill'];
         return this.deleteSkill(typedPayload.request);
+      }
+      case 'submitCreateSkillSlash': {
+        const typedPayload = payload as CommandPayloads['submitCreateSkillSlash'];
+        return this.submitCreateSkillSlash(typedPayload.request);
       }
       case 'submitSkillSlash': {
         const typedPayload = payload as CommandPayloads['submitSkillSlash'];
@@ -2498,6 +2563,179 @@ function buildActivateSkillUserTurn(skillName: string, extraNote: string): strin
     return `请按 skill "${skillName}" 处理当前任务。`;
   }
   return trimmed;
+}
+
+type CreateSkillSlashScope = 'workspace' | 'user';
+
+interface CreateSkillSlashRequest {
+  scope: CreateSkillSlashScope;
+  name: string;
+  prompt: string;
+}
+
+const CREATE_SKILL_USAGE =
+  '用法: /create-skill [repo|user] <skill-name> <需求描述>';
+
+function parseCreateSkillSlashRequest(input: string): CreateSkillSlashRequest | Error {
+  const trimmed = input.trim();
+  const commandTail = trimmed.startsWith('/create-skill')
+    ? trimmed.slice('/create-skill'.length).trim()
+    : trimmed;
+  if (!commandTail) {
+    return new Error(CREATE_SKILL_USAGE);
+  }
+
+  const scoped = parseLeadingCreateSkillScope(commandTail);
+  const scope = scoped?.scope ?? 'workspace';
+  const tail = scoped?.remainder ?? commandTail;
+  const firstToken = splitFirstToken(tail);
+  if (!firstToken) {
+    return new Error(CREATE_SKILL_USAGE);
+  }
+
+  const [nameToken, remainder] = firstToken;
+  const name = nameToken.trim().toLowerCase();
+  const nameIssue = validateSkillName(name);
+  if (nameIssue) {
+    return new Error(nameIssue);
+  }
+
+  const prompt = remainder.trim();
+  if (!prompt) {
+    return new Error(CREATE_SKILL_USAGE);
+  }
+
+  return {
+    scope,
+    name,
+    prompt,
+  };
+}
+
+function buildCreateSkillUserTurn(
+  workspaceRoot: string,
+  instructionPaths: ReturnType<typeof resolveInstructionPaths>,
+  request: CreateSkillSlashRequest,
+): string {
+  const scopeLabel = request.scope === 'workspace' ? '工作区' : '用户';
+  const targetPath = path.join(
+    request.scope === 'workspace'
+      ? instructionPaths.workspaceSpiritSkillsDir
+      : instructionPaths.userSkillsDir,
+    request.name,
+    SKILL_FILE_NAME,
+  );
+  const scopeHint =
+    request.scope === 'workspace'
+      ? '优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。'
+      : '优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。';
+  const writeNote =
+    request.scope === 'workspace'
+      ? `目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 edit_file 写入 ${targetPath}；不要在工具成功前声称已经创建。`
+      : `目标文件位于 Spirit 托管的用户目录：${targetPath}。你可以在内容确认后使用 create_file 或 edit_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要在工具成功前声称已经创建。`;
+
+  return `你现在在处理一个 /create-skill 请求。
+
+目标:
+- scope: ${scopeLabel}
+- skill_name: ${request.name}
+- target_path: ${targetPath}
+- workspace_root: ${workspaceRoot}
+
+用户需求:
+${request.prompt}
+
+要求:
+- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。
+- 生成内容必须符合 Agent Skills 目录规范：目标目录名与 frontmatter \`name\` 必须完全等于 \`${request.name}\`。
+- \`SKILL.md\` 必须以 YAML frontmatter 开头，至少包含 \`name\` 和 \`description\`；正文使用 Markdown，重点写清“做什么、何时用、怎么做”。
+- \`description\` 要具体说明适用场景，便于 agent 在 catalog 中识别。
+- 正文优先写步骤、输入输出示例、边界条件；避免空话、组织治理废话和泛泛 checklist。
+- 如果技能需要引用其他文件，正文里使用相对路径表达，不要假设这些文件已经存在。
+- ${scopeHint}
+- ${writeNote}
+
+交付方式:
+- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。
+- 如果不能直接落盘，就把最终 \`SKILL.md\` 完整贴在回复里，并明确说明未写入。`;
+}
+
+function parseLeadingCreateSkillScope(
+  input: string,
+): { scope: CreateSkillSlashScope; remainder: string } | undefined {
+  const userPrefixes = [
+    'user',
+    'user-level',
+    '用户级技能',
+    '用户级',
+    '用户技能',
+    '用户',
+    '全局技能',
+    '全局',
+    '个人技能',
+    '个人',
+  ];
+  const workspacePrefixes = [
+    'repo',
+    'repository',
+    'workspace',
+    'repo-level',
+    'workspace-level',
+    '仓库级技能',
+    '仓库级',
+    '仓库技能',
+    '仓库',
+    '工作区技能',
+    '工作区',
+    '项目技能',
+    '项目',
+  ];
+
+  const userRemainder = matchSlashPrefix(input, userPrefixes);
+  if (userRemainder !== undefined) {
+    return { scope: 'user', remainder: userRemainder };
+  }
+
+  const workspaceRemainder = matchSlashPrefix(input, workspacePrefixes);
+  if (workspaceRemainder !== undefined) {
+    return { scope: 'workspace', remainder: workspaceRemainder };
+  }
+
+  return undefined;
+}
+
+function matchSlashPrefix(input: string, prefixes: readonly string[]): string | undefined {
+  for (const prefix of prefixes) {
+    if (!input.startsWith(prefix)) {
+      continue;
+    }
+
+    const remainder = input.slice(prefix.length);
+    if (!remainder) {
+      return remainder;
+    }
+
+    const first = remainder[0];
+    if (/\s/u.test(first) || [':', '：', '-', '，', ',', ';', '；'].includes(first)) {
+      return remainder.replace(/^[\s:：\-，,;；]+/u, '');
+    }
+  }
+
+  return undefined;
+}
+
+function splitFirstToken(input: string): [string, string] | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const firstWhitespace = trimmed.search(/\s/u);
+  if (firstWhitespace === -1) {
+    return [trimmed, ''];
+  }
+
+  return [trimmed.slice(0, firstWhitespace), trimmed.slice(firstWhitespace).trim()];
 }
 
 async function buildActiveSkillPayload(

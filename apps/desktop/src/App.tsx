@@ -37,7 +37,11 @@ import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useTheme } from "@/hooks/useTheme";
-import { buildSkillSlashSuggestions, currentSkillSlashQuery } from "@/lib/skill-slash";
+import {
+  buildSkillSlashSuggestions,
+  CREATE_SKILL_SLASH_ALIAS,
+  currentSkillSlashQuery,
+} from "@/lib/skill-slash";
 import {
   desktopNativeThemeForPreference,
   resolveDark,
@@ -905,16 +909,7 @@ export default function App() {
               onDeleteSkill={runtime.deleteSkill}
               onGenerateSkillNavigate={() => {
                 setActiveSurface("conversation");
-                const c = snapshot?.conversation;
-                if (
-                  runtime.apiReady &&
-                  c &&
-                  !c.isBusy &&
-                  !c.pendingToolApproval &&
-                  !c.pendingQuestions
-                ) {
-                  void runtime.resetSession().catch(() => {});
-                }
+                applySlashSuggestion(`${CREATE_SKILL_SLASH_ALIAS} `);
               }}
             />
           ) : (

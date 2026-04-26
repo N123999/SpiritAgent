@@ -15,6 +15,7 @@ export type HostCommandName =
   | 'removeModel'
   | 'createSkill'
   | 'deleteSkill'
+  | 'submitCreateSkillSlash'
   | 'submitSkillSlash'
   | 'submitUserTurn'
   | 'poll'

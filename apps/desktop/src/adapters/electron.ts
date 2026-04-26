@@ -27,6 +27,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     deleteSkill(request) {
       return bridge.deleteSkill(request);
     },
+    submitCreateSkillSlash(request) {
+      return bridge.submitCreateSkillSlash(request);
+    },
     submitSkillSlash(request) {
       return bridge.submitSkillSlash(request);
     },

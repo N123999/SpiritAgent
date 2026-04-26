@@ -64,7 +64,7 @@ type SettingsViewProps = {
   onRemoveModel: (name: string) => Promise<void>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
   onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
-  /** Skills 页「生成 Skill」：回到主对话区；后续可接斜杠命令。 */
+  /** Skills 页「生成 Skill」：回到主对话区并预填 `/create-skill `。 */
   onGenerateSkillNavigate?: () => void;
 };
 
@@ -391,7 +391,7 @@ function SkillsSettingsPanel({
               size="sm"
               className="shrink-0 gap-1.5"
               disabled={!apiReady}
-              title="进入主对话区；空闲时会新开会话，后续可在此接斜杠生成 Skill"
+              title="进入主对话区，并在输入框预填 /create-skill 命令"
               onClick={() => onGenerateSkillNavigate()}
             >
               <Sparkles className="size-3.5 shrink-0" aria-hidden />
