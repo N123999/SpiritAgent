@@ -432,26 +432,14 @@ description: ${frontmatterDescription}
         throw new Error('消息不能为空。');
       }
 
-      const parsed = parseCreateSkillSlashRequest(rawText);
-      if (parsed instanceof Error) {
-        return this.appendInlineAssistantReply(rawText, parsed.message);
-      }
-
-      if (parsed.scope === 'workspace') {
-        try {
-          await mkdir(this.instructionPaths().workspaceSpiritSkillsDir, { recursive: true });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return this.appendInlineAssistantReply(
-            rawText,
-            `创建工作区 .spirit/skills 目录失败: ${message}`,
-          );
-        }
+      const prompt = parseCreateSkillSlashPrompt(rawText);
+      if (prompt instanceof Error) {
+        return this.appendInlineAssistantReply(rawText, prompt.message);
       }
 
       const state = this.requireState();
       return this.submitUserTurnAfterInitialized(
-        buildCreateSkillUserTurn(state.workspaceRoot, this.instructionPaths(), parsed),
+        buildCreateSkillUserTurn(state.workspaceRoot, this.instructionPaths(), prompt),
         {
           displayText: rawText,
         },
@@ -2565,177 +2553,60 @@ function buildActivateSkillUserTurn(skillName: string, extraNote: string): strin
   return trimmed;
 }
 
-type CreateSkillSlashScope = 'workspace' | 'user';
+const CREATE_SKILL_PROMPT_HINT =
+  '请在 /create-skill 后描述你想生成或收紧的 Skill，例如：/create-skill 做一个用于排查 Electron 白屏的 Skill';
 
-interface CreateSkillSlashRequest {
-  scope: CreateSkillSlashScope;
-  name: string;
-  prompt: string;
-}
-
-const CREATE_SKILL_USAGE =
-  '用法: /create-skill [repo|user] <skill-name> <需求描述>';
-
-function parseCreateSkillSlashRequest(input: string): CreateSkillSlashRequest | Error {
+function parseCreateSkillSlashPrompt(input: string): string | Error {
   const trimmed = input.trim();
-  const commandTail = trimmed.startsWith('/create-skill')
+  const prompt = trimmed.startsWith('/create-skill')
     ? trimmed.slice('/create-skill'.length).trim()
     : trimmed;
-  if (!commandTail) {
-    return new Error(CREATE_SKILL_USAGE);
-  }
-
-  const scoped = parseLeadingCreateSkillScope(commandTail);
-  const scope = scoped?.scope ?? 'workspace';
-  const tail = scoped?.remainder ?? commandTail;
-  const firstToken = splitFirstToken(tail);
-  if (!firstToken) {
-    return new Error(CREATE_SKILL_USAGE);
-  }
-
-  const [nameToken, remainder] = firstToken;
-  const name = nameToken.trim().toLowerCase();
-  const nameIssue = validateSkillName(name);
-  if (nameIssue) {
-    return new Error(nameIssue);
-  }
-
-  const prompt = remainder.trim();
   if (!prompt) {
-    return new Error(CREATE_SKILL_USAGE);
+    return new Error(CREATE_SKILL_PROMPT_HINT);
   }
 
-  return {
-    scope,
-    name,
-    prompt,
-  };
+  return prompt;
 }
 
 function buildCreateSkillUserTurn(
   workspaceRoot: string,
   instructionPaths: ReturnType<typeof resolveInstructionPaths>,
-  request: CreateSkillSlashRequest,
+  prompt: string,
 ): string {
-  const scopeLabel = request.scope === 'workspace' ? '工作区' : '用户';
-  const targetPath = path.join(
-    request.scope === 'workspace'
-      ? instructionPaths.workspaceSpiritSkillsDir
-      : instructionPaths.userSkillsDir,
-    request.name,
-    SKILL_FILE_NAME,
-  );
-  const scopeHint =
-    request.scope === 'workspace'
-      ? '优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。'
-      : '优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。';
-  const writeNote =
-    request.scope === 'workspace'
-      ? `目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 edit_file 写入 ${targetPath}；不要在工具成功前声称已经创建。`
-      : `目标文件位于 Spirit 托管的用户目录：${targetPath}。你可以在内容确认后使用 create_file 或 edit_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要在工具成功前声称已经创建。`;
+  const workspaceTargetRoot = instructionPaths.workspaceSpiritSkillsDir;
+  const userTargetRoot = instructionPaths.userSkillsDir;
 
   return `你现在在处理一个 /create-skill 请求。
 
 目标:
-- scope: ${scopeLabel}
-- skill_name: ${request.name}
-- target_path: ${targetPath}
+- default_scope: 工作区
+- workspace_skill_root: ${workspaceTargetRoot}
+- user_skill_root: ${userTargetRoot}
 - workspace_root: ${workspaceRoot}
 
 用户需求:
-${request.prompt}
+${prompt}
 
 要求:
 - 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。
-- 生成内容必须符合 Agent Skills 目录规范：目标目录名与 frontmatter \`name\` 必须完全等于 \`${request.name}\`。
+- 默认创建到工作区 skill 根目录 ${workspaceTargetRoot}；只有在用户明确要求“用户级 / 全局 / 跨仓库复用 / 写到用户目录”这类语义时，才改为用户目录 ${userTargetRoot}。
+- 你需要先根据用户需求自行决定一个合适的 skill_name；名称必须是 1-64 个字符，只能使用小写字母、数字和连字符，不能以连字符开头或结尾，也不能包含连续连字符。
+- 最终目标目录名与 frontmatter \`name\` 必须完全等于你决定的 skill_name。
+- 最终文件路径必须是 \`<选定根目录>/<skill_name>/SKILL.md\`；不要写到其他位置。
+- 如果目标 Skill 已存在，先读取原有 \`SKILL.md\`，再基于现有内容压缩重写或收紧，不要在旧内容后面继续堆砌模板化废话。
 - \`SKILL.md\` 必须以 YAML frontmatter 开头，至少包含 \`name\` 和 \`description\`；正文使用 Markdown，重点写清“做什么、何时用、怎么做”。
 - \`description\` 要具体说明适用场景，便于 agent 在 catalog 中识别。
+- Skill 是给后续 agent/LLM 直接消费的能力说明，不是给人类流程管理看的。
 - 正文优先写步骤、输入输出示例、边界条件；避免空话、组织治理废话和泛泛 checklist。
+- 需要事实时先读取仓库内相关文件，不要臆造项目结构、技术栈、目录或既有工作流。
 - 如果技能需要引用其他文件，正文里使用相对路径表达，不要假设这些文件已经存在。
-- ${scopeHint}
-- ${writeNote}
+- 如果你选择工作区 scope，优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。
+- 如果你选择用户 scope，优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。
+- 写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。
 
 交付方式:
 - 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。
 - 如果不能直接落盘，就把最终 \`SKILL.md\` 完整贴在回复里，并明确说明未写入。`;
-}
-
-function parseLeadingCreateSkillScope(
-  input: string,
-): { scope: CreateSkillSlashScope; remainder: string } | undefined {
-  const userPrefixes = [
-    'user',
-    'user-level',
-    '用户级技能',
-    '用户级',
-    '用户技能',
-    '用户',
-    '全局技能',
-    '全局',
-    '个人技能',
-    '个人',
-  ];
-  const workspacePrefixes = [
-    'repo',
-    'repository',
-    'workspace',
-    'repo-level',
-    'workspace-level',
-    '仓库级技能',
-    '仓库级',
-    '仓库技能',
-    '仓库',
-    '工作区技能',
-    '工作区',
-    '项目技能',
-    '项目',
-  ];
-
-  const userRemainder = matchSlashPrefix(input, userPrefixes);
-  if (userRemainder !== undefined) {
-    return { scope: 'user', remainder: userRemainder };
-  }
-
-  const workspaceRemainder = matchSlashPrefix(input, workspacePrefixes);
-  if (workspaceRemainder !== undefined) {
-    return { scope: 'workspace', remainder: workspaceRemainder };
-  }
-
-  return undefined;
-}
-
-function matchSlashPrefix(input: string, prefixes: readonly string[]): string | undefined {
-  for (const prefix of prefixes) {
-    if (!input.startsWith(prefix)) {
-      continue;
-    }
-
-    const remainder = input.slice(prefix.length);
-    if (!remainder) {
-      return remainder;
-    }
-
-    const first = remainder[0];
-    if (/\s/u.test(first) || [':', '：', '-', '，', ',', ';', '；'].includes(first)) {
-      return remainder.replace(/^[\s:：\-，,;；]+/u, '');
-    }
-  }
-
-  return undefined;
-}
-
-function splitFirstToken(input: string): [string, string] | undefined {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const firstWhitespace = trimmed.search(/\s/u);
-  if (firstWhitespace === -1) {
-    return [trimmed, ''];
-  }
-
-  return [trimmed.slice(0, firstWhitespace), trimmed.slice(firstWhitespace).trim()];
 }
 
 async function buildActiveSkillPayload(

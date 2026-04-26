@@ -64,7 +64,7 @@ type SettingsViewProps = {
   onRemoveModel: (name: string) => Promise<void>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
   onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
-  /** Skills 页「生成 Skill」：回到主对话区并预填 `/create-skill `。 */
+  /** Skills 页「生成 Skill」：回到主对话区并预填 `/create-skill `，后续直接写自然语言。 */
   onGenerateSkillNavigate?: () => void;
 };
 
@@ -391,7 +391,7 @@ function SkillsSettingsPanel({
               size="sm"
               className="shrink-0 gap-1.5"
               disabled={!apiReady}
-              title="进入主对话区，并在输入框预填 /create-skill 命令"
+              title="进入主对话区，预填 /create-skill，并直接用自然语言描述需求"
               onClick={() => onGenerateSkillNavigate()}
             >
               <Sparkles className="size-3.5 shrink-0" aria-hidden />

@@ -23,7 +23,7 @@ const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
     id: 'command:create-skill',
     alias: CREATE_SKILL_SLASH_ALIAS,
     name: '/create-skill',
-    description: '创建或收紧一个 SKILL.md',
+    description: '用自然语言创建或收紧一个 SKILL.md',
   },
 ] as const
 
