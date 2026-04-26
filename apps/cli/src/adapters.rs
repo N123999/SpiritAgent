@@ -1,17 +1,13 @@
 use anyhow::{Context, Result, anyhow};
-use serde_json::Value;
 use std::{env, path::PathBuf};
 
 use crate::{
-    chat_store,
-    logging,
-    mcp::{McpServerConfig, add_mcp_server},
+    chat_store, logging,
     model_registry::{
         AppConfig, config_file_path, has_model_api_key, keyring_entry, load_config,
         remove_model_api_key, save_config, save_model_api_key,
     },
-    ports::{AppPaths, ChatArchive, ChatRepository, ConfigStore, SecretStore, ToolExecutor},
-    tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
+    ports::{AppPaths, ChatArchive, ChatRepository, ConfigStore, SecretStore},
 };
 
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
@@ -143,6 +139,7 @@ impl ChatRepository for JsonChatRepository {
             &archive.assistant_aux,
             &archive.llm_history,
             &archive.subagent_sessions,
+            archive.rewind.as_ref(),
         )
     }
 
@@ -153,50 +150,7 @@ impl ChatRepository for JsonChatRepository {
             assistant_aux: loaded.assistant_aux,
             llm_history: loaded.llm_history,
             subagent_sessions: loaded.subagent_sessions,
+            rewind: loaded.rewind,
         })
-    }
-}
-
-pub struct WorkspaceToolExecutor {
-    inner: ToolRuntime,
-    workspace_root: PathBuf,
-}
-
-impl WorkspaceToolExecutor {
-    pub fn new() -> Self {
-        Self {
-            inner: ToolRuntime::new(),
-            workspace_root: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        }
-    }
-}
-
-impl ToolExecutor for WorkspaceToolExecutor {
-    fn tool_definitions_json(&self) -> Value {
-        self.inner.tool_definitions_json()
-    }
-
-    fn parse_command(&self, message: &str) -> Result<ToolRequest> {
-        self.inner.parse_tool_command(message)
-    }
-
-    fn request_from_function_call(&self, name: &str, arguments_json: &str) -> Result<ToolRequest> {
-        ToolRuntime::request_from_function_call(name, arguments_json)
-    }
-
-    fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
-        self.inner.authorize(request)
-    }
-
-    fn trust(&mut self, target: &TrustTarget) -> Result<()> {
-        self.inner.trust(target)
-    }
-
-    fn execute(&mut self, request: &ToolRequest) -> Result<String> {
-        self.inner.execute(request)
-    }
-
-    fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {
-        add_mcp_server(&self.workspace_root, name, config)
     }
 }

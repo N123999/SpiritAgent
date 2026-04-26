@@ -2,14 +2,9 @@ use anyhow::Result;
 #[cfg(feature = "tui")]
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::PathBuf;
 
-use crate::{
-    mcp::McpServerConfig,
-    model_registry::AppConfig,
-    tool_runtime::{AuthorizationDecision, ToolRequest, TrustTarget},
-};
+use crate::model_registry::AppConfig;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +63,8 @@ pub struct ChatArchive {
     pub llm_history: Vec<(String, String, Vec<String>)>,
     #[serde(default)]
     pub subagent_sessions: Vec<SubagentSessionArchiveEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewind: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,14 +189,4 @@ pub trait ChatRepository: Send + Sync {
     fn list(&self) -> Result<Vec<String>>;
     fn save(&self, path: Option<&str>, archive: &ChatArchive) -> Result<PathBuf>;
     fn load(&self, path: &str) -> Result<ChatArchive>;
-}
-
-pub trait ToolExecutor: Send {
-    fn tool_definitions_json(&self) -> Value;
-    fn parse_command(&self, message: &str) -> Result<ToolRequest>;
-    fn request_from_function_call(&self, name: &str, arguments_json: &str) -> Result<ToolRequest>;
-    fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision>;
-    fn trust(&mut self, target: &TrustTarget) -> Result<()>;
-    fn execute(&mut self, request: &ToolRequest) -> Result<String>;
-    fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf>;
 }

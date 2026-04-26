@@ -114,6 +114,13 @@ export type ToolAgentRoundCompletion<State = JsonValue> =
 export type LlmStreamEvent =
   | { kind: 'thinking-chunk'; text: string }
   | { kind: 'tool-progress'; text: string }
+  | {
+      kind: 'streaming-tool-preview';
+      toolCallId: string;
+      toolName: string;
+      argumentsJson: string;
+      previewLine: string;
+    }
   | { kind: 'assistant-chunk'; text: string }
   | {
       kind: 'history-compacted';

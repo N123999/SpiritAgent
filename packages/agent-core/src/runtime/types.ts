@@ -45,6 +45,11 @@ export type RuntimeEvent<ToolRequest> =
       text: string;
     }
   | {
+      /** 清空 `thinkingTextStore` 前发出，宿主可固化为一条独立 UI 消息。 */
+      kind: 'assistant-thinking-segment-finalized';
+      text: string;
+    }
+  | {
       kind: 'update-pending-assistant-compaction';
       text: string;
     }
@@ -87,6 +92,16 @@ export type RuntimeEvent<ToolRequest> =
       request: ToolRequest;
       statusText?: string;
       failed?: boolean;
+    }
+  | {
+      kind: 'streaming-tool-preview';
+      toolCallId: string;
+      toolName: string;
+      argumentsJson: string;
+    }
+  | {
+      kind: 'tool-execution-finished';
+      execution: RuntimeToolExecution<ToolRequest>;
     };
 
 export interface RuntimePendingApproval<ToolRequest, TrustTarget> {

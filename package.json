@@ -3,10 +3,14 @@
   "private": true,
   "description": "Spirit Agent — root scripts for TS build + Rust CLI",
   "scripts": {
+    "build:host-internal": "npm --prefix packages/host-internal run build",
     "build:agent-core": "npm --prefix packages/agent-core run build",
-    "build": "npm run build:agent-core",
-    "dev": "npm run build:agent-core && cargo run -p spirit-agent",
-    "dev:cli": "cargo run -p spirit-agent"
+    "build:desktop": "npm --prefix apps/desktop run build",
+    "build": "npm run build:host-internal && npm run build:agent-core && npm run build:desktop",
+    "dev": "npm run build:host-internal && npm run build:agent-core && cargo run -p spirit-agent",
+    "dev:cli": "cargo run -p spirit-agent",
+    "dev:desktop": "npm --prefix apps/desktop run dev",
+    "dev:desktop:web": "npm --prefix apps/desktop run dev:web"
   },
   "engines": {
     "node": ">=20"

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env, fs,
     fs::OpenOptions,
     path::Path,
@@ -18,7 +18,7 @@ use crate::{
     ask_questions::AskQuestionsResult,
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
-    host_runtime::{RuntimeEvent, build_tool_result_block, format_tool_ui_message},
+    host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
     locale,
     logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -29,11 +29,10 @@ use crate::{
         McpStatusSnapshot, McpStatusState, SecretStore, SubagentSessionArchiveEntry,
         SubagentSessionSummary,
     },
-    rules::{self, RuleEntry, RuleScope, RuleStateFile},
+    rules::{self, RuleEntry, RuleScope},
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
-    skills::{self, SkillEntry, SkillScope, SkillStateFile},
-    tool_runtime::{ToolRequest, ToolRuntime},
+    skills::{self, SkillEntry, SkillScope},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
         InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
@@ -44,12 +43,6 @@ use crate::{
 };
 
 const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
-
-struct PendingShellExecution {
-    tool_call_id: String,
-    command: String,
-    result_rx: Receiver<anyhow::Result<String>>,
-}
 
 /// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
 #[derive(Clone, Copy, Debug, Default)]
@@ -77,8 +70,6 @@ pub struct TuiShell {
     show_aux_details: bool,
     pending_assistant_msg_index: Option<usize>,
     last_completed_assistant_msg_index: Option<usize>,
-    next_local_shell_tool_id: usize,
-    pending_shell_executions: Vec<PendingShellExecution>,
     last_mcp_status_revision: u64,
     slash: slash::SlashState,
     model_picker_active: bool,
@@ -118,9 +109,7 @@ pub struct TuiShell {
     secret_store: Arc<dyn SecretStore>,
     app_paths: Arc<dyn AppPaths>,
     plan_metadata: PlanMetadata,
-    rule_state: RuleStateFile,
     rule_entries: Vec<RuleEntry>,
-    skill_state: SkillStateFile,
     skill_entries: Vec<SkillEntry>,
 }
 
@@ -130,25 +119,27 @@ impl TuiShell {
         let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
-        let config = config_store.load().unwrap_or_else(|_| AppConfig::default());
+        let config = config_store.load().unwrap_or_else(|err| {
+            logging::log_event(&format!(
+                "[config] 读取失败，已回退到内置默认模型（{}）。原因: {err:#}",
+                AppConfig::default().active_model
+            ));
+            AppConfig::default()
+        });
         locale::apply_ui_locale(&config);
         let workspace_root = app_paths.workspace_root();
-        let rule_state = rules::load_rule_state().context("读取规则状态失败")?;
-        let rule_entries = rules::discover_rule_entries(&workspace_root, &rule_state)
-            .context("发现规则文件失败")?;
-        let skill_state = skills::load_skill_state().context("读取技能状态失败")?;
-        let skill_entries = skills::discover_skill_entries(&workspace_root, &skill_state)
-            .context("发现技能文件失败")?;
-        let plan_metadata = plan::plan_metadata_snapshot(false, &workspace_root);
         let mut runtime = RuntimeHandle::new(
             config.clone(),
             Arc::clone(&secret_store),
             workspace_root.clone(),
-            rules::enabled_rules(&rule_entries),
-            skills::enabled_skill_catalog(&skill_entries),
-            plan_metadata.clone(),
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
+        let cli_metadata = runtime
+            .load_cli_host_metadata(false)
+            .context("读取共享宿主 metadata 失败")?;
+        let rule_entries = cli_metadata.rule_entries;
+        let skill_entries = cli_metadata.skill_entries;
+        let plan_metadata = cli_metadata.plan_metadata;
         let initial_mcp_status = runtime.mcp_status_snapshot();
         let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
         thread::spawn(move || {
@@ -176,8 +167,6 @@ impl TuiShell {
             show_aux_details: true,
             pending_assistant_msg_index: None,
             last_completed_assistant_msg_index: None,
-            next_local_shell_tool_id: 0,
-            pending_shell_executions: Vec::new(),
             last_mcp_status_revision: initial_mcp_status.revision,
             slash: slash::SlashState::new(),
             model_picker_active: false,
@@ -216,18 +205,12 @@ impl TuiShell {
             secret_store,
             app_paths,
             plan_metadata,
-            rule_state,
             rule_entries,
-            skill_state,
             skill_entries,
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
         Ok(shell)
-    }
-
-    pub fn rule_state(&self) -> &RuleStateFile {
-        &self.rule_state
     }
 
     pub fn rule_entries(&self) -> &[RuleEntry] {
@@ -248,20 +231,30 @@ impl TuiShell {
     }
 
     pub fn refresh_rules_from_disk(&mut self) -> Result<()> {
-        self.rule_state = rules::load_rule_state().context("读取规则状态失败")?;
-        self.rule_entries = rules::discover_rule_entries(&self.app_paths.workspace_root(), &self.rule_state)
-            .context("发现规则文件失败")?;
         self.runtime
-            .replace_rules(rules::enabled_rules(&self.rule_entries));
+            .reload_host_metadata(self.is_plan_mode_active())
+            .context("刷新共享规则 runtime metadata 失败")?;
+        let metadata = self
+            .runtime
+            .load_cli_host_metadata(self.is_plan_mode_active())
+            .context("读取共享规则 metadata 失败")?;
+        self.rule_entries = metadata.rule_entries;
+        self.skill_entries = metadata.skill_entries;
+        self.plan_metadata = metadata.plan_metadata;
         Ok(())
     }
 
     pub fn refresh_skills_from_disk(&mut self) -> Result<()> {
-        self.skill_state = skills::load_skill_state().context("读取技能状态失败")?;
-        self.skill_entries = skills::discover_skill_entries(&self.app_paths.workspace_root(), &self.skill_state)
-            .context("发现技能文件失败")?;
         self.runtime
-            .replace_skills_catalog(skills::enabled_skill_catalog(&self.skill_entries));
+            .reload_host_metadata(self.is_plan_mode_active())
+            .context("刷新共享技能 runtime metadata 失败")?;
+        let metadata = self
+            .runtime
+            .load_cli_host_metadata(self.is_plan_mode_active())
+            .context("读取共享技能 metadata 失败")?;
+        self.rule_entries = metadata.rule_entries;
+        self.skill_entries = metadata.skill_entries;
+        self.plan_metadata = metadata.plan_metadata;
         if self.current_slash_query().is_some() {
             self.refresh_suggestions();
         }
@@ -313,7 +306,6 @@ impl TuiShell {
     pub fn poll_runtime(&mut self) {
         self.runtime.poll();
         self.apply_runtime_events();
-        self.poll_pending_shell_executions();
         self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
         self.refresh_active_subagent_view();
@@ -969,8 +961,33 @@ impl TuiShell {
 
         self.clear_conversation_selection();
 
+        if self.runtime.has_pending_tool_approval() {
+            self.scroll_history_to_bottom();
+            if self.runtime.pending_subagent_approval().is_none() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::User,
+                    content: trimmed_message.to_string(),
+                    tool_block: None,
+                });
+            }
+            self.runtime
+                .respond_to_pending_tool_approval(trimmed_message);
+            self.apply_runtime_events();
+            self.set_input(String::new());
+            self.refresh_suggestions();
+            return;
+        }
+
         if self.shell_mode_active {
             self.scroll_history_to_bottom();
+            if self.runtime.is_busy() {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!("tui.busy.pending_reply").into_owned(),
+                    tool_block: None,
+                });
+                return;
+            }
             self.start_manual_shell_execution(raw_message);
             self.set_input(String::new());
             self.refresh_suggestions();
@@ -985,23 +1002,6 @@ impl TuiShell {
                 tool_block: None,
             });
             self.handle_slash_command(trimmed_message);
-            self.set_input(String::new());
-            self.refresh_suggestions();
-            return;
-        }
-
-        if self.runtime.has_pending_tool_approval() {
-            self.scroll_history_to_bottom();
-            if self.runtime.pending_subagent_approval().is_none() {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::User,
-                    content: trimmed_message.to_string(),
-                    tool_block: None,
-                });
-            }
-            self.runtime
-                .respond_to_pending_tool_approval(trimmed_message);
-            self.apply_runtime_events();
             self.set_input(String::new());
             self.refresh_suggestions();
             return;
@@ -1699,14 +1699,12 @@ impl TuiShell {
             return;
         };
 
-        for entry in &self.rule_entries {
-            self.rule_state.enabled_overrides.remove(&entry.source.id);
-        }
+        let mut enabled_overrides = BTreeMap::new();
         for (rule_id, enabled) in bottom_form::rules_form_overrides(form) {
-            self.rule_state.set_enabled(rule_id, enabled);
+            enabled_overrides.insert(rule_id, enabled);
         }
 
-        match rules::save_rule_state(&self.rule_state) {
+        match self.runtime.write_rule_state(enabled_overrides) {
             Ok(path) => match self.refresh_rules_from_disk() {
                 Ok(()) => {
                     self.messages.push(ChatMessage {
@@ -1739,14 +1737,12 @@ impl TuiShell {
             return;
         };
 
-        for entry in &self.skill_entries {
-            self.skill_state.enabled_overrides.remove(&entry.source.id);
-        }
+        let mut enabled_overrides = BTreeMap::new();
         for (skill_id, enabled) in bottom_form::skills_form_overrides(form) {
-            self.skill_state.set_enabled(skill_id, enabled);
+            enabled_overrides.insert(skill_id, enabled);
         }
 
-        match skills::save_skill_state(&self.skill_state) {
+        match self.runtime.write_skill_state(enabled_overrides) {
             Ok(path) => match self.refresh_skills_from_disk() {
                 Ok(()) => {
                     self.messages.push(ChatMessage {
@@ -3172,9 +3168,13 @@ impl TuiShell {
             return;
         };
 
-        let request_value = ToolRequest::AskQuestions {
-            questions: request.clone(),
-        };
+        let request_value = ToolUiRequest::new(
+            "ask_questions",
+            serde_json::json!({
+                "title": request.title,
+                "questionCount": request.questions.len(),
+            }),
+        );
         let output = serde_json::to_string_pretty(&result)
             .unwrap_or_else(|_| "{\"status\":\"skipped\"}".to_string());
         self.messages.push(ChatMessage::with_tool_block(
@@ -3731,6 +3731,22 @@ impl TuiShell {
                         }
                     }
                 }
+                RuntimeEvent::AssistantThinkingSegmentFinalized(thinking) => {
+                    if let Some(idx) = self
+                        .pending_assistant_msg_index
+                        .or(self.last_completed_assistant_msg_index)
+                    {
+                        let entry = self.assistant_aux_by_message.entry(idx).or_default();
+                        entry.thinking = if thinking.trim().is_empty() {
+                            None
+                        } else {
+                            Some(thinking)
+                        };
+                        if entry.thinking.is_none() && entry.compaction.is_none() {
+                            self.assistant_aux_by_message.remove(&idx);
+                        }
+                    }
+                }
                 RuntimeEvent::UpdatePendingAssistantCompaction(compaction) => {
                     if let Some(idx) = self.pending_assistant_msg_index {
                         let entry = self.assistant_aux_by_message.entry(idx).or_default();
@@ -3921,8 +3937,9 @@ impl TuiShell {
     }
 
     fn refresh_plan_metadata_from_disk(&mut self) {
-        let workspace_root = self.app_paths.workspace_root();
-        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
+        let Ok(next) = self.runtime.load_plan_metadata(self.is_plan_mode_active()) else {
+            return;
+        };
         if next == self.plan_metadata {
             return;
         }
@@ -3932,8 +3949,9 @@ impl TuiShell {
     }
 
     fn push_plan_metadata_snapshot(&mut self) {
-        let workspace_root = self.app_paths.workspace_root();
-        let next = plan::plan_metadata_snapshot(self.is_plan_mode_active(), &workspace_root);
+        let Ok(next) = self.runtime.load_plan_metadata(self.is_plan_mode_active()) else {
+            return;
+        };
         if next == self.plan_metadata {
             return;
         }
@@ -3963,89 +3981,10 @@ impl TuiShell {
         }
     }
 
-    fn next_local_shell_tool_call_id(&mut self) -> String {
-        let id = manual_shell::local_tool_call_id(self.next_local_shell_tool_id);
-        self.next_local_shell_tool_id += 1;
-        id
-    }
-
     fn start_manual_shell_execution(&mut self, command: String) {
-        let tool_call_id = self.next_local_shell_tool_call_id();
-        let (result_tx, result_rx) = mpsc::channel::<anyhow::Result<String>>();
-        let request = ToolRequest::Shell {
-            command: command.clone(),
-        };
-
-        thread::spawn(move || {
-            let runtime = ToolRuntime::new();
-            let outcome = runtime.execute(&request);
-            let _ = result_tx.send(outcome);
-        });
-
-        self.messages.push(ChatMessage::with_tool_block(
-            MessageRole::Agent,
-            String::new(),
-            manual_shell::running_block(&tool_call_id, &command),
-        ));
-        self.pending_shell_executions.push(PendingShellExecution {
-            tool_call_id,
-            command,
-            result_rx,
-        });
-    }
-
-    fn poll_pending_shell_executions(&mut self) {
-        let mut still_pending = Vec::new();
-        let pending_executions = std::mem::take(&mut self.pending_shell_executions);
-
-        for pending in pending_executions {
-            match pending.result_rx.try_recv() {
-                Ok(Ok(output)) => {
-                    let block = manual_shell::success_block(
-                        &pending.tool_call_id,
-                        &pending.command,
-                        &output,
-                    );
-                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
-                }
-                Ok(Err(err)) => {
-                    let block = manual_shell::failed_block(
-                        &pending.tool_call_id,
-                        &pending.command,
-                        &err.to_string(),
-                    );
-                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
-                }
-                Err(TryRecvError::Empty) => still_pending.push(pending),
-                Err(TryRecvError::Disconnected) => {
-                    let block = manual_shell::failed_block(
-                        &pending.tool_call_id,
-                        &pending.command,
-                        t!("tui.shell.background_disconnected").as_ref(),
-                    );
-                    self.finish_pending_shell_execution(&pending.tool_call_id, block);
-                }
-            }
-        }
-
-        self.pending_shell_executions = still_pending;
-    }
-
-    fn finish_pending_shell_execution(
-        &mut self,
-        tool_call_id: &str,
-        block: crate::view::ToolUiBlock,
-    ) {
-        if let Some(message) = self.messages.iter_mut().find(|message| {
-            message.tool_block.as_ref().and_then(|tool| tool.tool_call_id.as_deref())
-                == Some(tool_call_id)
-        }) {
-            message.tool_block = Some(block);
-            return;
-        }
-
-        self.messages
-            .push(ChatMessage::with_tool_block(MessageRole::Agent, String::new(), block));
+        self.runtime
+            .execute_manual_tool_command(&manual_shell_tool_command(&command));
+        self.apply_runtime_events();
     }
 }
 
@@ -4055,6 +3994,10 @@ fn user_turn_text_for_mode(
     raw_message: &str,
 ) -> String {
     raw_message.to_string()
+}
+
+fn manual_shell_tool_command(command: &str) -> String {
+    format!("/tool shell {}", command)
 }
 
 fn is_standalone_subagent_status_aux(pending_aux: &PendingAssistantAux) -> bool {
@@ -4141,11 +4084,11 @@ mod tests {
     use super::{
         is_standalone_subagent_status_aux, next_persisted_standalone_pending_aux,
         next_persisted_standalone_pending_aux_anchor,
+        manual_shell_tool_command,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
         user_turn_text_for_mode,
     };
     use crate::{
-        plan::START_IMPLEMENTING_REMINDER,
         view::{AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux},
     };
     use std::path::PathBuf;
@@ -4170,6 +4113,14 @@ mod tests {
             user_turn_text_for_mode(&workspace_root, MainInputMode::Plan, raw_message);
 
         assert_eq!(runtime_turn, raw_message);
+    }
+
+    #[test]
+    fn manual_shell_tool_command_wraps_input_for_bridge() {
+        assert_eq!(
+            manual_shell_tool_command("echo hello world"),
+            "/tool shell echo hello world"
+        );
     }
 
     #[test]

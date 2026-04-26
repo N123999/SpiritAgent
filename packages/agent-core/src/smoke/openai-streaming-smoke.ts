@@ -66,6 +66,10 @@ async function main(): Promise<void> {
     throw new Error('openai streaming smoke 未收到 Rust 风格的 tool-progress thinking 事件。');
   }
 
+  if (!events.some((event) => isJsonObject(event) && event.kind === 'streaming-tool-preview')) {
+    throw new Error('openai streaming smoke 未收到 streaming-tool-preview 事件。');
+  }
+
   if (!history.some((message) => message.role === 'system' && message.content.includes('[TOOL_MEMORY]'))) {
     throw new Error('openai streaming smoke 未保留工具记忆。');
   }

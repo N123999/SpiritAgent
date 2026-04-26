@@ -51,7 +51,7 @@ class ApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
   }
 
   async authorize(request: ScriptedToolRequest): Promise<AuthorizationDecision> {
-    if (request.name === 'write_file') {
+    if (request.name === 'create_file') {
       return {
         kind: 'need-approval',
         prompt: '写文件需要审批。',
@@ -142,8 +142,8 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
                     id: 'call-write',
                     type: 'function',
                     function: {
-                      name: 'write_file',
-                      arguments: '{"path":"demo.txt"}',
+                      name: 'create_file',
+                      arguments: '{"path":"demo.txt","content":"x"}',
                     },
                   },
                 ],
@@ -156,8 +156,8 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
             calls: [
               {
                 id: 'call-write',
-                name: 'write_file',
-                argumentsJson: '{"path":"demo.txt"}',
+                name: 'create_file',
+                argumentsJson: '{"path":"demo.txt","content":"x"}',
               },
               {
                 id: 'call-search',
@@ -954,6 +954,148 @@ class FinalTextTransport implements LlmTransport<undefined, ScriptedState> {
   }
 }
 
+class SubagentTransport implements LlmTransport<undefined, ScriptedState> {
+  private rounds = 0;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      return {
+        kind: 'success',
+        result: {
+          state: {
+            messages: [
+              ...state.messages,
+              {
+                role: 'assistant',
+                content: '准备委托子代理。',
+                tool_calls: [
+                  {
+                    id: 'call-subagent',
+                    type: 'function',
+                    function: {
+                      name: 'run_subagent',
+                      arguments: '{"task":"输出：好的，我是 SubAgent，哈哈哈"}',
+                    },
+                  },
+                ],
+              },
+            ],
+            steps: state.steps + 1,
+          },
+          step: {
+            kind: 'tool-calls',
+            calls: [
+              {
+                id: 'call-subagent',
+                name: 'run_subagent',
+                argumentsJson: '{"task":"输出：好的，我是 SubAgent，哈哈哈"}',
+              },
+            ],
+          },
+          requestTrace: [{ mode: 'subagent-parent-round-1' }],
+        },
+      };
+    }
+
+    if (this.rounds === 2) {
+      const delegatedPromptPresent = state.messages.some(
+        (message) =>
+          isJsonObject(message)
+          && message.role === 'user'
+          && typeof message.content === 'string'
+          && message.content.includes('You are already inside the delegated child session.'),
+      );
+      if (!delegatedPromptPresent) {
+        return {
+          kind: 'failure',
+          error: 'subagent child round 未收到委托后的 user turn。',
+          requestTrace: [{ mode: 'subagent-child-round-missing-user-turn' }],
+        };
+      }
+
+      return {
+        kind: 'success',
+        result: {
+          state: {
+            messages: [...state.messages, { role: 'assistant', content: '好的，我是 SubAgent，哈哈哈' }],
+            steps: state.steps + 1,
+          },
+          step: { kind: 'final-response-ready' },
+          requestTrace: [{ mode: 'subagent-child-round' }],
+        },
+      };
+    }
+
+    const toolResultMessage = state.messages.find(
+      (message) =>
+        isJsonObject(message)
+        && message.role === 'tool'
+        && message.tool_call_id === 'call-subagent'
+        && typeof message.content === 'string',
+    );
+    if (
+      !toolResultMessage
+      || !isJsonObject(toolResultMessage)
+      || typeof toolResultMessage.content !== 'string'
+      || !toolResultMessage.content.includes('好的，我是 SubAgent，哈哈哈')
+    ) {
+      return {
+        kind: 'failure',
+        error: 'subagent parent round 未收到子代理结果。',
+        requestTrace: [{ mode: 'subagent-parent-round-2-missing-tool-result' }],
+      };
+    }
+
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'SUBAGENT_OK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'subagent-parent-round-2' }],
+      },
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class StreamingFinalTransport implements LlmTransport<undefined, ScriptedState> {
   async startToolAgentRound(
     _config: undefined,
@@ -1439,7 +1581,7 @@ class StreamingApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
   }
 
   async authorize(request: ScriptedToolRequest): Promise<AuthorizationDecision> {
-    if (request.name === 'write_file') {
+    if (request.name === 'create_file') {
       return {
         kind: 'need-approval',
         prompt: '写文件需要审批。',
@@ -1550,8 +1692,8 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
                       id: 'call-stream-approval',
                       type: 'function',
                       function: {
-                        name: 'write_file',
-                        arguments: '{"path":"demo.txt"}',
+                        name: 'create_file',
+                        arguments: '{"path":"demo.txt","content":"x"}',
                       },
                     },
                   ],
@@ -1564,8 +1706,8 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
               calls: [
                 {
                   id: 'call-stream-approval',
-                  name: 'write_file',
-                  argumentsJson: '{"path":"demo.txt"}',
+                  name: 'create_file',
+                  argumentsJson: '{"path":"demo.txt","content":"x"}',
                 },
               ],
             },
@@ -1580,7 +1722,7 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
         isJsonObject(message) &&
         message.role === 'tool' &&
         typeof message.content === 'string' &&
-        message.content === 'approved output for write_file',
+        message.content === 'approved output for create_file',
     );
 
     if (!hasApprovedToolResult) {
@@ -1883,6 +2025,19 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
   }
 }
 
+class SubagentExecutor extends HostExecutor {
+  executedSubagentCalls = 0;
+
+  override async execute(request: ScriptedToolRequest): Promise<string> {
+    if (request.name === 'run_subagent') {
+      this.executedSubagentCalls += 1;
+      throw new Error('run_subagent 不应落到宿主 execute');
+    }
+
+    return super.execute(request);
+  }
+}
+
 class PollingManualBackgroundExecutor extends HostExecutor {
   private readonly deferred = createDeferred<string>();
 
@@ -2177,6 +2332,35 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   );
   if (!visionUserHistory || (visionUserHistory.imagePaths?.length ?? 0) !== 0) {
     throw new Error('vision fallback smoke 未清空 user imagePaths。');
+  }
+
+  const subagentExecutor = new SubagentExecutor();
+  const subagentRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new SubagentTransport(),
+    toolExecutor: subagentExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+  });
+
+  const subagentResult = await subagentRuntime.submitUserTurn('调用 SubAgent 输出一句话');
+  if (subagentResult.kind !== 'completed' || subagentResult.assistantText !== 'SUBAGENT_OK') {
+    throw new Error('subagent smoke 未完成闭环。');
+  }
+  if (subagentExecutor.executedSubagentCalls !== 0) {
+    throw new Error('subagent smoke 错误落到了宿主 execute。');
+  }
+  const subagentExecution = subagentResult.toolExecutions.find(
+    (execution) => execution.toolName === 'run_subagent',
+  );
+  if (
+    !subagentExecution
+    || subagentExecution.failed
+    || subagentExecution.output !== '好的，我是 SubAgent，哈哈哈'
+  ) {
+    throw new Error('subagent smoke 未记录正确的子代理工具结果。');
   }
 
   const hostRuntime = new AgentRuntime({
@@ -2692,7 +2876,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   }
   if (
     !drainedStreamingApprovalEvents.some(
-      (event) => event.kind === 'approval-requested' && event.approval.toolName === 'write_file',
+      (event) => event.kind === 'approval-requested' && event.approval.toolName === 'create_file',
     )
   ) {
     throw new Error('streaming approval smoke 缺少 approval-requested 事件。');

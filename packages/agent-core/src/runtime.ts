@@ -109,6 +109,7 @@ import type {
   RuntimeSubagentSessionArchiveEntry,
   RuntimeSubagentSessionSummary,
   RuntimePendingQuestions,
+  RuntimeToolExecution,
   RuntimeTurnContext,
   RuntimeTurnResult,
 } from './runtime/types.js';
@@ -789,13 +790,15 @@ export class AgentRuntime<
       }
 
       const execution = await this.performToolExecution(pending.request, pending.toolName);
-      pending.turn.toolExecutions.push({
+      const finished: RuntimeToolExecution<ToolRequest> = {
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: pending.request,
         output: execution.output,
         failed: execution.failed,
-      });
+      };
+      pending.turn.toolExecutions.push(finished);
+      this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
 
       const resumedState = this.options.appendToolResultMessage(
         pending.state,
@@ -953,13 +956,15 @@ export class AgentRuntime<
     this.completedTurnResultStore = undefined;
 
     const output = JSON.stringify(result);
-    pending.turn.toolExecutions.push({
+    const questionsFinished: RuntimeToolExecution<ToolRequest> = {
       toolCallId: pending.toolCallId,
       toolName: pending.toolName,
       request: pending.request,
       output,
       failed: false,
-    });
+    };
+    pending.turn.toolExecutions.push(questionsFinished);
+    this.emitEvent({ kind: 'tool-execution-finished', execution: questionsFinished });
 
     const resumedState = this.options.appendToolResultMessage(
       pending.state,
@@ -2083,13 +2088,15 @@ export class AgentRuntime<
       delete pending.childRecord.summary.error;
     }
 
-    pending.parentTurn.toolExecutions.push({
+    const finishedExecution = {
       toolCallId: pending.parentToolCallId,
       toolName: 'run_subagent',
       request: pending.parentRequest,
       output: output.text,
       failed: output.failed,
-    });
+    };
+    pending.parentTurn.toolExecutions.push(finishedExecution);
+    this.emitEvent({ kind: 'tool-execution-finished', execution: finishedExecution });
 
     const resumedState = this.options.appendToolResultMessage(
       pending.parentState,
@@ -2151,16 +2158,42 @@ export class AgentRuntime<
 }
 
 function extractRunSubagentRequest<ToolRequest>(request: ToolRequest): RunSubagentRequest | undefined {
-  if (!isJsonObject(request) || !('RunSubagent' in request)) {
+  if (!isJsonObject(request)) {
     return undefined;
   }
 
-  const candidate = request.RunSubagent;
-  if (!isJsonObject(candidate)) {
-    return undefined;
-  }
+  let value: JsonValue;
+  if (readOptionalStringField(request, 'name') === 'run_subagent') {
+    if (readOptionalStringField(request, 'task') !== undefined) {
+      value = request;
+    } else {
+      const argumentsJson = readOptionalStringField(request, 'argumentsJson');
+      if (argumentsJson === undefined) {
+        return undefined;
+      }
 
-  const value = isJsonObject(candidate.request) ? candidate.request : candidate;
+      try {
+        const parsed = JSON.parse(argumentsJson) as JsonValue;
+        if (!isJsonObject(parsed)) {
+          return undefined;
+        }
+        value = parsed;
+      } catch {
+        return undefined;
+      }
+    }
+  } else {
+    if (!('RunSubagent' in request)) {
+      return undefined;
+    }
+
+    const candidate = request.RunSubagent;
+    if (!isJsonObject(candidate)) {
+      return undefined;
+    }
+
+    value = isJsonObject(candidate.request) ? candidate.request : candidate;
+  }
   const task = readOptionalStringField(value, 'task');
   if (task === undefined) {
     return undefined;

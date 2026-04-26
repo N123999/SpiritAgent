@@ -859,8 +859,8 @@ async function* openAiEventStreamToRuntimeEvents(
           sawModelOutput = true;
         }
 
-        for (const progressText of accumulateStreamingToolCallProgress(toolCalls, delta.tool_calls)) {
-          yield { kind: 'tool-progress', text: progressText };
+        for (const streamEvent of accumulateStreamingToolCallProgress(toolCalls, delta.tool_calls)) {
+          yield streamEvent;
         }
 
         if (typeof delta.content === 'string' && delta.content.length > 0) {
@@ -1039,12 +1039,12 @@ function extractStreamingThinkingText(delta: ChatCompletionChunk.Choice.Delta): 
 function accumulateStreamingToolCallProgress(
   toolCalls: Map<number, AggregatedStreamingToolCall>,
   deltas: ChatCompletionChunk.Choice.Delta.ToolCall[] | undefined,
-): string[] {
+): LlmStreamEvent[] {
   if (!deltas || deltas.length === 0) {
     return [];
   }
 
-  const updates: string[] = [];
+  const updates: LlmStreamEvent[] = [];
   for (const delta of deltas) {
     const existing = toolCalls.get(delta.index);
     const current: AggregatedStreamingToolCall = existing ?? {
@@ -1071,7 +1071,14 @@ function accumulateStreamingToolCallProgress(
       !current.readyPreviewEmitted &&
       hostToolArgumentsReadyForPreview(current.functionName, current.functionArguments)
     ) {
-      updates.push(buildToolProgressPreview(current.functionName, current.functionArguments));
+      const previewLine = buildToolProgressPreview(current.functionName, current.functionArguments);
+      updates.push({
+        kind: 'streaming-tool-preview',
+        toolCallId: current.id,
+        toolName: current.functionName,
+        argumentsJson: current.functionArguments,
+        previewLine,
+      });
       current.readyPreviewEmitted = true;
     }
 
@@ -1206,12 +1213,16 @@ function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): 
       return nonEmpty('path');
     case 'search_files':
       return nonEmpty('query');
+    case 'run_subagent':
+      return nonEmpty('task');
     case 'create_file':
       return nonEmpty('path') && nonEmpty('content');
     case 'edit_file':
       return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
     case 'delete_file':
       return nonEmpty('path');
+    case 'ask_questions':
+      return Array.isArray(parsed.questions) && parsed.questions.length > 0;
     default:
       // Smoke demos, MCP tools, or future host tools: accept any object whose JSON is complete and
       // has at least one non-empty string field (streaming partial JSON still fails parse).

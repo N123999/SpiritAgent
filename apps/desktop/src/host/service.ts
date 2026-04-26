@@ -1,0 +1,3113 @@
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import {
+  AgentRuntime,
+  appendOpenAiToolResultMessage,
+  appendOpenAiUserMessage,
+  extractLastOpenAiAssistantText,
+  OpenAiTransport,
+  pendingWorkspaceFilesFromInput,
+  rebuildOpenAiToolAgentStateAfterCompaction,
+  startOpenAiToolAgentState,
+  truncateOpenAiHistoryForCompaction,
+  truncateOpenAiToolAgentStateForContextRetry,
+  type AssistantAuxArchiveEntry,
+  type AskQuestionsResult as RuntimeAskQuestionsResult,
+  type ChatArchive,
+  type OpenAiEnabledRule,
+  type OpenAiEnabledSkillCatalogEntry,
+  type OpenAiPlanMetadata,
+  type OpenAiToolAgentState,
+  type OpenAiTransportConfig,
+  type RuntimeApprovalDecision,
+  type RuntimePendingApproval,
+  type RuntimePendingQuestions,
+  type RuntimeEvent,
+  type RuntimeToolExecution,
+} from '@spirit-agent/agent-core';
+import {
+  resolveInstructionPaths,
+  SKILL_FILE_NAME,
+  validateSkillName,
+  restoreHostFileChanges,
+  type HostRecordedFileChange,
+} from '@spirit-agent/host-internal';
+
+import type {
+  ActiveSessionSnapshot,
+  AddModelRequest,
+  AskQuestionsResult,
+  BootstrapRequest,
+  ConversationMessageSnapshot,
+  CreateSkillRequest,
+  DeleteSkillRequest,
+  DesktopSkillRootKind,
+  DesktopSnapshot,
+  DesktopWebHostSnapshot,
+  FileRewindWarning,
+  MessageAuxSnapshot,
+  PendingAssistantAux,
+  PendingQuestionsSnapshot,
+  RewindAndSubmitMessageRequest,
+  RemoveModelRequest,
+  SessionListItem,
+  ToolBlockSnapshot,
+  UpdateConfigRequest,
+} from '../types.js';
+import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
+import {
+  DEFAULT_API_BASE,
+  defaultNewSessionPath,
+  discoverWorkspaceRoot,
+  loadConfig,
+  loadHostMetadata,
+  loadStoredSession,
+  modelSecretKeyPresence,
+  removeModelApiKey,
+  resolveApiKeyForModel,
+  saveApiKeyForModel,
+  saveConfig,
+  saveStoredSession,
+  listStoredSessions,
+  spiritAgentDataDir,
+  normalizeWebHostConfig,
+  type DesktopConfigFile,
+  type DesktopWebHostConfigFile,
+  type HostMetadataSummary,
+} from './storage.js';
+import { DesktopToolExecutor } from './tool-executor.js';
+import {
+  DESKTOP_WEB_HOST_POLICY,
+  getDesktopWebHostRuntimeStatus,
+} from './web-host-state.js';
+import {
+  createDesktopRewindMetadata,
+  createRewindCheckpointMetadata,
+  fileChangeMetadata,
+  loadRewindCheckpointSnapshot,
+  loadRewindFileChange,
+  nextDesktopRewindSequence,
+  saveRewindCheckpointSnapshot,
+  saveRewindFileChange,
+  toDesktopFileChange,
+  type DesktopRewindCheckpointSnapshot,
+  type StoredDesktopRewindMetadata,
+} from './rewind.js';
+
+type DesktopRuntime = AgentRuntime<
+  OpenAiTransportConfig,
+  OpenAiToolAgentState,
+  DesktopToolRequest,
+  string
+>;
+
+type CommandPayloads = {
+  bootstrap: { request?: BootstrapRequest };
+  updateConfig: { request: UpdateConfigRequest };
+  setWebHostAuthTokenHash: { authTokenHash: string };
+  addModel: { request: AddModelRequest };
+  removeModel: { request: RemoveModelRequest };
+  createSkill: { request: CreateSkillRequest };
+  deleteSkill: { request: DeleteSkillRequest };
+  submitUserTurn: { text: string };
+  poll: undefined;
+  replyPendingApproval: { message: string };
+  replyPendingQuestions: { result: AskQuestionsResult };
+  resetSession: undefined;
+  listSessions: undefined;
+  openSession: { path: string };
+  rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
+};
+
+interface HostState {
+  workspaceRoot: string;
+  config: DesktopConfigFile;
+  metadata: HostMetadataSummary;
+  messages: ConversationMessageSnapshot[];
+  activeSession?: ActiveSessionSnapshot;
+  archiveHistory: ChatArchive['llmHistory'];
+  archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
+  rewind: StoredDesktopRewindMetadata;
+  rewindWarnings: FileRewindWarning[];
+}
+
+class DesktopHostService {
+  private readonly transport = new OpenAiTransport();
+  private state: HostState | undefined;
+  private runtime: DesktopRuntime | undefined;
+  private initialized = false;
+  private lastRuntimeError = '';
+  private activeApiKeyConfigured = false;
+  private modelKeyPresence: Record<string, boolean> = {};
+  private latestPendingAssistantAux: MessageAuxSnapshot | undefined;
+  private persistedStandalonePendingAux: PendingAssistantAux | undefined;
+  private persistedStandalonePendingAuxAnchorMessageId: number | undefined;
+  private standalonePendingAuxMessageId: number | undefined;
+  private lastStandalonePendingAuxSnapshotLogSignature: string | undefined;
+  private pendingAssistantMessageId: number | undefined;
+  private lastSettledAssistantMessageId: number | undefined;
+  /** 思考段 finalize 去重、插入锚点与 apply 批次（见 `applyRuntimeHostEvents` / `appendAssistantThinkingSegment`）。 */
+  private lastFinalizedThinkingSegment = '';
+  private streamAssistantThinkingAnchor: number | undefined;
+  private streamAssistantAnchorSetInApplyBatchId = 0;
+  private lastApplyEventBatchId = 0;
+  private messageOrderDebugLastVerboseLogMs = 0;
+  private messageIdCounter = 1;
+  private pendingUnboundFileChangeIds: string[] = [];
+  private serialized = Promise.resolve();
+  /** 忙时改 planMode / 模型或 endpoint 时推迟 `refreshRuntime`，避免替换 runtime 导致流式输出丢失；空闲后由 `flushDeferredRuntimeRefreshIfIdle` 应用。 */
+  private deferredRuntimeRefreshWhileBusy = false;
+
+  async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(request?.workspaceRoot);
+      return this.buildSnapshot();
+    });
+  }
+
+  async updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const wasBusy = this.runtime?.isBusy() === true;
+      const prevActiveModel = state.config.activeModel;
+      const prevApiBase = currentApiBase(state.config);
+      const prevPlanMode = state.config.planMode === true;
+
+      if (this.runtime?.isBusy() && Boolean(request.apiKey?.trim())) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const activeModel = request.activeModel.trim();
+      const apiBase = request.apiBase.trim();
+      const existing = state.config.models.find((model) => model.name === activeModel);
+      if (existing) {
+        existing.apiBase = apiBase;
+      } else {
+        state.config.models.push({ name: activeModel, apiBase });
+      }
+      state.config.activeModel = activeModel;
+      state.config.uiLocale = request.uiLocale?.trim() || undefined;
+      state.config.windowsMica = request.windowsMica !== false;
+      if (request.planMode !== undefined) {
+        state.config.planMode = request.planMode;
+      }
+      if (request.webHost !== undefined) {
+        const nextWebHost = normalizeWebHostConfig({
+          ...state.config.webHost,
+          ...request.webHost,
+        });
+        if (request.webHost.resetPairing === true) {
+          delete nextWebHost.authTokenHash;
+        }
+        state.config.webHost = nextWebHost;
+      }
+      await saveConfig(state.config);
+      if (request.apiKey?.trim()) {
+        await saveApiKeyForModel(activeModel, request.apiKey);
+      }
+
+      const planModeNow = state.config.planMode === true;
+      const modelOrEndpointChanged =
+        state.config.activeModel !== prevActiveModel ||
+        currentApiBase(state.config) !== prevApiBase;
+
+      if (planModeNow !== prevPlanMode) {
+        state.metadata = await loadHostMetadata(state.workspaceRoot, planModeNow);
+      }
+
+      const transportOrPlanChanged =
+        planModeNow !== prevPlanMode || modelOrEndpointChanged;
+      const deferRuntimeRefresh =
+        wasBusy &&
+        transportOrPlanChanged &&
+        !Boolean(request.apiKey?.trim());
+
+      if (deferRuntimeRefresh) {
+        this.deferredRuntimeRefreshWhileBusy = true;
+      } else {
+        this.deferredRuntimeRefreshWhileBusy = false;
+        await this.refreshRuntime();
+      }
+      this.lastRuntimeError = '';
+      // 勿在此处 persist：仅改 config（如 planMode）不应刷新 savedAtUnixMs，否则会话在侧栏会误排到首位
+      await this.flushDeferredRuntimeRefreshIfIdle();
+      return this.buildSnapshot();
+    });
+  }
+
+  async setWebHostAuthTokenHash(authTokenHash: string): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      state.config.webHost = normalizeWebHostConfig({
+        ...state.config.webHost,
+        authTokenHash,
+      });
+      await saveConfig(state.config);
+      return this.buildSnapshot();
+    });
+  }
+
+  async addModel(request: AddModelRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const name = request.name.trim();
+      const apiBaseRaw = request.apiBase.trim();
+      const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+      const apiKey = request.apiKey.trim();
+
+      if (!name) {
+        throw new Error('模型名称不能为空。');
+      }
+      if (!apiKey) {
+        throw new Error('API Key 不能为空。');
+      }
+      if (state.config.models.some((model) => model.name === name)) {
+        throw new Error(`模型已存在: ${name}`);
+      }
+
+      state.config.models.push({ name, apiBase });
+      state.config.activeModel = name;
+      await saveConfig(state.config);
+      await saveApiKeyForModel(name, apiKey);
+
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async removeModel(request: RemoveModelRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+
+      const name = request.name.trim();
+      if (!name) {
+        throw new Error('模型名称不能为空。');
+      }
+      if (name === state.config.activeModel) {
+        throw new Error('不能删除当前模型，请先切换到其他模型。');
+      }
+
+      const before = state.config.models.length;
+      state.config.models = state.config.models.filter((model) => model.name !== name);
+      if (state.config.models.length === before) {
+        throw new Error(`模型不存在: ${name}`);
+      }
+
+      await saveConfig(state.config);
+      await removeModelApiKey(name);
+      await this.refreshModelKeyPresence();
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有回复或审批在进行，请稍后再添加 Skill。');
+      }
+
+      const rootKind = this.parseSkillRootKind(request.rootKind);
+      const name = request.name.trim().toLowerCase();
+      const nameIssue = validateSkillName(name);
+      if (nameIssue) {
+        throw new Error(nameIssue);
+      }
+
+      const description = (request.description ?? '').trim();
+      if (!description) {
+        throw new Error('描述不能为空。');
+      }
+      const skillDir = this.resolveSkillDir(name, rootKind);
+      if (existsSync(skillDir)) {
+        throw new Error(`该位置已存在同名 Skill：${name}`);
+      }
+
+      const frontmatterDescription = formatYamlScalarForSkillFrontmatter(description);
+      const fileContent = `---
+name: ${name}
+description: ${frontmatterDescription}
+---
+
+在此编写技能正文：步骤、示例、边界条件与相对路径引用。
+`;
+
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(path.join(skillDir, SKILL_FILE_NAME), fileContent, 'utf8');
+
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有回复或审批在进行，请稍后再删除 Skill。');
+      }
+
+      const rootKind = this.parseSkillRootKind(request.rootKind);
+      const name = request.name.trim().toLowerCase();
+      const nameIssue = validateSkillName(name);
+      if (nameIssue) {
+        throw new Error(nameIssue);
+      }
+
+      const skillDir = this.resolveSkillDir(name, rootKind);
+      this.assertPathUnderSkillRoot(skillDir, rootKind);
+
+      if (!existsSync(skillDir)) {
+        throw new Error(`Skill 不存在：${name}`);
+      }
+
+      await rm(skillDir, { recursive: true, force: true });
+
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
+  async submitUserTurn(text: string): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      return this.submitUserTurnAfterInitialized(text);
+    });
+  }
+
+  async rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const runtime = this.requireRuntime();
+      if (runtime.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+      if (!Number.isFinite(request.messageId)) {
+        throw new Error('消息 id 无效。');
+      }
+
+      const checkpoint = state.rewind.checkpoints.find(
+        (candidate) => candidate.messageId === request.messageId,
+      );
+      if (!checkpoint) {
+        throw new Error('该消息没有可用的回溯检查点。');
+      }
+
+      const snapshot = await loadRewindCheckpointSnapshot(
+        spiritAgentDataDir(),
+        state.rewind.sessionId,
+        checkpoint.id,
+      );
+      if (!snapshot) {
+        throw new Error('回溯检查点文件不存在，无法回溯。');
+      }
+
+      const changesToRestore = state.rewind.fileChanges
+        .filter((change) => change.sequence > checkpoint.sequence)
+        .sort((left, right) => left.sequence - right.sequence);
+      const loadedChanges: HostRecordedFileChange[] = [];
+      const missingWarnings: FileRewindWarning[] = [];
+      for (const metadata of changesToRestore) {
+        const stored = await loadRewindFileChange(
+          spiritAgentDataDir(),
+          state.rewind.sessionId,
+          metadata.id,
+        );
+        if (stored) {
+          loadedChanges.push(stored);
+        } else {
+          missingWarnings.push({
+            changeId: metadata.id,
+            path: metadata.resolvedPath,
+            action: metadata.kind,
+            message: '文件变更快照缺失，已跳过该项回溯。',
+          });
+        }
+      }
+
+      const restoreResult = await restoreHostFileChanges(loadedChanges);
+      state.rewindWarnings = [
+        ...missingWarnings,
+        ...restoreResult.warnings.map((warning) => ({ ...warning })),
+      ];
+
+      this.restoreBeforeRewindCheckpoint(snapshot, checkpoint.sequence);
+      return this.submitUserTurnAfterInitialized(request.text, {
+        preserveRewindWarnings: true,
+      });
+    });
+  }
+
+  private async submitUserTurnAfterInitialized(
+    text: string,
+    options: { preserveRewindWarnings?: boolean } = {},
+  ): Promise<DesktopSnapshot> {
+    const runtime = this.requireRuntime();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new Error('消息不能为空。');
+    }
+
+    const state = this.requireState();
+    if (!options.preserveRewindWarnings) {
+      state.rewindWarnings = [];
+    }
+    this.ensureActiveSession(trimmed);
+    const beforeUserCheckpoint = this.buildRewindCheckpointSnapshot();
+    const userMessage: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'user',
+      content: trimmed,
+      pending: false,
+    };
+    state.messages.push(userMessage);
+    this.resetStreamingPlacementState(false);
+    await this.persistCurrentSessionIfNeeded();
+
+    try {
+      await runtime.startUserTurnStreaming(trimmed);
+      this.refreshArchiveFromRuntime();
+      await this.recordRewindCheckpoint(userMessage.id, beforeUserCheckpoint);
+      await runtime.poll();
+      this.applyRuntimeHostEvents(runtime.drainEvents());
+    } catch (error) {
+      this.handleMessageRemoved(state.messages.length - 1, userMessage.id, 'send-user-rollback');
+      state.messages.pop();
+      throw error;
+    }
+
+    this.consumeCompletedTurnResult();
+    this.syncPendingToolStates();
+    this.syncAssistantPrefixFromHistoryBeforeToolRow();
+    await this.flushDeferredRuntimeRefreshIfIdle();
+    return this.buildSnapshot();
+  }
+
+  async poll(): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime) {
+        this.runtime.tickThinkingSpinner();
+        await this.runtime.poll();
+        this.applyRuntimeHostEvents(this.runtime.drainEvents());
+      }
+      this.consumeCompletedTurnResult();
+      this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
+      return this.buildSnapshot();
+    });
+  }
+
+  async replyPendingApproval(message: string): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const runtime = this.requireRuntime();
+      const decision = parseApprovalDecision(message);
+      const state = this.requireState();
+      if (decision.kind === 'guidance' && decision.userMessage.trim()) {
+        state.messages.push({
+          id: this.allocateMessageId(),
+          role: 'user',
+          content: decision.userMessage.trim(),
+          pending: false,
+        });
+        this.resetStreamingPlacementState(false);
+      }
+      await runtime.continuePendingApproval(decision);
+      await runtime.poll();
+      this.applyRuntimeHostEvents(runtime.drainEvents());
+      this.consumeCompletedTurnResult();
+      this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      await this.flushDeferredRuntimeRefreshIfIdle();
+      return this.buildSnapshot();
+    });
+  }
+
+  async replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const runtime = this.requireRuntime();
+      await runtime.continuePendingQuestions(toRuntimeAskQuestionsResult(result));
+      await runtime.poll();
+      this.applyRuntimeHostEvents(runtime.drainEvents());
+      this.consumeCompletedTurnResult();
+      this.syncPendingToolStates();
+      this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
+      return this.buildSnapshot();
+    });
+  }
+
+  async resetSession(): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      this.deferredRuntimeRefreshWhileBusy = false;
+      const state = this.requireState();
+      state.messages = [];
+      state.activeSession = undefined;
+      state.archiveHistory = [];
+      state.archiveSubagentSessions = [];
+      state.rewind = createDesktopRewindMetadata();
+      state.rewindWarnings = [];
+      this.pendingUnboundFileChangeIds = [];
+      this.latestPendingAssistantAux = undefined;
+      this.resetStreamingPlacementState(true);
+      this.messageIdCounter = 1;
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      return this.buildSnapshot();
+    });
+  }
+
+  async listSessions(): Promise<SessionListItem[]> {
+    return this.runSerialized(async () => listStoredSessions());
+  }
+
+  async openSession(filePath: string): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      this.deferredRuntimeRefreshWhileBusy = false;
+      const loaded = await loadStoredSession(filePath);
+      const state = this.requireState();
+      state.messages = loaded.desktopMessages
+        ? loaded.desktopMessages.map((message) => ({ ...message }))
+        : restoreMessagesFromArchive(loaded);
+      state.activeSession = {
+        filePath: path.resolve(filePath),
+        displayName:
+          loaded.sessionDisplayName ?? deriveDisplayNameFromMessages(state.messages),
+      };
+      state.archiveHistory = loaded.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...message.imagePaths],
+      }));
+      state.archiveSubagentSessions = (loaded.subagentSessions ?? []).map((entry) => ({
+        summary: { ...entry.summary },
+        llmHistory: entry.llmHistory.map((message) => ({
+          role: message.role,
+          content: message.content,
+          imagePaths: [...message.imagePaths],
+        })),
+      }));
+      state.rewind = loaded.rewind ?? createDesktopRewindMetadata();
+      state.rewindWarnings = [];
+      this.pendingUnboundFileChangeIds = [];
+      this.messageIdCounter =
+        Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+      this.latestPendingAssistantAux = undefined;
+      this.resetStreamingPlacementState(true);
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      return this.buildSnapshot();
+    });
+  }
+
+  async invoke(command: HostCommandName, payload?: unknown): Promise<unknown> {
+    switch (command) {
+      case 'bootstrap': {
+        const typedPayload = payload as CommandPayloads['bootstrap'] | undefined;
+        return this.bootstrap(typedPayload?.request);
+      }
+      case 'updateConfig': {
+        const typedPayload = payload as CommandPayloads['updateConfig'];
+        return this.updateConfig(typedPayload.request);
+      }
+      case 'setWebHostAuthTokenHash': {
+        const typedPayload = payload as CommandPayloads['setWebHostAuthTokenHash'];
+        return this.setWebHostAuthTokenHash(typedPayload.authTokenHash);
+      }
+      case 'addModel': {
+        const typedPayload = payload as CommandPayloads['addModel'];
+        return this.addModel(typedPayload.request);
+      }
+      case 'removeModel': {
+        const typedPayload = payload as CommandPayloads['removeModel'];
+        return this.removeModel(typedPayload.request);
+      }
+      case 'createSkill': {
+        const typedPayload = payload as CommandPayloads['createSkill'];
+        return this.createSkill(typedPayload.request);
+      }
+      case 'deleteSkill': {
+        const typedPayload = payload as CommandPayloads['deleteSkill'];
+        return this.deleteSkill(typedPayload.request);
+      }
+      case 'submitUserTurn': {
+        const typedPayload = payload as CommandPayloads['submitUserTurn'];
+        return this.submitUserTurn(typedPayload.text);
+      }
+      case 'poll':
+        return this.poll();
+      case 'replyPendingApproval': {
+        const typedPayload = payload as CommandPayloads['replyPendingApproval'];
+        return this.replyPendingApproval(typedPayload.message);
+      }
+      case 'replyPendingQuestions': {
+        const typedPayload = payload as CommandPayloads['replyPendingQuestions'];
+        return this.replyPendingQuestions(typedPayload.result);
+      }
+      case 'resetSession':
+        return this.resetSession();
+      case 'listSessions':
+        return this.listSessions();
+      case 'openSession': {
+        const typedPayload = payload as CommandPayloads['openSession'];
+        return this.openSession(typedPayload.path);
+      }
+      case 'rewindAndSubmitMessage': {
+        const typedPayload = payload as CommandPayloads['rewindAndSubmitMessage'];
+        return this.rewindAndSubmitMessage(typedPayload.request);
+      }
+      default:
+        throw new Error(`Unsupported host command: ${command satisfies never}`);
+    }
+  }
+
+  private async ensureInitialized(workspaceRootOverride?: string): Promise<void> {
+    const workspaceRoot = workspaceRootOverride?.trim()
+      ? path.resolve(workspaceRootOverride.trim())
+      : discoverWorkspaceRoot();
+
+    if (this.initialized && this.state?.workspaceRoot === workspaceRoot) {
+      return;
+    }
+
+    const config = await loadConfig();
+    const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
+    const state = this.state;
+
+    this.state = {
+      workspaceRoot,
+      config,
+      metadata,
+      messages: state?.messages ?? [],
+      activeSession: state?.activeSession,
+      archiveHistory: state?.archiveHistory ?? [],
+      archiveSubagentSessions: state?.archiveSubagentSessions ?? [],
+      rewind: state?.rewind ?? createDesktopRewindMetadata(),
+      rewindWarnings: state?.rewindWarnings ?? [],
+    };
+    this.initialized = true;
+    await this.refreshRuntime();
+  }
+
+  private async refreshRuntime(): Promise<void> {
+    const state = this.requireState();
+    state.metadata = await loadHostMetadata(
+      state.workspaceRoot,
+      state.config.planMode === true,
+    );
+    const apiKey = await resolveApiKeyForModel(state.config.activeModel);
+    this.activeApiKeyConfigured = Boolean(apiKey);
+    if (!apiKey) {
+      this.runtime = undefined;
+      this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
+      await this.refreshModelKeyPresence();
+      return;
+    }
+
+    const runtime = this.createRuntime(
+      {
+        apiKey,
+        model: state.config.activeModel,
+        baseUrl: currentApiBase(state.config),
+        workspaceRoot: state.workspaceRoot,
+      },
+      state.archiveHistory,
+      state.metadata.rules.enabledRules,
+      state.metadata.skills.enabledSkillCatalog,
+      state.metadata.planMetadata,
+    );
+    if (state.archiveSubagentSessions.length > 0 || state.archiveHistory.length > 0) {
+      runtime.replaceFromArchive({
+        messages: this.archiveMessages(),
+        assistantAux: this.archiveAssistantAux(),
+        llmHistory: state.archiveHistory,
+        subagentSessions: state.archiveSubagentSessions ?? [],
+      });
+    }
+    this.runtime = runtime;
+    this.lastRuntimeError = '';
+    await this.refreshModelKeyPresence();
+  }
+
+  private async flushDeferredRuntimeRefreshIfIdle(): Promise<void> {
+    if (!this.deferredRuntimeRefreshWhileBusy) {
+      return;
+    }
+    if (this.runtime?.isBusy()) {
+      return;
+    }
+    this.deferredRuntimeRefreshWhileBusy = false;
+    await this.refreshRuntime();
+    this.lastRuntimeError = '';
+  }
+
+  private async refreshModelKeyPresence(): Promise<void> {
+    const state = this.state;
+    if (!state) {
+      this.modelKeyPresence = {};
+      return;
+    }
+    this.modelKeyPresence = await modelSecretKeyPresence(
+      state.config.models.map((model) => model.name),
+    );
+  }
+
+  private createRuntime(
+    transportConfig: OpenAiTransportConfig,
+    history: ChatArchive['llmHistory'],
+    enabledRules: OpenAiEnabledRule[],
+    enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
+    planMetadata: OpenAiPlanMetadata,
+  ): DesktopRuntime {
+    const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
+    return new AgentRuntime({
+      config: transportConfig,
+      llmTransport: this.transport,
+      toolExecutor: new DesktopToolExecutor(workspaceRoot, {
+        recordFileChange: (change) => this.recordHostFileChange(change),
+      }),
+      createToolAgentState: (messages, userInput) =>
+        startOpenAiToolAgentState(
+          messages,
+          userInput,
+          workspaceRoot,
+          enabledRules,
+          enabledSkillCatalog,
+          [],
+          transportConfig.model,
+          planMetadata,
+        ),
+      appendToolResultMessage: appendOpenAiToolResultMessage,
+      appendUserMessage: appendOpenAiUserMessage,
+      extractAssistantText: extractLastOpenAiAssistantText,
+      truncateStateForContextRetry: truncateOpenAiToolAgentStateForContextRetry,
+      truncateHistoryForCompaction: truncateOpenAiHistoryForCompaction,
+      rebuildRetryStateAfterCompaction: (messages, userInput, retryState) =>
+        rebuildOpenAiToolAgentStateAfterCompaction(
+          messages,
+          userInput,
+          retryState,
+          workspaceRoot,
+          enabledRules,
+          enabledSkillCatalog,
+          [],
+          transportConfig.model,
+          planMetadata,
+        ),
+      resolveWorkspaceFilesFromInput: (input) =>
+        pendingWorkspaceFilesFromInput(workspaceRoot, input),
+    }, history.map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [...message.imagePaths],
+    })));
+  }
+
+  private buildSnapshot(): DesktopSnapshot {
+    const state = this.requireState();
+    const pendingApproval = this.runtime?.currentPendingApproval();
+    const pendingQuestions = this.runtime?.currentPendingQuestions();
+    const pendingAux = this.runtime?.pendingAuxState();
+    this.syncStandalonePendingAux(pendingAux);
+    if (pendingAux && !parsePendingSubagentStatusText(pendingAux.statusText)) {
+      this.updatePendingAssistantAux(
+        pendingAux.kind,
+        pendingAux.detailText ?? pendingAux.statusText,
+      );
+    }
+    this.pruneEmptyAssistantMessages('buildSnapshot');
+
+    return {
+      workspaceRoot: state.workspaceRoot,
+      runtimeReady: this.runtime !== undefined,
+      ...(this.lastRuntimeError ? { runtimeError: this.lastRuntimeError } : {}),
+      config: {
+        models: state.config.models.map((model) => ({
+          name: model.name,
+          apiBase: model.apiBase,
+          keyConfigured: this.modelKeyPresence[model.name] ?? false,
+        })),
+        activeModel: state.config.activeModel,
+        ...(state.config.uiLocale ? { uiLocale: state.config.uiLocale } : {}),
+        activeApiKeyConfigured: this.activeApiKeyConfigured,
+        windowsMica: state.config.windowsMica !== false,
+        planMode: state.config.planMode === true,
+      },
+      webHost: buildWebHostSnapshot(state.config.webHost),
+      rules: {
+        discovered: state.metadata.rules.discovered,
+        enabled: state.metadata.rules.enabled,
+      },
+      skills: {
+        discovered: state.metadata.skills.discovered,
+        enabled: state.metadata.skills.enabled,
+      },
+      skillsList: state.metadata.skills.entries.map((entry) => ({
+        id: entry.source.id,
+        name: entry.source.name,
+        description: entry.source.description,
+        shortLabel: entry.source.shortLabel,
+        scope: entry.source.scope,
+        rootKind: entry.source.rootKind,
+        enabled: entry.enabled,
+      })),
+      plan: {
+        path: state.metadata.planMetadata.path,
+        exists: state.metadata.planMetadata.exists,
+      },
+      mcpStatus: {
+        revision: 0,
+        state: 'idle',
+        configuredServers: 0,
+        loadedServers: 0,
+        cachedTools: 0,
+      },
+      conversation: {
+        messages: this.messagesWithPendingAssistant(pendingAux),
+        ...(this.runtime?.pendingUserTurn()
+          ? { pendingUserTurn: this.runtime.pendingUserTurn() }
+          : {}),
+        pendingImagePaths: [...(this.runtime?.pendingImagePaths() ?? [])],
+        pendingMcpResources: (this.runtime?.pendingMcpResources() ?? []).map((resource) => ({
+          server: resource.server,
+          displayName: resource.displayName,
+          uri: resource.uri,
+          ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
+          readAtUnixMs: resource.readAtUnixMs,
+          content: resource.content,
+        })),
+        ...(pendingAux
+          ? {
+              pendingAuxState: {
+                kind: pendingAux.kind,
+                statusText: pendingAux.statusText,
+                ...(pendingAux.detailText ? { detailText: pendingAux.detailText } : {}),
+              },
+            }
+          : {}),
+        ...(pendingApproval
+          ? {
+              pendingToolApproval: {
+                toolName: pendingApproval.toolName,
+                prompt: pendingApproval.prompt,
+              },
+            }
+          : {}),
+        ...(pendingQuestions
+          ? { pendingQuestions: mapPendingQuestions(pendingQuestions) }
+          : {}),
+        isBusy: this.runtime?.isBusy() ?? false,
+        ...(state.rewindWarnings.length > 0
+          ? { rewindWarnings: state.rewindWarnings.map((warning) => ({ ...warning })) }
+          : {}),
+      },
+      ...(state.activeSession ? { activeSession: { ...state.activeSession } } : {}),
+    };
+  }
+
+  private messagesWithPendingAssistant(
+    livePendingAux?: PendingAssistantAux,
+  ): ConversationMessageSnapshot[] {
+    const state = this.requireState();
+    const snapshots = state.messages.flatMap((message) => {
+      const snapshot = this.messageSnapshot(message, livePendingAux);
+      return snapshot && !shouldHideEmptyPendingAssistantSnapshot(snapshot) ? [snapshot] : [];
+    });
+
+    const standalonePendingAux = this.standalonePendingAuxSnapshot(livePendingAux, snapshots);
+    if (!standalonePendingAux) {
+      this.lastStandalonePendingAuxSnapshotLogSignature = undefined;
+      return snapshots;
+    }
+
+    const insertAt = Math.max(0, Math.min(standalonePendingAux.insertAt, snapshots.length));
+    snapshots.splice(insertAt, 0, standalonePendingAux.message);
+    this.logSnapshotStandalonePendingAux(standalonePendingAux, snapshots);
+    return snapshots;
+  }
+
+  private consumeCompletedTurnResult(): void {
+    if (!this.runtime) {
+      return;
+    }
+
+    const result = this.runtime.takeCompletedTurnResult();
+    if (!result) {
+      return;
+    }
+
+    this.integrateToolExecutions(result.toolExecutions);
+    switch (result.kind) {
+      case 'completed':
+        if (result.assistantText.trim()) {
+          const aux = this.takeLatestPendingAux();
+          if (!this.materializeExistingCompletedAssistantMessage(result.assistantText, aux)) {
+            this.appendAssistantMessage(result.assistantText, aux);
+          }
+        }
+        this.lastRuntimeError = '';
+        break;
+      case 'failed':
+        {
+          const aux = this.takeLatestPendingAux();
+          if (!this.materializeExistingCompletedAssistantMessage(result.error, aux)) {
+            this.appendAssistantMessage(result.error, aux);
+          }
+        }
+        this.lastRuntimeError = result.error;
+        break;
+      case 'requires-approval':
+      case 'requires-questions':
+        this.syncPendingToolStates();
+        this.syncAssistantPrefixFromHistoryBeforeToolRow();
+        this.lastRuntimeError = '';
+        break;
+      default:
+        break;
+    }
+
+    this.refreshArchiveFromRuntime();
+  }
+
+  private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
+    for (const execution of executions) {
+      const message = this.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
+        toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
+        toolName: execution.toolName,
+        phase: execution.failed ? 'failed' : 'succeeded',
+        headline: execution.failed
+          ? `工具执行失败: ${execution.toolName}`
+          : `工具执行完成: ${execution.toolName}`,
+        detailLines: [],
+        argsExcerpt: truncateJson(execution.request),
+        outputExcerpt: truncateText(execution.output, 4_000),
+      });
+      this.bindFileChangesToToolMessage(execution, message.id);
+    }
+  }
+
+  private applyRuntimeHostEvents(events: RuntimeEvent<DesktopToolRequest>[]): void {
+    const state = this.requireState();
+    // 空 drain 不递增批次：否则同一 poll 里后续 consume→integrate 的 upsert 会误判批次并清空 preview 记下的锚点。
+    const batchId =
+      events.length > 0 ? (this.lastApplyEventBatchId += 1) : this.lastApplyEventBatchId;
+    // 严格按事件时序单遍处理；begin 一律 anchor := min(已有, messages.length)：
+    // - 同批内 preview 先于 begin：保留首条工具下标。
+    // - 同批内 finalize/tool-done 先于 begin 导致 at 已含新工具：保留先前跨 poll preview 写下的较小下标。
+    for (const ev of events) {
+      if (ev.kind === 'begin-assistant-response') {
+        const at = state.messages.length;
+        const shouldReanchorStandalonePendingAux =
+          shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
+            state.messages[state.messages.length - 1],
+            this.persistedStandalonePendingAux,
+          );
+        this.pendingAssistantMessageId = undefined;
+        this.latestPendingAssistantAux = undefined;
+        this.streamAssistantThinkingAnchor =
+          this.streamAssistantThinkingAnchor === undefined
+            ? at
+            : Math.min(this.streamAssistantThinkingAnchor, at);
+        this.streamAssistantAnchorSetInApplyBatchId = batchId;
+        const pendingAssistant = this.ensurePendingAssistantMessage();
+        if (shouldReanchorStandalonePendingAux) {
+          this.persistedStandalonePendingAuxAnchorMessageId = pendingAssistant.id;
+        }
+        continue;
+      }
+      if (ev.kind === 'update-pending-assistant-thinking') {
+        this.updatePendingAssistantAux('thinking', ev.text);
+        continue;
+      }
+      if (ev.kind === 'update-pending-assistant-compaction') {
+        this.updatePendingAssistantAux('compressing', ev.text);
+        continue;
+      }
+      if (ev.kind === 'assistant-chunk') {
+        this.appendPendingAssistantChunk(ev.text);
+        continue;
+      }
+      if (ev.kind === 'replace-pending-assistant') {
+        this.replacePendingAssistantText(ev.text);
+        continue;
+      }
+      if (ev.kind === 'assistant-response-completed') {
+        this.completePendingAssistantMessage();
+        continue;
+      }
+      if (ev.kind === 'remove-pending-assistant') {
+        this.removePendingAssistantMessage();
+        continue;
+      }
+      if (ev.kind === 'assistant-thinking-segment-finalized') {
+        if (ev.text.trim()) {
+          this.appendAssistantThinkingSegment(ev.text);
+        }
+        continue;
+      }
+      if (ev.kind === 'tool-execution-finished') {
+        this.integrateToolExecutions([ev.execution]);
+        continue;
+      }
+      if (ev.kind !== 'streaming-tool-preview') {
+        continue;
+      }
+      let argsExcerpt: string;
+      try {
+        argsExcerpt = truncateJson(JSON.parse(ev.argumentsJson) as unknown);
+      } catch {
+        argsExcerpt = truncateText(ev.argumentsJson, 4_000);
+      }
+      this.upsertToolMessage(ev.toolCallId, {
+        toolCallId: ev.toolCallId,
+        toolName: ev.toolName,
+        phase: 'running',
+        headline: headlineForStreamingToolPreview(state.messages, ev.toolCallId, ev.toolName),
+        detailLines: [],
+        argsExcerpt,
+      });
+    }
+    this.logMessageOrderApplyBatch(
+      batchId,
+      events,
+      state,
+      this.streamAssistantThinkingAnchor,
+      this.streamAssistantAnchorSetInApplyBatchId,
+    );
+  }
+
+  /**
+   * 将 `runtime.history()` 中的助手正文同步到 `state.messages`（首轮：首条 tool 前前缀；待审批/问卷：
+   * 用 `lastAssistantPlainTextInHistory` 兜底，因 OpenAI 路径下 `history()` 常不含 `role: tool`）。
+   */
+  private syncAssistantPrefixFromHistoryBeforeToolRow(): void {
+    if (!this.runtime) {
+      return;
+    }
+    const pendingTrim = this.runtime.pendingAssistantText().trim();
+    const awaitingInteractive =
+      Boolean(this.runtime.currentPendingApproval()) ||
+      Boolean(this.runtime.currentPendingQuestions());
+
+    if (pendingTrim && !awaitingInteractive) {
+      return;
+    }
+
+    const hist = this.runtime.history();
+    const state = this.requireState();
+    const prefixFromUnsyncedLatest = latestUnsyncedAssistantTextInCurrentTurn(
+      hist,
+      state.messages,
+    );
+    const prefixFromBeforeFirst = assistantPrefixBeforeFirstToolInCurrentTurn(hist);
+    const prefixFromLastAssistant = lastAssistantPlainTextInHistory(hist);
+    const prefix = (
+      awaitingInteractive && pendingTrim
+        ? pendingTrim
+        : awaitingInteractive
+          ? (prefixFromUnsyncedLatest ?? prefixFromLastAssistant ?? prefixFromBeforeFirst)
+          : (prefixFromUnsyncedLatest ?? prefixFromBeforeFirst)
+    )
+      ?.trim() ?? '';
+    const n = state.messages.length;
+    const last = n > 0 ? state.messages[n - 1] : undefined;
+
+    if (!prefix) {
+      return;
+    }
+
+    if (n === 0) {
+      return;
+    }
+
+    const hasPlainPrefix = state.messages.some(
+      (m) => m.role === 'assistant' && m.content === prefix && !m.tool,
+    );
+    if (hasPlainPrefix) {
+      return;
+    }
+
+    const isLaterUnsyncedPrefix =
+      !awaitingInteractive &&
+      prefixFromUnsyncedLatest !== undefined &&
+      prefix === prefixFromUnsyncedLatest &&
+      prefixFromUnsyncedLatest !== prefixFromBeforeFirst;
+
+    if (isLaterUnsyncedPrefix) {
+      const anchor = this.streamAssistantThinkingAnchor ?? state.messages.length;
+      const insertAt = Math.max(0, Math.min(anchor, state.messages.length));
+      const before = insertAt > 0 ? state.messages[insertAt - 1] : undefined;
+      if (
+        before?.role === 'assistant' &&
+        !before.tool &&
+        before.content.trim() === prefix
+      ) {
+        return;
+      }
+      this.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
+      state.messages.splice(insertAt, 0, {
+        id: this.allocateMessageId(),
+        role: 'assistant',
+        content: prefix,
+        pending: false,
+      });
+      this.logMessageOrderPrefixSync(`splice-at-anchor@${insertAt}`, state);
+      return;
+    }
+
+    if (awaitingInteractive) {
+      const approval = this.runtime.currentPendingApproval();
+      const questions = this.runtime.currentPendingQuestions();
+      const key = approval
+        ? toolMessageKey(approval)
+        : questions
+          ? toolMessageKey(questions)
+          : undefined;
+      if (key) {
+        const idx = state.messages.findIndex(
+          (m) => m.role === 'assistant' && m.tool?.toolCallId === key,
+        );
+        if (idx >= 0) {
+          const before = idx > 0 ? state.messages[idx - 1] : undefined;
+          if (
+            before?.role === 'assistant' &&
+            !before.tool &&
+            before.content.trim() === prefix
+          ) {
+            return;
+          }
+          this.shiftStreamAssistantThinkingAnchorForInsertion(idx);
+          state.messages.splice(idx, 0, {
+            id: this.allocateMessageId(),
+            role: 'assistant',
+            content: prefix,
+            pending: false,
+          });
+          this.logMessageOrderPrefixSync(`splice-before-approval@${idx}`, state);
+        }
+      }
+      return;
+    }
+
+    if (last!.role === 'user') {
+      state.messages.push({
+        id: this.allocateMessageId(),
+        role: 'assistant',
+        content: prefix,
+        pending: false,
+      });
+      this.logMessageOrderPrefixSync('push-after-user', state);
+      return;
+    }
+
+    if (last!.role === 'assistant' && last!.tool) {
+      const firstToolIdx = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
+      if (firstToolIdx === undefined) {
+        return;
+      }
+      const beforeFirst = firstToolIdx > 0 ? state.messages[firstToolIdx - 1] : undefined;
+      if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
+        return;
+      }
+      this.shiftStreamAssistantThinkingAnchorForInsertion(firstToolIdx);
+      state.messages.splice(firstToolIdx, 0, {
+        id: this.allocateMessageId(),
+        role: 'assistant',
+        content: prefix,
+        pending: false,
+      });
+      this.logMessageOrderPrefixSync(`splice-before-first-tool@${firstToolIdx}`, state);
+      return;
+    }
+
+    if (last!.role === 'assistant' && !last!.tool && last!.content.trim() && last!.content !== prefix) {
+      const firstToolIdx = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
+      if (firstToolIdx !== undefined) {
+        const beforeFirst = firstToolIdx > 0 ? state.messages[firstToolIdx - 1] : undefined;
+        if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
+          return;
+        }
+        this.shiftStreamAssistantThinkingAnchorForInsertion(firstToolIdx);
+        state.messages.splice(firstToolIdx, 0, {
+          id: this.allocateMessageId(),
+          role: 'assistant',
+          content: prefix,
+          pending: false,
+        });
+        this.logMessageOrderPrefixSync(`splice-before-first-tool@${firstToolIdx}`, state);
+        return;
+      }
+      let toolIdx = -1;
+      for (let i = n - 2; i >= 0; i -= 1) {
+        const m = state.messages[i];
+        if (m.role === 'assistant' && m.tool) {
+          toolIdx = i;
+          break;
+        }
+      }
+      if (toolIdx >= 0) {
+        const beforeTool = toolIdx > 0 ? state.messages[toolIdx - 1] : undefined;
+        if (beforeTool?.role === 'assistant' && beforeTool.content === prefix && !beforeTool.tool) {
+          return;
+        }
+        this.shiftStreamAssistantThinkingAnchorForInsertion(toolIdx);
+        state.messages.splice(toolIdx, 0, {
+          id: this.allocateMessageId(),
+          role: 'assistant',
+          content: prefix,
+          pending: false,
+        });
+        this.logMessageOrderPrefixSync(`splice-before-tool@${toolIdx}`, state);
+        return;
+      }
+      if (!last!.content.startsWith(prefix)) {
+        this.shiftStreamAssistantThinkingAnchorForInsertion(n - 1);
+        state.messages.splice(n - 1, 0, {
+          id: this.allocateMessageId(),
+          role: 'assistant',
+          content: prefix,
+          pending: false,
+        });
+        this.logMessageOrderPrefixSync(`splice-before-tail@${n - 1}`, state);
+      }
+      return;
+    }
+  }
+
+  private syncPendingToolStates(): void {
+    const approval = this.runtime?.currentPendingApproval();
+    if (approval) {
+      this.upsertToolMessage(toolMessageKey(approval), {
+        toolCallId: toolMessageKey(approval),
+        toolName: approval.toolName,
+        phase: 'pending-approval',
+        headline: `等待确认: ${approval.toolName}`,
+        detailLines: [approval.prompt],
+        argsExcerpt: truncateJson(approval.request),
+      });
+    }
+
+    const questions = this.runtime?.currentPendingQuestions();
+    if (questions) {
+      this.upsertToolMessage(toolMessageKey(questions), {
+        toolCallId: toolMessageKey(questions),
+        toolName: questions.toolName,
+        phase: 'pending-approval',
+        headline: `等待补充信息: ${questions.toolName}`,
+        detailLines: [questions.questions.title ?? '请回答表单问题'],
+        argsExcerpt: truncateJson(questions.questions),
+      });
+    }
+  }
+
+  private upsertToolMessage(
+    toolCallId: string,
+    tool: ToolBlockSnapshot,
+  ): ConversationMessageSnapshot {
+    const state = this.requireState();
+    const existing = state.messages.find(
+      (message) => message.tool?.toolCallId === toolCallId,
+    );
+
+    if (existing) {
+      const previousTool = existing.tool;
+      existing.tool = tool;
+      this.logToolMessageUpdate(existing.id, toolCallId, previousTool, tool, state.messages);
+      return existing;
+    }
+
+    const batchId = this.lastApplyEventBatchId;
+    if (this.streamAssistantThinkingAnchor === undefined) {
+      this.streamAssistantThinkingAnchor = state.messages.length;
+    }
+    this.streamAssistantAnchorSetInApplyBatchId = batchId;
+    const pushAt = state.messages.length;
+    const message: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'assistant',
+      content: '',
+      tool,
+      pending: false,
+    };
+    state.messages.push(message);
+    this.logMessageOrderToolPreviewNew(tool.toolName, pushAt);
+    return message;
+  }
+
+  private appendAssistantMessage(content: string, aux?: MessageAuxSnapshot): void {
+    const state = this.requireState();
+    const finalAux = this.normalizeCompletedAssistantAux(aux);
+    const message: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'assistant',
+      content,
+      ...(finalAux ? { aux: finalAux } : {}),
+      pending: false,
+    };
+    state.messages.push(message);
+    this.logAssistantAuxDecision('append-assistant', {
+      messageId: message.id,
+      aux: message.aux,
+      content,
+    });
+  }
+
+  /** 将本段模型思考固化为独立消息，并从挂起 aux 中剥离同文以避免与终稿重复。 */
+  private appendAssistantThinkingSegment(text: string): void {
+    this.lastFinalizedThinkingSegment = text.trim();
+    const state = this.requireState();
+    this.stripFinalizedThinkingFromAssistantAnchors(text);
+    const msg: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'assistant',
+      content: '',
+      aux: { thinking: text },
+      pending: false,
+    };
+    let insertAt = this.streamAssistantThinkingAnchor;
+    this.streamAssistantThinkingAnchor = undefined;
+    if (insertAt === undefined) {
+      insertAt = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
+    }
+    if (insertAt === undefined) {
+      insertAt = indexForThinkingInsertAfterLastUser(state.messages);
+    }
+    const clamped = Math.max(0, Math.min(insertAt, state.messages.length));
+    state.messages.splice(clamped, 0, msg);
+    const placed = `splice@${clamped}`;
+    this.logMessageOrderThinkingFinalized(placed, state.messages.length, text);
+    this.latestPendingAssistantAux = stripPendingThinkingMatchingFinalized(
+      this.latestPendingAssistantAux,
+      text,
+    );
+  }
+
+  private findPendingAssistantMessageIndex(): number | undefined {
+    const state = this.requireState();
+    if (this.pendingAssistantMessageId !== undefined) {
+      const index = state.messages.findIndex(
+        (message) =>
+          message.id === this.pendingAssistantMessageId &&
+          message.role === 'assistant' &&
+          message.pending &&
+          !message.tool,
+      );
+      if (index >= 0) {
+        return index;
+      }
+      this.pendingAssistantMessageId = undefined;
+    }
+
+    const fallbackIndex = state.messages.findIndex(
+      (message) => message.role === 'assistant' && message.pending && !message.tool,
+    );
+    if (fallbackIndex >= 0) {
+      this.pendingAssistantMessageId = state.messages[fallbackIndex]!.id;
+      return fallbackIndex;
+    }
+    return undefined;
+  }
+
+  private ensurePendingAssistantMessage(): ConversationMessageSnapshot {
+    const state = this.requireState();
+    const existingIndex = this.findPendingAssistantMessageIndex();
+    if (existingIndex !== undefined) {
+      return state.messages[existingIndex]!;
+    }
+
+    const message: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'assistant',
+      content: '',
+      ...(this.latestPendingAssistantAux ? { aux: { ...this.latestPendingAssistantAux } } : {}),
+      pending: true,
+    };
+    state.messages.push(message);
+    this.pendingAssistantMessageId = message.id;
+    return message;
+  }
+
+  private updatePendingAssistantAux(
+    kind: 'thinking' | 'compressing',
+    text: string,
+  ): void {
+    const normalized = text.trim();
+    const existingIndex = this.findPendingAssistantMessageIndex();
+    const message =
+      existingIndex !== undefined
+        ? this.requireState().messages[existingIndex]!
+        : normalized && this.runtime?.isBusy()
+          ? this.ensurePendingAssistantMessage()
+          : undefined;
+    const currentAux = message?.aux ?? this.latestPendingAssistantAux;
+    const nextAux = normalizeMessageAuxSnapshot({
+      ...(kind === 'thinking'
+        ? normalized
+          ? { thinking: text }
+          : {}
+        : currentAux?.thinking
+          ? { thinking: currentAux.thinking }
+          : {}),
+      ...(kind === 'compressing'
+        ? normalized
+          ? { compaction: text }
+          : {}
+        : currentAux?.compaction
+          ? { compaction: currentAux.compaction }
+          : {}),
+    });
+
+    if (message) {
+      if (nextAux) {
+        message.aux = nextAux;
+      } else {
+        delete message.aux;
+      }
+    }
+
+    if (nextAux) {
+      this.latestPendingAssistantAux = nextAux;
+    } else {
+      this.latestPendingAssistantAux = undefined;
+    }
+  }
+
+  private appendPendingAssistantChunk(chunk: string): void {
+    const message = this.ensurePendingAssistantMessage();
+    message.content += chunk;
+  }
+
+  private replacePendingAssistantText(text: string): void {
+    const message = this.ensurePendingAssistantMessage();
+    message.content = text;
+  }
+
+  private completePendingAssistantMessage(): void {
+    const index = this.findPendingAssistantMessageIndex();
+    if (index === undefined) {
+      this.pendingAssistantMessageId = undefined;
+      return;
+    }
+    const message = this.requireState().messages[index]!;
+    message.pending = false;
+    this.lastSettledAssistantMessageId = message.id;
+    this.pendingAssistantMessageId = undefined;
+    this.latestPendingAssistantAux = undefined;
+  }
+
+  private removePendingAssistantMessage(): void {
+    const index = this.findPendingAssistantMessageIndex();
+    if (index === undefined) {
+      this.pendingAssistantMessageId = undefined;
+      this.latestPendingAssistantAux = undefined;
+      return;
+    }
+
+    const state = this.requireState();
+    const message = state.messages[index]!;
+    const aux = normalizeMessageAuxSnapshot(message.aux);
+    if (!message.content.trim() && !aux) {
+      this.handleMessageRemoved(index, message.id, 'remove-pending-assistant');
+      state.messages.splice(index, 1);
+    } else {
+      message.pending = false;
+      if (aux) {
+        message.aux = aux;
+      } else {
+        delete message.aux;
+      }
+      this.lastSettledAssistantMessageId = message.id;
+    }
+    this.pendingAssistantMessageId = undefined;
+    this.latestPendingAssistantAux = undefined;
+  }
+
+  private materializeExistingCompletedAssistantMessage(
+    content: string,
+    aux?: MessageAuxSnapshot,
+  ): boolean {
+    const state = this.requireState();
+    const normalized = content.trim();
+    const finalAux = this.normalizeCompletedAssistantAux(aux);
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index]!;
+      if (message.role !== 'assistant' || message.tool) {
+        continue;
+      }
+      if (message.pending) {
+        continue;
+      }
+      if (message.content.trim() !== normalized) {
+        continue;
+      }
+      if (finalAux) {
+        message.aux = normalizeMessageAuxSnapshot({
+          ...(message.aux?.thinking ? { thinking: message.aux.thinking } : {}),
+          ...(message.aux?.compaction ? { compaction: message.aux.compaction } : {}),
+          ...(finalAux.thinking ? { thinking: finalAux.thinking } : {}),
+          ...(finalAux.compaction ? { compaction: finalAux.compaction } : {}),
+        });
+      }
+      if (hasStandaloneThinkingMessageInCurrentTurn(state.messages)) {
+        message.aux = stripThinkingFromAux(message.aux);
+        if (!message.aux) {
+          delete message.aux;
+        }
+      }
+      this.logAssistantAuxDecision('materialize-completed', {
+        messageId: message.id,
+        aux: message.aux,
+        content,
+      });
+      return true;
+    }
+    return false;
+  }
+
+  private normalizeCompletedAssistantAux(aux?: MessageAuxSnapshot): MessageAuxSnapshot | undefined {
+    const normalized = normalizeMessageAuxSnapshot(aux);
+    if (!normalized?.thinking) {
+      return normalized;
+    }
+    const state = this.requireState();
+    if (!hasStandaloneThinkingMessageInCurrentTurn(state.messages)) {
+      return normalized;
+    }
+    const stripped = stripThinkingFromAux(normalized);
+    this.logAssistantAuxDecision('strip-completed-thinking-aux', {
+      aux: normalized,
+      extra: stripped ? `kept=${describeAuxForDebug(stripped)}` : 'kept=none',
+    });
+    return stripped;
+  }
+
+  private findLastSettledAssistantMessageIndex(): number | undefined {
+    if (this.lastSettledAssistantMessageId === undefined) {
+      return undefined;
+    }
+
+    const state = this.requireState();
+    const index = state.messages.findIndex(
+      (message) =>
+        message.id === this.lastSettledAssistantMessageId &&
+        message.role === 'assistant' &&
+        !message.tool &&
+        !message.pending,
+    );
+    if (index < 0 || !messageIndexIsInCurrentTurn(state.messages, index)) {
+      this.lastSettledAssistantMessageId = undefined;
+      return undefined;
+    }
+    return index;
+  }
+
+  private stripFinalizedThinkingFromAssistantAnchors(text: string): void {
+    const state = this.requireState();
+    const targets: Array<{ kind: 'pending' | 'settled'; index: number | undefined }> = [
+      { kind: 'pending', index: this.findPendingAssistantMessageIndex() },
+      { kind: 'settled', index: this.findLastSettledAssistantMessageIndex() },
+    ];
+
+    for (const target of targets) {
+      if (target.index === undefined) {
+        continue;
+      }
+      const message = state.messages[target.index];
+      if (!message) {
+        continue;
+      }
+      const beforeAux = normalizeMessageAuxSnapshot(message.aux);
+      const afterAux = stripPendingThinkingMatchingFinalized(beforeAux, text);
+      const changed = describeOptionalAuxForDebug(beforeAux) !== describeOptionalAuxForDebug(afterAux);
+      if (!changed) {
+        continue;
+      }
+      if (afterAux) {
+        message.aux = afterAux;
+      } else {
+        delete message.aux;
+      }
+      this.logAssistantAuxDecision('strip-finalized-thinking-anchor', {
+        messageId: message.id,
+        aux: beforeAux,
+        finalizedThinking: text,
+        extra: `target=${target.kind} next=${describeOptionalAuxForDebug(afterAux)}`,
+      });
+      return;
+    }
+
+    this.logAssistantAuxDecision('strip-finalized-thinking-miss', {
+      finalizedThinking: text,
+    });
+  }
+
+  private ensureActiveSession(seedText: string): void {
+    const state = this.requireState();
+    if (state.activeSession) {
+      return;
+    }
+
+    state.activeSession = {
+      filePath: defaultNewSessionPath(),
+      displayName: deriveDisplayNameFromSeed(seedText),
+    };
+  }
+
+  private archiveMessages(): Array<{ role: 'user' | 'assistant'; content: string }> {
+    return this.requireState().messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+  }
+
+  private archiveAssistantAux(): AssistantAuxArchiveEntry[] {
+    return this.requireState().messages.flatMap((message, index) => {
+      if (!message.aux) {
+        return [];
+      }
+
+      const entry: AssistantAuxArchiveEntry = {
+        messageIndex: index,
+        ...(message.aux.thinking ? { thinking: message.aux.thinking } : {}),
+        ...(message.aux.compaction ? { compaction: message.aux.compaction } : {}),
+      };
+      return [entry];
+    });
+  }
+
+  private refreshArchiveFromRuntime(): void {
+    if (!this.runtime) {
+      return;
+    }
+
+    const archive = this.runtime.toArchive(
+      this.archiveMessages(),
+      this.archiveAssistantAux(),
+    );
+    const state = this.requireState();
+    state.archiveHistory = archive.llmHistory;
+    state.archiveSubagentSessions = archive.subagentSessions ?? [];
+  }
+
+  private async recordHostFileChange(change: HostRecordedFileChange): Promise<void> {
+    const state = this.state;
+    if (!state?.activeSession) {
+      return;
+    }
+
+    const stored = toDesktopFileChange(change, nextDesktopRewindSequence(state.rewind));
+    await saveRewindFileChange(spiritAgentDataDir(), state.rewind.sessionId, stored);
+    const metadata = fileChangeMetadata(stored);
+    state.rewind.fileChanges.push(metadata);
+    if (!metadata.toolCallId) {
+      this.pendingUnboundFileChangeIds.push(metadata.id);
+    }
+  }
+
+  private bindFileChangesToToolMessage(
+    execution: RuntimeToolExecution<DesktopToolRequest>,
+    messageId: number,
+  ): void {
+    const state = this.requireState();
+    const targetIds = new Set<string>();
+    const toolCallId = execution.toolCallId || `tool:${execution.toolName}`;
+    for (const change of state.rewind.fileChanges) {
+      if (change.messageId !== undefined) {
+        continue;
+      }
+      if (change.toolCallId === toolCallId) {
+        targetIds.add(change.id);
+      }
+    }
+    if (targetIds.size === 0) {
+      for (const id of this.pendingUnboundFileChangeIds) {
+        targetIds.add(id);
+      }
+    }
+    if (targetIds.size === 0) {
+      return;
+    }
+
+    for (const change of state.rewind.fileChanges) {
+      if (targetIds.has(change.id)) {
+        change.messageId = messageId;
+      }
+    }
+    this.pendingUnboundFileChangeIds = this.pendingUnboundFileChangeIds.filter(
+      (id) => !targetIds.has(id),
+    );
+  }
+
+  private async recordRewindCheckpoint(
+    messageId: number,
+    beforeUserCheckpoint?: DesktopRewindCheckpointSnapshot,
+  ): Promise<void> {
+    this.pruneEmptyAssistantMessages('recordRewindCheckpoint');
+    const state = this.requireState();
+    if (!state.activeSession) {
+      return;
+    }
+    const messageIndex = state.messages.findIndex((message) => message.id === messageId);
+    if (messageIndex < 0) {
+      return;
+    }
+
+    const checkpoint = createRewindCheckpointMetadata(
+      messageId,
+      messageIndex,
+      nextDesktopRewindSequence(state.rewind),
+    );
+    const archive = this.runtime
+      ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
+      : {
+          messages: this.archiveMessages(),
+          assistantAux: this.archiveAssistantAux(),
+          llmHistory: state.archiveHistory,
+          subagentSessions: state.archiveSubagentSessions ?? [],
+        } satisfies ChatArchive;
+    await saveRewindCheckpointSnapshot(
+      spiritAgentDataDir(),
+      state.rewind.sessionId,
+      checkpoint.id,
+      {
+        archive,
+        desktopMessages: state.messages.map((message) => ({ ...message })),
+        ...(beforeUserCheckpoint
+          ? {
+              beforeArchive: cloneChatArchive(beforeUserCheckpoint.archive),
+              beforeDesktopMessages: beforeUserCheckpoint.desktopMessages.map((message) => ({ ...message })),
+            }
+          : {}),
+      },
+    );
+
+    const existing = state.rewind.checkpoints.findIndex(
+      (candidate) => candidate.messageId === messageId,
+    );
+    if (existing >= 0) {
+      state.rewind.checkpoints.splice(existing, 1, checkpoint);
+    } else {
+      state.rewind.checkpoints.push(checkpoint);
+    }
+    state.rewind.checkpoints.sort((left, right) => left.sequence - right.sequence);
+  }
+
+  private buildRewindCheckpointSnapshot(): DesktopRewindCheckpointSnapshot {
+    this.pruneEmptyAssistantMessages('buildRewindCheckpointSnapshot');
+    const state = this.requireState();
+    const archive = this.runtime
+      ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
+      : {
+          messages: this.archiveMessages(),
+          assistantAux: this.archiveAssistantAux(),
+          llmHistory: state.archiveHistory,
+          subagentSessions: state.archiveSubagentSessions ?? [],
+        } satisfies ChatArchive;
+    return {
+      archive,
+      desktopMessages: state.messages.map((message) => ({ ...message })),
+    };
+  }
+
+  private restoreBeforeRewindCheckpoint(
+    snapshot: DesktopRewindCheckpointSnapshot,
+    checkpointSequence: number,
+  ): void {
+    const state = this.requireState();
+    const archive = snapshot.beforeArchive ?? archiveBeforeLastUser(snapshot.archive);
+    const desktopMessages = snapshot.beforeDesktopMessages ?? snapshot.desktopMessages.slice(0, -1);
+
+    state.messages = desktopMessages.map((message) => ({ ...message }));
+    state.archiveHistory = archive.llmHistory.map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [...message.imagePaths],
+    }));
+    state.archiveSubagentSessions = (archive.subagentSessions ?? []).map((entry) => ({
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...message.imagePaths],
+      })),
+    }));
+    state.rewind.checkpoints = state.rewind.checkpoints.filter(
+      (checkpoint) => checkpoint.sequence < checkpointSequence,
+    );
+    state.rewind.fileChanges = state.rewind.fileChanges.filter(
+      (change) => change.sequence <= checkpointSequence,
+    );
+    this.pendingUnboundFileChangeIds = [];
+    this.latestPendingAssistantAux = undefined;
+    this.messageIdCounter = Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+    this.resetStreamingPlacementState(true);
+    this.pruneEmptyAssistantMessages('restoreBeforeRewindCheckpoint');
+    this.requireRuntime().replaceFromArchive(archive);
+  }
+
+  private messageSnapshot(
+    message: ConversationMessageSnapshot,
+    livePendingAux?: PendingAssistantAux,
+  ): ConversationMessageSnapshot | undefined {
+    const tool = normalizeToolBlockSnapshot(message.tool);
+    const aux = shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
+      message,
+      livePendingAux,
+    )
+      ? stripThinkingFromAux(message.aux)
+      : normalizeMessageAuxSnapshot(message.aux);
+    if (shouldDropEmptyAssistantMessage(message, tool, aux)) {
+      return undefined;
+    }
+
+    const { canRewind: _canRewind, ...base } = message;
+    return {
+      ...base,
+      ...(tool ? { tool } : {}),
+      ...(aux ? { aux } : {}),
+      ...(this.canRewindMessage(message) ? { canRewind: true } : {}),
+    };
+  }
+
+  private pruneEmptyAssistantMessages(reason: string): void {
+    const state = this.requireState();
+    const removedIds: number[] = [];
+    state.messages = state.messages.filter((message, index) => {
+      const drop = shouldDropEmptyAssistantMessage(
+        message,
+        normalizeToolBlockSnapshot(message.tool),
+        normalizeMessageAuxSnapshot(message.aux),
+      );
+      if (drop) {
+        const currentIndex = index - removedIds.length;
+        this.handleMessageRemoved(currentIndex, message.id, `prune:${reason}`);
+        removedIds.push(message.id);
+      }
+      return !drop;
+    });
+    if (removedIds.length > 0) {
+      console.warn(
+        `[desktop-host][messages] dropped ${removedIds.length} empty assistant message(s) during ${reason}: ${removedIds.join(', ')}`,
+      );
+    }
+  }
+
+  private shiftStreamAssistantThinkingAnchorForInsertion(insertAt: number): void {
+    if (
+      this.streamAssistantThinkingAnchor !== undefined &&
+      insertAt <= this.streamAssistantThinkingAnchor
+    ) {
+      this.streamAssistantThinkingAnchor += 1;
+    }
+  }
+
+  private shiftStreamAssistantThinkingAnchorForRemoval(removeAt: number, removeCount = 1): void {
+    if (this.streamAssistantThinkingAnchor === undefined || removeCount <= 0) {
+      return;
+    }
+
+    const anchor = this.streamAssistantThinkingAnchor;
+    if (removeAt + removeCount <= anchor) {
+      this.streamAssistantThinkingAnchor = anchor - removeCount;
+      return;
+    }
+
+    if (removeAt < anchor) {
+      this.streamAssistantThinkingAnchor = removeAt;
+    }
+  }
+
+  private handleMessageRemoved(messageIndex: number, messageId: number, reason: string): void {
+    this.shiftStreamAssistantThinkingAnchorForRemoval(messageIndex);
+    if (this.pendingAssistantMessageId === messageId) {
+      this.pendingAssistantMessageId = undefined;
+    }
+    if (this.lastSettledAssistantMessageId === messageId) {
+      this.lastSettledAssistantMessageId = undefined;
+    }
+    this.logAssistantAuxDecision('remove-message-anchor-shift', {
+      messageId,
+      extra: `reason=${reason} nextAnchor=${this.streamAssistantThinkingAnchor ?? '∅'}`,
+    });
+  }
+
+  private canRewindMessage(message: ConversationMessageSnapshot): boolean {
+    if (message.pending || message.role !== 'user') {
+      return false;
+    }
+    return this.requireState().rewind.checkpoints.some(
+      (checkpoint) => checkpoint.messageId === message.id,
+    );
+  }
+
+  private async persistCurrentSessionIfNeeded(): Promise<void> {
+    const state = this.requireState();
+    if (!state.activeSession || this.runtime?.isBusy()) {
+      return;
+    }
+
+    this.pruneEmptyAssistantMessages('persistCurrentSessionIfNeeded');
+
+    const archive = this.runtime
+      ? this.runtime.toArchive(this.archiveMessages(), this.archiveAssistantAux())
+      : {
+          messages: this.archiveMessages(),
+          assistantAux: this.archiveAssistantAux(),
+          llmHistory: state.archiveHistory,
+          subagentSessions: state.archiveSubagentSessions ?? [],
+        } satisfies ChatArchive;
+
+    const stored: StoredDesktopSession = {
+      ...archive,
+      savedAtUnixMs: Date.now(),
+      sessionDisplayName: state.activeSession.displayName,
+      desktopMessages: state.messages.map((message) => ({ ...message })),
+      rewind: state.rewind,
+    };
+    state.activeSession.filePath = await saveStoredSession(state.activeSession.filePath, stored);
+  }
+
+  private instructionPaths() {
+    const state = this.requireState();
+    return resolveInstructionPaths({
+      workspaceRoot: state.workspaceRoot,
+      spiritDataDir: spiritAgentDataDir(),
+    });
+  }
+
+  private parseSkillRootKind(value: unknown): DesktopSkillRootKind {
+    if (value === 'user' || value === 'workspaceSpirit' || value === 'workspaceAgents') {
+      return value;
+    }
+    throw new Error('无效的 Skill 根类型。');
+  }
+
+  private resolveSkillRootDir(rootKind: DesktopSkillRootKind): string {
+    const paths = this.instructionPaths();
+    switch (rootKind) {
+      case 'user':
+        return paths.userSkillsDir;
+      case 'workspaceSpirit':
+        return paths.workspaceSpiritSkillsDir;
+      case 'workspaceAgents':
+        return paths.workspaceAgentsSkillsDir;
+      default: {
+        const _exhaustive: never = rootKind;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private resolveSkillDir(skillDirectoryName: string, rootKind: DesktopSkillRootKind): string {
+    return path.join(this.resolveSkillRootDir(rootKind), skillDirectoryName);
+  }
+
+  private assertPathUnderSkillRoot(targetDir: string, rootKind: DesktopSkillRootKind): void {
+    const root = path.resolve(this.resolveSkillRootDir(rootKind));
+    const resolved = path.resolve(targetDir);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw new Error('Skill 路径不在允许的根目录内。');
+    }
+  }
+
+  private requireState(): HostState {
+    if (!this.state) {
+      throw new Error('宿主尚未初始化。');
+    }
+    return this.state;
+  }
+
+  private requireRuntime(): DesktopRuntime {
+    if (!this.runtime) {
+      throw new Error(this.lastRuntimeError || '运行时尚未就绪。');
+    }
+    return this.runtime;
+  }
+
+  private allocateMessageId(): number {
+    const next = this.messageIdCounter;
+    this.messageIdCounter += 1;
+    return next;
+  }
+
+  /**
+   * @param full `false`：仅清思考插入锚点（新用户轮次，避免误插旧工具链）。`true`：另清 finalize 去重与 apply 批次计数（重置会话 / 打开存档）。
+   */
+  private resetStreamingPlacementState(full: boolean): void {
+    this.pendingAssistantMessageId = undefined;
+    this.lastSettledAssistantMessageId = undefined;
+    if (!full) {
+      this.streamAssistantThinkingAnchor = undefined;
+      return;
+    }
+    this.clearStandalonePendingAuxState();
+    this.lastFinalizedThinkingSegment = '';
+    this.streamAssistantThinkingAnchor = undefined;
+    this.streamAssistantAnchorSetInApplyBatchId = 0;
+    this.lastApplyEventBatchId = 0;
+    this.messageOrderDebugLastVerboseLogMs = 0;
+  }
+
+  private syncStandalonePendingAux(livePendingAux: PendingAssistantAux | undefined): void {
+    if (livePendingAux && isStandaloneSubagentStatusAux(livePendingAux)) {
+      this.persistedStandalonePendingAux = {
+        kind: livePendingAux.kind,
+        statusText: livePendingAux.statusText,
+        ...(livePendingAux.detailText ? { detailText: livePendingAux.detailText } : {}),
+      };
+      if (this.standalonePendingAuxMessageId === undefined) {
+        this.standalonePendingAuxMessageId = this.allocateMessageId();
+      }
+      const anchorMessageId = this.pendingAssistantMessageId ?? this.lastSettledAssistantMessageId;
+      if (anchorMessageId !== undefined) {
+        this.persistedStandalonePendingAuxAnchorMessageId = anchorMessageId;
+      }
+      return;
+    }
+
+    if (!isStandaloneSubagentStatusAux(this.persistedStandalonePendingAux)) {
+      this.clearStandalonePendingAuxState();
+    }
+  }
+
+  private standalonePendingAuxSnapshot(
+    livePendingAux: PendingAssistantAux | undefined,
+    snapshots: ConversationMessageSnapshot[],
+  ):
+    | {
+        message: ConversationMessageSnapshot;
+        insertAt: number;
+        source: 'live' | 'persisted';
+        anchorMessageId?: number;
+        anchorResolvedIndex?: number;
+      }
+    | undefined {
+    const liveStandalonePendingAux =
+      livePendingAux && isStandaloneSubagentStatusAux(livePendingAux)
+        ? livePendingAux
+        : undefined;
+    const liveStatusText = liveStandalonePendingAux
+      ? parsePendingSubagentStatusText(liveStandalonePendingAux.statusText)
+      : undefined;
+    if (liveStatusText) {
+      return {
+        source: 'live',
+        insertAt: snapshots.length,
+        message: this.standalonePendingAuxMessage(liveStatusText),
+      };
+    }
+
+    const persistedStandalonePendingAux =
+      this.persistedStandalonePendingAux && isStandaloneSubagentStatusAux(this.persistedStandalonePendingAux)
+        ? this.persistedStandalonePendingAux
+        : undefined;
+    const persistedStatusText = persistedStandalonePendingAux
+      ? parsePendingSubagentStatusText(persistedStandalonePendingAux.statusText)
+      : undefined;
+    if (!persistedStatusText) {
+      return undefined;
+    }
+
+    const anchorMessageId = this.persistedStandalonePendingAuxAnchorMessageId;
+    let anchorResolvedIndex: number | undefined;
+    let insertAt: number | undefined;
+    if (anchorMessageId !== undefined) {
+      const anchoredIndex = snapshots.findIndex((message) => message.id === anchorMessageId);
+      if (anchoredIndex >= 0) {
+        anchorResolvedIndex = anchoredIndex;
+        insertAt = rewindStandalonePendingAuxInsertIndexForThinking(snapshots, anchoredIndex);
+      }
+    }
+
+    if (insertAt === undefined) {
+      insertAt = snapshots.length > 0 ? Math.max(0, snapshots.length - 1) : 0;
+    }
+
+    return {
+      source: 'persisted',
+      anchorMessageId,
+      anchorResolvedIndex,
+      insertAt,
+      message: this.standalonePendingAuxMessage(persistedStatusText),
+    };
+  }
+
+  private standalonePendingAuxMessage(statusText: string): ConversationMessageSnapshot {
+    if (this.standalonePendingAuxMessageId === undefined) {
+      this.standalonePendingAuxMessageId = this.allocateMessageId();
+    }
+
+    return {
+      id: this.standalonePendingAuxMessageId,
+      role: 'assistant',
+      content: statusText,
+      pending: false,
+    };
+  }
+
+  private clearStandalonePendingAuxState(): void {
+    this.persistedStandalonePendingAux = undefined;
+    this.persistedStandalonePendingAuxAnchorMessageId = undefined;
+    this.standalonePendingAuxMessageId = undefined;
+    this.lastStandalonePendingAuxSnapshotLogSignature = undefined;
+  }
+
+  private logSnapshotStandalonePendingAux(
+    standalonePendingAux: {
+      message: ConversationMessageSnapshot;
+      insertAt: number;
+      source: 'live' | 'persisted';
+      anchorMessageId?: number;
+      anchorResolvedIndex?: number;
+    },
+    snapshots: ConversationMessageSnapshot[],
+  ): void {
+    if (messageOrderDebugLevel() !== 'verbose') {
+      return;
+    }
+
+    const status = truncateOneLineForDebug(standalonePendingAux.message.content, 48);
+    const tail = summarizeMessagesTailForOrderDebug(snapshots, 6);
+    const signature = [
+      standalonePendingAux.source,
+      standalonePendingAux.message.id,
+      standalonePendingAux.insertAt,
+      standalonePendingAux.anchorMessageId ?? '∅',
+      standalonePendingAux.anchorResolvedIndex ?? '∅',
+      standalonePendingAux.message.content,
+      tail,
+    ].join('|');
+    if (signature === this.lastStandalonePendingAuxSnapshotLogSignature) {
+      return;
+    }
+    this.lastStandalonePendingAuxSnapshotLogSignature = signature;
+    console.log(
+      `[desktop-host][snapshot] standalone-subagent-status source=${standalonePendingAux.source} msg=${standalonePendingAux.message.id} insert=${standalonePendingAux.insertAt} anchorMsg=${standalonePendingAux.anchorMessageId ?? '∅'} anchorIdx=${standalonePendingAux.anchorResolvedIndex ?? '∅'} status≈${status}${standalonePendingAux.message.content.length > 48 ? '…' : ''} tail=${tail}`,
+    );
+  }
+
+  private logToolMessageUpdate(
+    messageId: number,
+    toolCallId: string,
+    previousTool: ToolBlockSnapshot | undefined,
+    nextTool: ToolBlockSnapshot,
+    messages: ReadonlyArray<ConversationMessageSnapshot>,
+  ): void {
+    const mode = messageOrderDebugLevel();
+    if (mode === 'off') {
+      return;
+    }
+
+    const previousPhase = previousTool?.phase;
+    const nextPhase = nextTool.phase;
+    const previousHeadline = previousTool?.headline ?? '';
+    const nextHeadline = nextTool.headline;
+    const previousOutput = previousTool?.outputExcerpt ?? '';
+    const nextOutput = nextTool.outputExcerpt ?? '';
+    if (
+      previousPhase === nextPhase &&
+      previousHeadline === nextHeadline &&
+      previousOutput === nextOutput
+    ) {
+      return;
+    }
+
+    const tail = summarizeMessagesTailForOrderDebug([...messages], 8);
+    console.log(
+      `[desktop-host][tool] msg=${messageId} call=${toolCallId} name=${nextTool.toolName} phase=${previousPhase ?? '∅'}->${nextPhase} headline≈${truncateOneLineForDebug(nextHeadline, 42)} tail=${tail}`,
+    );
+  }
+
+  private takeLatestPendingAux(): MessageAuxSnapshot | undefined {
+    const current = this.latestPendingAssistantAux;
+    this.latestPendingAssistantAux = undefined;
+    if (!current) {
+      this.logAssistantAuxDecision('take-pending-aux-none', {
+        finalizedThinking: this.lastFinalizedThinkingSegment,
+      });
+      this.lastFinalizedThinkingSegment = '';
+      return undefined;
+    }
+    if (
+      this.lastFinalizedThinkingSegment &&
+      current.thinking?.trim() === this.lastFinalizedThinkingSegment.trim()
+    ) {
+      const { thinking: _thinking, ...rest } = current;
+      this.logAssistantAuxDecision('take-pending-aux-strip-exact', {
+        aux: current,
+        finalizedThinking: this.lastFinalizedThinkingSegment,
+        extra: Object.keys(rest).length > 0 ? `kept=${describeAuxForDebug(rest)}` : 'kept=none',
+      });
+      this.lastFinalizedThinkingSegment = '';
+      return Object.keys(rest).length > 0 ? rest : undefined;
+    }
+    if (current.thinking && hasStandaloneThinkingMessageInCurrentTurn(this.requireState().messages)) {
+      const stripped = stripThinkingFromAux(current);
+      this.logAssistantAuxDecision('take-pending-aux-strip-standalone', {
+        aux: current,
+        finalizedThinking: this.lastFinalizedThinkingSegment,
+        extra: stripped ? `kept=${describeAuxForDebug(stripped)}` : 'kept=none',
+      });
+      this.lastFinalizedThinkingSegment = '';
+      return stripped;
+    }
+    this.logAssistantAuxDecision('take-pending-aux-carry', {
+      aux: current,
+      finalizedThinking: this.lastFinalizedThinkingSegment,
+    });
+    this.lastFinalizedThinkingSegment = '';
+    return current;
+  }
+
+  private logAssistantAuxDecision(
+    stage: string,
+    details: {
+      messageId?: number;
+      aux?: MessageAuxSnapshot;
+      content?: string;
+      finalizedThinking?: string;
+      extra?: string;
+    },
+  ): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    const parts = [stage];
+    if (details.messageId !== undefined) {
+      parts.push(`msg=${details.messageId}`);
+    }
+    if (details.aux) {
+      parts.push(`aux=${describeAuxForDebug(details.aux)}`);
+    }
+    if (details.finalizedThinking?.trim()) {
+      parts.push(`final≈${truncateOneLineForDebug(details.finalizedThinking, 42)}`);
+    }
+    if (details.content?.trim()) {
+      parts.push(`content≈${truncateOneLineForDebug(details.content, 42)}`);
+    }
+    if (details.extra) {
+      parts.push(details.extra);
+    }
+    console.log(`[desktop-host][aux] ${parts.join(' ')}`);
+  }
+
+  private logMessageOrderApplyBatch(
+    batchId: number,
+    events: RuntimeEvent<DesktopToolRequest>[],
+    state: HostState,
+    anchorEnd: number | undefined,
+    anchorSourceBatchEnd: number,
+  ): void {
+    const mode = messageOrderDebugLevel();
+    if (mode === 'off') return;
+
+    const tags: string[] = [];
+    let previewCount = 0;
+    for (const ev of events) {
+      if (ev.kind === 'begin-assistant-response') {
+        tags.push('begin');
+      } else if (ev.kind === 'assistant-response-completed') {
+        tags.push('resp-done');
+      } else if (ev.kind === 'remove-pending-assistant') {
+        tags.push('rm-pending');
+      } else if (ev.kind === 'assistant-thinking-segment-finalized') {
+        tags.push(ev.text.trim() ? 'finalize' : 'finalize-empty');
+      } else if (ev.kind === 'tool-execution-finished') {
+        tags.push(`tool-done:${ev.execution.toolName}`);
+      } else if (ev.kind === 'approval-requested') {
+        tags.push(`approval:${ev.approval.toolName}`);
+      } else if (ev.kind === 'questions-requested') {
+        tags.push(`questions:${ev.questions.toolName}`);
+      } else if (ev.kind === 'streaming-tool-preview') {
+        previewCount += 1;
+      }
+    }
+
+    const hasOrderTags = tags.length > 0;
+    if (!hasOrderTags && previewCount === 0) {
+      return;
+    }
+
+    if (mode === 'compact' && !hasOrderTags) {
+      return;
+    }
+
+    if (!hasOrderTags && previewCount > 0 && mode === 'verbose') {
+      const now = Date.now();
+      if (now - this.messageOrderDebugLastVerboseLogMs < 1200) {
+        return;
+      }
+      this.messageOrderDebugLastVerboseLogMs = now;
+      tags.push(`preview×${previewCount}`);
+    } else if (hasOrderTags && previewCount > 0 && mode === 'verbose') {
+      tags.push(`pv×${previewCount}`);
+    }
+
+    const tail = summarizeMessagesTailForOrderDebug(state.messages, 12);
+    console.log(
+      `[desktop-host][msg-order] apply#${batchId} kinds=${tags.join(',')} anchor=${anchorEnd ?? '∅'} anchorBatch=${anchorSourceBatchEnd} len=${state.messages.length} tail=${tail}`,
+    );
+  }
+
+  private logMessageOrderThinkingFinalized(placed: string, lenAfter: number, text: string): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    const one = text.replace(/\s+/g, ' ').trim();
+    const clip = one.slice(0, 72);
+    console.log(
+      `[desktop-host][msg-order] thinking-finalized ${placed} len=${lenAfter} text≈${clip}${one.length > 72 ? '…' : ''}`,
+    );
+  }
+
+  private logMessageOrderPrefixSync(how: string, state: HostState): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    const tail = summarizeMessagesTailForOrderDebug(state.messages, 10);
+    console.log(`[desktop-host][msg-order] prefix-sync ${how} len=${state.messages.length} tail=${tail}`);
+  }
+
+  private logMessageOrderToolPreviewNew(toolName: string, pushAt: number): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    console.log(`[desktop-host][msg-order] tool-preview-new ${toolName} push@${pushAt}`);
+  }
+
+  private async runSerialized<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.serialized;
+    let release: (() => void) | undefined;
+    this.serialized = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release?.();
+    }
+  }
+}
+
+/** 环境变量 `SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG`：不设为关；`1`/compact/on 紧凑；`2`/verbose 更详并节流纯 preview；`0`/off 显式关闭。 */
+type MessageOrderDebugLevel = 'off' | 'compact' | 'verbose';
+
+function messageOrderDebugLevel(): MessageOrderDebugLevel {
+  const raw = process.env.SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG?.trim().toLowerCase() ?? '';
+  if (raw === '') {
+    return 'off';
+  }
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on' || raw === 'compact') {
+    return 'compact';
+  }
+  if (raw === '0' || raw === 'false' || raw === 'off' || raw === 'no') {
+    return 'off';
+  }
+  if (raw === '2' || raw === 'verbose' || raw === 'debug' || raw === 'all') {
+    return 'verbose';
+  }
+  return 'off';
+}
+
+function summarizeMessagesTailForOrderDebug(
+  messages: ConversationMessageSnapshot[],
+  max: number,
+): string {
+  if (messages.length === 0) {
+    return '∅';
+  }
+  const slice = messages.slice(Math.max(0, messages.length - max));
+  return slice.map(formatMessageOrderToken).join('«');
+}
+
+function formatMessageOrderToken(m: ConversationMessageSnapshot): string {
+  if (m.role === 'user') {
+    return 'U';
+  }
+  const toolName = m.tool?.toolName;
+  if (toolName) {
+    const phase = m.tool?.phase ?? '?';
+    const p =
+      phase === 'running' ? '~' : phase === 'succeeded' ? '=' : phase === 'failed' ? '!' : phase === 'pending-approval' ? '?' : '.';
+    return `${p}${truncateOneLineForDebug(toolName, 20)}`;
+  }
+  if (m.aux?.thinking && !m.content.trim()) {
+    return `H#${m.id}`;
+  }
+  if (m.aux?.compaction && !m.content.trim()) {
+    return `C#${m.id}`;
+  }
+  const c = m.content.trim();
+  if (!c) {
+    return 'Aε';
+  }
+  const hasThinking = Boolean(m.aux?.thinking?.trim());
+  const hasCompaction = Boolean(m.aux?.compaction?.trim());
+  const prefix = hasThinking ? (hasCompaction ? 'aTC' : 'aT') : hasCompaction ? 'aC' : 'a';
+  return `${prefix}#${m.id}:${truncateOneLineForDebug(c, 18)}`;
+}
+
+function truncateOneLineForDebug(s: string, max: number): string {
+  const t = s.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) {
+    return t;
+  }
+  return `${t.slice(0, max)}…`;
+}
+
+/** 自 history 尾部向前找**最后一条**非空 `assistant` 正文（OpenAI 路径下 `historyStore` 常无 `role: tool`，需用此作待审批时的兜底）。 */
+function lastAssistantPlainTextInHistory(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+): string | undefined {
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    const m = hist[i];
+    if (m?.role === 'assistant' && m.content.trim()) {
+      return m.content.trim();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 自「最后一条 user」起至首条 `tool` 前，取**第一个**非空 assistant 正文。
+ * OpenAI 路径下 tool 结果通常不在 `history()` 的 LlmMessage 里，若仍用「最后一个」assistant
+ * 会误取工具执行后的终稿，从而覆盖/错配流式阶段已显示的前缀（如「好的，我来查看…」）。
+ */
+function assistantPrefixBeforeFirstToolInCurrentTurn(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+): string | undefined {
+  let lastUserIdx = -1;
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    if (hist[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  let firstToolIdx = -1;
+  for (let i = lastUserIdx + 1; i < hist.length; i += 1) {
+    if (hist[i]?.role === 'tool') {
+      firstToolIdx = i;
+      break;
+    }
+  }
+
+  const end = firstToolIdx >= 0 ? firstToolIdx : hist.length;
+  for (let i = lastUserIdx + 1; i < end; i += 1) {
+    const m = hist[i];
+    if (!m) {
+      continue;
+    }
+    if (m.role === 'assistant' && m.content.trim()) {
+      return m.content.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function latestUnsyncedAssistantTextInCurrentTurn(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+): string | undefined {
+  const historyTexts = assistantPlainTextsInCurrentTurnHistory(hist);
+  if (historyTexts.length === 0) {
+    return undefined;
+  }
+
+  const existing = new Set(assistantPlainTextsInCurrentTurnMessages(messages));
+  for (let i = historyTexts.length - 1; i >= 0; i -= 1) {
+    const text = historyTexts[i]!;
+    if (!existing.has(text)) {
+      return text;
+    }
+  }
+
+  return undefined;
+}
+
+function assistantPlainTextsInCurrentTurnHistory(
+  hist: ReadonlyArray<{ role: string; content: string }>,
+): string[] {
+  let lastUserIdx = -1;
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    if (hist[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  const texts: string[] = [];
+  for (let i = lastUserIdx + 1; i < hist.length; i += 1) {
+    const item = hist[i];
+    if (!item || item.role !== 'assistant') {
+      continue;
+    }
+    const text = item.content.trim();
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
+
+function assistantPlainTextsInCurrentTurnMessages(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+): string[] {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  const texts: string[] = [];
+  for (let i = lastUserIdx + 1; i < messages.length; i += 1) {
+    const item = messages[i];
+    if (!item || item.role !== 'assistant' || item.tool) {
+      continue;
+    }
+    const text = item.content.trim();
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
+
+function formatYamlScalarForSkillFrontmatter(value: string): string {
+  const flat = value.replace(/\r?\n/g, ' ').trim() || '说明';
+  return `"${flat.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
+}
+
+const desktopHostService = new DesktopHostService();
+
+export async function invokeDesktopHostCommand(
+  command: HostCommandName,
+  payload?: unknown,
+): Promise<unknown> {
+  return desktopHostService.invoke(command, payload);
+}
+
+function buildWebHostSnapshot(config: DesktopWebHostConfigFile): DesktopWebHostSnapshot {
+  const runtimeStatus = getDesktopWebHostRuntimeStatus();
+  const status = config.enabled
+    ? {
+        ...runtimeStatus,
+        host: runtimeStatus.host || config.host,
+        port: runtimeStatus.port || config.port,
+        ...(config.authTokenHash ? { pairingCode: undefined } : {}),
+      }
+    : {
+        state: 'disabled' as const,
+        host: config.host,
+        port: config.port,
+      };
+
+  return {
+    config: {
+      enabled: config.enabled,
+      host: config.host,
+      port: config.port,
+      paired: Boolean(config.authTokenHash),
+      authMode: 'pairing',
+    },
+    status,
+    policy: DESKTOP_WEB_HOST_POLICY,
+  };
+}
+
+function currentApiBase(config: DesktopConfigFile): string {
+  return (
+    config.models.find((model) => model.name === config.activeModel)?.apiBase ||
+    config.models[0]?.apiBase ||
+    ''
+  );
+}
+
+function cloneChatArchive(archive: ChatArchive): ChatArchive {
+  return {
+    messages: archive.messages.map((message) => ({ ...message })),
+    assistantAux: archive.assistantAux.map((entry) => ({ ...entry })),
+    llmHistory: archive.llmHistory.map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [...message.imagePaths],
+    })),
+    subagentSessions: (archive.subagentSessions ?? []).map((entry) => ({
+      summary: { ...entry.summary },
+      llmHistory: entry.llmHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [...message.imagePaths],
+      })),
+    })),
+  };
+}
+
+function archiveBeforeLastUser(archive: ChatArchive): ChatArchive {
+  const cloned = cloneChatArchive(archive);
+  const messageIndex = findLastIndex(cloned.messages, (message) => message.role === 'user');
+  const historyIndex = findLastIndex(cloned.llmHistory, (message) => message.role === 'user');
+  return {
+    ...cloned,
+    messages: messageIndex >= 0 ? cloned.messages.slice(0, messageIndex) : cloned.messages,
+    assistantAux:
+      messageIndex >= 0
+        ? cloned.assistantAux.filter((entry) => entry.messageIndex < messageIndex)
+        : cloned.assistantAux,
+    llmHistory: historyIndex >= 0 ? cloned.llmHistory.slice(0, historyIndex) : cloned.llmHistory,
+  };
+}
+
+function findLastIndex<T>(items: readonly T[], predicate: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index]!)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function parseApprovalDecision(message: string): RuntimeApprovalDecision {
+  const trimmed = message.trim().toLowerCase();
+  if (!trimmed || trimmed === 'y' || trimmed === 'yes' || trimmed === 'approve') {
+    return { kind: 'allow' };
+  }
+  if (trimmed === 't' || trimmed === 'trust') {
+    return { kind: 'allow', persistTrust: true };
+  }
+  if (trimmed === 'n' || trimmed === 'no' || trimmed === 'deny') {
+    return { kind: 'deny' };
+  }
+  return {
+    kind: 'guidance',
+    userMessage: message,
+  };
+}
+
+function toRuntimeAskQuestionsResult(
+  result: AskQuestionsResult,
+): RuntimeAskQuestionsResult {
+  if (result.status === 'skipped') {
+    return { status: 'skipped' };
+  }
+
+  return {
+    status: 'answered',
+    answers: result.answers ?? [],
+  };
+}
+
+function mapPendingQuestions(
+  pending: RuntimePendingQuestions<DesktopToolRequest>,
+): PendingQuestionsSnapshot {
+  return {
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+    request: {
+      ...(pending.questions.title ? { title: pending.questions.title } : {}),
+      questions: pending.questions.questions.map((question) => ({
+        id: question.id,
+        title: question.title,
+        kind: question.kind,
+        required: question.required === true,
+        options: (question.options ?? []).map((option) => ({
+          label: option.label,
+          ...(option.summary ? { summary: option.summary } : {}),
+        })),
+        allowCustomInput: question.allowCustomInput === true,
+        ...(question.customInputPlaceholder
+          ? { customInputPlaceholder: question.customInputPlaceholder }
+          : {}),
+        ...(question.customInputLabel
+          ? { customInputLabel: question.customInputLabel }
+          : {}),
+      })),
+    },
+  };
+}
+
+function stripPendingThinkingMatchingFinalized(
+  aux: MessageAuxSnapshot | undefined,
+  finalizedText: string,
+): MessageAuxSnapshot | undefined {
+  if (!aux?.thinking) {
+    return aux;
+  }
+  if (aux.thinking.trim() !== finalizedText.trim()) {
+    return aux;
+  }
+  const { thinking: _t, ...rest } = aux;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function stripThinkingFromAux(aux: MessageAuxSnapshot | undefined): MessageAuxSnapshot | undefined {
+  if (!aux?.thinking) {
+    return normalizeMessageAuxSnapshot(aux);
+  }
+  const { thinking: _thinking, ...rest } = aux;
+  return normalizeMessageAuxSnapshot(rest);
+}
+
+function isStandaloneThinkingMessage(
+  message: ConversationMessageSnapshot | undefined,
+): boolean {
+  return Boolean(
+    message?.role === 'assistant' &&
+      !message.tool &&
+      !message.content.trim() &&
+      message.aux?.thinking?.trim(),
+  );
+}
+
+function rewindStandalonePendingAuxInsertIndexForThinking(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+  anchorIndex: number,
+): number {
+  let index = anchorIndex;
+  while (index > 0 && isStandaloneThinkingMessage(messages[index - 1])) {
+    index -= 1;
+  }
+  return index;
+}
+
+function parsePendingSubagentStatusText(text: string | undefined): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  const status = text
+    .trim()
+    .replace(/^[|/\\-]\s*/, '')
+    .trim();
+
+  if (!status || status === 'Thinking...' || status === 'Compressing...') {
+    return undefined;
+  }
+
+  return status;
+}
+
+function isStandaloneSubagentStatusAux(
+  pendingAux: PendingAssistantAux | undefined,
+): boolean {
+  return Boolean(pendingAux && parsePendingSubagentStatusText(pendingAux.statusText));
+}
+
+function shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
+  message: ConversationMessageSnapshot,
+  livePendingAux: PendingAssistantAux | undefined,
+): boolean {
+  return Boolean(
+    isStandaloneSubagentStatusAux(livePendingAux) &&
+      message.role === 'assistant' &&
+      message.pending &&
+      !message.tool &&
+      !message.content.trim(),
+  );
+}
+
+function shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
+  lastMessage: ConversationMessageSnapshot | undefined,
+  persistedStandalonePendingAux: PendingAssistantAux | undefined,
+): boolean {
+  return Boolean(
+    lastMessage?.role === 'assistant' &&
+      isStandaloneSubagentStatusAux(persistedStandalonePendingAux),
+  );
+}
+
+function messageIndexIsInCurrentTurn(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+  index: number,
+): boolean {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  return index > lastUserIdx;
+}
+
+function hasStandaloneThinkingMessageInCurrentTurn(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+): boolean {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  for (let i = lastUserIdx + 1; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (
+      message?.role === 'assistant' &&
+      !message.tool &&
+      !message.content.trim() &&
+      Boolean(message.aux?.thinking?.trim())
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function describeAuxForDebug(aux: MessageAuxSnapshot): string {
+  const parts: string[] = [];
+  if (aux.thinking?.trim()) {
+    parts.push(`T≈${truncateOneLineForDebug(aux.thinking, 28)}`);
+  }
+  if (aux.compaction?.trim()) {
+    parts.push(`C≈${truncateOneLineForDebug(aux.compaction, 28)}`);
+  }
+  return parts.join('+') || 'none';
+}
+
+function describeOptionalAuxForDebug(aux: MessageAuxSnapshot | undefined): string {
+  return aux ? describeAuxForDebug(aux) : 'none';
+}
+
+function normalizeToolBlockSnapshot(
+  tool: ToolBlockSnapshot | undefined,
+): ToolBlockSnapshot | undefined {
+  if (!tool) {
+    return undefined;
+  }
+
+  const toolName = tool.toolName.trim() || 'unknown-tool';
+  const headline = tool.headline.trim() || defaultToolHeadline(tool.phase, toolName);
+  const detailLines = tool.detailLines.filter((line) => line.trim().length > 0);
+  const argsExcerpt = tool.argsExcerpt?.trim() ? tool.argsExcerpt : undefined;
+  const outputExcerpt = tool.outputExcerpt?.trim() ? tool.outputExcerpt : undefined;
+
+  return {
+    ...tool,
+    toolName,
+    headline,
+    detailLines,
+    ...(argsExcerpt ? { argsExcerpt } : {}),
+    ...(outputExcerpt ? { outputExcerpt } : {}),
+  };
+}
+
+function normalizeMessageAuxSnapshot(
+  aux: MessageAuxSnapshot | undefined,
+): MessageAuxSnapshot | undefined {
+  if (!aux) {
+    return undefined;
+  }
+
+  const thinking = aux.thinking?.trim() ? aux.thinking : undefined;
+  const compaction = aux.compaction?.trim() ? aux.compaction : undefined;
+  if (!thinking && !compaction) {
+    return undefined;
+  }
+
+  return {
+    ...(thinking ? { thinking } : {}),
+    ...(compaction ? { compaction } : {}),
+  };
+}
+
+function shouldDropEmptyAssistantMessage(
+  message: ConversationMessageSnapshot,
+  tool: ToolBlockSnapshot | undefined,
+  aux: MessageAuxSnapshot | undefined,
+): boolean {
+  return (
+    message.role === 'assistant' &&
+    !message.pending &&
+    !message.content.trim() &&
+    !tool &&
+    !aux
+  );
+}
+
+function shouldHideEmptyPendingAssistantSnapshot(message: ConversationMessageSnapshot): boolean {
+  return (
+    message.role === 'assistant' &&
+    message.pending &&
+    !message.content.trim() &&
+    !message.tool &&
+    !normalizeMessageAuxSnapshot(message.aux)
+  );
+}
+
+function defaultToolHeadline(
+  phase: ToolBlockSnapshot['phase'],
+  toolName: string,
+): string {
+  switch (phase) {
+    case 'pending-approval':
+      return `等待确认: ${toolName}`;
+    case 'running':
+      return `调用中: ${toolName}`;
+    case 'failed':
+      return `工具执行失败: ${toolName}`;
+    case 'succeeded':
+    default:
+      return `工具执行完成: ${toolName}`;
+  }
+}
+
+/** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为插在「最后一条 user」之后）。 */
+function indexForThinkingInsertBeforeFirstToolAfterLastUser(
+  messages: ConversationMessageSnapshot[],
+): number | undefined {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  for (let i = lastUser + 1; i < messages.length; i += 1) {
+    const m = messages[i];
+    if (m?.role === 'assistant' && m.tool) {
+      return i;
+    }
+  }
+  return undefined;
+}
+
+/** 与 `historyStore` 中最后一条 user 对齐：在其后插入思考，避免审批指导后尚无新工具行时误用 `push` 落到整段末尾。 */
+function indexForThinkingInsertAfterLastUser(messages: ConversationMessageSnapshot[]): number {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  return lastUser < 0 ? 0 : lastUser + 1;
+}
+
+/** 末条 user 之后是否已有其它工具卡为「待审批」或「执行中」（不含当前 toolCallId）。 */
+function hasBlockingToolAheadOfSameTurnPreview(
+  messages: ConversationMessageSnapshot[],
+  thisToolCallId: string,
+): boolean {
+  let lastUser = -1;
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role === 'user') {
+      lastUser = i;
+    }
+  }
+  for (let i = lastUser + 1; i < messages.length; i += 1) {
+    const m = messages[i];
+    if (m?.role !== 'assistant' || !m.tool) {
+      continue;
+    }
+    if (m.tool.toolCallId === thisToolCallId) {
+      continue;
+    }
+    const p = m.tool.phase;
+    if (p === 'pending-approval' || p === 'running') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function headlineForStreamingToolPreview(
+  messages: ConversationMessageSnapshot[],
+  toolCallId: string,
+  toolName: string,
+): string {
+  return hasBlockingToolAheadOfSameTurnPreview(messages, toolCallId)
+    ? `排队中: ${toolName}`
+    : `调用中: ${toolName}`;
+}
+
+function restoreMessagesFromArchive(
+  archive: StoredDesktopSession,
+): ConversationMessageSnapshot[] {
+  const auxByIndex = new Map<number, MessageAuxSnapshot>();
+  for (const entry of archive.assistantAux) {
+    auxByIndex.set(entry.messageIndex, {
+      ...(entry.thinking ? { thinking: entry.thinking } : {}),
+      ...(entry.compaction ? { compaction: entry.compaction } : {}),
+    });
+  }
+
+  return archive.messages.map((message, index) => ({
+    id: index + 1,
+    role: message.role,
+    content: message.content,
+    ...(auxByIndex.get(index) ? { aux: auxByIndex.get(index) } : {}),
+    pending: false,
+  }));
+}
+
+function truncateJson(value: unknown): string {
+  return truncateText(JSON.stringify(value, null, 2), 4_000);
+}
+
+function truncateText(value: string, maxChars: number): string {
+  const chars = Array.from(value);
+  if (chars.length <= maxChars) {
+    return value;
+  }
+  return `${chars.slice(0, maxChars).join('')}...<truncated>`;
+}
+
+function deriveDisplayNameFromSeed(seed: string): string {
+  const trimmed = seed.trim();
+  if (!trimmed) {
+    return 'New conversation';
+  }
+  return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
+}
+
+function deriveDisplayNameFromMessages(messages: ConversationMessageSnapshot[]): string {
+  const firstUser = messages.find(
+    (message) => message.role === 'user' && message.content.trim().length > 0,
+  );
+  return deriveDisplayNameFromSeed(firstUser?.content ?? 'New conversation');
+}
+
+function toolMessageKey(
+  pending:
+    | RuntimePendingApproval<DesktopToolRequest, string>
+    | RuntimePendingQuestions<DesktopToolRequest>,
+): string {
+  return 'toolCallId' in pending && pending.toolCallId
+    ? pending.toolCallId
+    : `pending:${pending.toolName}`;
+}

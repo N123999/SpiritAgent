@@ -1,4 +1,5 @@
 import { stdin, stdout } from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 import {
   appendOpenAiToolResultMessage,
@@ -36,7 +37,10 @@ import {
   type RuntimePendingApproval,
 } from './runtime.js';
 import { JsonRpcPeer } from './host-bridge/framing.js';
-import { HostToolExecutorProxy } from './host-bridge/host-tool-executor.js';
+import {
+  HostToolExecutorProxy,
+  type LocalHostToolService,
+} from './host-bridge/host-tool-executor.js';
 import type {
   BridgeRuntimeSnapshot,
   DrainEventsResult,
@@ -49,8 +53,6 @@ import type {
   RuntimeSubagentSessionParams,
   RuntimeReplaceConfigParams,
   RuntimeReplacePlanMetadataParams,
-  RuntimeReplaceRulesParams,
-  RuntimeReplaceSkillsCatalogParams,
   RuntimeRespondToPendingApprovalParams,
   RuntimeRespondToPendingQuestionsParams,
   RuntimeActivateSkillParams,
@@ -68,6 +70,8 @@ interface ToolExecutionMetadata {
 
 const peer = new JsonRpcPeer(stdin, stdout);
 const toolExecutor = new HostToolExecutorProxy(peer);
+const ENV_HOST_INTERNAL_MODULE_PATH = 'SPIRIT_HOST_INTERNAL_MODULE_PATH';
+const ENV_HOST_INTERNAL_SPIRIT_DATA_DIR = 'SPIRIT_HOST_INTERNAL_SPIRIT_DATA_DIR';
 let runtime: HostRuntime | undefined;
 let transportConfig: OpenAiTransportConfig | undefined;
 let enabledRules: OpenAiEnabledRule[] = [];
@@ -75,6 +79,41 @@ let enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [];
 let activeSkills: OpenAiActiveSkill[] = [];
 let planMetadata: OpenAiPlanMetadata | undefined;
 const llmTransport = new OpenAiTransport();
+
+interface CliHostInternalModule {
+  NodeHostToolService: new (
+    context: { workspaceRoot: string; spiritDataDir: string },
+    options?: { mcp?: unknown },
+  ) => LocalHostToolService;
+  createNoopMcpAdapter?: () => unknown;
+  loadHostInstructionMetadata: (
+    context: { workspaceRoot: string; spiritDataDir: string },
+    options?: { planMode?: boolean },
+  ) => Promise<{
+    rules: { enabledRules: OpenAiEnabledRule[] };
+    skills: { enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] };
+    planMetadata: OpenAiPlanMetadata;
+  }>;
+  discoverRuleEntries: (context: { workspaceRoot: string; spiritDataDir: string }) => Promise<JsonValue>;
+  discoverSkillEntries: (context: { workspaceRoot: string; spiritDataDir: string }) => Promise<JsonValue>;
+  planMetadataSnapshot: (
+    context: { workspaceRoot: string; spiritDataDir: string },
+    planMode: boolean,
+  ) => OpenAiPlanMetadata;
+  resolveInstructionPaths?: (context: { workspaceRoot: string; spiritDataDir: string }) => {
+    rulesStateFile: string;
+    skillsStateFile: string;
+  };
+  saveToggleState?: (filePath: string, state: { enabledOverrides?: Record<string, boolean> }) => Promise<void>;
+}
+
+interface CliHostInternalState {
+  module: CliHostInternalModule;
+  workspaceRoot: string;
+  spiritDataDir: string;
+}
+
+let cliHostInternal: CliHostInternalState | undefined;
 
 function logBridge(message: string, extra?: unknown): void {
   if (extra === undefined) {
@@ -91,6 +130,68 @@ function requireRuntime(): HostRuntime {
   }
 
   return runtime;
+}
+
+function currentWorkspaceRoot(): string {
+  return transportConfig?.workspaceRoot ?? process.cwd();
+}
+
+async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInternalState | undefined> {
+  const modulePath = process.env[ENV_HOST_INTERNAL_MODULE_PATH]?.trim();
+  const spiritDataDir = process.env[ENV_HOST_INTERNAL_SPIRIT_DATA_DIR]?.trim();
+  if (!modulePath || !spiritDataDir) {
+    cliHostInternal = undefined;
+    toolExecutor.setLocalHostService(undefined);
+    return undefined;
+  }
+
+  if (cliHostInternal?.workspaceRoot === workspaceRoot && cliHostInternal.spiritDataDir === spiritDataDir) {
+    return cliHostInternal;
+  }
+
+  const loaded = await import(pathToFileURL(modulePath).href);
+  const module = loaded as unknown as CliHostInternalModule;
+  const service = new module.NodeHostToolService(
+    { workspaceRoot, spiritDataDir },
+    typeof module.createNoopMcpAdapter === 'function'
+      ? { mcp: module.createNoopMcpAdapter() }
+      : undefined,
+  );
+  toolExecutor.setLocalHostService(service);
+  cliHostInternal = {
+    module,
+    workspaceRoot,
+    spiritDataDir,
+  };
+  return cliHostInternal;
+}
+
+async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolean> {
+  const hostInternal = await ensureCliHostInternal(currentWorkspaceRoot());
+  if (!hostInternal) {
+    return false;
+  }
+
+  const metadata = await hostInternal.module.loadHostInstructionMetadata(
+    {
+      workspaceRoot: hostInternal.workspaceRoot,
+      spiritDataDir: hostInternal.spiritDataDir,
+    },
+    { planMode },
+  );
+  enabledRules = [...metadata.rules.enabledRules];
+  enabledSkillCatalog = [...metadata.skills.enabledSkillCatalog];
+  planMetadata = metadata.planMetadata;
+  activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
+  return true;
+}
+
+async function requireCliHostInternal(): Promise<CliHostInternalState> {
+  const hostInternal = await ensureCliHostInternal(currentWorkspaceRoot());
+  if (!hostInternal) {
+    throw new Error('当前 bridge 未配置 host-internal 模块。');
+  }
+  return hostInternal;
 }
 
 function pruneActiveSkillsAgainstCatalog(
@@ -191,7 +292,9 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
 async function drainEvents(): Promise<DrainEventsResult> {
   const target = requireRuntime();
   await toolExecutor.refreshCaches();
-  const events = target.drainEvents();
+  const raw = target.drainEvents();
+  // Rust bridge 仍未消费 streaming-tool-preview；其余事件保持透传，避免 CLI 丢失工具完成消息。
+  const events = raw.filter((event) => event.kind !== 'streaming-tool-preview');
   if (events.length > 0) {
     logBridge('drainEvents', {
       count: events.length,
@@ -208,9 +311,12 @@ peer.on('runtime.init', async (rawParams) => {
   const params = rawParams as RuntimeInitParams;
   logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
-  enabledRules = [...(params.enabledRules ?? [])];
-  enabledSkillCatalog = [...(params.enabledSkillCatalog ?? [])];
-  planMetadata = params.planMetadata;
+  const loadedFromInternal = await reloadHostMetadataFromInternal(params.planMetadata?.planMode ?? false);
+  if (!loadedFromInternal) {
+    enabledRules = [...(params.enabledRules ?? [])];
+    enabledSkillCatalog = [...(params.enabledSkillCatalog ?? [])];
+    planMetadata = params.planMetadata;
+  }
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
   return buildSnapshot(runtime);
@@ -220,28 +326,93 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   const params = rawParams as RuntimeReplaceConfigParams;
   logBridge('runtime.replaceConfig', { model: params.transportConfig.model });
   transportConfig = params.transportConfig;
+  await reloadHostMetadataFromInternal(planMetadata?.planMode ?? false);
   const target = requireRuntime();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   return buildSnapshot(runtime);
 });
 
-peer.on('runtime.replaceRules', async (rawParams) => {
-  const params = rawParams as RuntimeReplaceRulesParams;
-  enabledRules = [...params.enabledRules];
-  return buildSnapshot(requireRuntime());
-});
-
-peer.on('runtime.replaceSkillsCatalog', async (rawParams) => {
-  const params = rawParams as RuntimeReplaceSkillsCatalogParams;
-  enabledSkillCatalog = [...params.enabledSkillCatalog];
-  activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
-  return buildSnapshot(requireRuntime());
-});
-
 peer.on('runtime.replacePlanMetadata', async (rawParams) => {
   const params = rawParams as RuntimeReplacePlanMetadataParams;
-  planMetadata = params.planMetadata;
+  const loadedFromInternal = await reloadHostMetadataFromInternal(
+    params.planMetadata.planMode === true,
+  );
+  if (!loadedFromInternal) {
+    planMetadata = params.planMetadata;
+  }
   return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.reloadHostMetadata', async (rawParams) => {
+  const params = (rawParams ?? {}) as { planMode?: boolean };
+  await reloadHostMetadataFromInternal(params.planMode === true);
+  return buildSnapshot(requireRuntime());
+});
+
+peer.on('hostInternal.loadCliMetadata', async (rawParams) => {
+  const params = (rawParams ?? {}) as { planMode?: boolean };
+  const hostInternal = await requireCliHostInternal();
+  return {
+    ruleEntries: await hostInternal.module.discoverRuleEntries({
+      workspaceRoot: hostInternal.workspaceRoot,
+      spiritDataDir: hostInternal.spiritDataDir,
+    }),
+    skillEntries: await hostInternal.module.discoverSkillEntries({
+      workspaceRoot: hostInternal.workspaceRoot,
+      spiritDataDir: hostInternal.spiritDataDir,
+    }),
+    planMetadata: hostInternal.module.planMetadataSnapshot(
+      {
+        workspaceRoot: hostInternal.workspaceRoot,
+        spiritDataDir: hostInternal.spiritDataDir,
+      },
+      params.planMode === true,
+    ),
+  };
+});
+
+peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
+  const params = (rawParams ?? {}) as { planMode?: boolean };
+  const hostInternal = await requireCliHostInternal();
+  return hostInternal.module.planMetadataSnapshot(
+    {
+      workspaceRoot: hostInternal.workspaceRoot,
+      spiritDataDir: hostInternal.spiritDataDir,
+    },
+    params.planMode === true,
+  );
+});
+
+peer.on('hostInternal.writeRuleState', async (rawParams) => {
+  const params = (rawParams ?? {}) as { enabledOverrides?: Record<string, boolean> };
+  const hostInternal = await requireCliHostInternal();
+  if (!hostInternal.module.resolveInstructionPaths || !hostInternal.module.saveToggleState) {
+    throw new Error('host-internal 模块未导出规则状态写入所需接口。');
+  }
+  const paths = hostInternal.module.resolveInstructionPaths({
+    workspaceRoot: hostInternal.workspaceRoot,
+    spiritDataDir: hostInternal.spiritDataDir,
+  });
+  await hostInternal.module.saveToggleState(paths.rulesStateFile, {
+    enabledOverrides: params.enabledOverrides ?? {},
+  });
+  return paths.rulesStateFile;
+});
+
+peer.on('hostInternal.writeSkillState', async (rawParams) => {
+  const params = (rawParams ?? {}) as { enabledOverrides?: Record<string, boolean> };
+  const hostInternal = await requireCliHostInternal();
+  if (!hostInternal.module.resolveInstructionPaths || !hostInternal.module.saveToggleState) {
+    throw new Error('host-internal 模块未导出技能状态写入所需接口。');
+  }
+  const paths = hostInternal.module.resolveInstructionPaths({
+    workspaceRoot: hostInternal.workspaceRoot,
+    spiritDataDir: hostInternal.spiritDataDir,
+  });
+  await hostInternal.module.saveToggleState(paths.skillsStateFile, {
+    enabledOverrides: params.enabledOverrides ?? {},
+  });
+  return paths.skillsStateFile;
 });
 
 peer.on('runtime.activateSkill', async (rawParams) => {

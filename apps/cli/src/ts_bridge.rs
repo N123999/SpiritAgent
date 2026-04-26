@@ -7,20 +7,19 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{Arc, Mutex, mpsc::{self, Receiver, Sender, TryRecvError}},
+    sync::{Arc, Mutex, mpsc::{self, Receiver}},
     thread,
 };
 
 use crate::{
-    adapters::WorkspaceToolExecutor,
     ask_questions::AskQuestionsRequest,
     host_runtime::{
-        RuntimeEvent, build_tool_result_block, format_tool_ui_message, openapi_tool_name,
+        RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message,
         tool_approval_block, tool_failed_block,
     },
     llm_types::LlmMessage,
     logging,
-    mcp::McpServerConfig,
+    mcp::{McpServerConfig, add_mcp_server, spirit_agent_data_dir},
     mcp_types::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
@@ -29,22 +28,21 @@ use crate::{
     plan::PlanMetadata,
     ports::{
         ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot,
-        SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary, ToolExecutor,
+        SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
-    rules::EnabledRule,
+    rules::{EnabledRule, RuleEntry},
     runtime_handle::RuntimeExportState,
     session::{PendingMcpResource, SessionModel},
-    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
-    tool_runtime::{AuthorizationDecision, ToolRequest, ToolRuntime, TrustTarget},
+    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry, SkillEntry},
     view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 const ENV_RUNTIME_BACKEND_NODE_PATH: &str = "SPIRIT_NODE_PATH";
 const ENV_RUNTIME_BRIDGE_PATH: &str = "SPIRIT_AGENT_CORE_BRIDGE_PATH";
+const ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH: &str = "SPIRIT_HOST_INTERNAL_MODULE_PATH";
+const ENV_RUNTIME_HOST_INTERNAL_SPIRIT_DATA_DIR: &str = "SPIRIT_HOST_INTERNAL_SPIRIT_DATA_DIR";
 const ENV_API_BASE: &str = "SPIRIT_API_BASE";
 const ENV_API_KEY: &str = "SPIRIT_API_KEY";
-const MODEL_SWITCH_BUSY_MESSAGE: &str =
-    "当前有进行中的对话，暂不支持在 TS backend 下切换模型。请等待当前回合结束后再试。";
 
 pub struct TsBridgeRuntime {
     process: JsonRpcProcess,
@@ -52,7 +50,6 @@ pub struct TsBridgeRuntime {
     secret_store: Arc<dyn SecretStore>,
     workspace_root: PathBuf,
     session: SessionModel,
-    tool_executor: WorkspaceToolExecutor,
     enabled_rules: Vec<EnabledRule>,
     enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
     plan_metadata: PlanMetadata,
@@ -65,9 +62,9 @@ pub struct TsBridgeRuntime {
     child_sessions_cache: Vec<SubagentSessionSummary>,
     subagent_message_cache: HashMap<String, Vec<ChatMessage>>,
     events: VecDeque<RuntimeEvent>,
-    background_tool_completion_tx: Sender<BackgroundToolCompletion>,
-    background_tool_completion_rx: Receiver<BackgroundToolCompletion>,
     bridge_failed: bool,
+    /// 忙时切换模型/endpoint 已写入 `config`，但尚未对 TS `runtime.replaceConfig`；空闲后由 `flush_deferred_transport_replace` 应用。
+    deferred_transport_replace: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,24 +79,6 @@ struct JsonRpcProcess {
     stdin: Arc<Mutex<ChildStdin>>,
     rx: Receiver<Result<Value>>,
     next_id: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HostToolRequestMeta {
-    background_execution: bool,
-    background_status_text: Option<String>,
-    tool_call_id: Option<String>,
-    tool_name: Option<String>,
-    subagent_session_id: Option<String>,
-    subagent_title: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct HostToolRequestEnvelope {
-    request: ToolRequest,
-    #[serde(rename = "__hostMeta")]
-    host_meta: HostToolRequestMeta,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -169,6 +148,8 @@ struct BridgeChatArchive {
     llm_history: Vec<BridgeLlmMessage>,
     #[serde(default)]
     subagent_sessions: Vec<BridgeSubagentSessionArchiveEntry>,
+    #[serde(default)]
+    rewind: Option<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -240,9 +221,36 @@ struct BridgePendingQuestions {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BridgeToolExecution {
+    tool_call_id: String,
+    tool_name: String,
+    request: Value,
+    output: String,
+    failed: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgeDrainEventsResult {
     events: Vec<BridgeRuntimeEvent>,
     snapshot: BridgeRuntimeSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliHostMetadataSnapshot {
+    pub rule_entries: Vec<RuleEntry>,
+    pub skill_entries: Vec<SkillEntry>,
+    pub plan_metadata: PlanMetadata,
+}
+
+fn bootstrap_plan_metadata() -> PlanMetadata {
+    PlanMetadata {
+        path: PathBuf::new(),
+        exists: false,
+        plan_mode: false,
+        plan_mode_host_instructions: String::new(),
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -252,6 +260,8 @@ enum BridgeRuntimeEvent {
     BeginAssistantResponse,
     #[serde(rename = "update-pending-assistant-thinking")]
     UpdatePendingAssistantThinking { text: String },
+    #[serde(rename = "assistant-thinking-segment-finalized")]
+    AssistantThinkingSegmentFinalized { text: String },
     #[serde(rename = "update-pending-assistant-compaction")]
     UpdatePendingAssistantCompaction { text: String },
     #[serde(rename = "assistant-chunk")]
@@ -283,21 +293,8 @@ enum BridgeRuntimeEvent {
         status_text: Option<String>,
         failed: Option<bool>,
     },
-}
-
-#[derive(Debug)]
-struct BackgroundToolCompletion {
-    request: ToolRequest,
-    ui_tool_name: String,
-    tool_call_id: Option<String>,
-    subagent_session_id: Option<String>,
-    result: std::result::Result<String, String>,
-}
-
-#[derive(Clone)]
-struct BackgroundRpcResponseTarget {
-    request_id: u64,
-    stdin: Arc<Mutex<ChildStdin>>,
+    #[serde(rename = "tool-execution-finished")]
+    ToolExecutionFinished { execution: BridgeToolExecution },
 }
 
 impl TsBridgeRuntime {
@@ -305,23 +302,17 @@ impl TsBridgeRuntime {
         config: AppConfig,
         secret_store: Arc<dyn SecretStore>,
         workspace_root: PathBuf,
-        enabled_rules: Vec<EnabledRule>,
-        enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
-        plan_metadata: PlanMetadata,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
-        let (background_tool_completion_tx, background_tool_completion_rx) =
-            mpsc::channel::<BackgroundToolCompletion>();
         let mut runtime = Self {
             process,
             config,
             secret_store,
             workspace_root,
             session: SessionModel::new(),
-            tool_executor: WorkspaceToolExecutor::new(),
-            enabled_rules,
-            enabled_skill_catalog,
-            plan_metadata,
+            enabled_rules: Vec::new(),
+            enabled_skill_catalog: Vec::new(),
+            plan_metadata: bootstrap_plan_metadata(),
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
@@ -331,9 +322,8 @@ impl TsBridgeRuntime {
             child_sessions_cache: Vec::new(),
             subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
-            background_tool_completion_tx,
-            background_tool_completion_rx,
             bridge_failed: false,
+            deferred_transport_replace: false,
         };
         logging::log_event(&format!(
             "[ts-bridge-host] runtime init workspace_root={}",
@@ -348,23 +338,15 @@ impl TsBridgeRuntime {
         workspace_root: PathBuf,
     ) -> Result<Self> {
         let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
-        let (background_tool_completion_tx, background_tool_completion_rx) =
-            mpsc::channel::<BackgroundToolCompletion>();
         let mut runtime = Self {
             process,
             config: AppConfig::default(),
             secret_store,
             workspace_root,
             session: SessionModel::new(),
-            tool_executor: WorkspaceToolExecutor::new(),
             enabled_rules: Vec::new(),
             enabled_skill_catalog: Vec::new(),
-            plan_metadata: PlanMetadata {
-                path: PathBuf::new(),
-                exists: false,
-                plan_mode: false,
-                plan_mode_host_instructions: String::new(),
-            },
+            plan_metadata: bootstrap_plan_metadata(),
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
@@ -374,9 +356,8 @@ impl TsBridgeRuntime {
             child_sessions_cache: Vec::new(),
             subagent_message_cache: HashMap::new(),
             events: VecDeque::new(),
-            background_tool_completion_tx,
-            background_tool_completion_rx,
             bridge_failed: false,
+            deferred_transport_replace: false,
         };
         runtime.initialize_bridge_with_transport_config(build_mcp_only_transport_config(
             &runtime.workspace_root,
@@ -393,31 +374,12 @@ impl TsBridgeRuntime {
             return Ok(());
         }
 
-        if self.is_busy_cache || self.session.pending_user_turn().is_some() {
-            return Err(anyhow!(MODEL_SWITCH_BUSY_MESSAGE));
-        }
-
         self.resolve_transport_config_json_for(config).map(|_| ())
     }
 
-    pub fn replace_config(&mut self, config: AppConfig) {
-        let transport_config_changed = self.transport_config_will_change(&config);
-        if let Err(err) = self.validate_config_change(&config) {
-            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                MessageRole::Agent,
-                err.to_string(),
-            )));
-            return;
-        }
-
-        if !transport_config_changed {
-            self.config = config;
-            return;
-        }
-
+    fn apply_transport_to_bridge(&mut self) {
         let pending_images = self.session.pending_image_paths().to_vec();
         let pending_resources = self.session.pending_mcp_resources().to_vec();
-        self.config = config;
         let transport_config = match self.resolve_transport_config_json() {
             Ok(value) => value,
             Err(err) => {
@@ -452,56 +414,42 @@ impl TsBridgeRuntime {
         }
     }
 
-    pub fn replace_rules(&mut self, rules: Vec<EnabledRule>) {
-        self.enabled_rules = rules;
-        if self.bridge_failed {
+    fn flush_deferred_transport_replace(&mut self) {
+        if !self.deferred_transport_replace {
             return;
         }
-
-        let snapshot = match self.call_bridge(
-            "runtime.replaceRules",
-            Some(json!({
-                "enabledRules": self.enabled_rules,
-            })),
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.handle_bridge_error(err);
-                return;
-            }
-        };
-
-        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
-            Ok(snapshot) => self.apply_snapshot(snapshot),
-            Err(err) => self.handle_bridge_error(anyhow!("解析 TS replaceRules snapshot 失败: {}", err)),
+        if self.is_busy_cache || self.session.pending_user_turn().is_some() {
+            return;
         }
+        self.deferred_transport_replace = false;
+        self.apply_transport_to_bridge();
     }
 
-    pub fn replace_skills_catalog(&mut self, catalog: Vec<EnabledSkillCatalogEntry>) {
-        self.enabled_skill_catalog = catalog;
-        if self.bridge_failed {
+    pub fn replace_config(&mut self, config: AppConfig) {
+        let transport_config_changed = self.transport_config_will_change(&config);
+        if let Err(err) = self.validate_config_change(&config) {
+            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                MessageRole::Agent,
+                err.to_string(),
+            )));
             return;
         }
 
-        let snapshot = match self.call_bridge(
-            "runtime.replaceSkillsCatalog",
-            Some(json!({
-                "enabledSkillCatalog": self.enabled_skill_catalog,
-            })),
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.handle_bridge_error(err);
-                return;
-            }
-        };
-
-        match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
-            Ok(snapshot) => self.apply_snapshot(snapshot),
-            Err(err) => {
-                self.handle_bridge_error(anyhow!("解析 TS replaceSkillsCatalog snapshot 失败: {}", err))
-            }
+        if !transport_config_changed {
+            self.config = config;
+            return;
         }
+
+        let busy_defer = self.is_busy_cache || self.session.pending_user_turn().is_some();
+        self.config = config;
+
+        if busy_defer {
+            self.deferred_transport_replace = true;
+            return;
+        }
+
+        self.deferred_transport_replace = false;
+        self.apply_transport_to_bridge();
     }
 
     pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {
@@ -543,6 +491,71 @@ impl TsBridgeRuntime {
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
+        Ok(())
+    }
+
+    pub fn load_cli_host_metadata(&mut self, plan_mode: bool) -> Result<CliHostMetadataSnapshot> {
+        let value = self.call_bridge(
+            "hostInternal.loadCliMetadata",
+            Some(json!({
+                "planMode": plan_mode,
+            })),
+        )?;
+        let metadata: CliHostMetadataSnapshot = serde_json::from_value(value)?;
+        self.plan_metadata = metadata.plan_metadata.clone();
+        Ok(metadata)
+    }
+
+    pub fn load_plan_metadata(&mut self, plan_mode: bool) -> Result<PlanMetadata> {
+        let value = self.call_bridge(
+            "hostInternal.loadPlanMetadata",
+            Some(json!({
+                "planMode": plan_mode,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn write_rule_state(
+        &mut self,
+        enabled_overrides: std::collections::BTreeMap<String, bool>,
+    ) -> Result<PathBuf> {
+        let value = self.call_bridge(
+            "hostInternal.writeRuleState",
+            Some(json!({
+                "enabledOverrides": enabled_overrides,
+            })),
+        )?;
+        let path = value
+            .as_str()
+            .ok_or_else(|| anyhow!("hostInternal.writeRuleState 返回值无效"))?;
+        Ok(PathBuf::from(path))
+    }
+
+    pub fn write_skill_state(
+        &mut self,
+        enabled_overrides: std::collections::BTreeMap<String, bool>,
+    ) -> Result<PathBuf> {
+        let value = self.call_bridge(
+            "hostInternal.writeSkillState",
+            Some(json!({
+                "enabledOverrides": enabled_overrides,
+            })),
+        )?;
+        let path = value
+            .as_str()
+            .ok_or_else(|| anyhow!("hostInternal.writeSkillState 返回值无效"))?;
+        Ok(PathBuf::from(path))
+    }
+
+    pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
+        let value = self.call_bridge(
+            "runtime.reloadHostMetadata",
+            Some(json!({
+                "planMode": plan_mode,
+            })),
+        )?;
+        self.apply_snapshot(serde_json::from_value(value)?);
         Ok(())
     }
 
@@ -629,6 +642,7 @@ impl TsBridgeRuntime {
                         .collect(),
                 })
                 .collect(),
+            rewind: bridge_archive.rewind,
         })
     }
 
@@ -738,7 +752,6 @@ impl TsBridgeRuntime {
     }
 
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
-        self.drain_background_tool_completions();
         self.events.drain(..).collect()
     }
 
@@ -760,7 +773,6 @@ impl TsBridgeRuntime {
     }
 
     pub fn poll(&mut self) {
-        self.drain_background_tool_completions();
         if self.bridge_failed || !self.should_poll_bridge() {
             return;
         }
@@ -943,7 +955,7 @@ impl TsBridgeRuntime {
     }
 
     pub fn add_mcp_server(&mut self, name: &str, config: McpServerConfig) -> Result<PathBuf> {
-        let path = self.tool_executor.add_mcp_server(name, config)?;
+        let path = add_mcp_server(&self.workspace_root, name, config)?;
         let _ = self.call_bridge("runtime.startMcpBackgroundRefresh", None)?;
         Ok(path)
     }
@@ -1211,14 +1223,10 @@ impl TsBridgeRuntime {
         let params = message.get("params").cloned();
         let request_id = message.get("id").and_then(Value::as_u64);
 
-        if method == "host.execute"
-            && self.try_start_background_host_execute(request_id, params.clone())?
-        {
-            return Ok(());
-        }
-
         let response = match self.dispatch_host_method(&method, params) {
-            Ok(result) => request_id.map(|id| json!({ "jsonrpc": "2.0", "id": id, "result": result.unwrap_or(Value::Null) })),
+            Ok(result) => request_id.map(|id| {
+                json!({ "jsonrpc": "2.0", "id": id, "result": result.unwrap_or(Value::Null) })
+            }),
             Err(err) => request_id.map(|id| json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -1235,216 +1243,17 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
-    fn try_start_background_host_execute(
-        &mut self,
-        request_id: Option<u64>,
-        params: Option<Value>,
-    ) -> Result<bool> {
-        let Some(request_id) = request_id else {
-            return Ok(false);
-        };
-        let (request, meta) = request_with_meta_from_envelope(params)?;
-        let Some(meta) = meta.filter(|meta| meta.background_execution) else {
-            return Ok(false);
-        };
-
-        self.start_background_host_execute(request_id, request, meta);
-        Ok(true)
-    }
-
-    fn start_background_host_execute(
-        &mut self,
-        request_id: u64,
-        request: ToolRequest,
-        meta: HostToolRequestMeta,
-    ) {
-        let ui_tool_name = meta
-            .tool_name
-            .unwrap_or_else(|| openapi_tool_name(&request).to_string());
-        start_background_tool_worker(
-            self.workspace_root.clone(),
-            request,
-            ui_tool_name,
-            meta.tool_call_id,
-            meta.subagent_session_id,
-            meta.subagent_title,
-            self.background_tool_completion_tx.clone(),
-            Some(BackgroundRpcResponseTarget {
-                request_id,
-                stdin: Arc::clone(&self.process.stdin),
-            }),
-        );
-    }
-
-    fn drain_background_tool_completions(&mut self) {
-        loop {
-            match self.background_tool_completion_rx.try_recv() {
-                Ok(completion) => self.apply_background_tool_completion(completion),
-                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
-            }
-        }
-    }
-
-    fn apply_background_tool_completion(&mut self, completion: BackgroundToolCompletion) {
-        match completion.result {
-            Ok(output) => {
-                if let Some(session_id) = completion.subagent_session_id.as_deref() {
-                    self.push_subagent_tool_result(
-                        session_id,
-                        &completion.request,
-                        &completion.ui_tool_name,
-                        completion.tool_call_id.as_deref(),
-                        &output,
-                    );
-                } else {
-                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                        MessageRole::Agent,
-                        format_tool_ui_message(&completion.request, &completion.ui_tool_name, &output),
-                        build_tool_result_block(
-                            &completion.request,
-                            &completion.ui_tool_name,
-                            completion.tool_call_id.as_deref(),
-                            &output,
-                        ),
-                    )));
-                }
-            }
-            Err(err) => {
-                if let Some(session_id) = completion.subagent_session_id.as_deref() {
-                    self.push_subagent_tool_failure(
-                        session_id,
-                        &completion.ui_tool_name,
-                        completion.tool_call_id.as_deref(),
-                        &err,
-                    );
-                } else {
-                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                        MessageRole::Agent,
-                        format!("工具执行失败: {}", err),
-                        tool_failed_block(
-                            &completion.ui_tool_name,
-                            completion.tool_call_id.as_deref(),
-                            "工具执行失败",
-                            &err,
-                        ),
-                    )));
-                }
-            }
-        }
-    }
-
     fn dispatch_host_method(&mut self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
         match method {
-            "host.toolDefinitionsJson" => Ok(Some(self.tool_executor.tool_definitions_json())),
-            "host.parseCommand" => {
-                let message = params
-                    .and_then(|value| value.get("message").cloned())
-                    .and_then(|value| value.as_str().map(ToString::to_string))
-                    .ok_or_else(|| anyhow!("host.parseCommand 缺少 message"))?;
-                let request = self.tool_executor.parse_command(&message)?;
-                Ok(Some(serde_json::to_value(envelope_for_request(request))?))
-            }
-            "host.requestFromFunctionCall" => {
-                let params = params.ok_or_else(|| anyhow!("host.requestFromFunctionCall 缺少 params"))?;
-                let name = params
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("host.requestFromFunctionCall 缺少 name"))?;
-                let arguments_json = params
-                    .get("argumentsJson")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("host.requestFromFunctionCall 缺少 argumentsJson"))?;
-                let request = self
-                    .tool_executor
-                    .request_from_function_call(name, arguments_json)?;
-                Ok(Some(serde_json::to_value(envelope_for_request(request))?))
-            }
-            "host.authorize" => {
-                let request = request_from_envelope(params)?;
-                Ok(Some(authorization_decision_to_value(
-                    self.tool_executor.authorize(&request)?,
-                )?))
-            }
-            "host.trust" => {
-                let target = params
-                    .and_then(|value| value.get("target").cloned())
-                    .ok_or_else(|| anyhow!("host.trust 缺少 target"))?;
-                let trust_target: TrustTarget = serde_json::from_value(target)?;
-                self.tool_executor.trust(&trust_target)?;
-                Ok(Some(Value::Null))
-            }
-            "host.execute" => {
-                let (request, meta) = request_with_meta_from_envelope(params)?;
-                let ui_tool_name = meta
-                    .as_ref()
-                    .and_then(|value| value.tool_name.clone())
-                    .unwrap_or_else(|| openapi_tool_name(&request).to_string());
-                let tool_call_id = meta.as_ref().and_then(|value| value.tool_call_id.as_deref());
-                let subagent_session_id = meta
-                    .as_ref()
-                    .and_then(|value| value.subagent_session_id.as_deref());
-                match self.tool_executor.execute(&request) {
-                    Ok(output) => {
-                        if let Some(session_id) = subagent_session_id {
-                            self.push_subagent_tool_result(
-                                session_id,
-                                &request,
-                                &ui_tool_name,
-                                tool_call_id,
-                                &output,
-                            );
-                        } else {
-                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                                MessageRole::Agent,
-                                format_tool_ui_message(&request, &ui_tool_name, &output),
-                                build_tool_result_block(
-                                    &request,
-                                    &ui_tool_name,
-                                    tool_call_id,
-                                    &output,
-                                ),
-                            )));
-                        }
-                        logging::log_event(&format!(
-                            "[ts-bridge-host] host.execute success tool={} tool_call_id={} subagent_session_id={} output_chars={}",
-                            ui_tool_name,
-                            tool_call_id.unwrap_or("<none>"),
-                            subagent_session_id.unwrap_or("<none>"),
-                            output.chars().count()
-                        ));
-                        Ok(Some(Value::String(output)))
-                    }
-                    Err(err) => {
-                        if let Some(session_id) = subagent_session_id {
-                            self.push_subagent_tool_failure(
-                                session_id,
-                                &ui_tool_name,
-                                tool_call_id,
-                                &err.to_string(),
-                            );
-                        } else {
-                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                                MessageRole::Agent,
-                                format!("工具执行失败: {}", err),
-                                tool_failed_block(
-                                    &ui_tool_name,
-                                    tool_call_id,
-                                    "工具执行失败",
-                                    &err.to_string(),
-                                ),
-                            )));
-                        }
-                        logging::log_event(&format!(
-                            "[ts-bridge-host] host.execute failed tool={} tool_call_id={} subagent_session_id={} error={}",
-                            ui_tool_name,
-                            tool_call_id.unwrap_or("<none>"),
-                            subagent_session_id.unwrap_or("<none>"),
-                            err
-                        ));
-                        Err(err)
-                    }
-                }
-            }
+            "host.builtinToolDefinitionEnvironment"
+            | "host.parseCommand"
+            | "host.requestFromFunctionCall"
+            | "host.authorize"
+            | "host.trust"
+            | "host.execute" => Err(anyhow!(
+                "CLI TS bridge 已切换到 host-internal，本回调不应再被调用: {}",
+                method
+            )),
             "host.addMcpServer" => {
                 let params = params.ok_or_else(|| anyhow!("host.addMcpServer 缺少 params"))?;
                 let name = params
@@ -1457,7 +1266,7 @@ impl TsBridgeRuntime {
                         .cloned()
                         .ok_or_else(|| anyhow!("host.addMcpServer 缺少 config"))?,
                 )?;
-                let path = self.tool_executor.add_mcp_server(name, config)?;
+                let path = add_mcp_server(&self.workspace_root, name, config)?;
                 Ok(Some(Value::String(path.display().to_string())))
             }
             "host.localToolExecuted" => {
@@ -1547,6 +1356,7 @@ impl TsBridgeRuntime {
         });
         self.pending_questions_active = snapshot.has_pending_questions;
         self.is_busy_cache = snapshot.is_busy;
+        self.flush_deferred_transport_replace();
     }
 
     fn should_poll_bridge(&self) -> bool {
@@ -1563,6 +1373,10 @@ impl TsBridgeRuntime {
                 BridgeRuntimeEvent::UpdatePendingAssistantThinking { text } => {
                     self.events
                         .push_back(RuntimeEvent::UpdatePendingAssistantThinking(text));
+                }
+                BridgeRuntimeEvent::AssistantThinkingSegmentFinalized { text } => {
+                    self.events
+                        .push_back(RuntimeEvent::AssistantThinkingSegmentFinalized(text));
                 }
                 BridgeRuntimeEvent::UpdatePendingAssistantCompaction { text } => {
                     self.events
@@ -1588,7 +1402,7 @@ impl TsBridgeRuntime {
                 }
                 BridgeRuntimeEvent::ApprovalRequested { approval } => {
                     if let Some(session_id) = approval.subagent_session_id.as_deref() {
-                        match serde_json::from_value::<ToolRequest>(approval.request.clone()) {
+                        match tool_request_from_host_value(approval.request.clone()) {
                             Ok(_) => self.push_subagent_live_message(
                                 session_id,
                                 ChatMessage::with_tool_block(
@@ -1642,6 +1456,67 @@ impl TsBridgeRuntime {
                     )));
                 }
                 BridgeRuntimeEvent::BackgroundToolStatus { .. } => {}
+                BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
+                    match tool_request_from_host_value(execution.request) {
+                        Ok(request) => {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                if execution.failed {
+                                    format!("工具执行失败: {}", execution.output)
+                                } else {
+                                    format_tool_ui_message(
+                                        &request,
+                                        &execution.tool_name,
+                                        &execution.output,
+                                    )
+                                },
+                                if execution.failed {
+                                    tool_failed_block(
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        "工具执行失败",
+                                        &execution.output,
+                                    )
+                                } else {
+                                    build_tool_result_block(
+                                        &request,
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        &execution.output,
+                                    )
+                                },
+                            )));
+                        }
+                        Err(err) => {
+                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                if execution.failed {
+                                    format!("工具执行失败（请求解析失败）: {}", execution.output)
+                                } else {
+                                    format!(
+                                        "工具执行完成（请求解析失败）: {}\n{}",
+                                        err, execution.output
+                                    )
+                                },
+                                if execution.failed {
+                                    tool_failed_block(
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        "工具执行失败",
+                                        &execution.output,
+                                    )
+                                } else {
+                                    tool_failed_block(
+                                        &execution.tool_name,
+                                        Some(execution.tool_call_id.as_str()),
+                                        "工具执行完成但请求解析失败",
+                                        &err.to_string(),
+                                    )
+                                },
+                            )));
+                        }
+                    }
+                }
             }
         }
     }
@@ -1704,7 +1579,7 @@ impl TsBridgeRuntime {
     fn push_subagent_tool_result(
         &mut self,
         session_id: &str,
-        request: &ToolRequest,
+        request: &ToolUiRequest,
         tool_name: &str,
         tool_call_id: Option<&str>,
         output: &str,
@@ -1781,17 +1656,32 @@ impl TsBridgeRuntime {
                 format!("TS runtime 执行失败: {}", summary)
             },
         )));
+        self.flush_deferred_transport_replace();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn deferred_transport_replace_for_test(&self) -> bool {
+        self.deferred_transport_replace
     }
 }
 
 impl JsonRpcProcess {
     fn spawn(script_path: PathBuf) -> Result<Self> {
         let node_path = env::var(ENV_RUNTIME_BACKEND_NODE_PATH).unwrap_or_else(|_| "node".to_string());
-        let mut child = Command::new(&node_path)
+        let mut command = Command::new(&node_path);
+        command
             .arg(script_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        let host_internal_path = resolve_host_internal_module_path()?;
+        command.env(ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH, host_internal_path);
+        command.env(
+            ENV_RUNTIME_HOST_INTERNAL_SPIRIT_DATA_DIR,
+            spirit_agent_data_dir(),
+        );
+
+        let mut child = command
             .spawn()
             .with_context(|| format!("启动 TS bridge 失败: {}", node_path))?;
 
@@ -1900,6 +1790,37 @@ fn resolve_bridge_script(workspace_root: &Path) -> Result<PathBuf> {
     ))
 }
 
+fn resolve_host_internal_module_path() -> Result<PathBuf> {
+    if let Ok(path) = env::var(ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH) {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        return Err(anyhow!(
+            "环境变量 {} 指向的 host-internal 模块不存在: {}",
+            ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH,
+            candidate.display()
+        ));
+    }
+
+    let from_crate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("packages")
+        .join("host-internal")
+        .join("dist")
+        .join("index.js");
+    if from_crate.exists() {
+        return Ok(from_crate);
+    }
+
+    Err(anyhow!(
+        "未找到 host-internal bridge 模块。请先构建 packages/host-internal，或设置 {} 指向其 dist/index.js。默认查找路径: {}",
+        ENV_RUNTIME_HOST_INTERNAL_MODULE_PATH,
+        from_crate.display()
+    ))
+}
+
 fn spawn_stdout_reader(stdout: ChildStdout, tx: mpsc::Sender<Result<Value>>) {
     thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
@@ -1982,79 +1903,6 @@ fn llm_history_to_json(history: &[LlmMessage]) -> Vec<Value> {
         .collect()
 }
 
-fn start_background_tool_worker(
-    workspace_root: PathBuf,
-    request: ToolRequest,
-    ui_tool_name: String,
-    tool_call_id: Option<String>,
-    subagent_session_id: Option<String>,
-    subagent_title: Option<String>,
-    completion_tx: Sender<BackgroundToolCompletion>,
-    response_target: Option<BackgroundRpcResponseTarget>,
-) {
-    thread::spawn(move || {
-        let request_for_worker = request.clone();
-        let result = execute_background_tool_request_sync(&workspace_root, &request_for_worker)
-            .map_err(|err| err.to_string());
-
-        if let Some(target) = response_target {
-            let payload = background_tool_json_rpc_response(target.request_id, &result);
-            if let Err(err) = write_message_to_stdin(&target.stdin, &payload) {
-                logging::log_event(&format!(
-                    "[ts-bridge-host] host.execute response write failed tool={} request_id={} error={}",
-                    ui_tool_name, target.request_id, err
-                ));
-            }
-        }
-
-        match &result {
-            Ok(output) => logging::log_event(&format!(
-                "[ts-bridge-host] background tool success tool={} tool_call_id={} subagent_title={} output_chars={}",
-                ui_tool_name,
-                tool_call_id.as_deref().unwrap_or("<none>"),
-                subagent_title.as_deref().unwrap_or("<none>"),
-                output.chars().count()
-            )),
-            Err(err) => logging::log_event(&format!(
-                "[ts-bridge-host] background tool failed tool={} tool_call_id={} subagent_title={} error={}",
-                ui_tool_name,
-                tool_call_id.as_deref().unwrap_or("<none>"),
-                subagent_title.as_deref().unwrap_or("<none>"),
-                err
-            )),
-        }
-
-        let _ = completion_tx.send(BackgroundToolCompletion {
-            request,
-            ui_tool_name,
-            tool_call_id,
-            subagent_session_id,
-            result,
-        });
-    });
-}
-
-fn background_tool_json_rpc_response(
-    request_id: u64,
-    result: &std::result::Result<String, String>,
-) -> Value {
-    match result {
-        Ok(output) => json!({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": output,
-        }),
-        Err(err) => json!({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": {
-                "code": -32000,
-                "message": err,
-            }
-        }),
-    }
-}
-
 fn write_message_to_stdin(stdin: &Arc<Mutex<ChildStdin>>, payload: &Value) -> Result<()> {
     let body = serde_json::to_vec(payload)?;
     let header = format!("Content-Length: {}\r\n\r\n", body.len());
@@ -2071,58 +1919,6 @@ fn is_json_rpc_response(message: &Value) -> bool {
     message.get("id").is_some() && (message.get("result").is_some() || message.get("error").is_some())
 }
 
-fn envelope_for_request(request: ToolRequest) -> HostToolRequestEnvelope {
-    HostToolRequestEnvelope {
-        host_meta: HostToolRequestMeta {
-            background_execution: should_execute_tool_in_background(&request),
-            background_status_text: background_tool_status_text(&request),
-            tool_call_id: None,
-            tool_name: None,
-            subagent_session_id: None,
-            subagent_title: None,
-        },
-        request,
-    }
-}
-
-fn request_from_envelope(params: Option<Value>) -> Result<ToolRequest> {
-    Ok(request_with_meta_from_envelope(params)?.0)
-}
-
-fn request_with_meta_from_envelope(
-    params: Option<Value>,
-) -> Result<(ToolRequest, Option<HostToolRequestMeta>)> {
-    let params = params.ok_or_else(|| anyhow!("host 请求缺少 params"))?;
-    let raw_request = params
-        .get("request")
-        .cloned()
-        .ok_or_else(|| anyhow!("host 请求缺少 request"))?;
-    if raw_request.get("request").is_some() {
-        let envelope: HostToolRequestEnvelope = serde_json::from_value(raw_request)?;
-        return Ok((envelope.request, Some(envelope.host_meta)));
-    }
-
-    Ok((serde_json::from_value(raw_request)?, None))
-}
-
-fn authorization_decision_to_value(decision: AuthorizationDecision) -> Result<Value> {
-    match decision {
-        AuthorizationDecision::Allowed => Ok(json!({ "kind": "allowed" })),
-        AuthorizationDecision::NeedApproval {
-            prompt,
-            trust_target,
-        } => Ok(json!({
-            "kind": "need-approval",
-            "prompt": prompt,
-            "trustTarget": trust_target,
-        })),
-        AuthorizationDecision::NeedQuestions { questions } => Ok(json!({
-            "kind": "need-questions",
-            "questions": questions,
-        })),
-    }
-}
-
 fn approval_decision_from_input(message: &str) -> Value {
     let decision = message.trim().to_lowercase();
     match decision.as_str() {
@@ -2133,43 +1929,6 @@ fn approval_decision_from_input(message: &str) -> Value {
             "kind": "guidance",
             "userMessage": message,
         }),
-    }
-}
-
-fn should_execute_tool_in_background(request: &ToolRequest) -> bool {
-    matches!(
-        request,
-        ToolRequest::Search { .. } | ToolRequest::WebFetch { .. }
-    )
-}
-
-fn background_tool_status_text(request: &ToolRequest) -> Option<String> {
-    match request {
-        ToolRequest::Search { query } => Some(format!("搜索中: {}", query)),
-        ToolRequest::WebFetch { url } => Some(format!("抓取网页: {}", truncate_background_status_url(url))),
-        _ => None,
-    }
-}
-
-fn truncate_background_status_url(url: &str) -> String {
-    const MAX: usize = 120;
-    if url.chars().count() <= MAX {
-        return url.to_string();
-    }
-    let mut out: String = url.chars().take(MAX.saturating_sub(1)).collect();
-    out.push('…');
-    out
-}
-
-fn execute_background_tool_request_sync(
-    workspace_root: &PathBuf,
-    request: &ToolRequest,
-) -> Result<String> {
-    match request {
-        ToolRequest::Search { .. } | ToolRequest::WebFetch { .. } => {
-            ToolRuntime::new_for_workspace(workspace_root.clone()).execute(request)
-        }
-        _ => Err(anyhow!("后台工具执行收到不支持的请求")),
     }
 }
 
@@ -2185,18 +1944,16 @@ fn build_mcp_only_transport_config(workspace_root: &Path) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        BridgeRuntimeEvent, BridgeRuntimeSnapshot, ENV_RUNTIME_BACKEND_NODE_PATH,
-        MODEL_SWITCH_BUSY_MESSAGE, TsBridgeRuntime,
-        background_tool_json_rpc_response, resolve_bridge_script,
+        BridgeRuntimeEvent, BridgeRuntimeSnapshot, BridgeToolExecution,
+        ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime, resolve_bridge_script,
     };
     use crate::{
         host_runtime::RuntimeEvent,
         model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
-        plan::PlanMetadata,
         ports::SecretStore,
     };
     use anyhow::{Result, anyhow};
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::{env, path::PathBuf, process::Command, sync::Arc};
 
     struct StubSecretStore;
@@ -2262,19 +2019,7 @@ mod tests {
             ui_locale: None,
         };
 
-        TsBridgeRuntime::new(
-            config,
-            Arc::new(StubSecretStore),
-            workspace_root,
-            vec![],
-            vec![],
-            PlanMetadata {
-                path: PathBuf::new(),
-                exists: false,
-                plan_mode: false,
-                plan_mode_host_instructions: String::new(),
-            },
-        )
+        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root)
         .ok()
     }
 
@@ -2304,8 +2049,25 @@ mod tests {
         assert!(!runtime.has_pending_tool_approval());
     }
 
+    fn idle_snapshot() -> BridgeRuntimeSnapshot {
+        BridgeRuntimeSnapshot {
+            pending_user_turn: None,
+            pending_image_paths: vec![],
+            pending_mcp_resources: vec![],
+            pending_aux_state: None,
+            has_pending_approval: false,
+            has_pending_manual_approval: false,
+            has_pending_questions: false,
+            current_pending_approval: None,
+            current_pending_questions: None,
+            child_sessions: vec![],
+            is_busy: false,
+            background_tool_status: None,
+        }
+    }
+
     #[test]
-    fn validate_config_change_blocks_active_model_switch_while_busy() {
+    fn validate_config_change_allows_transport_switch_while_busy() {
         let Some(mut runtime) = make_test_runtime() else {
             return;
         };
@@ -2315,10 +2077,33 @@ mod tests {
         let mut next = runtime.config().clone();
         next.active_model = "gpt-4.1-mini".to_string();
 
-        let err = runtime
-            .validate_config_change(&next)
-            .expect_err("busy runtime should reject active model switch");
-        assert_eq!(err.to_string(), MODEL_SWITCH_BUSY_MESSAGE);
+        assert!(
+            runtime.validate_config_change(&next).is_ok(),
+            "忙时仍应通过校验，bridge 替换推迟到空闲"
+        );
+    }
+
+    #[test]
+    fn replace_config_defers_bridge_transport_while_busy_and_flushes_when_idle() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_snapshot(busy_snapshot());
+        assert!(!runtime.deferred_transport_replace_for_test());
+
+        let mut next = runtime.config().clone();
+        next.active_model = "gpt-4.1-mini".to_string();
+        runtime.replace_config(next);
+
+        assert!(runtime.deferred_transport_replace_for_test());
+        assert_eq!(runtime.config().active_model, "gpt-4.1-mini");
+
+        runtime.apply_snapshot(idle_snapshot());
+        assert!(
+            !runtime.deferred_transport_replace_for_test(),
+            "空闲后应完成对 TS 的 replaceConfig"
+        );
     }
 
     #[test]
@@ -2412,32 +2197,138 @@ mod tests {
     }
 
     #[test]
-    fn background_tool_json_rpc_response_returns_result_payload_on_success() {
-        let response = background_tool_json_rpc_response(7, &Ok("ok".to_string()));
+    fn bridge_runtime_event_accepts_assistant_thinking_segment_finalized() {
+        let value = json!({
+            "kind": "assistant-thinking-segment-finalized",
+            "text": "先分析一下用户意图",
+        });
 
-        assert_eq!(response.get("id").and_then(|value| value.as_u64()), Some(7));
-        assert_eq!(response.get("result").and_then(|value| value.as_str()), Some("ok"));
-        assert!(response.get("error").is_none());
+        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::AssistantThinkingSegmentFinalized { text } => {
+                assert_eq!(text, "先分析一下用户意图");
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
     }
 
     #[test]
-    fn background_tool_json_rpc_response_returns_error_payload_on_failure() {
-        let response = background_tool_json_rpc_response(11, &Err("boom".to_string()));
+    fn assistant_thinking_segment_finalized_is_forwarded_to_runtime_events() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
 
-        assert_eq!(response.get("id").and_then(|value| value.as_u64()), Some(11));
-        assert_eq!(
-            response
-                .get("error")
-                .and_then(|value| value.get("message"))
-                .and_then(|value| value.as_str()),
-            Some("boom")
-        );
-        assert!(response.get("result").is_none());
+        runtime.apply_bridge_events(vec![BridgeRuntimeEvent::AssistantThinkingSegmentFinalized {
+            text: "整理完成态 thinking".to_string(),
+        }]);
+
+        let events = runtime.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::AssistantThinkingSegmentFinalized(text)
+                if text == "整理完成态 thinking"
+        )));
     }
+
+    #[test]
+    fn tool_execution_finished_event_appends_separate_tool_message() {
+        let Some(mut runtime) = make_test_runtime() else {
+            return;
+        };
+
+        runtime.apply_bridge_events(vec![BridgeRuntimeEvent::ToolExecutionFinished {
+            execution: BridgeToolExecution {
+                tool_call_id: "call_123".to_string(),
+                tool_name: "web_fetch".to_string(),
+                request: json!({
+                    "name": "web_fetch",
+                    "url": "https://example.com"
+                }),
+                output: "example output".to_string(),
+                failed: false,
+            },
+        }]);
+
+        let events = runtime.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::PushMessage(message)
+                if message
+                    .tool_block
+                    .as_ref()
+                    .is_some_and(|block| block.tool_name == "web_fetch" && block.tool_call_id.as_deref() == Some("call_123"))
+        )));
+    }
+
+    #[test]
+    fn tool_execution_finished_event_deserializes_host_request_shape() {
+        let value = json!({
+            "kind": "tool-execution-finished",
+            "execution": {
+                "toolCallId": "call_123",
+                "toolName": "run_shell_command",
+                "request": {
+                    "name": "run_shell_command",
+                    "command": "echo DeepSeek-V4 牛逼"
+                },
+                "output": "DeepSeek-V4 牛逼",
+                "failed": false
+            }
+        });
+
+        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
+                assert_eq!(execution.tool_name, "run_shell_command");
+                assert_eq!(execution.tool_call_id, "call_123");
+                assert_eq!(
+                    execution.request.get("name").and_then(Value::as_str),
+                    Some("run_shell_command")
+                );
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_request_from_host_value_rejects_legacy_rust_enum_shape() {
+        let err = super::tool_request_from_host_value(json!({
+            "WebFetch": {
+                "url": "https://example.com"
+            }
+        }))
+        .expect_err("legacy rust enum shape should be rejected");
+
+        assert!(err.to_string().contains("工具请求缺少 name"));
+    }
+
+    #[test]
+    fn tool_request_from_host_value_keeps_name_and_args_without_rust_semantics() {
+        let request = super::tool_request_from_host_value(json!({
+            "name": "host_internal_preview",
+            "preview": "dry-run",
+            "nested": {
+                "count": 2
+            }
+        }))
+        .expect("ui request should parse");
+
+        assert_eq!(request.name, "host_internal_preview");
+        assert_eq!(
+            request.arguments,
+            json!({
+                "preview": "dry-run",
+                "nested": {
+                    "count": 2
+                }
+            })
+        );
+    }
+
 }
 
 fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
-    json!({
+    let mut value = json!({
         "messages": archive.messages.iter().map(|(role, content)| {
             json!({
                 "role": role,
@@ -2481,14 +2372,38 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
                 }).collect::<Vec<_>>(),
             })
         }).collect::<Vec<_>>(),
-    })
+    });
+
+    if let Some(rewind) = &archive.rewind {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("rewind".to_string(), rewind.clone());
+        }
+    }
+
+    value
 }
 
-fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolRequest {
-    ToolRequest::McpTool {
-        server: request.server.clone(),
-        display_name: request.display_name.clone(),
-        tool_name: request.tool_name.clone(),
-        arguments: request.arguments.clone(),
-    }
+fn tool_request_from_local_mcp(request: &LocalMcpToolRequest) -> ToolUiRequest {
+    ToolUiRequest::new(
+        "mcp_tool",
+        json!({
+            "server": request.server,
+            "display_name": request.display_name,
+            "tool_name": request.tool_name,
+            "arguments": request.arguments,
+        }),
+    )
+}
+
+fn tool_request_from_host_value(value: Value) -> anyhow::Result<ToolUiRequest> {
+    let Value::Object(mut object) = value else {
+        return Err(anyhow!("工具请求必须是 JSON object"));
+    };
+
+    let name = object
+        .remove("name")
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .ok_or_else(|| anyhow!("工具请求缺少 name"))?;
+
+    Ok(ToolUiRequest::new(name, Value::Object(object)))
 }

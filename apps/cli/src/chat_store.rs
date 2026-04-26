@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -19,6 +20,8 @@ struct ChatFile {
     llm_history: Vec<StoredLlmMessage>,
     #[serde(default)]
     subagent_sessions: Vec<StoredSubagentSession>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rewind: Option<Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -78,6 +81,7 @@ pub struct LoadedChat {
     pub assistant_aux: Vec<crate::ports::AssistantAuxArchiveEntry>,
     pub llm_history: Vec<(String, String, Vec<String>)>,
     pub subagent_sessions: Vec<crate::ports::SubagentSessionArchiveEntry>,
+    pub rewind: Option<Value>,
 }
 
 pub fn chat_dir_path() -> PathBuf {
@@ -120,6 +124,7 @@ pub fn save_chat(
     assistant_aux: &[crate::ports::AssistantAuxArchiveEntry],
     llm_history: &[(String, String, Vec<String>)],
     subagent_sessions: &[crate::ports::SubagentSessionArchiveEntry],
+    rewind: Option<&Value>,
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
     if let Some(parent) = path.parent() {
@@ -193,6 +198,7 @@ pub fn save_chat(
                     .collect(),
             })
             .collect(),
+        rewind: rewind.cloned(),
     };
 
     let content = serde_json::to_string_pretty(&file)?;
@@ -277,6 +283,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
                     .collect(),
             })
             .collect(),
+        rewind: parsed.rewind,
     })
 }
 

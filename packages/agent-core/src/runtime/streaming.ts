@@ -293,6 +293,12 @@ export function clearStreamingUiState<
 >(
   runtime: StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
 ): void {
+  if (runtime.thinkingTextStore.trim()) {
+    runtime.emitEvent({
+      kind: 'assistant-thinking-segment-finalized',
+      text: runtime.thinkingTextStore,
+    });
+  }
   runtime.pendingStartedAtStore = undefined;
   runtime.pendingLastEventAtStore = undefined;
   runtime.streamChunkCounterStore = 0;
@@ -350,6 +356,21 @@ export async function handlePendingStreamEvent<
 
   if (event.kind === 'thinking-chunk') {
     runtime.thinkingTextStore += event.text;
+    runtime.emitEvent({
+      kind: 'update-pending-assistant-thinking',
+      text: runtime.thinkingTextStore,
+    });
+    return false;
+  }
+
+  if (event.kind === 'streaming-tool-preview') {
+    runtime.emitEvent({
+      kind: 'streaming-tool-preview',
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      argumentsJson: event.argumentsJson,
+    });
+    mergeToolProgressIntoThinking(runtime, event.previewLine);
     runtime.emitEvent({
       kind: 'update-pending-assistant-thinking',
       text: runtime.thinkingTextStore,
@@ -578,6 +599,16 @@ export async function handlePendingStreamingCompletion<
   if (round.step.kind === 'tool-calls') {
     if (!pending.streamEnded && !runtime.pendingAssistantTextStore.trim()) {
       runtime.emitEvent({ kind: 'remove-pending-assistant' });
+    } else if (!pending.streamEnded && runtime.pendingAssistantTextStore.trim()) {
+      // 与流式 `done` 分支一致：completion 先于 `done` 事件到达时，须把已输出的正文写入 history，
+      // 否则 `clearPendingStreamingState` 会丢弃例如「OK」等前缀。
+      runtime.historyStore.push({
+        role: 'assistant',
+        content: runtime.pendingAssistantTextStore,
+        imagePaths: [],
+      });
+      runtime.pendingUserTurnStore = undefined;
+      runtime.emitEvent({ kind: 'assistant-response-completed' });
     }
     clearPendingStreamingState(runtime);
     await runtime.processToolCallsAsync(

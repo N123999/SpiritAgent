@@ -306,6 +306,7 @@ impl SessionModel {
                 .map(|m| (m.role.to_string(), m.content.clone(), m.image_paths.clone()))
                 .collect(),
             subagent_sessions: Vec::new(),
+            rewind: None,
         }
     }
 
