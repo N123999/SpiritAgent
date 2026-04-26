@@ -26,10 +26,10 @@ import type {
 /** 主系统提示（含身份与当前模型名；不含 API Base / Key）。 */
 export function buildToolAgentHostPrompt(model: string): string {
   const trimmed = model.trim();
-  const modelLabel = trimmed.length > 0 ? trimmed : '（未配置）';
+  const modelLabel = trimmed.length > 0 ? trimmed : '(not configured)';
   return [
     'You are Spirit Agent.',
-    `用户使用的模型是：${modelLabel}。`,
+    `The user's model is: ${modelLabel}.`,
     'Keep a neutral, matter-of-fact tone unless the user\'s enabled rules explicitly ask for a different style.',
     '',
     'When composing replies, follow conventional typography and editorial norms for each language you use (spacing, punctuation, and mixed-script text such as Latin alongside CJK or other scripts).',
