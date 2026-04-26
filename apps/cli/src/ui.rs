@@ -1903,7 +1903,7 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
         ],
         "/create-skill" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
-            format!("    {}", t!("ui.suggestion.usage.create_skill.repo")),
+            format!("    {}", t!("ui.suggestion.usage.create_skill.default")),
             format!("    {}", t!("ui.suggestion.usage.create_skill.user")),
         ],
         "/skills" => vec![

@@ -32,7 +32,7 @@ use crate::{
     rules::{self, RuleEntry, RuleScope},
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
-    skills::{self, SkillEntry, SkillScope},
+    skills::{self, SkillEntry},
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
         InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
@@ -2295,15 +2295,8 @@ impl TuiShell {
         }
 
         let workspace_root = self.app_paths.workspace_root();
-        if request.scope == SkillScope::Workspace {
-            if let Err(err) = skills::ensure_workspace_spirit_skills_dir(&workspace_root) {
-                self.push_agent_message(err.to_string());
-                return;
-            }
-        }
-
         let generation_prompt = skills::build_create_skill_user_turn(&workspace_root, &request);
-    self.submit_runtime_user_turn(generation_prompt, None);
+        self.submit_runtime_user_turn(generation_prompt, None);
     }
 
     pub(crate) fn handle_start_implementing_slash(&mut self) {

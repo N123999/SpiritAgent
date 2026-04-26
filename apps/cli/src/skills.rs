@@ -36,8 +36,6 @@ pub enum SkillRootKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CreateSkillRequest {
-    pub scope: SkillScope,
-    pub name: String,
     pub prompt: String,
 }
 
@@ -134,7 +132,7 @@ struct ParsedSkillFrontmatter {
 }
 
 pub fn create_skill_usage() -> &'static str {
-    "用法: /create-skill [repo|user] <skill-name> <需求描述>"
+    "用法: /create-skill <自然语言需求>"
 }
 
 pub fn skills_usage() -> &'static str {
@@ -160,16 +158,6 @@ pub fn skill_path_for_scope(workspace_root: &Path, scope: SkillScope, skill_name
     };
 
     root.join(skill_name).join(SKILL_FILE_NAME)
-}
-
-pub fn ensure_workspace_spirit_skills_dir(workspace_root: &Path) -> Result<()> {
-    let dir = workspace_spirit_skills_dir(workspace_root);
-    if dir.exists() {
-        return Ok(());
-    }
-
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("创建工作区 skills 目录失败: {}", dir.display()))
 }
 
 pub fn skills_state_file_path() -> PathBuf {
@@ -296,59 +284,19 @@ pub fn parse_create_skill_request(input: &str) -> Result<CreateSkillRequest> {
         return Err(anyhow!(create_skill_usage()));
     }
 
-    let (scope, tail) = if let Some((scope, remainder)) = parse_leading_skill_scope(trimmed) {
-        (scope, remainder)
-    } else {
-        (SkillScope::Workspace, trimmed)
-    };
-
-    let Some((name, prompt)) = split_first_token(tail) else {
-        return Err(anyhow!(create_skill_usage()));
-    };
-    validate_skill_name(name)?;
-    if prompt.trim().is_empty() {
-        return Err(anyhow!(create_skill_usage()));
-    }
-
     Ok(CreateSkillRequest {
-        scope,
-        name: name.to_string(),
-        prompt: prompt.trim().to_string(),
+        prompt: trimmed.to_string(),
     })
 }
 
-pub fn skill_scope_label(scope: SkillScope) -> &'static str {
-    match scope {
-        SkillScope::Workspace => "工作区",
-        SkillScope::User => "用户",
-    }
-}
-
 pub fn build_create_skill_user_turn(workspace_root: &Path, request: &CreateSkillRequest) -> String {
-    let scope_label = skill_scope_label(request.scope);
-    let target_path = skill_path_for_scope(workspace_root, request.scope, &request.name);
-    let scope_hint = match request.scope {
-        SkillScope::Workspace => {
-            "优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。"
-        }
-        SkillScope::User => "优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。",
-    };
-    let write_note = match request.scope {
-        SkillScope::Workspace => format!(
-            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 edit_file 写入 {}；不要在工具成功前声称已经创建。",
-            target_path.display()
-        ),
-        SkillScope::User => format!(
-            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 edit_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要在工具成功前声称已经创建。",
-            target_path.display()
-        ),
-    };
+    let workspace_root_dir = workspace_spirit_skills_dir(workspace_root);
+    let user_root_dir = user_skills_dir();
 
     format!(
-        "你现在在处理一个 /create-skill 请求。\n\n目标:\n- scope: {scope_label}\n- skill_name: {skill_name}\n- target_path: {target_path}\n- workspace_root: {workspace_root}\n\n用户需求:\n{user_prompt}\n\n要求:\n- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。\n- 生成内容必须符合 Agent Skills 目录规范：目标目录名与 frontmatter `name` 必须完全等于 `{skill_name}`。\n- `SKILL.md` 必须以 YAML frontmatter 开头，至少包含 `name` 和 `description`；正文使用 Markdown，重点写清“做什么、何时用、怎么做”。\n- `description` 要具体说明适用场景，便于 agent 在 catalog 中识别。\n- 正文优先写步骤、输入输出示例、边界条件；避免空话、组织治理废话和泛泛 checklist。\n- 如果技能需要引用其他文件，正文里使用相对路径表达，不要假设这些文件已经存在。\n- {scope_hint}\n- {write_note}\n\n交付方式:\n- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。\n- 如果不能直接落盘，就把最终 `SKILL.md` 完整贴在回复里，并明确说明未写入。",
-        scope_label = scope_label,
-        skill_name = request.name,
-        target_path = target_path.display(),
+        "你现在在处理一个 /create-skill 请求。\n\n目标:\n- default_scope: 工作区\n- workspace_skill_root: {workspace_root_dir}\n- user_skill_root: {user_root_dir}\n- workspace_root: {workspace_root}\n\n用户需求:\n{user_prompt}\n\n要求:\n- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。\n- 默认创建到工作区 skill 根目录 {workspace_root_dir}；只有在用户明确要求“用户级 / 全局 / 跨仓库复用 / 写到用户目录”这类语义时，才改为用户目录 {user_root_dir}。\n- 用户级目标目录位于 Spirit 托管的用户目录；该路径虽在工作区外，但属于允许写入的托管范围。\n- 你需要先根据用户需求自行决定一个合适的 skill_name；名称必须是 1-64 个字符，只能使用小写字母、数字和连字符，不能以连字符开头或结尾，也不能包含连续连字符。\n- 最终目标目录名与 frontmatter `name` 必须完全等于你决定的 skill_name。\n- 最终文件路径必须是 `<选定根目录>/<skill_name>/SKILL.md`；不要写到其他位置。\n- 如果目标 Skill 已存在，先读取原有 `SKILL.md`，再基于现有内容压缩重写或收紧，不要在旧内容后面继续堆砌模板化废话。\n- `SKILL.md` 必须以 YAML frontmatter 开头，至少包含 `name` 和 `description`；正文使用 Markdown，重点写清“做什么、何时用、怎么做”。\n- `description` 要具体说明适用场景，便于 agent 在 catalog 中识别。\n- Skill 是给后续 agent/LLM 直接消费的能力说明，不是给人类流程管理看的。\n- 正文优先写步骤、输入输出示例、边界条件；避免空话、组织治理废话和泛泛 checklist。\n- 需要事实时先读取仓库内相关文件，不要臆造项目结构、技术栈、目录或既有工作流。\n- 如果技能需要引用其他文件，正文里使用相对路径表达，不要假设这些文件已经存在。\n- 如果你选择工作区 scope，优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。\n- 如果你选择用户 scope，优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。\n- 写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。\n\n交付方式:\n- 如果你能直接在目标路径落盘，就在确认内容后使用 create_file 或 edit_file 写入。\n- 如果不能直接落盘，就把最终 `SKILL.md` 完整贴在回复里，并明确说明未写入。",
+        workspace_root_dir = workspace_root_dir.display(),
+        user_root_dir = user_root_dir.display(),
         workspace_root = workspace_root.display(),
         user_prompt = request.prompt,
     )
@@ -764,75 +712,6 @@ fn stable_skill_id(path: &Path) -> String {
         .replace('\\', "/")
 }
 
-fn parse_leading_skill_scope(input: &str) -> Option<(SkillScope, &str)> {
-    const USER_PREFIXES: &[&str] = &[
-        "user",
-        "user-level",
-        "用户级技能",
-        "用户级",
-        "用户技能",
-        "用户",
-        "全局技能",
-        "全局",
-        "个人技能",
-        "个人",
-    ];
-    const WORKSPACE_PREFIXES: &[&str] = &[
-        "repo",
-        "repository",
-        "workspace",
-        "repo-level",
-        "workspace-level",
-        "仓库级技能",
-        "仓库级",
-        "仓库技能",
-        "仓库",
-        "工作区技能",
-        "工作区",
-        "项目技能",
-        "项目",
-    ];
-
-    match_prefix(input, USER_PREFIXES)
-        .map(|rest| (SkillScope::User, rest))
-        .or_else(|| match_prefix(input, WORKSPACE_PREFIXES).map(|rest| (SkillScope::Workspace, rest)))
-}
-
-fn match_prefix<'a>(input: &'a str, prefixes: &[&str]) -> Option<&'a str> {
-    prefixes.iter().find_map(|prefix| {
-        let remainder = input.strip_prefix(prefix)?;
-        if remainder.is_empty() {
-            return Some(remainder);
-        }
-
-        let first = remainder.chars().next()?;
-        if first.is_whitespace() || matches!(first, ':' | '：' | '-' | '，' | ',' | ';' | '；') {
-            return Some(remainder.trim_start_matches(|ch: char| {
-                ch.is_whitespace() || matches!(ch, ':' | '：' | '-' | '，' | ',' | ';' | '；')
-            }));
-        }
-
-        None
-    })
-}
-
-fn split_first_token(input: &str) -> Option<(&str, &str)> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    for (idx, ch) in trimmed.char_indices() {
-        if ch.is_whitespace() {
-            let first = &trimmed[..idx];
-            let rest = trimmed[idx..].trim();
-            return Some((first, rest));
-        }
-    }
-
-    Some((trimmed, ""))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1053,62 +932,56 @@ mod tests {
     }
 
     #[test]
-    fn parse_create_skill_request_defaults_to_workspace_scope() {
-        let request = parse_create_skill_request("code-review 帮我起草代码审查 skill")
+    fn parse_create_skill_request_preserves_natural_language_prompt() {
+        let request = parse_create_skill_request("做一个用于代码审查 diff 的 Skill")
             .expect("parse create skill request");
 
-        assert_eq!(request.scope, SkillScope::Workspace);
-        assert_eq!(request.name, "code-review");
-        assert_eq!(request.prompt, "帮我起草代码审查 skill");
+        assert_eq!(request.prompt, "做一个用于代码审查 diff 的 Skill");
     }
 
     #[test]
-    fn parse_create_skill_request_accepts_user_scope_prefix() {
-        let request = parse_create_skill_request("user data-analysis 生成一个数据分析 skill")
+    fn parse_create_skill_request_keeps_explicit_user_scope_intent_in_prompt() {
+        let request = parse_create_skill_request("生成一个用户级 Skill，用于跨仓库代码审查")
             .expect("parse create skill request");
 
-        assert_eq!(request.scope, SkillScope::User);
-        assert_eq!(request.name, "data-analysis");
+        assert!(request.prompt.contains("用户级 Skill"));
     }
 
     #[test]
-    fn parse_create_skill_request_rejects_invalid_name() {
-        let error = parse_create_skill_request("repo Bad-Name 生成 skill")
-            .expect_err("invalid skill name should fail");
+    fn parse_create_skill_request_rejects_empty_prompt() {
+        let error = parse_create_skill_request("   ").expect_err("empty prompt should fail");
 
-        assert!(error.to_string().contains("小写字母"));
+        assert!(error.to_string().contains("/create-skill"));
     }
 
     #[test]
-    fn build_create_skill_user_turn_mentions_skill_shape_and_target() {
+    fn build_create_skill_user_turn_mentions_default_scope_and_skill_constraints() {
         let workspace_root = PathBuf::from("C:/workspace/demo");
         let request = CreateSkillRequest {
-            scope: SkillScope::Workspace,
-            name: "code-review".to_string(),
             prompt: "生成一个用于审查 diff 的 skill".to_string(),
         };
 
         let prompt = build_create_skill_user_turn(&workspace_root, &request);
 
         assert!(prompt.contains("SKILL.md"));
-        assert!(prompt.contains("code-review"));
+        assert!(prompt.contains("default_scope: 工作区"));
+        assert!(prompt.contains("skill_name"));
         assert!(prompt.contains("create_file 或 edit_file"));
         assert!(prompt.contains("YAML frontmatter"));
     }
 
     #[test]
-    fn build_create_skill_user_turn_mentions_spirit_managed_user_write_scope() {
+    fn build_create_skill_user_turn_mentions_explicit_user_scope_override_rule() {
         let workspace_root = PathBuf::from("C:/workspace/demo");
         let request = CreateSkillRequest {
-            scope: SkillScope::User,
-            name: "code-review".to_string(),
             prompt: "生成一个跨仓库稳定复用的 code review skill".to_string(),
         };
 
         let prompt = build_create_skill_user_turn(&workspace_root, &request);
 
+        assert!(prompt.contains("只有在用户明确要求"));
         assert!(prompt.contains("Spirit 托管的用户目录"));
-        assert!(prompt.contains("允许写入的托管范围"));
+        assert!(prompt.contains("跨仓库稳定复用的个人工作流"));
         assert!(prompt.contains("create_file 或 edit_file"));
     }
 
