@@ -29,9 +29,7 @@ async function main(): Promise<void> {
       choices: [
         {
           index: 0,
-          delta: {
-            reasoning_content: '先想一下，但不给正文。',
-          },
+          delta: {},
           finish_reason: null,
         },
       ],
@@ -69,10 +67,6 @@ async function main(): Promise<void> {
 
   printSmokeSection('stream-empty smoke events', events);
   printSmokeSection('stream-empty smoke completion', completion);
-
-  if (!events.some((event) => isJsonObject(event) && event.kind === 'thinking-chunk')) {
-    throw new Error('stream-empty smoke 未收到 thinking-chunk。');
-  }
 
   if (!events.some((event) => isJsonObject(event) && event.kind === 'error')) {
     throw new Error('stream-empty smoke 未收到 error 事件。');

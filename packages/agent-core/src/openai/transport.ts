@@ -234,9 +234,25 @@ export function extractLastOpenAiAssistantText(
     if (typeof message.content === 'string' && message.content.trim()) {
       return message.content;
     }
+
+    const reasoningText = extractStoredAssistantReasoningText(message);
+    if (reasoningText) {
+      return reasoningText;
+    }
   }
 
   return undefined;
+}
+
+function extractStoredAssistantReasoningText(message: JsonObject): string | undefined {
+  const pieces = [
+    message.reasoning_content,
+    message.reasoningContent,
+    message.reasoning,
+    message.thinking,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return pieces.length > 0 ? pieces.join('') : undefined;
 }
 
 export function truncateOpenAiToolAgentStateForContextRetry(
@@ -838,7 +854,7 @@ async function* openAiEventStreamToRuntimeEvents(
   const toolCalls = new Map<number, AggregatedStreamingToolCall>();
   let assistantContent = '';
   let reasoningContent = '';
-  let sawModelOutput = false;
+  let sawAnswerOrToolOutput = false;
   const rawPreview: string[] = [];
 
   try {
@@ -856,7 +872,7 @@ async function* openAiEventStreamToRuntimeEvents(
         }
 
         if ((delta.tool_calls?.length ?? 0) > 0) {
-          sawModelOutput = true;
+          sawAnswerOrToolOutput = true;
         }
 
         for (const streamEvent of accumulateStreamingToolCallProgress(toolCalls, delta.tool_calls)) {
@@ -864,20 +880,20 @@ async function* openAiEventStreamToRuntimeEvents(
         }
 
         if (typeof delta.content === 'string' && delta.content.length > 0) {
-          sawModelOutput = true;
+          sawAnswerOrToolOutput = true;
           assistantContent += delta.content;
           yield { kind: 'assistant-chunk', text: delta.content };
         }
 
         if (typeof delta.refusal === 'string' && delta.refusal.length > 0) {
-          sawModelOutput = true;
+          sawAnswerOrToolOutput = true;
           assistantContent += delta.refusal;
           yield { kind: 'assistant-chunk', text: delta.refusal };
         }
       }
     }
 
-    if (!sawModelOutput) {
+    if (!sawAnswerOrToolOutput && !reasoningContent.trim()) {
       const preview = rawPreview.length === 0 ? '<empty stream body>' : rawPreview.join('\n');
       throw new Error(`流式响应无任何 delta（无 content / tool_calls）。预览:\n${truncateChars(preview, 600)}`);
     }

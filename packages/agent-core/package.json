@@ -25,11 +25,12 @@
     "smoke:openai:roundtrip": "npm run build && node dist/smoke/openai-roundtrip-smoke.js",
     "smoke:openai:compact": "npm run build && node dist/smoke/openai-compact-smoke.js",
     "smoke:openai:stream-empty": "npm run build && node dist/smoke/openai-stream-empty-smoke.js",
+    "smoke:openai:stream-reasoning-only": "npm run build && node dist/smoke/openai-stream-reasoning-only-smoke.js",
     "smoke:openai:streaming": "npm run build && node dist/smoke/openai-streaming-smoke.js",
     "smoke:openai:runtime": "npm run build && node dist/smoke/openai-runtime-smoke.js",
     "smoke:runtime:parity": "npm run build && node dist/smoke/runtime-parity-smoke.js",
     "smoke:mcp:missing-env": "npm run build && node dist/smoke/mcp-missing-env-smoke.js",
-    "smoke:openai:all": "npm run smoke:openai && npm run smoke:openai:roundtrip && npm run smoke:openai:compact && npm run smoke:openai:stream-empty && npm run smoke:openai:streaming && npm run smoke:openai:runtime",
+    "smoke:openai:all": "npm run smoke:openai && npm run smoke:openai:roundtrip && npm run smoke:openai:compact && npm run smoke:openai:stream-empty && npm run smoke:openai:stream-reasoning-only && npm run smoke:openai:streaming && npm run smoke:openai:runtime",
     "notice": "node scripts/gen-notice.mjs",
     "notice:production": "node scripts/gen-notice.mjs --production"
   },
