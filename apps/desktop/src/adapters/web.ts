@@ -8,6 +8,7 @@ import type {
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
+  SubmitSkillSlashRequest,
   UpdateConfigRequest,
 } from '../types';
 
@@ -41,6 +42,9 @@ export function createWebHostApi(): HostApi {
     },
     deleteSkill(request: DeleteSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills/remove', request);
+    },
+    submitSkillSlash(request: SubmitSkillSlashRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/skills/submit', request);
     },
     submitUserTurn(text: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/submit', { text });

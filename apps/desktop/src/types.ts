@@ -49,6 +49,12 @@ export interface DeleteSkillRequest {
   rootKind: DesktopSkillRootKind;
 }
 
+export interface SubmitSkillSlashRequest {
+  skillName: string;
+  rawText: string;
+  extraNote?: string;
+}
+
 export interface RewindAndSubmitMessageRequest {
   messageId: number;
   text: string;

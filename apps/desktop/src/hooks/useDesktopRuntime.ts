@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
+import { matchSkillSlashInput } from "@/lib/skill-slash";
 import type {
   AddModelRequest,
   AskQuestionsAnswer,
@@ -522,7 +523,14 @@ export function useDesktopRuntime() {
 
     setBusyAction("send");
     try {
-      const next = await api.submitUserTurn(text);
+      const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
+      const next = skillSlash
+        ? await api.submitSkillSlash({
+            skillName: skillSlash.skillName,
+            rawText: text,
+            ...(skillSlash.extraNote ? { extraNote: skillSlash.extraNote } : {}),
+          })
+        : await api.submitUserTurn(text);
       applySnapshot(next);
       setComposer("");
       setRuntimeError("");
@@ -531,7 +539,7 @@ export function useDesktopRuntime() {
     } finally {
       setBusyAction("");
     }
-  }, [api, applySnapshot, composer]);
+  }, [api, applySnapshot, composer, snapshot]);
   
   const rewindAndSubmitMessage = useCallback(
     async (request: RewindAndSubmitMessageRequest): Promise<boolean> => {

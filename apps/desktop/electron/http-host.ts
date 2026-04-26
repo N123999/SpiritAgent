@@ -354,6 +354,22 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/skills/submit') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('submitSkillSlash', {
+        request: {
+          skillName: typeof jsonBody?.skillName === 'string' ? jsonBody.skillName : '',
+          rawText: typeof jsonBody?.rawText === 'string' ? jsonBody.rawText : '',
+          extraNote: typeof jsonBody?.extraNote === 'string' ? jsonBody.extraNote : '',
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/submit') {
     writeJson(
       request,

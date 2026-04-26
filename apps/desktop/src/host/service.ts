@@ -1,9 +1,11 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
   AgentRuntime,
+  type OpenAiActiveSkill,
+  type OpenAiActiveSkillResourceEntry,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   extractLastOpenAiAssistantText,
@@ -53,6 +55,7 @@ import type {
   RewindAndSubmitMessageRequest,
   RemoveModelRequest,
   SessionListItem,
+  SubmitSkillSlashRequest,
   ToolBlockSnapshot,
   UpdateConfigRequest,
 } from '../types.js';
@@ -111,6 +114,7 @@ type CommandPayloads = {
   removeModel: { request: RemoveModelRequest };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
+  submitSkillSlash: { request: SubmitSkillSlashRequest };
   submitUserTurn: { text: string };
   poll: undefined;
   replyPendingApproval: { message: string };
@@ -156,6 +160,7 @@ class DesktopHostService {
   private messageOrderDebugLastVerboseLogMs = 0;
   private messageIdCounter = 1;
   private pendingUnboundFileChangeIds: string[] = [];
+  private currentTurnSkills: OpenAiActiveSkill[] = [];
   private serialized = Promise.resolve();
   /** 忙时改 planMode / 模型或 endpoint 时推迟 `refreshRuntime`，避免替换 runtime 导致流式输出丢失；空闲后由 `flushDeferredRuntimeRefreshIfIdle` 应用。 */
   private deferredRuntimeRefreshWhileBusy = false;
@@ -386,6 +391,32 @@ description: ${frontmatterDescription}
     });
   }
 
+  async submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const runtime = this.requireRuntime();
+      if (runtime.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const skillName = request.skillName.trim();
+      if (!skillName) {
+        throw new Error('Skill 名称不能为空。');
+      }
+
+      const skill = this.requireEnabledSkillEntry(skillName);
+      const payload = await buildActiveSkillPayload(skill);
+
+      return this.submitUserTurnAfterInitialized(
+        buildActivateSkillUserTurn(skillName, request.extraNote ?? ''),
+        {
+          displayText: request.rawText,
+          turnSkills: [payload],
+        },
+      );
+    });
+  }
+
   async submitUserTurn(text: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -459,11 +490,19 @@ description: ${frontmatterDescription}
 
   private async submitUserTurnAfterInitialized(
     text: string,
-    options: { preserveRewindWarnings?: boolean } = {},
+    options: {
+      preserveRewindWarnings?: boolean;
+      displayText?: string;
+      turnSkills?: OpenAiActiveSkill[];
+    } = {},
   ): Promise<DesktopSnapshot> {
     const runtime = this.requireRuntime();
     const trimmed = text.trim();
+    const displayText = (options.displayText ?? text).trim();
     if (!trimmed) {
+      throw new Error('消息不能为空。');
+    }
+    if (!displayText) {
       throw new Error('消息不能为空。');
     }
 
@@ -471,12 +510,13 @@ description: ${frontmatterDescription}
     if (!options.preserveRewindWarnings) {
       state.rewindWarnings = [];
     }
-    this.ensureActiveSession(trimmed);
+    this.currentTurnSkills = cloneActiveSkills(options.turnSkills ?? []);
+    this.ensureActiveSession(displayText);
     const beforeUserCheckpoint = this.buildRewindCheckpointSnapshot();
     const userMessage: ConversationMessageSnapshot = {
       id: this.allocateMessageId(),
       role: 'user',
-      content: trimmed,
+      content: displayText,
       pending: false,
     };
     state.messages.push(userMessage);
@@ -490,6 +530,7 @@ description: ${frontmatterDescription}
       await runtime.poll();
       this.applyRuntimeHostEvents(runtime.drainEvents());
     } catch (error) {
+      this.currentTurnSkills = [];
       this.handleMessageRemoved(state.messages.length - 1, userMessage.id, 'send-user-rollback');
       state.messages.pop();
       throw error;
@@ -576,6 +617,7 @@ description: ${frontmatterDescription}
       state.archiveSubagentSessions = [];
       state.rewind = createDesktopRewindMetadata();
       state.rewindWarnings = [];
+      this.currentTurnSkills = [];
       this.pendingUnboundFileChangeIds = [];
       this.latestPendingAssistantAux = undefined;
       this.resetStreamingPlacementState(true);
@@ -619,6 +661,7 @@ description: ${frontmatterDescription}
       }));
       state.rewind = loaded.rewind ?? createDesktopRewindMetadata();
       state.rewindWarnings = [];
+      this.currentTurnSkills = [];
       this.pendingUnboundFileChangeIds = [];
       this.messageIdCounter =
         Math.max(0, ...state.messages.map((message) => message.id)) + 1;
@@ -659,6 +702,10 @@ description: ${frontmatterDescription}
       case 'deleteSkill': {
         const typedPayload = payload as CommandPayloads['deleteSkill'];
         return this.deleteSkill(typedPayload.request);
+      }
+      case 'submitSkillSlash': {
+        const typedPayload = payload as CommandPayloads['submitSkillSlash'];
+        return this.submitSkillSlash(typedPayload.request);
       }
       case 'submitUserTurn': {
         const typedPayload = payload as CommandPayloads['submitUserTurn'];
@@ -725,6 +772,7 @@ description: ${frontmatterDescription}
       state.workspaceRoot,
       state.config.planMode === true,
     );
+    this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
     if (!apiKey) {
@@ -803,7 +851,7 @@ description: ${frontmatterDescription}
           workspaceRoot,
           enabledRules,
           enabledSkillCatalog,
-          [],
+          cloneActiveSkills(this.currentTurnSkills),
           transportConfig.model,
           planMetadata,
         ),
@@ -820,7 +868,7 @@ description: ${frontmatterDescription}
           workspaceRoot,
           enabledRules,
           enabledSkillCatalog,
-          [],
+          cloneActiveSkills(this.currentTurnSkills),
           transportConfig.model,
           planMetadata,
         ),
@@ -969,6 +1017,7 @@ description: ${frontmatterDescription}
     this.integrateToolExecutions(result.toolExecutions);
     switch (result.kind) {
       case 'completed':
+        this.currentTurnSkills = [];
         if (result.assistantText.trim()) {
           const aux = this.takeLatestPendingAux();
           if (!this.materializeExistingCompletedAssistantMessage(result.assistantText, aux)) {
@@ -978,6 +1027,7 @@ description: ${frontmatterDescription}
         this.lastRuntimeError = '';
         break;
       case 'failed':
+        this.currentTurnSkills = [];
         {
           const aux = this.takeLatestPendingAux();
           if (!this.materializeExistingCompletedAssistantMessage(result.error, aux)) {
@@ -2418,6 +2468,128 @@ description: ${frontmatterDescription}
       release?.();
     }
   }
+
+  private requireEnabledSkillEntry(skillName: string): HostMetadataSummary['skills']['entries'][number] {
+    const normalized = skillName.trim();
+    const entry = this.requireState().metadata.skills.entries.find(
+      (candidate) => candidate.enabled && candidate.source.name === normalized,
+    );
+    if (!entry) {
+      throw new Error(`未找到已启用 Skill：${normalized}`);
+    }
+    return entry;
+  }
+}
+
+const ACTIVE_SKILL_CONTENT_MAX_CHARS = 12_000;
+const ACTIVE_SKILL_RESOURCE_MAX_ENTRIES = 24;
+const ACTIVE_SKILL_RESOURCE_DIRS: ReadonlyArray<{
+  kind: OpenAiActiveSkillResourceEntry['kind'];
+  dirname: string;
+}> = [
+  { kind: 'scripts', dirname: 'scripts' },
+  { kind: 'references', dirname: 'references' },
+  { kind: 'assets', dirname: 'assets' },
+];
+
+function buildActivateSkillUserTurn(skillName: string, extraNote: string): string {
+  const trimmed = extraNote.trim();
+  if (!trimmed) {
+    return `请按 skill "${skillName}" 处理当前任务。`;
+  }
+  return trimmed;
+}
+
+async function buildActiveSkillPayload(
+  entry: HostMetadataSummary['skills']['entries'][number],
+): Promise<OpenAiActiveSkill> {
+  const skillRoot = path.dirname(entry.source.path);
+  const { content, truncated } = truncateActiveSkillContent(entry.content);
+  const { resources, truncated: resourcesTruncated } = await collectSkillResources(skillRoot);
+
+  return {
+    id: entry.source.id,
+    scope: entry.source.scope,
+    name: entry.source.name,
+    description: entry.source.description,
+    path: entry.source.path,
+    content,
+    truncated,
+    resources,
+    resourcesTruncated,
+  };
+}
+
+function truncateActiveSkillContent(content: string): {
+  content: string;
+  truncated: boolean;
+} {
+  const chars = [...content];
+  if (chars.length <= ACTIVE_SKILL_CONTENT_MAX_CHARS) {
+    return {
+      content: content.trim(),
+      truncated: false,
+    };
+  }
+
+  return {
+    content: `${chars.slice(0, ACTIVE_SKILL_CONTENT_MAX_CHARS).join('').trimEnd()}\n\n...<skill content truncated>`,
+    truncated: true,
+  };
+}
+
+async function collectSkillResources(skillRoot: string): Promise<{
+  resources: OpenAiActiveSkillResourceEntry[];
+  truncated: boolean;
+}> {
+  const resources: OpenAiActiveSkillResourceEntry[] = [];
+  let truncated = false;
+
+  for (const { kind, dirname } of ACTIVE_SKILL_RESOURCE_DIRS) {
+    const root = path.join(skillRoot, dirname);
+    if (!existsSync(root)) {
+      continue;
+    }
+
+    const stack = [root];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) {
+        continue;
+      }
+
+      const entries = await readdir(current, { withFileTypes: true });
+      entries.sort((left, right) => left.name.localeCompare(right.name));
+      for (const entry of entries) {
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          continue;
+        }
+        if (resources.length >= ACTIVE_SKILL_RESOURCE_MAX_ENTRIES) {
+          truncated = true;
+          return { resources, truncated };
+        }
+
+        resources.push({
+          kind,
+          path: path.relative(skillRoot, fullPath).replace(/\\/gu, '/'),
+        });
+      }
+    }
+  }
+
+  return { resources, truncated };
+}
+
+function cloneActiveSkills(skills: OpenAiActiveSkill[]): OpenAiActiveSkill[] {
+  return skills.map((skill) => ({
+    ...skill,
+    resources: skill.resources.map((resource) => ({ ...resource })),
+  }));
 }
 
 /** 环境变量 `SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG`：不设为关；`1`/compact/on 紧凑；`2`/verbose 更详并节流纯 preview；`0`/off 显式关闭。 */

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { ArrowUp, ChevronDown, ChevronRight, LoaderCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
@@ -33,9 +33,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownMessage } from "@/components/markdown-message";
+import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useTheme } from "@/hooks/useTheme";
+import { buildSkillSlashSuggestions, currentSkillSlashQuery } from "@/lib/skill-slash";
 import {
   desktopNativeThemeForPreference,
   resolveDark,
@@ -149,6 +151,8 @@ type ComposerSurfaceProps = {
   onSubmit(): void;
   onModelSelect(name: string): void;
   onPlanModeChange(planMode: boolean): void;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  onKeyDown?(event: ReactKeyboardEvent<HTMLTextAreaElement>): void;
 };
 
 function ComposerSurface({
@@ -163,15 +167,22 @@ function ComposerSurface({
   onSubmit,
   onModelSelect,
   onPlanModeChange,
+  textareaRef,
+  onKeyDown,
 }: ComposerSurfaceProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
       <Textarea
+        ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="min-h-[5.25rem] w-full resize-y rounded-none border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none md:min-h-[6rem]"
         onKeyDown={(event) => {
+          onKeyDown?.(event);
+          if (event.defaultPrevented) {
+            return;
+          }
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
             if (canSend && !busy) {
@@ -672,9 +683,32 @@ export default function App() {
   );
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
   const [sidebarNarrow, setSidebarNarrow] = useState(false);
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
+  const slashQuery = useMemo(() => currentSkillSlashQuery(runtime.composer), [runtime.composer]);
+  const slashSuggestions = useMemo(
+    () => buildSkillSlashSuggestions(slashQuery, snapshot?.skillsList ?? []),
+    [slashQuery, snapshot?.skillsList],
+  );
+
+  useEffect(() => {
+    setSlashSelectedIndex(-1);
+  }, [slashQuery]);
+
+  useEffect(() => {
+    if (slashSuggestions.length === 0) {
+      if (slashSelectedIndex !== -1) {
+        setSlashSelectedIndex(-1);
+      }
+      return;
+    }
+    if (slashSelectedIndex >= slashSuggestions.length) {
+      setSlashSelectedIndex(-1);
+    }
+  }, [slashSelectedIndex, slashSuggestions.length]);
 
   useEffect(() => {
     if (!rewindDraft) {
@@ -709,6 +743,56 @@ export default function App() {
           setRewindDraft(null);
         }
       });
+  };
+
+  const applySlashSuggestion = (replacement: string) => {
+    runtime.setComposer(replacement);
+    setSlashSelectedIndex(-1);
+    queueMicrotask(() => {
+      composerTextareaRef.current?.focus();
+    });
+  };
+
+  const handleComposerSlashKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!slashQuery || slashSuggestions.length === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSlashSelectedIndex((current) => {
+        if (current < 0) {
+          return 0;
+        }
+        return (current + 1) % slashSuggestions.length;
+      });
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSlashSelectedIndex((current) =>
+        current <= 0 ? slashSuggestions.length - 1 : current - 1,
+      );
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const selected = slashSuggestions[slashSelectedIndex] ?? slashSuggestions[0];
+      if (selected) {
+        applySlashSuggestion(`${selected.alias} `);
+      }
+      return;
+    }
+
+    if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      const selected = slashSuggestions[slashSelectedIndex] ?? slashSuggestions[0];
+      if (selected) {
+        applySlashSuggestion(`${selected.alias} `);
+      }
+    }
   };
 
   const launchSplashActive =
@@ -958,6 +1042,16 @@ export default function App() {
                 ) : null}
 
                 <div className="grid gap-1.5">
+                  {slashQuery ? (
+                    <SkillSlashMenu
+                      suggestions={slashSuggestions}
+                      selectedIndex={slashSelectedIndex}
+                      onSelectIndex={setSlashSelectedIndex}
+                      onApplySuggestion={(suggestion) => {
+                        applySlashSuggestion(`${suggestion.alias} `);
+                      }}
+                    />
+                  ) : null}
                   <ComposerSurface
                     value={runtime.composer}
                     onChange={runtime.setComposer}
@@ -970,6 +1064,8 @@ export default function App() {
                     onPlanModeChange={(planMode) => {
                       void runtime.saveSettingsPatch({ planMode });
                     }}
+                    textareaRef={composerTextareaRef}
+                    onKeyDown={handleComposerSlashKeyDown}
                     canSend={
                       runtime.summary.canSend &&
                       runtime.busyAction !== "send" &&
