@@ -19,6 +19,7 @@ import {
   resolveDesktopWebHostFromEnv,
   type DesktopHttpHost,
 } from './http-host.js';
+import { resolveRendererDistPath } from './renderer-dist.js';
 import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 
 /** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
@@ -60,7 +61,7 @@ function getDesktopWebHost(config: DesktopWebHostConfigFile): DesktopHttpHost {
 }
 
 function rendererDistPath(): string {
-  return path.join(__dirname, '..', 'dist');
+  return resolveRendererDistPath(__dirname);
 }
 
 async function startDesktopWebHostFromEnv(): Promise<void> {
@@ -395,7 +396,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   if (DEV_SERVER_URL) {
     await window.loadURL(DEV_SERVER_URL);
   } else {
-    await window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    await window.loadFile(path.join(rendererDistPath(), 'index.html'));
   }
 
   await syncBrowserWindowFrameFromRendererStorage(window);

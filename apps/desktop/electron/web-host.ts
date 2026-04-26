@@ -9,6 +9,7 @@ import {
   createDesktopWebPairingCode,
   resolveDesktopWebHostFromEnv,
 } from './http-host.js';
+import { resolveRendererDistPath } from './renderer-dist.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,7 +38,7 @@ const webHost = createDesktopHttpHost({
     },
   },
   static: {
-    root: path.join(__dirname, '..', 'dist'),
+    root: resolveRendererDistPath(__dirname),
     spaFallback: true,
   },
 });
