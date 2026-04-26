@@ -2,10 +2,13 @@
 
 import type {
   AddModelRequest,
+  AddMcpServerRequest,
   AskQuestionsResult,
   BootstrapRequest,
   CreateSkillRequest,
+  DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopMcpServerInspection,
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
@@ -20,6 +23,9 @@ declare global {
     updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
     addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
     removeModel(name: string): Promise<DesktopSnapshot>;
+    addMcpServer(request: AddMcpServerRequest): Promise<DesktopSnapshot>;
+    deleteMcpServer(request: DeleteMcpServerRequest): Promise<DesktopSnapshot>;
+    inspectMcpServer(name: string): Promise<DesktopMcpServerInspection>;
     createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;

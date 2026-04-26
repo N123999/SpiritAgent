@@ -324,6 +324,53 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/mcps') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('addMcpServer', {
+        request: {
+          name: typeof jsonBody?.name === 'string' ? jsonBody.name : '',
+          transportType: jsonBody?.transportType === 'http' ? 'http' : 'stdio',
+          endpoint: typeof jsonBody?.endpoint === 'string' ? jsonBody.endpoint : '',
+          metadata: typeof jsonBody?.metadata === 'string' ? jsonBody.metadata : '',
+          capabilities:
+            typeof jsonBody?.capabilities === 'object' && jsonBody?.capabilities !== null
+              ? jsonBody.capabilities
+              : undefined,
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/mcps/remove') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('deleteMcpServer', {
+        request: {
+          name: typeof jsonBody?.name === 'string' ? jsonBody.name : '',
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/mcps/inspect') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('inspectMcpServer', {
+        name: typeof jsonBody?.name === 'string' ? jsonBody.name : '',
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/skills') {
     const rootKind = parseSkillRootKind(jsonBody?.rootKind);
     writeJson(

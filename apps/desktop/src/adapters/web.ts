@@ -1,10 +1,13 @@
 import type { HostApi } from '../host-api';
 import type {
   AddModelRequest,
+  AddMcpServerRequest,
   AskQuestionsResult,
   BootstrapRequest,
   CreateSkillRequest,
+  DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopMcpServerInspection,
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
@@ -37,6 +40,15 @@ export function createWebHostApi(): HostApi {
     },
     removeModel(name: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/models/remove', { name });
+    },
+    addMcpServer(request: AddMcpServerRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/mcps', request);
+    },
+    deleteMcpServer(request: DeleteMcpServerRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/mcps/remove', request);
+    },
+    inspectMcpServer(name: string) {
+      return post<DesktopMcpServerInspection>(baseUrl, '/api/mcps/inspect', { name });
     },
     createSkill(request: CreateSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills', request);

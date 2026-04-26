@@ -2,7 +2,9 @@ import {
   buildBuiltinHostToolDefinitions,
   AuthorizationDecision,
   JsonValue,
+  McpService,
   McpStatusSnapshot,
+  type McpToolRequest,
   ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '@spirit-agent/agent-core';
@@ -20,11 +22,13 @@ export class DesktopToolExecutor
   implements ToolExecutor<DesktopToolRequest, string>
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
+  private readonly mcp: McpService;
 
   constructor(
     private readonly workspaceRoot: string,
     fileChangeObserver?: HostFileChangeObserver,
   ) {
+    this.mcp = new McpService(workspaceRoot);
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
@@ -35,7 +39,10 @@ export class DesktopToolExecutor
   }
 
   toolDefinitionsJson(): JsonValue {
-    return buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment());
+    return [
+      ...buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment()),
+      ...this.mcp.toolDefinitionsJson(),
+    ];
   }
 
   async parseCommand(_message: string): Promise<DesktopToolRequest> {
@@ -46,12 +53,20 @@ export class DesktopToolExecutor
     name: string,
     argumentsJson: string,
   ): Promise<DesktopToolRequest> {
+    const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
+    if (localMcpRequest) {
+      return localMcpRequest as unknown as DesktopToolRequest;
+    }
     return this.tools.requestFromFunctionCall(name, argumentsJson);
   }
 
   async authorize(
     request: DesktopToolRequest,
   ): Promise<AuthorizationDecision<string>> {
+    if (this.mcp.isToolRequest(request as JsonValue)) {
+      await this.mcp.authorizeToolRequest(request as unknown as McpToolRequest);
+      return { kind: 'allowed' };
+    }
     return this.tools.authorize(request);
   }
 
@@ -60,6 +75,9 @@ export class DesktopToolExecutor
   }
 
   async execute(request: DesktopToolRequest): Promise<string> {
+    if (this.mcp.isToolRequest(request as JsonValue)) {
+      return this.mcp.executeToolRequest(request as unknown as McpToolRequest);
+    }
     return this.tools.execute(request);
   }
 
@@ -71,11 +89,11 @@ export class DesktopToolExecutor
   }
 
   startMcpBackgroundRefresh(): void {
-    this.tools.startMcpBackgroundRefresh();
+    this.mcp.startBackgroundRefreshInBackground(true);
   }
 
   mcpStatusSnapshot(): McpStatusSnapshot {
-    return this.tools.mcpStatusSnapshot();
+    return this.mcp.statusSnapshot();
   }
 
   async addMcpServer(name: string, config: JsonValue): Promise<string> {
@@ -83,31 +101,31 @@ export class DesktopToolExecutor
   }
 
   async listMcpServers(): Promise<unknown[]> {
-    return this.tools.listMcpServers();
+    return this.mcp.listServers();
   }
 
   async inspectMcpServer(name: string): Promise<unknown> {
-    return this.tools.inspectMcpServer(name);
+    return this.mcp.inspectServer(name);
   }
 
   async listMcpTools(name: string): Promise<unknown[]> {
-    return this.tools.listMcpTools(name);
+    return this.mcp.listTools(name);
   }
 
   async listMcpResources(name: string): Promise<unknown[]> {
-    return this.tools.listMcpResources(name);
+    return this.mcp.listResources(name);
   }
 
   async readMcpResource(name: string, uri: string): Promise<JsonValue> {
-    return this.tools.readMcpResource(name, uri);
+    return this.mcp.readResource(name, uri);
   }
 
   async listCachedMcpPrompts(name: string): Promise<unknown[]> {
-    return this.tools.listCachedMcpPrompts(name);
+    return this.mcp.listCachedPrompts(name);
   }
 
   async listMcpPrompts(name: string): Promise<unknown[]> {
-    return this.tools.listMcpPrompts(name);
+    return this.mcp.listPrompts(name);
   }
 
   async getMcpPrompt(
@@ -115,6 +133,6 @@ export class DesktopToolExecutor
     prompt: string,
     _argsJson?: string,
   ): Promise<JsonValue> {
-    return this.tools.getMcpPrompt(name, prompt, _argsJson);
+    return this.mcp.getPrompt(name, prompt, _argsJson);
   }
 }

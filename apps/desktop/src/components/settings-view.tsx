@@ -3,10 +3,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { LoaderCircle, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -25,8 +27,14 @@ import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import type {
   AddModelRequest,
+  AddMcpServerRequest,
   CreateSkillRequest,
+  DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopMcpCapabilityToggles,
+  DesktopMcpServerInspection,
+  DesktopMcpServerListItem,
+  DesktopMcpTransportType,
   DesktopSkillListItem,
   DesktopSkillRootKind,
   DesktopSnapshot,
@@ -54,6 +62,7 @@ type SettingsViewProps = {
   apiReady: boolean;
   busyAction: string;
   modelsBusy: boolean;
+  mcpsBusy: boolean;
   skillsBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
@@ -62,6 +71,9 @@ type SettingsViewProps = {
   onResetSession: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
   onRemoveModel: (name: string) => Promise<void>;
+  onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
+  onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
+  onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
   onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
   /** Skills 页「生成 Skill」：回到主对话区并预填 `/create-skill `，后续直接写自然语言。 */
@@ -77,9 +89,103 @@ const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
 const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   basic: "工作区与连接",
   models: "模型",
+  mcps: "MCP 服务",
   skills: "Skills",
   appearance: "主题与窗口效果",
 };
+
+const defaultMcpCapabilities: DesktopMcpCapabilityToggles = {
+  tools: true,
+  resources: true,
+  prompts: true,
+};
+
+function mcpTransportTypeLabel(type: DesktopMcpTransportType): string {
+  return type === "http" ? "HTTP" : "Stdio";
+}
+
+function mcpMetadataLabel(type: DesktopMcpTransportType): string {
+  return type === "http" ? "Headers" : "环境变量";
+}
+
+function mcpEndpointLabel(type: DesktopMcpTransportType): string {
+  return type === "http" ? "URL" : "命令";
+}
+
+function mcpEndpointPlaceholder(type: DesktopMcpTransportType): string {
+  return type === "http"
+    ? "例如 https://example.com/mcp"
+    : "例如 npx -y @modelcontextprotocol/server-filesystem D:/SpiritAgent";
+}
+
+function mcpMetadataPlaceholder(type: DesktopMcpTransportType): string {
+  return type === "http"
+    ? "Authorization: Bearer ${env:GITHUB_TOKEN}; X-Client: spirit-agent"
+    : "PATH=C:/Tools; NODE_ENV=production";
+}
+
+function mcpCapabilitiesLabel(item: DesktopMcpServerListItem): string {
+  const enabled: string[] = [];
+  if (item.capabilities.tools) {
+    enabled.push("tools");
+  }
+  if (item.capabilities.resources) {
+    enabled.push("resources");
+  }
+  if (item.capabilities.prompts) {
+    enabled.push("prompts");
+  }
+  return enabled.length > 0 ? enabled.join(" / ") : "none";
+}
+
+function formatMcpMetadata(metadata: Record<string, string>, type: DesktopMcpTransportType): string {
+  const entries = Object.entries(metadata);
+  if (entries.length === 0) {
+    return "";
+  }
+  return entries
+    .map(([key, value]) => (type === "http" ? `${key}: ${value}` : `${key}=${value}`))
+    .join("; ");
+}
+
+type McpServerRuntimeBadgeState = "loading" | "ready" | "error" | "disabled";
+
+type McpServerRuntimeInfo = {
+  state: McpServerRuntimeBadgeState;
+  counts?: {
+    tools: number;
+    resources: number;
+    prompts: number;
+  };
+};
+
+function mcpCountsSummary(runtime?: McpServerRuntimeInfo): string {
+  const tools = runtime?.state === "ready" ? String(runtime.counts?.tools ?? 0) : "-";
+  const resources = runtime?.state === "ready" ? String(runtime.counts?.resources ?? 0) : "-";
+  const prompts = runtime?.state === "ready" ? String(runtime.counts?.prompts ?? 0) : "-";
+  return `已发现 ${tools} tools · ${resources} resources · ${prompts} prompts`;
+}
+
+function McpRuntimeBadge({ state }: { state: McpServerRuntimeBadgeState }) {
+  if (state === "ready") {
+    return <Badge>活跃</Badge>;
+  }
+
+  if (state === "error") {
+    return <Badge variant="destructive">失败</Badge>;
+  }
+
+  if (state === "disabled") {
+    return <Badge variant="outline">未启用</Badge>;
+  }
+
+  return (
+    <Badge variant="outline" className="gap-1.5">
+      <LoaderCircle className="size-3 animate-spin" aria-hidden />
+      加载中
+    </Badge>
+  );
+}
 
 function skillRootKindLabel(rootKind: DesktopSkillRootKind): string {
   if (rootKind === "user") {
@@ -619,6 +725,358 @@ function SkillsSettingsPanel({
   );
 }
 
+function McpsSettingsPanel({
+  snapshot,
+  mcpsBusy,
+  onAddMcpServer,
+  onDeleteMcpServer,
+  onInspectMcpServer,
+}: Pick<
+  SettingsViewProps,
+  "snapshot" | "mcpsBusy" | "onAddMcpServer" | "onDeleteMcpServer" | "onInspectMcpServer"
+>) {
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteMcpServerRequest | null>(null);
+  const [transportType, setTransportType] = useState<DesktopMcpTransportType>("stdio");
+  const [newName, setNewName] = useState("");
+  const [newEndpoint, setNewEndpoint] = useState("");
+  const [newMetadata, setNewMetadata] = useState("");
+  const [capabilities, setCapabilities] = useState<DesktopMcpCapabilityToggles>(defaultMcpCapabilities);
+  const [runtimeInfo, setRuntimeInfo] = useState<Record<string, McpServerRuntimeInfo>>({});
+
+  const items = snapshot?.mcpServers ?? [];
+
+  useEffect(() => {
+    let cancelled = false;
+    const names = new Set(items.map((item) => item.name));
+
+    setRuntimeInfo((current) => {
+      const next: Record<string, McpServerRuntimeInfo> = {};
+      for (const item of items) {
+        next[item.name] = item.enabled
+          ? { state: "loading" }
+          : { state: "disabled" };
+      }
+      for (const [name, info] of Object.entries(current)) {
+        if (names.has(name) && next[name]?.state === "disabled") {
+          next[name] = info;
+        }
+      }
+      return next;
+    });
+
+    void Promise.all(
+      items.map(async (item) => {
+        if (!item.enabled) {
+          return;
+        }
+
+        try {
+          const inspection = await onInspectMcpServer(item.name);
+          if (cancelled) {
+            return;
+          }
+          setRuntimeInfo((current) => ({
+            ...current,
+            [item.name]: {
+              state: "ready",
+              counts: {
+                tools: inspection.toolsCount,
+                resources: inspection.resourcesCount,
+                prompts: inspection.promptsCount,
+              },
+            },
+          }));
+        } catch {
+          if (cancelled) {
+            return;
+          }
+          setRuntimeInfo((current) => ({
+            ...current,
+            [item.name]: {
+              state: "error",
+            },
+          }));
+        }
+      }),
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, onInspectMcpServer]);
+
+  const resetForm = () => {
+    setTransportType("stdio");
+    setNewName("");
+    setNewEndpoint("");
+    setNewMetadata("");
+    setCapabilities(defaultMcpCapabilities);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">MCPs</h1>
+          <p className="text-sm text-muted-foreground">管理 Desktop 侧已配置的 MCP servers。</p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="shrink-0"
+          onClick={() => {
+            resetForm();
+            setAddDialogOpen(true);
+          }}
+          disabled={mcpsBusy}
+        >
+          添加 MCP
+        </Button>
+      </div>
+
+      <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+        {items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">未配置 MCP server</p>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.name}
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+            >
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{item.displayName}</span>
+                  <McpRuntimeBadge state={runtimeInfo[item.name]?.state ?? (item.enabled ? "loading" : "disabled")} />
+                  <Badge variant="secondary" className="text-muted-foreground">
+                    {mcpTransportTypeLabel(item.transport.type)}
+                  </Badge>
+                  {!item.enabled ? (
+                    <Badge variant="secondary" className="text-muted-foreground">
+                      已关闭
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">{item.transport.summary}</p>
+                <p className="text-xs text-muted-foreground">{mcpCountsSummary(runtimeInfo[item.name])}</p>
+                {Object.keys(item.transport.metadata).length > 0 ? (
+                  <p
+                    className="truncate font-mono text-[0.65rem] text-muted-foreground/90"
+                    title={formatMcpMetadata(item.transport.metadata, item.transport.type)}
+                  >
+                    {formatMcpMetadata(item.transport.metadata, item.transport.type)}
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="shrink-0 self-start sm:self-center"
+                disabled={mcpsBusy}
+                onClick={() => setDeleteTarget({ name: item.name })}
+              >
+                删除
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>删除 MCP</DialogTitle>
+            <DialogDescription>
+              确定删除 MCP server「{deleteTarget?.name ?? ""}」？这会从本地 mcp.json 中移除对应配置。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={mcpsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={mcpsBusy || !deleteTarget}
+              onClick={() => {
+                const target = deleteTarget;
+                if (!target) {
+                  return;
+                }
+                void (async () => {
+                  try {
+                    await onDeleteMcpServer(target);
+                    setDeleteTarget(null);
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {mcpsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>添加 MCP</DialogTitle>
+            <DialogDescription>表单语义与 CLI 保持一致：Stdio 写命令，HTTP 写 URL，metadata 按 transport 解释。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-1">
+            <div className="grid gap-2">
+              <Label>传输方式</Label>
+              <div
+                role="tablist"
+                aria-label="MCP 传输方式"
+                className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+              >
+                {(["stdio", "http"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={transportType === value}
+                    className={cn(
+                      "rounded-md px-2.5 text-xs font-medium transition-colors",
+                      transportType === value
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    disabled={mcpsBusy}
+                    onClick={() => setTransportType(value)}
+                  >
+                    {mcpTransportTypeLabel(value)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="new-mcp-name">名称</Label>
+              <Input
+                id="new-mcp-name"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="例如 filesystem"
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="new-mcp-endpoint">{mcpEndpointLabel(transportType)}</Label>
+              <Input
+                id="new-mcp-endpoint"
+                value={newEndpoint}
+                onChange={(event) => setNewEndpoint(event.target.value)}
+                placeholder={mcpEndpointPlaceholder(transportType)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="new-mcp-metadata">{mcpMetadataLabel(transportType)}</Label>
+              <Textarea
+                id="new-mcp-metadata"
+                value={newMetadata}
+                onChange={(event) => setNewMetadata(event.target.value)}
+                placeholder={mcpMetadataPlaceholder(transportType)}
+                className="min-h-24"
+              />
+              <p className="text-xs text-muted-foreground">多个条目使用分号分隔；HTTP 支持 `Key: Value` 或 `Key=Value`，Stdio 使用 `KEY=value`。</p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Capabilities</Label>
+              <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/15 p-3">
+                {(["tools", "resources", "prompts"] as const).map((key) => (
+                  <label key={key} className="flex items-center justify-between gap-3 text-sm text-foreground">
+                    <span>{key}</span>
+                    <Checkbox
+                      checked={capabilities[key]}
+                      onCheckedChange={(value) =>
+                        setCapabilities((current) => ({
+                          ...current,
+                          [key]: value === true,
+                        }))
+                      }
+                      disabled={mcpsBusy}
+                      className="size-5"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAddDialogOpen(false)}
+              disabled={mcpsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={mcpsBusy || !newName.trim() || !newEndpoint.trim()}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await onAddMcpServer({
+                      name: newName,
+                      transportType,
+                      endpoint: newEndpoint,
+                      metadata: newMetadata,
+                      capabilities,
+                    });
+                    setAddDialogOpen(false);
+                    resetForm();
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {mcpsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              创建
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ModelsSettingsPanel({
   snapshot,
   modelsBusy,
@@ -908,6 +1366,7 @@ export function SettingsView({
   apiReady,
   busyAction,
   modelsBusy,
+  mcpsBusy,
   skillsBusy,
   isElectronShell,
   onSavePatch,
@@ -916,6 +1375,9 @@ export function SettingsView({
   onResetSession,
   onAddModel,
   onRemoveModel,
+  onAddMcpServer,
+  onDeleteMcpServer,
+  onInspectMcpServer,
   onCreateSkill,
   onDeleteSkill,
   onGenerateSkillNavigate,
@@ -925,7 +1387,7 @@ export function SettingsView({
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {tab !== "models" && tab !== "skills" ? (
+            {tab !== "models" && tab !== "skills" && tab !== "mcps" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {settingsPageTitle[tab]}
               </h1>
@@ -959,6 +1421,14 @@ export function SettingsView({
                 onCreateSkill={onCreateSkill}
                 onDeleteSkill={onDeleteSkill}
                 onGenerateSkillNavigate={onGenerateSkillNavigate}
+              />
+            ) : tab === "mcps" ? (
+              <McpsSettingsPanel
+                snapshot={snapshot}
+                mcpsBusy={mcpsBusy}
+                onAddMcpServer={onAddMcpServer}
+                onDeleteMcpServer={onDeleteMcpServer}
+                onInspectMcpServer={onInspectMcpServer}
               />
             ) : (
               <AppearanceSettingsPanel

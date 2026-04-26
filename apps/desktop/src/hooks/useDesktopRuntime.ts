@@ -5,12 +5,15 @@ import { useHostApi } from "@/hooks/useHostApi";
 import { isCreateSkillSlashInput, matchSkillSlashInput } from "@/lib/skill-slash";
 import type {
   AddModelRequest,
+  AddMcpServerRequest,
   AskQuestionsAnswer,
   AskQuestionsQuestionSpec,
   AskQuestionsRequest,
   AskQuestionsResult,
   CreateSkillRequest,
+  DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopMcpServerInspection,
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
@@ -27,6 +30,7 @@ type BusyAction =
   | "reset"
   | "session"
   | "models"
+  | "mcps"
   | "skills";
 
 export interface QuestionDraft {
@@ -451,6 +455,60 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const addMcpServer = useCallback(
+    async (request: AddMcpServerRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("mcps");
+      try {
+        const next = await api.addMcpServer(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const deleteMcpServer = useCallback(
+    async (request: DeleteMcpServerRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("mcps");
+      try {
+        const next = await api.deleteMcpServer(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const inspectMcpServer = useCallback(
+    async (name: string): Promise<DesktopMcpServerInspection> => {
+      if (!api) {
+        throw new Error("当前宿主尚未就绪。");
+      }
+      return api.inspectMcpServer(name);
+    },
+    [api],
+  );
+
   const saveSettingsPatch = useCallback(
     async (patch: Partial<SettingsFormState>) => {
       if (!api) {
@@ -721,8 +779,11 @@ export function useDesktopRuntime() {
     bootstrap,
     addModel,
     removeModel,
+    addMcpServer,
     createSkill,
+    deleteMcpServer,
     deleteSkill,
+    inspectMcpServer,
     openSession,
     pairWebHost,
     resetSession,

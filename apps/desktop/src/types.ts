@@ -33,6 +33,67 @@ export interface RemoveModelRequest {
   name: string;
 }
 
+export interface DesktopMcpCapabilityToggles {
+  tools: boolean;
+  resources: boolean;
+  prompts: boolean;
+}
+
+export type DesktopMcpTransportType = 'stdio' | 'http';
+
+export interface AddMcpServerRequest {
+  name: string;
+  transportType: DesktopMcpTransportType;
+  endpoint: string;
+  metadata?: string;
+  capabilities?: Partial<DesktopMcpCapabilityToggles>;
+}
+
+export interface DeleteMcpServerRequest {
+  name: string;
+}
+
+export interface DesktopMcpStdioTransportSnapshot {
+  type: 'stdio';
+  command: string;
+  args: string[];
+  metadata: Record<string, string>;
+  cwd?: string;
+  timeoutMs?: number;
+  summary: string;
+}
+
+export interface DesktopMcpHttpTransportSnapshot {
+  type: 'http';
+  url: string;
+  metadata: Record<string, string>;
+  timeoutMs?: number;
+  summary: string;
+}
+
+export type DesktopMcpTransportSnapshot =
+  | DesktopMcpStdioTransportSnapshot
+  | DesktopMcpHttpTransportSnapshot;
+
+export interface DesktopMcpServerListItem {
+  name: string;
+  displayName: string;
+  enabled: boolean;
+  capabilities: DesktopMcpCapabilityToggles;
+  transport: DesktopMcpTransportSnapshot;
+}
+
+export interface DesktopMcpServerInspection {
+  name: string;
+  displayName: string;
+  supportsTools: boolean;
+  supportsResources: boolean;
+  supportsPrompts: boolean;
+  toolsCount: number;
+  resourcesCount: number;
+  promptsCount: number;
+}
+
 export type DesktopSkillScope = 'workspace' | 'user';
 export type DesktopSkillRootKind = 'workspaceSpirit' | 'workspaceAgents' | 'user';
 
@@ -98,6 +159,7 @@ export interface DesktopSnapshot {
   skillsList: DesktopSkillListItem[];
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
+  mcpServers: DesktopMcpServerListItem[];
   conversation: ConversationSnapshot;
   /** 从磁盘打开的会话；未从文件打开时为 `undefined`（新会话/未保存）。 */
   activeSession?: ActiveSessionSnapshot;

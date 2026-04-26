@@ -3,6 +3,7 @@ import {
   Layers,
   Palette,
   Plus,
+  Plug,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -38,7 +39,7 @@ type SessionSidebarProps = {
   disabled?: boolean;
 };
 
-export type SettingsSidebarTab = "basic" | "appearance" | "models" | "skills";
+export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills";
 
 const settingsTabs: Array<{
   id: SettingsSidebarTab;
@@ -63,6 +64,12 @@ const settingsTabs: Array<{
     label: "Skills",
     description: "用户技能目录",
     icon: Sparkles,
+  },
+  {
+    id: "mcps",
+    label: "MCPs",
+    description: "服务与传输配置",
+    icon: Plug,
   },
   {
     id: "appearance",

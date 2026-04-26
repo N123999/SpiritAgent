@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -28,6 +28,13 @@ import {
   type RuntimePendingQuestions,
   type RuntimeEvent,
   type RuntimeToolExecution,
+  mcpUserConfigPath,
+  normalizeCapabilityToggles,
+  normalizeMcpServerConfig,
+  parseMcpConfigFile,
+  summarizeTransport,
+  type McpConfigFile,
+  type McpServerConfig,
 } from '@spirit-agent/agent-core';
 import {
   resolveInstructionPaths,
@@ -40,11 +47,15 @@ import {
 import type {
   ActiveSessionSnapshot,
   AddModelRequest,
+  AddMcpServerRequest,
   AskQuestionsResult,
   BootstrapRequest,
   ConversationMessageSnapshot,
   CreateSkillRequest,
+  DeleteMcpServerRequest,
+  DesktopMcpServerInspection,
   DeleteSkillRequest,
+  DesktopMcpServerListItem,
   DesktopSkillRootKind,
   DesktopSnapshot,
   DesktopWebHostSnapshot,
@@ -113,6 +124,9 @@ type CommandPayloads = {
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   removeModel: { request: RemoveModelRequest };
+  addMcpServer: { request: AddMcpServerRequest };
+  deleteMcpServer: { request: DeleteMcpServerRequest };
+  inspectMcpServer: { name: string };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
@@ -143,6 +157,7 @@ class DesktopHostService {
   private readonly transport = new OpenAiTransport();
   private state: HostState | undefined;
   private runtime: DesktopRuntime | undefined;
+  private toolExecutor: DesktopToolExecutor | undefined;
   private initialized = false;
   private lastRuntimeError = '';
   private activeApiKeyConfigured = false;
@@ -360,6 +375,81 @@ description: ${frontmatterDescription}
       this.lastRuntimeError = '';
       await this.persistCurrentSessionIfNeeded();
       return this.buildSnapshot();
+    });
+  }
+
+  async addMcpServer(request: AddMcpServerRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+
+      const name = request.name.trim();
+      if (!name) {
+        throw new Error('MCP server 名称不能为空。');
+      }
+      if (/\s/u.test(name)) {
+        throw new Error('MCP server 名称不能包含空白字符。');
+      }
+
+      const endpoint = request.endpoint.trim();
+      if (!endpoint) {
+        throw new Error(request.transportType === 'http' ? 'URL 不能为空。' : '命令不能为空。');
+      }
+
+      const configFile = loadMcpConfigFileFromDisk();
+      if (configFile.servers[name]) {
+        throw new Error(`MCP server 已存在：${name}`);
+      }
+
+      configFile.servers[name] = buildMcpServerConfigFromRequest(request);
+      await saveMcpConfigFileToDisk(configFile);
+      this.toolExecutor?.startMcpBackgroundRefresh();
+      return this.buildSnapshot();
+    });
+  }
+
+  async deleteMcpServer(request: DeleteMcpServerRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+
+      const name = request.name.trim();
+      if (!name) {
+        throw new Error('MCP server 名称不能为空。');
+      }
+
+      const configFile = loadMcpConfigFileFromDisk();
+      if (!configFile.servers[name]) {
+        throw new Error(`MCP server 不存在：${name}`);
+      }
+
+      delete configFile.servers[name];
+      await saveMcpConfigFileToDisk(configFile);
+      this.toolExecutor?.startMcpBackgroundRefresh();
+      return this.buildSnapshot();
+    });
+  }
+
+  async inspectMcpServer(name: string): Promise<DesktopMcpServerInspection> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        throw new Error('MCP server 名称不能为空。');
+      }
+
+      const inspection = await this.requireToolExecutor().inspectMcpServer(trimmedName) as Record<string, unknown>;
+      return {
+        name: typeof inspection.name === 'string' ? inspection.name : trimmedName,
+        displayName:
+          typeof inspection.displayName === 'string'
+            ? inspection.displayName
+            : trimmedName,
+        supportsTools: inspection.supportsTools === true,
+        supportsResources: inspection.supportsResources === true,
+        supportsPrompts: inspection.supportsPrompts === true,
+        toolsCount: typeof inspection.toolsCount === 'number' ? inspection.toolsCount : 0,
+        resourcesCount: typeof inspection.resourcesCount === 'number' ? inspection.resourcesCount : 0,
+        promptsCount: typeof inspection.promptsCount === 'number' ? inspection.promptsCount : 0,
+      };
     });
   }
 
@@ -744,6 +834,18 @@ description: ${frontmatterDescription}
         const typedPayload = payload as CommandPayloads['removeModel'];
         return this.removeModel(typedPayload.request);
       }
+      case 'addMcpServer': {
+        const typedPayload = payload as CommandPayloads['addMcpServer'];
+        return this.addMcpServer(typedPayload.request);
+      }
+      case 'deleteMcpServer': {
+        const typedPayload = payload as CommandPayloads['deleteMcpServer'];
+        return this.deleteMcpServer(typedPayload.request);
+      }
+      case 'inspectMcpServer': {
+        const typedPayload = payload as CommandPayloads['inspectMcpServer'];
+        return this.inspectMcpServer(typedPayload.name);
+      }
       case 'createSkill': {
         const typedPayload = payload as CommandPayloads['createSkill'];
         return this.createSkill(typedPayload.request);
@@ -825,6 +927,10 @@ description: ${frontmatterDescription}
       state.workspaceRoot,
       state.config.planMode === true,
     );
+    this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
+      recordFileChange: (change) => this.recordHostFileChange(change),
+    });
+    this.toolExecutor.startMcpBackgroundRefresh();
     this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
@@ -894,9 +1000,7 @@ description: ${frontmatterDescription}
     return new AgentRuntime({
       config: transportConfig,
       llmTransport: this.transport,
-      toolExecutor: new DesktopToolExecutor(workspaceRoot, {
-        recordFileChange: (change) => this.recordHostFileChange(change),
-      }),
+      toolExecutor: this.requireToolExecutor(),
       createToolAgentState: (messages, userInput) =>
         startOpenAiToolAgentState(
           messages,
@@ -986,13 +1090,8 @@ description: ${frontmatterDescription}
         path: state.metadata.planMetadata.path,
         exists: state.metadata.planMetadata.exists,
       },
-      mcpStatus: {
-        revision: 0,
-        state: 'idle',
-        configuredServers: 0,
-        loadedServers: 0,
-        cachedTools: 0,
-      },
+      mcpStatus: this.toolExecutor?.mcpStatusSnapshot() ?? emptyMcpStatusSnapshot(),
+      mcpServers: listDesktopMcpServersFromDisk(),
       conversation: {
         messages: this.messagesWithPendingAssistant(pendingAux),
         ...(this.runtime?.pendingUserTurn()
@@ -2532,6 +2631,224 @@ description: ${frontmatterDescription}
     }
     return entry;
   }
+
+  private requireToolExecutor(): DesktopToolExecutor {
+    if (!this.toolExecutor) {
+      throw new Error('Desktop MCP tool executor 尚未初始化。');
+    }
+    return this.toolExecutor;
+  }
+}
+
+const MCP_DEFAULT_TIMEOUT_MS = 20_000;
+
+type DesktopMcpMetadataKind = 'env' | 'header';
+
+function emptyMcpStatusSnapshot(): DesktopSnapshot['mcpStatus'] {
+  return {
+    revision: 0,
+    state: 'idle',
+    configuredServers: 0,
+    loadedServers: 0,
+    cachedTools: 0,
+  };
+}
+
+function desktopMcpConfigPath(): string {
+  return mcpUserConfigPath(spiritAgentDataDir());
+}
+
+function loadMcpConfigFileFromDisk(): McpConfigFile {
+  const configPath = desktopMcpConfigPath();
+  if (!existsSync(configPath)) {
+    return { servers: {} };
+  }
+
+  const content = readFileSync(configPath, 'utf8');
+  return parseMcpConfigFile(JSON.parse(content) as unknown);
+}
+
+async function saveMcpConfigFileToDisk(config: McpConfigFile): Promise<void> {
+  const configPath = desktopMcpConfigPath();
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+function listDesktopMcpServersFromDisk(): DesktopMcpServerListItem[] {
+  try {
+    const configFile = loadMcpConfigFileFromDisk();
+    return Object.entries(configFile.servers).map(([name, server]) => {
+      const normalized = normalizeMcpServerConfig(name, server);
+      switch (normalized.transport.type) {
+        case 'stdio':
+          return {
+            name: normalized.name,
+            displayName: normalized.displayName,
+            enabled: normalized.enabled,
+            capabilities: normalized.capabilities,
+            transport: {
+              type: 'stdio',
+              command: normalized.transport.command,
+              args: normalized.transport.args,
+              metadata: normalized.transport.env,
+              ...(normalized.transport.cwd ? { cwd: normalized.transport.cwd } : {}),
+              ...(normalized.transport.timeoutMs !== undefined
+                ? { timeoutMs: normalized.transport.timeoutMs }
+                : {}),
+              summary: summarizeTransport(normalized.transport),
+            },
+          };
+        case 'http':
+          return {
+            name: normalized.name,
+            displayName: normalized.displayName,
+            enabled: normalized.enabled,
+            capabilities: normalized.capabilities,
+            transport: {
+              type: 'http',
+              url: normalized.transport.url,
+              metadata: normalized.transport.headers,
+              ...(normalized.transport.timeoutMs !== undefined
+                ? { timeoutMs: normalized.transport.timeoutMs }
+                : {}),
+              summary: summarizeTransport(normalized.transport),
+            },
+          };
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): McpServerConfig {
+  const name = request.name.trim();
+  const capabilities = normalizeCapabilityToggles(request.capabilities);
+  const metadata = parseDesktopMcpMetadata(
+    request.metadata ?? '',
+    request.transportType === 'http' ? 'header' : 'env',
+  );
+
+  if (request.transportType === 'http') {
+    return {
+      displayName: name,
+      enabled: true,
+      capabilities,
+      transport: {
+        type: 'http',
+        url: request.endpoint.trim(),
+        ...(Object.keys(metadata).length > 0 ? { headers: metadata } : {}),
+        timeoutMs: MCP_DEFAULT_TIMEOUT_MS,
+      },
+    };
+  }
+
+  const tokens = splitDesktopCommandLine(request.endpoint.trim());
+  const [command, ...args] = tokens;
+  if (!command) {
+    throw new Error('命令不能为空。');
+  }
+
+  return {
+    displayName: name,
+    enabled: true,
+    capabilities,
+    transport: {
+      type: 'stdio',
+      command,
+      ...(args.length > 0 ? { args } : {}),
+      ...(Object.keys(metadata).length > 0 ? { env: metadata } : {}),
+      timeoutMs: MCP_DEFAULT_TIMEOUT_MS,
+    },
+  };
+}
+
+function parseDesktopMcpMetadata(
+  input: string,
+  kind: DesktopMcpMetadataKind,
+): Record<string, string> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  const result: Record<string, string> = {};
+  for (const item of trimmed.split(';')) {
+    const pair = item.trim();
+    if (!pair) {
+      continue;
+    }
+
+    const parsed = kind === 'env'
+      ? pair.split(/=(.*)/su, 2)
+      : pair.includes(':')
+        ? pair.split(/:(.*)/su, 2)
+        : pair.split(/=(.*)/su, 2);
+
+    if (parsed.length < 2) {
+      throw new Error(kind === 'env'
+        ? '环境变量格式应为 KEY=value；多个条目用分号分隔。'
+        : 'Header 格式应为 Key: Value；多个条目用分号分隔。');
+    }
+
+    const key = parsed[0]?.trim() ?? '';
+    if (!key) {
+      throw new Error(kind === 'env' ? '环境变量名不能为空。' : 'Header 名不能为空。');
+    }
+
+    result[key] = (parsed[1] ?? '').trim();
+  }
+
+  return result;
+}
+
+function splitDesktopCommandLine(input: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const ch = input[index]!;
+    if (quote) {
+      if (ch === quote) {
+        quote = undefined;
+        continue;
+      }
+      if (ch === '\\' && index + 1 < input.length) {
+        current += input[index + 1]!;
+        index += 1;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/u.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+    if (ch === '\\' && index + 1 < input.length) {
+      current += input[index + 1]!;
+      index += 1;
+      continue;
+    }
+    current += ch;
+  }
+
+  if (quote) {
+    throw new Error('命令格式错误：存在未闭合的引号。');
+  }
+  if (current) {
+    tokens.push(current);
+  }
+  return tokens;
 }
 
 const ACTIVE_SKILL_CONTENT_MAX_CHARS = 12_000;

@@ -897,6 +897,7 @@ export default function App() {
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
               modelsBusy={runtime.busyAction === "models"}
+              mcpsBusy={runtime.busyAction === "mcps"}
               skillsBusy={runtime.busyAction === "skills"}
               isElectronShell={isElectronShell}
               onSavePatch={runtime.saveSettingsPatch}
@@ -905,6 +906,9 @@ export default function App() {
               onResetSession={runtime.resetSession}
               onAddModel={runtime.addModel}
               onRemoveModel={runtime.removeModel}
+              onAddMcpServer={runtime.addMcpServer}
+              onDeleteMcpServer={runtime.deleteMcpServer}
+              onInspectMcpServer={runtime.inspectMcpServer}
               onCreateSkill={runtime.createSkill}
               onDeleteSkill={runtime.deleteSkill}
               onGenerateSkillNavigate={() => {
