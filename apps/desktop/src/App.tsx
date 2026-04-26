@@ -812,6 +812,7 @@ export default function App() {
               skillsBusy={runtime.busyAction === "skills"}
               isElectronShell={isElectronShell}
               onSavePatch={runtime.saveSettingsPatch}
+              onResetWebHostPairing={runtime.resetWebHostPairing}
               onBootstrap={runtime.bootstrap}
               onResetSession={runtime.resetSession}
               onAddModel={runtime.addModel}

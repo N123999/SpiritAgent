@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { LoaderCircle, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 
@@ -57,6 +57,7 @@ type SettingsViewProps = {
   skillsBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
+  onResetWebHostPairing?: () => Promise<void>;
   onBootstrap: () => Promise<void>;
   onResetSession: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
@@ -148,11 +149,26 @@ function BasicSettingsPanel({
   settings,
   snapshot,
   onSavePatch,
-}: Pick<SettingsViewProps, "settings" | "snapshot" | "onSavePatch">) {
+  onResetWebHostPairing,
+}: Pick<
+  SettingsViewProps,
+  "settings" | "snapshot" | "onSavePatch" | "onResetWebHostPairing"
+>) {
   const webHost = snapshot?.webHost;
   const webHostUrl =
     webHost?.status.url ?? `http://${settings.webHostHost}:${settings.webHostPort}`;
   const webHostStatus = webHostStatusLabel(webHost?.status.state ?? "disabled");
+
+  const [webHostHostDraft, setWebHostHostDraft] = useState(settings.webHostHost);
+  const [webHostPortDraft, setWebHostPortDraft] = useState(String(settings.webHostPort));
+
+  useEffect(() => {
+    setWebHostHostDraft(settings.webHostHost);
+  }, [settings.webHostHost]);
+
+  useEffect(() => {
+    setWebHostPortDraft(String(settings.webHostPort));
+  }, [settings.webHostPort]);
 
   return (
     <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
@@ -202,7 +218,7 @@ function BasicSettingsPanel({
 
       <SettingsRow
         label="Web 远程访问"
-        description="默认仅本机；改为局域网监听地址后可用 HTTP 同 LAN 访问。"
+        description="浏览器连本机；默认仅本机可连。"
         htmlFor="settings-web-host-enabled"
       >
         <div className="flex items-center justify-end gap-3">
@@ -222,38 +238,47 @@ function BasicSettingsPanel({
 
       <SettingsRow
         label="监听地址"
-        description="127.0.0.1 仅本机；局域网访问需改为可被手机访问的地址。"
+        description="填本机回环 IP 或局域网 IPv4。"
         htmlFor="settings-web-host-host"
       >
         <Input
           id="settings-web-host-host"
           className="sm:text-right"
-          value={settings.webHostHost}
-          onChange={(event) => void onSavePatch({ webHostHost: event.target.value })}
+          value={webHostHostDraft}
+          onChange={(event) => setWebHostHostDraft(event.target.value)}
+          onBlur={() => {
+            const next = webHostHostDraft.trim();
+            if (next && next !== settings.webHostHost) {
+              void onSavePatch({ webHostHost: next });
+            }
+          }}
           disabled={!settings.webHostEnabled}
+          placeholder="127.0.0.1"
         />
       </SettingsRow>
 
-      <SettingsRow label="端口" description="默认 7788。" htmlFor="settings-web-host-port">
+      <SettingsRow label="端口" htmlFor="settings-web-host-port">
         <Input
           id="settings-web-host-port"
           className="sm:text-right"
           type="number"
           min={1}
           max={65535}
-          value={settings.webHostPort}
-          onChange={(event) => {
-            const port = Number.parseInt(event.target.value, 10);
-            if (Number.isInteger(port)) {
+          value={webHostPortDraft}
+          onChange={(event) => setWebHostPortDraft(event.target.value)}
+          onBlur={() => {
+            const port = Number.parseInt(webHostPortDraft, 10);
+            if (Number.isInteger(port) && port >= 1 && port <= 65535 && port !== settings.webHostPort) {
               void onSavePatch({ webHostPort: port });
             }
           }}
           disabled={!settings.webHostEnabled}
+          placeholder="7788"
         />
       </SettingsRow>
 
       <div className="py-4">
-        <p className="text-sm font-medium text-foreground">远程访问状态</p>
+        <p className="text-sm font-medium text-foreground">远程状态</p>
         <div className="mt-2 grid gap-1 text-sm text-muted-foreground sm:text-right">
           <p className="truncate">
             <span className="text-foreground">{settings.webHostEnabled ? webHostStatus : "关闭"}</span>
@@ -267,6 +292,19 @@ function BasicSettingsPanel({
           </p>
           {webHost?.status.pairingCode ? (
             <p className="font-mono text-foreground">{webHost.status.pairingCode}</p>
+          ) : null}
+          {settings.webHostEnabled && webHost?.config.paired && onResetWebHostPairing ? (
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => void onResetWebHostPairing()}
+              >
+                重置配对
+              </Button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -873,6 +911,7 @@ export function SettingsView({
   skillsBusy,
   isElectronShell,
   onSavePatch,
+  onResetWebHostPairing,
   onBootstrap,
   onResetSession,
   onAddModel,
@@ -903,6 +942,7 @@ export function SettingsView({
                 settings={settings}
                 snapshot={snapshot}
                 onSavePatch={onSavePatch}
+                onResetWebHostPairing={onResetWebHostPairing}
               />
             ) : tab === "models" ? (
               <ModelsSettingsPanel

@@ -13,6 +13,7 @@ import type {
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
+  UpdateConfigRequest,
 } from "@/types";
 
 type BusyAction =
@@ -47,6 +48,21 @@ function errorCode(error: unknown): string | undefined {
   }
   const code = (error as { code?: unknown }).code;
   return typeof code === "string" ? code : undefined;
+}
+
+function updateConfigFromSettingsForm(
+  s: SettingsFormState,
+  webHost: NonNullable<UpdateConfigRequest["webHost"]>,
+): UpdateConfigRequest {
+  return {
+    activeModel: s.activeModel,
+    apiBase: s.apiBase,
+    windowsMica: s.windowsMica,
+    planMode: s.planMode,
+    webHost,
+    ...(s.uiLocale.trim() ? { uiLocale: s.uiLocale.trim() } : { uiLocale: undefined }),
+    ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : undefined),
+  };
 }
 
 function toUniqueIndexes(indexes: number[]): number[] {
@@ -327,21 +343,13 @@ export function useDesktopRuntime() {
 
       void (async () => {
         try {
-          const res = await api.updateConfig({
-            activeModel: next.activeModel,
-            apiBase: next.apiBase,
-            windowsMica: next.windowsMica,
-            planMode: next.planMode,
-            webHost: {
+          const res = await api.updateConfig(
+            updateConfigFromSettingsForm(next, {
               enabled: next.webHostEnabled,
               host: next.webHostHost,
               port: next.webHostPort,
-            },
-            ...(next.uiLocale.trim()
-              ? { uiLocale: next.uiLocale.trim() }
-              : { uiLocale: undefined }),
-            ...(next.apiKey.trim() ? { apiKey: next.apiKey.trim() } : { apiKey: undefined }),
-          });
+            }),
+          );
           applySnapshot(res);
           setRuntimeError("");
           setSettings((c) => ({ ...c, apiKey: "" }));
@@ -353,7 +361,6 @@ export function useDesktopRuntime() {
     [api, applySnapshot, snapshot],
   );
 
-  /** 合并补丁并立即写回宿主（设置页可编辑项） */
   const addModel = useCallback(
     async (request: AddModelRequest) => {
       if (!api) {
@@ -449,25 +456,21 @@ export function useDesktopRuntime() {
         return;
       }
 
-      const s = { ...settingsRef.current, ...patch };
+      const prev = settingsRef.current;
+      const s = { ...prev, ...patch };
+      const webHostEndpointChanged =
+        s.webHostHost !== prev.webHostHost || s.webHostPort !== prev.webHostPort;
       settingsRef.current = s;
       setSettings(s);
       try {
-        const next = await api.updateConfig({
-          activeModel: s.activeModel,
-          apiBase: s.apiBase,
-          windowsMica: s.windowsMica,
-          planMode: s.planMode,
-          webHost: {
+        const next = await api.updateConfig(
+          updateConfigFromSettingsForm(s, {
             enabled: s.webHostEnabled,
             host: s.webHostHost,
             port: s.webHostPort,
-          },
-          ...(s.uiLocale.trim()
-            ? { uiLocale: s.uiLocale.trim() }
-            : { uiLocale: undefined }),
-          ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : { apiKey: undefined }),
-        });
+            ...(webHostEndpointChanged ? { resetPairing: true } : {}),
+          }),
+        );
         applySnapshot(next);
         setRuntimeError("");
         setSettings((current) => ({
@@ -480,6 +483,32 @@ export function useDesktopRuntime() {
     },
     [api, applySnapshot],
   );
+
+  const resetWebHostPairing = useCallback(async () => {
+    if (!api) {
+      return;
+    }
+
+    const s = settingsRef.current;
+    try {
+      const next = await api.updateConfig(
+        updateConfigFromSettingsForm(s, {
+          enabled: s.webHostEnabled,
+          host: s.webHostHost,
+          port: s.webHostPort,
+          resetPairing: true,
+        }),
+      );
+      applySnapshot(next);
+      setRuntimeError("");
+      setSettings((current) => ({
+        ...current,
+        apiKey: "",
+      }));
+    } catch (error) {
+      setRuntimeError(describeError(error));
+    }
+  }, [api, applySnapshot]);
 
   const sendMessage = useCallback(async () => {
     if (!api) {
@@ -687,6 +716,7 @@ export function useDesktopRuntime() {
     resetSession,
     rewindAndSubmitMessage,
     saveSettingsPatch,
+    resetWebHostPairing,
     sendMessage,
     skipQuestions,
     submitApproval,
