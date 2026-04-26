@@ -17,7 +17,9 @@
     "build:renderer": "tsc --noEmit && vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.cjs.json && node ./scripts/rename-preload-to-cjs.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "start": "electron dist-electron/electron/main.js"
+    "start": "electron dist-electron/electron/main.js",
+    "notice": "node scripts/gen-notice.mjs",
+    "notice:production": "node scripts/gen-notice.mjs --production"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
@@ -48,6 +50,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "electron": "^38.8.6",
+    "license-checker-rseidelsohn": "^4.4.2",
     "tailwindcss": "^4.2.4",
     "typescript": "^5.6.3",
     "vite": "^8.0.9",
