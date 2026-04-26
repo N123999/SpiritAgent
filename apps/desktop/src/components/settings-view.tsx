@@ -531,13 +531,13 @@ function SkillsSettingsPanel({
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-foreground">{item.name}</span>
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                  <Badge variant="secondary" className="text-muted-foreground">
                     {skillLocationLabel(item)}
-                  </span>
+                  </Badge>
                   {!item.enabled ? (
-                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                    <Badge variant="secondary" className="text-muted-foreground">
                       已关闭
-                    </span>
+                    </Badge>
                   ) : null}
                 </div>
                 <p className="text-xs text-muted-foreground">{item.description}</p>
@@ -1133,14 +1133,14 @@ function ModelsSettingsPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{model.name}</span>
                     {isActive ? (
-                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                        <Badge variant="secondary" className="text-muted-foreground">
                         当前
-                      </span>
+                        </Badge>
                     ) : null}
                     {model.keyConfigured ? (
-                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                        <Badge variant="secondary" className="text-muted-foreground">
                         已存密钥
-                      </span>
+                        </Badge>
                     ) : null}
                   </div>
                   <p className="truncate text-xs text-muted-foreground" title={model.apiBase}>
