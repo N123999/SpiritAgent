@@ -7,6 +7,7 @@
     "build:agent-core": "npm --prefix packages/agent-core run build",
     "build:desktop": "npm --prefix apps/desktop run build",
     "build": "npm run build:host-internal && npm run build:agent-core && npm run build:desktop",
+    "smoke:host-internal-models-parse": "npm --prefix packages/host-internal run smoke:openai-models-parse",
     "dev": "npm run build:host-internal && npm run build:agent-core && cargo run -p spirit-agent",
     "dev:cli": "cargo run -p spirit-agent",
     "dev:desktop": "npm --prefix apps/desktop run dev",
