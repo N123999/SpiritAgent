@@ -1111,6 +1111,9 @@ function ModelsSettingsPanel({
   const [connectApiKey, setConnectApiKey] = useState("");
   const [connectName, setConnectName] = useState("");
   const [connectApiBase, setConnectApiBase] = useState("");
+  const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
+    "single",
+  );
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const models = snapshot?.config.models ?? [];
@@ -1120,6 +1123,7 @@ function ModelsSettingsPanel({
     setConnectApiKey("");
     setConnectName("");
     setConnectApiBase("");
+    setCustomConnectMode("single");
     setSelectedProvider(null);
   };
 
@@ -1134,6 +1138,7 @@ function ModelsSettingsPanel({
     setConnectApiKey("");
     setConnectName("");
     setConnectApiBase("");
+    setCustomConnectMode("single");
     setConnectDialogOpen(true);
   };
 
@@ -1206,7 +1211,7 @@ function ModelsSettingsPanel({
           }}
           disabled={modelsBusy || modelsPreviewBusy}
         >
-          添加模型
+          连接提供商
         </Button>
       </div>
 
@@ -1375,35 +1380,64 @@ function ModelsSettingsPanel({
             </DialogTitle>
             <DialogDescription>
               {selectedProvider === "custom"
-                ? "可只填一条模型，或拉取端点目录并批量写入。"
-                : "填写 API Key 后将同步上游模型列表到本地；在主输入区按提供商分组选择。"}
+                ? "填写端点与密钥。"
+                : "填写 API Key 即可连接。"}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3 py-1">
             {selectedProvider === "custom" ? (
-              <>
-                <div className="grid gap-2">
-                  <Label htmlFor="connect-model-name">名称</Label>
-                  <Input
-                    id="connect-model-name"
-                    value={connectName}
-                    onChange={(e) => setConnectName(e.target.value)}
-                    placeholder="例如 my-model"
-                    autoComplete="off"
-                  />
+              <div className="grid gap-2">
+                <Label>模型添加方式</Label>
+                <div
+                  role="tablist"
+                  aria-label="模型添加方式"
+                  className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+                >
+                  {(["single", "bulk"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={customConnectMode === value}
+                      className={cn(
+                        "rounded-md px-2.5 text-xs font-medium transition-colors",
+                        customConnectMode === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      disabled={modelsBusy || modelsPreviewBusy}
+                      onClick={() => setCustomConnectMode(value)}
+                    >
+                      {value === "single" ? "仅添加单个" : "添加所有"}
+                    </button>
+                  ))}
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="connect-api-base">端点</Label>
-                  <Input
-                    id="connect-api-base"
-                    value={connectApiBase}
-                    onChange={(e) => setConnectApiBase(e.target.value)}
-                    placeholder="留空则使用默认根地址"
-                    autoComplete="off"
-                  />
-                </div>
-              </>
+              </div>
+            ) : null}
+            {selectedProvider === "custom" && customConnectMode === "single" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-model-name">模型名称</Label>
+                <Input
+                  id="connect-model-name"
+                  value={connectName}
+                  onChange={(e) => setConnectName(e.target.value)}
+                  placeholder="例如 my-model"
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
+            {selectedProvider === "custom" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-api-base">端点</Label>
+                <Input
+                  id="connect-api-base"
+                  value={connectApiBase}
+                  onChange={(e) => setConnectApiBase(e.target.value)}
+                  placeholder="可选"
+                  autoComplete="off"
+                />
+              </div>
             ) : null}
             <div className="grid gap-2">
               <Label htmlFor="connect-api-key">API Key</Label>
@@ -1427,54 +1461,52 @@ function ModelsSettingsPanel({
                 取消
               </Button>
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                {selectedProvider === "custom" ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={
-                        modelsBusy ||
-                        modelsPreviewBusy ||
-                        !connectName.trim() ||
-                        !connectApiKey.trim()
-                      }
-                      onClick={() => {
-                        void (async () => {
-                          try {
-                            await saveCustomSingle();
-                          } catch {
-                            /* runtimeError */
-                          }
-                        })();
-                      }}
-                    >
-                      {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                      仅添加当前
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
-                      onClick={() => {
-                        void (async () => {
-                          try {
-                            await syncCatalogFromUpstream(true);
-                          } catch {
-                            /* runtimeError */
-                          }
-                        })();
-                      }}
-                    >
-                      {modelsBusy || modelsPreviewBusy ? (
-                        <LoaderCircle className="size-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="size-4" />
-                      )}
-                      同步目录
-                    </Button>
-                  </>
+                {selectedProvider === "custom" && customConnectMode === "single" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      modelsBusy ||
+                      modelsPreviewBusy ||
+                      !connectName.trim() ||
+                      !connectApiKey.trim()
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await saveCustomSingle();
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                    添加此模型
+                  </Button>
+                ) : null}
+                {selectedProvider === "custom" && customConnectMode === "bulk" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await syncCatalogFromUpstream(true);
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy || modelsPreviewBusy ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="size-4" />
+                    )}
+                    添加提供商
+                  </Button>
                 ) : null}
                 {selectedProvider !== null && selectedProvider !== "custom" ? (
                   <Button
@@ -1494,7 +1526,7 @@ function ModelsSettingsPanel({
                     {modelsBusy || modelsPreviewBusy ? (
                       <LoaderCircle className="size-4 animate-spin" />
                     ) : null}
-                    同步目录
+                    添加提供商
                   </Button>
                 ) : null}
               </div>

@@ -38,7 +38,7 @@ export interface PreviewModelsResponse {
   fromCache: boolean;
 }
 
-/** 批量写入同一端点下的多个模型 id（共享 API Key），用于提供商连接同步目录。 */
+/** 批量写入同一端点下的多个模型 id（共享 API Key），用于提供商连接批量导入。 */
 export interface AddProviderModelsRequest {
   apiBase: string;
   apiKey: string;
