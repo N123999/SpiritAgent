@@ -11,10 +11,12 @@ import type {
   AskQuestionsRequest,
   AskQuestionsResult,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
+  ImportExtensionRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
@@ -34,7 +36,8 @@ type BusyAction =
   | "session"
   | "models"
   | "mcps"
-  | "skills";
+  | "skills"
+  | "extensions";
 
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
@@ -512,6 +515,50 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const importExtension = useCallback(
+    async (request: ImportExtensionRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("extensions");
+      try {
+        const next = await api.importExtension(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const deleteExtension = useCallback(
+    async (request: DeleteExtensionRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("extensions");
+      try {
+        const next = await api.deleteExtension(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const saveSettingsPatch = useCallback(
     async (patch: Partial<SettingsFormState>) => {
       if (!api) {
@@ -813,7 +860,9 @@ export function useDesktopRuntime() {
     addModel,
     removeModel,
     addMcpServer,
+    importExtension,
     createSkill,
+    deleteExtension,
     deleteMcpServer,
     deleteSkill,
     inspectMcpServer,

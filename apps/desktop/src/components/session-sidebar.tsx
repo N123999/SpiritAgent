@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Layers,
+  Package,
   Palette,
   Plus,
   Plug,
@@ -40,7 +41,7 @@ type SessionSidebarProps = {
   disabled?: boolean;
 };
 
-export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills";
+export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills" | "extensions";
 
 const settingsTabs: Array<{
   id: SettingsSidebarTab;
@@ -65,6 +66,12 @@ const settingsTabs: Array<{
     label: "Skills",
     description: "用户技能目录",
     icon: Sparkles,
+  },
+  {
+    id: "extensions",
+    label: "扩展",
+    description: "导入、列表与删除",
+    icon: Package,
   },
   {
     id: "mcps",

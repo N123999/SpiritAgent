@@ -30,6 +30,12 @@ export async function createElectronHostApi(): Promise<HostApi> {
     inspectMcpServer(name) {
       return bridge.inspectMcpServer(name);
     },
+    importExtension(request) {
+      return bridge.importExtension(request);
+    },
+    deleteExtension(request) {
+      return bridge.deleteExtension(request);
+    },
     createSkill(request) {
       return bridge.createSkill(request);
     },

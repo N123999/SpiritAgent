@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   inspectMcpServer(name: string) {
     return ipcRenderer.invoke('desktop:invoke', 'inspectMcpServer', { name });
   },
+  importExtension(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'importExtension', { request });
+  },
+  deleteExtension(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'deleteExtension', { request });
+  },
   createSkill(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'createSkill', { request });
   },
