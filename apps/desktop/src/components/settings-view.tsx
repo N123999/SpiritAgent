@@ -1322,7 +1322,12 @@ function ModelsSettingsPanel({
           }
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        {/* Radix Dialog 会在打开时聚焦第一个可聚焦子节点；抑制以避免无交互下的焦点环。 */}
+        <DialogContent
+          className="sm:max-w-md"
+          showCloseButton
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>选择提供商</DialogTitle>
             <DialogDescription>选择后填写连接信息。</DialogDescription>
@@ -1365,7 +1370,12 @@ function ModelsSettingsPanel({
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg" showCloseButton>
+        {/* 同上：连接步骤内首项输入不应在打开瞬间自动获焦。 */}
+        <DialogContent
+          className="sm:max-w-lg"
+          showCloseButton
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>
               {selectedProvider === "custom"
