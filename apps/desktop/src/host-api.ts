@@ -10,6 +10,7 @@ import type {
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
+  WorkspaceExplorerListResult,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -39,6 +40,7 @@ export interface HostApi {
   resetSession(): Promise<DesktopSnapshot>;
   listSessions(): Promise<SessionListItem[]>;
   openSession(path: string): Promise<DesktopSnapshot>;
+  listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
   pairWebHost?(code: string): Promise<void>;
 }
 

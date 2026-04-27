@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
@@ -70,6 +70,8 @@ import type {
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
   UpdateConfigRequest,
+  WorkspaceExplorerEntry,
+  WorkspaceExplorerListResult,
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
 import {
@@ -138,6 +140,7 @@ type CommandPayloads = {
   resetSession: undefined;
   listSessions: undefined;
   openSession: { path: string };
+  listWorkspaceExplorerChildren: { relativePath: string };
   rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
 };
 
@@ -771,6 +774,62 @@ description: ${frontmatterDescription}
     return this.runSerialized(async () => listStoredSessions());
   }
 
+  async listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const dir = this.resolveWorkspaceExplorerDir(state, relativePath);
+      let st;
+      try {
+        st = await stat(dir);
+      } catch {
+        return { entries: [] };
+      }
+      if (!st.isDirectory()) {
+        return { entries: [] };
+      }
+      const dirents = await readdir(dir, { withFileTypes: true });
+      const entries: WorkspaceExplorerEntry[] = dirents
+        .filter((d) => d.name && d.name !== '.' && d.name !== '..')
+        .map((d) => ({
+          name: d.name,
+          kind: d.isDirectory() ? 'dir' : 'file',
+        }));
+      entries.sort((a, b) => {
+        if (a.kind !== b.kind) {
+          return a.kind === 'dir' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+      return { entries };
+    });
+  }
+
+  /**
+   * 将 `relativePath` 解析为工作区内的绝对目录；使用 `/` 分段，禁止 `..` 与绝对路径。
+   */
+  private resolveWorkspaceExplorerDir(state: HostState, relativePath: string): string {
+    const root = path.resolve(state.workspaceRoot);
+    const cleaned = relativePath.replace(/\0/g, '');
+    const posix = cleaned.replace(/\\/g, '/').trim();
+    if (posix.startsWith('/') || /^[a-zA-Z]:/.test(posix)) {
+      throw new Error('无效路径');
+    }
+    const segments = posix.split('/').filter((s) => s.length > 0);
+    for (const seg of segments) {
+      if (seg === '..' || seg === '.') {
+        throw new Error('无效路径');
+      }
+    }
+    const target =
+      segments.length === 0 ? root : path.resolve(root, ...segments);
+    const rel = path.relative(root, target);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      throw new Error('路径越出工作区');
+    }
+    return target;
+  }
+
   async openSession(filePath: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -883,6 +942,10 @@ description: ${frontmatterDescription}
       case 'openSession': {
         const typedPayload = payload as CommandPayloads['openSession'];
         return this.openSession(typedPayload.path);
+      }
+      case 'listWorkspaceExplorerChildren': {
+        const typedPayload = payload as CommandPayloads['listWorkspaceExplorerChildren'];
+        return this.listWorkspaceExplorerChildren(typedPayload.relativePath);
       }
       case 'rewindAndSubmitMessage': {
         const typedPayload = payload as CommandPayloads['rewindAndSubmitMessage'];

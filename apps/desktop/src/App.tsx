@@ -1168,6 +1168,8 @@ export default function App() {
             </div>
             </div>
             <WorkspaceToolsDock
+              workspaceRoot={snapshot?.workspaceRoot ?? ""}
+              listExplorerChildren={runtime.listWorkspaceExplorerChildren}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

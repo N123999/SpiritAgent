@@ -11,6 +11,7 @@ import type {
   DesktopSnapshot,
   RewindAndSubmitMessageRequest,
   SessionListItem,
+  WorkspaceExplorerListResult,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -85,6 +86,11 @@ export function createWebHostApi(): HostApi {
     },
     openSession(path: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/sessions/open', { path });
+    },
+    listWorkspaceExplorerChildren(relativePath: string) {
+      return post<WorkspaceExplorerListResult>(baseUrl, '/api/workspace/explorer', {
+        relativePath,
+      });
     },
     async pairWebHost(code: string) {
       const result = await post<WebHostPairingResponse>(baseUrl, '/api/pairing', { code }, {

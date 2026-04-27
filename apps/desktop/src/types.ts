@@ -147,6 +147,18 @@ export interface SessionListItem {
   modifiedAtUnixMs: number;
 }
 
+/** 工作区文件树子节点（相对工作区根的路径由前端用 `name` 与父路径拼接）。 */
+export type WorkspaceExplorerEntryKind = 'file' | 'dir';
+
+export interface WorkspaceExplorerEntry {
+  name: string;
+  kind: WorkspaceExplorerEntryKind;
+}
+
+export interface WorkspaceExplorerListResult {
+  entries: WorkspaceExplorerEntry[];
+}
+
 export interface DesktopSnapshot {
   workspaceRoot: string;
   runtimeReady: boolean;

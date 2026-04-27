@@ -66,5 +66,8 @@ export async function createElectronHostApi(): Promise<HostApi> {
     openSession(path) {
       return bridge.openSession(path);
     },
+    listWorkspaceExplorerChildren(relativePath) {
+      return bridge.listWorkspaceExplorerChildren(relativePath);
+    },
   };
 }

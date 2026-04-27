@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileText, GitBranch, Terminal } from "lucide-react";
 
+import { WorkspaceFilesPanel } from "@/components/workspace-files-panel";
 import { cn } from "@/lib/utils";
+import type { WorkspaceExplorerListResult } from "@/types";
 
 export type WorkspaceToolsTab = "files" | "shell" | "git";
 
@@ -13,6 +15,9 @@ const TAB_ITEMS: Array<{ id: WorkspaceToolsTab; label: string; icon: typeof File
 ];
 
 export type WorkspaceToolsDockProps = {
+  /** 已解析的工作区根路径；未就绪时传空字符串 */
+  workspaceRoot: string;
+  listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -26,6 +31,8 @@ const DEFAULT_MIN = 240;
 const DEFAULT_MAX = 640;
 
 export function WorkspaceToolsDock({
+  workspaceRoot,
+  listExplorerChildren,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -162,11 +169,14 @@ export function WorkspaceToolsDock({
 
           <div
             role="tabpanel"
-            className="min-h-0 flex-1 overflow-hidden p-3 text-xs text-muted-foreground"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 text-xs text-muted-foreground"
             aria-live="polite"
           >
             {tab === "files" ? (
-              <p>文件区占位</p>
+              <WorkspaceFilesPanel
+                workspaceRoot={workspaceRoot}
+                listExplorerChildren={listExplorerChildren}
+              />
             ) : tab === "shell" ? (
               <p>Shell 区占位</p>
             ) : (

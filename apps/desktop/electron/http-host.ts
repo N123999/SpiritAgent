@@ -502,6 +502,18 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/explorer') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('listWorkspaceExplorerChildren', {
+        relativePath: typeof jsonBody?.relativePath === 'string' ? jsonBody.relativePath : '',
+      }),
+    );
+    return;
+  }
+
   writeJson(request, response, 404, { error: `Unknown route: ${request.method} ${pathname}` });
 }
 

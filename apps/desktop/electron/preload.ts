@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openSession(path: string) {
     return ipcRenderer.invoke('desktop:invoke', 'openSession', { path });
   },
+  listWorkspaceExplorerChildren(relativePath: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'listWorkspaceExplorerChildren', {
+      relativePath,
+    });
+  },
   syncWindowFrame(request: {
     dark: boolean;
     nativeTheme: 'system' | 'light' | 'dark';

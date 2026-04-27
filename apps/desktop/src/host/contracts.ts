@@ -27,6 +27,7 @@ export type HostCommandName =
   | 'resetSession'
   | 'listSessions'
   | 'openSession'
+  | 'listWorkspaceExplorerChildren'
   | 'rewindAndSubmitMessage';
 
 /** 与 `apps/cli/src/tool_runtime.rs` 中 `ToolRequest` 对齐的宿主工具请求。 */

@@ -18,6 +18,7 @@ import type {
   RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
+  WorkspaceExplorerListResult,
 } from "@/types";
 
 type BusyAction =
@@ -716,6 +717,16 @@ export function useDesktopRuntime() {
     [api, applySnapshot, refreshSessions],
   );
 
+  const listWorkspaceExplorerChildren = useCallback(
+    async (relativePath: string): Promise<WorkspaceExplorerListResult> => {
+      if (!api) {
+        return { entries: [] };
+      }
+      return api.listWorkspaceExplorerChildren(relativePath);
+    },
+    [api],
+  );
+
   const resetSession = useCallback(async () => {
     if (!api) {
       return;
@@ -785,6 +796,7 @@ export function useDesktopRuntime() {
     deleteSkill,
     inspectMcpServer,
     openSession,
+    listWorkspaceExplorerChildren,
     pairWebHost,
     resetSession,
     rewindAndSubmitMessage,

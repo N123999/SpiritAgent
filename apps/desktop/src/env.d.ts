@@ -15,6 +15,7 @@ import type {
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
+  WorkspaceExplorerListResult,
 } from './types';
 
 declare global {
@@ -38,6 +39,7 @@ declare global {
     resetSession(): Promise<DesktopSnapshot>;
     listSessions(): Promise<SessionListItem[]>;
     openSession(path: string): Promise<DesktopSnapshot>;
+    listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
     syncWindowFrame(request: {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';
