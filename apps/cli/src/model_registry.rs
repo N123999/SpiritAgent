@@ -10,11 +10,23 @@ const ENV_API_KEY: &str = "SPIRIT_API_KEY";
 const KEYRING_SERVICE: &str = "SpiritAgent";
 const KEYRING_ACCOUNT_API_KEY: &str = "openai_api_key";
 
+/// 与 Desktop `DesktopModelProvider` 及 `config.json` 的 `provider` 字段对齐。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelProvider {
+    Deepseek,
+    Kimi,
+    Minimax,
+    Custom,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelProfile {
     pub name: String,
     #[serde(rename = "apiBase", alias = "api_base")]
     pub api_base: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ModelProvider>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +51,7 @@ impl Default for AppConfig {
             models: vec![ModelProfile {
                 name: "gpt-4o-mini".to_string(),
                 api_base: DEFAULT_API_BASE.to_string(),
+                provider: None,
             }],
             active_model: "gpt-4o-mini".to_string(),
             ui_locale: None,
@@ -105,6 +118,7 @@ pub fn load_config() -> Result<AppConfig> {
             .map(|name| ModelProfile {
                 name,
                 api_base: legacy.api_base.clone(),
+                provider: None,
             })
             .collect(),
         active_model: legacy.active_model,

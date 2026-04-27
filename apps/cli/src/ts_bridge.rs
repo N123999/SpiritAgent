@@ -2009,10 +2009,12 @@ mod tests {
                 ModelProfile {
                     name: "gpt-4o-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
+                    provider: None,
                 },
                 ModelProfile {
                     name: "gpt-4.1-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
+                    provider: None,
                 },
             ],
             active_model: "gpt-4o-mini".to_string(),
@@ -2119,6 +2121,7 @@ mod tests {
         next.models.push(ModelProfile {
             name: "gpt-4.1".to_string(),
             api_base: DEFAULT_API_BASE.to_string(),
+            provider: None,
         });
 
         assert!(runtime.validate_config_change(&next).is_ok());

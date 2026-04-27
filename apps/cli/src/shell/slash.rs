@@ -352,7 +352,7 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "- /image 不带 prompt 时会把图片加入待发送队列。".to_string(),
         "- 输入 @<文件名> 会打开工作区文件引用建议，回车后会把选中文件写回输入框，格式为 @路径 加一个空格。".to_string(),
         "- /mcp add 打开底部表单，用于填写 server 名称、类型、命令或 URL（Enter 保存，Esc 取消）。".to_string(),
-        "- /model add 打开底部表单：先选 Test1–Test3 或自定义（占位）、填 API Key（掩码），Enter 进入模拟「拉取模型列表」选择器（无网络）；也可一行 /model add <name> <api_base> <api_key>；添加成功后会自动切换为当前模型。".to_string(),
+        "- /model add 打开底部表单：选提供商与添加方式、填写端点与 API Key；提交后将请求上游 /models（预设为批量导入全部 id，自定义可选单条）；也可一行 /model add <name> <api_base> <api_key>；成功后会切换当前模型。".to_string(),
         "- MCP prompt 会以一级 slash 命令暴露，例如 /github_issue_to_fix_workflow；若尾部是合法 JSON object，会直接作为 prompt 参数，其他文本会作为附加用户消息发给 LLM。".to_string(),
         "- 省略尾部且 prompt 定义了参数时，会自动打开参数表单；表单最后一栏可填写附加说明。".to_string(),
         "- /create-rule 会走正常 assistant 对话来起草或收紧规则；repo 目标默认写入工作区 .spirit/rule.md，user 目标写入 Spirit 用户目录 rule.md，两者都走标准工具审批；同时仍会扫描仓库根 AGENTS.md（兼容其他工具）。".to_string(),
