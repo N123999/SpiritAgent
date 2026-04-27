@@ -163,7 +163,7 @@ tui.image_queue.added_auto_attach: "已添加图片到待发送队列（%{count}
 tui.bottom_form.added: "已添加 MCP server: %{server}\n配置文件: %{path}"
 tui.bottom_form.add_failed: "添加 MCP server 失败: %{err}"
 tui.bottom_form.prompt_opened: "已打开 MCP prompt 参数表单：%{server} / %{prompt}\n填写完成后按 Enter 应用，Esc 取消。"
-tui.model_add.opened: "已打开连接模型表单：选提供商与添加方式，填写密钥；预设将拉取上游模型列表并写入全部条目。"
+tui.model_add.opened: "已打开连接模型表单。"
 tui.model_add.saved: "已添加模型 %{name}，并已切换为当前模型。"
 tui.model_add.bulk_saved: "已写入 %{count} 个模型条目，当前模型：%{name}"
 tui.model_add.fetch_failed: "拉取模型列表失败：%{err}"

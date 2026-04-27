@@ -163,7 +163,7 @@ tui.image_queue.added_auto_attach: "Added image to the pending queue (%{count}).
 tui.bottom_form.added: "Added MCP server: %{server}\nConfig file: %{path}"
 tui.bottom_form.add_failed: "Failed to add MCP server: %{err}"
 tui.bottom_form.prompt_opened: "Opened the MCP prompt argument form: %{server} / %{prompt}\nPress Enter to apply, or Esc to cancel."
-tui.model_add.opened: "Opened the connect-models form: pick a provider and how to add, enter your key; presets fetch upstream /models and import all ids."
+tui.model_add.opened: "Opened the connect-model form."
 tui.model_add.saved: "Added model %{name} and switched the active model to it."
 tui.model_add.bulk_saved: "Imported %{count} model entries; active model: %{name}"
 tui.model_add.fetch_failed: "Failed to list models: %{err}"
