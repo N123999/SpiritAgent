@@ -1041,6 +1041,7 @@ export default function App() {
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
               modelsBusy={runtime.busyAction === "models"}
+              modelsPreviewBusy={runtime.busyAction === "modelsPreview"}
               mcpsBusy={runtime.busyAction === "mcps"}
               skillsBusy={runtime.busyAction === "skills"}
               isElectronShell={isElectronShell}
@@ -1049,6 +1050,7 @@ export default function App() {
               onBootstrap={runtime.bootstrap}
               onResetSession={runtime.resetSession}
               onAddModel={runtime.addModel}
+              onPreviewModels={runtime.previewModels}
               onRemoveModel={runtime.removeModel}
               onAddMcpServer={runtime.addMcpServer}
               onDeleteMcpServer={runtime.deleteMcpServer}
