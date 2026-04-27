@@ -36,8 +36,8 @@ mod word_wrap;
 rust_i18n::i18n!("locales", fallback = "en");
 
 pub use cli::{
-    ConfigCommand, KeyCommand, McpCommand, ModelCommand, handle_config_cli, handle_mcp_cli,
-    handle_model_cli,
+    ConfigCommand, ExtensionCommand, KeyCommand, McpCommand, ModelCommand,
+    handle_config_cli, handle_extension_cli, handle_mcp_cli, handle_model_cli,
 };
 #[cfg(feature = "tui")]
 pub use tui::TuiShell;

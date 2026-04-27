@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use std::fs;
 use std::{env, path::PathBuf, sync::Arc};
 
 use crate::{
@@ -80,6 +81,12 @@ pub enum McpCommand {
         prompt: String,
         args_json: Option<String>,
     },
+}
+
+pub enum ExtensionCommand {
+    List,
+    Import { archive: String },
+    Remove { id: String },
 }
 
 pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
@@ -426,7 +433,84 @@ pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {
     Ok(())
 }
 
+pub fn handle_extension_cli(action: ExtensionCommand) -> Result<()> {
+    let app_paths = DefaultAppPaths::new();
+    let workspace_root = app_paths.workspace_root();
+
+    match action {
+        ExtensionCommand::List => {
+            let mut runtime = new_extension_cli_runtime(workspace_root)?;
+            let extensions = runtime.list_extensions()?;
+
+            if extensions.is_empty() {
+                println!("未安装扩展。");
+                return Ok(());
+            }
+
+            println!("扩展列表:");
+            for extension in extensions {
+                println!(
+                    "  - {}\n    id: {}\n    version: {}\n    installed_at: {}",
+                    extension.name,
+                    extension.id,
+                    extension.version,
+                    extension.installed_at_unix_ms,
+                );
+                if let Some(description) = extension.description {
+                    println!("    description: {}", description);
+                }
+                if let Some(author) = extension.author {
+                    println!("    author: {}", author);
+                }
+                if let Some(main) = extension.main {
+                    println!("    main: {}", main);
+                }
+                if let Some(file_name) = extension.archive_file_name {
+                    println!("    source: {}", file_name);
+                }
+            }
+        }
+        ExtensionCommand::Import { archive } => {
+            let archive_path = PathBuf::from(&archive);
+            let archive_bytes = fs::read(&archive_path)
+                .with_context(|| format!("读取扩展 ZIP 失败: {}", archive_path.display()))?;
+            let file_name = archive_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_string());
+
+            let mut runtime = new_extension_cli_runtime(workspace_root)?;
+            let extension = runtime.import_extension_archive(&archive_bytes, file_name.as_deref())?;
+            println!("已导入扩展: {}", extension.name);
+            println!("id: {}", extension.id);
+            println!("version: {}", extension.version);
+            if let Some(description) = extension.description {
+                println!("description: {}", description);
+            }
+            if let Some(main) = extension.main {
+                println!("main: {}", main);
+            }
+        }
+        ExtensionCommand::Remove { id } => {
+            let trimmed_id = id.trim();
+            if trimmed_id.is_empty() {
+                return Err(anyhow!("扩展 id 不能为空"));
+            }
+
+            let mut runtime = new_extension_cli_runtime(workspace_root)?;
+            runtime.delete_extension(trimmed_id)?;
+            println!("已删除扩展: {}", trimmed_id);
+        }
+    }
+
+    Ok(())
+}
+
 fn new_mcp_cli_runtime(workspace_root: PathBuf) -> Result<TsBridgeRuntime> {
+    TsBridgeRuntime::new_mcp_only(Arc::new(KeyringSecretStore), workspace_root)
+}
+
+fn new_extension_cli_runtime(workspace_root: PathBuf) -> Result<TsBridgeRuntime> {
     TsBridgeRuntime::new_mcp_only(Arc::new(KeyringSecretStore), workspace_root)
 }
 

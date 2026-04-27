@@ -100,6 +100,40 @@ interface CliHostInternalModule {
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
   ) => OpenAiPlanMetadata;
+  createHostExtensionManager?: (context: { spiritDataDir: string }) => {
+    list(): Promise<
+      Array<{
+        id: string;
+        manifest: {
+          name: string;
+          version: string;
+          description?: string;
+          author?: string;
+          homepage?: string;
+          main?: string;
+        };
+        installedAtUnixMs: number;
+        archiveFileName?: string;
+      }>
+    >;
+    importArchive(request: {
+      archiveBase64: string;
+      fileName?: string;
+    }): Promise<{
+      id: string;
+      manifest: {
+        name: string;
+        version: string;
+        description?: string;
+        author?: string;
+        homepage?: string;
+        main?: string;
+      };
+      installedAtUnixMs: number;
+      archiveFileName?: string;
+    }>;
+    remove(id: string): Promise<void>;
+  };
   resolveInstructionPaths?: (context: { workspaceRoot: string; spiritDataDir: string }) => {
     rulesStateFile: string;
     skillsStateFile: string;
@@ -206,6 +240,43 @@ function upsertActiveSkill(skills: OpenAiActiveSkill[], next: OpenAiActiveSkill)
   const filtered = skills.filter((skill) => skill.id !== next.id);
   filtered.push({ ...next, resources: [...next.resources] });
   return filtered;
+}
+
+function serializeHostExtension(item: {
+  id: string;
+  manifest: {
+    name: string;
+    version: string;
+    description?: string;
+    author?: string;
+    homepage?: string;
+    main?: string;
+  };
+  installedAtUnixMs: number;
+  archiveFileName?: string;
+}) {
+  return {
+    id: item.id,
+    name: item.manifest.name,
+    version: item.manifest.version,
+    ...(item.manifest.description ? { description: item.manifest.description } : {}),
+    ...(item.manifest.author ? { author: item.manifest.author } : {}),
+    ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
+    ...(item.manifest.main ? { main: item.manifest.main } : {}),
+    ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
+    installedAtUnixMs: item.installedAtUnixMs,
+  };
+}
+
+async function requireCliExtensionManager() {
+  const hostInternal = await requireCliHostInternal();
+  if (!hostInternal.module.createHostExtensionManager) {
+    throw new Error('host-internal 模块未导出扩展管理接口。');
+  }
+
+  return hostInternal.module.createHostExtensionManager({
+    spiritDataDir: hostInternal.spiritDataDir,
+  });
 }
 
 async function createRuntime(
@@ -413,6 +484,42 @@ peer.on('hostInternal.writeSkillState', async (rawParams) => {
     enabledOverrides: params.enabledOverrides ?? {},
   });
   return paths.skillsStateFile;
+});
+
+peer.on('hostInternal.listExtensions', async () => {
+  const manager = await requireCliExtensionManager();
+  const items = await manager.list();
+  return items.map((item) => serializeHostExtension(item));
+});
+
+peer.on('hostInternal.importExtension', async (rawParams) => {
+  const params = (rawParams ?? {}) as {
+    archiveBase64?: string;
+    fileName?: string;
+  };
+  const archiveBase64 = params.archiveBase64?.trim() ?? '';
+  if (!archiveBase64) {
+    throw new Error('扩展 ZIP 内容不能为空。');
+  }
+
+  const manager = await requireCliExtensionManager();
+  const item = await manager.importArchive({
+    archiveBase64,
+    ...(params.fileName?.trim() ? { fileName: params.fileName.trim() } : {}),
+  });
+  return serializeHostExtension(item);
+});
+
+peer.on('hostInternal.deleteExtension', async (rawParams) => {
+  const params = (rawParams ?? {}) as { id?: string };
+  const id = params.id?.trim() ?? '';
+  if (!id) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const manager = await requireCliExtensionManager();
+  await manager.remove(id);
+  return { id };
 });
 
 peer.on('runtime.activateSkill', async (rawParams) => {

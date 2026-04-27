@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -242,6 +243,20 @@ pub struct CliHostMetadataSnapshot {
     pub rule_entries: Vec<RuleEntry>,
     pub skill_entries: Vec<SkillEntry>,
     pub plan_metadata: PlanMetadata,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage: Option<String>,
+    pub main: Option<String>,
+    pub archive_file_name: Option<String>,
+    pub installed_at_unix_ms: u64,
 }
 
 fn bootstrap_plan_metadata() -> PlanMetadata {
@@ -546,6 +561,36 @@ impl TsBridgeRuntime {
             .as_str()
             .ok_or_else(|| anyhow!("hostInternal.writeSkillState 返回值无效"))?;
         Ok(PathBuf::from(path))
+    }
+
+    pub fn list_extensions(&mut self) -> Result<Vec<CliExtensionEntry>> {
+        let value = self.call_bridge("hostInternal.listExtensions", None)?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn import_extension_archive(
+        &mut self,
+        archive_bytes: &[u8],
+        file_name: Option<&str>,
+    ) -> Result<CliExtensionEntry> {
+        let value = self.call_bridge(
+            "hostInternal.importExtension",
+            Some(json!({
+                "archiveBase64": BASE64_STANDARD.encode(archive_bytes),
+                "fileName": file_name,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn delete_extension(&mut self, id: &str) -> Result<()> {
+        self.call_bridge(
+            "hostInternal.deleteExtension",
+            Some(json!({
+                "id": id,
+            })),
+        )?;
+        Ok(())
     }
 
     pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
