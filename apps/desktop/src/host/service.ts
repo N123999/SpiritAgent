@@ -58,6 +58,7 @@ import type {
   CreateSkillRequest,
   DeleteMcpServerRequest,
   DesktopMcpServerInspection,
+  DesktopModelProvider,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
@@ -332,7 +333,15 @@ class DesktopHostService {
         throw new Error(`模型已存在: ${name}`);
       }
 
-      state.config.models.push({ name, apiBase });
+      const provider = parseAddModelProvider(request.provider);
+      const profile: { name: string; apiBase: string; provider?: DesktopModelProvider } = {
+        name,
+        apiBase,
+      };
+      if (provider !== undefined) {
+        profile.provider = provider;
+      }
+      state.config.models.push(profile);
       state.config.activeModel = name;
       await saveConfig(state.config);
       await saveApiKeyForModel(name, apiKey);
@@ -1222,6 +1231,7 @@ description: ${frontmatterDescription}
         models: state.config.models.map((model) => ({
           name: model.name,
           apiBase: model.apiBase,
+          ...(model.provider ? { provider: model.provider } : {}),
           keyConfigured: this.modelKeyPresence[model.name] ?? false,
         })),
         activeModel: state.config.activeModel,
@@ -3370,6 +3380,13 @@ function assistantPlainTextsInCurrentTurnMessages(
 function formatYamlScalarForSkillFrontmatter(value: string): string {
   const flat = value.replace(/\r?\n/g, ' ').trim() || '说明';
   return `"${flat.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
+}
+
+function parseAddModelProvider(value: unknown): DesktopModelProvider | undefined {
+  if (value === 'deepseek' || value === 'kimi' || value === 'minimax' || value === 'custom') {
+    return value;
+  }
+  return undefined;
 }
 
 const desktopHostService = new DesktopHostService();

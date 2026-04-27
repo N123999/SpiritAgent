@@ -22,6 +22,9 @@ export interface DesktopWebHostConfigUpdate {
   resetPairing?: boolean;
 }
 
+/** 模型提供方（用于设置页与后续适配层；缺省视为自定义端点）。 */
+export type DesktopModelProvider = 'deepseek' | 'kimi' | 'minimax' | 'custom';
+
 /** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
 export interface PreviewModelsRequest {
   apiBase: string;
@@ -40,6 +43,8 @@ export interface AddModelRequest {
   name: string;
   apiBase: string;
   apiKey: string;
+  /** 缺省时不写入配置（与旧版三字段一致）。 */
+  provider?: DesktopModelProvider;
 }
 
 export interface RemoveModelRequest {
@@ -215,6 +220,8 @@ export interface DesktopConfigSnapshot {
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;
+  /** 持久化来源；缺省表示历史自定义配置。 */
+  provider?: DesktopModelProvider;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
   keyConfigured?: boolean;
 }
