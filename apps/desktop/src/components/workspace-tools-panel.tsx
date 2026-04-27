@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, GitBranch, Terminal } from "lucide-react";
 
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
+import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import { cn } from "@/lib/utils";
 import type {
   WorkspaceExplorerListResult,
@@ -180,7 +181,7 @@ export function WorkspaceToolsDock({
             role="tabpanel"
             className={cn(
               "flex min-h-0 flex-1 flex-col overflow-hidden text-xs",
-              tab === "files" ? "p-0" : "p-3 text-muted-foreground",
+              tab === "files" || tab === "shell" ? "p-0" : "p-3 text-muted-foreground",
             )}
             aria-live="polite"
           >
@@ -194,7 +195,9 @@ export function WorkspaceToolsDock({
                 />
               </div>
             ) : tab === "shell" ? (
-              <p>Shell 区占位</p>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
+                <WorkspaceShellTab workspaceRoot={workspaceRoot} />
+              </div>
             ) : (
               <p>Git 区占位</p>
             )}

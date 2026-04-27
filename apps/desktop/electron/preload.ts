@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { clipboard, contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('spiritDesktop', {
   bootstrap(request?: unknown) {
@@ -81,5 +81,46 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
     clientY: number,
   ) {
     return ipcRenderer.invoke('desktop:application-menu-popup', { section, clientX, clientY });
+  },
+  ptyCreate(request: { cwd: string; cols: number; rows: number }) {
+    return ipcRenderer.invoke('desktop:pty-create', request);
+  },
+  ptyWrite(id: string, data: string) {
+    ipcRenderer.send('desktop:pty-write', { id, data });
+  },
+  ptyResize(id: string, cols: number, rows: number) {
+    ipcRenderer.send('desktop:pty-resize', { id, cols, rows });
+  },
+  ptyKill(id: string) {
+    return ipcRenderer.invoke('desktop:pty-kill', id);
+  },
+  openSystemTerminal(cwd: string) {
+    return ipcRenderer.invoke('desktop:open-system-terminal', cwd);
+  },
+  readClipboardText() {
+    return clipboard.readText();
+  },
+  writeClipboardText(text: string) {
+    clipboard.writeText(text);
+  },
+  ptySubscribe(callbacks: {
+    onData: (payload: { id: string; data: string }) => void;
+    onExit: (payload: { id: string; exitCode: number; signal?: number }) => void;
+  }) {
+    const onData = (_event: Electron.IpcRendererEvent, payload: { id: string; data: string }) => {
+      callbacks.onData(payload);
+    };
+    const onExit = (
+      _event: Electron.IpcRendererEvent,
+      payload: { id: string; exitCode: number; signal?: number },
+    ) => {
+      callbacks.onExit(payload);
+    };
+    ipcRenderer.on('desktop:pty-data', onData);
+    ipcRenderer.on('desktop:pty-exit', onExit);
+    return () => {
+      ipcRenderer.removeListener('desktop:pty-data', onData);
+      ipcRenderer.removeListener('desktop:pty-exit', onExit);
+    };
   },
 });

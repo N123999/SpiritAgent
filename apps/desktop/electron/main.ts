@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 import { BrowserWindow, Menu, app, ipcMain, nativeTheme } from 'electron';
 
+import { openSystemTerminalInDirectory } from './open-system-terminal.js';
+import { WorkspacePtyManager } from './workspace-pty.js';
+
 import type { DesktopSnapshot } from '../src/types.js';
 import { invokeDesktopHostCommand } from '../src/host/service.js';
 import {
@@ -34,6 +37,8 @@ let desktopWebHost: DesktopHttpHost | undefined;
 let desktopWebHostConfig: DesktopWebHostConfigFile | undefined;
 let desktopWebHostPairingCode = createDesktopWebPairingCode();
 let quittingAfterDesktopWebHostStop = false;
+
+const workspacePtyManager = new WorkspacePtyManager();
 
 function shouldStartDesktopWebHostFromEnv(): boolean {
   return process.env.SPIRIT_DESKTOP_WEB_HOST === '1';
@@ -390,6 +395,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      spellcheck: false,
     },
   });
 
@@ -400,6 +406,11 @@ async function createMainWindow(): Promise<BrowserWindow> {
   }
 
   await syncBrowserWindowFrameFromRendererStorage(window);
+
+  const webContentsId = window.webContents.id;
+  window.webContents.once('destroyed', () => {
+    workspacePtyManager.disposeAllForWebContents(webContentsId);
+  });
 
   return window;
 }
@@ -439,6 +450,32 @@ app.whenReady().then(async () => {
       applyWin32Backdrop(window, request.dark);
     },
   );
+
+  ipcMain.handle(
+    'desktop:pty-create',
+    (
+      event,
+      request: { cwd: string; cols: number; rows: number },
+    ): { ok: true; id: string } | { ok: false; error: string } => {
+      return workspacePtyManager.createSession(event.sender, request);
+    },
+  );
+
+  ipcMain.on('desktop:pty-write', (event, payload: { id: string; data: string }) => {
+    workspacePtyManager.write(event.sender, payload.id, payload.data);
+  });
+
+  ipcMain.on('desktop:pty-resize', (event, payload: { id: string; cols: number; rows: number }) => {
+    workspacePtyManager.resize(event.sender, payload.id, payload.cols, payload.rows);
+  });
+
+  ipcMain.handle('desktop:pty-kill', (event, id: string) => {
+    workspacePtyManager.kill(event.sender, id);
+  });
+
+  ipcMain.handle('desktop:open-system-terminal', (_event, cwd: string) => {
+    openSystemTerminalInDirectory(cwd);
+  });
 
   await syncInitialDesktopWebHost();
   await createMainWindow();

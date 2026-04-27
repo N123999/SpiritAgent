@@ -36,7 +36,7 @@ export function joinExplorerRel(parent: string, name: string): string {
   return parent === "" ? name : `${parent}/${name}`;
 }
 
-/** 按扩展名/常见文件名选图标（类似编辑器文件树，非 VS Code 主题引擎）。 */
+/** 按扩展名/常见文件名选图标（按名称启发式，非主题引擎映射）。 */
 export function workspaceExplorerIcon(name: string, kind: WorkspaceExplorerEntry["kind"]): LucideIcon {
   if (kind === "dir") {
     return Folder;
