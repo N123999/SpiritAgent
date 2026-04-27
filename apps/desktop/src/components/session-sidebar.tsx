@@ -103,10 +103,10 @@ export function SessionSidebar({
   return (
     <aside
       className={cn(
-        "flex h-full w-full min-w-0 flex-col overflow-hidden text-foreground",
+        "flex h-full w-full min-w-0 flex-col overflow-hidden text-sidebar-foreground dark:text-foreground",
         micaStyle
-          ? "border-r border-black/5 bg-background/30 backdrop-blur-2xl supports-backdrop-filter:bg-background/25 dark:border-white/10"
-          : "border-r border-border/40 bg-background",
+          ? "border-r border-black/5 bg-sidebar/30 backdrop-blur-2xl supports-backdrop-filter:bg-sidebar/25 dark:border-white/10 dark:bg-background/30 dark:supports-backdrop-filter:bg-background/25"
+          : "border-r border-border/30 bg-sidebar dark:border-border/40 dark:bg-background",
         className,
       )}
       data-narrow={narrow || undefined}
@@ -255,7 +255,7 @@ export function SessionSidebar({
 
       <div
         className={cn(
-          "shrink-0 space-y-1 border-t border-border/40 p-2",
+          "shrink-0 space-y-1 border-t border-sidebar-border/30 p-2 dark:border-border/40",
           narrow && "mt-auto flex flex-col items-center gap-1.5 border-t py-2",
         )}
       >
