@@ -23,7 +23,7 @@ import type {
   ToolCallRequest,
 } from '../ports.js';
 
-/** 主系统提示（含身份与当前模型名；不含 API Base / Key）。 */
+/** Builds the full system prompt with identity and model name. */
 export function buildToolAgentHostPrompt(model: string): string {
   const trimmed = model.trim();
   const modelLabel = trimmed.length > 0 ? trimmed : '(not configured)';
