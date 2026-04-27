@@ -1,4 +1,8 @@
-import { MODEL_PROVIDER_PICKER_ORDER, PROVIDER_PICKER_ROWS } from "@spirit-agent/host-internal";
+import {
+  MODEL_PROVIDER_PICKER_ORDER,
+  normalizeOpenAiApiBase,
+  PROVIDER_PICKER_ROWS,
+} from "@spirit-agent/host-internal";
 import type {
   DesktopModelCatalogHint,
   DesktopModelProvider,
@@ -12,7 +16,8 @@ function providerLabel(provider: DesktopModelProvider): string {
 }
 
 function catalogOrderIndex(name: string, apiBase: string, hints: DesktopModelCatalogHint[] | undefined): number {
-  const hint = hints?.find((h) => h.apiBase === apiBase);
+  const normalizedBase = normalizeOpenAiApiBase(apiBase);
+  const hint = hints?.find((h) => normalizeOpenAiApiBase(h.apiBase) === normalizedBase);
   if (!hint) {
     return 10_000;
   }

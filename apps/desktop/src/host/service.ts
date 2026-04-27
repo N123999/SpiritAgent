@@ -303,13 +303,13 @@ class DesktopHostService {
       throw new Error('API Key 不能为空。');
     }
     const forceRefresh = request.forceRefresh === true;
-    const cached = await readModelCatalogCache(apiBase);
+    const cached = await readModelCatalogCache(apiBase, apiKey);
     const now = Date.now();
     if (cached && isModelCatalogCacheFresh(cached, now, forceRefresh)) {
       return { modelIds: cached.modelIds, fromCache: true };
     }
     const modelIds = await listOpenAiCompatibleModelIds({ baseUrl: apiBase, apiKey });
-    await writeModelCatalogCache(apiBase, modelIds);
+    await writeModelCatalogCache(apiBase, modelIds, apiKey);
     return { modelIds, fromCache: false };
   }
 
@@ -336,29 +336,39 @@ class DesktopHostService {
         throw new Error('模型列表为空。');
       }
 
-      let firstNew: string | undefined;
-      let added = 0;
+      type NewProfile = { name: string; apiBase: string; provider?: DesktopModelProvider };
+      const toAdd: NewProfile[] = [];
       for (const name of uniqueIds) {
         if (state.config.models.some((model) => model.name === name)) {
           continue;
         }
-        const profile: { name: string; apiBase: string; provider?: DesktopModelProvider } = {
-          name,
-          apiBase,
-        };
+        const profile: NewProfile = { name, apiBase };
         if (provider !== undefined) {
           profile.provider = provider;
         }
-        state.config.models.push(profile);
-        await saveApiKeyForModel(name, apiKey);
-        added += 1;
-        if (firstNew === undefined) {
-          firstNew = name;
-        }
+        toAdd.push(profile);
       }
 
-      if (added === 0) {
+      if (toAdd.length === 0) {
         throw new Error('所选模型均已存在于配置中。');
+      }
+
+      const keySaveOrder: string[] = [];
+      try {
+        for (const { name } of toAdd) {
+          await saveApiKeyForModel(name, apiKey);
+          keySaveOrder.push(name);
+        }
+      } catch (err) {
+        for (const name of keySaveOrder) {
+          await removeModelApiKey(name);
+        }
+        throw err;
+      }
+
+      const firstNew = toAdd[0]?.name;
+      for (const profile of toAdd) {
+        state.config.models.push(profile);
       }
 
       state.config.activeModel = firstNew ?? state.config.activeModel;

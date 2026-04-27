@@ -1,4 +1,4 @@
-import raw from './model-provider-presets.json' with { type: 'json' };
+import rawImport from './model-provider-presets.json' with { type: 'json' };
 
 /** 与 `config.json` / CLI `ModelProvider` 小写字符串对齐（须与 `pickerOrder` 一致）。 */
 export type ModelProviderId = 'deepseek' | 'kimi' | 'minimax' | 'custom';
@@ -9,6 +9,10 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'minimax',
   'custom',
 ];
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function assertCanonicalPickerOrder(order: readonly string[]): asserts order is typeof CANONICAL_PICKER_ORDER {
   if (
@@ -21,25 +25,76 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
   }
 }
 
-assertCanonicalPickerOrder(raw.pickerOrder);
+interface ParsedModelProviderPresets {
+  defaultCustomApiBase: string;
+  presetApiBaseByProvider: Record<'deepseek' | 'kimi' | 'minimax', string>;
+  pickerOrder: readonly ModelProviderId[];
+  pickerLabels: Record<string, string>;
+}
 
-function requireField(value: string | undefined, key: string): string {
-  if (value === undefined || value.trim() === '') {
-    throw new Error(`model-provider-presets.json: missing or empty "${key}"`);
+function requireStringField(obj: Record<string, unknown>, key: string): string {
+  const value = obj[key];
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`model-provider-presets.json: missing or invalid string field "${key}"`);
   }
   return value;
 }
 
-export const DEFAULT_CUSTOM_API_BASE: string = requireField(
-  raw.defaultCustomApiBase,
-  'defaultCustomApiBase',
-);
+function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPresets {
+  if (!isJsonRecord(data)) {
+    throw new Error('model-provider-presets.json: root must be a JSON object');
+  }
 
-const presetBases = raw.presetApiBaseByProvider;
+  const pickerOrderRaw = data.pickerOrder;
+  if (!Array.isArray(pickerOrderRaw)) {
+    throw new Error('model-provider-presets.json: pickerOrder must be an array');
+  }
+  if (!pickerOrderRaw.every((id): id is string => typeof id === 'string')) {
+    throw new Error('model-provider-presets.json: pickerOrder must be an array of strings');
+  }
+  assertCanonicalPickerOrder(pickerOrderRaw);
+  const pickerOrder = pickerOrderRaw as readonly ModelProviderId[];
 
-const deepseekBase = requireField(presetBases.deepseek, 'presetApiBaseByProvider.deepseek');
-const kimiBase = requireField(presetBases.kimi, 'presetApiBaseByProvider.kimi');
-const minimaxBase = requireField(presetBases.minimax, 'presetApiBaseByProvider.minimax');
+  const presetRaw = data.presetApiBaseByProvider;
+  if (!isJsonRecord(presetRaw)) {
+    throw new Error('model-provider-presets.json: presetApiBaseByProvider must be an object');
+  }
+  const presetApiBaseByProvider = {
+    deepseek: requireStringField(presetRaw, 'deepseek'),
+    kimi: requireStringField(presetRaw, 'kimi'),
+    minimax: requireStringField(presetRaw, 'minimax'),
+  };
+
+  const labelsRaw = data.pickerLabels;
+  if (!isJsonRecord(labelsRaw)) {
+    throw new Error('model-provider-presets.json: pickerLabels must be an object');
+  }
+  const pickerLabels: Record<string, string> = {};
+  for (const id of pickerOrder) {
+    const label = labelsRaw[id];
+    if (typeof label !== 'string' || label.trim() === '') {
+      throw new Error(`model-provider-presets.json: pickerLabels.${id} must be a non-empty string`);
+    }
+    pickerLabels[id] = label;
+  }
+
+  const defaultCustomApiBase = requireStringField(data, 'defaultCustomApiBase');
+
+  return {
+    defaultCustomApiBase,
+    presetApiBaseByProvider,
+    pickerOrder,
+    pickerLabels,
+  };
+}
+
+const raw = parseModelProviderPresetsJson(rawImport as unknown);
+
+export const DEFAULT_CUSTOM_API_BASE: string = raw.defaultCustomApiBase;
+
+const deepseekBase = raw.presetApiBaseByProvider.deepseek;
+const kimiBase = raw.presetApiBaseByProvider.kimi;
+const minimaxBase = raw.presetApiBaseByProvider.minimax;
 
 export const PROVIDER_PRESET_API_BASE = {
   deepseek: deepseekBase,
@@ -51,13 +106,7 @@ const pickerLabels = raw.pickerLabels;
 
 /** 设置页等：按固定顺序展示提供商选项。 */
 export const PROVIDER_PICKER_ROWS: Array<{ id: ModelProviderId; label: string }> = raw.pickerOrder.map(
-  (id) => {
-    const label = pickerLabels[id as keyof typeof pickerLabels];
-    return {
-      id: id as ModelProviderId,
-      label: requireField(label, `pickerLabels.${id}`),
-    };
-  },
+  (id) => ({ id, label: pickerLabels[id]! }),
 );
 
 /** 分组排序等与 `pickerOrder` 一致。 */
