@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { ArrowUp, ChevronDown, ChevronRight, LoaderCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  LoaderCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +65,7 @@ import {
   mcpBadgeText,
   type SettingsSidebarTab,
 } from "@/components/session-sidebar";
+import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import type {
   AskQuestionsQuestionSpec,
   ConversationMessageSnapshot,
@@ -634,6 +644,65 @@ function WebHostPairingGate({
   );
 }
 
+function DesktopLayoutChromeBar({
+  useMicaBackdrop,
+  sessionSidebarOpen,
+  onToggleSessionSidebar,
+  showWorkspaceToggle,
+  workspaceToolsOpen = false,
+  onToggleWorkspaceTools,
+}: {
+  useMicaBackdrop: boolean;
+  sessionSidebarOpen: boolean;
+  onToggleSessionSidebar(): void;
+  showWorkspaceToggle: boolean;
+  workspaceToolsOpen?: boolean;
+  onToggleWorkspaceTools?: () => void;
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="侧栏与工具区"
+      className={cn(
+        "flex h-8 shrink-0 items-center gap-2 px-1.5",
+        showWorkspaceToggle ? "justify-between" : "justify-start",
+        useMicaBackdrop ? "bg-background/85 backdrop-blur-md" : "bg-background",
+      )}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7 shrink-0 text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10 [&_svg]:size-3.5"
+        onClick={onToggleSessionSidebar}
+        aria-label={sessionSidebarOpen ? "隐藏侧栏" : "展开侧栏"}
+        aria-expanded={sessionSidebarOpen}
+        {...(sessionSidebarOpen ? { "aria-controls": "session-sidebar-panel" } : {})}
+      >
+        {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
+      </Button>
+      {showWorkspaceToggle ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0 text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10 [&_svg]:size-3.5"
+          onClick={() => onToggleWorkspaceTools?.()}
+          aria-label={workspaceToolsOpen ? "收拢工具区" : "展开工具区"}
+          aria-expanded={workspaceToolsOpen}
+          {...(workspaceToolsOpen ? { "aria-controls": "workspace-tools-panel" } : {})}
+        >
+          {workspaceToolsOpen ? (
+            <PanelRightClose className="size-3.5" aria-hidden />
+          ) : (
+            <PanelRightOpen className="size-3.5" aria-hidden />
+          )}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function App() {
   const { theme, setTheme } = useTheme();
   const runtime = useDesktopRuntime();
@@ -686,7 +755,9 @@ export default function App() {
     "conversation",
   );
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
-  const [sidebarNarrow, setSidebarNarrow] = useState(false);
+  const [sessionSidebarOpen, setSessionSidebarOpen] = useState(true);
+  const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true);
+  const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(320);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -838,55 +909,42 @@ export default function App() {
           />
         ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div
-          className={cn(
-            "h-full min-w-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
-            sidebarNarrow ? "w-12" : "w-[min(16rem,40vw)]",
-          )}
-        >
-          <SessionSidebar
-            narrow={sidebarNarrow}
-            mode={settingsMode ? "settings" : "sessions"}
-            sessions={runtime.sessions}
-            activeFilePath={activeFilePath}
-            onNewSession={() => void runtime.resetSession()}
-            onSelectSession={(path) => void runtime.openSession(path)}
-            onOpenSettings={() => {
-              setSidebarNarrow(false);
-              setActiveSurface("settings");
-            }}
-            onBackToSessions={() => setActiveSurface("conversation")}
-            settingsTab={settingsTab}
-            onSettingsTabChange={setSettingsTab}
-            hostStatus={runtime.summary.hostStatus}
-            mcpState={mcpBadgeText(snapshot)}
-            micaStyle={useMicaBackdrop}
-            busy={
-              runtime.busyAction === "session" ||
-              runtime.busyAction === "reset" ||
-              runtime.busyAction === "models"
-            }
-          />
-        </div>
+        {sessionSidebarOpen ? (
+          <div className="h-full min-w-0 w-[min(16rem,40vw)] shrink-0 overflow-hidden">
+            <SessionSidebar
+              narrow={false}
+              mode={settingsMode ? "settings" : "sessions"}
+              sessions={runtime.sessions}
+              activeFilePath={activeFilePath}
+              onNewSession={() => void runtime.resetSession()}
+              onSelectSession={(path) => void runtime.openSession(path)}
+              onOpenSettings={() => {
+                setSessionSidebarOpen(true);
+                setActiveSurface("settings");
+              }}
+              onBackToSessions={() => setActiveSurface("conversation")}
+              settingsTab={settingsTab}
+              onSettingsTabChange={setSettingsTab}
+              hostStatus={runtime.summary.hostStatus}
+              mcpState={mcpBadgeText(snapshot)}
+              micaStyle={useMicaBackdrop}
+              busy={
+                runtime.busyAction === "session" ||
+                runtime.busyAction === "reset" ||
+                runtime.busyAction === "models"
+              }
+            />
+          </div>
+        ) : null}
 
-        {/* 勿用透明：Mica 在「系统浅 / 应用深」时此处会透出亮色底，形成侧栏与主区之间的白条 */}
-        <div className="z-20 flex h-full shrink-0 flex-col self-stretch bg-background pt-2 pr-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 rounded-l-none rounded-r-md border border-l-0 border-border/50 bg-background/95 text-foreground/90 shadow-sm hover:bg-foreground/[0.06] dark:border-white/12 [&_svg]:size-3.5"
-            onClick={() => setSidebarNarrow((c) => !c)}
-            aria-label={sidebarNarrow ? "展开侧栏" : "收为窄栏"}
-            aria-expanded={!sidebarNarrow}
-            aria-controls="session-sidebar-panel"
-          >
-            {sidebarNarrow ? <PanelLeftOpen className="size-3.5" aria-hidden /> : <PanelLeftClose className="size-3.5" aria-hidden />}
-          </Button>
-        </div>
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-          {settingsMode ? (
+        {settingsMode ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+            <DesktopLayoutChromeBar
+              useMicaBackdrop={useMicaBackdrop}
+              sessionSidebarOpen={sessionSidebarOpen}
+              onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
+              showWorkspaceToggle={false}
+            />
             <SettingsView
               tab={settingsTab}
               theme={theme}
@@ -916,7 +974,18 @@ export default function App() {
                 applySlashSuggestion(`${CREATE_SKILL_SLASH_ALIAS} `);
               }}
             />
-          ) : (
+          </div>
+        ) : (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-background min-w-0">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background min-w-0">
+              <DesktopLayoutChromeBar
+                useMicaBackdrop={useMicaBackdrop}
+                sessionSidebarOpen={sessionSidebarOpen}
+                onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
+                showWorkspaceToggle
+                workspaceToolsOpen={workspaceToolsOpen}
+                onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
+              />
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
               {rewindDraft ? (
                 <button
@@ -1081,8 +1150,14 @@ export default function App() {
                 </div>
               </div>
             </div>
-          )}
-        </div>
+            </div>
+            <WorkspaceToolsDock
+              open={workspaceToolsOpen}
+              widthPx={workspaceToolsWidthPx}
+              onWidthPxChange={setWorkspaceToolsWidthPx}
+            />
+          </div>
+        )}
         </div>
       </div>
 
