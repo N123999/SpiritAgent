@@ -1177,12 +1177,16 @@ description: ${frontmatterDescription}
       return;
     }
 
+    const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
+    const llmVendor = activeProfile?.provider;
+
     const runtime = this.createRuntime(
       {
         apiKey,
         model: state.config.activeModel,
         baseUrl: currentApiBase(state.config),
         workspaceRoot: state.workspaceRoot,
+        ...(llmVendor ? { llmVendor } : {}),
       },
       state.archiveHistory,
       state.metadata.rules.enabledRules,
