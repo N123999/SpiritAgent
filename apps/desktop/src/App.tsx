@@ -287,6 +287,71 @@ function ComposerSurface({
   );
 }
 
+/** 推理流进行中：有 thinking 且尚未写入正文；正文开始后自动收起。 */
+function assistantReasoningLive(message: ConversationMessageSnapshot): boolean {
+  return (
+    message.pending &&
+    Boolean(message.aux?.thinking?.trim()) &&
+    !message.content.trim()
+  );
+}
+
+function AssistantThinkingCollapsible({ message }: { message: ConversationMessageSnapshot }) {
+  const thinking = message.aux?.thinking;
+  if (!thinking) {
+    return null;
+  }
+
+  const reasoningLive = assistantReasoningLive(message);
+  const [manualOpen, setManualOpen] = useState(false);
+  const prevReasoningLiveRef = useRef(reasoningLive);
+
+  useEffect(() => {
+    if (prevReasoningLiveRef.current && !reasoningLive) {
+      setManualOpen(false);
+    }
+    prevReasoningLiveRef.current = reasoningLive;
+  }, [reasoningLive]);
+
+  const expanded = reasoningLive || manualOpen;
+
+  return (
+    <div className="py-0.5">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => {
+          if (reasoningLive) {
+            return;
+          }
+          setManualOpen((open) => !open);
+        }}
+        className={cn(
+          "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
+          reasoningLive ? "cursor-default" : "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
+        )}
+      >
+        <span className="text-xs font-medium tracking-wide text-muted-foreground">Thinking</span>
+        {!reasoningLive ? (
+          <ChevronRight
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+              "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+              expanded && "rotate-90",
+            )}
+            aria-hidden
+          />
+        ) : null}
+      </button>
+      {expanded ? (
+        <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
+          {thinking}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
 function MessageCard({
   message,
   listIndex,
@@ -360,16 +425,7 @@ function MessageCard({
             busy={rewindBusy}
           />
         ) : null}
-        {!isUser && message.aux?.thinking ? (
-          <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground">
-              Thinking
-            </p>
-            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
-              {message.aux.thinking}
-            </pre>
-          </div>
-        ) : null}
+        {!isUser && message.aux?.thinking ? <AssistantThinkingCollapsible message={message} /> : null}
         {!isUser && message.aux?.compaction ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
             <p className="text-xs font-medium tracking-wide text-muted-foreground">
