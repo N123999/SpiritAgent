@@ -15,6 +15,10 @@
       "types": "./dist/discovery.d.ts",
       "default": "./dist/discovery.js"
     },
+    "./extensions": {
+      "types": "./dist/extensions.d.ts",
+      "default": "./dist/extensions.js"
+    },
     "./runtime": {
       "types": "./dist/runtime.d.ts",
       "default": "./dist/runtime.js"
@@ -28,6 +32,7 @@
       "default": "./dist/tools.js"
     }
   },
+      "fflate": "^0.8.2",
   "files": [
     "dist"
   ],
@@ -46,6 +51,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "fflate": "^0.8.2",
     "spirit-agent-repo": "file:../.."
   }
 }
