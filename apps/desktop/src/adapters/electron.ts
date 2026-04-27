@@ -18,6 +18,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     addModel(request) {
       return bridge.addModel(request);
     },
+    previewModels(request) {
+      return bridge.previewModels(request);
+    },
     removeModel(name) {
       return bridge.removeModel(name);
     },

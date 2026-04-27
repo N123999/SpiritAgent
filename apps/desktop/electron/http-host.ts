@@ -313,6 +313,22 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/models/preview') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('previewModels', {
+        request: {
+          apiBase: typeof jsonBody?.apiBase === 'string' ? jsonBody.apiBase : '',
+          apiKey: typeof jsonBody?.apiKey === 'string' ? jsonBody.apiKey : '',
+          forceRefresh: jsonBody?.forceRefresh === true,
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/models') {
     writeJson(request, response, 200, await runHostCommand('addModel', { request: jsonBody }));
     return;

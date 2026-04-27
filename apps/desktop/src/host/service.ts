@@ -38,6 +38,7 @@ import {
   type McpServerConfig,
 } from '@spirit-agent/agent-core';
 import {
+  listOpenAiCompatibleModelIds,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
@@ -49,6 +50,8 @@ import type {
   ActiveSessionSnapshot,
   AddModelRequest,
   AddMcpServerRequest,
+  PreviewModelsRequest,
+  PreviewModelsResponse,
   AskQuestionsResult,
   BootstrapRequest,
   ConversationMessageSnapshot,
@@ -77,6 +80,11 @@ import type {
   WriteWorkspaceTextFileRequest,
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
+import {
+  isModelCatalogCacheFresh,
+  readModelCatalogCache,
+  writeModelCatalogCache,
+} from './model-catalog-cache.js';
 import {
   DEFAULT_API_BASE,
   defaultNewSessionPath,
@@ -128,6 +136,7 @@ type CommandPayloads = {
   updateConfig: { request: UpdateConfigRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
+  previewModels: { request: PreviewModelsRequest };
   removeModel: { request: RemoveModelRequest };
   addMcpServer: { request: AddMcpServerRequest };
   deleteMcpServer: { request: DeleteMcpServerRequest };
@@ -279,6 +288,24 @@ class DesktopHostService {
       await saveConfig(state.config);
       return this.buildSnapshot();
     });
+  }
+
+  async previewModels(request: PreviewModelsRequest): Promise<PreviewModelsResponse> {
+    const apiBaseRaw = request.apiBase.trim();
+    const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+    const apiKey = request.apiKey.trim();
+    if (!apiKey) {
+      throw new Error('API Key 不能为空。');
+    }
+    const forceRefresh = request.forceRefresh === true;
+    const cached = await readModelCatalogCache(apiBase);
+    const now = Date.now();
+    if (cached && isModelCatalogCacheFresh(cached, now, forceRefresh)) {
+      return { modelIds: cached.modelIds, fromCache: true };
+    }
+    const modelIds = await listOpenAiCompatibleModelIds({ baseUrl: apiBase, apiKey });
+    await writeModelCatalogCache(apiBase, modelIds);
+    return { modelIds, fromCache: false };
   }
 
   async addModel(request: AddModelRequest): Promise<DesktopSnapshot> {
@@ -948,6 +975,10 @@ description: ${frontmatterDescription}
       case 'addModel': {
         const typedPayload = payload as CommandPayloads['addModel'];
         return this.addModel(typedPayload.request);
+      }
+      case 'previewModels': {
+        const typedPayload = payload as CommandPayloads['previewModels'];
+        return this.previewModels(typedPayload.request);
       }
       case 'removeModel': {
         const typedPayload = payload as CommandPayloads['removeModel'];

@@ -9,6 +9,8 @@ import type {
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
+  PreviewModelsRequest,
+  PreviewModelsResponse,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -40,6 +42,9 @@ export function createWebHostApi(): HostApi {
     },
     addModel(request: AddModelRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/models', request);
+    },
+    previewModels(request: PreviewModelsRequest) {
+      return post<PreviewModelsResponse>(baseUrl, '/api/models/preview', request);
     },
     removeModel(name: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/models/remove', { name });

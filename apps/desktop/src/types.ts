@@ -22,6 +22,19 @@ export interface DesktopWebHostConfigUpdate {
   resetPairing?: boolean;
 }
 
+/** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
+export interface PreviewModelsRequest {
+  apiBase: string;
+  apiKey: string;
+  /** 为 true 时忽略 TTL，强制请求上游。 */
+  forceRefresh?: boolean;
+}
+
+export interface PreviewModelsResponse {
+  modelIds: string[];
+  fromCache: boolean;
+}
+
 /** 与 CLI `model add` 一致：新增模型、写入密钥，并将当前模型切到新模型。 */
 export interface AddModelRequest {
   name: string;

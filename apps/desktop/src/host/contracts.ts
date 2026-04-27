@@ -12,6 +12,7 @@ export type HostCommandName =
   | 'updateConfig'
   | 'setWebHostAuthTokenHash'
   | 'addModel'
+  | 'previewModels'
   | 'removeModel'
   | 'addMcpServer'
   | 'deleteMcpServer'
