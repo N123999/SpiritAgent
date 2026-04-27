@@ -909,8 +909,20 @@ export default function App() {
           />
         ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {sessionSidebarOpen ? (
-          <div className="h-full min-w-0 w-[min(16rem,40vw)] shrink-0 overflow-hidden">
+        <div
+          className={cn(
+            "h-full min-h-0 shrink-0 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
+            sessionSidebarOpen ? "w-[min(16rem,40vw)]" : "w-0",
+          )}
+        >
+          <div
+            className={cn(
+              "h-full min-w-0 w-[min(16rem,40vw)]",
+              !sessionSidebarOpen && "pointer-events-none select-none",
+            )}
+            aria-hidden={!sessionSidebarOpen}
+            inert={!sessionSidebarOpen}
+          >
             <SessionSidebar
               narrow={false}
               mode={settingsMode ? "settings" : "sessions"}
@@ -935,7 +947,7 @@ export default function App() {
               }
             />
           </div>
-        ) : null}
+        </div>
 
         {settingsMode ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">

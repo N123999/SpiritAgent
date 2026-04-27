@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileText, GitBranch, Terminal } from "lucide-react";
 
@@ -34,7 +34,14 @@ export function WorkspaceToolsDock({
   className,
 }: WorkspaceToolsDockProps) {
   const [tab, setTab] = useState<WorkspaceToolsTab>("files");
+  const [isResizing, setIsResizing] = useState(false);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setIsResizing(false);
+    }
+  }, [open]);
 
   const clampWidth = useCallback(
     (value: number) => Math.min(maxWidthPx, Math.max(minWidthPx, value)),
@@ -44,6 +51,7 @@ export function WorkspaceToolsDock({
   const onResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
+      setIsResizing(true);
       dragRef.current = { startX: event.clientX, startWidth: widthPx };
       event.currentTarget.setPointerCapture(event.pointerId);
     },
@@ -64,6 +72,7 @@ export function WorkspaceToolsDock({
   );
 
   const endResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    setIsResizing(false);
     if (dragRef.current) {
       dragRef.current = null;
     }
@@ -74,81 +83,98 @@ export function WorkspaceToolsDock({
     }
   }, []);
 
-  if (!open) {
-    return null;
-  }
+  const shellWidth = open ? `calc(0.25rem + ${widthPx}px)` : "0px";
 
   return (
-    <div className={cn("flex h-full min-h-0 shrink-0 flex-row self-stretch", className)}>
+    <div
+      className={cn(
+        "flex h-full min-h-0 shrink-0 flex-row self-stretch overflow-hidden",
+        isResizing
+          ? "transition-none"
+          : "transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
+        className,
+      )}
+      style={{ width: shellWidth }}
+    >
       <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="调整工具区宽度"
         className={cn(
-          "group relative z-10 w-1 shrink-0 cursor-col-resize touch-none select-none",
-          "before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']",
+          "flex h-full min-h-0 shrink-0 flex-row self-stretch",
+          !open && "pointer-events-none select-none",
         )}
-        onPointerDown={onResizePointerDown}
-        onPointerMove={onResizePointerMove}
-        onPointerUp={endResize}
-        onPointerCancel={endResize}
+        style={{ width: `calc(0.25rem + ${widthPx}px)` }}
+        aria-hidden={!open}
+        inert={!open}
       >
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 w-px bg-border/40 transition-colors group-hover:bg-border/55"
-          aria-hidden
-        />
-      </div>
-
-      <aside
-        id="workspace-tools-panel"
-        className="flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-background text-foreground"
-        style={{ width: widthPx }}
-        aria-label="工作区工具"
-      >
-        <div
-          role="tablist"
-          aria-label="工具分页"
-          className="flex shrink-0 gap-0 border-b border-border/40 px-1 pt-1.5 pb-0"
-        >
-          {TAB_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const selected = tab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                className={cn(
-                  "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-t-md border border-transparent px-2 py-2 text-xs font-medium transition-colors",
-                  selected
-                    ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-foreground/10",
-                )}
-                onClick={() => setTab(item.id)}
-              >
-                <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
-                <span className="truncate">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div
-          role="tabpanel"
-          className="min-h-0 flex-1 overflow-hidden p-3 text-xs text-muted-foreground"
-          aria-live="polite"
-        >
-          {tab === "files" ? (
-            <p>文件区占位</p>
-          ) : tab === "shell" ? (
-            <p>Shell 区占位</p>
-          ) : (
-            <p>Git 区占位</p>
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整工具区宽度"
+          className={cn(
+            "group relative z-10 w-1 shrink-0 cursor-col-resize touch-none select-none",
+            "before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']",
           )}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+        >
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 w-px bg-border/40 transition-colors group-hover:bg-border/55"
+            aria-hidden
+          />
         </div>
-      </aside>
+
+        <aside
+          id="workspace-tools-panel"
+          className="flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-background text-foreground"
+          style={{ width: widthPx }}
+          aria-label="工作区工具"
+        >
+          <div
+            role="tablist"
+            aria-label="工具分页"
+            className="flex shrink-0 gap-0 border-b border-border/40 px-1 pt-1.5 pb-0"
+          >
+            {TAB_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const selected = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-t-md border border-transparent px-2 py-2 text-xs font-medium transition-colors",
+                    selected
+                      ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-foreground/10",
+                  )}
+                  onClick={() => setTab(item.id)}
+                >
+                  <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            role="tabpanel"
+            className="min-h-0 flex-1 overflow-hidden p-3 text-xs text-muted-foreground"
+            aria-live="polite"
+          >
+            {tab === "files" ? (
+              <p>文件区占位</p>
+            ) : tab === "shell" ? (
+              <p>Shell 区占位</p>
+            ) : (
+              <p>Git 区占位</p>
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
