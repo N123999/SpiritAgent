@@ -830,7 +830,7 @@ export default function App() {
   );
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(true);
-  const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true);
+  const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
