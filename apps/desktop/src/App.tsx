@@ -273,13 +273,17 @@ function ComposerSurface({
                     <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-[min(22rem,90vw)] p-0 text-xs">
+                <DropdownMenuContent
+                  align="start"
+                  side="top"
+                  className="w-max min-w-[max(9rem,var(--radix-dropdown-menu-trigger-width))] max-w-[min(18rem,calc(100vw-1.25rem))] p-0 text-xs"
+                >
                   <div className="border-b border-border/40 p-1.5">
                     <Input
                       value={modelFilter}
                       onChange={(event) => setModelFilter(event.target.value)}
                       placeholder="筛选模型"
-                      className="h-8 text-xs"
+                      className="h-8 w-full min-w-0 text-xs"
                       onKeyDown={(event) => event.stopPropagation()}
                       autoComplete="off"
                     />
