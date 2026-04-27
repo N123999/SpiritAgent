@@ -8,7 +8,7 @@
 ## 提交信息
 
 - 约定式提交：`type` / 可选 `scope` 英文；`subject` 中文。
-- 多范围时逗号后空格，例如 `(cli, agent-core)`；多范围适用条件见 `.cursor/rules/commit-messages.zh.mdc`（若存在）。
+- 多范围时逗号后空格，例如 `(cli, agent-core)`。
 
 ## 通用约定
 
