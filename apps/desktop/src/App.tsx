@@ -644,6 +644,10 @@ function WebHostPairingGate({
   );
 }
 
+/** ghost 在 aria-expanded 时默认带 bg-muted，顶栏图标按钮需全透明底 */
+const DESKTOP_CHROME_TOGGLE_ICON_BTN =
+  "size-7 shrink-0 bg-transparent text-foreground/90 hover:bg-foreground/[0.06] hover:text-foreground dark:hover:bg-foreground/10 aria-expanded:bg-transparent dark:aria-expanded:bg-transparent aria-expanded:text-foreground aria-expanded:hover:bg-foreground/[0.06] dark:aria-expanded:hover:bg-foreground/10 [&_svg]:size-3.5";
+
 function DesktopLayoutChromeBar({
   useMicaBackdrop,
   sessionSidebarOpen,
@@ -673,7 +677,7 @@ function DesktopLayoutChromeBar({
         type="button"
         variant="ghost"
         size="icon"
-        className="size-7 shrink-0 text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10 [&_svg]:size-3.5"
+        className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
         onClick={onToggleSessionSidebar}
         aria-label={sessionSidebarOpen ? "隐藏侧栏" : "展开侧栏"}
         aria-expanded={sessionSidebarOpen}
@@ -686,7 +690,7 @@ function DesktopLayoutChromeBar({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0 text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10 [&_svg]:size-3.5"
+          className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
           onClick={() => onToggleWorkspaceTools?.()}
           aria-label={workspaceToolsOpen ? "收拢工具区" : "展开工具区"}
           aria-expanded={workspaceToolsOpen}
