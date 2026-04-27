@@ -18,7 +18,7 @@ use crate::{
     },
     skills::ActiveSkillPayload,
     session::SessionModel,
-    ts_bridge::{CliHostMetadataSnapshot, TsBridgeRuntime},
+    ts_bridge::{CliExtensionEntry, CliHostMetadataSnapshot, TsBridgeRuntime},
     view::{ChatMessage, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
@@ -88,6 +88,22 @@ impl RuntimeHandle {
 
     pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
         self.runtime.reload_host_metadata(plan_mode)
+    }
+
+    pub fn list_extensions(&mut self) -> Result<Vec<CliExtensionEntry>> {
+        self.runtime.list_extensions()
+    }
+
+    pub fn import_extension_archive(
+        &mut self,
+        archive_bytes: &[u8],
+        file_name: Option<&str>,
+    ) -> Result<CliExtensionEntry> {
+        self.runtime.import_extension_archive(archive_bytes, file_name)
+    }
+
+    pub fn delete_extension(&mut self, id: &str) -> Result<()> {
+        self.runtime.delete_extension(id)
     }
 
     pub fn session(&self) -> &SessionModel {
