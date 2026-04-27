@@ -243,10 +243,54 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
     will-change: background-position;
   }
 
+  /* Thinking：`background-clip: text`；双层（底层 muted + 顶层平移高光），避免单层在极端 `background-position` 下露透明洞。 */
+  @keyframes spirit-thinking-text-shimmer-pos {
+    0% {
+      background-position: 125% 50%, 0 0;
+    }
+    100% {
+      background-position: -125% 50%, 0 0;
+    }
+  }
+
+  .spirit-thinking-shimmer-text {
+    background-image: linear-gradient(
+        118deg,
+        transparent 0%,
+        transparent 24%,
+        color-mix(in srgb, var(--foreground) 28%, transparent) 41%,
+        color-mix(in srgb, var(--foreground) 48%, transparent) 50%,
+        color-mix(in srgb, var(--foreground) 28%, transparent) 59%,
+        transparent 76%,
+        transparent 100%
+      ),
+      linear-gradient(var(--muted-foreground), var(--muted-foreground));
+    background-size: 240% 100%, 100% 100%;
+    background-position: 125% 50%, 0 0;
+    background-repeat: no-repeat, no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    /* 与首屏图标不同：思考条用匀速更易读，避免 ease 前段像「拖着不走」 */
+    animation: spirit-thinking-text-shimmer-pos 1s linear infinite;
+    will-change: background-position;
+    transform: translateZ(0);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .spirit-launch-shimmer-sweep {
       animation: none;
       opacity: 0;
+    }
+    .spirit-thinking-shimmer-text {
+      animation: none;
+      background: none;
+      -webkit-background-clip: unset;
+      background-clip: unset;
+      color: var(--muted-foreground);
+      -webkit-text-fill-color: unset;
+      transform: none;
     }
   }
 }

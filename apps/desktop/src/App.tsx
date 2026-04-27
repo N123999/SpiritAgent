@@ -287,6 +287,20 @@ function ComposerSurface({
   );
 }
 
+/** 随 `active` 切换 `.spirit-thinking-shimmer-text`（样式与动画在 `styles.css`）。 */
+function ThinkingLabelWithShimmer({ active }: { active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 text-xs font-medium tracking-wide",
+        active ? "spirit-thinking-shimmer-text" : "text-muted-foreground",
+      )}
+    >
+      Thinking
+    </span>
+  );
+}
+
 /** 推理流进行中：有 thinking 且尚未写入正文；正文开始后自动收起。 */
 function assistantReasoningLive(message: ConversationMessageSnapshot): boolean {
   return (
@@ -331,7 +345,7 @@ function AssistantThinkingCollapsible({ message }: { message: ConversationMessag
           reasoningLive ? "cursor-default" : "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
         )}
       >
-        <span className="text-xs font-medium tracking-wide text-muted-foreground">Thinking</span>
+        <ThinkingLabelWithShimmer active={reasoningLive} />
         {!reasoningLive ? (
           <ChevronRight
             className={cn(
