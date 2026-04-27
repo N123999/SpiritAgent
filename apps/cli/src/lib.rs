@@ -12,6 +12,7 @@ pub mod logging;
 pub mod mcp;
 pub mod mcp_types;
 pub mod model_registry;
+pub mod model_provider_presets;
 pub mod openai_models_list;
 pub mod plan;
 pub mod ports;

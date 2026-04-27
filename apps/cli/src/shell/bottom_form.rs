@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
 use crate::{
     mcp_types::McpDiscoveredPrompt,
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
+    model_provider_presets::model_add_preset_api_base_by_choice_index,
     model_registry::{ModelProvider, DEFAULT_API_BASE},
     rules::{RuleEntry, RuleScope},
     skills::{SkillEntry, SkillScope},
@@ -91,16 +92,6 @@ fn model_add_provider_choice_labels() -> Vec<String> {
         t!("form.model.provider.minimax").into_owned(),
         t!("form.model.provider.custom").into_owned(),
     ]
-}
-
-/// 与 `apps/desktop/src/host/provider-presets.ts` 中 `PROVIDER_PRESET_API_BASE` 一致。
-fn preset_api_base_for_model_add(selected: usize) -> Option<&'static str> {
-    match selected {
-        0 => Some("https://api.deepseek.com/v1"),
-        1 => Some("https://api.moonshot.cn/v1"),
-        2 => Some("https://api.minimaxi.com/v1"),
-        _ => None,
-    }
 }
 
 fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
@@ -758,8 +749,8 @@ pub(crate) fn parse_model_add_connection(
     }
 
     let bulk = model_add_mode_bulk(form, provider_idx);
-    let api_base = if let Some(preset) = preset_api_base_for_model_add(provider_idx) {
-        preset.to_string()
+    let api_base = if let Some(preset) = model_add_preset_api_base_by_choice_index(provider_idx) {
+        preset
     } else {
         let base_idx = match form.fields.len() {
             4 => 2,

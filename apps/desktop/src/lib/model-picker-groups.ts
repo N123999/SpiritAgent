@@ -1,11 +1,11 @@
-import { PROVIDER_PICKER_ROWS } from "@/host/provider-presets";
+import { MODEL_PROVIDER_PICKER_ORDER, PROVIDER_PICKER_ROWS } from "@spirit-agent/host-internal";
 import type {
   DesktopModelCatalogHint,
   DesktopModelProvider,
   ModelProfileSnapshot,
 } from "@/types";
 
-const PROVIDER_ORDER: DesktopModelProvider[] = ["deepseek", "kimi", "minimax", "custom"];
+const PROVIDER_ORDER: DesktopModelProvider[] = [...MODEL_PROVIDER_PICKER_ORDER];
 
 function providerLabel(provider: DesktopModelProvider): string {
   return PROVIDER_PICKER_ROWS.find((row) => row.id === provider)?.label ?? provider;

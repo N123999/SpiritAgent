@@ -1,3 +1,5 @@
+import type { ModelProviderId } from '@spirit-agent/host-internal';
+
 export interface BootstrapRequest {
   workspaceRoot?: string;
 }
@@ -22,8 +24,8 @@ export interface DesktopWebHostConfigUpdate {
   resetPairing?: boolean;
 }
 
-/** 模型提供方（用于设置页与后续适配层；缺省视为自定义端点）。 */
-export type DesktopModelProvider = 'deepseek' | 'kimi' | 'minimax' | 'custom';
+/** 模型提供方（与 `packages/host-internal` 中 `ModelProviderId` 同源）。 */
+export type DesktopModelProvider = ModelProviderId;
 
 /** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
 export interface PreviewModelsRequest {
