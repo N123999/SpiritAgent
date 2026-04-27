@@ -63,6 +63,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       relativePath,
     });
   },
+  readWorkspaceTextFile(relativePath: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'readWorkspaceTextFile', { relativePath });
+  },
+  writeWorkspaceTextFile(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'writeWorkspaceTextFile', { request });
+  },
   syncWindowFrame(request: {
     dark: boolean;
     nativeTheme: 'system' | 'light' | 'dark';

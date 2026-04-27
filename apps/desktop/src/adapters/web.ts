@@ -12,6 +12,8 @@ import type {
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
+  WorkspaceReadTextFileResult,
+  WriteWorkspaceTextFileRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -91,6 +93,14 @@ export function createWebHostApi(): HostApi {
       return post<WorkspaceExplorerListResult>(baseUrl, '/api/workspace/explorer', {
         relativePath,
       });
+    },
+    readWorkspaceTextFile(relativePath: string) {
+      return post<WorkspaceReadTextFileResult>(baseUrl, '/api/workspace/file', {
+        relativePath,
+      });
+    },
+    writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest) {
+      return post<void>(baseUrl, '/api/workspace/file/write', request);
     },
     async pairWebHost(code: string) {
       const result = await post<WebHostPairingResponse>(baseUrl, '/api/pairing', { code }, {

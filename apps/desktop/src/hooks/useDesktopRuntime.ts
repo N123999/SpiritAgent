@@ -19,6 +19,8 @@ import type {
   SessionListItem,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
+  WorkspaceReadTextFileResult,
+  WriteWorkspaceTextFileRequest,
 } from "@/types";
 
 type BusyAction =
@@ -727,6 +729,26 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const readWorkspaceTextFile = useCallback(
+    async (relativePath: string): Promise<WorkspaceReadTextFileResult> => {
+      if (!api) {
+        throw new Error("宿主未就绪");
+      }
+      return api.readWorkspaceTextFile(relativePath);
+    },
+    [api],
+  );
+
+  const writeWorkspaceTextFile = useCallback(
+    async (request: WriteWorkspaceTextFileRequest): Promise<void> => {
+      if (!api) {
+        throw new Error("宿主未就绪");
+      }
+      return api.writeWorkspaceTextFile(request);
+    },
+    [api],
+  );
+
   const resetSession = useCallback(async () => {
     if (!api) {
       return;
@@ -797,6 +819,8 @@ export function useDesktopRuntime() {
     inspectMcpServer,
     openSession,
     listWorkspaceExplorerChildren,
+    readWorkspaceTextFile,
+    writeWorkspaceTextFile,
     pairWebHost,
     resetSession,
     rewindAndSubmitMessage,

@@ -1,5 +1,6 @@
+import { Buffer } from 'node:buffer';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
@@ -72,6 +73,8 @@ import type {
   UpdateConfigRequest,
   WorkspaceExplorerEntry,
   WorkspaceExplorerListResult,
+  WorkspaceReadTextFileResult,
+  WriteWorkspaceTextFileRequest,
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
 import {
@@ -141,6 +144,8 @@ type CommandPayloads = {
   listSessions: undefined;
   openSession: { path: string };
   listWorkspaceExplorerChildren: { relativePath: string };
+  readWorkspaceTextFile: { relativePath: string };
+  writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };
   rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
 };
 
@@ -778,7 +783,7 @@ description: ${frontmatterDescription}
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       const state = this.requireState();
-      const dir = this.resolveWorkspaceExplorerDir(state, relativePath);
+      const dir = this.resolveWorkspaceRelativePath(state, relativePath);
       let st;
       try {
         st = await stat(dir);
@@ -805,10 +810,65 @@ description: ${frontmatterDescription}
     });
   }
 
+  /** 单文件上限，避免大文件拖垮渲染进程。 */
+  private static readonly workspaceTextFileMaxBytes = 2 * 1024 * 1024;
+
+  async readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const posix = relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
+      if (!posix) {
+        throw new Error('未指定文件路径');
+      }
+      const filePath = this.resolveWorkspaceRelativePath(state, relativePath);
+      let st;
+      try {
+        st = await stat(filePath);
+      } catch {
+        throw new Error('文件不存在或无法访问');
+      }
+      if (!st.isFile()) {
+        throw new Error('不是文件');
+      }
+      if (st.size > DesktopHostService.workspaceTextFileMaxBytes) {
+        throw new Error('文件过大，无法在侧栏打开');
+      }
+      const buf = await readFile(filePath);
+      return { text: buf.toString('utf8') };
+    });
+  }
+
+  async writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const posix = request.relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
+      if (!posix) {
+        throw new Error('未指定文件路径');
+      }
+      const filePath = this.resolveWorkspaceRelativePath(state, request.relativePath);
+      let st;
+      try {
+        st = await stat(filePath);
+      } catch {
+        throw new Error('文件不存在或无法访问');
+      }
+      if (!st.isFile()) {
+        throw new Error('只能保存为普通文件');
+      }
+      const bytes = Buffer.byteLength(request.text, 'utf8');
+      if (bytes > DesktopHostService.workspaceTextFileMaxBytes) {
+        throw new Error('内容过大，无法保存');
+      }
+      await writeFile(filePath, request.text, 'utf8');
+    });
+  }
+
   /**
-   * 将 `relativePath` 解析为工作区内的绝对目录；使用 `/` 分段，禁止 `..` 与绝对路径。
+   * 将工作区相对路径解析为绝对路径；使用 `/` 分段，禁止 `..` 与绝对路径。
    */
-  private resolveWorkspaceExplorerDir(state: HostState, relativePath: string): string {
+  private resolveWorkspaceRelativePath(state: HostState, relativePath: string): string {
     const root = path.resolve(state.workspaceRoot);
     const cleaned = relativePath.replace(/\0/g, '');
     const posix = cleaned.replace(/\\/g, '/').trim();
@@ -946,6 +1006,14 @@ description: ${frontmatterDescription}
       case 'listWorkspaceExplorerChildren': {
         const typedPayload = payload as CommandPayloads['listWorkspaceExplorerChildren'];
         return this.listWorkspaceExplorerChildren(typedPayload.relativePath);
+      }
+      case 'readWorkspaceTextFile': {
+        const typedPayload = payload as CommandPayloads['readWorkspaceTextFile'];
+        return this.readWorkspaceTextFile(typedPayload.relativePath);
+      }
+      case 'writeWorkspaceTextFile': {
+        const typedPayload = payload as CommandPayloads['writeWorkspaceTextFile'];
+        return this.writeWorkspaceTextFile(typedPayload.request);
       }
       case 'rewindAndSubmitMessage': {
         const typedPayload = payload as CommandPayloads['rewindAndSubmitMessage'];

@@ -2,9 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileText, GitBranch, Terminal } from "lucide-react";
 
-import { WorkspaceFilesPanel } from "@/components/workspace-files-panel";
+import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { cn } from "@/lib/utils";
-import type { WorkspaceExplorerListResult } from "@/types";
+import type {
+  WorkspaceExplorerListResult,
+  WorkspaceReadTextFileResult,
+  WriteWorkspaceTextFileRequest,
+} from "@/types";
 
 export type WorkspaceToolsTab = "files" | "shell" | "git";
 
@@ -18,6 +22,8 @@ export type WorkspaceToolsDockProps = {
   /** 已解析的工作区根路径；未就绪时传空字符串 */
   workspaceRoot: string;
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
+  readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
+  writeWorkspaceTextFile: (request: WriteWorkspaceTextFileRequest) => Promise<void>;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -28,11 +34,14 @@ export type WorkspaceToolsDockProps = {
 };
 
 const DEFAULT_MIN = 240;
-const DEFAULT_MAX = 640;
+/** 含文件树 + Monaco 时需更宽；与左侧栏同开时过大会挤压中间输入区，900 为经验上限。 */
+const DEFAULT_MAX = 900;
 
 export function WorkspaceToolsDock({
   workspaceRoot,
   listExplorerChildren,
+  readWorkspaceTextFile,
+  writeWorkspaceTextFile,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -169,14 +178,21 @@ export function WorkspaceToolsDock({
 
           <div
             role="tabpanel"
-            className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 text-xs text-muted-foreground"
+            className={cn(
+              "flex min-h-0 flex-1 flex-col overflow-hidden text-xs",
+              tab === "files" ? "p-0" : "p-3 text-muted-foreground",
+            )}
             aria-live="polite"
           >
             {tab === "files" ? (
-              <WorkspaceFilesPanel
-                workspaceRoot={workspaceRoot}
-                listExplorerChildren={listExplorerChildren}
-              />
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
+                <WorkspaceFilesTab
+                  workspaceRoot={workspaceRoot}
+                  listExplorerChildren={listExplorerChildren}
+                  readWorkspaceTextFile={readWorkspaceTextFile}
+                  writeWorkspaceTextFile={writeWorkspaceTextFile}
+                />
+              </div>
             ) : tab === "shell" ? (
               <p>Shell 区占位</p>
             ) : (

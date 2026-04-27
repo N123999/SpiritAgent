@@ -16,6 +16,8 @@ import type {
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
+  WorkspaceReadTextFileResult,
+  WriteWorkspaceTextFileRequest,
 } from './types';
 
 declare global {
@@ -40,6 +42,8 @@ declare global {
     listSessions(): Promise<SessionListItem[]>;
     openSession(path: string): Promise<DesktopSnapshot>;
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
+    readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
+    writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     syncWindowFrame(request: {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';

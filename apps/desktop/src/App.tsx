@@ -761,7 +761,7 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(true);
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(true);
-  const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(320);
+  const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1170,6 +1170,8 @@ export default function App() {
             <WorkspaceToolsDock
               workspaceRoot={snapshot?.workspaceRoot ?? ""}
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
+              readWorkspaceTextFile={runtime.readWorkspaceTextFile}
+              writeWorkspaceTextFile={runtime.writeWorkspaceTextFile}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

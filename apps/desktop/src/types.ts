@@ -159,6 +159,17 @@ export interface WorkspaceExplorerListResult {
   entries: WorkspaceExplorerEntry[];
 }
 
+/** 宿主按 UTF-8 读取的工作区文本文件内容（侧栏编辑器等）。 */
+export interface WorkspaceReadTextFileResult {
+  text: string;
+}
+
+/** 将 UTF-8 文本写回工作区内已有文件（路径规则与读文件一致）。 */
+export interface WriteWorkspaceTextFileRequest {
+  relativePath: string;
+  text: string;
+}
+
 export interface DesktopSnapshot {
   workspaceRoot: string;
   runtimeReady: boolean;

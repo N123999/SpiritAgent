@@ -514,6 +514,34 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/file') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('readWorkspaceTextFile', {
+        relativePath: typeof jsonBody?.relativePath === 'string' ? jsonBody.relativePath : '',
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/workspace/file/write') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('writeWorkspaceTextFile', {
+        request: {
+          relativePath:
+            typeof jsonBody?.relativePath === 'string' ? jsonBody.relativePath : '',
+          text: typeof jsonBody?.text === 'string' ? jsonBody.text : '',
+        },
+      }),
+    );
+    return;
+  }
+
   writeJson(request, response, 404, { error: `Unknown route: ${request.method} ${pathname}` });
 }
 

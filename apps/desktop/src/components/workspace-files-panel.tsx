@@ -112,9 +112,17 @@ type DirCacheEntry =
 export type WorkspaceFilesPanelProps = {
   workspaceRoot: string;
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
+  /** 当前在侧栏中选中的文件（工作区相对路径，与 `onOpenFile` 一致） */
+  selectedRelativePath?: string | null;
+  onOpenFile?: (relativePath: string) => void;
 };
 
-export function WorkspaceFilesPanel({ workspaceRoot, listExplorerChildren }: WorkspaceFilesPanelProps) {
+export function WorkspaceFilesPanel({
+  workspaceRoot,
+  listExplorerChildren,
+  selectedRelativePath = null,
+  onOpenFile,
+}: WorkspaceFilesPanelProps) {
   const [rootOpen, setRootOpen] = useState(true);
   const [cache, setCache] = useState<Record<string, DirCacheEntry>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -185,15 +193,25 @@ export function WorkspaceFilesPanel({ workspaceRoot, listExplorerChildren }: Wor
           const open = isDir && expanded[childRel] === true;
 
           if (!isDir) {
+            const selected = selectedRelativePath === childRel;
             return (
-              <li
-                key={childRel}
-                className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5"
-                style={{ paddingLeft: `${depth * 12 + 4}px` }}
-              >
-                <span className="inline-block w-4 shrink-0" aria-hidden />
-                <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                <span className="min-w-0 truncate text-foreground/90">{entry.name}</span>
+              <li key={childRel} className="min-w-0">
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left",
+                    "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+                    onOpenFile && "cursor-pointer",
+                    selected && "bg-foreground/[0.08] dark:bg-foreground/12",
+                  )}
+                  style={{ paddingLeft: `${depth * 12 + 4}px` }}
+                  aria-current={selected ? "true" : undefined}
+                  onClick={() => onOpenFile?.(childRel)}
+                >
+                  <span className="inline-block w-4 shrink-0" aria-hidden />
+                  <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+                  <span className="min-w-0 truncate">{entry.name}</span>
+                </button>
               </li>
             );
           }

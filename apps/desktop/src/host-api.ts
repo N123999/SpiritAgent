@@ -11,6 +11,8 @@ import type {
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
+  WorkspaceReadTextFileResult,
+  WriteWorkspaceTextFileRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -41,6 +43,8 @@ export interface HostApi {
   listSessions(): Promise<SessionListItem[]>;
   openSession(path: string): Promise<DesktopSnapshot>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
+  readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
+  writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
   pairWebHost?(code: string): Promise<void>;
 }
 
