@@ -4,7 +4,7 @@
 
 # Spirit Agent
 
-<p align="center">An Open Source AI Agent CLI.</p>
+<p align="center">An Open Source AI Agent.</p>
 
 > **Note:** This project is in a very early stage. Functionality may not always behave as expected.
 </div>
