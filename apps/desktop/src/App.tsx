@@ -903,7 +903,7 @@ export default function App() {
           <div
             className={cn(
               "h-px w-full shrink-0",
-              // 与 SessionSidebar 竖线：关 Mica 时略提高对比，避免深色下「贴成一块」
+              // 非 Electron：壳顶部分隔线
               useMicaBackdrop
                 ? "bg-black/5 dark:bg-white/10"
                 : "bg-border/30 dark:bg-white/12",
