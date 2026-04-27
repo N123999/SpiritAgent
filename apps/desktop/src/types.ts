@@ -38,6 +38,21 @@ export interface PreviewModelsResponse {
   fromCache: boolean;
 }
 
+/** 批量写入同一端点下的多个模型 id（共享 API Key），用于提供商连接同步目录。 */
+export interface AddProviderModelsRequest {
+  apiBase: string;
+  apiKey: string;
+  modelIds: string[];
+  provider?: DesktopModelProvider;
+}
+
+/** 快照附带：某 apiBase 在本地 `model-catalog-cache` 中的最近一次列模型结果（供主界面分组与排序）。 */
+export interface DesktopModelCatalogHint {
+  apiBase: string;
+  modelIds: string[];
+  fetchedAtUnixMs: number;
+}
+
 /** 与 CLI `model add` 一致：新增模型、写入密钥，并将当前模型切到新模型。 */
 export interface AddModelRequest {
   name: string;
@@ -215,6 +230,8 @@ export interface DesktopConfigSnapshot {
   windowsMica?: boolean;
   /** 与 CLI Plan 模式一致：影响宿主指令元数据与运行时 plan 元数据。 */
   planMode: boolean;
+  /** 与 `spiritAgentDataDir()/model-catalog-cache` 对齐；无缓存时为空数组。 */
+  modelCatalogHints?: DesktopModelCatalogHint[];
 }
 
 export interface ModelProfileSnapshot {

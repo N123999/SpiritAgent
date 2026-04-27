@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -58,6 +59,16 @@ function parseCacheEntry(raw: string): ModelCatalogCacheEntry | undefined {
 export async function readModelCatalogCache(apiBase: string): Promise<ModelCatalogCacheEntry | undefined> {
   try {
     const raw = await readFile(modelCatalogCacheFilePath(apiBase), 'utf8');
+    return parseCacheEntry(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+/** 同步读取（仅宿主线程用于快照拼装）。 */
+export function readModelCatalogCacheSync(apiBase: string): ModelCatalogCacheEntry | undefined {
+  try {
+    const raw = readFileSync(modelCatalogCacheFilePath(apiBase), 'utf8');
     return parseCacheEntry(raw);
   } catch {
     return undefined;

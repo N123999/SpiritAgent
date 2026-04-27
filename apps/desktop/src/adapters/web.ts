@@ -2,6 +2,7 @@ import type { HostApi } from '../host-api';
 import type {
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
   AskQuestionsResult,
   BootstrapRequest,
   CreateSkillRequest,
@@ -42,6 +43,9 @@ export function createWebHostApi(): HostApi {
     },
     addModel(request: AddModelRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/models', request);
+    },
+    addProviderModels(request: AddProviderModelsRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/models/add-provider', request);
     },
     previewModels(request: PreviewModelsRequest) {
       return post<PreviewModelsResponse>(baseUrl, '/api/models/preview', request);

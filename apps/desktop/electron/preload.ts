@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   addModel(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'addModel', { request });
   },
+  addProviderModels(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'addProviderModels', { request });
+  },
   previewModels(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'previewModels', { request });
   },

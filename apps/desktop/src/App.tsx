@@ -46,6 +46,7 @@ import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useTheme } from "@/hooks/useTheme";
+import { groupModelsForPicker } from "@/lib/model-picker-groups";
 import {
   buildSkillSlashSuggestions,
   CREATE_SKILL_SLASH_ALIAS,
@@ -157,6 +158,7 @@ type ComposerSurfaceProps = {
   value: string;
   placeholder: string;
   models: DesktopSnapshot["config"]["models"];
+  catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
   activeModel: string;
   planMode: boolean;
   canSend: boolean;
@@ -173,6 +175,7 @@ function ComposerSurface({
   value,
   placeholder,
   models,
+  catalogHints,
   activeModel,
   planMode,
   canSend,
@@ -184,6 +187,26 @@ function ComposerSurface({
   textareaRef,
   onKeyDown,
 }: ComposerSurfaceProps) {
+  const [modelFilter, setModelFilter] = useState("");
+  const modelGroups = useMemo(
+    () => groupModelsForPicker(models, catalogHints),
+    [models, catalogHints],
+  );
+  const filteredModelGroups = useMemo(() => {
+    const q = modelFilter.trim().toLowerCase();
+    if (!q) {
+      return modelGroups;
+    }
+    return modelGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (m) => m.name.toLowerCase().includes(q) || m.apiBase.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [modelFilter, modelGroups]);
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
       <Textarea
@@ -237,12 +260,12 @@ function ComposerSurface({
               </DropdownMenuContent>
             </DropdownMenu>
             {models.length > 0 ? (
-              <DropdownMenu>
+              <DropdownMenu onOpenChange={(open) => !open && setModelFilter("")}>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     aria-label="选择模型"
-                    className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="inline-flex h-7 max-w-[10rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     <span className="min-w-0 flex-1 truncate" title={activeModel}>
                       {activeModel}
@@ -250,18 +273,41 @@ function ComposerSurface({
                     <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="max-w-md text-xs">
-                  {models.map((model) => (
-                    <DropdownMenuItem
-                      key={model.name}
-                      onSelect={() => onModelSelect(model.name)}
-                      className={cn(model.name === activeModel && "bg-accent/40")}
-                    >
-                      <span className="block w-full min-w-0 break-all pr-1 text-left" title={model.name}>
-                        {model.name}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
+                <DropdownMenuContent align="start" side="top" className="w-[min(22rem,90vw)] p-0 text-xs">
+                  <div className="border-b border-border/40 p-1.5">
+                    <Input
+                      value={modelFilter}
+                      onChange={(event) => setModelFilter(event.target.value)}
+                      placeholder="筛选模型"
+                      className="h-8 text-xs"
+                      onKeyDown={(event) => event.stopPropagation()}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto p-1">
+                    {filteredModelGroups.length === 0 ? (
+                      <p className="px-2 py-4 text-center text-xs text-muted-foreground">无匹配项</p>
+                    ) : (
+                      filteredModelGroups.map((group) => (
+                        <div key={group.provider} className="mb-2 last:mb-0">
+                          <div className="px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground">
+                            {group.label}
+                          </div>
+                          {group.items.map((model) => (
+                            <DropdownMenuItem
+                              key={`${group.provider}:${model.name}`}
+                              onSelect={() => onModelSelect(model.name)}
+                              className={cn(model.name === activeModel && "bg-accent/40")}
+                            >
+                              <span className="block w-full min-w-0 break-all pr-1 text-left" title={model.name}>
+                                {model.name}
+                              </span>
+                            </DropdownMenuItem>
+                          ))}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
@@ -375,6 +421,7 @@ function MessageCard({
   rewindCanSubmit,
   rewindBusy,
   models,
+  catalogHints,
   activeModel,
   planMode,
   onRewindChange,
@@ -391,6 +438,7 @@ function MessageCard({
   rewindCanSubmit: boolean;
   rewindBusy: boolean;
   models: DesktopSnapshot["config"]["models"];
+  catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
   activeModel: string;
   planMode: boolean;
   onRewindChange(value: string): void;
@@ -431,6 +479,7 @@ function MessageCard({
             onSubmit={onRewindSubmit}
             placeholder="输入消息…"
             models={models}
+            catalogHints={catalogHints}
             activeModel={activeModel}
             planMode={planMode}
             onModelSelect={onModelSelect}
@@ -1050,6 +1099,7 @@ export default function App() {
               onBootstrap={runtime.bootstrap}
               onResetSession={runtime.resetSession}
               onAddModel={runtime.addModel}
+              onAddProviderModels={runtime.addProviderModels}
               onPreviewModels={runtime.previewModels}
               onRemoveModel={runtime.removeModel}
               onAddMcpServer={runtime.addMcpServer}
@@ -1132,6 +1182,7 @@ export default function App() {
                             }
                             rewindBusy={runtime.busyAction === "rewind"}
                             models={models}
+                            catalogHints={snapshot?.config.modelCatalogHints}
                             activeModel={runtime.settings.activeModel}
                             planMode={runtime.settings.planMode}
                             onRewindStart={startMessageRewind}
@@ -1214,6 +1265,7 @@ export default function App() {
                     onSubmit={() => void runtime.sendMessage()}
                     placeholder="输入消息…"
                     models={models}
+                    catalogHints={snapshot?.config.modelCatalogHints}
                     activeModel={runtime.settings.activeModel}
                     planMode={runtime.settings.planMode}
                     onModelSelect={runtime.setActiveModel}

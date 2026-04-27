@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import type {
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
   CreateSkillRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
@@ -76,6 +77,7 @@ type SettingsViewProps = {
   onBootstrap: () => Promise<void>;
   onResetSession: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
+  onAddProviderModels: (request: AddProviderModelsRequest) => Promise<void>;
   onPreviewModels: (request: PreviewModelsRequest) => Promise<PreviewModelsResponse>;
   onRemoveModel: (name: string) => Promise<void>;
   onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
@@ -1084,13 +1086,12 @@ function McpsSettingsPanel({
   );
 }
 
-type ConnectWizardStep = "credentials" | "pickModel";
-
 function ModelsSettingsPanel({
   snapshot,
   modelsBusy,
   modelsPreviewBusy,
   onAddModel,
+  onAddProviderModels,
   onPreviewModels,
   onRemoveModel,
 }: Pick<
@@ -1099,6 +1100,7 @@ function ModelsSettingsPanel({
   | "modelsBusy"
   | "modelsPreviewBusy"
   | "onAddModel"
+  | "onAddProviderModels"
   | "onPreviewModels"
   | "onRemoveModel"
 >) {
@@ -1106,26 +1108,18 @@ function ModelsSettingsPanel({
   const [providerQuery, setProviderQuery] = useState("");
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<DesktopModelProvider | null>(null);
-  const [connectStep, setConnectStep] = useState<ConnectWizardStep>("credentials");
   const [connectApiKey, setConnectApiKey] = useState("");
   const [connectName, setConnectName] = useState("");
   const [connectApiBase, setConnectApiBase] = useState("");
-  const [modelIds, setModelIds] = useState<string[]>([]);
-  const [modelQuery, setModelQuery] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const models = snapshot?.config.models ?? [];
   const activeModel = snapshot?.config.activeModel ?? "";
 
   const resetConnectWizard = () => {
-    setConnectStep("credentials");
     setConnectApiKey("");
     setConnectName("");
     setConnectApiBase("");
-    setModelIds([]);
-    setModelQuery("");
-    setSelectedModelId("");
     setSelectedProvider(null);
   };
 
@@ -1137,13 +1131,9 @@ function ModelsSettingsPanel({
   const startConnect = (id: DesktopModelProvider) => {
     setProviderDialogOpen(false);
     setSelectedProvider(id);
-    setConnectStep("credentials");
     setConnectApiKey("");
     setConnectName("");
     setConnectApiBase("");
-    setModelIds([]);
-    setModelQuery("");
-    setSelectedModelId("");
     setConnectDialogOpen(true);
   };
 
@@ -1151,16 +1141,12 @@ function ModelsSettingsPanel({
     row.label.toLowerCase().includes(providerQuery.trim().toLowerCase()),
   );
 
-  const filteredModelIds = modelIds.filter((id) =>
-    id.toLowerCase().includes(modelQuery.trim().toLowerCase()),
-  );
-
   const effectiveApiBase =
     selectedProvider === null
       ? ""
       : resolveConnectApiBase(selectedProvider, connectApiBase);
 
-  const loadModels = async (forceRefresh: boolean) => {
+  const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {
       return;
     }
@@ -1172,26 +1158,28 @@ function ModelsSettingsPanel({
       apiKey: connectApiKey,
       forceRefresh,
     });
-    setModelIds(res.modelIds);
-    const first = res.modelIds[0]?.trim();
-    setSelectedModelId((current) => {
-      if (current && res.modelIds.includes(current)) {
-        return current;
-      }
-      return first ?? "";
-    });
-    setConnectStep("pickModel");
+    if (res.modelIds.length === 0) {
+      throw new Error("未返回任何模型，请检查密钥或端点。");
+    }
+    const bulk: AddProviderModelsRequest = {
+      apiBase: effectiveApiBase,
+      apiKey: connectApiKey,
+      modelIds: res.modelIds,
+      provider: selectedProvider,
+    };
+    await onAddProviderModels(bulk);
+    setConnectDialogOpen(false);
+    resetConnectWizard();
   };
 
-  const confirmAddModel = async () => {
-    if (selectedProvider === null) {
+  const saveCustomSingle = async () => {
+    if (selectedProvider === null || selectedProvider !== "custom") {
       return;
     }
+    const name = connectName.trim();
     const apiBase = effectiveApiBase;
-    const name =
-      connectStep === "pickModel" ? selectedModelId.trim() : connectName.trim();
     if (!name) {
-      throw new Error("请选择或填写模型名称。");
+      throw new Error("模型名称不能为空。");
     }
     if (!connectApiKey.trim()) {
       throw new Error("API Key 不能为空。");
@@ -1200,7 +1188,7 @@ function ModelsSettingsPanel({
       name,
       apiBase,
       apiKey: connectApiKey,
-      provider: selectedProvider,
+      provider: "custom",
     });
     setConnectDialogOpen(false);
     resetConnectWizard();
@@ -1386,63 +1374,61 @@ function ModelsSettingsPanel({
                       : "连接提供商"}
             </DialogTitle>
             <DialogDescription>
-              {connectStep === "credentials"
-                ? selectedProvider === "custom"
-                  ? "填写名称、端点与密钥；下一步可拉取模型列表。"
-                  : "填写 API Key 后拉取可用模型。"
-                : "选择一个模型；添加后会设为当前模型。"}
+              {selectedProvider === "custom"
+                ? "可只填一条模型，或拉取端点目录并批量写入。"
+                : "填写 API Key 后将同步上游模型列表到本地；在主输入区按提供商分组选择。"}
             </DialogDescription>
           </DialogHeader>
 
-          {connectStep === "credentials" ? (
-            <div className="grid gap-3 py-1">
-              {selectedProvider === "custom" ? (
-                <>
-                  <div className="grid gap-2">
-                    <Label htmlFor="connect-model-name">名称</Label>
-                    <Input
-                      id="connect-model-name"
-                      value={connectName}
-                      onChange={(e) => setConnectName(e.target.value)}
-                      placeholder="例如 my-model"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="connect-api-base">端点</Label>
-                    <Input
-                      id="connect-api-base"
-                      value={connectApiBase}
-                      onChange={(e) => setConnectApiBase(e.target.value)}
-                      placeholder="留空则使用默认根地址"
-                      autoComplete="off"
-                    />
-                  </div>
-                </>
-              ) : null}
-              <div className="grid gap-2">
-                <Label htmlFor="connect-api-key">API Key</Label>
-                <Input
-                  id="connect-api-key"
-                  type="password"
-                  value={connectApiKey}
-                  onChange={(e) => setConnectApiKey(e.target.value)}
-                  placeholder="输入密钥"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row sm:justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConnectDialogOpen(false)}
-                  disabled={modelsBusy || modelsPreviewBusy}
-                >
-                  取消
-                </Button>
-                <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                  {selectedProvider === "custom" ? (
+          <div className="grid gap-3 py-1">
+            {selectedProvider === "custom" ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-model-name">名称</Label>
+                  <Input
+                    id="connect-model-name"
+                    value={connectName}
+                    onChange={(e) => setConnectName(e.target.value)}
+                    placeholder="例如 my-model"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-api-base">端点</Label>
+                  <Input
+                    id="connect-api-base"
+                    value={connectApiBase}
+                    onChange={(e) => setConnectApiBase(e.target.value)}
+                    placeholder="留空则使用默认根地址"
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            ) : null}
+            <div className="grid gap-2">
+              <Label htmlFor="connect-api-key">API Key</Label>
+              <Input
+                id="connect-api-key"
+                type="password"
+                value={connectApiKey}
+                onChange={(e) => setConnectApiKey(e.target.value)}
+                placeholder="输入密钥"
+                autoComplete="off"
+              />
+            </div>
+            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setConnectDialogOpen(false)}
+                disabled={modelsBusy || modelsPreviewBusy}
+              >
+                取消
+              </Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                {selectedProvider === "custom" ? (
+                  <>
                     <Button
                       type="button"
                       variant="secondary"
@@ -1456,7 +1442,7 @@ function ModelsSettingsPanel({
                       onClick={() => {
                         void (async () => {
                           try {
-                            await confirmAddModel();
+                            await saveCustomSingle();
                           } catch {
                             /* runtimeError */
                           }
@@ -1464,122 +1450,56 @@ function ModelsSettingsPanel({
                       }}
                     >
                       {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                      直接保存
+                      仅添加当前
                     </Button>
-                  ) : null}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await syncCatalogFromUpstream(true);
+                          } catch {
+                            /* runtimeError */
+                          }
+                        })();
+                      }}
+                    >
+                      {modelsBusy || modelsPreviewBusy ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                      同步目录
+                    </Button>
+                  </>
+                ) : null}
+                {selectedProvider !== null && selectedProvider !== "custom" ? (
                   <Button
                     type="button"
                     size="sm"
-                    disabled={modelsPreviewBusy || !connectApiKey.trim()}
+                    disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
                     onClick={() => {
                       void (async () => {
                         try {
-                          await loadModels(false);
+                          await syncCatalogFromUpstream(false);
                         } catch {
                           /* runtimeError */
                         }
                       })();
                     }}
                   >
-                    {modelsPreviewBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                    {selectedProvider === "custom" ? "拉取列表" : "继续"}
+                    {modelsBusy || modelsPreviewBusy ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : null}
+                    同步目录
                   </Button>
-                </div>
+                ) : null}
               </div>
             </div>
-          ) : (
-            <div className="grid gap-3 py-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  className="min-w-0 flex-1"
-                  value={modelQuery}
-                  onChange={(e) => setModelQuery(e.target.value)}
-                  placeholder="筛选模型"
-                  autoComplete="off"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  disabled={modelsPreviewBusy}
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        await loadModels(true);
-                      } catch {
-                        /* runtimeError */
-                      }
-                    })();
-                  }}
-                  title="刷新列表"
-                >
-                  {modelsPreviewBusy ? (
-                    <LoaderCircle className="size-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-4" />
-                  )}
-                </Button>
-              </div>
-              <ScrollArea className="h-56 rounded-md border border-border/40">
-                <div className="p-1">
-                  {filteredModelIds.length === 0 ? (
-                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                      {modelIds.length === 0 ? "未返回模型，请检查密钥或端点。" : "无匹配项"}
-                    </p>
-                  ) : (
-                    filteredModelIds.map((id) => {
-                      const selected = id === selectedModelId;
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          className={cn(
-                            "flex w-full rounded-md px-3 py-2.5 text-left text-sm",
-                            selected ? "bg-muted" : "hover:bg-muted/60",
-                          )}
-                          onClick={() => setSelectedModelId(id)}
-                        >
-                          {id}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </ScrollArea>
-              <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setConnectStep("credentials");
-                    setModelQuery("");
-                  }}
-                  disabled={modelsBusy || modelsPreviewBusy}
-                >
-                  上一步
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={modelsBusy || !selectedModelId.trim()}
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        await confirmAddModel();
-                      } catch {
-                        /* runtimeError */
-                      }
-                    })();
-                  }}
-                >
-                  {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                  完成
-                </Button>
-              </div>
-            </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -1658,6 +1578,7 @@ export function SettingsView({
   onBootstrap,
   onResetSession,
   onAddModel,
+  onAddProviderModels,
   onPreviewModels,
   onRemoveModel,
   onAddMcpServer,
@@ -1697,6 +1618,7 @@ export function SettingsView({
                 modelsBusy={modelsBusy}
                 modelsPreviewBusy={modelsPreviewBusy}
                 onAddModel={onAddModel}
+                onAddProviderModels={onAddProviderModels}
                 onPreviewModels={onPreviewModels}
                 onRemoveModel={onRemoveModel}
               />

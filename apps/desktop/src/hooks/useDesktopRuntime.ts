@@ -6,6 +6,7 @@ import { isCreateSkillSlashInput, matchSkillSlashInput } from "@/lib/skill-slash
 import type {
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
   AskQuestionsAnswer,
   AskQuestionsQuestionSpec,
   AskQuestionsRequest,
@@ -381,6 +382,28 @@ export function useDesktopRuntime() {
       setBusyAction("models");
       try {
         const next = await api.addModel(request);
+        applySnapshot(next);
+        setRuntimeError("");
+        setSettings((current) => ({ ...current, apiKey: "" }));
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const addProviderModels = useCallback(
+    async (request: AddProviderModelsRequest) => {
+      if (!api) {
+        return;
+      }
+      setBusyAction("models");
+      try {
+        const next = await api.addProviderModels(request);
         applySnapshot(next);
         setRuntimeError("");
         setSettings((current) => ({ ...current, apiKey: "" }));
@@ -834,6 +857,7 @@ export function useDesktopRuntime() {
     updateQuestionDraft,
     bootstrap,
     addModel,
+    addProviderModels,
     previewModels,
     removeModel,
     addMcpServer,

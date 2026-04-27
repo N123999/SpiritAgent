@@ -50,6 +50,7 @@ import type {
   ActiveSessionSnapshot,
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
   AskQuestionsResult,
@@ -62,6 +63,7 @@ import type {
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
+  DesktopModelCatalogHint,
   DesktopSnapshot,
   DesktopWebHostSnapshot,
   FileRewindWarning,
@@ -84,6 +86,7 @@ import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from '
 import {
   isModelCatalogCacheFresh,
   readModelCatalogCache,
+  readModelCatalogCacheSync,
   writeModelCatalogCache,
 } from './model-catalog-cache.js';
 import {
@@ -137,6 +140,7 @@ type CommandPayloads = {
   updateConfig: { request: UpdateConfigRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
+  addProviderModels: { request: AddProviderModelsRequest };
   previewModels: { request: PreviewModelsRequest };
   removeModel: { request: RemoveModelRequest };
   addMcpServer: { request: AddMcpServerRequest };
@@ -307,6 +311,63 @@ class DesktopHostService {
     const modelIds = await listOpenAiCompatibleModelIds({ baseUrl: apiBase, apiKey });
     await writeModelCatalogCache(apiBase, modelIds);
     return { modelIds, fromCache: false };
+  }
+
+  async addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const apiBaseRaw = request.apiBase.trim();
+      const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+      const apiKey = request.apiKey.trim();
+      if (!apiKey) {
+        throw new Error('API Key 不能为空。');
+      }
+
+      const provider = parseAddModelProvider(request.provider);
+      const rawIds = request.modelIds.map((id) => id.trim()).filter((id) => id.length > 0);
+      const uniqueIds = [...new Set(rawIds)];
+      if (uniqueIds.length === 0) {
+        throw new Error('模型列表为空。');
+      }
+
+      let firstNew: string | undefined;
+      let added = 0;
+      for (const name of uniqueIds) {
+        if (state.config.models.some((model) => model.name === name)) {
+          continue;
+        }
+        const profile: { name: string; apiBase: string; provider?: DesktopModelProvider } = {
+          name,
+          apiBase,
+        };
+        if (provider !== undefined) {
+          profile.provider = provider;
+        }
+        state.config.models.push(profile);
+        await saveApiKeyForModel(name, apiKey);
+        added += 1;
+        if (firstNew === undefined) {
+          firstNew = name;
+        }
+      }
+
+      if (added === 0) {
+        throw new Error('所选模型均已存在于配置中。');
+      }
+
+      state.config.activeModel = firstNew ?? state.config.activeModel;
+      await saveConfig(state.config);
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
   }
 
   async addModel(request: AddModelRequest): Promise<DesktopSnapshot> {
@@ -985,6 +1046,10 @@ description: ${frontmatterDescription}
         const typedPayload = payload as CommandPayloads['addModel'];
         return this.addModel(typedPayload.request);
       }
+      case 'addProviderModels': {
+        const typedPayload = payload as CommandPayloads['addProviderModels'];
+        return this.addProviderModels(typedPayload.request);
+      }
       case 'previewModels': {
         const typedPayload = payload as CommandPayloads['previewModels'];
         return this.previewModels(typedPayload.request);
@@ -1209,6 +1274,27 @@ description: ${frontmatterDescription}
     })));
   }
 
+  private buildModelCatalogHints(state: HostState): DesktopModelCatalogHint[] {
+    const seen = new Set<string>();
+    const hints: DesktopModelCatalogHint[] = [];
+    for (const model of state.config.models) {
+      const base = model.apiBase.trim() || DEFAULT_API_BASE;
+      if (seen.has(base)) {
+        continue;
+      }
+      seen.add(base);
+      const hit = readModelCatalogCacheSync(base);
+      if (hit && hit.modelIds.length > 0) {
+        hints.push({
+          apiBase: hit.apiBase,
+          modelIds: hit.modelIds,
+          fetchedAtUnixMs: hit.fetchedAtUnixMs,
+        });
+      }
+    }
+    return hints;
+  }
+
   private buildSnapshot(): DesktopSnapshot {
     const state = this.requireState();
     const pendingApproval = this.runtime?.currentPendingApproval();
@@ -1239,6 +1325,7 @@ description: ${frontmatterDescription}
         activeApiKeyConfigured: this.activeApiKeyConfigured,
         windowsMica: state.config.windowsMica !== false,
         planMode: state.config.planMode === true,
+        modelCatalogHints: this.buildModelCatalogHints(state),
       },
       webHost: buildWebHostSnapshot(state.config.webHost),
       rules: {
