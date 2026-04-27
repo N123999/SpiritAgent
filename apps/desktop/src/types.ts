@@ -53,6 +53,27 @@ export interface DeleteMcpServerRequest {
   name: string;
 }
 
+export interface ImportExtensionRequest {
+  archiveBase64: string;
+  fileName?: string;
+}
+
+export interface DeleteExtensionRequest {
+  id: string;
+}
+
+export interface DesktopExtensionListItem {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  homepage?: string;
+  main?: string;
+  archiveFileName?: string;
+  installedAtUnixMs: number;
+}
+
 export interface DesktopMcpStdioTransportSnapshot {
   type: 'stdio';
   command: string;
@@ -180,6 +201,7 @@ export interface DesktopSnapshot {
   skills: DiscoverySummary;
   /** 当前工作区与用户目录下发现的全部 Skills，供设置页列表。 */
   skillsList: DesktopSkillListItem[];
+  extensionsList: DesktopExtensionListItem[];
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];

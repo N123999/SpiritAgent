@@ -5,10 +5,12 @@ import type {
   AskQuestionsResult,
   BootstrapRequest,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
+  ImportExtensionRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -52,6 +54,12 @@ export function createWebHostApi(): HostApi {
     },
     inspectMcpServer(name: string) {
       return post<DesktopMcpServerInspection>(baseUrl, '/api/mcps/inspect', { name });
+    },
+    importExtension(request: ImportExtensionRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/extensions', request);
+    },
+    deleteExtension(request: DeleteExtensionRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/extensions/remove', request);
     },
     createSkill(request: CreateSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills', request);

@@ -1,4 +1,5 @@
 import type { HostInstructionDiscovery } from './discovery.js';
+import type { HostExtensionManager } from './extensions.js';
 import type { HostStateStorage } from './storage.js';
 import type { HostBuiltinToolService } from './tools.js';
 
@@ -13,6 +14,7 @@ export interface HostRuntimeModules<
   storage: HostStateStorage<Config, Session>;
   discovery: HostInstructionDiscovery<Rule, Skill, PlanMetadata>;
   tools: HostBuiltinToolService<QuestionSpec>;
+  extensions?: HostExtensionManager;
 }
 
 export function defineHostRuntimeModules<

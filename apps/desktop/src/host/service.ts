@@ -38,6 +38,7 @@ import {
   type McpServerConfig,
 } from '@spirit-agent/agent-core';
 import {
+  createHostExtensionManager,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
@@ -53,8 +54,10 @@ import type {
   BootstrapRequest,
   ConversationMessageSnapshot,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DesktopMcpServerInspection,
+  DesktopExtensionListItem,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
@@ -67,6 +70,7 @@ import type {
   RewindAndSubmitMessageRequest,
   RemoveModelRequest,
   SessionListItem,
+  ImportExtensionRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
@@ -132,6 +136,8 @@ type CommandPayloads = {
   addMcpServer: { request: AddMcpServerRequest };
   deleteMcpServer: { request: DeleteMcpServerRequest };
   inspectMcpServer: { name: string };
+  importExtension: { request: ImportExtensionRequest };
+  deleteExtension: { request: DeleteExtensionRequest };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
@@ -154,6 +160,7 @@ interface HostState {
   config: DesktopConfigFile;
   metadata: HostMetadataSummary;
   messages: ConversationMessageSnapshot[];
+  extensionsList: DesktopExtensionListItem[];
   activeSession?: ActiveSessionSnapshot;
   archiveHistory: ChatArchive['llmHistory'];
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
@@ -458,6 +465,37 @@ description: ${frontmatterDescription}
         resourcesCount: typeof inspection.resourcesCount === 'number' ? inspection.resourcesCount : 0,
         promptsCount: typeof inspection.promptsCount === 'number' ? inspection.promptsCount : 0,
       };
+    });
+  }
+
+  async importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const archiveBase64 = request.archiveBase64.trim();
+      if (!archiveBase64) {
+        throw new Error('扩展 ZIP 内容不能为空。');
+      }
+
+      await this.extensionManager().importArchive({
+        archiveBase64,
+        ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
+      });
+      await this.refreshExtensionsList();
+      return this.buildSnapshot();
+    });
+  }
+
+  async deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      await this.extensionManager().remove(id);
+      await this.refreshExtensionsList();
+      return this.buildSnapshot();
     });
   }
 
@@ -965,6 +1003,14 @@ description: ${frontmatterDescription}
         const typedPayload = payload as CommandPayloads['inspectMcpServer'];
         return this.inspectMcpServer(typedPayload.name);
       }
+      case 'importExtension': {
+        const typedPayload = payload as CommandPayloads['importExtension'];
+        return this.importExtension(typedPayload.request);
+      }
+      case 'deleteExtension': {
+        const typedPayload = payload as CommandPayloads['deleteExtension'];
+        return this.deleteExtension(typedPayload.request);
+      }
       case 'createSkill': {
         const typedPayload = payload as CommandPayloads['createSkill'];
         return this.createSkill(typedPayload.request);
@@ -1042,6 +1088,7 @@ description: ${frontmatterDescription}
       config,
       metadata,
       messages: state?.messages ?? [],
+      extensionsList: state?.extensionsList ?? [],
       activeSession: state?.activeSession,
       archiveHistory: state?.archiveHistory ?? [],
       archiveSubagentSessions: state?.archiveSubagentSessions ?? [],
@@ -1049,6 +1096,7 @@ description: ${frontmatterDescription}
       rewindWarnings: state?.rewindWarnings ?? [],
     };
     this.initialized = true;
+    await this.refreshExtensionsList();
     await this.refreshRuntime();
   }
 
@@ -1217,6 +1265,17 @@ description: ${frontmatterDescription}
         rootKind: entry.source.rootKind,
         enabled: entry.enabled,
       })),
+      extensionsList: state.extensionsList.map((item) => ({
+        id: item.id,
+        name: item.name,
+        version: item.version,
+        ...(item.description ? { description: item.description } : {}),
+        ...(item.author ? { author: item.author } : {}),
+        ...(item.homepage ? { homepage: item.homepage } : {}),
+        ...(item.main ? { main: item.main } : {}),
+        ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
+        installedAtUnixMs: item.installedAtUnixMs,
+      })),
       plan: {
         path: state.metadata.planMetadata.path,
         exists: state.metadata.planMetadata.exists,
@@ -1330,6 +1389,28 @@ description: ${frontmatterDescription}
     }
 
     this.refreshArchiveFromRuntime();
+  }
+
+  private extensionManager() {
+    return createHostExtensionManager({
+      spiritDataDir: spiritAgentDataDir(),
+    });
+  }
+
+  private async refreshExtensionsList(): Promise<void> {
+    const state = this.requireState();
+    const extensions = await this.extensionManager().list();
+    state.extensionsList = extensions.map((item) => ({
+      id: item.id,
+      name: item.manifest.name,
+      version: item.manifest.version,
+      ...(item.manifest.description ? { description: item.manifest.description } : {}),
+      ...(item.manifest.author ? { author: item.manifest.author } : {}),
+      ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
+      ...(item.manifest.main ? { main: item.manifest.main } : {}),
+      ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
+      installedAtUnixMs: item.installedAtUnixMs,
+    }));
   }
 
   private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {

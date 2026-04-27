@@ -4,10 +4,12 @@ import type {
   AskQuestionsResult,
   BootstrapRequest,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
+  ImportExtensionRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -30,6 +32,8 @@ export interface HostApi {
   addMcpServer(request: AddMcpServerRequest): Promise<DesktopSnapshot>;
   deleteMcpServer(request: DeleteMcpServerRequest): Promise<DesktopSnapshot>;
   inspectMcpServer(name: string): Promise<DesktopMcpServerInspection>;
+  importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot>;
+  deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot>;
   createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
   deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
   submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;

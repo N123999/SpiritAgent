@@ -33,6 +33,7 @@ use crate::{
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry},
+    ts_bridge::CliExtensionEntry,
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
         InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
@@ -111,6 +112,7 @@ pub struct TuiShell {
     plan_metadata: PlanMetadata,
     rule_entries: Vec<RuleEntry>,
     skill_entries: Vec<SkillEntry>,
+    extension_entries: Vec<CliExtensionEntry>,
 }
 
 impl TuiShell {
@@ -140,6 +142,10 @@ impl TuiShell {
         let rule_entries = cli_metadata.rule_entries;
         let skill_entries = cli_metadata.skill_entries;
         let plan_metadata = cli_metadata.plan_metadata;
+        let extension_entries = runtime.list_extensions().unwrap_or_else(|err| {
+            logging::log_event(&format!("[extensions] 初始化列表失败: {err:#}"));
+            Vec::new()
+        });
         let initial_mcp_status = runtime.mcp_status_snapshot();
         let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
         thread::spawn(move || {
@@ -207,6 +213,7 @@ impl TuiShell {
             plan_metadata,
             rule_entries,
             skill_entries,
+            extension_entries,
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
@@ -219,6 +226,10 @@ impl TuiShell {
 
     pub fn skill_entries(&self) -> &[SkillEntry] {
         &self.skill_entries
+    }
+
+    pub fn extension_entries(&self) -> &[CliExtensionEntry] {
+        &self.extension_entries
     }
 
     pub(crate) fn enabled_skill_entries(&self) -> impl Iterator<Item = &SkillEntry> {
@@ -255,6 +266,14 @@ impl TuiShell {
         self.rule_entries = metadata.rule_entries;
         self.skill_entries = metadata.skill_entries;
         self.plan_metadata = metadata.plan_metadata;
+        if self.current_slash_query().is_some() {
+            self.refresh_suggestions();
+        }
+        Ok(())
+    }
+
+    pub fn refresh_extensions_from_disk(&mut self) -> Result<()> {
+        self.extension_entries = self.runtime.list_extensions().context("读取扩展列表失败")?;
         if self.current_slash_query().is_some() {
             self.refresh_suggestions();
         }
@@ -1466,7 +1485,8 @@ impl TuiShell {
             }
             BottomFormKind::McpAdd
             | BottomFormKind::ModelAdd
-            | BottomFormKind::McpPrompt { .. } => self.cancel_bottom_form(),
+            | BottomFormKind::McpPrompt { .. }
+            | BottomFormKind::Extensions => self.cancel_bottom_form(),
             BottomFormKind::Rules => self.save_rules_bottom_form(),
             BottomFormKind::Skills => self.save_skills_bottom_form(),
         }
@@ -1622,6 +1642,11 @@ impl TuiShell {
                 }
             }
             BottomFormKind::Skills => {
+                if let Some(form) = self.bottom_form.as_mut() {
+                    bottom_form::activate(form);
+                }
+            }
+            BottomFormKind::Extensions => {
                 if let Some(form) = self.bottom_form.as_mut() {
                     bottom_form::activate(form);
                 }
@@ -2237,6 +2262,109 @@ impl TuiShell {
             content: t!("tui.skills.opened").into_owned(),
             tool_block: None,
         });
+    }
+
+    pub(crate) fn handle_extensions_slash(&mut self, message: &str) {
+        let tail = message.strip_prefix("/extensions").map(str::trim).unwrap_or("");
+        if tail.is_empty() {
+            if let Err(err) = self.refresh_extensions_from_disk() {
+                self.push_agent_message(t!("tui.extensions.read_failed", err = err).into_owned());
+                return;
+            }
+
+            self.open_extensions_form();
+            self.push_agent_message(t!("tui.extensions.opened").into_owned());
+            return;
+        }
+
+        let Some(subcommand) = tail.split_whitespace().next() else {
+            self.push_agent_message(t!("tui.extensions.usage").into_owned());
+            return;
+        };
+
+        match subcommand {
+            "list" if tail == "list" => match self.refresh_extensions_from_disk() {
+                Ok(()) => self.push_agent_message(format_extension_list_message(self.extension_entries())),
+                Err(err) => {
+                    self.push_agent_message(t!("tui.extensions.read_failed", err = err).into_owned())
+                }
+            },
+            "import" => {
+                let raw_path = tail.strip_prefix("import").map(str::trim).unwrap_or("");
+                let archive_path = trim_wrapped_quotes(raw_path);
+                if archive_path.is_empty() {
+                    self.push_agent_message(t!("tui.extensions.usage").into_owned());
+                    return;
+                }
+
+                let archive_bytes = match fs::read(archive_path) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        self.push_agent_message(
+                            t!("tui.extensions.import_read_failed", err = err).into_owned(),
+                        );
+                        return;
+                    }
+                };
+
+                let file_name = Path::new(archive_path)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.to_string());
+
+                match self
+                    .runtime
+                    .import_extension_archive(&archive_bytes, file_name.as_deref())
+                {
+                    Ok(extension) => {
+                        if let Err(err) = self.refresh_extensions_from_disk() {
+                            self.push_agent_message(
+                                t!("tui.extensions.refresh_failed", err = err).into_owned(),
+                            );
+                            return;
+                        }
+
+                        self.push_agent_message(format!(
+                            "{}\nid: {}\nversion: {}",
+                            t!("tui.extensions.imported", name = extension.name),
+                            extension.id,
+                            extension.version,
+                        ));
+                    }
+                    Err(err) => {
+                        self.push_agent_message(
+                            t!("tui.extensions.import_failed", err = err).into_owned(),
+                        );
+                    }
+                }
+            }
+            "remove" => {
+                let id = tail.strip_prefix("remove").map(str::trim).unwrap_or("");
+                if id.is_empty() {
+                    self.push_agent_message(t!("tui.extensions.usage").into_owned());
+                    return;
+                }
+
+                match self.runtime.delete_extension(id) {
+                    Ok(()) => {
+                        if let Err(err) = self.refresh_extensions_from_disk() {
+                            self.push_agent_message(
+                                t!("tui.extensions.refresh_failed", err = err).into_owned(),
+                            );
+                            return;
+                        }
+
+                        self.push_agent_message(t!("tui.extensions.removed", id = id).into_owned());
+                    }
+                    Err(err) => {
+                        self.push_agent_message(
+                            t!("tui.extensions.remove_failed", err = err).into_owned(),
+                        );
+                    }
+                }
+            }
+            _ => self.push_agent_message(t!("tui.extensions.usage").into_owned()),
+        }
     }
 
     pub(crate) fn handle_create_rule_slash(&mut self, message: &str) {
@@ -3219,6 +3347,17 @@ impl TuiShell {
     pub fn open_skills_form(&mut self) {
         self.cancel_model_add_pick();
         self.bottom_form = Some(bottom_form::new_skills_form(&self.skill_entries));
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    pub fn open_extensions_form(&mut self) {
+        self.cancel_model_add_pick();
+        self.bottom_form = Some(bottom_form::new_extensions_form(&self.extension_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4364,6 +4503,50 @@ fn parse_image_path_and_prompt(input: &str) -> (&str, &str) {
     }
 
     (tail, "")
+}
+
+fn trim_wrapped_quotes(input: &str) -> &str {
+    let trimmed = input.trim();
+    if trimmed.len() >= 2 {
+        let bytes = trimmed.as_bytes();
+        if (bytes[0] == b'"' && bytes[trimmed.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[trimmed.len() - 1] == b'\'')
+        {
+            return &trimmed[1..trimmed.len() - 1];
+        }
+    }
+    trimmed
+}
+
+fn format_extension_list_message(entries: &[CliExtensionEntry]) -> String {
+    if entries.is_empty() {
+        return t!("tui.extensions.list_empty").into_owned();
+    }
+
+    let mut lines = vec!["扩展列表:".to_string()];
+    for entry in entries {
+        lines.push(format!("- {}", entry.name));
+        lines.push(format!("  id: {}", entry.id));
+        lines.push(format!("  version: {}", entry.version));
+        if let Some(description) = entry.description.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("  description: {}", description));
+        }
+        if let Some(author) = entry.author.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("  author: {}", author));
+        }
+        if let Some(main) = entry.main.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("  main: {}", main));
+        }
+        if let Some(file_name) = entry
+            .archive_file_name
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            lines.push(format!("  source: {}", file_name));
+        }
+    }
+
+    lines.join("\n")
 }
 
 fn is_supported_image_path(path: &str) -> bool {

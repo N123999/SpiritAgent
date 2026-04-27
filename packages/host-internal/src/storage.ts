@@ -14,6 +14,9 @@ export const WORKSPACE_AGENTS_SKILLS_DIR = path.join(AGENTS_DIR_NAME, SKILLS_DIR
 export const PLAN_FILE_NAME = 'plan.md';
 export const RULES_STATE_FILE_NAME = 'rules-state.json';
 export const SKILLS_STATE_FILE_NAME = 'skills-state.json';
+export const EXTENSIONS_DIR_NAME = 'extensions';
+export const EXTENSION_MANIFEST_FILE_NAME = 'spirit-extension.json';
+export const EXTENSIONS_INDEX_FILE_NAME = 'extensions.json';
 
 export interface HostStoragePaths {
   workspaceRoot?: string;
@@ -42,6 +45,10 @@ export interface InstructionDiscoveryContext {
   spiritDataDir: string;
 }
 
+export interface ExtensionManagementContext {
+  spiritDataDir: string;
+}
+
 export interface InstructionPaths {
   workspaceSpiritRuleFile: string;
   workspaceAgentsRuleFile: string;
@@ -58,6 +65,11 @@ export interface HostToggleState {
   enabledOverrides?: Record<string, boolean>;
 }
 
+export interface ExtensionPaths {
+  extensionsDir: string;
+  extensionsIndexFile: string;
+}
+
 export function resolveInstructionPaths(context: InstructionDiscoveryContext): InstructionPaths {
   return {
     workspaceSpiritRuleFile: path.join(context.workspaceRoot, WORKSPACE_SPIRIT_RULE_FILE_NAME),
@@ -69,6 +81,13 @@ export function resolveInstructionPaths(context: InstructionDiscoveryContext): I
     rulesStateFile: path.join(context.spiritDataDir, RULES_STATE_FILE_NAME),
     skillsStateFile: path.join(context.spiritDataDir, SKILLS_STATE_FILE_NAME),
     planFile: path.join(context.spiritDataDir, PLAN_FILE_NAME),
+  };
+}
+
+export function resolveExtensionPaths(context: ExtensionManagementContext): ExtensionPaths {
+  return {
+    extensionsDir: path.join(context.spiritDataDir, EXTENSIONS_DIR_NAME),
+    extensionsIndexFile: path.join(context.spiritDataDir, EXTENSIONS_INDEX_FILE_NAME),
   };
 }
 

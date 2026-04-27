@@ -1043,6 +1043,7 @@ export default function App() {
               modelsBusy={runtime.busyAction === "models"}
               mcpsBusy={runtime.busyAction === "mcps"}
               skillsBusy={runtime.busyAction === "skills"}
+              extensionsBusy={runtime.busyAction === "extensions"}
               isElectronShell={isElectronShell}
               onSavePatch={runtime.saveSettingsPatch}
               onResetWebHostPairing={runtime.resetWebHostPairing}
@@ -1051,6 +1052,8 @@ export default function App() {
               onAddModel={runtime.addModel}
               onRemoveModel={runtime.removeModel}
               onAddMcpServer={runtime.addMcpServer}
+              onImportExtension={runtime.importExtension}
+              onDeleteExtension={runtime.deleteExtension}
               onDeleteMcpServer={runtime.deleteMcpServer}
               onInspectMcpServer={runtime.inspectMcpServer}
               onCreateSkill={runtime.createSkill}

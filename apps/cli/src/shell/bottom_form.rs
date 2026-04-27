@@ -10,6 +10,7 @@ use crate::{
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     rules::{RuleEntry, RuleScope},
     skills::{SkillEntry, SkillScope},
+    ts_bridge::CliExtensionEntry,
     view::{
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
         McpPromptArgumentBinding,
@@ -237,6 +238,26 @@ pub(crate) fn new_skills_form(entries: &[SkillEntry]) -> BottomFormView {
     form
 }
 
+pub(crate) fn new_extensions_form(entries: &[CliExtensionEntry]) -> BottomFormView {
+    let mut fields = Vec::new();
+    push_extensions_section(
+        &mut fields,
+        t!("form.extensions.section.installed").as_ref(),
+        entries,
+    );
+
+    let mut form = BottomFormView {
+        kind: BottomFormKind::Extensions,
+        title: t!("form.extensions.title").into_owned(),
+        fields,
+        selected_field: 0,
+        scroll_offset: 0,
+        footer_hint: t!("form.extensions.footer_hint").into_owned(),
+    };
+    ensure_selectable_field(&mut form);
+    form
+}
+
 pub(crate) fn new_mcp_prompt_form(
     server: &str,
     prompt: &McpDiscoveredPrompt,
@@ -412,6 +433,10 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
 }
 
 pub(crate) fn activate(form: &mut BottomFormView) {
+    if matches!(form.kind, BottomFormKind::Extensions) {
+        return;
+    }
+
     let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
     let Some(field) = form.fields.get_mut(selected) else {
         return;
@@ -753,6 +778,71 @@ fn push_skills_section(
     }
 }
 
+fn push_extensions_section(
+    fields: &mut Vec<BottomFormFieldView>,
+    title: &str,
+    entries: &[CliExtensionEntry],
+) {
+    fields.push(BottomFormFieldView {
+        label: String::new(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Section {
+            text: title.to_string(),
+        },
+    });
+
+    if entries.is_empty() {
+        fields.push(BottomFormFieldView {
+            label: t!("form.extensions.empty").into_owned(),
+            help: t!("form.extensions.empty_help").into_owned(),
+            editor: BottomFormFieldEditorView::Checkbox {
+                id: "__empty__".to_string(),
+                checked: false,
+                disabled: true,
+                path: None,
+            },
+        });
+        return;
+    }
+
+    for entry in entries {
+        fields.push(BottomFormFieldView {
+            label: format!("{} v{}", entry.name, entry.version),
+            help: extension_help_text(entry),
+            editor: BottomFormFieldEditorView::Checkbox {
+                id: entry.id.clone(),
+                checked: true,
+                disabled: false,
+                path: Some(entry.id.clone()),
+            },
+        });
+    }
+}
+
+fn extension_help_text(entry: &CliExtensionEntry) -> String {
+    let mut lines = Vec::new();
+    if let Some(description) = entry.description.as_ref().filter(|value| !value.trim().is_empty()) {
+        lines.push(description.clone());
+    }
+    if let Some(author) = entry.author.as_ref().filter(|value| !value.trim().is_empty()) {
+        lines.push(format!("author: {}", author));
+    }
+    if let Some(homepage) = entry.homepage.as_ref().filter(|value| !value.trim().is_empty()) {
+        lines.push(format!("homepage: {}", homepage));
+    }
+    if let Some(main) = entry.main.as_ref().filter(|value| !value.trim().is_empty()) {
+        lines.push(format!("main: {}", main));
+    }
+    if let Some(file_name) = entry
+        .archive_file_name
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        lines.push(format!("source: {}", file_name));
+    }
+    lines.join("\n")
+}
+
 fn is_field_selectable(field: &BottomFormFieldView) -> bool {
     match &field.editor {
         BottomFormFieldEditorView::Section { .. } => false,
@@ -802,7 +892,8 @@ fn normalize_inserted_text(form: &BottomFormView, text: &str) -> String {
         | BottomFormKind::AskQuestions { .. }
         | BottomFormKind::ModelAdd
         | BottomFormKind::Rules
-        | BottomFormKind::Skills => text.replace("\r\n", " ").replace(['\r', '\n'], " "),
+        | BottomFormKind::Skills
+        | BottomFormKind::Extensions => text.replace("\r\n", " ").replace(['\r', '\n'], " "),
     }
 }
 
@@ -942,7 +1033,8 @@ enum McpAddTransportKind {
 mod tests {
     use super::{
         MetadataFieldKind, activate, insert_text, move_right, new_mcp_add_form, new_mcp_prompt_form,
-        new_model_add_form, new_rules_form, new_skills_form, parse_metadata_map,
+        new_extensions_form, new_model_add_form, new_rules_form, new_skills_form,
+        parse_metadata_map,
         parse_model_add_connection, prompt_user_message, rules_form_overrides, select_next_field,
         skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
     };
@@ -953,6 +1045,7 @@ mod tests {
         mcp_types::{McpDiscoveredPrompt, McpDiscoveredPromptArgument},
         rules::{RuleEntry, RulePreview, RuleScope, RuleSource},
         skills::{SkillEntry, SkillPreview, SkillRootKind, SkillScope, SkillSource},
+        ts_bridge::CliExtensionEntry,
         view::BottomFormFieldEditorView,
     };
 
@@ -1027,6 +1120,25 @@ mod tests {
         activate(&mut form);
 
         assert_eq!(skills_form_overrides(&form), vec![("workspace-skill".to_string(), false)]);
+    }
+
+    #[test]
+    fn new_extensions_form_selects_first_extension_checkbox() {
+        let form = new_extensions_form(&[sample_extension_entry()]);
+
+        assert_eq!(form.selected_field, 1);
+    }
+
+    #[test]
+    fn extensions_activate_is_noop_for_placeholder_toggle() {
+        let mut form = new_extensions_form(&[sample_extension_entry()]);
+
+        activate(&mut form);
+
+        match &form.fields[1].editor {
+            BottomFormFieldEditorView::Checkbox { checked, .. } => assert!(*checked),
+            _ => panic!("expected checkbox"),
+        }
     }
 
     #[test]
@@ -1263,6 +1375,20 @@ mod tests {
                 excerpt: "# Skill body".to_string(),
                 truncated: false,
             },
+        }
+    }
+
+    fn sample_extension_entry() -> CliExtensionEntry {
+        CliExtensionEntry {
+            id: "basic-metadata-demo".to_string(),
+            name: "Basic Metadata Demo".to_string(),
+            version: "0.1.0".to_string(),
+            description: Some("A metadata-only extension fixture.".to_string()),
+            author: Some("Spirit Agent".to_string()),
+            homepage: Some("https://example.com/extensions/basic-metadata-demo".to_string()),
+            main: Some("dist/index.js".to_string()),
+            archive_file_name: Some("basic-metadata-demo.zip".to_string()),
+            installed_at_unix_ms: 0,
         }
     }
 }

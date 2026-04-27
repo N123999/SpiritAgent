@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { LoaderCircle, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 
@@ -29,12 +29,15 @@ import type {
   AddModelRequest,
   AddMcpServerRequest,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopExtensionListItem,
   DesktopMcpCapabilityToggles,
   DesktopMcpServerInspection,
   DesktopMcpServerListItem,
   DesktopMcpTransportType,
+  ImportExtensionRequest,
   DesktopSkillListItem,
   DesktopSkillRootKind,
   DesktopSnapshot,
@@ -64,6 +67,7 @@ type SettingsViewProps = {
   modelsBusy: boolean;
   mcpsBusy: boolean;
   skillsBusy: boolean;
+  extensionsBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
   onResetWebHostPairing?: () => Promise<void>;
@@ -72,6 +76,8 @@ type SettingsViewProps = {
   onAddModel: (request: AddModelRequest) => Promise<void>;
   onRemoveModel: (name: string) => Promise<void>;
   onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
+  onImportExtension: (request: ImportExtensionRequest) => Promise<void>;
+  onDeleteExtension: (request: DeleteExtensionRequest) => Promise<void>;
   onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
   onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
@@ -89,10 +95,34 @@ const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
 const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   basic: "工作区与连接",
   models: "模型",
+  extensions: "扩展",
   mcps: "MCP 服务",
   skills: "Skills",
   appearance: "主题与窗口效果",
 };
+
+function formatExtensionInstalledAt(unixMs: number): string {
+  return new Date(unixMs).toLocaleString("zh-CN", {
+    hour12: false,
+  });
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("读取文件失败。"));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("读取文件失败。"));
+        return;
+      }
+      const marker = "base64,";
+      const markerIndex = reader.result.indexOf(marker);
+      resolve(markerIndex >= 0 ? reader.result.slice(markerIndex + marker.length) : reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 const defaultMcpCapabilities: DesktopMcpCapabilityToggles = {
   tools: true,
@@ -717,6 +747,166 @@ function SkillsSettingsPanel({
             >
               {skillsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               创建
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ExtensionsSettingsPanel({
+  snapshot,
+  extensionsBusy,
+  onImportExtension,
+  onDeleteExtension,
+}: Pick<
+  SettingsViewProps,
+  "snapshot" | "extensionsBusy" | "onImportExtension" | "onDeleteExtension"
+>) {
+  const [deleteTarget, setDeleteTarget] = useState<DesktopExtensionListItem | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const items = snapshot?.extensionsList ?? [];
+
+  return (
+    <div className="space-y-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) {
+            return;
+          }
+
+          void (async () => {
+            try {
+              const archiveBase64 = await fileToBase64(file);
+              await onImportExtension({
+                archiveBase64,
+                fileName: file.name,
+              });
+            } catch {
+              /* runtimeError */
+            }
+          })();
+        }}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">扩展</h1>
+          <p className="text-sm text-muted-foreground">管理用户级扩展 ZIP 导入结果与已安装元数据。</p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="shrink-0"
+          disabled={extensionsBusy}
+          onClick={() => inputRef.current?.click()}
+        >
+          导入 ZIP
+        </Button>
+      </div>
+
+      <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+        {items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">未安装扩展</p>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+            >
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{item.name}</span>
+                  <Badge variant="secondary" className="text-muted-foreground">
+                    {item.version}
+                  </Badge>
+                  {item.author ? (
+                    <Badge variant="secondary" className="text-muted-foreground">
+                      {item.author}
+                    </Badge>
+                  ) : null}
+                </div>
+                {item.description ? (
+                  <p className="text-xs text-muted-foreground">{item.description}</p>
+                ) : null}
+                <p className="truncate font-mono text-[0.65rem] text-muted-foreground/90" title={item.id}>
+                  {item.id}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  安装时间：{formatExtensionInstalledAt(item.installedAtUnixMs)}
+                  {item.archiveFileName ? ` · 来源：${item.archiveFileName}` : ""}
+                  {item.main ? ` · main: ${item.main}` : ""}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="shrink-0 self-start sm:self-center"
+                disabled={extensionsBusy}
+                onClick={() => setDeleteTarget(item)}
+              >
+                删除
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>删除扩展</DialogTitle>
+            <DialogDescription>
+              确定删除扩展「{deleteTarget?.name ?? ""}」？这会移除本地安装目录。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={extensionsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={extensionsBusy || !deleteTarget}
+              onClick={() => {
+                const target = deleteTarget;
+                if (!target) {
+                  return;
+                }
+                void (async () => {
+                  try {
+                    await onDeleteExtension({ id: target.id });
+                    setDeleteTarget(null);
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {extensionsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              删除
             </Button>
           </div>
         </DialogContent>
@@ -1368,6 +1558,7 @@ export function SettingsView({
   modelsBusy,
   mcpsBusy,
   skillsBusy,
+  extensionsBusy,
   isElectronShell,
   onSavePatch,
   onResetWebHostPairing,
@@ -1376,6 +1567,8 @@ export function SettingsView({
   onAddModel,
   onRemoveModel,
   onAddMcpServer,
+  onImportExtension,
+  onDeleteExtension,
   onDeleteMcpServer,
   onInspectMcpServer,
   onCreateSkill,
@@ -1387,7 +1580,7 @@ export function SettingsView({
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {tab !== "models" && tab !== "skills" && tab !== "mcps" ? (
+            {tab !== "models" && tab !== "skills" && tab !== "mcps" && tab !== "extensions" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {settingsPageTitle[tab]}
               </h1>
@@ -1421,6 +1614,13 @@ export function SettingsView({
                 onCreateSkill={onCreateSkill}
                 onDeleteSkill={onDeleteSkill}
                 onGenerateSkillNavigate={onGenerateSkillNavigate}
+              />
+            ) : tab === "extensions" ? (
+              <ExtensionsSettingsPanel
+                snapshot={snapshot}
+                extensionsBusy={extensionsBusy}
+                onImportExtension={onImportExtension}
+                onDeleteExtension={onDeleteExtension}
               />
             ) : tab === "mcps" ? (
               <McpsSettingsPanel

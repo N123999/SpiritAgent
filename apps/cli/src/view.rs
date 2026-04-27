@@ -85,6 +85,7 @@ pub enum BottomFormKind {
     },
     Rules,
     Skills,
+    Extensions,
 }
 
 #[derive(Clone, Debug)]

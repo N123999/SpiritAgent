@@ -1846,6 +1846,7 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
         "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
         "/create-skill" => t!("ui.suggestion.summary.create_skill").into_owned(),
         "/skills" => t!("ui.suggestion.summary.skills").into_owned(),
+        "/extensions" => t!("ui.suggestion.summary.extensions").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
         _ => String::new(),
@@ -1909,6 +1910,13 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
         "/skills" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /skills".to_string(),
+        ],
+        "/extensions" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /extensions".to_string(),
+            "    /extensions list".to_string(),
+            "    /extensions import <zip>".to_string(),
+            "    /extensions remove <id>".to_string(),
         ],
         "/log" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -2522,7 +2530,10 @@ fn bottom_form_field_outer_height(
 }
 
 fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
-    if matches!(form.kind, BottomFormKind::Rules | BottomFormKind::Skills) {
+    if matches!(
+        form.kind,
+        BottomFormKind::Rules | BottomFormKind::Skills | BottomFormKind::Extensions
+    ) {
         return rules_bottom_form_block_height(form, panel_width);
     }
     if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -3279,7 +3290,10 @@ fn draw_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    if matches!(form.kind, BottomFormKind::Rules | BottomFormKind::Skills) {
+    if matches!(
+        form.kind,
+        BottomFormKind::Rules | BottomFormKind::Skills | BottomFormKind::Extensions
+    ) {
         return draw_rules_bottom_form(frame, area, form);
     }
     if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {

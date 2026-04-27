@@ -19,8 +19,8 @@ use ratatui::{
 use std::{io, time::{Duration, Instant}};
 
 use spirit_agent::{
-    ConfigCommand, KeyCommand, McpCommand, ModelCommand, TuiShell, handle_config_cli,
-    handle_mcp_cli, handle_model_cli, logging, ui,
+    ConfigCommand, ExtensionCommand, KeyCommand, McpCommand, ModelCommand, TuiShell,
+    handle_config_cli, handle_extension_cli, handle_mcp_cli, handle_model_cli, logging, ui,
 };
 
 const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
@@ -64,6 +64,10 @@ enum Commands {
     Mcp {
         #[command(subcommand)]
         action: McpAction,
+    },
+    Extension {
+        #[command(subcommand)]
+        action: ExtensionAction,
     },
 }
 
@@ -162,6 +166,17 @@ enum McpAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ExtensionAction {
+    List,
+    Import {
+        archive: String,
+    },
+    Remove {
+        id: String,
+    },
+}
+
 fn main() -> Result<()> {
     spirit_agent::logging::init_logging();
     let cli = Cli::parse();
@@ -191,6 +206,9 @@ fn main() -> Result<()> {
         Some(Commands::Model { action }) => handle_model_cli(into_model_command(action))?,
         Some(Commands::Config { action }) => handle_config_cli(into_config_command(action))?,
         Some(Commands::Mcp { action }) => handle_mcp_cli(into_mcp_command(action))?,
+        Some(Commands::Extension { action }) => {
+            handle_extension_cli(into_extension_command(action))?
+        }
         None => run_tui()?,
     }
 
@@ -222,6 +240,14 @@ fn into_config_command(action: ConfigAction) -> ConfigCommand {
         ConfigAction::Key { action } => ConfigCommand::Key {
             action: into_key_command(action),
         },
+    }
+}
+
+fn into_extension_command(action: ExtensionAction) -> ExtensionCommand {
+    match action {
+        ExtensionAction::List => ExtensionCommand::List,
+        ExtensionAction::Import { archive } => ExtensionCommand::Import { archive },
+        ExtensionAction::Remove { id } => ExtensionCommand::Remove { id },
     }
 }
 

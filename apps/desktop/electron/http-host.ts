@@ -371,6 +371,36 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/extensions') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('importExtension', {
+        request: {
+          archiveBase64:
+            typeof jsonBody?.archiveBase64 === 'string' ? jsonBody.archiveBase64 : '',
+          fileName: typeof jsonBody?.fileName === 'string' ? jsonBody.fileName : undefined,
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/extensions/remove') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('deleteExtension', {
+        request: {
+          id: typeof jsonBody?.id === 'string' ? jsonBody.id : '',
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/skills') {
     const rootKind = parseSkillRootKind(jsonBody?.rootKind);
     writeJson(
