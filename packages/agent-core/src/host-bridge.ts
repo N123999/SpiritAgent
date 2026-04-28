@@ -206,6 +206,12 @@ interface CliHostInternalModule {
       archiveFileName?: string;
     }>;
     remove(id: string): Promise<void>;
+    dispatchEvent(request: {
+      event: { type: string; detail?: Record<string, unknown> };
+      host: unknown;
+      logger?: Pick<Console, 'error' | 'log'>;
+      targetExtensionIds?: readonly string[];
+    }): Promise<void>;
   };
   resolveInstructionPaths?: (context: { workspaceRoot: string; spiritDataDir: string }) => {
     rulesStateFile: string;
@@ -484,6 +490,76 @@ async function requireCliExtensionManager() {
   return hostInternal.extensionManager;
 }
 
+/** 与 NodeHostToolService 传入的 getHost() 一致，供扩展 activate/onEvent 使用。 */
+function cliExtensionHostApi(): Record<string, never> {
+  return {};
+}
+
+async function dispatchCliExtensionEvent(
+  event: { type: string; detail?: Record<string, unknown> },
+  options: { targetExtensionIds?: readonly string[] } = {},
+): Promise<void> {
+  const hostInternal = cliHostInternal;
+  if (!hostInternal?.extensionManager) {
+    return;
+  }
+
+  try {
+    await hostInternal.extensionManager.dispatchEvent({
+      event,
+      host: cliExtensionHostApi(),
+      logger: console,
+      ...(options.targetExtensionIds ? { targetExtensionIds: options.targetExtensionIds } : {}),
+    });
+  } catch (error) {
+    logBridge('dispatchCliExtensionEvent failed', {
+      type: event.type,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function forwardRuntimeEventsToExtensions(events: RuntimeEvent<JsonValue>[]): Promise<void> {
+  for (const ev of events) {
+    if (ev.kind === 'tool-call-started') {
+      await dispatchCliExtensionEvent({
+        type: 'onToolCall',
+        detail: {
+          toolCallId: ev.toolCallId,
+          toolName: ev.toolName,
+          request: ev.request as JsonObject,
+        },
+      });
+      continue;
+    }
+    if (ev.kind === 'approval-resolved') {
+      await dispatchCliExtensionEvent({
+        type: 'onApprovalResolved',
+        detail: {
+          toolCallId: ev.toolCallId,
+          toolName: ev.toolName,
+          decisionKind: ev.decisionKind,
+          request: ev.request as JsonObject,
+        },
+      });
+      continue;
+    }
+    if (ev.kind === 'tool-execution-finished') {
+      const ex = ev.execution;
+      await dispatchCliExtensionEvent({
+        type: 'onToolResult',
+        detail: {
+          toolCallId: ex.toolCallId,
+          toolName: ex.toolName,
+          output: ex.output,
+          failed: ex.failed,
+          request: ex.request as JsonObject,
+        },
+      });
+    }
+  }
+}
+
 async function createRuntime(
   config: OpenAiTransportConfig,
   history: LlmMessage[] = [],
@@ -576,6 +652,7 @@ async function drainEvents(): Promise<DrainEventsResult> {
       count: events.length,
       kinds: events.map((event) => event.kind),
     });
+    await forwardRuntimeEventsToExtensions(events);
   }
   return {
     events,
@@ -598,6 +675,12 @@ peer.on('runtime.init', async (rawParams) => {
   }
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
+  const workspaceRoot =
+    params.transportConfig.workspaceRoot?.trim() || currentWorkspaceRoot();
+  await dispatchCliExtensionEvent({
+    type: 'onStartup',
+    detail: { workspaceRoot },
+  });
   return buildSnapshot(runtime);
 });
 
@@ -717,6 +800,17 @@ peer.on('hostInternal.importExtension', async (rawParams) => {
     ...(params.fileName?.trim() ? { fileName: params.fileName.trim() } : {}),
   });
   await refreshExtensionToolDefinitions();
+  await dispatchCliExtensionEvent(
+    {
+      type: 'onExtensionInstalled',
+      detail: {
+        extensionId: item.id,
+        name: item.manifest.name,
+        version: item.manifest.version,
+      },
+    },
+    { targetExtensionIds: [item.id] },
+  );
   return serializeHostExtension(item);
 });
 
@@ -748,6 +842,13 @@ peer.on('runtime.replaceHistory', async (rawParams) => {
 
 peer.on('runtime.replaceFromArchive', async (archive) => {
   requireRuntime().replaceFromArchive(archive as never);
+  await dispatchCliExtensionEvent({
+    type: 'onSessionOpened',
+    detail: {
+      filePath: '',
+      displayName: 'loaded-from-archive',
+    },
+  });
   return buildSnapshot(requireRuntime());
 });
 
@@ -770,6 +871,15 @@ peer.on('runtime.submitUserTurn', async (rawParams) => {
     mcpState: toolExecutor.mcpStatusSnapshot().state,
     cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
   });
+  const trimmed = params.text.trim();
+  const displayText = params.text;
+  await dispatchCliExtensionEvent({
+    type: 'onUserMessage',
+    detail: {
+      text: trimmed,
+      displayText,
+    },
+  });
   await requireRuntime().startUserTurnStreaming(params.text, params.explicitImages ?? []);
   return null;
 });
@@ -780,6 +890,15 @@ peer.on('runtime.startUserTurnStreaming', async (rawParams) => {
   logBridge('runtime.startUserTurnStreaming', {
     chars: Array.from(params.text).length,
     explicitImages: params.explicitImages?.length ?? 0,
+  });
+  const trimmed = params.text.trim();
+  const displayText = params.text;
+  await dispatchCliExtensionEvent({
+    type: 'onUserMessage',
+    detail: {
+      text: trimmed,
+      displayText,
+    },
   });
   await requireRuntime().startUserTurnStreaming(params.text, params.explicitImages ?? []);
   return null;
