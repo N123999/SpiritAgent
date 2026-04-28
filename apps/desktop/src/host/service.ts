@@ -1440,17 +1440,8 @@ description: ${frontmatterDescription}
         rootKind: entry.source.rootKind,
         enabled: entry.enabled,
       })),
-      extensionsList: state.extensionsList.map((item) => ({
-        id: item.id,
-        name: item.name,
-        version: item.version,
-        ...(item.description ? { description: item.description } : {}),
-        ...(item.author ? { author: item.author } : {}),
-        ...(item.homepage ? { homepage: item.homepage } : {}),
-        ...(item.main ? { main: item.main } : {}),
-        ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
-        installedAtUnixMs: item.installedAtUnixMs,
-      })),
+      // 须与 refreshExtensionsList 一致，否则设置页不显示工具/设置/密钥
+      extensionsList: state.extensionsList.map((item) => ({ ...item })),
       plan: {
         path: state.metadata.planMetadata.path,
         exists: state.metadata.planMetadata.exists,
