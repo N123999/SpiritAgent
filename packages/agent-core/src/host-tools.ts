@@ -5,6 +5,12 @@ export interface BuiltinHostToolDefinitionEnvironment {
   shellCommandParameterDescription: string;
 }
 
+export interface ContributedHostToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: JsonObject;
+}
+
 export function buildBuiltinHostToolDefinitions(
   environment: BuiltinHostToolDefinitionEnvironment,
 ): JsonValue[] {
@@ -227,6 +233,14 @@ export function buildBuiltinHostToolDefinitions(
       },
     ),
   ];
+}
+
+export function buildContributedHostToolDefinitions(
+  definitions: readonly ContributedHostToolDefinition[],
+): JsonValue[] {
+  return definitions.map((definition) =>
+    functionTool(definition.name, definition.description, definition.inputSchema),
+  );
 }
 
 function buildShellToolDescription(shellDisplayName: string): string {

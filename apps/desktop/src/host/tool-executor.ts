@@ -23,12 +23,15 @@ export class DesktopToolExecutor
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
   private readonly mcp: McpService;
+  private extensionToolDefinitions: JsonValue[];
 
   constructor(
     private readonly workspaceRoot: string,
+    extensionToolDefinitions: JsonValue[] = [],
     fileChangeObserver?: HostFileChangeObserver,
   ) {
     this.mcp = new McpService(workspaceRoot);
+    this.extensionToolDefinitions = [...extensionToolDefinitions];
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
@@ -41,8 +44,13 @@ export class DesktopToolExecutor
   toolDefinitionsJson(): JsonValue {
     return [
       ...buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment()),
+      ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
     ];
+  }
+
+  setExtensionToolDefinitions(definitions: JsonValue[] | undefined): void {
+    this.extensionToolDefinitions = Array.isArray(definitions) ? [...definitions] : [];
   }
 
   async parseCommand(_message: string): Promise<DesktopToolRequest> {

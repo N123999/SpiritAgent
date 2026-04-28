@@ -198,6 +198,33 @@ export interface HostExtensionManager {
   deactivateAll(): Promise<void>;
 }
 
+export function collectHostExtensionContributedTools(
+  extensions: readonly Pick<HostInstalledExtension, 'manifest'>[],
+): HostExtensionContributedToolDefinition[] {
+  const collected: HostExtensionContributedToolDefinition[] = [];
+
+  for (const extension of extensions) {
+    if (!extension.manifest.requestedCapabilities?.includes('tool-definitions')) {
+      continue;
+    }
+
+    if (!extension.manifest.contributes?.tools?.length) {
+      continue;
+    }
+
+    collected.push(...extension.manifest.contributes.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+      ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+    })));
+  }
+
+  return collected;
+}
+
 export function createHostExtensionManager(
   context: ExtensionManagementContext,
 ): HostExtensionManager {

@@ -22,7 +22,9 @@ import {
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
 } from './openai/transport.js';
+import { buildContributedHostToolDefinitions } from './host-tools.js';
 import type {
+  JsonObject,
   JsonValue,
   LlmMessage,
   McpStatusSnapshot,
@@ -117,6 +119,8 @@ interface CliHostInternalModule {
             tools?: Array<{
               name: string;
               description: string;
+              inputSchema: JsonObject;
+              outputSchema?: JsonObject;
               approvalMode?: string;
               executionMode?: string;
             }>;
@@ -164,6 +168,8 @@ interface CliHostInternalModule {
           tools?: Array<{
             name: string;
             description: string;
+            inputSchema: JsonObject;
+            outputSchema?: JsonObject;
             approvalMode?: string;
             executionMode?: string;
           }>;
@@ -236,6 +242,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   if (!modulePath || !spiritDataDir) {
     cliHostInternal = undefined;
     toolExecutor.setLocalHostService(undefined);
+    toolExecutor.setExtensionToolDefinitions([]);
     return undefined;
   }
 
@@ -278,6 +285,41 @@ async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolea
   planMetadata = metadata.planMetadata;
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   return true;
+}
+
+async function refreshExtensionToolDefinitions(
+  explicitDefinitions?: JsonValue[],
+): Promise<void> {
+  if (Array.isArray(explicitDefinitions)) {
+    toolExecutor.setExtensionToolDefinitions(explicitDefinitions);
+    return;
+  }
+
+  const hostInternal = cliHostInternal;
+  if (!hostInternal?.module.createHostExtensionManager) {
+    toolExecutor.setExtensionToolDefinitions([]);
+    return;
+  }
+
+  const manager = hostInternal.module.createHostExtensionManager({
+    spiritDataDir: hostInternal.spiritDataDir,
+  });
+  const installedExtensions = await manager.list();
+  const contributedTools = installedExtensions.flatMap((item) => {
+    if (!item.manifest.requestedCapabilities?.includes('tool-definitions')) {
+      return [];
+    }
+
+    return (item.manifest.contributes?.tools ?? []).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }));
+  });
+
+  toolExecutor.setExtensionToolDefinitions(
+    buildContributedHostToolDefinitions(contributedTools),
+  );
 }
 
 async function requireCliHostInternal(): Promise<CliHostInternalState> {
@@ -523,6 +565,9 @@ peer.on('runtime.init', async (rawParams) => {
   logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
   const loadedFromInternal = await reloadHostMetadataFromInternal(params.planMetadata?.planMode ?? false);
+  await refreshExtensionToolDefinitions(
+    Array.isArray(params.extensionToolDefinitions) ? params.extensionToolDefinitions : undefined,
+  );
   if (!loadedFromInternal) {
     enabledRules = [...(params.enabledRules ?? [])];
     enabledSkillCatalog = [...(params.enabledSkillCatalog ?? [])];
@@ -538,6 +583,7 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   logBridge('runtime.replaceConfig', { model: params.transportConfig.model });
   transportConfig = params.transportConfig;
   await reloadHostMetadataFromInternal(planMetadata?.planMode ?? false);
+  await refreshExtensionToolDefinitions();
   const target = requireRuntime();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   return buildSnapshot(runtime);
@@ -647,6 +693,7 @@ peer.on('hostInternal.importExtension', async (rawParams) => {
     archiveBase64,
     ...(params.fileName?.trim() ? { fileName: params.fileName.trim() } : {}),
   });
+  await refreshExtensionToolDefinitions();
   return serializeHostExtension(item);
 });
 
@@ -659,6 +706,7 @@ peer.on('hostInternal.deleteExtension', async (rawParams) => {
 
   const manager = await requireCliExtensionManager();
   await manager.remove(id);
+  await refreshExtensionToolDefinitions();
   return { id };
 });
 

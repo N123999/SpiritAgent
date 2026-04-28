@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import {
   AgentRuntime,
+  buildContributedHostToolDefinitions,
   type OpenAiActiveSkill,
   type OpenAiActiveSkillResourceEntry,
   appendOpenAiToolResultMessage,
@@ -19,6 +20,7 @@ import {
   type AssistantAuxArchiveEntry,
   type AskQuestionsResult as RuntimeAskQuestionsResult,
   type ChatArchive,
+  type JsonObject,
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiPlanMetadata,
@@ -38,6 +40,7 @@ import {
   type McpServerConfig,
 } from '@spirit-agent/agent-core';
 import {
+  collectHostExtensionContributedTools,
   createHostExtensionManager,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
@@ -510,6 +513,7 @@ description: ${frontmatterDescription}
         ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
       });
       await this.refreshExtensionsList();
+      await this.refreshExtensionToolDefinitions();
       await this.dispatchExtensionEvent(
         {
           type: 'onExtensionInstalled',
@@ -535,6 +539,7 @@ description: ${frontmatterDescription}
 
       await this.extensionManager().remove(id);
       await this.refreshExtensionsList();
+      await this.refreshExtensionToolDefinitions();
       return this.buildSnapshot();
     });
   }
@@ -1199,9 +1204,20 @@ description: ${frontmatterDescription}
       state.workspaceRoot,
       state.config.planMode === true,
     );
-    this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
-      recordFileChange: (change) => this.recordHostFileChange(change),
-    });
+    const extensions = await this.extensionManager().list();
+    this.toolExecutor = new DesktopToolExecutor(
+      state.workspaceRoot,
+      buildContributedHostToolDefinitions(
+        collectHostExtensionContributedTools(extensions).map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema as JsonObject,
+        })),
+      ),
+      {
+        recordFileChange: (change) => this.recordHostFileChange(change),
+      },
+    );
     this.toolExecutor.startMcpBackgroundRefresh();
     this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
@@ -1552,6 +1568,23 @@ description: ${frontmatterDescription}
       ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
       installedAtUnixMs: item.installedAtUnixMs,
     }));
+  }
+
+  private async refreshExtensionToolDefinitions(): Promise<void> {
+    if (!this.toolExecutor) {
+      return;
+    }
+
+    const extensions = await this.extensionManager().list();
+    this.toolExecutor.setExtensionToolDefinitions(
+      buildContributedHostToolDefinitions(
+        collectHostExtensionContributedTools(extensions).map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema as JsonObject,
+        })),
+      ),
+    );
   }
 
   private async dispatchExtensionEvent(
