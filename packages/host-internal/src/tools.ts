@@ -467,6 +467,9 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         };
       case 'extension_tool':
         if (request.approval_mode === 'need-questions') {
+          if (request.questions_result !== undefined) {
+            return { kind: 'allowed' };
+          }
           return buildExtensionQuestionsAuthorization(request) as HostAuthorizationDecision<QuestionSpec>;
         }
         if (request.approval_mode === 'need-approval') {

@@ -163,10 +163,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       return undefined;
     }
 
-    return {
-      ...request,
-      questions_result: result as JsonValue,
-    };
+    request.questions_result = result as JsonValue;
+    return request;
   }
 
   shouldExecuteInBackground(request: JsonValue): boolean {

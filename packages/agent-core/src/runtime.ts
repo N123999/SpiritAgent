@@ -28,6 +28,7 @@ import {
   promptMessagesFromValue,
   pruneToolMemories,
   renderError,
+  isCompatibleContinuedToolRequest,
   shortLabelForPendingMcpResource,
   toolNameFromRequest,
 } from './runtime/helpers.js';
@@ -962,11 +963,101 @@ export class AgentRuntime<
     this.pendingQuestions = undefined;
     this.completedTurnResultStore = undefined;
 
+    const resumeAfterToolOutput = async (output: string): Promise<void> => {
+      const resumedState = this.options.appendToolResultMessage(
+        pending.state,
+        pending.toolCallId,
+        output,
+      );
+
+      if (pending.remainingCalls.length > 0) {
+        await this.processToolCallsAsync(
+          resumedState,
+          pending.pendingUserInput,
+          pending.remainingCalls,
+          pending.turn,
+          pending.resumeAsStreaming,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
+
+      if (pending.resumeAsStreaming) {
+        await this.startStreamingRound(
+          resumedState,
+          pending.pendingUserInput,
+          pending.turn,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
+
+      this.startToolAgentRoundAsync(
+        resumedState,
+        pending.pendingUserInput,
+        pending.turn,
+      );
+    };
+
     const continuedRequest = this.options.toolExecutor.continueAfterQuestions
       ? await this.options.toolExecutor.continueAfterQuestions(pending.request, result)
       : undefined;
 
     if (continuedRequest !== undefined) {
+      if (!isCompatibleContinuedToolRequest(pending.request, continuedRequest)) {
+        await resumeAfterToolOutput(
+          '[continueAfterQuestions error] continued request must stay on the same tool.',
+        );
+        return;
+      }
+
+      let authorization: AuthorizationDecision<TrustTarget>;
+      try {
+        authorization = await this.options.toolExecutor.authorize(continuedRequest);
+      } catch (error) {
+        await resumeAfterToolOutput(`[authorization error] ${renderError(error)}`);
+        return;
+      }
+
+      if (authorization.kind === 'need-approval') {
+        const approval = {
+          prompt: authorization.prompt,
+          request: continuedRequest,
+          ...(authorization.trustTarget !== undefined
+            ? { trustTarget: authorization.trustTarget }
+            : {}),
+          toolCallId: pending.toolCallId,
+          toolName: pending.toolName,
+        };
+        this.pendingApproval = {
+          pendingUserInput: pending.pendingUserInput,
+          state: pending.state,
+          request: continuedRequest,
+          prompt: authorization.prompt,
+          ...(authorization.trustTarget !== undefined
+            ? { trustTarget: authorization.trustTarget }
+            : {}),
+          toolCallId: pending.toolCallId,
+          toolName: pending.toolName,
+          remainingCalls: pending.remainingCalls,
+          turn: pending.turn,
+          resumeAsStreaming: pending.resumeAsStreaming,
+          streamingEmitBeginResponse: pending.streamingEmitBeginResponse,
+        };
+        this.emitEvent({
+          kind: 'approval-requested',
+          approval,
+        });
+        return;
+      }
+
+      if (authorization.kind === 'need-questions') {
+        await resumeAfterToolOutput(
+          '[continueAfterQuestions error] continued request cannot require questions again.',
+        );
+        return;
+      }
+
       const resumedState = pending.state;
       if (this.options.toolExecutor.shouldExecuteInBackground?.(continuedRequest) ?? false) {
         this.startBackgroundToolExecutionAsync(

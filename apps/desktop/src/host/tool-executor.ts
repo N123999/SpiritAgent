@@ -110,10 +110,8 @@ export class DesktopToolExecutor
       return undefined;
     }
 
-    return {
-      ...request,
-      questions_result: result as JsonValue,
-    };
+    request.questions_result = result as JsonValue;
+    return request;
   }
 
   shouldExecuteInBackground(request: DesktopToolRequest): boolean {

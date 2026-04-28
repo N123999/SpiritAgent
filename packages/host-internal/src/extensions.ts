@@ -276,7 +276,7 @@ export function collectHostExtensionContributedTools(
   const collected: HostExtensionContributedToolDefinition[] = [];
 
   for (const extension of extensions) {
-    if (!extension.manifest.requestedCapabilities?.includes('tool-definitions')) {
+    if (!supportsResolvableToolContribution(extension.manifest)) {
       continue;
     }
 
@@ -563,6 +563,10 @@ export async function resolveExtensionTool(
 
   const installed = await listInstalledExtensions(context);
   for (const extension of installed) {
+    if (!supportsResolvableToolContribution(extension.manifest)) {
+      continue;
+    }
+
     const tool = extension.manifest.contributes?.tools?.find((item) => item.name === normalizedName);
     if (!tool) {
       continue;
@@ -695,28 +699,22 @@ export async function dispatchExtensionEvent<THostApi>(
       continue;
     }
 
-    const cached = activatedExtensions.get(extension.id);
-    if (cached) {
-      try {
-        await cached.onEvent?.(request.event);
-      } catch (error) {
-        request.logger?.error(`[extension:${extension.id}] event failed`, error);
-        throw new Error(
-          `扩展事件执行失败：${extension.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
-        );
-      }
-      continue;
+    try {
+      const activated = await ensureActivatedExtension(extension, activatedExtensions, stateStore, {
+        host: request.host,
+        ...(request.logger ? { logger: request.logger } : {}),
+        log: (message) => {
+          request.logger?.log(`[extension:${extension.id}] ${message}`);
+        },
+        activationEvent: request.event,
+      });
+      await activated.onEvent?.(request.event);
+    } catch (error) {
+      request.logger?.error(`[extension:${extension.id}] event failed`, error);
+      throw new Error(
+        `扩展事件执行失败：${extension.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+      );
     }
-
-    const activated = await ensureActivatedExtension(extension, activatedExtensions, stateStore, {
-      host: request.host,
-      ...(request.logger ? { logger: request.logger } : {}),
-      log: (message) => {
-        request.logger?.log(`[extension:${extension.id}] ${message}`);
-      },
-      activationEvent: request.event,
-    });
-    await activated.onEvent?.(request.event);
   }
 }
 
@@ -1029,7 +1027,7 @@ function validateSettingValue(
   }
 
   if (definition.type === 'number') {
-    if (typeof value !== 'number' || Number.isNaN(value)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new Error(`扩展设置 ${definition.key} 必须是数字。`);
     }
     return value;
@@ -1044,6 +1042,13 @@ function validateSettingValue(
     throw new Error(`扩展设置 ${definition.key} 取值非法：${value}`);
   }
   return value;
+}
+
+function supportsResolvableToolContribution(manifest: HostExtensionManifest): boolean {
+  return (
+    manifest.requestedCapabilities?.includes('tool-definitions') === true &&
+    manifest.requestedCapabilities?.includes('tool-execution') === true
+  );
 }
 
 

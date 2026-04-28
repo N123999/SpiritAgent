@@ -652,7 +652,11 @@ async function drainEvents(): Promise<DrainEventsResult> {
       count: events.length,
       kinds: events.map((event) => event.kind),
     });
-    await forwardRuntimeEventsToExtensions(events);
+    void forwardRuntimeEventsToExtensions(events).catch((error) => {
+      logBridge('forwardRuntimeEventsToExtensions failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
   return {
     events,

@@ -222,6 +222,44 @@ export function toolNameFromRequest(request: unknown): string {
   return 'manual';
 }
 
+export function isCompatibleContinuedToolRequest(
+  original: unknown,
+  continued: unknown,
+): boolean {
+  if (toolNameFromRequest(original) !== toolNameFromRequest(continued)) {
+    return false;
+  }
+
+  return (
+    compareOptionalStringField(original, continued, 'extension_id') &&
+    compareOptionalStringField(original, continued, 'tool_name')
+  );
+}
+
+function compareOptionalStringField(
+  left: unknown,
+  right: unknown,
+  field: string,
+): boolean {
+  const leftValue = readOptionalStringField(left, field);
+  const rightValue = readOptionalStringField(right, field);
+
+  if (leftValue === undefined && rightValue === undefined) {
+    return true;
+  }
+
+  return leftValue !== undefined && leftValue === rightValue;
+}
+
+function readOptionalStringField(value: unknown, field: string): string | undefined {
+  if (typeof value !== 'object' || value === null || !(field in value)) {
+    return undefined;
+  }
+
+  const candidate = (value as Record<string, unknown>)[field];
+  return typeof candidate === 'string' ? candidate : undefined;
+}
+
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value);
