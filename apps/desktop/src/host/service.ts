@@ -8,6 +8,7 @@ import {
   buildContributedHostToolDefinitions,
   type OpenAiActiveSkill,
   type OpenAiActiveSkillResourceEntry,
+  type OpenAiExtensionSystemPrompt,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   extractLastOpenAiAssistantText,
@@ -522,7 +523,7 @@ description: ${frontmatterDescription}
         ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
       });
       await this.refreshExtensionsList();
-      await this.refreshExtensionToolDefinitions();
+      await this.refreshRuntimeAfterExtensionMutation();
       await this.dispatchExtensionEvent(
         {
           type: 'onExtensionInstalled',
@@ -548,7 +549,7 @@ description: ${frontmatterDescription}
 
       await this.extensionManager().remove(id);
       await this.refreshExtensionsList();
-      await this.refreshExtensionToolDefinitions();
+      await this.refreshRuntimeAfterExtensionMutation();
       return this.buildSnapshot();
     });
   }
@@ -583,6 +584,7 @@ description: ${frontmatterDescription}
         values: request.values,
       });
       await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
       return this.buildSnapshot();
     });
   }
@@ -605,6 +607,7 @@ description: ${frontmatterDescription}
         ...(request.value !== undefined ? { value: request.value } : {}),
       });
       await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
       return this.buildSnapshot();
     });
   }
@@ -1288,6 +1291,7 @@ description: ${frontmatterDescription}
     this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
+    const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
     if (!apiKey) {
       this.runtime = undefined;
       this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
@@ -1306,6 +1310,7 @@ description: ${frontmatterDescription}
       state.metadata.rules.enabledRules,
       state.metadata.skills.enabledSkillCatalog,
       state.metadata.planMetadata,
+      extensionSystemPrompts,
     );
     if (state.archiveSubagentSessions.length > 0 || state.archiveHistory.length > 0) {
       runtime.replaceFromArchive({
@@ -1349,6 +1354,7 @@ description: ${frontmatterDescription}
     enabledRules: OpenAiEnabledRule[],
     enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
     planMetadata: OpenAiPlanMetadata,
+    extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
     return new AgentRuntime({
@@ -1365,6 +1371,7 @@ description: ${frontmatterDescription}
           cloneActiveSkills(this.currentTurnSkills),
           transportConfig.model,
           planMetadata,
+          extensionSystemPrompts,
         ),
       appendToolResultMessage: appendOpenAiToolResultMessage,
       appendUserMessage: appendOpenAiUserMessage,
@@ -1382,6 +1389,7 @@ description: ${frontmatterDescription}
           cloneActiveSkills(this.currentTurnSkills),
           transportConfig.model,
           planMetadata,
+          extensionSystemPrompts,
         ),
       resolveWorkspaceFilesFromInput: (input) =>
         pendingWorkspaceFilesFromInput(workspaceRoot, input),
@@ -1649,6 +1657,34 @@ description: ${frontmatterDescription}
         })),
       ),
     );
+  }
+
+  private async collectExtensionSystemPrompts(): Promise<OpenAiExtensionSystemPrompt[]> {
+    const adapter = desktopExtensionHostAdapter;
+    if (!adapter) {
+      return [];
+    }
+
+    const collected = await this.extensionManager().collectSystemPromptContributions({
+      host: adapter,
+      logger: console,
+    });
+    return collected.map((entry) => ({
+      extensionId: entry.extensionId,
+      extensionName: entry.extensionName,
+      content: entry.content,
+    }));
+  }
+
+  private async refreshRuntimeAfterExtensionMutation(): Promise<void> {
+    if (this.runtime?.isBusy()) {
+      this.deferredRuntimeRefreshWhileBusy = true;
+      return;
+    }
+
+    this.deferredRuntimeRefreshWhileBusy = false;
+    await this.refreshRuntime();
+    this.lastRuntimeError = '';
   }
 
   private async dispatchExtensionEvent(

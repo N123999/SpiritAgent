@@ -58,6 +58,7 @@ const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
 const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
 const PLAN_SECTION_PREFIX = '[SPIRIT_PLAN]';
 const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
+const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
 
 export interface OpenAiTransportConfig {
   apiKey: string;
@@ -111,6 +112,12 @@ export interface OpenAiPlanMetadata {
   planModeHostInstructions?: string;
 }
 
+export interface OpenAiExtensionSystemPrompt {
+  extensionId: string;
+  extensionName: string;
+  content: string;
+}
+
 export interface OpenAiToolAgentState {
   messages: JsonValue[];
   steps: number;
@@ -150,11 +157,13 @@ export function startOpenAiToolAgentState(
   activeSkills: OpenAiActiveSkill[] = [],
   model: string,
   planMetadata?: OpenAiPlanMetadata,
+  extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
 ): OpenAiToolAgentState {
   const rulesSystemMessage = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
   const planSystemMessage = buildPlanSystemMessage(planMetadata);
   const activeSkillsSystemMessage = buildActiveSkillsSystemMessage(activeSkills);
+  const extensionsSystemMessage = buildExtensionsSystemMessage(extensionSystemPrompts);
   const messages: JsonValue[] = [
     {
       role: 'system',
@@ -164,6 +173,7 @@ export function startOpenAiToolAgentState(
         skillsCatalogSystemMessage,
         planSystemMessage,
         activeSkillsSystemMessage,
+        extensionsSystemMessage,
       ),
     },
     ...llmHistoryToOpenAiMessages(history, assetRoot),
@@ -335,6 +345,7 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   activeSkills: OpenAiActiveSkill[] = [],
   model: string,
   planMetadata?: OpenAiPlanMetadata,
+  extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
 ): OpenAiToolAgentState {
   const preservedSpiritSystemMessage = findSpiritSystemMessageContent(retryState.messages);
   const rebuilt = startOpenAiToolAgentState(
@@ -346,6 +357,7 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
     preservedSpiritSystemMessage === undefined ? activeSkills : [],
     model,
     preservedSpiritSystemMessage === undefined ? planMetadata : undefined,
+    preservedSpiritSystemMessage === undefined ? extensionSystemPrompts : [],
   );
   if (preservedSpiritSystemMessage !== undefined) {
     rebuilt.messages[0] = {
@@ -784,6 +796,33 @@ export function buildActiveSkillsSystemMessage(
   }
 
   return lines.join('\n').trimEnd();
+}
+
+export function buildExtensionsSystemMessage(
+  extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
+): string | undefined {
+  const normalized = extensionSystemPrompts
+    .map((entry) => ({
+      extensionId: entry.extensionId.trim(),
+      extensionName: entry.extensionName.trim(),
+      content: entry.content.trim(),
+    }))
+    .filter((entry) => entry.extensionId && entry.extensionName && entry.content);
+
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  return [
+    EXTENSIONS_SECTION_PREFIX,
+    'The following block contains additive host-provided instructions contributed by installed extensions.',
+    'Treat them as additional system-level context; do not interpret them as tool definitions or permission grants.',
+    ...normalized.map((entry) => [
+      `<extension id="${escapeRuleAttribute(entry.extensionId)}" name="${escapeRuleAttribute(entry.extensionName)}">`,
+      entry.content,
+      '</extension>',
+    ].join('\n')),
+  ].join('\n');
 }
 
 function findSpiritSystemMessageContent(messages: JsonValue[]): string | undefined {

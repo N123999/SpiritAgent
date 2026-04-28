@@ -36,6 +36,7 @@ export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
 export const SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES = [
   'tool-definitions',
   'tool-execution',
+  'system-prompt',
   'approval-flow',
   'questions-flow',
   'settings',
@@ -213,9 +214,22 @@ export type HostExtensionToolHandler<THostApi> = (
   context: HostExtensionToolExecutionContext<THostApi>,
 ) => Promise<unknown> | unknown;
 
+export interface HostExtensionSystemPromptContribution {
+  extensionId: string;
+  extensionName: string;
+  content: string;
+}
+
+export interface CollectExtensionSystemPromptContributionsRequest<THostApi> {
+  host: THostApi;
+  logger?: Pick<Console, 'error' | 'log'>;
+}
+
 export interface HostActivatedExtension {
   tools?: Record<string, HostExtensionToolHandler<unknown>>;
   invokeTool?<THostApi>(request: HostExtensionToolExecutionContext<THostApi>): Promise<unknown> | unknown;
+  systemPrompt?: string;
+  getSystemPrompt?(): Promise<string | undefined> | string | undefined;
   onEvent?(event: HostExtensionEvent): Promise<void> | void;
   dispose?(): Promise<void> | void;
 }
@@ -266,6 +280,9 @@ export interface HostExtensionManager {
   setSettingsValues(request: UpdateExtensionSettingsRequest): Promise<HostExtensionSettingsValues>;
   getSecretStatus(id: string): Promise<Record<string, boolean>>;
   setSecretValue(request: UpdateExtensionSecretRequest): Promise<Record<string, boolean>>;
+  collectSystemPromptContributions<THostApi>(
+    request: CollectExtensionSystemPromptContributionsRequest<THostApi>,
+  ): Promise<HostExtensionSystemPromptContribution[]>;
   dispatchEvent<THostApi>(request: DispatchExtensionEventRequest<THostApi>): Promise<void>;
   deactivateAll(): Promise<void>;
 }
@@ -337,6 +354,14 @@ export function createHostExtensionManager(
     },
     async setSecretValue(request) {
       return saveExtensionSecretValue(context, stateStore, request);
+    },
+    async collectSystemPromptContributions(request) {
+      return collectExtensionSystemPromptContributions(
+        context,
+        activatedExtensions,
+        stateStore,
+        request,
+      );
     },
     async dispatchEvent(request) {
       await dispatchExtensionEvent(context, activatedExtensions, stateStore, request);
@@ -718,6 +743,46 @@ export async function dispatchExtensionEvent<THostApi>(
   }
 }
 
+export async function collectExtensionSystemPromptContributions<THostApi>(
+  context: ExtensionManagementContext,
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  stateStore: ExtensionStateStore,
+  request: CollectExtensionSystemPromptContributionsRequest<THostApi>,
+): Promise<HostExtensionSystemPromptContribution[]> {
+  const installed = await listInstalledExtensions(context);
+  const contributions: HostExtensionSystemPromptContribution[] = [];
+
+  for (const extension of installed) {
+    if (!supportsSystemPromptContribution(extension.manifest) || !extension.manifest.main) {
+      continue;
+    }
+
+    try {
+      const activated = await ensureActivatedExtension(extension, activatedExtensions, stateStore, {
+        host: request.host,
+        ...(request.logger ? { logger: request.logger } : {}),
+        log: (message) => {
+          request.logger?.log(`[extension:${extension.id}] ${message}`);
+        },
+      });
+      const content = await resolveActivatedExtensionSystemPrompt(activated.activatedExtension);
+      if (!content) {
+        continue;
+      }
+
+      contributions.push({
+        extensionId: extension.id,
+        extensionName: extension.manifest.name,
+        content,
+      });
+    } catch (error) {
+      request.logger?.error(`[extension:${extension.id}] collect system prompt failed`, error);
+    }
+  }
+
+  return contributions;
+}
+
 async function ensureActivatedExtension<THostApi>(
   target: HostInstalledExtension,
   activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
@@ -821,6 +886,23 @@ async function invokeActivatedExtensionTool<THostApi>(
     throw new Error(`扩展未导出工具处理器：${request.toolName}`);
   }
   return toolHandler(toolContext);
+}
+
+async function resolveActivatedExtensionSystemPrompt(
+  activated: HostActivatedExtension | undefined,
+): Promise<string | undefined> {
+  if (!activated) {
+    return undefined;
+  }
+
+  if (typeof activated.getSystemPrompt === 'function') {
+    const dynamicPrompt = await activated.getSystemPrompt();
+    const normalizedDynamicPrompt = dynamicPrompt?.trim();
+    return normalizedDynamicPrompt ? normalizedDynamicPrompt : undefined;
+  }
+
+  const staticPrompt = activated.systemPrompt?.trim();
+  return staticPrompt ? staticPrompt : undefined;
 }
 
 function resolveToolHandler(
@@ -1049,6 +1131,10 @@ function supportsResolvableToolContribution(manifest: HostExtensionManifest): bo
     manifest.requestedCapabilities?.includes('tool-definitions') === true &&
     manifest.requestedCapabilities?.includes('tool-execution') === true
   );
+}
+
+function supportsSystemPromptContribution(manifest: HostExtensionManifest): boolean {
+  return manifest.requestedCapabilities?.includes('system-prompt') === true;
 }
 
 
@@ -1310,9 +1396,15 @@ function resolveActivatedExtension(value: unknown): HostActivatedExtension | und
   const invokeTool = typeof value.invokeTool === 'function'
     ? value.invokeTool as HostActivatedExtension['invokeTool']
     : undefined;
+  const systemPrompt = typeof value.systemPrompt === 'string' && value.systemPrompt.trim()
+    ? value.systemPrompt
+    : undefined;
+  const getSystemPrompt = typeof value.getSystemPrompt === 'function'
+    ? value.getSystemPrompt as HostActivatedExtension['getSystemPrompt']
+    : undefined;
   const onEvent = typeof value.onEvent === 'function' ? value.onEvent : undefined;
   const dispose = typeof value.dispose === 'function' ? value.dispose : undefined;
-  if (!tools && !invokeTool && !onEvent && !dispose) {
+  if (!tools && !invokeTool && !systemPrompt && !getSystemPrompt && !onEvent && !dispose) {
     return undefined;
   }
 
@@ -1320,6 +1412,8 @@ function resolveActivatedExtension(value: unknown): HostActivatedExtension | und
     {},
     tools ? { tools } : {},
     invokeTool ? { invokeTool } : {},
+    systemPrompt ? { systemPrompt } : {},
+    getSystemPrompt ? { getSystemPrompt } : {},
     onEvent ? { onEvent: onEvent as HostActivatedExtension['onEvent'] } : {},
     dispose ? { dispose: dispose as HostActivatedExtension['dispose'] } : {},
   ) as HostActivatedExtension;

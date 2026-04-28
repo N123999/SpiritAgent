@@ -5,6 +5,7 @@ import {
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   buildActiveSkillsSystemMessage,
+  buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
@@ -18,6 +19,7 @@ import {
   type OpenAiActiveSkill,
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
+  type OpenAiExtensionSystemPrompt,
   type OpenAiPlanMetadata,
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
@@ -80,6 +82,7 @@ let enabledRules: OpenAiEnabledRule[] = [];
 let enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [];
 let activeSkills: OpenAiActiveSkill[] = [];
 let planMetadata: OpenAiPlanMetadata | undefined;
+let extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [];
 const llmTransport = new OpenAiTransport();
 
 interface CliHostInternalModule {
@@ -205,6 +208,14 @@ interface CliHostInternalModule {
       installedAtUnixMs: number;
       archiveFileName?: string;
     }>;
+    collectSystemPromptContributions(request: {
+      host: unknown;
+      logger?: Pick<Console, 'error' | 'log'>;
+    }): Promise<Array<{
+      extensionId: string;
+      extensionName: string;
+      content: string;
+    }>>;
     remove(id: string): Promise<void>;
     dispatchEvent(request: {
       event: { type: string; detail?: Record<string, unknown> };
@@ -259,6 +270,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
     cliHostInternal = undefined;
     toolExecutor.setLocalHostService(undefined);
     toolExecutor.setExtensionToolDefinitions([]);
+    extensionSystemPrompts = [];
     return undefined;
   }
 
@@ -351,6 +363,24 @@ async function refreshExtensionToolDefinitions(
   toolExecutor.setExtensionToolDefinitions(
     buildContributedHostToolDefinitions(contributedTools),
   );
+}
+
+async function refreshExtensionSystemPrompts(): Promise<void> {
+  const hostInternal = cliHostInternal;
+  if (!hostInternal?.extensionManager) {
+    extensionSystemPrompts = [];
+    return;
+  }
+
+  const collected = await hostInternal.extensionManager.collectSystemPromptContributions({
+    host: cliExtensionHostApi(),
+    logger: console,
+  });
+  extensionSystemPrompts = collected.map((entry) => ({
+    extensionId: entry.extensionId,
+    extensionName: entry.extensionName,
+    content: entry.content,
+  }));
 }
 
 async function requireCliHostInternal(): Promise<CliHostInternalState> {
@@ -583,6 +613,7 @@ async function createRuntime(
       activeSkills,
       config.model,
       planMetadata,
+      extensionSystemPrompts,
     );
 
   return new AgentRuntime({
@@ -606,6 +637,7 @@ async function createRuntime(
         activeSkills,
         config.model,
         planMetadata,
+        extensionSystemPrompts,
       ),
     resolveWorkspaceFilesFromInput: (text) => pendingWorkspaceFilesFromInput(workspaceRoot, text),
   }, history);
@@ -672,6 +704,7 @@ peer.on('runtime.init', async (rawParams) => {
   await refreshExtensionToolDefinitions(
     Array.isArray(params.extensionToolDefinitions) ? params.extensionToolDefinitions : undefined,
   );
+  await refreshExtensionSystemPrompts();
   if (!loadedFromInternal) {
     enabledRules = [...(params.enabledRules ?? [])];
     enabledSkillCatalog = [...(params.enabledSkillCatalog ?? [])];
@@ -694,6 +727,7 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   transportConfig = params.transportConfig;
   await reloadHostMetadataFromInternal(planMetadata?.planMode ?? false);
   await refreshExtensionToolDefinitions();
+  await refreshExtensionSystemPrompts();
   const target = requireRuntime();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   return buildSnapshot(runtime);
@@ -804,6 +838,7 @@ peer.on('hostInternal.importExtension', async (rawParams) => {
     ...(params.fileName?.trim() ? { fileName: params.fileName.trim() } : {}),
   });
   await refreshExtensionToolDefinitions();
+  await refreshExtensionSystemPrompts();
   await dispatchCliExtensionEvent(
     {
       type: 'onExtensionInstalled',
@@ -828,6 +863,7 @@ peer.on('hostInternal.deleteExtension', async (rawParams) => {
   const manager = await requireCliExtensionManager();
   await manager.remove(id);
   await refreshExtensionToolDefinitions();
+  await refreshExtensionSystemPrompts();
   return { id };
 });
 
@@ -1070,6 +1106,7 @@ peer.on('runtime.exportState', async () => {
   const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
   const planSystemPrompt = buildPlanSystemMessage(planMetadata);
   const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(activeSkills);
+  const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
 
   return {
     apiMessages: llmTransport.llmHistoryAsApiMessages([...target.history()]),
@@ -1085,6 +1122,7 @@ peer.on('runtime.exportState', async () => {
       ...(activeSkillsSystemPrompt === undefined
         ? {}
         : { activeSkills: activeSkillsSystemPrompt }),
+      ...(extensionsSystemPrompt === undefined ? {} : { extensions: extensionsSystemPrompt }),
     },
   };
 });
