@@ -847,6 +847,11 @@ function ExtensionsSettingsPanel({
                   {item.archiveFileName ? ` · 来源：${item.archiveFileName}` : ""}
                   {item.main ? ` · main: ${item.main}` : ""}
                 </p>
+                {item.activationEvents?.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    activationEvents: {item.activationEvents.join(", ")}
+                  </p>
+                ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">
                 <Button
@@ -864,7 +869,7 @@ function ExtensionsSettingsPanel({
                     })();
                   }}
                 >
-                  运行
+                  手动运行
                 </Button>
                 <Button
                   type="button"

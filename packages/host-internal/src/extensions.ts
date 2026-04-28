@@ -18,6 +18,22 @@ const EXTENSION_SCHEMA_VERSION = 1;
 const EXTENSION_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const TEMP_DIR_PREFIX = 'spirit-extension-';
 
+export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
+  'onStartup',
+  'onExtensionInstalled',
+  'onSessionOpened',
+  'onSessionReset',
+  'onUserMessage',
+] as const;
+
+export type HostExtensionActivationEventName =
+  (typeof SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS)[number];
+
+export interface HostExtensionEvent {
+  type: HostExtensionActivationEventName;
+  detail?: Record<string, unknown>;
+}
+
 export interface HostExtensionManifest {
   schemaVersion: number;
   id: string;
@@ -27,6 +43,7 @@ export interface HostExtensionManifest {
   author?: string;
   homepage?: string;
   main?: string;
+  activationEvents?: HostExtensionActivationEventName[];
 }
 
 export interface HostExtensionRegistryEntry {
@@ -70,6 +87,19 @@ export interface HostExtensionActivationContext<THostApi> {
   extension: HostExtensionRuntimeInfo;
   host: THostApi;
   log(message: string): void;
+  activationEvent?: HostExtensionEvent;
+}
+
+export interface HostActivatedExtension {
+  onEvent?(event: HostExtensionEvent): Promise<void> | void;
+  dispose?(): Promise<void> | void;
+}
+
+export interface DispatchExtensionEventRequest<THostApi> {
+  event: HostExtensionEvent;
+  host: THostApi;
+  logger?: Pick<Console, 'error' | 'log'>;
+  targetExtensionIds?: readonly string[];
 }
 
 export interface HostExtensionManager {
@@ -78,11 +108,15 @@ export interface HostExtensionManager {
   importArchive(request: ImportExtensionArchiveRequest): Promise<HostInstalledExtension>;
   remove(id: string): Promise<void>;
   run<THostApi>(request: RunExtensionRequest<THostApi>): Promise<void>;
+  dispatchEvent<THostApi>(request: DispatchExtensionEventRequest<THostApi>): Promise<void>;
+  deactivateAll(): Promise<void>;
 }
 
 export function createHostExtensionManager(
   context: ExtensionManagementContext,
 ): HostExtensionManager {
+  const activatedExtensions = new Map<string, ActivatedExtensionCacheEntry>();
+
   return {
     getPaths() {
       return resolveExtensionPaths(context);
@@ -94,12 +128,27 @@ export function createHostExtensionManager(
       return importExtensionArchive(context, request);
     },
     async remove(id) {
+      await deactivateExtensionById(activatedExtensions, id);
       await removeInstalledExtension(context, id);
     },
     async run(request) {
       await runInstalledExtension(context, request);
     },
+    async dispatchEvent(request) {
+      await dispatchExtensionEvent(context, activatedExtensions, request);
+    },
+    async deactivateAll() {
+      await deactivateAllExtensions(activatedExtensions);
+    },
   };
+}
+
+interface ActivatedExtensionCacheEntry {
+  id: string;
+  installedAtUnixMs: number;
+  activationEvents: readonly HostExtensionActivationEventName[];
+  onEvent?: HostActivatedExtension['onEvent'];
+  dispose?: HostActivatedExtension['dispose'];
 }
 
 export async function listInstalledExtensions(
@@ -306,44 +355,95 @@ export async function runInstalledExtension<THostApi>(
     logger?.log(`[extension:${target.id}] ${message}`);
   };
 
-  let loadedModule: unknown;
-  try {
-    const mainModuleUrl = pathToFileURL(mainFilePath);
-    mainModuleUrl.searchParams.set('ts', `${target.installedAtUnixMs}`);
-    loadedModule = await import(mainModuleUrl.href);
-  } catch (error) {
-    logger?.error(`[extension:${target.id}] load failed`, error);
-    throw new Error(
-      `加载扩展失败：${target.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
-    );
-  }
+  await activateExtension(target, mainFilePath, {
+    host: request.host,
+    ...(logger ? { logger } : {}),
+    log,
+  });
+}
 
-  const activate = resolveActivateHandler<THostApi>(loadedModule);
-  if (!activate) {
-    throw new Error(
-      `扩展 ${target.manifest.name} 未导出 activate；请导出 activate(context) 或默认导出该函数。`,
-    );
-  }
+export async function dispatchExtensionEvent<THostApi>(
+  context: ExtensionManagementContext,
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  request: DispatchExtensionEventRequest<THostApi>,
+): Promise<void> {
+  const installed = await listInstalledExtensions(context);
+  const targetIds = request.targetExtensionIds
+    ? new Set(request.targetExtensionIds.map((id) => id.trim()).filter(Boolean))
+    : undefined;
 
-  try {
-    await activate({
-      extension: {
-        id: target.id,
-        name: target.manifest.name,
-        version: target.manifest.version,
-        directoryPath: target.directoryPath,
-        manifestPath: target.manifestPath,
-        main: mainEntry,
-      },
+  for (const extension of installed) {
+    if (targetIds && !targetIds.has(extension.id)) {
+      continue;
+    }
+
+    const mainEntry = extension.manifest.main;
+    if (!mainEntry) {
+      continue;
+    }
+
+    const activationEvents = extension.manifest.activationEvents ?? [];
+    if (!activationEvents.includes(request.event.type)) {
+      continue;
+    }
+
+    const cached = activatedExtensions.get(extension.id);
+    if (cached) {
+      try {
+        await cached.onEvent?.(request.event);
+      } catch (error) {
+        request.logger?.error(`[extension:${extension.id}] event failed`, error);
+        throw new Error(
+          `扩展事件执行失败：${extension.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
+      continue;
+    }
+
+    const mainFilePath = path.join(extension.directoryPath, ...mainEntry.split('/'));
+    if (!existsSync(mainFilePath)) {
+      throw new Error(`扩展 main 文件不存在：${mainEntry}`);
+    }
+
+    const activated = await activateExtension(extension, mainFilePath, {
       host: request.host,
-      log,
+      ...(request.logger ? { logger: request.logger } : {}),
+      log: (message) => {
+        request.logger?.log(`[extension:${extension.id}] ${message}`);
+      },
+      activationEvent: request.event,
     });
-  } catch (error) {
-    logger?.error(`[extension:${target.id}] activate failed`, error);
-    throw new Error(
-      `执行扩展失败：${target.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
-    );
+    activatedExtensions.set(extension.id, {
+      id: extension.id,
+      installedAtUnixMs: extension.installedAtUnixMs,
+      activationEvents,
+      ...(activated?.onEvent ? { onEvent: activated.onEvent } : {}),
+      ...(activated?.dispose ? { dispose: activated.dispose } : {}),
+    });
   }
+}
+
+async function deactivateAllExtensions(
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+): Promise<void> {
+  for (const entry of activatedExtensions.values()) {
+    await entry.dispose?.();
+  }
+  activatedExtensions.clear();
+}
+
+async function deactivateExtensionById(
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  id: string,
+): Promise<void> {
+  const normalizedId = id.trim();
+  const entry = activatedExtensions.get(normalizedId);
+  if (!entry) {
+    return;
+  }
+
+  await entry.dispose?.();
+  activatedExtensions.delete(normalizedId);
 }
 
 async function ensureExtensionDirectories(paths: ExtensionPaths): Promise<void> {
@@ -385,6 +485,7 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
   const author = optionalStringField(parsed.author);
   const homepage = optionalStringField(parsed.homepage);
   const main = optionalStringField(parsed.main);
+  const activationEvents = optionalActivationEventsField(parsed.activationEvents);
 
   if (main) {
     assertSafeRelativePath(main, 'main');
@@ -399,6 +500,7 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
     ...(author ? { author } : {}),
     ...(homepage ? { homepage } : {}),
     ...(main ? { main } : {}),
+    ...(activationEvents.length > 0 ? { activationEvents } : {}),
   };
 }
 
@@ -498,6 +600,83 @@ function normalizeArchivePath(filePath: string): string {
   return filePath.replace(/\\/gu, '/').replace(/^\.\//u, '');
 }
 
+async function activateExtension<THostApi>(
+  target: HostInstalledExtension,
+  mainFilePath: string,
+  options: {
+    host: THostApi;
+    logger?: Pick<Console, 'error' | 'log'>;
+    log: (message: string) => void;
+    activationEvent?: HostExtensionEvent;
+  },
+): Promise<HostActivatedExtension | undefined> {
+  const loadedModule = await loadExtensionModule(target, mainFilePath, options.logger);
+  const activate = resolveActivateHandler<THostApi>(loadedModule);
+  if (!activate) {
+    throw new Error(
+      `扩展 ${target.manifest.name} 未导出 activate；请导出 activate(context) 或默认导出该函数。`,
+    );
+  }
+
+  try {
+    const activationResult = await activate({
+      extension: {
+        id: target.id,
+        name: target.manifest.name,
+        version: target.manifest.version,
+        directoryPath: target.directoryPath,
+        manifestPath: target.manifestPath,
+        main: target.manifest.main ?? '',
+      },
+      host: options.host,
+      log: options.log,
+      ...(options.activationEvent ? { activationEvent: options.activationEvent } : {}),
+    });
+
+    return resolveActivatedExtension(activationResult) ?? resolveActivatedExtension(loadedModule);
+  } catch (error) {
+    options.logger?.error(`[extension:${target.id}] activate failed`, error);
+    throw new Error(
+      `执行扩展失败：${target.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+}
+
+async function loadExtensionModule(
+  target: HostInstalledExtension,
+  mainFilePath: string,
+  logger?: Pick<Console, 'error' | 'log'>,
+): Promise<unknown> {
+  try {
+    const mainModuleUrl = pathToFileURL(mainFilePath);
+    mainModuleUrl.searchParams.set('ts', `${target.installedAtUnixMs}`);
+    return await import(mainModuleUrl.href);
+  } catch (error) {
+    logger?.error(`[extension:${target.id}] load failed`, error);
+    throw new Error(
+      `加载扩展失败：${target.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+}
+
+function resolveActivatedExtension(value: unknown): HostActivatedExtension | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const onEvent = typeof value.onEvent === 'function' ? value.onEvent : undefined;
+  const dispose = typeof value.dispose === 'function' ? value.dispose : undefined;
+  if (!onEvent && !dispose) {
+    return undefined;
+  }
+
+  return Object.assign(
+    {},
+    onEvent ? { onEvent: onEvent as HostActivatedExtension['onEvent'] } : {},
+    dispose ? { dispose: dispose as HostActivatedExtension['dispose'] } : {},
+  ) as HostActivatedExtension;
+}
+
 function resolveActivateHandler<THostApi>(
   loadedModule: unknown,
 ): ((context: HostExtensionActivationContext<THostApi>) => unknown) | undefined {
@@ -550,6 +729,28 @@ function optionalStringField(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function optionalActivationEventsField(value: unknown): HostExtensionActivationEventName[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: HostExtensionActivationEventName[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      throw new Error('扩展 manifest 字段 activationEvents 必须是字符串数组。');
+    }
+    const normalized = entry.trim() as HostExtensionActivationEventName;
+    if (!SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS.includes(normalized)) {
+      throw new Error(`不支持的扩展 activation event：${entry}`);
+    }
+    if (!result.includes(normalized)) {
+      result.push(normalized);
+    }
+  }
+
+  return result;
 }
 
 function numberField(value: unknown, fieldName: string): number {

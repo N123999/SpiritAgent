@@ -43,6 +43,7 @@ import {
   SKILL_FILE_NAME,
   validateSkillName,
   restoreHostFileChanges,
+  type HostExtensionEvent,
   type HostRecordedFileChange,
 } from '@spirit-agent/host-internal';
 
@@ -195,6 +196,9 @@ interface HostState {
 
 class DesktopHostService {
   private readonly transport = new OpenAiTransport();
+  private readonly hostExtensionManager = createHostExtensionManager({
+    spiritDataDir: spiritAgentDataDir(),
+  });
   private state: HostState | undefined;
   private runtime: DesktopRuntime | undefined;
   private toolExecutor: DesktopToolExecutor | undefined;
@@ -501,11 +505,22 @@ description: ${frontmatterDescription}
         throw new Error('扩展 ZIP 内容不能为空。');
       }
 
-      await this.extensionManager().importArchive({
+      const installed = await this.extensionManager().importArchive({
         archiveBase64,
         ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
       });
       await this.refreshExtensionsList();
+      await this.dispatchExtensionEvent(
+        {
+          type: 'onExtensionInstalled',
+          detail: {
+            extensionId: installed.id,
+            name: installed.manifest.name,
+            version: installed.manifest.version,
+          },
+        },
+        { targetExtensionIds: [installed.id] },
+      );
       return this.buildSnapshot();
     });
   }
@@ -730,6 +745,14 @@ description: ${frontmatterDescription}
     state.messages.push(userMessage);
     this.resetStreamingPlacementState(false);
     await this.persistCurrentSessionIfNeeded();
+    await this.dispatchExtensionEvent({
+      type: 'onUserMessage',
+      detail: {
+        text: trimmed,
+        displayText,
+        messageId: userMessage.id,
+      },
+    });
 
     try {
       await runtime.startUserTurnStreaming(trimmed);
@@ -851,6 +874,12 @@ description: ${frontmatterDescription}
       this.messageIdCounter = 1;
       await this.refreshRuntime();
       this.lastRuntimeError = '';
+      await this.dispatchExtensionEvent({
+        type: 'onSessionReset',
+        detail: {
+          workspaceRoot: state.workspaceRoot,
+        },
+      });
       return this.buildSnapshot();
     });
   }
@@ -1007,6 +1036,13 @@ description: ${frontmatterDescription}
       this.resetStreamingPlacementState(true);
       await this.refreshRuntime();
       this.lastRuntimeError = '';
+      await this.dispatchExtensionEvent({
+        type: 'onSessionOpened',
+        detail: {
+          filePath: path.resolve(filePath),
+          displayName: state.activeSession.displayName,
+        },
+      });
       return this.buildSnapshot();
     });
   }
@@ -1128,6 +1164,11 @@ description: ${frontmatterDescription}
     const config = await loadConfig();
     const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
     const state = this.state;
+    const previousWorkspaceRoot = state?.workspaceRoot;
+
+    if (previousWorkspaceRoot && previousWorkspaceRoot !== workspaceRoot) {
+      await this.extensionManager().deactivateAll();
+    }
 
     this.state = {
       workspaceRoot,
@@ -1144,6 +1185,12 @@ description: ${frontmatterDescription}
     this.initialized = true;
     await this.refreshExtensionsList();
     await this.refreshRuntime();
+    await this.dispatchExtensionEvent({
+      type: 'onStartup',
+      detail: {
+        workspaceRoot,
+      },
+    });
   }
 
   private async refreshRuntime(): Promise<void> {
@@ -1438,9 +1485,7 @@ description: ${frontmatterDescription}
   }
 
   private extensionManager() {
-    return createHostExtensionManager({
-      spiritDataDir: spiritAgentDataDir(),
-    });
+    return this.hostExtensionManager;
   }
 
   private async refreshExtensionsList(): Promise<void> {
@@ -1454,9 +1499,35 @@ description: ${frontmatterDescription}
       ...(item.manifest.author ? { author: item.manifest.author } : {}),
       ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
       ...(item.manifest.main ? { main: item.manifest.main } : {}),
+      ...(item.manifest.activationEvents?.length
+        ? { activationEvents: [...item.manifest.activationEvents] }
+        : {}),
       ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
       installedAtUnixMs: item.installedAtUnixMs,
     }));
+  }
+
+  private async dispatchExtensionEvent(
+    event: HostExtensionEvent,
+    options: {
+      targetExtensionIds?: readonly string[];
+    } = {},
+  ): Promise<void> {
+    const adapter = desktopExtensionHostAdapter;
+    if (!adapter) {
+      return;
+    }
+
+    try {
+      await this.extensionManager().dispatchEvent({
+        event,
+        host: adapter,
+        logger: console,
+        ...(options.targetExtensionIds ? { targetExtensionIds: options.targetExtensionIds } : {}),
+      });
+    } catch (error) {
+      this.lastRuntimeError = error instanceof Error ? error.message : String(error);
+    }
   }
 
   private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {

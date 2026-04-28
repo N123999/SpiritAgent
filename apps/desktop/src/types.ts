@@ -74,6 +74,7 @@ export interface DesktopExtensionListItem {
   author?: string;
   homepage?: string;
   main?: string;
+  activationEvents?: string[];
   archiveFileName?: string;
   installedAtUnixMs: number;
 }
