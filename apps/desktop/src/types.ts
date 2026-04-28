@@ -66,6 +66,64 @@ export interface RunExtensionRequest {
   id: string;
 }
 
+export type DesktopExtensionSettingValue = string | boolean | number | null;
+
+export interface UpdateExtensionSettingsRequest {
+  id: string;
+  values: Record<string, DesktopExtensionSettingValue>;
+}
+
+export interface UpdateExtensionSecretRequest {
+  id: string;
+  key: string;
+  value?: string;
+}
+
+export type DesktopExtensionToolApprovalMode =
+  | 'allowed'
+  | 'need-approval'
+  | 'need-questions';
+
+export type DesktopExtensionToolExecutionMode = 'foreground' | 'background';
+
+export interface DesktopExtensionContributedTool {
+  name: string;
+  description: string;
+  approvalMode?: DesktopExtensionToolApprovalMode;
+  executionMode?: DesktopExtensionToolExecutionMode;
+}
+
+export type DesktopExtensionSettingType = 'string' | 'boolean' | 'number' | 'select';
+
+export interface DesktopExtensionSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface DesktopExtensionSettingDefinition {
+  key: string;
+  type: DesktopExtensionSettingType;
+  title: string;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: string | boolean | number;
+  options?: DesktopExtensionSettingOption[];
+}
+
+export interface DesktopExtensionSecretSlot {
+  key: string;
+  title: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface DesktopExtensionSecretStatus {
+  key: string;
+  configured: boolean;
+}
+
 export interface DesktopExtensionListItem {
   id: string;
   name: string;
@@ -75,6 +133,12 @@ export interface DesktopExtensionListItem {
   homepage?: string;
   main?: string;
   activationEvents?: string[];
+  requestedCapabilities?: string[];
+  contributedTools?: DesktopExtensionContributedTool[];
+  settingsSchema?: DesktopExtensionSettingDefinition[];
+  settingsValues?: Record<string, DesktopExtensionSettingValue>;
+  secretSlots?: DesktopExtensionSecretSlot[];
+  secretStatuses?: DesktopExtensionSecretStatus[];
   archiveFileName?: string;
   installedAtUnixMs: number;
 }

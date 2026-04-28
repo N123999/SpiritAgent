@@ -1,4 +1,5 @@
 import type {
+  AskQuestionsResult,
   AuthorizationDecision,
   JsonValue,
   McpStatusSnapshot,
@@ -32,6 +33,7 @@ export interface LocalHostToolService {
 
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
   private hostToolDefinitionsCache: JsonValue = [];
+  private extensionToolDefinitionsCache: JsonValue[] = [];
   private hostToolDefinitionsLoaded = false;
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
@@ -44,6 +46,11 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     this.localHostService = service;
     this.hostToolDefinitionsLoaded = false;
     this.hostToolDefinitionsCache = [];
+    this.refreshMergedToolDefinitions();
+  }
+
+  setExtensionToolDefinitions(definitions: JsonValue[] | undefined): void {
+    this.extensionToolDefinitionsCache = Array.isArray(definitions) ? [...definitions] : [];
     this.refreshMergedToolDefinitions();
   }
 
@@ -148,9 +155,25 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     return request;
   }
 
+  async continueAfterQuestions(
+    request: JsonValue,
+    result: AskQuestionsResult,
+  ): Promise<JsonValue | undefined> {
+    if (!isExtensionToolRequest(request)) {
+      return undefined;
+    }
+
+    request.questions_result = result as JsonValue;
+    return request;
+  }
+
   shouldExecuteInBackground(request: JsonValue): boolean {
     if (this.mcp.isToolRequest(request)) {
       return true;
+    }
+
+    if (isExtensionToolRequest(request)) {
+      return request.execution_mode === 'background';
     }
 
     return this.resolveRequestMetadata(request)?.backgroundExecution ?? false;
@@ -159,6 +182,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   backgroundStatusText(request: JsonValue): string | undefined {
     if (this.mcp.isToolRequest(request)) {
       return this.mcp.backgroundStatusText(request);
+    }
+
+    if (isExtensionToolRequest(request) && request.execution_mode === 'background') {
+      return `扩展工具执行中: ${request.tool_name}`;
     }
 
     return this.resolveRequestMetadata(request)?.backgroundStatusText;
@@ -315,6 +342,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private refreshMergedToolDefinitions(): void {
     this.toolDefinitionsCache = mergeToolDefinitions(
       this.hostToolDefinitionsCache,
+      this.extensionToolDefinitionsCache,
       this.mcp.toolDefinitionsJson(),
     );
   }
@@ -352,10 +380,52 @@ function isJsonObject(value: JsonValue): value is Record<string, JsonValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function mergeToolDefinitions(hostDefinitions: JsonValue, mcpDefinitions: JsonValue[]): JsonValue {
+function mergeToolDefinitions(
+  hostDefinitions: JsonValue,
+  extensionDefinitions: JsonValue[],
+  mcpDefinitions: JsonValue[],
+): JsonValue {
   const merged = Array.isArray(hostDefinitions) ? [...hostDefinitions] : [];
-  merged.push(...mcpDefinitions);
-  return merged;
+  merged.push(...extensionDefinitions, ...mcpDefinitions);
+  const seenNames = new Set<string>();
+
+  return merged.filter((definition) => {
+    const name = toolDefinitionName(definition);
+    if (!name) {
+      return true;
+    }
+    if (seenNames.has(name)) {
+      return false;
+    }
+    seenNames.add(name);
+    return true;
+  });
+}
+
+function toolDefinitionName(value: JsonValue): string | undefined {
+  if (!isJsonObject(value)) {
+    return undefined;
+  }
+
+  const candidateFunction = value.function ?? null;
+  if (!isJsonObject(candidateFunction)) {
+    return undefined;
+  }
+
+  return typeof candidateFunction.name === 'string' ? candidateFunction.name : undefined;
+}
+
+function isExtensionToolRequest(value: JsonValue): value is {
+  name: 'extension_tool';
+  tool_name: string;
+  execution_mode?: string;
+  questions_result?: JsonValue;
+} {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+
+  return value.name === 'extension_tool' && typeof value.tool_name === 'string';
 }
 
 function renderError(error: unknown): string {

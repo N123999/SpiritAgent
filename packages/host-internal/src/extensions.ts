@@ -8,8 +8,11 @@ import { pathToFileURL } from 'node:url';
 import { unzipSync } from 'fflate';
 
 import {
+  createFileExtensionStateStore,
   EXTENSION_MANIFEST_FILE_NAME,
   resolveExtensionPaths,
+  type ExtensionSettingValue,
+  type ExtensionStateStore,
   type ExtensionManagementContext,
   type ExtensionPaths,
 } from './storage.js';
@@ -17,6 +20,7 @@ import {
 const EXTENSION_SCHEMA_VERSION = 1;
 const EXTENSION_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const TEMP_DIR_PREFIX = 'spirit-extension-';
+const EXTENSION_FIELD_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 
 export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onStartup',
@@ -24,14 +28,99 @@ export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onSessionOpened',
   'onSessionReset',
   'onUserMessage',
+  'onToolCall',
+  'onToolResult',
+  'onApprovalResolved',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES = [
+  'tool-definitions',
+  'tool-execution',
+  'approval-flow',
+  'questions-flow',
+  'settings',
+  'secret-storage',
+  'structured-results',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES = [
+  'allowed',
+  'need-approval',
+  'need-questions',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES = [
+  'foreground',
+  'background',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_SETTING_TYPES = [
+  'string',
+  'boolean',
+  'number',
+  'select',
 ] as const;
 
 export type HostExtensionActivationEventName =
   (typeof SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS)[number];
 
+export type HostExtensionRequestedCapability =
+  (typeof SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES)[number];
+
+export type HostExtensionToolApprovalMode =
+  (typeof SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES)[number];
+
+export type HostExtensionToolExecutionMode =
+  (typeof SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES)[number];
+
+export type HostExtensionSettingType =
+  (typeof SUPPORTED_HOST_EXTENSION_SETTING_TYPES)[number];
+
+export type HostExtensionJsonSchema = Record<string, unknown>;
+
+export type HostExtensionSettingDefaultValue = string | boolean | number;
+export type HostExtensionSettingsValues = Record<string, ExtensionSettingValue>;
+
 export interface HostExtensionEvent {
   type: HostExtensionActivationEventName;
   detail?: Record<string, unknown>;
+}
+
+export interface HostExtensionContributedToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: HostExtensionJsonSchema;
+  outputSchema?: HostExtensionJsonSchema;
+  approvalMode?: HostExtensionToolApprovalMode;
+  executionMode?: HostExtensionToolExecutionMode;
+}
+
+export interface HostExtensionContributionSet {
+  tools?: HostExtensionContributedToolDefinition[];
+}
+
+export interface HostExtensionSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface HostExtensionSettingDefinition {
+  key: string;
+  type: HostExtensionSettingType;
+  title: string;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: HostExtensionSettingDefaultValue;
+  options?: HostExtensionSettingOption[];
+}
+
+export interface HostExtensionSecretSlot {
+  key: string;
+  title: string;
+  description?: string;
+  required?: boolean;
 }
 
 export interface HostExtensionManifest {
@@ -44,6 +133,10 @@ export interface HostExtensionManifest {
   homepage?: string;
   main?: string;
   activationEvents?: HostExtensionActivationEventName[];
+  requestedCapabilities?: HostExtensionRequestedCapability[];
+  contributes?: HostExtensionContributionSet;
+  settingsSchema?: HostExtensionSettingDefinition[];
+  secretSlots?: HostExtensionSecretSlot[];
 }
 
 export interface HostExtensionRegistryEntry {
@@ -83,16 +176,75 @@ export interface HostExtensionRuntimeInfo {
   main: string;
 }
 
+export interface HostExtensionSettingsAccessor {
+  get(key: string): Promise<ExtensionSettingValue | undefined>;
+  getAll(): Promise<HostExtensionSettingsValues>;
+  set(key: string, value: ExtensionSettingValue): Promise<void>;
+  setAll(values: HostExtensionSettingsValues): Promise<HostExtensionSettingsValues>;
+}
+
+export interface HostExtensionSecretsAccessor {
+  get(key: string): Promise<string | undefined>;
+  has(key: string): Promise<boolean>;
+  set(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export interface HostExtensionActivationContext<THostApi> {
   extension: HostExtensionRuntimeInfo;
   host: THostApi;
   log(message: string): void;
+  settings: HostExtensionSettingsAccessor;
+  secrets: HostExtensionSecretsAccessor;
   activationEvent?: HostExtensionEvent;
 }
 
+export interface HostExtensionToolExecutionContext<THostApi> {
+  extension: HostExtensionRuntimeInfo;
+  host: THostApi;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  log(message: string): void;
+  toolCallId?: string;
+  questionsResult?: unknown;
+}
+
+export type HostExtensionToolHandler<THostApi> = (
+  context: HostExtensionToolExecutionContext<THostApi>,
+) => Promise<unknown> | unknown;
+
 export interface HostActivatedExtension {
+  tools?: Record<string, HostExtensionToolHandler<unknown>>;
+  invokeTool?<THostApi>(request: HostExtensionToolExecutionContext<THostApi>): Promise<unknown> | unknown;
   onEvent?(event: HostExtensionEvent): Promise<void> | void;
   dispose?(): Promise<void> | void;
+}
+
+export interface HostResolvedExtensionTool {
+  extensionId: string;
+  extensionName: string;
+  tool: HostExtensionContributedToolDefinition;
+}
+
+export interface InvokeExtensionToolRequest<THostApi> {
+  extensionId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  host: THostApi;
+  logger?: Pick<Console, 'error' | 'log'>;
+  toolCallId?: string;
+  questionsResult?: unknown;
+}
+
+export interface UpdateExtensionSettingsRequest {
+  id: string;
+  values: HostExtensionSettingsValues;
+}
+
+export interface UpdateExtensionSecretRequest {
+  id: string;
+  key: string;
+  value?: string;
 }
 
 export interface DispatchExtensionEventRequest<THostApi> {
@@ -105,17 +257,51 @@ export interface DispatchExtensionEventRequest<THostApi> {
 export interface HostExtensionManager {
   getPaths(): ExtensionPaths;
   list(): Promise<readonly HostInstalledExtension[]>;
+  resolveTool(name: string): Promise<HostResolvedExtensionTool | undefined>;
   importArchive(request: ImportExtensionArchiveRequest): Promise<HostInstalledExtension>;
   remove(id: string): Promise<void>;
   run<THostApi>(request: RunExtensionRequest<THostApi>): Promise<void>;
+  invokeTool<THostApi>(request: InvokeExtensionToolRequest<THostApi>): Promise<string>;
+  getSettingsValues(id: string): Promise<HostExtensionSettingsValues>;
+  setSettingsValues(request: UpdateExtensionSettingsRequest): Promise<HostExtensionSettingsValues>;
+  getSecretStatus(id: string): Promise<Record<string, boolean>>;
+  setSecretValue(request: UpdateExtensionSecretRequest): Promise<Record<string, boolean>>;
   dispatchEvent<THostApi>(request: DispatchExtensionEventRequest<THostApi>): Promise<void>;
   deactivateAll(): Promise<void>;
+}
+
+export function collectHostExtensionContributedTools(
+  extensions: readonly Pick<HostInstalledExtension, 'manifest'>[],
+): HostExtensionContributedToolDefinition[] {
+  const collected: HostExtensionContributedToolDefinition[] = [];
+
+  for (const extension of extensions) {
+    if (!supportsResolvableToolContribution(extension.manifest)) {
+      continue;
+    }
+
+    if (!extension.manifest.contributes?.tools?.length) {
+      continue;
+    }
+
+    collected.push(...extension.manifest.contributes.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+      ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+    })));
+  }
+
+  return collected;
 }
 
 export function createHostExtensionManager(
   context: ExtensionManagementContext,
 ): HostExtensionManager {
   const activatedExtensions = new Map<string, ActivatedExtensionCacheEntry>();
+  const stateStore = context.stateStore ?? createFileExtensionStateStore(context);
 
   return {
     getPaths() {
@@ -123,6 +309,9 @@ export function createHostExtensionManager(
     },
     async list() {
       return listInstalledExtensions(context);
+    },
+    async resolveTool(name) {
+      return resolveExtensionTool(context, name);
     },
     async importArchive(request) {
       return importExtensionArchive(context, request);
@@ -132,10 +321,25 @@ export function createHostExtensionManager(
       await removeInstalledExtension(context, id);
     },
     async run(request) {
-      await runInstalledExtension(context, request);
+      await runInstalledExtension(context, activatedExtensions, stateStore, request);
+    },
+    async invokeTool(request) {
+      return invokeExtensionTool(context, activatedExtensions, stateStore, request);
+    },
+    async getSettingsValues(id) {
+      return loadExtensionSettingsValues(context, stateStore, id);
+    },
+    async setSettingsValues(request) {
+      return saveExtensionSettingsValues(context, stateStore, request);
+    },
+    async getSecretStatus(id) {
+      return loadExtensionSecretStatus(context, stateStore, id);
+    },
+    async setSecretValue(request) {
+      return saveExtensionSecretValue(context, stateStore, request);
     },
     async dispatchEvent(request) {
-      await dispatchExtensionEvent(context, activatedExtensions, request);
+      await dispatchExtensionEvent(context, activatedExtensions, stateStore, request);
     },
     async deactivateAll() {
       await deactivateAllExtensions(activatedExtensions);
@@ -147,6 +351,8 @@ interface ActivatedExtensionCacheEntry {
   id: string;
   installedAtUnixMs: number;
   activationEvents: readonly HostExtensionActivationEventName[];
+  runtimeInfo: HostExtensionRuntimeInfo;
+  activatedExtension?: HostActivatedExtension;
   onEvent?: HostActivatedExtension['onEvent'];
   dispose?: HostActivatedExtension['dispose'];
 }
@@ -327,6 +533,8 @@ export async function removeInstalledExtension(
 
 export async function runInstalledExtension<THostApi>(
   context: ExtensionManagementContext,
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  stateStore: ExtensionStateStore,
   request: RunExtensionRequest<THostApi>,
 ): Promise<void> {
   const normalizedId = request.id.trim();
@@ -334,37 +542,141 @@ export async function runInstalledExtension<THostApi>(
     throw new Error('扩展 id 不能为空。');
   }
 
-  const installed = await listInstalledExtensions(context);
-  const target = installed.find((item) => item.id === normalizedId);
-  if (!target) {
-    throw new Error(`未找到扩展：${normalizedId}`);
-  }
-
-  const mainEntry = target.manifest.main;
-  if (!mainEntry) {
-    throw new Error(`扩展未声明 main，当前无法执行：${normalizedId}`);
-  }
-
-  const mainFilePath = path.join(target.directoryPath, ...mainEntry.split('/'));
-  if (!existsSync(mainFilePath)) {
-    throw new Error(`扩展 main 文件不存在：${mainEntry}`);
-  }
-
-  const logger = request.logger;
-  const log = (message: string) => {
-    logger?.log(`[extension:${target.id}] ${message}`);
-  };
-
-  await activateExtension(target, mainFilePath, {
+  const target = await requireInstalledExtension(context, normalizedId);
+  await ensureActivatedExtension(target, activatedExtensions, stateStore, {
     host: request.host,
-    ...(logger ? { logger } : {}),
-    log,
+    ...(request.logger ? { logger: request.logger } : {}),
+    log: (message) => {
+      request.logger?.log(`[extension:${target.id}] ${message}`);
+    },
   });
+}
+
+export async function resolveExtensionTool(
+  context: ExtensionManagementContext,
+  name: string,
+): Promise<HostResolvedExtensionTool | undefined> {
+  const normalizedName = name.trim();
+  if (!normalizedName) {
+    return undefined;
+  }
+
+  const installed = await listInstalledExtensions(context);
+  for (const extension of installed) {
+    if (!supportsResolvableToolContribution(extension.manifest)) {
+      continue;
+    }
+
+    const tool = extension.manifest.contributes?.tools?.find((item) => item.name === normalizedName);
+    if (!tool) {
+      continue;
+    }
+
+    return {
+      extensionId: extension.id,
+      extensionName: extension.manifest.name,
+      tool,
+    };
+  }
+
+  return undefined;
+}
+
+export async function invokeExtensionTool<THostApi>(
+  context: ExtensionManagementContext,
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  stateStore: ExtensionStateStore,
+  request: InvokeExtensionToolRequest<THostApi>,
+): Promise<string> {
+  const target = await requireInstalledExtension(context, request.extensionId);
+  const tool = target.manifest.contributes?.tools?.find((item) => item.name === request.toolName);
+  if (!tool) {
+    throw new Error(`扩展未声明工具：${request.toolName}`);
+  }
+  if (!target.manifest.requestedCapabilities?.includes('tool-execution')) {
+    throw new Error(`扩展未声明 tool-execution capability：${target.id}`);
+  }
+
+  const entry = await ensureActivatedExtension(target, activatedExtensions, stateStore, {
+    host: request.host,
+    ...(request.logger ? { logger: request.logger } : {}),
+    log: (message) => {
+      request.logger?.log(`[extension:${target.id}] ${message}`);
+    },
+  });
+
+  const result = await invokeActivatedExtensionTool(entry, {
+    host: request.host,
+    toolName: tool.name,
+    arguments: request.arguments,
+    ...(request.logger ? { logger: request.logger } : {}),
+    ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
+    ...(request.questionsResult !== undefined ? { questionsResult: request.questionsResult } : {}),
+  });
+  return renderExtensionToolResult(result);
+}
+
+export async function loadExtensionSettingsValues(
+  context: ExtensionManagementContext,
+  stateStore: ExtensionStateStore,
+  id: string,
+): Promise<HostExtensionSettingsValues> {
+  const extension = await requireInstalledExtension(context, id);
+  return loadSettingsValuesForExtension(extension, stateStore);
+}
+
+export async function saveExtensionSettingsValues(
+  context: ExtensionManagementContext,
+  stateStore: ExtensionStateStore,
+  request: UpdateExtensionSettingsRequest,
+): Promise<HostExtensionSettingsValues> {
+  const extension = await requireInstalledExtension(context, request.id);
+  return saveSettingsValuesForExtension(extension, stateStore, request.values);
+}
+
+export async function loadExtensionSecretStatus(
+  context: ExtensionManagementContext,
+  stateStore: ExtensionStateStore,
+  id: string,
+): Promise<Record<string, boolean>> {
+  const extension = await requireInstalledExtension(context, id);
+  const status: Record<string, boolean> = {};
+
+  for (const slot of extension.manifest.secretSlots ?? []) {
+    status[slot.key] = await hasExtensionSecret(stateStore, extension.id, slot.key);
+  }
+
+  return status;
+}
+
+export async function saveExtensionSecretValue(
+  context: ExtensionManagementContext,
+  stateStore: ExtensionStateStore,
+  request: UpdateExtensionSecretRequest,
+): Promise<Record<string, boolean>> {
+  const extension = await requireInstalledExtension(context, request.id);
+  const secretKey = request.key.trim();
+  if (!extension.manifest.secretSlots?.some((slot) => slot.key === secretKey)) {
+    throw new Error(`扩展未声明 secret slot：${secretKey}`);
+  }
+
+  const nextValue = request.value?.trim();
+  if (nextValue) {
+    if (!stateStore.saveSecret) {
+      throw new Error(`当前宿主未实现扩展 secret 存储：${extension.id}`);
+    }
+    await stateStore.saveSecret(extension.id, secretKey, nextValue);
+  } else if (stateStore.deleteSecret) {
+    await stateStore.deleteSecret(extension.id, secretKey);
+  }
+
+  return loadExtensionSecretStatus(context, stateStore, extension.id);
 }
 
 export async function dispatchExtensionEvent<THostApi>(
   context: ExtensionManagementContext,
   activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  stateStore: ExtensionStateStore,
   request: DispatchExtensionEventRequest<THostApi>,
 ): Promise<void> {
   const installed = await listInstalledExtensions(context);
@@ -387,41 +699,358 @@ export async function dispatchExtensionEvent<THostApi>(
       continue;
     }
 
-    const cached = activatedExtensions.get(extension.id);
-    if (cached) {
-      try {
-        await cached.onEvent?.(request.event);
-      } catch (error) {
-        request.logger?.error(`[extension:${extension.id}] event failed`, error);
-        throw new Error(
-          `扩展事件执行失败：${extension.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
-        );
+    try {
+      const activated = await ensureActivatedExtension(extension, activatedExtensions, stateStore, {
+        host: request.host,
+        ...(request.logger ? { logger: request.logger } : {}),
+        log: (message) => {
+          request.logger?.log(`[extension:${extension.id}] ${message}`);
+        },
+        activationEvent: request.event,
+      });
+      await activated.onEvent?.(request.event);
+    } catch (error) {
+      request.logger?.error(`[extension:${extension.id}] event failed`, error);
+      throw new Error(
+        `扩展事件执行失败：${extension.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+  }
+}
+
+async function ensureActivatedExtension<THostApi>(
+  target: HostInstalledExtension,
+  activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
+  stateStore: ExtensionStateStore,
+  options: {
+    host: THostApi;
+    logger?: Pick<Console, 'error' | 'log'>;
+    log: (message: string) => void;
+    activationEvent?: HostExtensionEvent;
+  },
+): Promise<ActivatedExtensionCacheEntry> {
+  const cached = activatedExtensions.get(target.id);
+  if (cached && cached.installedAtUnixMs === target.installedAtUnixMs) {
+    return cached;
+  }
+
+  if (cached?.dispose) {
+    await cached.dispose();
+    activatedExtensions.delete(target.id);
+  }
+
+  const mainEntry = target.manifest.main;
+  if (!mainEntry) {
+    throw new Error(`扩展未声明 main，当前无法执行：${target.id}`);
+  }
+
+  const mainFilePath = path.join(target.directoryPath, ...mainEntry.split('/'));
+  if (!existsSync(mainFilePath)) {
+    throw new Error(`扩展 main 文件不存在：${mainEntry}`);
+  }
+
+  const runtimeInfo = createRuntimeInfo(target);
+  const activatedExtension = await activateExtension(target, mainFilePath, {
+    host: options.host,
+    ...(options.logger ? { logger: options.logger } : {}),
+    log: options.log,
+    settings: createSettingsAccessor(target, stateStore),
+    secrets: createSecretsAccessor(target, stateStore),
+    ...(options.activationEvent ? { activationEvent: options.activationEvent } : {}),
+  });
+
+  const next: ActivatedExtensionCacheEntry = {
+    id: target.id,
+    installedAtUnixMs: target.installedAtUnixMs,
+    activationEvents: target.manifest.activationEvents ?? [],
+    runtimeInfo,
+    ...(activatedExtension ? { activatedExtension } : {}),
+    ...(activatedExtension?.onEvent ? { onEvent: activatedExtension.onEvent } : {}),
+    ...(activatedExtension?.dispose ? { dispose: activatedExtension.dispose } : {}),
+  };
+  activatedExtensions.set(target.id, next);
+  return next;
+}
+
+function createRuntimeInfo(target: HostInstalledExtension): HostExtensionRuntimeInfo {
+  return {
+    id: target.id,
+    name: target.manifest.name,
+    version: target.manifest.version,
+    directoryPath: target.directoryPath,
+    manifestPath: target.manifestPath,
+    main: target.manifest.main ?? '',
+  };
+}
+
+async function invokeActivatedExtensionTool<THostApi>(
+  entry: ActivatedExtensionCacheEntry,
+  request: {
+    host: THostApi;
+    toolName: string;
+    arguments: Record<string, unknown>;
+    logger?: Pick<Console, 'error' | 'log'>;
+    toolCallId?: string;
+    questionsResult?: unknown;
+  },
+): Promise<unknown> {
+  const activated = entry.activatedExtension;
+  if (!activated) {
+    throw new Error(`扩展未返回可调用实例：${entry.runtimeInfo.name}`);
+  }
+
+  const toolContext: HostExtensionToolExecutionContext<THostApi> = {
+    extension: entry.runtimeInfo,
+    host: request.host,
+    toolName: request.toolName,
+    arguments: request.arguments,
+    log: (message) => {
+      request.logger?.log(`[extension:${entry.id}] ${message}`);
+    },
+    ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
+    ...(request.questionsResult !== undefined ? { questionsResult: request.questionsResult } : {}),
+  };
+
+  const directInvoker = activated.invokeTool;
+  if (typeof directInvoker === 'function') {
+    return directInvoker(toolContext);
+  }
+
+  const toolHandler = resolveToolHandler(activated.tools, request.toolName);
+  if (!toolHandler) {
+    throw new Error(`扩展未导出工具处理器：${request.toolName}`);
+  }
+  return toolHandler(toolContext);
+}
+
+function resolveToolHandler(
+  tools: HostActivatedExtension['tools'],
+  toolName: string,
+): HostExtensionToolHandler<unknown> | undefined {
+  if (!tools || typeof tools !== 'object') {
+    return undefined;
+  }
+
+  const handler = tools[toolName];
+  return typeof handler === 'function' ? handler : undefined;
+}
+
+function renderExtensionToolResult(result: unknown): string {
+  if (typeof result === 'string') {
+    return result;
+  }
+  if (result === undefined) {
+    return '';
+  }
+  return JSON.stringify(result, null, 2);
+}
+
+function createSettingsAccessor(
+  extension: HostInstalledExtension,
+  stateStore: ExtensionStateStore,
+): HostExtensionSettingsAccessor {
+  return {
+    async get(key) {
+      const values = await loadSettingsValuesForExtension(extension, stateStore);
+      return values[key];
+    },
+    async getAll() {
+      return loadSettingsValuesForExtension(extension, stateStore);
+    },
+    async set(key, value) {
+      await saveSettingsValuesForExtension(extension, stateStore, { [key]: value });
+    },
+    async setAll(values) {
+      return saveSettingsValuesForExtension(extension, stateStore, values);
+    },
+  };
+}
+
+function createSecretsAccessor(
+  extension: HostInstalledExtension,
+  stateStore: ExtensionStateStore,
+): HostExtensionSecretsAccessor {
+  return {
+    async get(key) {
+      assertSecretSlot(extension.manifest, key);
+      return stateStore.loadSecret?.(extension.id, key);
+    },
+    async has(key) {
+      assertSecretSlot(extension.manifest, key);
+      return hasExtensionSecret(stateStore, extension.id, key);
+    },
+    async set(key, value) {
+      assertSecretSlot(extension.manifest, key);
+      if (!stateStore.saveSecret) {
+        throw new Error(`当前宿主未实现扩展 secret 存储：${extension.id}`);
       }
+      await stateStore.saveSecret(extension.id, key, value);
+    },
+    async delete(key) {
+      assertSecretSlot(extension.manifest, key);
+      await stateStore.deleteSecret?.(extension.id, key);
+    },
+  };
+}
+
+async function hasExtensionSecret(
+  stateStore: ExtensionStateStore,
+  extensionId: string,
+  key: string,
+): Promise<boolean> {
+  if (stateStore.hasSecret) {
+    return stateStore.hasSecret(extensionId, key);
+  }
+  if (stateStore.loadSecret) {
+    return Boolean(await stateStore.loadSecret(extensionId, key));
+  }
+  return false;
+}
+
+function assertSecretSlot(manifest: HostExtensionManifest, key: string): void {
+  if (!manifest.secretSlots?.some((slot) => slot.key === key)) {
+    throw new Error(`扩展未声明 secret slot：${key}`);
+  }
+}
+
+async function requireInstalledExtension(
+  context: ExtensionManagementContext,
+  id: string,
+): Promise<HostInstalledExtension> {
+  const normalizedId = id.trim();
+  if (!normalizedId) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const installed = await listInstalledExtensions(context);
+  const target = installed.find((item) => item.id === normalizedId);
+  if (!target) {
+    throw new Error(`未找到扩展：${normalizedId}`);
+  }
+  return target;
+}
+
+function normalizeSettingsValues(
+  manifest: HostExtensionManifest,
+  storedValues: HostExtensionSettingsValues,
+): HostExtensionSettingsValues {
+  const normalized: HostExtensionSettingsValues = {};
+
+  for (const definition of manifest.settingsSchema ?? []) {
+    const candidate = storedValues[definition.key];
+    if (candidate !== undefined) {
+      normalized[definition.key] = validateSettingValue(definition, candidate, false);
       continue;
     }
 
-    const mainFilePath = path.join(extension.directoryPath, ...mainEntry.split('/'));
-    if (!existsSync(mainFilePath)) {
-      throw new Error(`扩展 main 文件不存在：${mainEntry}`);
+    if (definition.defaultValue !== undefined) {
+      normalized[definition.key] = definition.defaultValue;
+    }
+  }
+
+  return normalized;
+}
+
+async function loadSettingsValuesForExtension(
+  extension: HostInstalledExtension,
+  stateStore: ExtensionStateStore,
+): Promise<HostExtensionSettingsValues> {
+  return normalizeSettingsValues(extension.manifest, await stateStore.loadSettings(extension.id));
+}
+
+async function saveSettingsValuesForExtension(
+  extension: HostInstalledExtension,
+  stateStore: ExtensionStateStore,
+  incomingValues: HostExtensionSettingsValues,
+): Promise<HostExtensionSettingsValues> {
+  const currentValues = await stateStore.loadSettings(extension.id);
+  const nextValues = mergeSettingsValues(extension.manifest, currentValues, incomingValues);
+  await stateStore.saveSettings(extension.id, nextValues);
+  return normalizeSettingsValues(extension.manifest, nextValues);
+}
+
+function mergeSettingsValues(
+  manifest: HostExtensionManifest,
+  currentValues: HostExtensionSettingsValues,
+  incomingValues: HostExtensionSettingsValues,
+): HostExtensionSettingsValues {
+  const merged: HostExtensionSettingsValues = { ...currentValues };
+  const definitions = new Map((manifest.settingsSchema ?? []).map((item) => [item.key, item]));
+
+  for (const [key, rawValue] of Object.entries(incomingValues)) {
+    const definition = definitions.get(key);
+    if (!definition) {
+      throw new Error(`扩展未声明设置项：${key}`);
     }
 
-    const activated = await activateExtension(extension, mainFilePath, {
-      host: request.host,
-      ...(request.logger ? { logger: request.logger } : {}),
-      log: (message) => {
-        request.logger?.log(`[extension:${extension.id}] ${message}`);
-      },
-      activationEvent: request.event,
-    });
-    activatedExtensions.set(extension.id, {
-      id: extension.id,
-      installedAtUnixMs: extension.installedAtUnixMs,
-      activationEvents,
-      ...(activated?.onEvent ? { onEvent: activated.onEvent } : {}),
-      ...(activated?.dispose ? { dispose: activated.dispose } : {}),
-    });
+    if (rawValue === null) {
+      if (definition.required && definition.defaultValue === undefined) {
+        throw new Error(`扩展设置 ${key} 为必填，不能清空。`);
+      }
+      delete merged[key];
+      continue;
+    }
+
+    merged[key] = validateSettingValue(definition, rawValue, true);
   }
+
+  return merged;
 }
+
+function validateSettingValue(
+  definition: HostExtensionSettingDefinition,
+  value: ExtensionSettingValue,
+  allowNull: boolean,
+): ExtensionSettingValue {
+  if (value === null) {
+    if (allowNull) {
+      return value;
+    }
+    throw new Error(`扩展设置 ${definition.key} 不能为空。`);
+  }
+
+  if (definition.type === 'string') {
+    if (typeof value !== 'string') {
+      throw new Error(`扩展设置 ${definition.key} 必须是字符串。`);
+    }
+    if (definition.required && value.trim().length === 0) {
+      throw new Error(`扩展设置 ${definition.key} 不能为空。`);
+    }
+    return value;
+  }
+
+  if (definition.type === 'boolean') {
+    if (typeof value !== 'boolean') {
+      throw new Error(`扩展设置 ${definition.key} 必须是布尔值。`);
+    }
+    return value;
+  }
+
+  if (definition.type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`扩展设置 ${definition.key} 必须是数字。`);
+    }
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(`扩展设置 ${definition.key} 必须是字符串。`);
+  }
+
+  const options = definition.options?.map((option) => option.value) ?? [];
+  if (options.length > 0 && !options.includes(value)) {
+    throw new Error(`扩展设置 ${definition.key} 取值非法：${value}`);
+  }
+  return value;
+}
+
+function supportsResolvableToolContribution(manifest: HostExtensionManifest): boolean {
+  return (
+    manifest.requestedCapabilities?.includes('tool-definitions') === true &&
+    manifest.requestedCapabilities?.includes('tool-execution') === true
+  );
+}
+
 
 async function deactivateAllExtensions(
   activatedExtensions: Map<string, ActivatedExtensionCacheEntry>,
@@ -448,6 +1077,7 @@ async function deactivateExtensionById(
 
 async function ensureExtensionDirectories(paths: ExtensionPaths): Promise<void> {
   await mkdir(paths.extensionsDir, { recursive: true });
+  await mkdir(paths.extensionStateDir, { recursive: true });
   await mkdir(path.dirname(paths.extensionsIndexFile), { recursive: true });
 }
 
@@ -486,6 +1116,10 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
   const homepage = optionalStringField(parsed.homepage);
   const main = optionalStringField(parsed.main);
   const activationEvents = optionalActivationEventsField(parsed.activationEvents);
+  const requestedCapabilities = optionalRequestedCapabilitiesField(parsed.requestedCapabilities);
+  const contributes = optionalContributionSetField(parsed.contributes);
+  const settingsSchema = optionalSettingsSchemaField(parsed.settingsSchema);
+  const secretSlots = optionalSecretSlotsField(parsed.secretSlots);
 
   if (main) {
     assertSafeRelativePath(main, 'main');
@@ -501,6 +1135,10 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
     ...(homepage ? { homepage } : {}),
     ...(main ? { main } : {}),
     ...(activationEvents.length > 0 ? { activationEvents } : {}),
+    ...(requestedCapabilities.length > 0 ? { requestedCapabilities } : {}),
+    ...(contributes ? { contributes } : {}),
+    ...(settingsSchema.length > 0 ? { settingsSchema } : {}),
+    ...(secretSlots.length > 0 ? { secretSlots } : {}),
   };
 }
 
@@ -607,6 +1245,8 @@ async function activateExtension<THostApi>(
     host: THostApi;
     logger?: Pick<Console, 'error' | 'log'>;
     log: (message: string) => void;
+    settings: HostExtensionSettingsAccessor;
+    secrets: HostExtensionSecretsAccessor;
     activationEvent?: HostExtensionEvent;
   },
 ): Promise<HostActivatedExtension | undefined> {
@@ -630,6 +1270,8 @@ async function activateExtension<THostApi>(
       },
       host: options.host,
       log: options.log,
+      settings: options.settings,
+      secrets: options.secrets,
       ...(options.activationEvent ? { activationEvent: options.activationEvent } : {}),
     });
 
@@ -664,17 +1306,38 @@ function resolveActivatedExtension(value: unknown): HostActivatedExtension | und
     return undefined;
   }
 
+  const tools = resolveActivatedExtensionTools(value.tools);
+  const invokeTool = typeof value.invokeTool === 'function'
+    ? value.invokeTool as HostActivatedExtension['invokeTool']
+    : undefined;
   const onEvent = typeof value.onEvent === 'function' ? value.onEvent : undefined;
   const dispose = typeof value.dispose === 'function' ? value.dispose : undefined;
-  if (!onEvent && !dispose) {
+  if (!tools && !invokeTool && !onEvent && !dispose) {
     return undefined;
   }
 
   return Object.assign(
     {},
+    tools ? { tools } : {},
+    invokeTool ? { invokeTool } : {},
     onEvent ? { onEvent: onEvent as HostActivatedExtension['onEvent'] } : {},
     dispose ? { dispose: dispose as HostActivatedExtension['dispose'] } : {},
   ) as HostActivatedExtension;
+}
+
+function resolveActivatedExtensionTools(
+  value: unknown,
+): HostActivatedExtension['tools'] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value).filter(([, handler]) => typeof handler === 'function');
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries) as HostActivatedExtension['tools'];
 }
 
 function resolveActivateHandler<THostApi>(
@@ -751,6 +1414,269 @@ function optionalActivationEventsField(value: unknown): HostExtensionActivationE
   }
 
   return result;
+}
+
+function optionalRequestedCapabilitiesField(value: unknown): HostExtensionRequestedCapability[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: HostExtensionRequestedCapability[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      throw new Error('扩展 manifest 字段 requestedCapabilities 必须是字符串数组。');
+    }
+    const normalized = entry.trim() as HostExtensionRequestedCapability;
+    if (!SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES.includes(normalized)) {
+      throw new Error(`不支持的扩展 capability：${entry}`);
+    }
+    if (!result.includes(normalized)) {
+      result.push(normalized);
+    }
+  }
+
+  return result;
+}
+
+function optionalContributionSetField(value: unknown): HostExtensionContributionSet | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const tools = optionalContributedToolsField(value.tools);
+  if (tools.length === 0) {
+    return undefined;
+  }
+
+  return { tools };
+}
+
+function optionalContributedToolsField(value: unknown): HostExtensionContributedToolDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => parseContributedToolDefinition(entry, index));
+}
+
+function parseContributedToolDefinition(
+  value: unknown,
+  index: number,
+): HostExtensionContributedToolDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 contributes.tools[${index}] 必须是对象。`);
+  }
+
+  const name = stringField(value.name, `contributes.tools[${index}].name`);
+  if (!EXTENSION_FIELD_KEY_PATTERN.test(name)) {
+    throw new Error(`扩展工具名非法：${name}`);
+  }
+
+  const description = stringField(value.description, `contributes.tools[${index}].description`);
+  const inputSchema = schemaField(value.inputSchema, `contributes.tools[${index}].inputSchema`);
+  const outputSchema = optionalSchemaField(value.outputSchema, `contributes.tools[${index}].outputSchema`);
+  const approvalMode = optionalEnumField(
+    value.approvalMode,
+    `contributes.tools[${index}].approvalMode`,
+    SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES,
+  );
+  const executionMode = optionalEnumField(
+    value.executionMode,
+    `contributes.tools[${index}].executionMode`,
+    SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES,
+  );
+
+  return {
+    name,
+    description,
+    inputSchema,
+    ...(outputSchema ? { outputSchema } : {}),
+    ...(approvalMode ? { approvalMode } : {}),
+    ...(executionMode ? { executionMode } : {}),
+  };
+}
+
+function optionalSettingsSchemaField(value: unknown): HostExtensionSettingDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => parseSettingDefinition(entry, index));
+}
+
+function parseSettingDefinition(value: unknown, index: number): HostExtensionSettingDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 settingsSchema[${index}] 必须是对象。`);
+  }
+
+  const key = stringField(value.key, `settingsSchema[${index}].key`);
+  if (!EXTENSION_FIELD_KEY_PATTERN.test(key)) {
+    throw new Error(`扩展设置键非法：${key}`);
+  }
+
+  const type = enumField(
+    value.type,
+    `settingsSchema[${index}].type`,
+    SUPPORTED_HOST_EXTENSION_SETTING_TYPES,
+  );
+  const title = stringField(value.title, `settingsSchema[${index}].title`);
+  const description = optionalStringField(value.description);
+  const placeholder = optionalStringField(value.placeholder);
+  const required = optionalBooleanField(value.required);
+  const defaultValue = optionalSettingDefaultValueField(
+    value.defaultValue,
+    `settingsSchema[${index}].defaultValue`,
+    type,
+  );
+  const options = optionalSettingOptionsField(value.options, index, type);
+
+  return {
+    key,
+    type,
+    title,
+    ...(description ? { description } : {}),
+    ...(placeholder ? { placeholder } : {}),
+    ...(required !== undefined ? { required } : {}),
+    ...(defaultValue !== undefined ? { defaultValue } : {}),
+    ...(options.length > 0 ? { options } : {}),
+  };
+}
+
+function optionalSettingOptionsField(
+  value: unknown,
+  settingIndex: number,
+  type: HostExtensionSettingType,
+): HostExtensionSettingOption[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (type !== 'select') {
+    throw new Error(`只有 select 类型的设置项允许声明 options：settingsSchema[${settingIndex}]`);
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`扩展 manifest 字段 settingsSchema[${settingIndex}].options 必须是数组。`);
+  }
+
+  return value.map((entry, optionIndex) => {
+    if (!isRecord(entry)) {
+      throw new Error(`扩展 manifest 字段 settingsSchema[${settingIndex}].options[${optionIndex}] 必须是对象。`);
+    }
+    const optionValue = stringField(
+      entry.value,
+      `settingsSchema[${settingIndex}].options[${optionIndex}].value`,
+    );
+    const label = stringField(
+      entry.label,
+      `settingsSchema[${settingIndex}].options[${optionIndex}].label`,
+    );
+    const description = optionalStringField(entry.description);
+    return {
+      value: optionValue,
+      label,
+      ...(description ? { description } : {}),
+    };
+  });
+}
+
+function optionalSettingDefaultValueField(
+  value: unknown,
+  fieldName: string,
+  type: HostExtensionSettingType,
+): HostExtensionSettingDefaultValue | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  switch (type) {
+    case 'string':
+    case 'select':
+      if (typeof value !== 'string') {
+        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是字符串。`);
+      }
+      return value;
+    case 'boolean':
+      if (typeof value !== 'boolean') {
+        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是布尔值。`);
+      }
+      return value;
+    case 'number':
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是数字。`);
+      }
+      return value;
+  }
+}
+
+function optionalSecretSlotsField(value: unknown): HostExtensionSecretSlot[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`扩展 manifest 字段 secretSlots[${index}] 必须是对象。`);
+    }
+    const key = stringField(entry.key, `secretSlots[${index}].key`);
+    if (!EXTENSION_FIELD_KEY_PATTERN.test(key)) {
+      throw new Error(`扩展 secret slot 键非法：${key}`);
+    }
+    const title = stringField(entry.title, `secretSlots[${index}].title`);
+    const description = optionalStringField(entry.description);
+    const required = optionalBooleanField(entry.required);
+    return {
+      key,
+      title,
+      ...(description ? { description } : {}),
+      ...(required !== undefined ? { required } : {}),
+    };
+  });
+}
+
+function optionalBooleanField(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function schemaField(value: unknown, fieldName: string): HostExtensionJsonSchema {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是对象。`);
+  }
+  return value;
+}
+
+function optionalSchemaField(
+  value: unknown,
+  fieldName: string,
+): HostExtensionJsonSchema | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return schemaField(value, fieldName);
+}
+
+function enumField<T extends readonly string[]>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: T,
+): T[number] {
+  if (typeof value !== 'string') {
+    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是字符串。`);
+  }
+  const normalized = value.trim() as T[number];
+  if (!allowedValues.includes(normalized)) {
+    throw new Error(`扩展 manifest 字段 ${fieldName} 取值非法：${value}`);
+  }
+  return normalized;
+}
+
+function optionalEnumField<T extends readonly string[]>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: T,
+): T[number] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return enumField(value, fieldName, allowedValues);
 }
 
 function numberField(value: unknown, fieldName: string): number {

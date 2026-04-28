@@ -87,6 +87,7 @@ export interface RuntimeInitParams {
   enabledRules?: OpenAiEnabledRule[];
   enabledSkillCatalog?: OpenAiEnabledSkillCatalogEntry[];
   planMetadata?: OpenAiPlanMetadata;
+  extensionToolDefinitions?: JsonValue[];
 }
 
 export interface RuntimeSubmitUserTurnParams {

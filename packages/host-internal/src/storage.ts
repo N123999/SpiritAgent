@@ -17,6 +17,21 @@ export const SKILLS_STATE_FILE_NAME = 'skills-state.json';
 export const EXTENSIONS_DIR_NAME = 'extensions';
 export const EXTENSION_MANIFEST_FILE_NAME = 'spirit-extension.json';
 export const EXTENSIONS_INDEX_FILE_NAME = 'extensions.json';
+export const EXTENSION_STATE_DIR_NAME = 'extension-state';
+
+export type ExtensionSettingValue = string | number | boolean | null;
+
+export interface ExtensionStateStore {
+  loadSettings(extensionId: string): Promise<Record<string, ExtensionSettingValue>>;
+  saveSettings(
+    extensionId: string,
+    values: Record<string, ExtensionSettingValue>,
+  ): Promise<void>;
+  loadSecret?(extensionId: string, key: string): Promise<string | undefined>;
+  saveSecret?(extensionId: string, key: string, value: string): Promise<void>;
+  deleteSecret?(extensionId: string, key: string): Promise<void>;
+  hasSecret?(extensionId: string, key: string): Promise<boolean>;
+}
 
 export interface HostStoragePaths {
   workspaceRoot?: string;
@@ -47,6 +62,7 @@ export interface InstructionDiscoveryContext {
 
 export interface ExtensionManagementContext {
   spiritDataDir: string;
+  stateStore?: ExtensionStateStore;
 }
 
 export interface InstructionPaths {
@@ -68,6 +84,7 @@ export interface HostToggleState {
 export interface ExtensionPaths {
   extensionsDir: string;
   extensionsIndexFile: string;
+  extensionStateDir: string;
 }
 
 export function resolveInstructionPaths(context: InstructionDiscoveryContext): InstructionPaths {
@@ -88,6 +105,35 @@ export function resolveExtensionPaths(context: ExtensionManagementContext): Exte
   return {
     extensionsDir: path.join(context.spiritDataDir, EXTENSIONS_DIR_NAME),
     extensionsIndexFile: path.join(context.spiritDataDir, EXTENSIONS_INDEX_FILE_NAME),
+    extensionStateDir: path.join(context.spiritDataDir, EXTENSION_STATE_DIR_NAME),
+  };
+}
+
+export function createFileExtensionStateStore(
+  context: ExtensionManagementContext,
+): ExtensionStateStore {
+  const paths = resolveExtensionPaths(context);
+
+  return {
+    async loadSettings(extensionId) {
+      const filePath = extensionSettingsFilePath(paths, extensionId);
+      if (!existsSync(filePath)) {
+        return {};
+      }
+
+      try {
+        const raw = await readFile(filePath, 'utf8');
+        const parsed = JSON.parse(raw) as Record<string, ExtensionSettingValue>;
+        return isExtensionSettingsRecord(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    },
+    async saveSettings(extensionId, values) {
+      const filePath = extensionSettingsFilePath(paths, extensionId);
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, `${JSON.stringify(values, null, 2)}\n`, 'utf8');
+    },
   };
 }
 
@@ -121,4 +167,24 @@ export async function stablePathId(filePath: string): Promise<string> {
 
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/gu, '/');
+}
+
+function extensionSettingsFilePath(paths: ExtensionPaths, extensionId: string): string {
+  return path.join(paths.extensionStateDir, `${extensionId}.json`);
+}
+
+function isExtensionSettingsRecord(
+  value: Record<string, ExtensionSettingValue> | unknown,
+): value is Record<string, ExtensionSettingValue> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(
+    (entry) =>
+      entry === null ||
+      typeof entry === 'string' ||
+      typeof entry === 'number' ||
+      typeof entry === 'boolean',
+  );
 }

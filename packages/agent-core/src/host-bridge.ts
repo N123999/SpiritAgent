@@ -22,7 +22,9 @@ import {
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
 } from './openai/transport.js';
+import { buildContributedHostToolDefinitions } from './host-tools.js';
 import type {
+  JsonObject,
   JsonValue,
   LlmMessage,
   McpStatusSnapshot,
@@ -83,7 +85,14 @@ const llmTransport = new OpenAiTransport();
 interface CliHostInternalModule {
   NodeHostToolService: new (
     context: { workspaceRoot: string; spiritDataDir: string },
-    options?: { mcp?: unknown },
+    options?: {
+      mcp?: unknown;
+      extensions?: {
+        manager: unknown;
+        getHost: () => unknown;
+        logger?: Pick<Console, 'error' | 'log'>;
+      };
+    },
   ) => LocalHostToolService;
   createNoopMcpAdapter?: () => unknown;
   loadHostInstructionMetadata: (
@@ -111,6 +120,38 @@ interface CliHostInternalModule {
           author?: string;
           homepage?: string;
           main?: string;
+          activationEvents?: string[];
+          requestedCapabilities?: string[];
+          contributes?: {
+            tools?: Array<{
+              name: string;
+              description: string;
+              inputSchema: JsonObject;
+              outputSchema?: JsonObject;
+              approvalMode?: string;
+              executionMode?: string;
+            }>;
+          };
+          settingsSchema?: Array<{
+            key: string;
+            type: string;
+            title: string;
+            description?: string;
+            placeholder?: string;
+            required?: boolean;
+            defaultValue?: string | boolean | number;
+            options?: Array<{
+              value: string;
+              label: string;
+              description?: string;
+            }>;
+          }>;
+          secretSlots?: Array<{
+            key: string;
+            title: string;
+            description?: string;
+            required?: boolean;
+          }>;
         };
         installedAtUnixMs: number;
         archiveFileName?: string;
@@ -128,11 +169,49 @@ interface CliHostInternalModule {
         author?: string;
         homepage?: string;
         main?: string;
+        activationEvents?: string[];
+        requestedCapabilities?: string[];
+        contributes?: {
+          tools?: Array<{
+            name: string;
+            description: string;
+            inputSchema: JsonObject;
+            outputSchema?: JsonObject;
+            approvalMode?: string;
+            executionMode?: string;
+          }>;
+        };
+        settingsSchema?: Array<{
+          key: string;
+          type: string;
+          title: string;
+          description?: string;
+          placeholder?: string;
+          required?: boolean;
+          defaultValue?: string | boolean | number;
+          options?: Array<{
+            value: string;
+            label: string;
+            description?: string;
+          }>;
+        }>;
+        secretSlots?: Array<{
+          key: string;
+          title: string;
+          description?: string;
+          required?: boolean;
+        }>;
       };
       installedAtUnixMs: number;
       archiveFileName?: string;
     }>;
     remove(id: string): Promise<void>;
+    dispatchEvent(request: {
+      event: { type: string; detail?: Record<string, unknown> };
+      host: unknown;
+      logger?: Pick<Console, 'error' | 'log'>;
+      targetExtensionIds?: readonly string[];
+    }): Promise<void>;
   };
   resolveInstructionPaths?: (context: { workspaceRoot: string; spiritDataDir: string }) => {
     rulesStateFile: string;
@@ -141,10 +220,13 @@ interface CliHostInternalModule {
   saveToggleState?: (filePath: string, state: { enabledOverrides?: Record<string, boolean> }) => Promise<void>;
 }
 
+type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
+
 interface CliHostInternalState {
   module: CliHostInternalModule;
   workspaceRoot: string;
   spiritDataDir: string;
+  extensionManager?: CliHostExtensionManager;
 }
 
 let cliHostInternal: CliHostInternalState | undefined;
@@ -176,6 +258,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   if (!modulePath || !spiritDataDir) {
     cliHostInternal = undefined;
     toolExecutor.setLocalHostService(undefined);
+    toolExecutor.setExtensionToolDefinitions([]);
     return undefined;
   }
 
@@ -185,17 +268,34 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
 
   const loaded = await import(pathToFileURL(modulePath).href);
   const module = loaded as unknown as CliHostInternalModule;
+  const extensionManager =
+    typeof module.createHostExtensionManager === 'function'
+      ? module.createHostExtensionManager({ spiritDataDir })
+      : undefined;
+  const serviceOptions = {
+    ...(typeof module.createNoopMcpAdapter === 'function'
+      ? { mcp: module.createNoopMcpAdapter() }
+      : {}),
+    ...(extensionManager
+      ? {
+          extensions: {
+            manager: extensionManager,
+            getHost: () => ({}),
+            logger: console,
+          },
+        }
+      : {}),
+  };
   const service = new module.NodeHostToolService(
     { workspaceRoot, spiritDataDir },
-    typeof module.createNoopMcpAdapter === 'function'
-      ? { mcp: module.createNoopMcpAdapter() }
-      : undefined,
+    Object.keys(serviceOptions).length > 0 ? serviceOptions : undefined,
   );
   toolExecutor.setLocalHostService(service);
   cliHostInternal = {
     module,
     workspaceRoot,
     spiritDataDir,
+    ...(extensionManager ? { extensionManager } : {}),
   };
   return cliHostInternal;
 }
@@ -218,6 +318,39 @@ async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolea
   planMetadata = metadata.planMetadata;
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   return true;
+}
+
+async function refreshExtensionToolDefinitions(
+  explicitDefinitions?: JsonValue[],
+): Promise<void> {
+  if (Array.isArray(explicitDefinitions)) {
+    toolExecutor.setExtensionToolDefinitions(explicitDefinitions);
+    return;
+  }
+
+  const hostInternal = cliHostInternal;
+  if (!hostInternal?.extensionManager) {
+    toolExecutor.setExtensionToolDefinitions([]);
+    return;
+  }
+
+  const manager = hostInternal.extensionManager;
+  const installedExtensions = await manager.list();
+  const contributedTools = installedExtensions.flatMap((item) => {
+    if (!item.manifest.requestedCapabilities?.includes('tool-definitions')) {
+      return [];
+    }
+
+    return (item.manifest.contributes?.tools ?? []).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }));
+  });
+
+  toolExecutor.setExtensionToolDefinitions(
+    buildContributedHostToolDefinitions(contributedTools),
+  );
 }
 
 async function requireCliHostInternal(): Promise<CliHostInternalState> {
@@ -251,6 +384,36 @@ function serializeHostExtension(item: {
     author?: string;
     homepage?: string;
     main?: string;
+    activationEvents?: string[];
+    requestedCapabilities?: string[];
+    contributes?: {
+      tools?: Array<{
+        name: string;
+        description: string;
+        approvalMode?: string;
+        executionMode?: string;
+      }>;
+    };
+    settingsSchema?: Array<{
+      key: string;
+      type: string;
+      title: string;
+      description?: string;
+      placeholder?: string;
+      required?: boolean;
+      defaultValue?: string | boolean | number;
+      options?: Array<{
+        value: string;
+        label: string;
+        description?: string;
+      }>;
+    }>;
+    secretSlots?: Array<{
+      key: string;
+      title: string;
+      description?: string;
+      required?: boolean;
+    }>;
   };
   installedAtUnixMs: number;
   archiveFileName?: string;
@@ -263,6 +426,56 @@ function serializeHostExtension(item: {
     ...(item.manifest.author ? { author: item.manifest.author } : {}),
     ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
     ...(item.manifest.main ? { main: item.manifest.main } : {}),
+    ...(item.manifest.activationEvents?.length
+      ? { activationEvents: [...item.manifest.activationEvents] }
+      : {}),
+    ...(item.manifest.requestedCapabilities?.length
+      ? { requestedCapabilities: [...item.manifest.requestedCapabilities] }
+      : {}),
+    ...(item.manifest.contributes?.tools?.length
+      ? {
+          contributes: {
+            tools: item.manifest.contributes.tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+            })),
+          },
+        }
+      : {}),
+    ...(item.manifest.settingsSchema?.length
+      ? {
+          settingsSchema: item.manifest.settingsSchema.map((setting) => ({
+            key: setting.key,
+            type: setting.type,
+            title: setting.title,
+            ...(setting.description ? { description: setting.description } : {}),
+            ...(setting.placeholder ? { placeholder: setting.placeholder } : {}),
+            ...(setting.required !== undefined ? { required: setting.required } : {}),
+            ...(setting.defaultValue !== undefined ? { defaultValue: setting.defaultValue } : {}),
+            ...(setting.options?.length
+              ? {
+                  options: setting.options.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                    ...(option.description ? { description: option.description } : {}),
+                  })),
+                }
+              : {}),
+          })),
+        }
+      : {}),
+    ...(item.manifest.secretSlots?.length
+      ? {
+          secretSlots: item.manifest.secretSlots.map((slot) => ({
+            key: slot.key,
+            title: slot.title,
+            ...(slot.description ? { description: slot.description } : {}),
+            ...(slot.required !== undefined ? { required: slot.required } : {}),
+          })),
+        }
+      : {}),
     ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
     installedAtUnixMs: item.installedAtUnixMs,
   };
@@ -270,13 +483,81 @@ function serializeHostExtension(item: {
 
 async function requireCliExtensionManager() {
   const hostInternal = await requireCliHostInternal();
-  if (!hostInternal.module.createHostExtensionManager) {
+  if (!hostInternal.extensionManager) {
     throw new Error('host-internal 模块未导出扩展管理接口。');
   }
 
-  return hostInternal.module.createHostExtensionManager({
-    spiritDataDir: hostInternal.spiritDataDir,
-  });
+  return hostInternal.extensionManager;
+}
+
+/** 与 NodeHostToolService 传入的 getHost() 一致，供扩展 activate/onEvent 使用。 */
+function cliExtensionHostApi(): Record<string, never> {
+  return {};
+}
+
+async function dispatchCliExtensionEvent(
+  event: { type: string; detail?: Record<string, unknown> },
+  options: { targetExtensionIds?: readonly string[] } = {},
+): Promise<void> {
+  const hostInternal = cliHostInternal;
+  if (!hostInternal?.extensionManager) {
+    return;
+  }
+
+  try {
+    await hostInternal.extensionManager.dispatchEvent({
+      event,
+      host: cliExtensionHostApi(),
+      logger: console,
+      ...(options.targetExtensionIds ? { targetExtensionIds: options.targetExtensionIds } : {}),
+    });
+  } catch (error) {
+    logBridge('dispatchCliExtensionEvent failed', {
+      type: event.type,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function forwardRuntimeEventsToExtensions(events: RuntimeEvent<JsonValue>[]): Promise<void> {
+  for (const ev of events) {
+    if (ev.kind === 'tool-call-started') {
+      await dispatchCliExtensionEvent({
+        type: 'onToolCall',
+        detail: {
+          toolCallId: ev.toolCallId,
+          toolName: ev.toolName,
+          request: ev.request as JsonObject,
+        },
+      });
+      continue;
+    }
+    if (ev.kind === 'approval-resolved') {
+      await dispatchCliExtensionEvent({
+        type: 'onApprovalResolved',
+        detail: {
+          toolCallId: ev.toolCallId,
+          toolName: ev.toolName,
+          decisionKind: ev.decisionKind,
+          request: ev.request as JsonObject,
+        },
+      });
+      continue;
+    }
+    if (ev.kind === 'tool-execution-finished') {
+      const ex = ev.execution;
+      await dispatchCliExtensionEvent({
+        type: 'onToolResult',
+        detail: {
+          toolCallId: ex.toolCallId,
+          toolName: ex.toolName,
+          output: ex.output,
+          failed: ex.failed,
+          request: ex.request as JsonObject,
+        },
+      });
+    }
+  }
 }
 
 async function createRuntime(
@@ -371,6 +652,11 @@ async function drainEvents(): Promise<DrainEventsResult> {
       count: events.length,
       kinds: events.map((event) => event.kind),
     });
+    void forwardRuntimeEventsToExtensions(events).catch((error) => {
+      logBridge('forwardRuntimeEventsToExtensions failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
   return {
     events,
@@ -383,6 +669,9 @@ peer.on('runtime.init', async (rawParams) => {
   logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
   const loadedFromInternal = await reloadHostMetadataFromInternal(params.planMetadata?.planMode ?? false);
+  await refreshExtensionToolDefinitions(
+    Array.isArray(params.extensionToolDefinitions) ? params.extensionToolDefinitions : undefined,
+  );
   if (!loadedFromInternal) {
     enabledRules = [...(params.enabledRules ?? [])];
     enabledSkillCatalog = [...(params.enabledSkillCatalog ?? [])];
@@ -390,6 +679,12 @@ peer.on('runtime.init', async (rawParams) => {
   }
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
+  const workspaceRoot =
+    params.transportConfig.workspaceRoot?.trim() || currentWorkspaceRoot();
+  await dispatchCliExtensionEvent({
+    type: 'onStartup',
+    detail: { workspaceRoot },
+  });
   return buildSnapshot(runtime);
 });
 
@@ -398,6 +693,7 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   logBridge('runtime.replaceConfig', { model: params.transportConfig.model });
   transportConfig = params.transportConfig;
   await reloadHostMetadataFromInternal(planMetadata?.planMode ?? false);
+  await refreshExtensionToolDefinitions();
   const target = requireRuntime();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   return buildSnapshot(runtime);
@@ -507,6 +803,18 @@ peer.on('hostInternal.importExtension', async (rawParams) => {
     archiveBase64,
     ...(params.fileName?.trim() ? { fileName: params.fileName.trim() } : {}),
   });
+  await refreshExtensionToolDefinitions();
+  await dispatchCliExtensionEvent(
+    {
+      type: 'onExtensionInstalled',
+      detail: {
+        extensionId: item.id,
+        name: item.manifest.name,
+        version: item.manifest.version,
+      },
+    },
+    { targetExtensionIds: [item.id] },
+  );
   return serializeHostExtension(item);
 });
 
@@ -519,6 +827,7 @@ peer.on('hostInternal.deleteExtension', async (rawParams) => {
 
   const manager = await requireCliExtensionManager();
   await manager.remove(id);
+  await refreshExtensionToolDefinitions();
   return { id };
 });
 
@@ -537,6 +846,13 @@ peer.on('runtime.replaceHistory', async (rawParams) => {
 
 peer.on('runtime.replaceFromArchive', async (archive) => {
   requireRuntime().replaceFromArchive(archive as never);
+  await dispatchCliExtensionEvent({
+    type: 'onSessionOpened',
+    detail: {
+      filePath: '',
+      displayName: 'loaded-from-archive',
+    },
+  });
   return buildSnapshot(requireRuntime());
 });
 
@@ -559,6 +875,15 @@ peer.on('runtime.submitUserTurn', async (rawParams) => {
     mcpState: toolExecutor.mcpStatusSnapshot().state,
     cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
   });
+  const trimmed = params.text.trim();
+  const displayText = params.text;
+  await dispatchCliExtensionEvent({
+    type: 'onUserMessage',
+    detail: {
+      text: trimmed,
+      displayText,
+    },
+  });
   await requireRuntime().startUserTurnStreaming(params.text, params.explicitImages ?? []);
   return null;
 });
@@ -569,6 +894,15 @@ peer.on('runtime.startUserTurnStreaming', async (rawParams) => {
   logBridge('runtime.startUserTurnStreaming', {
     chars: Array.from(params.text).length,
     explicitImages: params.explicitImages?.length ?? 0,
+  });
+  const trimmed = params.text.trim();
+  const displayText = params.text;
+  await dispatchCliExtensionEvent({
+    type: 'onUserMessage',
+    detail: {
+      text: trimmed,
+      displayText,
+    },
   });
   await requireRuntime().startUserTurnStreaming(params.text, params.explicitImages ?? []);
   return null;

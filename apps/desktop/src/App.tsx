@@ -1055,6 +1055,8 @@ export default function App() {
               onImportExtension={runtime.importExtension}
               onDeleteExtension={runtime.deleteExtension}
               onRunExtension={runtime.runExtension}
+              onUpdateExtensionSettings={runtime.updateExtensionSettings}
+              onUpdateExtensionSecret={runtime.updateExtensionSecret}
               onDeleteMcpServer={runtime.deleteMcpServer}
               onInspectMcpServer={runtime.inspectMcpServer}
               onCreateSkill={runtime.createSkill}

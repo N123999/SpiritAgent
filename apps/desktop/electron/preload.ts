@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   runExtension(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'runExtension', { request });
   },
+  updateExtensionSettings(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'updateExtensionSettings', { request });
+  },
+  updateExtensionSecret(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'updateExtensionSecret', { request });
+  },
   createSkill(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'createSkill', { request });
   },
