@@ -17,6 +17,7 @@ import {
 const EXTENSION_SCHEMA_VERSION = 1;
 const EXTENSION_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const TEMP_DIR_PREFIX = 'spirit-extension-';
+const EXTENSION_FIELD_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 
 export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onStartup',
@@ -26,12 +27,93 @@ export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onUserMessage',
 ] as const;
 
+export const SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES = [
+  'tool-definitions',
+  'tool-execution',
+  'approval-flow',
+  'questions-flow',
+  'settings',
+  'secret-storage',
+  'structured-results',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES = [
+  'allowed',
+  'need-approval',
+  'need-questions',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES = [
+  'foreground',
+  'background',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_SETTING_TYPES = [
+  'string',
+  'boolean',
+  'number',
+  'select',
+] as const;
+
 export type HostExtensionActivationEventName =
   (typeof SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS)[number];
+
+export type HostExtensionRequestedCapability =
+  (typeof SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES)[number];
+
+export type HostExtensionToolApprovalMode =
+  (typeof SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES)[number];
+
+export type HostExtensionToolExecutionMode =
+  (typeof SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES)[number];
+
+export type HostExtensionSettingType =
+  (typeof SUPPORTED_HOST_EXTENSION_SETTING_TYPES)[number];
+
+export type HostExtensionJsonSchema = Record<string, unknown>;
+
+export type HostExtensionSettingDefaultValue = string | boolean | number;
 
 export interface HostExtensionEvent {
   type: HostExtensionActivationEventName;
   detail?: Record<string, unknown>;
+}
+
+export interface HostExtensionContributedToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: HostExtensionJsonSchema;
+  outputSchema?: HostExtensionJsonSchema;
+  approvalMode?: HostExtensionToolApprovalMode;
+  executionMode?: HostExtensionToolExecutionMode;
+}
+
+export interface HostExtensionContributionSet {
+  tools?: HostExtensionContributedToolDefinition[];
+}
+
+export interface HostExtensionSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface HostExtensionSettingDefinition {
+  key: string;
+  type: HostExtensionSettingType;
+  title: string;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: HostExtensionSettingDefaultValue;
+  options?: HostExtensionSettingOption[];
+}
+
+export interface HostExtensionSecretSlot {
+  key: string;
+  title: string;
+  description?: string;
+  required?: boolean;
 }
 
 export interface HostExtensionManifest {
@@ -44,6 +126,10 @@ export interface HostExtensionManifest {
   homepage?: string;
   main?: string;
   activationEvents?: HostExtensionActivationEventName[];
+  requestedCapabilities?: HostExtensionRequestedCapability[];
+  contributes?: HostExtensionContributionSet;
+  settingsSchema?: HostExtensionSettingDefinition[];
+  secretSlots?: HostExtensionSecretSlot[];
 }
 
 export interface HostExtensionRegistryEntry {
@@ -486,6 +572,10 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
   const homepage = optionalStringField(parsed.homepage);
   const main = optionalStringField(parsed.main);
   const activationEvents = optionalActivationEventsField(parsed.activationEvents);
+  const requestedCapabilities = optionalRequestedCapabilitiesField(parsed.requestedCapabilities);
+  const contributes = optionalContributionSetField(parsed.contributes);
+  const settingsSchema = optionalSettingsSchemaField(parsed.settingsSchema);
+  const secretSlots = optionalSecretSlotsField(parsed.secretSlots);
 
   if (main) {
     assertSafeRelativePath(main, 'main');
@@ -501,6 +591,10 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
     ...(homepage ? { homepage } : {}),
     ...(main ? { main } : {}),
     ...(activationEvents.length > 0 ? { activationEvents } : {}),
+    ...(requestedCapabilities.length > 0 ? { requestedCapabilities } : {}),
+    ...(contributes ? { contributes } : {}),
+    ...(settingsSchema.length > 0 ? { settingsSchema } : {}),
+    ...(secretSlots.length > 0 ? { secretSlots } : {}),
   };
 }
 
@@ -751,6 +845,269 @@ function optionalActivationEventsField(value: unknown): HostExtensionActivationE
   }
 
   return result;
+}
+
+function optionalRequestedCapabilitiesField(value: unknown): HostExtensionRequestedCapability[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: HostExtensionRequestedCapability[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      throw new Error('扩展 manifest 字段 requestedCapabilities 必须是字符串数组。');
+    }
+    const normalized = entry.trim() as HostExtensionRequestedCapability;
+    if (!SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES.includes(normalized)) {
+      throw new Error(`不支持的扩展 capability：${entry}`);
+    }
+    if (!result.includes(normalized)) {
+      result.push(normalized);
+    }
+  }
+
+  return result;
+}
+
+function optionalContributionSetField(value: unknown): HostExtensionContributionSet | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const tools = optionalContributedToolsField(value.tools);
+  if (tools.length === 0) {
+    return undefined;
+  }
+
+  return { tools };
+}
+
+function optionalContributedToolsField(value: unknown): HostExtensionContributedToolDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => parseContributedToolDefinition(entry, index));
+}
+
+function parseContributedToolDefinition(
+  value: unknown,
+  index: number,
+): HostExtensionContributedToolDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 contributes.tools[${index}] 必须是对象。`);
+  }
+
+  const name = stringField(value.name, `contributes.tools[${index}].name`);
+  if (!EXTENSION_FIELD_KEY_PATTERN.test(name)) {
+    throw new Error(`扩展工具名非法：${name}`);
+  }
+
+  const description = stringField(value.description, `contributes.tools[${index}].description`);
+  const inputSchema = schemaField(value.inputSchema, `contributes.tools[${index}].inputSchema`);
+  const outputSchema = optionalSchemaField(value.outputSchema, `contributes.tools[${index}].outputSchema`);
+  const approvalMode = optionalEnumField(
+    value.approvalMode,
+    `contributes.tools[${index}].approvalMode`,
+    SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES,
+  );
+  const executionMode = optionalEnumField(
+    value.executionMode,
+    `contributes.tools[${index}].executionMode`,
+    SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES,
+  );
+
+  return {
+    name,
+    description,
+    inputSchema,
+    ...(outputSchema ? { outputSchema } : {}),
+    ...(approvalMode ? { approvalMode } : {}),
+    ...(executionMode ? { executionMode } : {}),
+  };
+}
+
+function optionalSettingsSchemaField(value: unknown): HostExtensionSettingDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => parseSettingDefinition(entry, index));
+}
+
+function parseSettingDefinition(value: unknown, index: number): HostExtensionSettingDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 settingsSchema[${index}] 必须是对象。`);
+  }
+
+  const key = stringField(value.key, `settingsSchema[${index}].key`);
+  if (!EXTENSION_FIELD_KEY_PATTERN.test(key)) {
+    throw new Error(`扩展设置键非法：${key}`);
+  }
+
+  const type = enumField(
+    value.type,
+    `settingsSchema[${index}].type`,
+    SUPPORTED_HOST_EXTENSION_SETTING_TYPES,
+  );
+  const title = stringField(value.title, `settingsSchema[${index}].title`);
+  const description = optionalStringField(value.description);
+  const placeholder = optionalStringField(value.placeholder);
+  const required = optionalBooleanField(value.required);
+  const defaultValue = optionalSettingDefaultValueField(
+    value.defaultValue,
+    `settingsSchema[${index}].defaultValue`,
+    type,
+  );
+  const options = optionalSettingOptionsField(value.options, index, type);
+
+  return {
+    key,
+    type,
+    title,
+    ...(description ? { description } : {}),
+    ...(placeholder ? { placeholder } : {}),
+    ...(required !== undefined ? { required } : {}),
+    ...(defaultValue !== undefined ? { defaultValue } : {}),
+    ...(options.length > 0 ? { options } : {}),
+  };
+}
+
+function optionalSettingOptionsField(
+  value: unknown,
+  settingIndex: number,
+  type: HostExtensionSettingType,
+): HostExtensionSettingOption[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (type !== 'select') {
+    throw new Error(`只有 select 类型的设置项允许声明 options：settingsSchema[${settingIndex}]`);
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`扩展 manifest 字段 settingsSchema[${settingIndex}].options 必须是数组。`);
+  }
+
+  return value.map((entry, optionIndex) => {
+    if (!isRecord(entry)) {
+      throw new Error(`扩展 manifest 字段 settingsSchema[${settingIndex}].options[${optionIndex}] 必须是对象。`);
+    }
+    const optionValue = stringField(
+      entry.value,
+      `settingsSchema[${settingIndex}].options[${optionIndex}].value`,
+    );
+    const label = stringField(
+      entry.label,
+      `settingsSchema[${settingIndex}].options[${optionIndex}].label`,
+    );
+    const description = optionalStringField(entry.description);
+    return {
+      value: optionValue,
+      label,
+      ...(description ? { description } : {}),
+    };
+  });
+}
+
+function optionalSettingDefaultValueField(
+  value: unknown,
+  fieldName: string,
+  type: HostExtensionSettingType,
+): HostExtensionSettingDefaultValue | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  switch (type) {
+    case 'string':
+    case 'select':
+      if (typeof value !== 'string') {
+        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是字符串。`);
+      }
+      return value;
+    case 'boolean':
+      if (typeof value !== 'boolean') {
+        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是布尔值。`);
+      }
+      return value;
+    case 'number':
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是数字。`);
+      }
+      return value;
+  }
+}
+
+function optionalSecretSlotsField(value: unknown): HostExtensionSecretSlot[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`扩展 manifest 字段 secretSlots[${index}] 必须是对象。`);
+    }
+    const key = stringField(entry.key, `secretSlots[${index}].key`);
+    if (!EXTENSION_FIELD_KEY_PATTERN.test(key)) {
+      throw new Error(`扩展 secret slot 键非法：${key}`);
+    }
+    const title = stringField(entry.title, `secretSlots[${index}].title`);
+    const description = optionalStringField(entry.description);
+    const required = optionalBooleanField(entry.required);
+    return {
+      key,
+      title,
+      ...(description ? { description } : {}),
+      ...(required !== undefined ? { required } : {}),
+    };
+  });
+}
+
+function optionalBooleanField(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function schemaField(value: unknown, fieldName: string): HostExtensionJsonSchema {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是对象。`);
+  }
+  return value;
+}
+
+function optionalSchemaField(
+  value: unknown,
+  fieldName: string,
+): HostExtensionJsonSchema | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return schemaField(value, fieldName);
+}
+
+function enumField<T extends readonly string[]>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: T,
+): T[number] {
+  if (typeof value !== 'string') {
+    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是字符串。`);
+  }
+  const normalized = value.trim() as T[number];
+  if (!allowedValues.includes(normalized)) {
+    throw new Error(`扩展 manifest 字段 ${fieldName} 取值非法：${value}`);
+  }
+  return normalized;
+}
+
+function optionalEnumField<T extends readonly string[]>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: T,
+): T[number] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return enumField(value, fieldName, allowedValues);
 }
 
 function numberField(value: unknown, fieldName: string): number {

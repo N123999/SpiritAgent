@@ -111,6 +111,36 @@ interface CliHostInternalModule {
           author?: string;
           homepage?: string;
           main?: string;
+          activationEvents?: string[];
+          requestedCapabilities?: string[];
+          contributes?: {
+            tools?: Array<{
+              name: string;
+              description: string;
+              approvalMode?: string;
+              executionMode?: string;
+            }>;
+          };
+          settingsSchema?: Array<{
+            key: string;
+            type: string;
+            title: string;
+            description?: string;
+            placeholder?: string;
+            required?: boolean;
+            defaultValue?: string | boolean | number;
+            options?: Array<{
+              value: string;
+              label: string;
+              description?: string;
+            }>;
+          }>;
+          secretSlots?: Array<{
+            key: string;
+            title: string;
+            description?: string;
+            required?: boolean;
+          }>;
         };
         installedAtUnixMs: number;
         archiveFileName?: string;
@@ -128,6 +158,36 @@ interface CliHostInternalModule {
         author?: string;
         homepage?: string;
         main?: string;
+        activationEvents?: string[];
+        requestedCapabilities?: string[];
+        contributes?: {
+          tools?: Array<{
+            name: string;
+            description: string;
+            approvalMode?: string;
+            executionMode?: string;
+          }>;
+        };
+        settingsSchema?: Array<{
+          key: string;
+          type: string;
+          title: string;
+          description?: string;
+          placeholder?: string;
+          required?: boolean;
+          defaultValue?: string | boolean | number;
+          options?: Array<{
+            value: string;
+            label: string;
+            description?: string;
+          }>;
+        }>;
+        secretSlots?: Array<{
+          key: string;
+          title: string;
+          description?: string;
+          required?: boolean;
+        }>;
       };
       installedAtUnixMs: number;
       archiveFileName?: string;
@@ -251,6 +311,36 @@ function serializeHostExtension(item: {
     author?: string;
     homepage?: string;
     main?: string;
+    activationEvents?: string[];
+    requestedCapabilities?: string[];
+    contributes?: {
+      tools?: Array<{
+        name: string;
+        description: string;
+        approvalMode?: string;
+        executionMode?: string;
+      }>;
+    };
+    settingsSchema?: Array<{
+      key: string;
+      type: string;
+      title: string;
+      description?: string;
+      placeholder?: string;
+      required?: boolean;
+      defaultValue?: string | boolean | number;
+      options?: Array<{
+        value: string;
+        label: string;
+        description?: string;
+      }>;
+    }>;
+    secretSlots?: Array<{
+      key: string;
+      title: string;
+      description?: string;
+      required?: boolean;
+    }>;
   };
   installedAtUnixMs: number;
   archiveFileName?: string;
@@ -263,6 +353,56 @@ function serializeHostExtension(item: {
     ...(item.manifest.author ? { author: item.manifest.author } : {}),
     ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
     ...(item.manifest.main ? { main: item.manifest.main } : {}),
+    ...(item.manifest.activationEvents?.length
+      ? { activationEvents: [...item.manifest.activationEvents] }
+      : {}),
+    ...(item.manifest.requestedCapabilities?.length
+      ? { requestedCapabilities: [...item.manifest.requestedCapabilities] }
+      : {}),
+    ...(item.manifest.contributes?.tools?.length
+      ? {
+          contributes: {
+            tools: item.manifest.contributes.tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+            })),
+          },
+        }
+      : {}),
+    ...(item.manifest.settingsSchema?.length
+      ? {
+          settingsSchema: item.manifest.settingsSchema.map((setting) => ({
+            key: setting.key,
+            type: setting.type,
+            title: setting.title,
+            ...(setting.description ? { description: setting.description } : {}),
+            ...(setting.placeholder ? { placeholder: setting.placeholder } : {}),
+            ...(setting.required !== undefined ? { required: setting.required } : {}),
+            ...(setting.defaultValue !== undefined ? { defaultValue: setting.defaultValue } : {}),
+            ...(setting.options?.length
+              ? {
+                  options: setting.options.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                    ...(option.description ? { description: option.description } : {}),
+                  })),
+                }
+              : {}),
+          })),
+        }
+      : {}),
+    ...(item.manifest.secretSlots?.length
+      ? {
+          secretSlots: item.manifest.secretSlots.map((slot) => ({
+            key: slot.key,
+            title: slot.title,
+            ...(slot.description ? { description: slot.description } : {}),
+            ...(slot.required !== undefined ? { required: slot.required } : {}),
+          })),
+        }
+      : {}),
     ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
     installedAtUnixMs: item.installedAtUnixMs,
   };

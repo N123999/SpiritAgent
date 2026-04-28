@@ -66,6 +66,46 @@ export interface RunExtensionRequest {
   id: string;
 }
 
+export type DesktopExtensionToolApprovalMode =
+  | 'allowed'
+  | 'need-approval'
+  | 'need-questions';
+
+export type DesktopExtensionToolExecutionMode = 'foreground' | 'background';
+
+export interface DesktopExtensionContributedTool {
+  name: string;
+  description: string;
+  approvalMode?: DesktopExtensionToolApprovalMode;
+  executionMode?: DesktopExtensionToolExecutionMode;
+}
+
+export type DesktopExtensionSettingType = 'string' | 'boolean' | 'number' | 'select';
+
+export interface DesktopExtensionSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface DesktopExtensionSettingDefinition {
+  key: string;
+  type: DesktopExtensionSettingType;
+  title: string;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: string | boolean | number;
+  options?: DesktopExtensionSettingOption[];
+}
+
+export interface DesktopExtensionSecretSlot {
+  key: string;
+  title: string;
+  description?: string;
+  required?: boolean;
+}
+
 export interface DesktopExtensionListItem {
   id: string;
   name: string;
@@ -75,6 +115,10 @@ export interface DesktopExtensionListItem {
   homepage?: string;
   main?: string;
   activationEvents?: string[];
+  requestedCapabilities?: string[];
+  contributedTools?: DesktopExtensionContributedTool[];
+  settingsSchema?: DesktopExtensionSettingDefinition[];
+  secretSlots?: DesktopExtensionSecretSlot[];
   archiveFileName?: string;
   installedAtUnixMs: number;
 }

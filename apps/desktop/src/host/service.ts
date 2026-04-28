@@ -1502,6 +1502,53 @@ description: ${frontmatterDescription}
       ...(item.manifest.activationEvents?.length
         ? { activationEvents: [...item.manifest.activationEvents] }
         : {}),
+      ...(item.manifest.requestedCapabilities?.length
+        ? { requestedCapabilities: [...item.manifest.requestedCapabilities] }
+        : {}),
+      ...(item.manifest.contributes?.tools?.length
+        ? {
+            contributedTools: item.manifest.contributes.tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+            })),
+          }
+        : {}),
+      ...(item.manifest.settingsSchema?.length
+        ? {
+            settingsSchema: item.manifest.settingsSchema.map((setting) => ({
+              key: setting.key,
+              type: setting.type,
+              title: setting.title,
+              ...(setting.description ? { description: setting.description } : {}),
+              ...(setting.placeholder ? { placeholder: setting.placeholder } : {}),
+              ...(setting.required !== undefined ? { required: setting.required } : {}),
+              ...(setting.defaultValue !== undefined
+                ? { defaultValue: setting.defaultValue }
+                : {}),
+              ...(setting.options?.length
+                ? {
+                    options: setting.options.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                      ...(option.description ? { description: option.description } : {}),
+                    })),
+                  }
+                : {}),
+            })),
+          }
+        : {}),
+      ...(item.manifest.secretSlots?.length
+        ? {
+            secretSlots: item.manifest.secretSlots.map((slot) => ({
+              key: slot.key,
+              title: slot.title,
+              ...(slot.description ? { description: slot.description } : {}),
+              ...(slot.required !== undefined ? { required: slot.required } : {}),
+            })),
+          }
+        : {}),
       ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
       installedAtUnixMs: item.installedAtUnixMs,
     }));
