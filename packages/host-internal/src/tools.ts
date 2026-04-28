@@ -20,6 +20,11 @@ import {
   type HostRecordedFileChange,
   type HostToolRequestMetadata,
 } from './file-rewind.js';
+import {
+  type HostExtensionManager,
+  type HostExtensionToolApprovalMode,
+  type HostExtensionToolExecutionMode,
+} from './extensions.js';
 import { resolveInstructionPaths, type InstructionDiscoveryContext } from './storage.js';
 
 const exec = promisify(execCallback);
@@ -120,6 +125,15 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       title?: string;
       questions: QuestionSpec[];
     }
+  | {
+      name: 'extension_tool';
+      extension_id: string;
+      tool_name: string;
+      arguments: HostJsonObject;
+      approval_mode?: HostExtensionToolApprovalMode;
+      execution_mode?: HostExtensionToolExecutionMode;
+      questions_result?: HostJsonValue;
+    }
   | { name: 'create_file'; path: string; content: string }
   | { name: 'edit_file'; path: string; old_text: string; new_text: string }
   | { name: 'delete_file'; path: string };
@@ -147,6 +161,12 @@ export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionS
   authorize(request: HostToolRequest<QuestionSpec>): Promise<HostAuthorizationDecision<QuestionSpec>>;
   trust(target: string): Promise<void>;
   execute(request: HostToolRequest<QuestionSpec>): Promise<string>;
+  attachRequestMetadata?(
+    request: HostToolRequest<QuestionSpec>,
+    metadata: HostToolRequestMetadata,
+  ): HostToolRequest<QuestionSpec>;
+  shouldExecuteInBackground?(request: HostToolRequest<QuestionSpec>): boolean;
+  backgroundStatusText?(request: HostToolRequest<QuestionSpec>): string | undefined;
   startMcpBackgroundRefresh(): void;
   mcpStatusSnapshot(): HostMcpStatusSnapshot;
   addMcpServer(name: string, config: HostJsonValue): Promise<string>;
@@ -177,6 +197,12 @@ export interface HostMcpAdapter {
   listCachedPrompts(name: string): Promise<unknown[]>;
   listPrompts(name: string): Promise<unknown[]>;
   getPrompt(name: string, prompt: string, argsJson?: string): Promise<HostJsonValue>;
+}
+
+export interface HostExtensionRuntimeBinding<THostApi> {
+  manager: HostExtensionManager;
+  getHost(): THostApi;
+  logger?: Pick<Console, 'error' | 'log'>;
 }
 
 interface ToolPermissionStore {
@@ -260,18 +286,24 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly permissionStorePath: string;
   private readonly mcp: HostMcpAdapter;
   private readonly fileChangeObserver: HostFileChangeObserver | undefined;
+  private readonly extensions: HostExtensionRuntimeBinding<unknown> | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
 
   constructor(
     private readonly context: InstructionDiscoveryContext,
-    options: { mcp?: HostMcpAdapter; fileChangeObserver?: HostFileChangeObserver } = {},
+    options: {
+      mcp?: HostMcpAdapter;
+      fileChangeObserver?: HostFileChangeObserver;
+      extensions?: HostExtensionRuntimeBinding<unknown>;
+    } = {},
   ) {
     this.workspaceRoot = path.resolve(context.workspaceRoot);
     this.spiritDataDir = path.resolve(context.spiritDataDir);
     this.permissionStorePath = path.join(this.spiritDataDir, PERMISSIONS_FILE);
     this.mcp = options.mcp ?? createNoopMcpAdapter();
     this.fileChangeObserver = options.fileChangeObserver;
+    this.extensions = options.extensions;
   }
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
@@ -408,6 +440,12 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           path: requiredString(parsed, 'path'),
         };
       default:
+        {
+          const extensionTool = await this.resolveExtensionToolRequest(name, parsed);
+          if (extensionTool) {
+            return extensionTool;
+          }
+        }
         throw new Error(`未知工具: ${name}`);
     }
   }
@@ -427,6 +465,17 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
             questions: request.questions,
           },
         };
+      case 'extension_tool':
+        if (request.approval_mode === 'need-questions') {
+          return buildExtensionQuestionsAuthorization(request) as HostAuthorizationDecision<QuestionSpec>;
+        }
+        if (request.approval_mode === 'need-approval') {
+          return {
+            kind: 'need-approval',
+            prompt: buildExtensionApprovalPrompt(request),
+          };
+        }
+        return { kind: 'allowed' };
       case 'run_shell_command': {
         const permissions = await this.loadPermissions();
         if ((permissions.trusted_shell_commands ?? []).includes(request.command)) {
@@ -514,6 +563,24 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         throw new Error('run_subagent 应由 Agent runtime 接管，不应落到宿主 ToolRuntime::execute');
       case 'ask_questions':
         throw new Error('ask_questions 应由运行时挂起并等待用户填写，不应直接执行');
+      case 'extension_tool':
+        if (!this.extensions) {
+          throw new Error('当前宿主未启用扩展工具执行。');
+        }
+        return this.extensions.manager.invokeTool({
+          extensionId: request.extension_id,
+          toolName: request.tool_name,
+          arguments: request.arguments,
+          host: this.extensions.getHost(),
+          ...(this.extensions.logger ? { logger: this.extensions.logger } : {}),
+          ...(typeof request.questions_result === 'object' && request.questions_result !== null
+            ? { questionsResult: request.questions_result }
+            : {}),
+          ...((() => {
+            const toolCallId = this.requestMetadata.get(request)?.toolCallId;
+            return toolCallId ? { toolCallId } : {};
+          })()),
+        });
       case 'create_file':
         return this.executeCreateFile(request);
       case 'edit_file':
@@ -531,6 +598,17 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       this.requestMetadata.set(request, metadata);
     }
     return request;
+  }
+
+  shouldExecuteInBackground(request: HostToolRequest<QuestionSpec>): boolean {
+    return request.name === 'extension_tool' && request.execution_mode === 'background';
+  }
+
+  backgroundStatusText(request: HostToolRequest<QuestionSpec>): string | undefined {
+    if (request.name !== 'extension_tool' || request.execution_mode !== 'background') {
+      return undefined;
+    }
+    return `扩展工具执行中: ${request.tool_name}`;
   }
 
   startMcpBackgroundRefresh(): void {
@@ -575,6 +653,29 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   async getMcpPrompt(name: string, prompt: string, argsJson?: string): Promise<HostJsonValue> {
     return this.mcp.getPrompt(name, prompt, argsJson);
+  }
+
+  private async resolveExtensionToolRequest(
+    name: string,
+    parsed: HostJsonObject,
+  ): Promise<HostToolRequest<QuestionSpec> | undefined> {
+    if (!this.extensions) {
+      return undefined;
+    }
+
+    const resolved = await this.extensions.manager.resolveTool(name);
+    if (!resolved) {
+      return undefined;
+    }
+
+    return {
+      name: 'extension_tool',
+      extension_id: resolved.extensionId,
+      tool_name: resolved.tool.name,
+      arguments: parsed,
+      ...(resolved.tool.approvalMode ? { approval_mode: resolved.tool.approvalMode } : {}),
+      ...(resolved.tool.executionMode ? { execution_mode: resolved.tool.executionMode } : {}),
+    };
   }
 
   private async loadPermissions(): Promise<ToolPermissionStore> {
@@ -1300,6 +1401,36 @@ function parseWebFetchUrl(url: string): string {
     throw new Error(`web_fetch 仅支持 http/https，当前 scheme: ${parsed.protocol.replace(':', '')}`);
   }
   return parsed.toString();
+}
+
+function buildExtensionApprovalPrompt<QuestionSpec>(
+  request: Extract<HostToolRequest<QuestionSpec>, { name: 'extension_tool' }>,
+): string {
+  const preview = truncateChars(JSON.stringify(request.arguments, null, 2), 1_200);
+  return `扩展工具需要确认\n扩展: ${request.extension_id}\n工具: ${request.tool_name}\n\n参数\n${preview}\n\n输入 y 允许一次，n 拒绝。`;
+}
+
+function buildExtensionQuestionsAuthorization<QuestionSpec>(
+  request: Extract<HostToolRequest<QuestionSpec>, { name: 'extension_tool' }>,
+): HostAuthorizationDecision<QuestionSpec> {
+  return {
+    kind: 'need-questions',
+    questions: {
+      title: `补充扩展工具执行信息: ${request.tool_name}`,
+      questions: [
+        {
+          id: 'execution_note',
+          title: '补充执行说明',
+          kind: 'text',
+          required: true,
+          options: [],
+          allowCustomInput: true,
+          customInputLabel: '说明',
+          customInputPlaceholder: '补充这次扩展工具调用需要携带的执行说明。',
+        } as QuestionSpec,
+      ],
+    },
+  };
 }
 
 function looksLikeHtml(raw: string): boolean {

@@ -13,6 +13,8 @@ import type {
   DesktopSnapshot,
   ImportExtensionRequest,
   RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   SubmitCreateSkillSlashRequest,
@@ -35,6 +37,8 @@ declare global {
     importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot>;
     deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot>;
     runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot>;
+    updateExtensionSettings(request: UpdateExtensionSettingsRequest): Promise<DesktopSnapshot>;
+    updateExtensionSecret(request: UpdateExtensionSecretRequest): Promise<DesktopSnapshot>;
     createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;

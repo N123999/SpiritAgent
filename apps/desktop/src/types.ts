@@ -66,6 +66,19 @@ export interface RunExtensionRequest {
   id: string;
 }
 
+export type DesktopExtensionSettingValue = string | boolean | number | null;
+
+export interface UpdateExtensionSettingsRequest {
+  id: string;
+  values: Record<string, DesktopExtensionSettingValue>;
+}
+
+export interface UpdateExtensionSecretRequest {
+  id: string;
+  key: string;
+  value?: string;
+}
+
 export type DesktopExtensionToolApprovalMode =
   | 'allowed'
   | 'need-approval'
@@ -106,6 +119,11 @@ export interface DesktopExtensionSecretSlot {
   required?: boolean;
 }
 
+export interface DesktopExtensionSecretStatus {
+  key: string;
+  configured: boolean;
+}
+
 export interface DesktopExtensionListItem {
   id: string;
   name: string;
@@ -118,7 +136,9 @@ export interface DesktopExtensionListItem {
   requestedCapabilities?: string[];
   contributedTools?: DesktopExtensionContributedTool[];
   settingsSchema?: DesktopExtensionSettingDefinition[];
+  settingsValues?: Record<string, DesktopExtensionSettingValue>;
   secretSlots?: DesktopExtensionSecretSlot[];
+  secretStatuses?: DesktopExtensionSecretStatus[];
   archiveFileName?: string;
   installedAtUnixMs: number;
 }

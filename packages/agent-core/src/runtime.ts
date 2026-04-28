@@ -768,6 +768,13 @@ export class AgentRuntime<
 
     this.pendingApproval = undefined;
     this.completedTurnResultStore = undefined;
+    this.emitEvent({
+      kind: 'approval-resolved',
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+      request: pending.request,
+      decisionKind: decision.kind,
+    });
 
     if (decision.kind === 'allow') {
       if (decision.persistTrust && pending.trustTarget !== undefined) {
@@ -954,6 +961,74 @@ export class AgentRuntime<
     const pending = this.pendingQuestions;
     this.pendingQuestions = undefined;
     this.completedTurnResultStore = undefined;
+
+    const continuedRequest = this.options.toolExecutor.continueAfterQuestions
+      ? await this.options.toolExecutor.continueAfterQuestions(pending.request, result)
+      : undefined;
+
+    if (continuedRequest !== undefined) {
+      const resumedState = pending.state;
+      if (this.options.toolExecutor.shouldExecuteInBackground?.(continuedRequest) ?? false) {
+        this.startBackgroundToolExecutionAsync(
+          pending.pendingUserInput,
+          resumedState,
+          continuedRequest,
+          pending.toolCallId,
+          pending.toolName,
+          pending.remainingCalls,
+          pending.turn,
+          pending.resumeAsStreaming,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
+
+      const execution = await this.performToolExecution(continuedRequest, pending.toolName);
+      const finished: RuntimeToolExecution<ToolRequest> = {
+        toolCallId: pending.toolCallId,
+        toolName: pending.toolName,
+        request: continuedRequest,
+        output: execution.output,
+        failed: execution.failed,
+      };
+      pending.turn.toolExecutions.push(finished);
+      this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
+
+      const resumedStateWithToolOutput = this.options.appendToolResultMessage(
+        resumedState,
+        pending.toolCallId,
+        execution.output,
+      );
+
+      if (pending.remainingCalls.length > 0) {
+        await this.processToolCallsAsync(
+          resumedStateWithToolOutput,
+          pending.pendingUserInput,
+          pending.remainingCalls,
+          pending.turn,
+          pending.resumeAsStreaming,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
+
+      if (pending.resumeAsStreaming) {
+        await this.startStreamingRound(
+          resumedStateWithToolOutput,
+          pending.pendingUserInput,
+          pending.turn,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
+
+      this.startToolAgentRoundAsync(
+        resumedStateWithToolOutput,
+        pending.pendingUserInput,
+        pending.turn,
+      );
+      return;
+    }
 
     const output = JSON.stringify(result);
     const questionsFinished: RuntimeToolExecution<ToolRequest> = {

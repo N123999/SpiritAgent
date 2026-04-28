@@ -10,6 +10,10 @@ import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
 import {
+  createFileExtensionStateStore,
+  type ExtensionManagementContext,
+  type ExtensionSettingValue,
+  type ExtensionStateStore,
   loadHostInstructionMetadata,
   resolveInstructionPaths,
   type HostInstructionMetadataSummary,
@@ -55,6 +59,10 @@ const KEYRING_GLOBAL_ACCOUNT = 'openai_api_key';
 
 function modelKeyAccount(modelName: string): string {
   return `model::${modelName}`;
+}
+
+function extensionSecretAccount(extensionId: string, key: string): string {
+  return `extension::${extensionId}::secret::${key}`;
 }
 
 export type RuleDiscoveryResult = HostRuleDiscoveryResult;
@@ -194,6 +202,48 @@ export async function removeModelApiKey(modelName: string): Promise<void> {
   } catch {
     /* 无条目时与 CLI 行为一致 */
   }
+}
+
+export function createDesktopExtensionStateStore(
+  context: ExtensionManagementContext = { spiritDataDir: spiritAgentDataDir() },
+): ExtensionStateStore {
+  const fileStore = createFileExtensionStateStore(context);
+
+  return {
+    loadSettings(extensionId) {
+      return fileStore.loadSettings(extensionId);
+    },
+    saveSettings(extensionId, values) {
+      return fileStore.saveSettings(extensionId, values);
+    },
+    async loadSecret(extensionId, key) {
+      try {
+        const value = new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).getPassword();
+        const trimmed = value?.trim();
+        return trimmed || undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    async saveSecret(extensionId, key, value) {
+      new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).setPassword(value.trim());
+    },
+    async deleteSecret(extensionId, key) {
+      try {
+        new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).deletePassword();
+      } catch {
+        /* 与模型 keyring 删除行为一致 */
+      }
+    },
+    async hasSecret(extensionId, key) {
+      try {
+        const value = new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).getPassword();
+        return Boolean(value?.trim());
+      } catch {
+        return false;
+      }
+    },
+  };
 }
 
 export async function loadHostMetadata(

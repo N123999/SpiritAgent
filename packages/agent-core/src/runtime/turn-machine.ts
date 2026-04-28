@@ -126,6 +126,13 @@ export async function resumePendingApproval<
   }
 
   runtime.pendingApproval = undefined;
+  runtime.emitEvent({
+    kind: 'approval-resolved',
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+    request: pending.request,
+    decisionKind: decision.kind,
+  });
 
   if (decision.kind === 'allow') {
     if (decision.persistTrust && pending.trustTarget !== undefined) {
@@ -206,6 +213,23 @@ export async function resumePendingQuestions<
   }
 
   runtime.pendingQuestions = undefined;
+  const continuedRequest = runtime.options.toolExecutor.continueAfterQuestions
+    ? await runtime.options.toolExecutor.continueAfterQuestions(pending.request, result)
+    : undefined;
+
+  if (continuedRequest !== undefined) {
+    return executeAuthorizedToolCall(
+      runtime,
+      pending.pendingUserInput,
+      pending.state,
+      continuedRequest,
+      pending.toolCallId,
+      pending.toolName,
+      pending.remainingCalls,
+      pending.turn,
+    );
+  }
+
   const output = JSON.stringify(result);
   const questionsExecution: RuntimeToolExecution<ToolRequest> = {
     toolCallId: pending.toolCallId,
@@ -402,6 +426,12 @@ export async function processToolCalls<
         toolCallId: call.id,
         toolName: call.name,
       }) ?? request;
+      runtime.emitEvent({
+        kind: 'tool-call-started',
+        toolCallId: call.id,
+        toolName: call.name,
+        request,
+      });
     } catch (error) {
       currentState = runtime.options.appendToolResultMessage(
         currentState,
@@ -753,6 +783,12 @@ export async function processToolCallsAsync<
         toolCallId: call.id,
         toolName: call.name,
       }) ?? request;
+      runtime.emitEvent({
+        kind: 'tool-call-started',
+        toolCallId: call.id,
+        toolName: call.name,
+        request,
+      });
     } catch (error) {
       currentState = runtime.options.appendToolResultMessage(
         currentState,

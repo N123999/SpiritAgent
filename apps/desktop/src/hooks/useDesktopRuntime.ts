@@ -18,6 +18,8 @@ import type {
   DesktopSnapshot,
   ImportExtensionRequest,
   RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
@@ -582,6 +584,50 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const updateExtensionSettings = useCallback(
+    async (request: UpdateExtensionSettingsRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("extensions");
+      try {
+        const next = await api.updateExtensionSettings(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const updateExtensionSecret = useCallback(
+    async (request: UpdateExtensionSecretRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("extensions");
+      try {
+        const next = await api.updateExtensionSecret(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const saveSettingsPatch = useCallback(
     async (patch: Partial<SettingsFormState>) => {
       if (!api) {
@@ -887,6 +933,8 @@ export function useDesktopRuntime() {
     createSkill,
     deleteExtension,
     runExtension,
+    updateExtensionSettings,
+    updateExtensionSecret,
     deleteMcpServer,
     deleteSkill,
     inspectMcpServer,

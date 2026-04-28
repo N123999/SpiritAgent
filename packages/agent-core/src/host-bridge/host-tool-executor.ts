@@ -1,4 +1,5 @@
 import type {
+  AskQuestionsResult,
   AuthorizationDecision,
   JsonValue,
   McpStatusSnapshot,
@@ -154,9 +155,27 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     return request;
   }
 
+  async continueAfterQuestions(
+    request: JsonValue,
+    result: AskQuestionsResult,
+  ): Promise<JsonValue | undefined> {
+    if (!isExtensionToolRequest(request)) {
+      return undefined;
+    }
+
+    return {
+      ...request,
+      questions_result: result as JsonValue,
+    };
+  }
+
   shouldExecuteInBackground(request: JsonValue): boolean {
     if (this.mcp.isToolRequest(request)) {
       return true;
+    }
+
+    if (isExtensionToolRequest(request)) {
+      return request.execution_mode === 'background';
     }
 
     return this.resolveRequestMetadata(request)?.backgroundExecution ?? false;
@@ -165,6 +184,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   backgroundStatusText(request: JsonValue): string | undefined {
     if (this.mcp.isToolRequest(request)) {
       return this.mcp.backgroundStatusText(request);
+    }
+
+    if (isExtensionToolRequest(request) && request.execution_mode === 'background') {
+      return `扩展工具执行中: ${request.tool_name}`;
     }
 
     return this.resolveRequestMetadata(request)?.backgroundStatusText;
@@ -392,6 +415,19 @@ function toolDefinitionName(value: JsonValue): string | undefined {
   }
 
   return typeof candidateFunction.name === 'string' ? candidateFunction.name : undefined;
+}
+
+function isExtensionToolRequest(value: JsonValue): value is {
+  name: 'extension_tool';
+  tool_name: string;
+  execution_mode?: string;
+  questions_result?: JsonValue;
+} {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+
+  return value.name === 'extension_tool' && typeof value.tool_name === 'string';
 }
 
 function renderError(error: unknown): string {

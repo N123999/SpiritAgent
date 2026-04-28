@@ -1,4 +1,5 @@
 import {
+  type AskQuestionsResult,
   buildBuiltinHostToolDefinitions,
   AuthorizationDecision,
   JsonValue,
@@ -9,6 +10,7 @@ import {
   ToolExecutor,
 } from '@spirit-agent/agent-core';
 import {
+  type HostExtensionRuntimeBinding,
   type HostFileChangeObserver,
   NodeHostToolService,
   createNoopMcpAdapter,
@@ -27,17 +29,21 @@ export class DesktopToolExecutor
 
   constructor(
     private readonly workspaceRoot: string,
-    extensionToolDefinitions: JsonValue[] = [],
-    fileChangeObserver?: HostFileChangeObserver,
+    options: {
+      extensionToolDefinitions?: JsonValue[];
+      fileChangeObserver?: HostFileChangeObserver;
+      extensions?: HostExtensionRuntimeBinding<unknown>;
+    } = {},
   ) {
     this.mcp = new McpService(workspaceRoot);
-    this.extensionToolDefinitions = [...extensionToolDefinitions];
+    this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
     }, {
       mcp: createNoopMcpAdapter(),
-      ...(fileChangeObserver ? { fileChangeObserver } : {}),
+      ...(options.fileChangeObserver ? { fileChangeObserver: options.fileChangeObserver } : {}),
+      ...(options.extensions ? { extensions: options.extensions } : {}),
     });
   }
 
@@ -96,6 +102,36 @@ export class DesktopToolExecutor
     return this.tools.attachRequestMetadata(request, metadata);
   }
 
+  async continueAfterQuestions(
+    request: DesktopToolRequest,
+    result: AskQuestionsResult,
+  ): Promise<DesktopToolRequest | undefined> {
+    if (!isExtensionToolRequest(request)) {
+      return undefined;
+    }
+
+    return {
+      ...request,
+      questions_result: result as JsonValue,
+    };
+  }
+
+  shouldExecuteInBackground(request: DesktopToolRequest): boolean {
+    if (this.mcp.isToolRequest(request as JsonValue)) {
+      return true;
+    }
+
+    return this.tools.shouldExecuteInBackground?.(request) ?? false;
+  }
+
+  backgroundStatusText(request: DesktopToolRequest): string | undefined {
+    if (this.mcp.isToolRequest(request as JsonValue)) {
+      return this.mcp.backgroundStatusText(request as unknown as McpToolRequest);
+    }
+
+    return this.tools.backgroundStatusText?.(request);
+  }
+
   startMcpBackgroundRefresh(): void {
     this.mcp.startBackgroundRefreshInBackground(true);
   }
@@ -143,4 +179,11 @@ export class DesktopToolExecutor
   ): Promise<JsonValue> {
     return this.mcp.getPrompt(name, prompt, _argsJson);
   }
+}
+
+function isExtensionToolRequest(request: DesktopToolRequest): request is Extract<
+  DesktopToolRequest,
+  { name: 'extension_tool' }
+> {
+  return typeof request === 'object' && request !== null && request.name === 'extension_tool';
 }

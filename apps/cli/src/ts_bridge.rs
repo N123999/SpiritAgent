@@ -247,6 +247,51 @@ pub struct CliHostMetadataSnapshot {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CliExtensionToolEntry {
+    pub name: String,
+    pub description: String,
+    pub approval_mode: Option<String>,
+    pub execution_mode: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionSettingOptionEntry {
+    pub value: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionSettingEntry {
+    pub key: String,
+    pub r#type: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub placeholder: Option<String>,
+    pub required: Option<bool>,
+    pub default_value: Option<Value>,
+    pub options: Option<Vec<CliExtensionSettingOptionEntry>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionSecretSlotEntry {
+    pub key: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub required: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionContributes {
+    pub tools: Option<Vec<CliExtensionToolEntry>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CliExtensionEntry {
     pub id: String,
     pub name: String,
@@ -255,6 +300,11 @@ pub struct CliExtensionEntry {
     pub author: Option<String>,
     pub homepage: Option<String>,
     pub main: Option<String>,
+    pub activation_events: Option<Vec<String>>,
+    pub requested_capabilities: Option<Vec<String>>,
+    pub contributes: Option<CliExtensionContributes>,
+    pub settings_schema: Option<Vec<CliExtensionSettingEntry>>,
+    pub secret_slots: Option<Vec<CliExtensionSecretSlotEntry>>,
     pub archive_file_name: Option<String>,
     pub installed_at_unix_ms: u64,
 }
@@ -291,6 +341,24 @@ enum BridgeRuntimeEvent {
     ApprovalRequested { approval: BridgePendingApproval },
     #[serde(rename = "questions-requested")]
     QuestionsRequested { questions: BridgePendingQuestions },
+    #[serde(rename = "tool-call-started")]
+    ToolCallStarted {
+        #[serde(alias = "toolCallId")]
+        tool_call_id: String,
+        #[serde(alias = "toolName")]
+        tool_name: String,
+        request: Value,
+    },
+    #[serde(rename = "approval-resolved")]
+    ApprovalResolved {
+        #[serde(alias = "toolCallId")]
+        tool_call_id: String,
+        #[serde(alias = "toolName")]
+        tool_name: String,
+        request: Value,
+        #[serde(alias = "decisionKind")]
+        decision_kind: String,
+    },
     #[serde(rename = "history-compacted")]
     HistoryCompacted {
         #[serde(alias = "droppedMessages")]
@@ -1487,6 +1555,8 @@ impl TsBridgeRuntime {
                         questions: questions.questions,
                     });
                 }
+                BridgeRuntimeEvent::ToolCallStarted { .. } => {}
+                BridgeRuntimeEvent::ApprovalResolved { .. } => {}
                 BridgeRuntimeEvent::HistoryCompacted {
                     dropped_messages,
                     summary_preview,

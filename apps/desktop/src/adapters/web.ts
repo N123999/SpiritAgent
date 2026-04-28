@@ -12,6 +12,8 @@ import type {
   DesktopSnapshot,
   ImportExtensionRequest,
   RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -64,6 +66,12 @@ export function createWebHostApi(): HostApi {
     },
     runExtension(request: RunExtensionRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/extensions/run', request);
+    },
+    updateExtensionSettings(request: UpdateExtensionSettingsRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/extensions/settings', request);
+    },
+    updateExtensionSecret(request: UpdateExtensionSecretRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/extensions/secret', request);
     },
     createSkill(request: CreateSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills', request);

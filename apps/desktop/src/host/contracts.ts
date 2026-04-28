@@ -19,6 +19,8 @@ export type HostCommandName =
   | 'importExtension'
   | 'deleteExtension'
   | 'runExtension'
+  | 'updateExtensionSettings'
+  | 'updateExtensionSecret'
   | 'createSkill'
   | 'deleteSkill'
   | 'submitCreateSkillSlash'

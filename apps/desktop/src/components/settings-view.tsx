@@ -39,6 +39,8 @@ import type {
   DesktopMcpTransportType,
   ImportExtensionRequest,
   RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   DesktopSkillListItem,
   DesktopSkillRootKind,
   DesktopSnapshot,
@@ -80,6 +82,8 @@ type SettingsViewProps = {
   onImportExtension: (request: ImportExtensionRequest) => Promise<void>;
   onDeleteExtension: (request: DeleteExtensionRequest) => Promise<void>;
   onRunExtension: (request: RunExtensionRequest) => Promise<void>;
+  onUpdateExtensionSettings: (request: UpdateExtensionSettingsRequest) => Promise<void>;
+  onUpdateExtensionSecret: (request: UpdateExtensionSecretRequest) => Promise<void>;
   onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
   onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
@@ -763,13 +767,54 @@ function ExtensionsSettingsPanel({
   onImportExtension,
   onDeleteExtension,
   onRunExtension,
+  onUpdateExtensionSettings,
+  onUpdateExtensionSecret,
 }: Pick<
   SettingsViewProps,
-  "snapshot" | "extensionsBusy" | "onImportExtension" | "onDeleteExtension" | "onRunExtension"
+  | "snapshot"
+  | "extensionsBusy"
+  | "onImportExtension"
+  | "onDeleteExtension"
+  | "onRunExtension"
+  | "onUpdateExtensionSettings"
+  | "onUpdateExtensionSecret"
 >) {
   const [deleteTarget, setDeleteTarget] = useState<DesktopExtensionListItem | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [settingDrafts, setSettingDrafts] = useState<Record<string, string>>({});
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
   const items = snapshot?.extensionsList ?? [];
+
+  const settingDraftKey = (extensionId: string, key: string) => `${extensionId}::setting::${key}`;
+  const secretDraftKey = (extensionId: string, key: string) => `${extensionId}::secret::${key}`;
+
+  const updateSettingDraft = (extensionId: string, key: string, value: string) => {
+    setSettingDrafts((current) => ({
+      ...current,
+      [settingDraftKey(extensionId, key)]: value,
+    }));
+  };
+
+  const updateSecretDraft = (extensionId: string, key: string, value: string) => {
+    setSecretDrafts((current) => ({
+      ...current,
+      [secretDraftKey(extensionId, key)]: value,
+    }));
+  };
+
+  const currentSettingText = (
+    item: DesktopExtensionListItem,
+    key: string,
+    fallback?: string | boolean | number,
+  ): string => {
+    const draft = settingDrafts[settingDraftKey(item.id, key)];
+    if (draft !== undefined) {
+      return draft;
+    }
+
+    const value = item.settingsValues?.[key] ?? fallback;
+    return value === undefined || value === null ? "" : String(value);
+  };
 
   return (
     <div className="space-y-4">
@@ -851,6 +896,204 @@ function ExtensionsSettingsPanel({
                   <p className="text-xs text-muted-foreground">
                     activationEvents: {item.activationEvents.join(", ")}
                   </p>
+                ) : null}
+                {item.contributedTools?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-xs font-medium text-foreground">贡献工具</p>
+                    {item.contributedTools.map((tool) => (
+                      <div key={`${item.id}:${tool.name}`} className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-medium text-foreground">{tool.name}</span>
+                          {tool.approvalMode ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              {tool.approvalMode}
+                            </Badge>
+                          ) : null}
+                          {tool.executionMode ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              {tool.executionMode}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {item.settingsSchema?.length ? (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-xs font-medium text-foreground">扩展设置</p>
+                    {item.settingsSchema.map((setting) => {
+                      const fieldKey = settingDraftKey(item.id, setting.key);
+                      const currentText = currentSettingText(item, setting.key, setting.defaultValue);
+
+                      if (setting.type === "boolean") {
+                        const checked = Boolean(
+                          item.settingsValues?.[setting.key] ?? setting.defaultValue ?? false,
+                        );
+                        return (
+                          <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium text-foreground">{setting.title}</p>
+                                {setting.description ? (
+                                  <p className="mt-1 text-xs text-muted-foreground">{setting.description}</p>
+                                ) : null}
+                              </div>
+                              <Checkbox
+                                checked={checked}
+                                disabled={extensionsBusy}
+                                onCheckedChange={(value) => {
+                                  void onUpdateExtensionSettings({
+                                    id: item.id,
+                                    values: { [setting.key]: value === true },
+                                  });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (setting.type === "select") {
+                        const selected = currentText || String(setting.defaultValue ?? "");
+                        return (
+                          <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                            <p className="text-xs font-medium text-foreground">{setting.title}</p>
+                            {setting.description ? (
+                              <p className="mt-1 text-xs text-muted-foreground">{setting.description}</p>
+                            ) : null}
+                            <Select
+                              value={selected}
+                              onValueChange={(value) => {
+                                void onUpdateExtensionSettings({
+                                  id: item.id,
+                                  values: { [setting.key]: value || null },
+                                });
+                              }}
+                              disabled={extensionsBusy}
+                            >
+                              <SelectTrigger className="mt-2 h-9 text-sm">
+                                <SelectValue placeholder={setting.placeholder ?? setting.title} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {setting.options?.map((option) => (
+                                  <SelectItem key={`${fieldKey}:${option.value}`} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                          <p className="text-xs font-medium text-foreground">{setting.title}</p>
+                          {setting.description ? (
+                            <p className="mt-1 text-xs text-muted-foreground">{setting.description}</p>
+                          ) : null}
+                          <div className="mt-2 flex gap-2">
+                            <Input
+                              value={currentText}
+                              disabled={extensionsBusy}
+                              type={setting.type === "number" ? "number" : "text"}
+                              placeholder={setting.placeholder ?? setting.title}
+                              onChange={(event) => updateSettingDraft(item.id, setting.key, event.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={extensionsBusy}
+                              onClick={() => {
+                                const raw = settingDrafts[fieldKey] ?? currentText;
+                                const value =
+                                  setting.type === "number"
+                                    ? raw.trim().length === 0
+                                      ? null
+                                      : Number(raw)
+                                    : raw.trim().length === 0
+                                      ? null
+                                      : raw;
+                                void onUpdateExtensionSettings({
+                                  id: item.id,
+                                  values: { [setting.key]: value },
+                                });
+                              }}
+                            >
+                              保存
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {item.secretSlots?.length ? (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-xs font-medium text-foreground">扩展密钥</p>
+                    {item.secretSlots.map((slot) => {
+                      const fieldKey = secretDraftKey(item.id, slot.key);
+                      const configured = item.secretStatuses?.find((entry) => entry.key === slot.key)?.configured === true;
+
+                      return (
+                        <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-medium text-foreground">{slot.title}</p>
+                            <Badge variant={configured ? "secondary" : "outline"} className="text-[0.65rem] text-muted-foreground">
+                              {configured ? "已配置" : "未配置"}
+                            </Badge>
+                          </div>
+                          {slot.description ? (
+                            <p className="mt-1 text-xs text-muted-foreground">{slot.description}</p>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Input
+                              type="password"
+                              value={secretDrafts[fieldKey] ?? ""}
+                              disabled={extensionsBusy}
+                              placeholder={configured ? "输入新值以覆盖" : "输入 secret"}
+                              onChange={(event) => updateSecretDraft(item.id, slot.key, event.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={extensionsBusy}
+                              onClick={() => {
+                                void onUpdateExtensionSecret({
+                                  id: item.id,
+                                  key: slot.key,
+                                  value: secretDrafts[fieldKey] ?? "",
+                                });
+                                updateSecretDraft(item.id, slot.key, "");
+                              }}
+                            >
+                              保存
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={extensionsBusy || !configured}
+                              onClick={() => {
+                                void onUpdateExtensionSecret({
+                                  id: item.id,
+                                  key: slot.key,
+                                  value: "",
+                                });
+                                updateSecretDraft(item.id, slot.key, "");
+                              }}
+                            >
+                              清除
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">
@@ -1596,6 +1839,8 @@ export function SettingsView({
   onImportExtension,
   onDeleteExtension,
   onRunExtension,
+  onUpdateExtensionSettings,
+  onUpdateExtensionSecret,
   onDeleteMcpServer,
   onInspectMcpServer,
   onCreateSkill,
@@ -1649,6 +1894,8 @@ export function SettingsView({
                 onImportExtension={onImportExtension}
                 onDeleteExtension={onDeleteExtension}
                 onRunExtension={onRunExtension}
+                onUpdateExtensionSettings={onUpdateExtensionSettings}
+                onUpdateExtensionSecret={onUpdateExtensionSecret}
               />
             ) : tab === "mcps" ? (
               <McpsSettingsPanel

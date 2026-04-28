@@ -85,7 +85,14 @@ const llmTransport = new OpenAiTransport();
 interface CliHostInternalModule {
   NodeHostToolService: new (
     context: { workspaceRoot: string; spiritDataDir: string },
-    options?: { mcp?: unknown },
+    options?: {
+      mcp?: unknown;
+      extensions?: {
+        manager: unknown;
+        getHost: () => unknown;
+        logger?: Pick<Console, 'error' | 'log'>;
+      };
+    },
   ) => LocalHostToolService;
   createNoopMcpAdapter?: () => unknown;
   loadHostInstructionMetadata: (
@@ -207,10 +214,13 @@ interface CliHostInternalModule {
   saveToggleState?: (filePath: string, state: { enabledOverrides?: Record<string, boolean> }) => Promise<void>;
 }
 
+type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
+
 interface CliHostInternalState {
   module: CliHostInternalModule;
   workspaceRoot: string;
   spiritDataDir: string;
+  extensionManager?: CliHostExtensionManager;
 }
 
 let cliHostInternal: CliHostInternalState | undefined;
@@ -252,17 +262,34 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
 
   const loaded = await import(pathToFileURL(modulePath).href);
   const module = loaded as unknown as CliHostInternalModule;
+  const extensionManager =
+    typeof module.createHostExtensionManager === 'function'
+      ? module.createHostExtensionManager({ spiritDataDir })
+      : undefined;
+  const serviceOptions = {
+    ...(typeof module.createNoopMcpAdapter === 'function'
+      ? { mcp: module.createNoopMcpAdapter() }
+      : {}),
+    ...(extensionManager
+      ? {
+          extensions: {
+            manager: extensionManager,
+            getHost: () => ({}),
+            logger: console,
+          },
+        }
+      : {}),
+  };
   const service = new module.NodeHostToolService(
     { workspaceRoot, spiritDataDir },
-    typeof module.createNoopMcpAdapter === 'function'
-      ? { mcp: module.createNoopMcpAdapter() }
-      : undefined,
+    Object.keys(serviceOptions).length > 0 ? serviceOptions : undefined,
   );
   toolExecutor.setLocalHostService(service);
   cliHostInternal = {
     module,
     workspaceRoot,
     spiritDataDir,
+    ...(extensionManager ? { extensionManager } : {}),
   };
   return cliHostInternal;
 }
@@ -296,14 +323,12 @@ async function refreshExtensionToolDefinitions(
   }
 
   const hostInternal = cliHostInternal;
-  if (!hostInternal?.module.createHostExtensionManager) {
+  if (!hostInternal?.extensionManager) {
     toolExecutor.setExtensionToolDefinitions([]);
     return;
   }
 
-  const manager = hostInternal.module.createHostExtensionManager({
-    spiritDataDir: hostInternal.spiritDataDir,
-  });
+  const manager = hostInternal.extensionManager;
   const installedExtensions = await manager.list();
   const contributedTools = installedExtensions.flatMap((item) => {
     if (!item.manifest.requestedCapabilities?.includes('tool-definitions')) {
@@ -452,13 +477,11 @@ function serializeHostExtension(item: {
 
 async function requireCliExtensionManager() {
   const hostInternal = await requireCliHostInternal();
-  if (!hostInternal.module.createHostExtensionManager) {
+  if (!hostInternal.extensionManager) {
     throw new Error('host-internal 模块未导出扩展管理接口。');
   }
 
-  return hostInternal.module.createHostExtensionManager({
-    spiritDataDir: hostInternal.spiritDataDir,
-  });
+  return hostInternal.extensionManager;
 }
 
 async function createRuntime(

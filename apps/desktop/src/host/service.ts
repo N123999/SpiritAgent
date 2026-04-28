@@ -69,6 +69,8 @@ import type {
   DesktopWebHostSnapshot,
   FileRewindWarning,
   RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   MessageAuxSnapshot,
   PendingAssistantAux,
   PendingQuestionsSnapshot,
@@ -97,6 +99,7 @@ import {
   removeModelApiKey,
   resolveApiKeyForModel,
   saveApiKeyForModel,
+  createDesktopExtensionStateStore,
   saveConfig,
   saveStoredSession,
   listStoredSessions,
@@ -167,6 +170,8 @@ type CommandPayloads = {
   importExtension: { request: ImportExtensionRequest };
   deleteExtension: { request: DeleteExtensionRequest };
   runExtension: { request: RunExtensionRequest };
+  updateExtensionSettings: { request: UpdateExtensionSettingsRequest };
+  updateExtensionSecret: { request: UpdateExtensionSecretRequest };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
@@ -199,8 +204,12 @@ interface HostState {
 
 class DesktopHostService {
   private readonly transport = new OpenAiTransport();
+  private readonly extensionStateStore = createDesktopExtensionStateStore({
+    spiritDataDir: spiritAgentDataDir(),
+  });
   private readonly hostExtensionManager = createHostExtensionManager({
     spiritDataDir: spiritAgentDataDir(),
+    stateStore: this.extensionStateStore,
   });
   private state: HostState | undefined;
   private runtime: DesktopRuntime | undefined;
@@ -557,6 +566,45 @@ description: ${frontmatterDescription}
         host: this.requireExtensionHostAdapter(),
         logger: console,
       });
+      return this.buildSnapshot();
+    });
+  }
+
+  async updateExtensionSettings(request: UpdateExtensionSettingsRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      await this.extensionManager().setSettingsValues({
+        id,
+        values: request.values,
+      });
+      await this.refreshExtensionsList();
+      return this.buildSnapshot();
+    });
+  }
+
+  async updateExtensionSecret(request: UpdateExtensionSecretRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      const key = request.key.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+      if (!key) {
+        throw new Error('secret key 不能为空。');
+      }
+
+      await this.extensionManager().setSecretValue({
+        id,
+        key,
+        ...(request.value !== undefined ? { value: request.value } : {}),
+      });
+      await this.refreshExtensionsList();
       return this.buildSnapshot();
     });
   }
@@ -1098,6 +1146,14 @@ description: ${frontmatterDescription}
         const typedPayload = payload as CommandPayloads['runExtension'];
         return this.runExtension(typedPayload.request);
       }
+      case 'updateExtensionSettings': {
+        const typedPayload = payload as CommandPayloads['updateExtensionSettings'];
+        return this.updateExtensionSettings(typedPayload.request);
+      }
+      case 'updateExtensionSecret': {
+        const typedPayload = payload as CommandPayloads['updateExtensionSecret'];
+        return this.updateExtensionSecret(typedPayload.request);
+      }
       case 'createSkill': {
         const typedPayload = payload as CommandPayloads['createSkill'];
         return this.createSkill(typedPayload.request);
@@ -1205,19 +1261,29 @@ description: ${frontmatterDescription}
       state.config.planMode === true,
     );
     const extensions = await this.extensionManager().list();
-    this.toolExecutor = new DesktopToolExecutor(
-      state.workspaceRoot,
-      buildContributedHostToolDefinitions(
+    this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
+      extensionToolDefinitions: buildContributedHostToolDefinitions(
         collectHostExtensionContributedTools(extensions).map((tool) => ({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema as JsonObject,
         })),
       ),
-      {
+      fileChangeObserver: {
         recordFileChange: (change) => this.recordHostFileChange(change),
       },
-    );
+      extensions: {
+        manager: this.extensionManager(),
+        getHost: () => {
+          const adapter = desktopExtensionHostAdapter;
+          if (!adapter) {
+            throw new Error('当前桌面宿主尚未连接扩展 host adapter。');
+          }
+          return adapter;
+        },
+        logger: console,
+      },
+    });
     this.toolExecutor.startMcpBackgroundRefresh();
     this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
@@ -1507,7 +1573,7 @@ description: ${frontmatterDescription}
   private async refreshExtensionsList(): Promise<void> {
     const state = this.requireState();
     const extensions = await this.extensionManager().list();
-    state.extensionsList = extensions.map((item) => ({
+    state.extensionsList = await Promise.all(extensions.map(async (item) => ({
       id: item.id,
       name: item.manifest.name,
       version: item.manifest.version,
@@ -1553,6 +1619,7 @@ description: ${frontmatterDescription}
                   }
                 : {}),
             })),
+            settingsValues: await this.extensionManager().getSettingsValues(item.id),
           }
         : {}),
       ...(item.manifest.secretSlots?.length
@@ -1563,11 +1630,17 @@ description: ${frontmatterDescription}
               ...(slot.description ? { description: slot.description } : {}),
               ...(slot.required !== undefined ? { required: slot.required } : {}),
             })),
+            secretStatuses: Object.entries(
+              await this.extensionManager().getSecretStatus(item.id),
+            ).map(([key, configured]) => ({
+              key,
+              configured,
+            })),
           }
         : {}),
       ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
       installedAtUnixMs: item.installedAtUnixMs,
-    }));
+    })));
   }
 
   private async refreshExtensionToolDefinitions(): Promise<void> {
@@ -1686,8 +1759,41 @@ description: ${frontmatterDescription}
         }
         continue;
       }
+      if (ev.kind === 'tool-call-started') {
+        void this.dispatchExtensionEvent({
+          type: 'onToolCall',
+          detail: {
+            toolCallId: ev.toolCallId,
+            toolName: ev.toolName,
+            request: ev.request as JsonObject,
+          },
+        });
+        continue;
+      }
+      if (ev.kind === 'approval-resolved') {
+        void this.dispatchExtensionEvent({
+          type: 'onApprovalResolved',
+          detail: {
+            toolCallId: ev.toolCallId,
+            toolName: ev.toolName,
+            decisionKind: ev.decisionKind,
+            request: ev.request as JsonObject,
+          },
+        });
+        continue;
+      }
       if (ev.kind === 'tool-execution-finished') {
         this.integrateToolExecutions([ev.execution]);
+        void this.dispatchExtensionEvent({
+          type: 'onToolResult',
+          detail: {
+            toolCallId: ev.execution.toolCallId,
+            toolName: ev.execution.toolName,
+            output: ev.execution.output,
+            failed: ev.execution.failed,
+            request: ev.execution.request as JsonObject,
+          },
+        });
         continue;
       }
       if (ev.kind !== 'streaming-tool-preview') {
@@ -2953,8 +3059,12 @@ description: ${frontmatterDescription}
         tags.push('rm-pending');
       } else if (ev.kind === 'assistant-thinking-segment-finalized') {
         tags.push(ev.text.trim() ? 'finalize' : 'finalize-empty');
+      } else if (ev.kind === 'tool-call-started') {
+        tags.push(`tool-start:${ev.toolName}`);
       } else if (ev.kind === 'tool-execution-finished') {
         tags.push(`tool-done:${ev.execution.toolName}`);
+      } else if (ev.kind === 'approval-resolved') {
+        tags.push(`approval-${ev.decisionKind}`);
       } else if (ev.kind === 'approval-requested') {
         tags.push(`approval:${ev.approval.toolName}`);
       } else if (ev.kind === 'questions-requested') {
