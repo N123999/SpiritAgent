@@ -17,6 +17,7 @@ import type {
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
+  RunExtensionRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
@@ -559,6 +560,28 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const runExtension = useCallback(
+    async (request: RunExtensionRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("extensions");
+      try {
+        const next = await api.runExtension(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const saveSettingsPatch = useCallback(
     async (patch: Partial<SettingsFormState>) => {
       if (!api) {
@@ -863,6 +886,7 @@ export function useDesktopRuntime() {
     importExtension,
     createSkill,
     deleteExtension,
+    runExtension,
     deleteMcpServer,
     deleteSkill,
     inspectMcpServer,

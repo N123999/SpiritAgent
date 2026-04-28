@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { unzipSync } from 'fflate';
 
@@ -50,11 +51,33 @@ export interface ImportExtensionArchiveRequest {
   fileName?: string;
 }
 
+export interface RunExtensionRequest<THostApi> {
+  id: string;
+  host: THostApi;
+  logger?: Pick<Console, 'error' | 'log'>;
+}
+
+export interface HostExtensionRuntimeInfo {
+  id: string;
+  name: string;
+  version: string;
+  directoryPath: string;
+  manifestPath: string;
+  main: string;
+}
+
+export interface HostExtensionActivationContext<THostApi> {
+  extension: HostExtensionRuntimeInfo;
+  host: THostApi;
+  log(message: string): void;
+}
+
 export interface HostExtensionManager {
   getPaths(): ExtensionPaths;
   list(): Promise<readonly HostInstalledExtension[]>;
   importArchive(request: ImportExtensionArchiveRequest): Promise<HostInstalledExtension>;
   remove(id: string): Promise<void>;
+  run<THostApi>(request: RunExtensionRequest<THostApi>): Promise<void>;
 }
 
 export function createHostExtensionManager(
@@ -72,6 +95,9 @@ export function createHostExtensionManager(
     },
     async remove(id) {
       await removeInstalledExtension(context, id);
+    },
+    async run(request) {
+      await runInstalledExtension(context, request);
     },
   };
 }
@@ -250,6 +276,76 @@ export async function removeInstalledExtension(
   );
 }
 
+export async function runInstalledExtension<THostApi>(
+  context: ExtensionManagementContext,
+  request: RunExtensionRequest<THostApi>,
+): Promise<void> {
+  const normalizedId = request.id.trim();
+  if (!normalizedId) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const installed = await listInstalledExtensions(context);
+  const target = installed.find((item) => item.id === normalizedId);
+  if (!target) {
+    throw new Error(`未找到扩展：${normalizedId}`);
+  }
+
+  const mainEntry = target.manifest.main;
+  if (!mainEntry) {
+    throw new Error(`扩展未声明 main，当前无法执行：${normalizedId}`);
+  }
+
+  const mainFilePath = path.join(target.directoryPath, ...mainEntry.split('/'));
+  if (!existsSync(mainFilePath)) {
+    throw new Error(`扩展 main 文件不存在：${mainEntry}`);
+  }
+
+  const logger = request.logger;
+  const log = (message: string) => {
+    logger?.log(`[extension:${target.id}] ${message}`);
+  };
+
+  let loadedModule: unknown;
+  try {
+    const mainModuleUrl = pathToFileURL(mainFilePath);
+    mainModuleUrl.searchParams.set('ts', `${target.installedAtUnixMs}`);
+    loadedModule = await import(mainModuleUrl.href);
+  } catch (error) {
+    logger?.error(`[extension:${target.id}] load failed`, error);
+    throw new Error(
+      `加载扩展失败：${target.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+
+  const activate = resolveActivateHandler<THostApi>(loadedModule);
+  if (!activate) {
+    throw new Error(
+      `扩展 ${target.manifest.name} 未导出 activate；请导出 activate(context) 或默认导出该函数。`,
+    );
+  }
+
+  try {
+    await activate({
+      extension: {
+        id: target.id,
+        name: target.manifest.name,
+        version: target.manifest.version,
+        directoryPath: target.directoryPath,
+        manifestPath: target.manifestPath,
+        main: mainEntry,
+      },
+      host: request.host,
+      log,
+    });
+  } catch (error) {
+    logger?.error(`[extension:${target.id}] activate failed`, error);
+    throw new Error(
+      `执行扩展失败：${target.manifest.name} (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+}
+
 async function ensureExtensionDirectories(paths: ExtensionPaths): Promise<void> {
   await mkdir(paths.extensionsDir, { recursive: true });
   await mkdir(path.dirname(paths.extensionsIndexFile), { recursive: true });
@@ -400,6 +496,33 @@ function resolveArchiveRelativePath(entryName: string, manifestEntryName: string
 
 function normalizeArchivePath(filePath: string): string {
   return filePath.replace(/\\/gu, '/').replace(/^\.\//u, '');
+}
+
+function resolveActivateHandler<THostApi>(
+  loadedModule: unknown,
+): ((context: HostExtensionActivationContext<THostApi>) => unknown) | undefined {
+  if (typeof loadedModule === 'function') {
+    return loadedModule as (context: HostExtensionActivationContext<THostApi>) => unknown;
+  }
+
+  if (!isRecord(loadedModule)) {
+    return undefined;
+  }
+
+  if (typeof loadedModule.activate === 'function') {
+    return loadedModule.activate as (context: HostExtensionActivationContext<THostApi>) => unknown;
+  }
+
+  const defaultExport = loadedModule.default;
+  if (typeof defaultExport === 'function') {
+    return defaultExport as (context: HostExtensionActivationContext<THostApi>) => unknown;
+  }
+
+  if (isRecord(defaultExport) && typeof defaultExport.activate === 'function') {
+    return defaultExport.activate as (context: HostExtensionActivationContext<THostApi>) => unknown;
+  }
+
+  return undefined;
 }
 
 function assertSafeRelativePath(filePath: string, label: string): void {

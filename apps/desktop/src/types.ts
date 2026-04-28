@@ -62,6 +62,10 @@ export interface DeleteExtensionRequest {
   id: string;
 }
 
+export interface RunExtensionRequest {
+  id: string;
+}
+
 export interface DesktopExtensionListItem {
   id: string;
   name: string;

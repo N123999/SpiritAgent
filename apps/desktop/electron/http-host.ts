@@ -401,6 +401,20 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/extensions/run') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('runExtension', {
+        request: {
+          id: typeof jsonBody?.id === 'string' ? jsonBody.id : '',
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/skills') {
     const rootKind = parseSkillRootKind(jsonBody?.rootKind);
     writeJson(

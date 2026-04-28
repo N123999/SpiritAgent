@@ -64,6 +64,7 @@ import type {
   DesktopSnapshot,
   DesktopWebHostSnapshot,
   FileRewindWarning,
+  RunExtensionRequest,
   MessageAuxSnapshot,
   PendingAssistantAux,
   PendingQuestionsSnapshot,
@@ -127,6 +128,29 @@ type DesktopRuntime = AgentRuntime<
   string
 >;
 
+export interface DesktopExtensionMessageBoxRequest {
+  title: string;
+  message: string;
+  detail?: string;
+  buttons?: string[];
+  cancelId?: number;
+  defaultId?: number;
+  noLink?: boolean;
+  type?: 'none' | 'info' | 'error' | 'question' | 'warning';
+}
+
+export interface DesktopExtensionHostAdapter {
+  showMessageBox(request: DesktopExtensionMessageBoxRequest): Promise<void>;
+}
+
+let desktopExtensionHostAdapter: DesktopExtensionHostAdapter | undefined;
+
+export function setDesktopExtensionHostAdapter(
+  adapter: DesktopExtensionHostAdapter | undefined,
+): void {
+  desktopExtensionHostAdapter = adapter;
+}
+
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
   updateConfig: { request: UpdateConfigRequest };
@@ -138,6 +162,7 @@ type CommandPayloads = {
   inspectMcpServer: { name: string };
   importExtension: { request: ImportExtensionRequest };
   deleteExtension: { request: DeleteExtensionRequest };
+  runExtension: { request: RunExtensionRequest };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
@@ -495,6 +520,23 @@ description: ${frontmatterDescription}
 
       await this.extensionManager().remove(id);
       await this.refreshExtensionsList();
+      return this.buildSnapshot();
+    });
+  }
+
+  async runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      await this.extensionManager().run({
+        id,
+        host: this.requireExtensionHostAdapter(),
+        logger: console,
+      });
       return this.buildSnapshot();
     });
   }
@@ -1010,6 +1052,10 @@ description: ${frontmatterDescription}
       case 'deleteExtension': {
         const typedPayload = payload as CommandPayloads['deleteExtension'];
         return this.deleteExtension(typedPayload.request);
+      }
+      case 'runExtension': {
+        const typedPayload = payload as CommandPayloads['runExtension'];
+        return this.runExtension(typedPayload.request);
       }
       case 'createSkill': {
         const typedPayload = payload as CommandPayloads['createSkill'];
@@ -2849,6 +2895,13 @@ description: ${frontmatterDescription}
       throw new Error('Desktop MCP tool executor 尚未初始化。');
     }
     return this.toolExecutor;
+  }
+
+  private requireExtensionHostAdapter(): DesktopExtensionHostAdapter {
+    if (!desktopExtensionHostAdapter) {
+      throw new Error('当前宿主未提供扩展运行环境；请在 Electron Desktop 中运行该扩展。');
+    }
+    return desktopExtensionHostAdapter;
   }
 }
 

@@ -36,6 +36,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     deleteExtension(request) {
       return bridge.deleteExtension(request);
     },
+    runExtension(request) {
+      return bridge.runExtension(request);
+    },
     createSkill(request) {
       return bridge.createSkill(request);
     },

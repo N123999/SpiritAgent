@@ -11,6 +11,7 @@ import type {
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
+  RunExtensionRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -60,6 +61,9 @@ export function createWebHostApi(): HostApi {
     },
     deleteExtension(request: DeleteExtensionRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/extensions/remove', request);
+    },
+    runExtension(request: RunExtensionRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/extensions/run', request);
     },
     createSkill(request: CreateSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills', request);

@@ -2,13 +2,16 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, Menu, app, ipcMain, nativeTheme } from 'electron';
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme } from 'electron';
 
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
 
 import type { DesktopSnapshot } from '../src/types.js';
-import { invokeDesktopHostCommand } from '../src/host/service.js';
+import {
+  invokeDesktopHostCommand,
+  setDesktopExtensionHostAdapter,
+} from '../src/host/service.js';
 import {
   configFilePath,
   loadConfig,
@@ -39,6 +42,29 @@ let desktopWebHostPairingCode = createDesktopWebPairingCode();
 let quittingAfterDesktopWebHostStop = false;
 
 const workspacePtyManager = new WorkspacePtyManager();
+
+setDesktopExtensionHostAdapter({
+  async showMessageBox(request) {
+    const targetWindow = BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
+    const options = {
+      title: request.title,
+      message: request.message,
+      ...(request.detail ? { detail: request.detail } : {}),
+      ...(request.buttons?.length ? { buttons: request.buttons } : {}),
+      ...(request.cancelId !== undefined ? { cancelId: request.cancelId } : {}),
+      ...(request.defaultId !== undefined ? { defaultId: request.defaultId } : {}),
+      ...(request.noLink !== undefined ? { noLink: request.noLink } : {}),
+      ...(request.type ? { type: request.type } : {}),
+    };
+
+    if (targetWindow) {
+      await dialog.showMessageBox(targetWindow, options);
+      return;
+    }
+
+    await dialog.showMessageBox(options);
+  },
+});
 
 function shouldStartDesktopWebHostFromEnv(): boolean {
   return process.env.SPIRIT_DESKTOP_WEB_HOST === '1';

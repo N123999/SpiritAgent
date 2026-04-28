@@ -12,6 +12,7 @@ import type {
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
+  RunExtensionRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   SubmitCreateSkillSlashRequest,
@@ -33,6 +34,7 @@ declare global {
     inspectMcpServer(name: string): Promise<DesktopMcpServerInspection>;
     importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot>;
     deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot>;
+    runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot>;
     createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;

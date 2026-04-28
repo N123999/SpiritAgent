@@ -38,6 +38,7 @@ import type {
   DesktopMcpServerListItem,
   DesktopMcpTransportType,
   ImportExtensionRequest,
+  RunExtensionRequest,
   DesktopSkillListItem,
   DesktopSkillRootKind,
   DesktopSnapshot,
@@ -78,6 +79,7 @@ type SettingsViewProps = {
   onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
   onImportExtension: (request: ImportExtensionRequest) => Promise<void>;
   onDeleteExtension: (request: DeleteExtensionRequest) => Promise<void>;
+  onRunExtension: (request: RunExtensionRequest) => Promise<void>;
   onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
   onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
@@ -760,9 +762,10 @@ function ExtensionsSettingsPanel({
   extensionsBusy,
   onImportExtension,
   onDeleteExtension,
+  onRunExtension,
 }: Pick<
   SettingsViewProps,
-  "snapshot" | "extensionsBusy" | "onImportExtension" | "onDeleteExtension"
+  "snapshot" | "extensionsBusy" | "onImportExtension" | "onDeleteExtension" | "onRunExtension"
 >) {
   const [deleteTarget, setDeleteTarget] = useState<DesktopExtensionListItem | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -845,16 +848,34 @@ function ExtensionsSettingsPanel({
                   {item.main ? ` · main: ${item.main}` : ""}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="shrink-0 self-start sm:self-center"
-                disabled={extensionsBusy}
-                onClick={() => setDeleteTarget(item)}
-              >
-                删除
-              </Button>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={extensionsBusy || !item.main}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        await onRunExtension({ id: item.id });
+                      } catch {
+                        /* runtimeError */
+                      }
+                    })();
+                  }}
+                >
+                  运行
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={extensionsBusy}
+                  onClick={() => setDeleteTarget(item)}
+                >
+                  删除
+                </Button>
+              </div>
             </div>
           ))
         )}
@@ -1569,6 +1590,7 @@ export function SettingsView({
   onAddMcpServer,
   onImportExtension,
   onDeleteExtension,
+  onRunExtension,
   onDeleteMcpServer,
   onInspectMcpServer,
   onCreateSkill,
@@ -1621,6 +1643,7 @@ export function SettingsView({
                 extensionsBusy={extensionsBusy}
                 onImportExtension={onImportExtension}
                 onDeleteExtension={onDeleteExtension}
+                onRunExtension={onRunExtension}
               />
             ) : tab === "mcps" ? (
               <McpsSettingsPanel

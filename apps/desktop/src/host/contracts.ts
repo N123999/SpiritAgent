@@ -18,6 +18,7 @@ export type HostCommandName =
   | 'inspectMcpServer'
   | 'importExtension'
   | 'deleteExtension'
+  | 'runExtension'
   | 'createSkill'
   | 'deleteSkill'
   | 'submitCreateSkillSlash'
