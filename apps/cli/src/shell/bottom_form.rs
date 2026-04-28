@@ -8,6 +8,8 @@ use serde_json::{Map, Value};
 use crate::{
     mcp_types::McpDiscoveredPrompt,
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
+    model_provider_presets::model_add_preset_api_base_by_choice_index,
+    model_registry::{ModelProvider, DEFAULT_API_BASE},
     rules::{RuleEntry, RuleScope},
     skills::{SkillEntry, SkillScope},
     view::{
@@ -22,8 +24,6 @@ const MCP_ADD_FIELD_ENDPOINT: usize = 2;
 const MCP_ADD_FIELD_METADATA: usize = 3;
 
 const MODEL_ADD_FIELD_PROVIDER: usize = 0;
-const MODEL_ADD_FIELD_API_BASE: usize = 1;
-const MODEL_ADD_FIELD_API_KEY: usize = 2;
 
 const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
@@ -40,6 +40,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
                     placeholder: t!("form.mcp.field.name.placeholder").into_owned(),
                     cursor: 0,
                     mask: false,
+                    disabled: false,
                 },
             },
             BottomFormFieldView {
@@ -61,6 +62,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
                     placeholder: String::new(),
                     cursor: 0,
                     mask: false,
+                    disabled: false,
                 },
             },
             BottomFormFieldView {
@@ -71,6 +73,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
                     placeholder: String::new(),
                     cursor: 0,
                     mask: false,
+                    disabled: false,
                 },
             },
         ],
@@ -84,30 +87,11 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
 
 fn model_add_provider_choice_labels() -> Vec<String> {
     vec![
-        t!("form.model.provider.test1").into_owned(),
-        t!("form.model.provider.test2").into_owned(),
-        t!("form.model.provider.test3").into_owned(),
+        t!("form.model.provider.deepseek").into_owned(),
+        t!("form.model.provider.kimi").into_owned(),
+        t!("form.model.provider.minimax").into_owned(),
         t!("form.model.provider.custom").into_owned(),
     ]
-}
-
-fn preset_api_base_for_model_add(selected: usize) -> Option<&'static str> {
-    match selected {
-        0 => Some("https://test1.example/v1"),
-        1 => Some("https://test2.example/v1"),
-        2 => Some("https://test3.example/v1"),
-        _ => None,
-    }
-}
-
-/// Mock `GET /v1/models` ids for the add-model UI test flow (no network).
-pub(crate) fn model_add_mock_model_ids(provider_index: usize) -> Vec<String> {
-    match provider_index {
-        0 => vec!["test1-alpha".to_string(), "test1-beta".to_string()],
-        1 => vec!["test2-fast".to_string(), "test2-slow".to_string()],
-        2 => vec!["test3-pro".to_string()],
-        _ => vec!["custom-model-a".to_string(), "custom-model-b".to_string()],
-    }
 }
 
 fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
@@ -119,68 +103,200 @@ fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
     }
 }
 
+fn model_add_mode_bulk(form: &BottomFormView, provider_idx: usize) -> bool {
+    if provider_idx < 3 {
+        return true;
+    }
+    match form.fields.get(1).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() > 1 => {
+            *selected == 1
+        }
+        _ => true,
+    }
+}
+
+/// API Key 始终在「连接模型」表单最后一项（预设 3 项、自定义单条 5 项、自定义批量 4 项）。
+fn model_add_api_key_field_index(form: &BottomFormView) -> usize {
+    form.fields.len().saturating_sub(1)
+}
+
+fn model_add_provider_field(selected: usize) -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.provider.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: model_add_provider_choice_labels(),
+            selected: selected.min(3),
+        },
+    }
+}
+
+fn model_add_mode_field_preset() -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.mode.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: vec![t!("form.model.mode.bulk_only").into_owned()],
+            selected: 0,
+        },
+    }
+}
+
+fn model_add_mode_field_custom(mode_selected: usize) -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.mode.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: vec![
+                t!("form.model.mode.single").into_owned(),
+                t!("form.model.mode.bulk").into_owned(),
+            ],
+            selected: mode_selected.min(1),
+        },
+    }
+}
+
+fn model_add_model_name_field(value: &str) -> BottomFormFieldView {
+    let value = value.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.model_name.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.model_name.placeholder").into_owned(),
+            cursor,
+            mask: false,
+            disabled: false,
+        },
+    }
+}
+
+fn model_add_api_base_field(value: &str) -> BottomFormFieldView {
+    let value = value.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.api_base.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.api_base.placeholder").into_owned(),
+            cursor,
+            mask: false,
+            disabled: false,
+        },
+    }
+}
+
+fn model_add_api_key_field(api_key: &str) -> BottomFormFieldView {
+    let value = api_key.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.api_key.label").into_owned(),
+        help: t!("form.model.field.api_key.help").into_owned(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.api_key.placeholder").into_owned(),
+            cursor,
+            mask: true,
+            disabled: false,
+        },
+    }
+}
+
+fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
+    match idx {
+        0 => Some(ModelProvider::Deepseek),
+        1 => Some(ModelProvider::Kimi),
+        2 => Some(ModelProvider::Minimax),
+        3 => Some(ModelProvider::Custom),
+        _ => None,
+    }
+}
+
 fn sync_model_add_form_fields(form: &mut BottomFormView) {
     if !matches!(form.kind, BottomFormKind::ModelAdd) {
         return;
     }
-    let Some(selected) = model_add_provider_selected(form) else {
+    let Some(provider_idx) = model_add_provider_selected(form) else {
         return;
     };
-    if let Some(base) = preset_api_base_for_model_add(selected) {
-        if let Some(field) = form.fields.get_mut(MODEL_ADD_FIELD_API_BASE) {
-            if let BottomFormFieldEditorView::Text { value, cursor, .. } = &mut field.editor {
-                *value = base.to_string();
-                *cursor = value.chars().count();
-            }
+
+    let old_len = form.fields.len();
+    let api_key_raw = bottom_form_text_value(form, model_add_api_key_field_index(form));
+    let mode_custom = match form.fields.get(1).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() > 1 => {
+            (*selected).min(1)
         }
-    } else if let Some(field) = form.fields.get_mut(MODEL_ADD_FIELD_API_BASE) {
-        if let BottomFormFieldEditorView::Text { value, cursor, .. } = &mut field.editor {
-            value.clear();
-            *cursor = 0;
-        }
-    }
+        _ => 0,
+    };
+
+    let name_raw = if old_len == 5 {
+        bottom_form_text_value(form, 2)
+    } else {
+        ""
+    };
+    let base_raw = if old_len == 5 {
+        bottom_form_text_value(form, 3)
+    } else if old_len == 4 {
+        bottom_form_text_value(form, 2)
+    } else {
+        ""
+    };
+
+    let bulk_custom = provider_idx >= 3 && mode_custom == 1;
+
+    let new_fields: Vec<BottomFormFieldView> = if provider_idx < 3 {
+        vec![
+            model_add_provider_field(provider_idx),
+            model_add_mode_field_preset(),
+            model_add_api_key_field(api_key_raw),
+        ]
+    } else if bulk_custom {
+        vec![
+            model_add_provider_field(provider_idx),
+            model_add_mode_field_custom(mode_custom),
+            model_add_api_base_field(base_raw),
+            model_add_api_key_field(api_key_raw),
+        ]
+    } else {
+        vec![
+            model_add_provider_field(provider_idx),
+            model_add_mode_field_custom(mode_custom),
+            model_add_model_name_field(name_raw),
+            model_add_api_base_field(base_raw),
+            model_add_api_key_field(api_key_raw),
+        ]
+    };
+
+    form.fields = new_fields;
+    form.selected_field = form
+        .selected_field
+        .min(form.fields.len().saturating_sub(1));
+    ensure_selectable_field(form);
 }
 
 pub(crate) fn new_model_add_form() -> BottomFormView {
     let mut form = BottomFormView {
         kind: BottomFormKind::ModelAdd,
         title: t!("form.model.title").into_owned(),
-        fields: vec![
-            BottomFormFieldView {
-                label: t!("form.model.field.provider.label").into_owned(),
-                help: String::new(),
-                editor: BottomFormFieldEditorView::Choice {
-                    options: model_add_provider_choice_labels(),
-                    selected: 0,
-                },
-            },
-            BottomFormFieldView {
-                label: t!("form.model.field.api_base.label").into_owned(),
-                help: String::new(),
-                editor: BottomFormFieldEditorView::Text {
-                    value: String::new(),
-                    placeholder: t!("form.model.field.api_base.placeholder").into_owned(),
-                    cursor: 0,
-                    mask: false,
-                },
-            },
-            BottomFormFieldView {
-                label: t!("form.model.field.api_key.label").into_owned(),
-                help: t!("form.model.field.api_key.help").into_owned(),
-                editor: BottomFormFieldEditorView::Text {
-                    value: String::new(),
-                    placeholder: t!("form.model.field.api_key.placeholder").into_owned(),
-                    cursor: 0,
-                    mask: true,
-                },
-            },
-        ],
+        fields: vec![model_add_provider_field(0)],
         selected_field: MODEL_ADD_FIELD_PROVIDER,
         scroll_offset: 0,
         footer_hint: t!("form.model.footer_hint").into_owned(),
     };
     sync_model_add_form_fields(&mut form);
     form
+}
+
+/// 解析「连接提供商」底部表单；与 Desktop 设置页语义对齐（单条 / 批量）。
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedModelAddForm {
+    pub provider: ModelProvider,
+    pub bulk: bool,
+    pub model_name: Option<String>,
+    pub api_base: String,
+    pub api_key: String,
 }
 
 pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
@@ -279,6 +395,7 @@ pub(crate) fn new_mcp_prompt_form(
                     },
                     cursor: 0,
                     mask: false,
+                    disabled: false,
                 },
             }
         })
@@ -292,6 +409,7 @@ pub(crate) fn new_mcp_prompt_form(
             placeholder: t!("form.prompt.field.user_message.placeholder").into_owned(),
             cursor: initial_user_message.unwrap_or_default().chars().count(),
             mask: false,
+            disabled: false,
         },
     });
 
@@ -364,7 +482,15 @@ pub(crate) fn move_left(form: &mut BottomFormView) {
 
     match &mut field.editor {
         BottomFormFieldEditorView::Section { .. } => {}
-        BottomFormFieldEditorView::Text { value, cursor, .. } => {
+        BottomFormFieldEditorView::Text {
+            value,
+            cursor,
+            disabled,
+            ..
+        } => {
+            if *disabled {
+                return;
+            }
             *cursor = (*cursor).min(value.chars().count());
             if *cursor > 0 {
                 *cursor -= 1;
@@ -395,7 +521,15 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
 
     match &mut field.editor {
         BottomFormFieldEditorView::Section { .. } => {}
-        BottomFormFieldEditorView::Text { value, cursor, .. } => {
+        BottomFormFieldEditorView::Text {
+            value,
+            cursor,
+            disabled,
+            ..
+        } => {
+            if *disabled {
+                return;
+            }
             *cursor = (*cursor + 1).min(value.chars().count());
         }
         BottomFormFieldEditorView::Choice { options, selected } => {
@@ -430,25 +564,41 @@ pub(crate) fn activate(form: &mut BottomFormView) {
 }
 
 pub(crate) fn move_home(form: &mut BottomFormView) {
-    let Some(BottomFormFieldEditorView::Text { cursor, .. }) = selected_editor_mut(form) else {
+    let Some(BottomFormFieldEditorView::Text { cursor, disabled, .. }) = selected_editor_mut(form)
+    else {
         return;
     };
+    if *disabled {
+        return;
+    }
     *cursor = 0;
 }
 
 pub(crate) fn move_end(form: &mut BottomFormView) {
-    let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) = selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text { value, cursor, disabled, .. }) =
+        selected_editor_mut(form)
     else {
         return;
     };
+    if *disabled {
+        return;
+    }
     *cursor = value.chars().count();
 }
 
 pub(crate) fn insert_char(form: &mut BottomFormView, ch: char) {
-    let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) = selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text {
+        value,
+        cursor,
+        disabled,
+        ..
+    }) = selected_editor_mut(form)
     else {
         return;
     };
+    if *disabled {
+        return;
+    }
     let idx = char_cursor_to_byte_index(value, *cursor);
     value.insert(idx, ch);
     *cursor += 1;
@@ -460,20 +610,36 @@ pub(crate) fn insert_text(form: &mut BottomFormView, text: &str) {
         return;
     }
 
-    let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) = selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text {
+        value,
+        cursor,
+        disabled,
+        ..
+    }) = selected_editor_mut(form)
     else {
         return;
     };
+    if *disabled {
+        return;
+    }
     let idx = char_cursor_to_byte_index(value, *cursor);
     value.insert_str(idx, normalized.as_str());
     *cursor += normalized.chars().count();
 }
 
 pub(crate) fn backspace(form: &mut BottomFormView) {
-    let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) = selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text {
+        value,
+        cursor,
+        disabled,
+        ..
+    }) = selected_editor_mut(form)
     else {
         return;
     };
+    if *disabled {
+        return;
+    }
     if *cursor == 0 {
         return;
     }
@@ -484,10 +650,18 @@ pub(crate) fn backspace(form: &mut BottomFormView) {
 }
 
 pub(crate) fn delete(form: &mut BottomFormView) {
-    let Some(BottomFormFieldEditorView::Text { value, cursor, .. }) = selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text {
+        value,
+        cursor,
+        disabled,
+        ..
+    }) = selected_editor_mut(form)
     else {
         return;
     };
+    if *disabled {
+        return;
+    }
     if *cursor >= value.chars().count() {
         return;
     }
@@ -554,34 +728,68 @@ pub(crate) fn to_config(
     ))
 }
 
-/// Provider index, resolved API base, API key. Model id is chosen in the next mock list step.
 pub(crate) fn parse_model_add_connection(
     form: &BottomFormView,
-) -> std::result::Result<(usize, String, String), String> {
+) -> std::result::Result<ParsedModelAddForm, String> {
     if !matches!(form.kind, BottomFormKind::ModelAdd) {
         return Err(t!("form.model.validation.invalid_form_kind").into_owned());
     }
 
-    let Some(provider_index) = model_add_provider_selected(form) else {
+    let Some(provider_idx) = model_add_provider_selected(form) else {
+        return Err(t!("form.model.validation.provider_invalid").into_owned());
+    };
+    let Some(provider) = model_add_provider_to_enum(provider_idx) else {
         return Err(t!("form.model.validation.provider_invalid").into_owned());
     };
 
-    let api_key = bottom_form_text_value(form, MODEL_ADD_FIELD_API_KEY).trim().to_string();
+    let key_idx = model_add_api_key_field_index(form);
+    let api_key = bottom_form_text_value(form, key_idx).trim().to_string();
     if api_key.is_empty() {
         return Err(t!("form.model.validation.api_key_empty").into_owned());
     }
 
-    let api_base = if let Some(preset) = preset_api_base_for_model_add(provider_index) {
-        preset.to_string()
+    let bulk = model_add_mode_bulk(form, provider_idx);
+    let api_base = if let Some(preset) = model_add_preset_api_base_by_choice_index(provider_idx) {
+        preset
     } else {
-        let v = bottom_form_text_value(form, MODEL_ADD_FIELD_API_BASE).trim().to_string();
+        let base_idx = match form.fields.len() {
+            4 => 2,
+            5 => 3,
+            _ => {
+                return Err(t!("form.model.validation.invalid_form_kind").into_owned());
+            }
+        };
+        let v = bottom_form_text_value(form, base_idx).trim().to_string();
         if v.is_empty() {
-            return Err(t!("form.model.validation.api_base_empty").into_owned());
+            DEFAULT_API_BASE.to_string()
+        } else {
+            v
         }
-        v
     };
 
-    Ok((provider_index, api_base, api_key))
+    let model_name = if bulk {
+        None
+    } else {
+        if form.fields.len() != 5 {
+            return Err(t!("form.model.validation.invalid_form_kind").into_owned());
+        }
+        let n = bottom_form_text_value(form, 2).trim().to_string();
+        if n.is_empty() {
+            return Err(t!("form.model.validation.name_empty").into_owned());
+        }
+        if n.chars().any(char::is_whitespace) {
+            return Err(t!("form.model.validation.name_whitespace").into_owned());
+        }
+        Some(n)
+    };
+
+    Ok(ParsedModelAddForm {
+        provider,
+        bulk,
+        model_name,
+        api_base,
+        api_key,
+    })
 }
 
 pub(crate) fn to_prompt_args_json(
@@ -757,9 +965,10 @@ fn is_field_selectable(field: &BottomFormFieldView) -> bool {
     match &field.editor {
         BottomFormFieldEditorView::Section { .. } => false,
         BottomFormFieldEditorView::Checkbox { disabled, .. } => !*disabled,
-        BottomFormFieldEditorView::Text { .. }
-        | BottomFormFieldEditorView::Choice { .. }
-        | BottomFormFieldEditorView::AskQuestion { .. } => true,
+        BottomFormFieldEditorView::Text { disabled, .. } => !*disabled,
+        BottomFormFieldEditorView::Choice { .. } | BottomFormFieldEditorView::AskQuestion { .. } => {
+            true
+        }
     }
 }
 
@@ -946,6 +1155,7 @@ mod tests {
         parse_model_add_connection, prompt_user_message, rules_form_overrides, select_next_field,
         skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
     };
+    use crate::model_registry::ModelProvider;
     use rust_i18n::t;
     use std::path::PathBuf;
 
@@ -1134,12 +1344,15 @@ mod tests {
     fn model_add_form_parses_preset_connection() {
         let mut form = new_model_add_form();
         assert!(matches!(form.kind, crate::view::BottomFormKind::ModelAdd));
-        form.selected_field = 2;
+        const API_KEY_FIELD: usize = 2;
+        form.selected_field = API_KEY_FIELD;
         insert_text(&mut form, "sk-secret");
         let parsed = parse_model_add_connection(&form).expect("parse");
-        assert_eq!(parsed.0, 0);
-        assert_eq!(parsed.1, "https://test1.example/v1");
-        assert_eq!(parsed.2, "sk-secret");
+        assert_eq!(parsed.provider, ModelProvider::Deepseek);
+        assert!(parsed.bulk);
+        assert_eq!(parsed.api_base, "https://api.deepseek.com/v1");
+        assert_eq!(parsed.api_key, "sk-secret");
+        assert!(parsed.model_name.is_none());
     }
 
     #[test]
@@ -1159,14 +1372,47 @@ mod tests {
             }
         }
         sync_model_add_form_fields(&mut form);
-        form.selected_field = 1;
-        insert_text(&mut form, "https://custom.example/v1");
         form.selected_field = 2;
+        insert_text(&mut form, "my-model");
+        form.selected_field = 3;
+        insert_text(&mut form, "https://custom.example/v1");
+        form.selected_field = 4;
         insert_text(&mut form, "sk-c");
         let parsed = parse_model_add_connection(&form).expect("parse");
-        assert_eq!(parsed.0, 3);
-        assert_eq!(parsed.1, "https://custom.example/v1");
-        assert_eq!(parsed.2, "sk-c");
+        assert_eq!(parsed.provider, ModelProvider::Custom);
+        assert!(!parsed.bulk);
+        assert_eq!(parsed.model_name.as_deref(), Some("my-model"));
+        assert_eq!(parsed.api_base, "https://custom.example/v1");
+        assert_eq!(parsed.api_key, "sk-c");
+    }
+
+    #[test]
+    fn model_add_custom_bulk_hides_model_name_field() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 3;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        assert_eq!(form.fields.len(), 5);
+        form.selected_field = 1;
+        move_right(&mut form);
+        assert_eq!(form.fields.len(), 4);
+        assert!(!form
+            .fields
+            .iter()
+            .any(|f| f.label == t!("form.model.field.model_name.label").into_owned()));
+        form.selected_field = 2;
+        insert_text(&mut form, "https://bulk.example/v1");
+        form.selected_field = 3;
+        insert_text(&mut form, "sk-bulk");
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::Custom);
+        assert!(parsed.bulk);
+        assert!(parsed.model_name.is_none());
+        assert_eq!(parsed.api_base, "https://bulk.example/v1");
+        assert_eq!(parsed.api_key, "sk-bulk");
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {
