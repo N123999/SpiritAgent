@@ -48,6 +48,7 @@ import {
   validateSkillName,
   restoreHostFileChanges,
   type HostExtensionEvent,
+  type HostInstalledExtension,
   type HostRecordedFileChange,
 } from '@spirit-agent/host-internal';
 
@@ -63,6 +64,7 @@ import type {
   DeleteMcpServerRequest,
   DesktopMcpServerInspection,
   DesktopExtensionListItem,
+  DesktopExtensionCssLayer,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
@@ -196,6 +198,7 @@ interface HostState {
   metadata: HostMetadataSummary;
   messages: ConversationMessageSnapshot[];
   extensionsList: DesktopExtensionListItem[];
+  extensionCss: DesktopExtensionCssLayer[];
   activeSession?: ActiveSessionSnapshot;
   archiveHistory: ChatArchive['llmHistory'];
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
@@ -1240,6 +1243,7 @@ description: ${frontmatterDescription}
       metadata,
       messages: state?.messages ?? [],
       extensionsList: state?.extensionsList ?? [],
+      extensionCss: state?.extensionCss ?? [],
       activeSession: state?.activeSession,
       archiveHistory: state?.archiveHistory ?? [],
       archiveSubagentSessions: state?.archiveSubagentSessions ?? [],
@@ -1450,6 +1454,7 @@ description: ${frontmatterDescription}
       })),
       // 须与 refreshExtensionsList 一致，否则设置页不显示工具/设置/密钥
       extensionsList: state.extensionsList.map((item) => ({ ...item })),
+      extensionCss: state.extensionCss.map((entry) => ({ ...entry })),
       plan: {
         path: state.metadata.planMetadata.path,
         exists: state.metadata.planMetadata.exists,
@@ -1596,6 +1601,14 @@ description: ${frontmatterDescription}
             })),
           }
         : {}),
+      ...(item.manifest.contributes?.desktop?.css?.length
+        ? {
+            desktopCss: item.manifest.contributes.desktop.css.map((entry) => ({
+              path: entry.path,
+              ...(entry.media ? { media: entry.media } : {}),
+            })),
+          }
+        : {}),
       ...(item.manifest.settingsSchema?.length
         ? {
             settingsSchema: item.manifest.settingsSchema.map((setting) => ({
@@ -1640,6 +1653,40 @@ description: ${frontmatterDescription}
       ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
       installedAtUnixMs: item.installedAtUnixMs,
     })));
+    state.extensionCss = await this.collectDesktopExtensionCssLayers(extensions);
+  }
+
+  private async collectDesktopExtensionCssLayers(
+    extensions: readonly HostInstalledExtension[],
+  ): Promise<DesktopExtensionCssLayer[]> {
+    const layers: DesktopExtensionCssLayer[] = [];
+
+    for (const item of extensions) {
+      const cssEntries = item.manifest.contributes?.desktop?.css ?? [];
+      for (const entry of cssEntries) {
+        const sourcePath = path.join(item.directoryPath, ...entry.path.split('/'));
+        try {
+          const cssText = await readFile(sourcePath, 'utf8');
+          if (!cssText.trim()) {
+            continue;
+          }
+          layers.push({
+            extensionId: item.id,
+            extensionName: item.manifest.name,
+            sourcePath: entry.path,
+            cssText,
+            ...(entry.media ? { media: entry.media } : {}),
+          });
+        } catch (error) {
+          console.warn(
+            `[desktop-host][extensions] read css failed: ${item.id}:${entry.path}`,
+            error,
+          );
+        }
+      }
+    }
+
+    return layers;
   }
 
   private async refreshExtensionToolDefinitions(): Promise<void> {

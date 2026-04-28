@@ -185,7 +185,10 @@ function ComposerSurface({
   onKeyDown,
 }: ComposerSurfaceProps) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
+    <div
+      data-spirit-surface="composer-surface"
+      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40"
+    >
       <Textarea
         ref={textareaRef}
         value={value}
@@ -407,6 +410,9 @@ function MessageCard({
   return (
     <div
       id={conversationMessageDomId(message, listIndex)}
+      data-spirit-surface="message-row"
+      data-spirit-message-role={message.role}
+      data-spirit-message-pending={message.pending ? "true" : "false"}
       className={cn(
         "scroll-mt-4 flex w-full pb-3 last:pb-0",
         compactAfterPrevious && "-mt-4",
@@ -415,6 +421,7 @@ function MessageCard({
       )}
     >
       <div
+        data-spirit-surface={isUser ? "message-user" : "message-assistant"}
         className={cn(
           "min-w-0 space-y-2",
           isUser
@@ -452,6 +459,7 @@ function MessageCard({
         ) : null}
         {isUser && message.content.trim() && !rewindSelected ? (
           <pre
+            data-spirit-surface="message-bubble"
             className={cn(
               "whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground",
               userBubble,
@@ -475,7 +483,9 @@ function MessageCard({
           </pre>
         ) : null}
         {!isUser && message.content.trim() ? (
-          <MarkdownMessage content={message.content} className="font-sans" />
+          <div data-spirit-surface="message-bubble">
+            <MarkdownMessage content={message.content} className="font-sans" />
+          </div>
         ) : null}
         {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
       </div>
@@ -808,6 +818,38 @@ export default function App() {
     }
   }, [useMicaBackdrop]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const styleNodes = Array.from(
+      document.head.querySelectorAll<HTMLStyleElement>('style[data-spirit-extension-css="true"]'),
+    );
+    for (const node of styleNodes) {
+      node.remove();
+    }
+
+    const layers = snapshot?.extensionCss ?? [];
+    for (const layer of layers) {
+      const style = document.createElement("style");
+      style.dataset.spiritExtensionCss = "true";
+      style.dataset.extensionId = layer.extensionId;
+      style.dataset.sourcePath = layer.sourcePath;
+      if (layer.media) {
+        style.media = layer.media;
+      }
+      style.textContent = layer.cssText;
+      document.head.append(style);
+    }
+
+    return () => {
+      for (const node of document.head.querySelectorAll<HTMLStyleElement>('style[data-spirit-extension-css="true"]')) {
+        node.remove();
+      }
+    };
+  }, [snapshot?.extensionCss]);
+
   // 与 `config.windows_mica` 持久化对齐（保存 Mica 开关后桌面宿主会先按系统主题同步一帧，此处用 `html.dark` 再拉齐）
   useEffect(() => {
     if (!isElectronShell) {
@@ -961,6 +1003,10 @@ export default function App() {
 
   return (
     <div
+      data-spirit-surface="app-shell"
+      data-spirit-shell-kind={isElectronShell ? "electron" : "web"}
+      data-spirit-theme={resolveDark(theme) ? "dark" : "light"}
+      data-spirit-mica={useMicaBackdrop ? "true" : "false"}
       className={cn(
         "flex h-[100dvh] min-h-0 flex-col text-foreground",
         useMicaBackdrop ? "bg-transparent" : "bg-background",
@@ -968,7 +1014,7 @@ export default function App() {
     >
       <LaunchSplash active={launchSplashActive} />
       {winElectronChrome ? <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} /> : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div data-spirit-surface="app-body" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {!winElectronChrome ? (
           <div
             className={cn(
@@ -982,14 +1028,16 @@ export default function App() {
             aria-orientation="horizontal"
           />
         ) : null}
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div data-spirit-surface="main-frame" className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div
+          data-spirit-surface="session-sidebar-shell"
           className={cn(
             "h-full min-h-0 shrink-0 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
             sessionSidebarOpen ? "w-[min(16rem,40vw)]" : "w-0",
           )}
         >
           <div
+            data-spirit-surface="session-sidebar"
             className={cn(
               "h-full min-w-0 w-[min(16rem,40vw)]",
               !sessionSidebarOpen && "pointer-events-none select-none",
@@ -1024,7 +1072,7 @@ export default function App() {
         </div>
 
         {settingsMode ? (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+          <div data-spirit-surface="settings-shell" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               sessionSidebarOpen={sessionSidebarOpen}
@@ -1068,8 +1116,8 @@ export default function App() {
             />
           </div>
         ) : (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-background min-w-0">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background min-w-0">
+          <div data-spirit-surface="conversation-layout" className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-background min-w-0">
+            <div data-spirit-surface="conversation-shell" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background min-w-0">
               <DesktopLayoutChromeBar
                 useMicaBackdrop={useMicaBackdrop}
                 sessionSidebarOpen={sessionSidebarOpen}
@@ -1078,7 +1126,7 @@ export default function App() {
                 workspaceToolsOpen={workspaceToolsOpen}
                 onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
               />
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
+            <div data-spirit-surface="conversation-stage" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
               {rewindDraft ? (
                 <button
                   type="button"
@@ -1088,12 +1136,14 @@ export default function App() {
                 />
               ) : null}
               <ScrollArea
+                data-spirit-surface="conversation-scroll"
                 className="min-h-0 flex-1 bg-background"
                 type="hover"
                 scrollHideDelay={450}
               >
                 {/* min-h-full：短内容仍铺满视口；大 pb 为底部透明叠层留出可滚入的「床」，避免正文被输入区挡住 */}
                 <div
+                  data-spirit-surface="conversation-scroll-body"
                   className={cn(
                     "min-h-full w-full bg-background",
                     "pb-[calc(12rem+env(safe-area-inset-bottom,0px))]",
@@ -1101,6 +1151,7 @@ export default function App() {
                 >
                   {messages.length === 0 ? (
                     <div
+                      data-spirit-surface="conversation-empty"
                       className={cn(
                         "mx-auto box-border flex min-h-[calc(100dvh-11rem)] w-full items-center justify-center px-3",
                         CONVERSATION_MAX_W,
@@ -1112,12 +1163,13 @@ export default function App() {
                     </div>
                   ) : (
                     <div
+                      data-spirit-surface="conversation-list-shell"
                       className={cn(
                         "mx-auto w-full overflow-x-hidden px-3 pt-6 sm:pt-7",
                         CONVERSATION_MAX_W,
                       )}
                     >
-                      <div className="space-y-3">
+                      <div data-spirit-surface="conversation-list" className="space-y-3">
                         {messages.map((message, index) => (
                           <MessageCard
                             key={conversationMessageDomId(message, index)}
@@ -1157,7 +1209,10 @@ export default function App() {
                 </div>
               </ScrollArea>
 
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+              <div
+                data-spirit-surface="composer-dock"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
+              >
                 <div className={cn("pointer-events-auto mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
                 {runtime.runtimeError ? (
                   <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
@@ -1243,6 +1298,7 @@ export default function App() {
               </div>
             </div>
             </div>
+            <div data-spirit-surface="workspace-dock">
             <WorkspaceToolsDock
               workspaceRoot={snapshot?.workspaceRoot ?? ""}
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
@@ -1252,6 +1308,7 @@ export default function App() {
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}
             />
+            </div>
           </div>
         )}
         </div>

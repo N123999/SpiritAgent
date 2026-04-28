@@ -42,6 +42,7 @@ export const SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES = [
   'settings',
   'secret-storage',
   'structured-results',
+  'desktop-ui',
 ] as const;
 
 export const SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES = [
@@ -98,6 +99,16 @@ export interface HostExtensionContributedToolDefinition {
 
 export interface HostExtensionContributionSet {
   tools?: HostExtensionContributedToolDefinition[];
+  desktop?: HostExtensionDesktopContributionSet;
+}
+
+export interface HostExtensionDesktopCssDefinition {
+  path: string;
+  media?: string;
+}
+
+export interface HostExtensionDesktopContributionSet {
+  css?: HostExtensionDesktopCssDefinition[];
 }
 
 export interface HostExtensionSettingOption {
@@ -1538,11 +1549,15 @@ function optionalContributionSetField(value: unknown): HostExtensionContribution
   }
 
   const tools = optionalContributedToolsField(value.tools);
-  if (tools.length === 0) {
+  const desktop = optionalDesktopContributionSetField(value.desktop);
+  if (tools.length === 0 && !desktop) {
     return undefined;
   }
 
-  return { tools };
+  return {
+    ...(tools.length > 0 ? { tools } : {}),
+    ...(desktop ? { desktop } : {}),
+  };
 }
 
 function optionalContributedToolsField(value: unknown): HostExtensionContributedToolDefinition[] {
@@ -1551,6 +1566,49 @@ function optionalContributedToolsField(value: unknown): HostExtensionContributed
   }
 
   return value.map((entry, index) => parseContributedToolDefinition(entry, index));
+}
+
+function optionalDesktopContributionSetField(
+  value: unknown,
+): HostExtensionDesktopContributionSet | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const css = optionalDesktopCssDefinitionsField(value.css);
+  if (css.length === 0) {
+    return undefined;
+  }
+
+  return { css };
+}
+
+function optionalDesktopCssDefinitionsField(
+  value: unknown,
+): HostExtensionDesktopCssDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => parseDesktopCssDefinition(entry, index));
+}
+
+function parseDesktopCssDefinition(
+  value: unknown,
+  index: number,
+): HostExtensionDesktopCssDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 contributes.desktop.css[${index}] 必须是对象。`);
+  }
+
+  const cssPath = stringField(value.path, `contributes.desktop.css[${index}].path`);
+  assertSafeRelativePath(cssPath, `contributes.desktop.css[${index}].path`);
+  const media = optionalStringField(value.media);
+
+  return {
+    path: cssPath,
+    ...(media ? { media } : {}),
+  };
 }
 
 function parseContributedToolDefinition(

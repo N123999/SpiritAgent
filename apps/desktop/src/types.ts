@@ -93,6 +93,11 @@ export interface DesktopExtensionContributedTool {
   executionMode?: DesktopExtensionToolExecutionMode;
 }
 
+export interface DesktopExtensionDesktopCssEntry {
+  path: string;
+  media?: string;
+}
+
 export type DesktopExtensionSettingType = 'string' | 'boolean' | 'number' | 'select';
 
 export interface DesktopExtensionSettingOption {
@@ -135,6 +140,7 @@ export interface DesktopExtensionListItem {
   activationEvents?: string[];
   requestedCapabilities?: string[];
   contributedTools?: DesktopExtensionContributedTool[];
+  desktopCss?: DesktopExtensionDesktopCssEntry[];
   settingsSchema?: DesktopExtensionSettingDefinition[];
   settingsValues?: Record<string, DesktopExtensionSettingValue>;
   secretSlots?: DesktopExtensionSecretSlot[];
@@ -271,12 +277,21 @@ export interface DesktopSnapshot {
   /** 当前工作区与用户目录下发现的全部 Skills，供设置页列表。 */
   skillsList: DesktopSkillListItem[];
   extensionsList: DesktopExtensionListItem[];
+  extensionCss: DesktopExtensionCssLayer[];
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];
   conversation: ConversationSnapshot;
   /** 从磁盘打开的会话；未从文件打开时为 `undefined`（新会话/未保存）。 */
   activeSession?: ActiveSessionSnapshot;
+}
+
+export interface DesktopExtensionCssLayer {
+  extensionId: string;
+  extensionName: string;
+  sourcePath: string;
+  cssText: string;
+  media?: string;
 }
 
 export interface DesktopConfigSnapshot {

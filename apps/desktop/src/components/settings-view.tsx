@@ -920,6 +920,30 @@ function ExtensionsSettingsPanel({
                     ))}
                   </div>
                 ) : null}
+                {item.desktopCss?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-xs font-medium text-foreground">Desktop CSS</p>
+                    {item.desktopCss.map((entry) => (
+                      <div
+                        key={`${item.id}:desktop-css:${entry.path}`}
+                        className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <code className="text-[0.7rem] text-foreground">{entry.path}</code>
+                          {entry.media ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              media: {entry.media}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          该样式会以扩展层的形式注入 Desktop Renderer，可配合稳定的
+                          {" "}`data-spirit-*` hooks 覆盖界面表现。
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {item.settingsSchema?.length ? (
                   <div className="space-y-2 pt-2">
                     <p className="text-xs font-medium text-foreground">扩展设置</p>
