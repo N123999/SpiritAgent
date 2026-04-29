@@ -29,8 +29,10 @@ type SessionSidebarProps = {
   activeFilePath: string | null;
   onSelectSession: (path: string) => void;
   onNewSession: () => void;
+  onOpenMarketplace?: () => void;
   onOpenSettings: () => void;
   onBackToSessions?: () => void;
+  marketplaceActive?: boolean;
   settingsTab?: SettingsSidebarTab;
   onSettingsTabChange?: (tab: SettingsSidebarTab) => void;
   hostStatus: string;
@@ -95,8 +97,10 @@ export function SessionSidebar({
   activeFilePath,
   onSelectSession,
   onNewSession,
+  onOpenMarketplace,
   onOpenSettings,
   onBackToSessions,
+  marketplaceActive = false,
   settingsTab = "basic",
   onSettingsTabChange,
   hostStatus,
@@ -169,6 +173,22 @@ export function SessionSidebar({
           >
             <Plus className="size-3.5" aria-hidden />
             <span className={cn(narrow && "sr-only")}>新会话</span>
+          </Button>
+          <Button
+            type="button"
+            variant={marketplaceActive ? "secondary" : "ghost"}
+            size={narrow ? "icon" : "sm"}
+            className={cn(
+              "text-xs text-sidebar-foreground/90 hover:bg-foreground/[0.05] dark:hover:bg-foreground/10",
+              narrow
+                ? "size-8 shrink-0"
+                : "h-8 w-full justify-start gap-2",
+            )}
+            disabled={disabled || busy}
+            onClick={onOpenMarketplace}
+          >
+            <Package className="size-3.5" aria-hidden />
+            <span className={cn(narrow && "sr-only")}>Marketplace</span>
           </Button>
         </div>
       )}

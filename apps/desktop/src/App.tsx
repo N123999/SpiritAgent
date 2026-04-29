@@ -42,6 +42,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownMessage } from "@/components/markdown-message";
+import { MarketplaceView } from "@/components/marketplace-view";
 import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
@@ -867,7 +868,10 @@ export default function App() {
   const pendingQuestions = runtime.pendingQuestions;
   const [rewindDraft, setRewindDraft] = useState<MessageRewindDraftState | null>(null);
 
-  const [activeSurface, setActiveSurface] = useState<"conversation" | "settings">(
+  const [activeSurface, setActiveSurface] = useState<"conversation" | "settings" | "marketplace">(
+    "conversation",
+  );
+  const [lastNonSettingsSurface, setLastNonSettingsSurface] = useState<"conversation" | "marketplace">(
     "conversation",
   );
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
@@ -879,6 +883,7 @@ export default function App() {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
+  const marketplaceMode = activeSurface === "marketplace";
   const slashQuery = useMemo(() => currentSkillSlashQuery(runtime.composer), [runtime.composer]);
   const slashSuggestions = useMemo(
     () => buildSkillSlashSuggestions(slashQuery, snapshot?.skillsList ?? []),
@@ -1050,13 +1055,30 @@ export default function App() {
               mode={settingsMode ? "settings" : "sessions"}
               sessions={runtime.sessions}
               activeFilePath={activeFilePath}
-              onNewSession={() => void runtime.resetSession()}
-              onSelectSession={(path) => void runtime.openSession(path)}
+              onNewSession={() => {
+                setLastNonSettingsSurface("conversation");
+                setActiveSurface("conversation");
+                void runtime.resetSession();
+              }}
+              onSelectSession={(path) => {
+                setLastNonSettingsSurface("conversation");
+                setActiveSurface("conversation");
+                void runtime.openSession(path);
+              }}
+              onOpenMarketplace={() => {
+                setSessionSidebarOpen(true);
+                setLastNonSettingsSurface("marketplace");
+                setActiveSurface("marketplace");
+              }}
               onOpenSettings={() => {
                 setSessionSidebarOpen(true);
+                if (activeSurface !== "settings") {
+                  setLastNonSettingsSurface(activeSurface === "marketplace" ? "marketplace" : "conversation");
+                }
                 setActiveSurface("settings");
               }}
-              onBackToSessions={() => setActiveSurface("conversation")}
+              onBackToSessions={() => setActiveSurface(lastNonSettingsSurface)}
+              marketplaceActive={marketplaceMode}
               settingsTab={settingsTab}
               onSettingsTabChange={setSettingsTab}
               hostStatus={runtime.summary.hostStatus}
@@ -1110,9 +1132,30 @@ export default function App() {
               onCreateSkill={runtime.createSkill}
               onDeleteSkill={runtime.deleteSkill}
               onGenerateSkillNavigate={() => {
+                setLastNonSettingsSurface("conversation");
                 setActiveSurface("conversation");
                 applySlashSuggestion(`${CREATE_SKILL_SLASH_ALIAS} `);
               }}
+            />
+          </div>
+        ) : marketplaceMode ? (
+          <div data-spirit-surface="marketplace-layout" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+            <DesktopLayoutChromeBar
+              useMicaBackdrop={useMicaBackdrop}
+              sessionSidebarOpen={sessionSidebarOpen}
+              onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
+              showWorkspaceToggle={false}
+            />
+            <MarketplaceView
+              snapshot={snapshot}
+              apiReady={runtime.apiReady}
+              busyAction={runtime.busyAction}
+              runtimeError={runtime.runtimeError}
+              onListMarketplaceExtensions={runtime.listMarketplaceExtensions}
+              onGetMarketplaceExtensionDetail={runtime.getMarketplaceExtensionDetail}
+              onGetMarketplaceExtensionReadme={runtime.getMarketplaceExtensionReadme}
+              onPrepareMarketplaceExtensionInstall={runtime.prepareMarketplaceExtensionInstall}
+              onInstallMarketplaceExtension={runtime.installMarketplaceExtension}
             />
           </div>
         ) : (
