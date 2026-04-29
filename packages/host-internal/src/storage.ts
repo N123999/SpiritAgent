@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -15,7 +16,7 @@ export const PLAN_FILE_NAME = 'plan.md';
 export const RULES_STATE_FILE_NAME = 'rules-state.json';
 export const SKILLS_STATE_FILE_NAME = 'skills-state.json';
 export const EXTENSIONS_DIR_NAME = 'extensions';
-export const EXTENSION_MANIFEST_FILE_NAME = 'spirit-extension.json';
+export const EXTENSION_MANIFEST_FILE_NAME = 'package.json';
 export const EXTENSIONS_INDEX_FILE_NAME = 'extensions.json';
 export const EXTENSION_STATE_DIR_NAME = 'extension-state';
 
@@ -176,7 +177,11 @@ function normalizePath(filePath: string): string {
 }
 
 function extensionSettingsFilePath(paths: ExtensionPaths, extensionId: string): string {
-  return path.join(paths.extensionStateDir, `${extensionId}.json`);
+  return path.join(paths.extensionStateDir, `${encodeExtensionStorageName(extensionId)}.json`);
+}
+
+function encodeExtensionStorageName(extensionId: string): string {
+  return `ext-${Buffer.from(extensionId, 'utf8').toString('base64url')}`;
 }
 
 function isExtensionSettingsRecord(

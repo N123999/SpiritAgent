@@ -20,9 +20,10 @@ import {
 } from './storage.js';
 
 const EXTENSION_SCHEMA_VERSION = 1;
-const EXTENSION_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
+const EXTENSION_PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u;
 const TEMP_DIR_PREFIX = 'spirit-extension-';
 const EXTENSION_FIELD_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
+const SPIRIT_EXTENSION_FIELD_NAME = 'spiritExtension';
 
 export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onStartup',
@@ -206,6 +207,7 @@ export interface HostExtensionSecretSlot {
 export interface HostExtensionManifest {
   schemaVersion: number;
   id: string;
+  /** 用户可见扩展名，来自 package.json 中的 spiritExtension.displayName。 */
   name: string;
   version: string;
   description?: string;
@@ -577,7 +579,7 @@ export async function importExtensionArchive(
     },
   });
   assertExtensionImportAllowedForHost(manifest, context.hostKind);
-  const directoryName = manifest.id;
+  const directoryName = extensionDirectoryNameFromId(manifest.id);
   const targetDirectory = path.join(paths.extensionsDir, directoryName);
 
   if (existsSync(targetDirectory)) {
@@ -1306,36 +1308,56 @@ async function parseExtensionManifest(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error('扩展 manifest 不是合法 JSON。');
+    throw new Error('扩展 package.json 不是合法 JSON。');
   }
 
   if (!isRecord(parsed)) {
-    throw new Error('扩展 manifest 必须是 JSON object。');
+    throw new Error('扩展 package.json 必须是 JSON object。');
   }
 
+  const spiritExtension = requiredSpiritExtensionField(parsed[SPIRIT_EXTENSION_FIELD_NAME]);
   const schemaVersion =
-    parsed.schemaVersion === undefined ? EXTENSION_SCHEMA_VERSION : numberField(parsed.schemaVersion, 'schemaVersion');
+    spiritExtension.schemaVersion === undefined
+      ? EXTENSION_SCHEMA_VERSION
+      : numberField(spiritExtension.schemaVersion, `${SPIRIT_EXTENSION_FIELD_NAME}.schemaVersion`);
   if (schemaVersion !== EXTENSION_SCHEMA_VERSION) {
-    throw new Error(`仅支持 schemaVersion=${EXTENSION_SCHEMA_VERSION} 的扩展 manifest。`);
+    throw new Error(
+      `仅支持 ${SPIRIT_EXTENSION_FIELD_NAME}.schemaVersion=${EXTENSION_SCHEMA_VERSION} 的扩展 package.json。`,
+    );
   }
 
-  const id = stringField(parsed.id, 'id');
-  if (!EXTENSION_ID_PATTERN.test(id)) {
-    throw new Error('扩展 id 只能包含小写字母、数字、点、下划线或中划线。');
-  }
-
-  const name = stringField(parsed.name, 'name');
+  const id = packageNameField(parsed.name);
+  const name = stringField(spiritExtension.displayName, `${SPIRIT_EXTENSION_FIELD_NAME}.displayName`);
   const version = stringField(parsed.version, 'version');
-  const description = optionalStringField(parsed.description);
-  const author = optionalStringField(parsed.author);
-  const homepage = optionalStringField(parsed.homepage);
-  const main = optionalStringField(parsed.main);
-  const activationEvents = optionalActivationEventsField(parsed.activationEvents);
-  const requestedCapabilities = optionalRequestedCapabilitiesField(parsed.requestedCapabilities);
-  const contributes = await optionalContributionSetField(parsed.contributes, options);
-  const settingsSchema = optionalSettingsSchemaField(parsed.settingsSchema);
-  const secretSlots = optionalSecretSlotsField(parsed.secretSlots);
-  const supportedHosts = requiredSupportedHostsField(parsed.supportedHosts);
+  const description = optionalPackageStringField(parsed.description, 'description');
+  const author = optionalPackageAuthorField(parsed.author);
+  const homepage = optionalPackageStringField(parsed.homepage, 'homepage');
+  const main = optionalPackageStringField(parsed.main, 'main');
+  const activationEvents = optionalActivationEventsField(
+    spiritExtension.activationEvents,
+    `${SPIRIT_EXTENSION_FIELD_NAME}.activationEvents`,
+  );
+  const requestedCapabilities = optionalRequestedCapabilitiesField(
+    spiritExtension.requestedCapabilities,
+    `${SPIRIT_EXTENSION_FIELD_NAME}.requestedCapabilities`,
+  );
+  const contributes = await optionalContributionSetField(
+    spiritExtension.contributes,
+    options,
+    `${SPIRIT_EXTENSION_FIELD_NAME}.contributes`,
+  );
+  const settingsSchema = optionalSettingsSchemaField(
+    spiritExtension.settingsSchema,
+    `${SPIRIT_EXTENSION_FIELD_NAME}.settingsSchema`,
+  );
+  const secretSlots = optionalSecretSlotsField(
+    spiritExtension.secretSlots,
+    `${SPIRIT_EXTENSION_FIELD_NAME}.secretSlots`,
+  );
+  const supportedHosts = requiredSupportedHostsField(
+    spiritExtension.supportedHosts,
+    `${SPIRIT_EXTENSION_FIELD_NAME}.supportedHosts`,
+  );
 
   if (main) {
     assertSafeRelativePath(main, 'main');
@@ -1455,6 +1477,10 @@ function resolveArchiveRelativePath(entryName: string, manifestEntryName: string
 
 function normalizeArchivePath(filePath: string): string {
   return filePath.replace(/\\/gu, '/').replace(/^\.\//u, '');
+}
+
+function extensionDirectoryNameFromId(id: string): string {
+  return `pkg-${Buffer.from(id, 'utf8').toString('base64url')}`;
 }
 
 async function activateExtension<THostApi>(
@@ -1606,9 +1632,51 @@ function assertSafeRelativePath(filePath: string, label: string): void {
   }
 }
 
+function requiredSpiritExtensionField(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 package.json 缺少 ${SPIRIT_EXTENSION_FIELD_NAME} 字段，且该字段必须是对象。`);
+  }
+  return value;
+}
+
+function packageNameField(value: unknown): string {
+  const packageName = stringField(value, 'name');
+  if (!EXTENSION_PACKAGE_NAME_PATTERN.test(packageName)) {
+    throw new Error(
+      '扩展 package.json 字段 name 非法；必须为合法 npm 包名，且本次仅支持小写包名与可选 scoped 包名。',
+    );
+  }
+  return packageName;
+}
+
+function optionalPackageStringField(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`扩展 package.json 字段 ${fieldName} 必须是字符串。`);
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function optionalPackageAuthorField(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (isRecord(value)) {
+    return optionalPackageStringField(value.name, 'author.name');
+  }
+  throw new Error('扩展 package.json 字段 author 必须是字符串或包含 name 字段的对象。');
+}
+
 function stringField(value: unknown, fieldName: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`扩展 manifest 字段 ${fieldName} 不能为空。`);
+    throw new Error(`扩展字段 ${fieldName} 不能为空。`);
   }
   return value.trim();
 }
@@ -1621,25 +1689,25 @@ function optionalStringField(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function requiredSupportedHostsField(value: unknown): ExtensionHostKind[] {
+function requiredSupportedHostsField(value: unknown, fieldName: string): ExtensionHostKind[] {
   if (value === undefined || value === null) {
-    throw new Error('扩展 manifest 缺少 supportedHosts；须为非空数组，元素为 cli 与/或 desktop。');
+    throw new Error(`扩展字段 ${fieldName} 缺失；须为非空数组，元素为 cli 与/或 desktop。`);
   }
   if (!Array.isArray(value)) {
-    throw new Error('扩展 manifest 字段 supportedHosts 必须是字符串数组。');
+    throw new Error(`扩展字段 ${fieldName} 必须是字符串数组。`);
   }
   if (value.length === 0) {
-    throw new Error('扩展 manifest 字段 supportedHosts 须至少包含一项（cli 或 desktop）。');
+    throw new Error(`扩展字段 ${fieldName} 须至少包含一项（cli 或 desktop）。`);
   }
 
   const result: ExtensionHostKind[] = [];
   for (const entry of value) {
     if (typeof entry !== 'string') {
-      throw new Error('扩展 manifest 字段 supportedHosts 必须是字符串数组。');
+      throw new Error(`扩展字段 ${fieldName} 必须是字符串数组。`);
     }
     const normalized = entry.trim() as ExtensionHostKind;
     if (!SUPPORTED_EXTENSION_HOST_KINDS.includes(normalized)) {
-      throw new Error(`扩展 manifest 字段 supportedHosts 取值非法：${entry}`);
+      throw new Error(`扩展字段 ${fieldName} 取值非法：${entry}`);
     }
     if (!result.includes(normalized)) {
       result.push(normalized);
@@ -1649,7 +1717,10 @@ function requiredSupportedHostsField(value: unknown): ExtensionHostKind[] {
   return result;
 }
 
-function optionalActivationEventsField(value: unknown): HostExtensionActivationEventName[] {
+function optionalActivationEventsField(
+  value: unknown,
+  fieldName: string,
+): HostExtensionActivationEventName[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -1657,11 +1728,11 @@ function optionalActivationEventsField(value: unknown): HostExtensionActivationE
   const result: HostExtensionActivationEventName[] = [];
   for (const entry of value) {
     if (typeof entry !== 'string') {
-      throw new Error('扩展 manifest 字段 activationEvents 必须是字符串数组。');
+      throw new Error(`扩展字段 ${fieldName} 必须是字符串数组。`);
     }
     const normalized = entry.trim() as HostExtensionActivationEventName;
     if (!SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS.includes(normalized)) {
-      throw new Error(`不支持的扩展 activation event：${entry}`);
+      throw new Error(`扩展字段 ${fieldName} 取值非法：${entry}`);
     }
     if (!result.includes(normalized)) {
       result.push(normalized);
@@ -1671,7 +1742,10 @@ function optionalActivationEventsField(value: unknown): HostExtensionActivationE
   return result;
 }
 
-function optionalRequestedCapabilitiesField(value: unknown): HostExtensionRequestedCapability[] {
+function optionalRequestedCapabilitiesField(
+  value: unknown,
+  fieldName: string,
+): HostExtensionRequestedCapability[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -1679,11 +1753,11 @@ function optionalRequestedCapabilitiesField(value: unknown): HostExtensionReques
   const result: HostExtensionRequestedCapability[] = [];
   for (const entry of value) {
     if (typeof entry !== 'string') {
-      throw new Error('扩展 manifest 字段 requestedCapabilities 必须是字符串数组。');
+      throw new Error(`扩展字段 ${fieldName} 必须是字符串数组。`);
     }
     const normalized = entry.trim() as HostExtensionRequestedCapability;
     if (!SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES.includes(normalized)) {
-      throw new Error(`不支持的扩展 capability：${entry}`);
+      throw new Error(`扩展字段 ${fieldName} 取值非法：${entry}`);
     }
     if (!result.includes(normalized)) {
       result.push(normalized);
@@ -1696,14 +1770,15 @@ function optionalRequestedCapabilitiesField(value: unknown): HostExtensionReques
 async function optionalContributionSetField(
   value: unknown,
   options: HostExtensionManifestParseOptions,
+  fieldPrefix: string,
 ): Promise<HostExtensionContributionSet | undefined> {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const tools = optionalContributedToolsField(value.tools);
-  const desktop = optionalDesktopContributionSetField(value.desktop);
-  const cli = await optionalCliContributionSetField(value.cli, options);
+  const tools = optionalContributedToolsField(value.tools, `${fieldPrefix}.tools`);
+  const desktop = optionalDesktopContributionSetField(value.desktop, `${fieldPrefix}.desktop`);
+  const cli = await optionalCliContributionSetField(value.cli, options, `${fieldPrefix}.cli`);
   if (tools.length === 0 && !desktop && !cli) {
     return undefined;
   }
@@ -1715,22 +1790,26 @@ async function optionalContributionSetField(
   };
 }
 
-function optionalContributedToolsField(value: unknown): HostExtensionContributedToolDefinition[] {
+function optionalContributedToolsField(
+  value: unknown,
+  fieldPrefix: string,
+): HostExtensionContributedToolDefinition[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.map((entry, index) => parseContributedToolDefinition(entry, index));
+  return value.map((entry, index) => parseContributedToolDefinition(entry, index, fieldPrefix));
 }
 
 function optionalDesktopContributionSetField(
   value: unknown,
+  fieldPrefix: string,
 ): HostExtensionDesktopContributionSet | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const css = optionalDesktopCssDefinitionsField(value.css);
+  const css = optionalDesktopCssDefinitionsField(value.css, `${fieldPrefix}.css`);
   if (css.length === 0) {
     return undefined;
   }
@@ -1740,23 +1819,25 @@ function optionalDesktopContributionSetField(
 
 function optionalDesktopCssDefinitionsField(
   value: unknown,
+  fieldPrefix: string,
 ): HostExtensionDesktopCssDefinition[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.map((entry, index) => parseDesktopCssDefinition(entry, index));
+  return value.map((entry, index) => parseDesktopCssDefinition(entry, index, fieldPrefix));
 }
 
 async function optionalCliContributionSetField(
   value: unknown,
   options: HostExtensionManifestParseOptions,
+  fieldPrefix: string,
 ): Promise<HostExtensionCliContributionSet | undefined> {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const hooks = await optionalCliUiHookDefinitionsField(value.hooks, options);
+  const hooks = await optionalCliUiHookDefinitionsField(value.hooks, options, `${fieldPrefix}.hooks`);
   if (hooks.length === 0) {
     return undefined;
   }
@@ -1767,23 +1848,24 @@ async function optionalCliContributionSetField(
 async function optionalCliUiHookDefinitionsField(
   value: unknown,
   options: HostExtensionManifestParseOptions,
+  fieldPrefix: string,
 ): Promise<HostExtensionCliUiHookDefinition[]> {
   if (value === undefined || value === null) {
     return [];
   }
 
   if (!isRecord(value)) {
-    throw new Error('扩展 manifest 字段 contributes.cli.hooks 必须是对象，且必须使用 path 引用外置资源文件。');
+    throw new Error(`扩展字段 ${fieldPrefix} 必须是对象，且必须使用 path 引用外置资源文件。`);
   }
 
-  const hooksPath = stringField(value.path, 'contributes.cli.hooks.path');
-  assertSafeRelativePath(hooksPath, 'contributes.cli.hooks.path');
+  const hooksPath = stringField(value.path, `${fieldPrefix}.path`);
+  assertSafeRelativePath(hooksPath, `${fieldPrefix}.path`);
   const readRelativeTextFile = options.readRelativeTextFile;
   if (!readRelativeTextFile) {
-    throw new Error(`当前上下文不支持读取扩展 contributes.cli.hooks.path：${hooksPath}`);
+    throw new Error(`当前上下文不支持读取扩展 ${fieldPrefix}.path：${hooksPath}`);
   }
 
-  const raw = await readRelativeTextFile(hooksPath, 'contributes.cli.hooks.path');
+  const raw = await readRelativeTextFile(hooksPath, `${fieldPrefix}.path`);
   return parseCliUiHookDocument(raw, hooksPath);
 }
 
@@ -1813,7 +1895,7 @@ function parseCliUiHookDefinition(
   fieldPrefix = 'contributes.cli.hooks',
 ): HostExtensionCliUiHookDefinition {
   if (!isRecord(value)) {
-    throw new Error(`扩展 manifest 字段 ${fieldPrefix}[${index}] 必须是对象。`);
+    throw new Error(`扩展字段 ${fieldPrefix}[${index}] 必须是对象。`);
   }
 
   const slot = enumField(
@@ -1877,13 +1959,14 @@ function optionalCliUiHookTokensField(
 function parseDesktopCssDefinition(
   value: unknown,
   index: number,
+  fieldPrefix: string,
 ): HostExtensionDesktopCssDefinition {
   if (!isRecord(value)) {
-    throw new Error(`扩展 manifest 字段 contributes.desktop.css[${index}] 必须是对象。`);
+    throw new Error(`扩展字段 ${fieldPrefix}[${index}] 必须是对象。`);
   }
 
-  const cssPath = stringField(value.path, `contributes.desktop.css[${index}].path`);
-  assertSafeRelativePath(cssPath, `contributes.desktop.css[${index}].path`);
+  const cssPath = stringField(value.path, `${fieldPrefix}[${index}].path`);
+  assertSafeRelativePath(cssPath, `${fieldPrefix}[${index}].path`);
   const media = optionalStringField(value.media);
 
   return {
@@ -1904,16 +1987,16 @@ function assertHostUiContributionCapabilities(
   if (hasDesktopContribution !== hasDesktopCapability) {
     throw new Error(
       hasDesktopContribution
-        ? '扩展声明了 contributes.desktop，但缺少 requestedCapabilities 中的 desktop-ui。'
-        : '扩展声明了 desktop-ui capability，但缺少 contributes.desktop。'
+        ? `扩展声明了 ${SPIRIT_EXTENSION_FIELD_NAME}.contributes.desktop，但缺少 ${SPIRIT_EXTENSION_FIELD_NAME}.requestedCapabilities 中的 desktop-ui。`
+        : `扩展声明了 desktop-ui capability，但缺少 ${SPIRIT_EXTENSION_FIELD_NAME}.contributes.desktop。`
     );
   }
 
   if (hasCliContribution !== hasCliCapability) {
     throw new Error(
       hasCliContribution
-        ? '扩展声明了 contributes.cli，但缺少 requestedCapabilities 中的 cli-ui。'
-        : '扩展声明了 cli-ui capability，但缺少 contributes.cli。'
+        ? `扩展声明了 ${SPIRIT_EXTENSION_FIELD_NAME}.contributes.cli，但缺少 ${SPIRIT_EXTENSION_FIELD_NAME}.requestedCapabilities 中的 cli-ui。`
+        : `扩展声明了 cli-ui capability，但缺少 ${SPIRIT_EXTENSION_FIELD_NAME}.contributes.cli。`
     );
   }
 }
@@ -1921,27 +2004,28 @@ function assertHostUiContributionCapabilities(
 function parseContributedToolDefinition(
   value: unknown,
   index: number,
+  fieldPrefix: string,
 ): HostExtensionContributedToolDefinition {
   if (!isRecord(value)) {
-    throw new Error(`扩展 manifest 字段 contributes.tools[${index}] 必须是对象。`);
+    throw new Error(`扩展字段 ${fieldPrefix}[${index}] 必须是对象。`);
   }
 
-  const name = stringField(value.name, `contributes.tools[${index}].name`);
+  const name = stringField(value.name, `${fieldPrefix}[${index}].name`);
   if (!EXTENSION_FIELD_KEY_PATTERN.test(name)) {
     throw new Error(`扩展工具名非法：${name}`);
   }
 
-  const description = stringField(value.description, `contributes.tools[${index}].description`);
-  const inputSchema = schemaField(value.inputSchema, `contributes.tools[${index}].inputSchema`);
-  const outputSchema = optionalSchemaField(value.outputSchema, `contributes.tools[${index}].outputSchema`);
+  const description = stringField(value.description, `${fieldPrefix}[${index}].description`);
+  const inputSchema = schemaField(value.inputSchema, `${fieldPrefix}[${index}].inputSchema`);
+  const outputSchema = optionalSchemaField(value.outputSchema, `${fieldPrefix}[${index}].outputSchema`);
   const approvalMode = optionalEnumField(
     value.approvalMode,
-    `contributes.tools[${index}].approvalMode`,
+    `${fieldPrefix}[${index}].approvalMode`,
     SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES,
   );
   const executionMode = optionalEnumField(
     value.executionMode,
-    `contributes.tools[${index}].executionMode`,
+    `${fieldPrefix}[${index}].executionMode`,
     SUPPORTED_HOST_EXTENSION_TOOL_EXECUTION_MODES,
   );
 
@@ -1955,39 +2039,46 @@ function parseContributedToolDefinition(
   };
 }
 
-function optionalSettingsSchemaField(value: unknown): HostExtensionSettingDefinition[] {
+function optionalSettingsSchemaField(
+  value: unknown,
+  fieldPrefix: string,
+): HostExtensionSettingDefinition[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.map((entry, index) => parseSettingDefinition(entry, index));
+  return value.map((entry, index) => parseSettingDefinition(entry, index, fieldPrefix));
 }
 
-function parseSettingDefinition(value: unknown, index: number): HostExtensionSettingDefinition {
+function parseSettingDefinition(
+  value: unknown,
+  index: number,
+  fieldPrefix: string,
+): HostExtensionSettingDefinition {
   if (!isRecord(value)) {
-    throw new Error(`扩展 manifest 字段 settingsSchema[${index}] 必须是对象。`);
+    throw new Error(`扩展字段 ${fieldPrefix}[${index}] 必须是对象。`);
   }
 
-  const key = stringField(value.key, `settingsSchema[${index}].key`);
+  const key = stringField(value.key, `${fieldPrefix}[${index}].key`);
   if (!EXTENSION_FIELD_KEY_PATTERN.test(key)) {
     throw new Error(`扩展设置键非法：${key}`);
   }
 
   const type = enumField(
     value.type,
-    `settingsSchema[${index}].type`,
+    `${fieldPrefix}[${index}].type`,
     SUPPORTED_HOST_EXTENSION_SETTING_TYPES,
   );
-  const title = stringField(value.title, `settingsSchema[${index}].title`);
+  const title = stringField(value.title, `${fieldPrefix}[${index}].title`);
   const description = optionalStringField(value.description);
   const placeholder = optionalStringField(value.placeholder);
   const required = optionalBooleanField(value.required);
   const defaultValue = optionalSettingDefaultValueField(
     value.defaultValue,
-    `settingsSchema[${index}].defaultValue`,
+    `${fieldPrefix}[${index}].defaultValue`,
     type,
   );
-  const options = optionalSettingOptionsField(value.options, index, type);
+  const options = optionalSettingOptionsField(value.options, index, type, `${fieldPrefix}[${index}].options`);
 
   return {
     key,
@@ -2005,28 +2096,29 @@ function optionalSettingOptionsField(
   value: unknown,
   settingIndex: number,
   type: HostExtensionSettingType,
+  fieldName: string,
 ): HostExtensionSettingOption[] {
   if (value === undefined || value === null) {
     return [];
   }
   if (type !== 'select') {
-    throw new Error(`只有 select 类型的设置项允许声明 options：settingsSchema[${settingIndex}]`);
+    throw new Error(`只有 select 类型的设置项允许声明 options：${fieldName.replace(/\.options$/u, '')}`);
   }
   if (!Array.isArray(value)) {
-    throw new Error(`扩展 manifest 字段 settingsSchema[${settingIndex}].options 必须是数组。`);
+    throw new Error(`扩展字段 ${fieldName} 必须是数组。`);
   }
 
   return value.map((entry, optionIndex) => {
     if (!isRecord(entry)) {
-      throw new Error(`扩展 manifest 字段 settingsSchema[${settingIndex}].options[${optionIndex}] 必须是对象。`);
+      throw new Error(`扩展字段 ${fieldName}[${optionIndex}] 必须是对象。`);
     }
     const optionValue = stringField(
       entry.value,
-      `settingsSchema[${settingIndex}].options[${optionIndex}].value`,
+      `${fieldName}[${optionIndex}].value`,
     );
     const label = stringField(
       entry.label,
-      `settingsSchema[${settingIndex}].options[${optionIndex}].label`,
+      `${fieldName}[${optionIndex}].label`,
     );
     const description = optionalStringField(entry.description);
     return {
@@ -2050,36 +2142,39 @@ function optionalSettingDefaultValueField(
     case 'string':
     case 'select':
       if (typeof value !== 'string') {
-        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是字符串。`);
+        throw new Error(`扩展字段 ${fieldName} 必须是字符串。`);
       }
       return value;
     case 'boolean':
       if (typeof value !== 'boolean') {
-        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是布尔值。`);
+        throw new Error(`扩展字段 ${fieldName} 必须是布尔值。`);
       }
       return value;
     case 'number':
       if (typeof value !== 'number' || !Number.isFinite(value)) {
-        throw new Error(`扩展 manifest 字段 ${fieldName} 必须是数字。`);
+        throw new Error(`扩展字段 ${fieldName} 必须是数字。`);
       }
       return value;
   }
 }
 
-function optionalSecretSlotsField(value: unknown): HostExtensionSecretSlot[] {
+function optionalSecretSlotsField(
+  value: unknown,
+  fieldPrefix: string,
+): HostExtensionSecretSlot[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value.map((entry, index) => {
     if (!isRecord(entry)) {
-      throw new Error(`扩展 manifest 字段 secretSlots[${index}] 必须是对象。`);
+      throw new Error(`扩展字段 ${fieldPrefix}[${index}] 必须是对象。`);
     }
-    const key = stringField(entry.key, `secretSlots[${index}].key`);
+    const key = stringField(entry.key, `${fieldPrefix}[${index}].key`);
     if (!EXTENSION_FIELD_KEY_PATTERN.test(key)) {
       throw new Error(`扩展 secret slot 键非法：${key}`);
     }
-    const title = stringField(entry.title, `secretSlots[${index}].title`);
+    const title = stringField(entry.title, `${fieldPrefix}[${index}].title`);
     const description = optionalStringField(entry.description);
     const required = optionalBooleanField(entry.required);
     return {
@@ -2097,7 +2192,7 @@ function optionalBooleanField(value: unknown): boolean | undefined {
 
 function schemaField(value: unknown, fieldName: string): HostExtensionJsonSchema {
   if (!isRecord(value)) {
-    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是对象。`);
+    throw new Error(`扩展字段 ${fieldName} 必须是对象。`);
   }
   return value;
 }
@@ -2118,11 +2213,11 @@ function enumField<T extends readonly string[]>(
   allowedValues: T,
 ): T[number] {
   if (typeof value !== 'string') {
-    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是字符串。`);
+    throw new Error(`扩展字段 ${fieldName} 必须是字符串。`);
   }
   const normalized = value.trim() as T[number];
   if (!allowedValues.includes(normalized)) {
-    throw new Error(`扩展 manifest 字段 ${fieldName} 取值非法：${value}`);
+    throw new Error(`扩展字段 ${fieldName} 取值非法：${value}`);
   }
   return normalized;
 }
@@ -2140,7 +2235,7 @@ function optionalEnumField<T extends readonly string[]>(
 
 function numberField(value: unknown, fieldName: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`扩展 manifest 字段 ${fieldName} 必须是数字。`);
+    throw new Error(`扩展字段 ${fieldName} 必须是数字。`);
   }
   return value;
 }
