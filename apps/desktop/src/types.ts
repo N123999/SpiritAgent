@@ -66,6 +66,12 @@ export interface RunExtensionRequest {
   id: string;
 }
 
+export interface InstallMarketplaceExtensionRequest {
+  extensionId: string;
+  version?: string;
+  reviewAcknowledged?: boolean;
+}
+
 export type DesktopExtensionSettingValue = string | boolean | number | null;
 
 export interface UpdateExtensionSettingsRequest {
@@ -166,6 +172,65 @@ export interface DesktopExtensionListItem {
   secretStatuses?: DesktopExtensionSecretStatus[];
   archiveFileName?: string;
   installedAtUnixMs: number;
+}
+
+export type DesktopMarketplaceChannel = 'stable' | 'preview' | 'experimental';
+
+export type DesktopMarketplaceReviewStatus = 'unverified' | 'verified' | 'revoked';
+
+export interface DesktopMarketplaceCatalogItem {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  defaultChannel: DesktopMarketplaceChannel;
+  defaultReviewStatus: DesktopMarketplaceReviewStatus;
+  detailPath: string;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: DesktopExtensionHostKind[];
+  requestedCapabilities: string[];
+  iconUrl?: string;
+}
+
+export interface DesktopMarketplaceVersionChangelog {
+  summary: string;
+  body: string;
+}
+
+export interface DesktopMarketplaceDetailVersion {
+  version: string;
+  channel: DesktopMarketplaceChannel;
+  reviewStatus: DesktopMarketplaceReviewStatus;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: DesktopExtensionHostKind[];
+  requestedCapabilities: string[];
+  iconUrl?: string;
+  publishedAt?: string;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  changelog?: DesktopMarketplaceVersionChangelog;
+}
+
+export interface DesktopMarketplaceDetail {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  readmePath: string;
+  versions: DesktopMarketplaceDetailVersion[];
 }
 
 export interface DesktopMcpStdioTransportSnapshot {

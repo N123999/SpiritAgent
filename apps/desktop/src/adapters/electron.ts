@@ -33,6 +33,18 @@ export async function createElectronHostApi(): Promise<HostApi> {
     importExtension(request) {
       return bridge.importExtension(request);
     },
+    listMarketplaceExtensions() {
+      return bridge.listMarketplaceExtensions();
+    },
+    getMarketplaceExtensionDetail(extensionId) {
+      return bridge.getMarketplaceExtensionDetail(extensionId);
+    },
+    getMarketplaceExtensionReadme(extensionId) {
+      return bridge.getMarketplaceExtensionReadme(extensionId);
+    },
+    installMarketplaceExtension(request) {
+      return bridge.installMarketplaceExtension(request);
+    },
     deleteExtension(request) {
       return bridge.deleteExtension(request);
     },

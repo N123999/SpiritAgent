@@ -7,10 +7,13 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopMarketplaceCatalogItem,
+  DesktopMarketplaceDetail,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
+  InstallMarketplaceExtensionRequest,
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
@@ -60,6 +63,20 @@ export function createWebHostApi(): HostApi {
     },
     importExtension(request: ImportExtensionRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/extensions', request);
+    },
+    listMarketplaceExtensions() {
+      return get<DesktopMarketplaceCatalogItem[]>(baseUrl, '/api/marketplace/extensions');
+    },
+    getMarketplaceExtensionDetail(extensionId: string) {
+      return post<DesktopMarketplaceDetail>(baseUrl, '/api/marketplace/extensions/detail', {
+        extensionId,
+      });
+    },
+    getMarketplaceExtensionReadme(extensionId: string) {
+      return post<string>(baseUrl, '/api/marketplace/extensions/readme', { extensionId });
+    },
+    installMarketplaceExtension(request: InstallMarketplaceExtensionRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/marketplace/extensions/install', request);
     },
     deleteExtension(request: DeleteExtensionRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/extensions/remove', request);
