@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -247,6 +247,12 @@ export interface ImportExtensionArchiveRequest {
   fileName?: string;
 }
 
+export interface InstallPreparedExtensionDirectoryRequest {
+  preparedDirectoryPath: string;
+  fileName?: string;
+  replaceExisting?: boolean;
+}
+
 export interface RunExtensionRequest<THostApi> {
   id: string;
   host: THostApi;
@@ -358,6 +364,9 @@ export interface HostExtensionManager {
   list(): Promise<readonly HostInstalledExtension[]>;
   resolveTool(name: string): Promise<HostResolvedExtensionTool | undefined>;
   importArchive(request: ImportExtensionArchiveRequest): Promise<HostInstalledExtension>;
+  installPreparedDirectory(
+    request: InstallPreparedExtensionDirectoryRequest,
+  ): Promise<HostInstalledExtension>;
   remove(id: string): Promise<void>;
   run<THostApi>(request: RunExtensionRequest<THostApi>): Promise<void>;
   invokeTool<THostApi>(request: InvokeExtensionToolRequest<THostApi>): Promise<string>;
@@ -417,6 +426,9 @@ export function createHostExtensionManager(
     },
     async importArchive(request) {
       return importExtensionArchive(context, request);
+    },
+    async installPreparedDirectory(request) {
+      return installPreparedExtensionDirectory(context, request);
     },
     async remove(id) {
       await deactivateExtensionById(activatedExtensions, id);
@@ -580,19 +592,7 @@ export async function importExtensionArchive(
       return Buffer.from(content).toString('utf8');
     },
   });
-  assertExtensionImportAllowedForHost(manifest, context.hostKind);
   const directoryName = extensionDirectoryNameFromId(manifest.id);
-  const targetDirectory = path.join(paths.extensionsDir, directoryName);
-
-  if (existsSync(targetDirectory)) {
-    throw new Error(`扩展已存在，请先删除后再导入：${manifest.id}`);
-  }
-
-  const registryEntries = await loadExtensionRegistry(paths.extensionsIndexFile);
-  if (registryEntries.has(manifest.id)) {
-    throw new Error(`扩展已存在，请先删除后再导入：${manifest.id}`);
-  }
-
   const tempDirectory = await mkdtemp(path.join(os.tmpdir(), TEMP_DIR_PREFIX));
   const stagingDirectory = path.join(tempDirectory, directoryName);
 
@@ -617,32 +617,87 @@ export async function importExtensionArchive(
       }
     }
 
-    await rename(stagingDirectory, targetDirectory);
-
-    const installedAtUnixMs = Date.now();
-    const nextRegistryEntries = [
-      ...Array.from(registryEntries.values()),
-      {
-        id: manifest.id,
-        directoryName,
-        installedAtUnixMs,
-        ...(request.fileName?.trim() ? { archiveFileName: request.fileName.trim() } : {}),
-      },
-    ];
-    await writeExtensionRegistry(paths.extensionsIndexFile, nextRegistryEntries);
-
-    return {
-      id: manifest.id,
-      directoryName,
-      manifest,
-      directoryPath: targetDirectory,
-      manifestPath: path.join(targetDirectory, EXTENSION_MANIFEST_FILE_NAME),
-      installedAtUnixMs,
-      ...(request.fileName?.trim() ? { archiveFileName: request.fileName.trim() } : {}),
-    };
+    const installed = await installPreparedExtensionDirectory(context, {
+      preparedDirectoryPath: stagingDirectory,
+      ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
+    });
+    return installed;
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
+}
+
+export async function readPreparedExtensionManifestDirectory(
+  preparedDirectoryPath: string,
+): Promise<HostExtensionManifest> {
+  const manifestPath = path.join(preparedDirectoryPath, EXTENSION_MANIFEST_FILE_NAME);
+  if (!existsSync(manifestPath)) {
+    throw new Error(`预安装扩展目录缺少 ${EXTENSION_MANIFEST_FILE_NAME}。`);
+  }
+  return readExtensionManifestFile(manifestPath);
+}
+
+export async function installPreparedExtensionDirectory(
+  context: ExtensionManagementContext,
+  request: InstallPreparedExtensionDirectoryRequest,
+): Promise<HostInstalledExtension> {
+  const preparedDirectoryPath = request.preparedDirectoryPath.trim();
+  if (!preparedDirectoryPath) {
+    throw new Error('预安装扩展目录不能为空。');
+  }
+
+  const paths = resolveExtensionPaths(context);
+  await ensureExtensionDirectories(paths);
+
+  const manifest = await readPreparedExtensionManifestDirectory(preparedDirectoryPath);
+  assertExtensionImportAllowedForHost(manifest, context.hostKind);
+  const directoryName = extensionDirectoryNameFromId(manifest.id);
+  const targetDirectory = path.join(paths.extensionsDir, directoryName);
+
+  const registryEntries = await loadExtensionRegistry(paths.extensionsIndexFile);
+  const replaceExisting = request.replaceExisting === true;
+  if (!replaceExisting && (existsSync(targetDirectory) || registryEntries.has(manifest.id))) {
+    throw new Error(`扩展已存在，请先删除后再导入：${manifest.id}`);
+  }
+
+  if (manifest.main) {
+    const mainFilePath = path.join(preparedDirectoryPath, ...manifest.main.split('/'));
+    if (!existsSync(mainFilePath)) {
+      throw new Error(`扩展 main 文件不存在：${manifest.main}`);
+    }
+  }
+
+  if (replaceExisting) {
+    await rm(targetDirectory, { recursive: true, force: true });
+  }
+
+  await cp(preparedDirectoryPath, targetDirectory, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
+
+  const installedAtUnixMs = Date.now();
+  const nextRegistryEntries = [
+    ...Array.from(registryEntries.values()).filter((entry) => entry.id !== manifest.id),
+    {
+      id: manifest.id,
+      directoryName,
+      installedAtUnixMs,
+      ...(request.fileName?.trim() ? { archiveFileName: request.fileName.trim() } : {}),
+    },
+  ];
+  await writeExtensionRegistry(paths.extensionsIndexFile, nextRegistryEntries);
+
+  return {
+    id: manifest.id,
+    directoryName,
+    manifest,
+    directoryPath: targetDirectory,
+    manifestPath: path.join(targetDirectory, EXTENSION_MANIFEST_FILE_NAME),
+    installedAtUnixMs,
+    ...(request.fileName?.trim() ? { archiveFileName: request.fileName.trim() } : {}),
+  };
 }
 
 export async function removeInstalledExtension(
