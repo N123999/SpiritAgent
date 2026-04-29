@@ -210,9 +210,11 @@ class DesktopHostService {
   private readonly transport = new OpenAiTransport();
   private readonly extensionStateStore = createDesktopExtensionStateStore({
     spiritDataDir: spiritAgentDataDir(),
+    hostKind: 'desktop',
   });
   private readonly hostExtensionManager = createHostExtensionManager({
     spiritDataDir: spiritAgentDataDir(),
+    hostKind: 'desktop',
     stateStore: this.extensionStateStore,
   });
   private state: HostState | undefined;

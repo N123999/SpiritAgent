@@ -19,6 +19,10 @@ export const EXTENSION_MANIFEST_FILE_NAME = 'spirit-extension.json';
 export const EXTENSIONS_INDEX_FILE_NAME = 'extensions.json';
 export const EXTENSION_STATE_DIR_NAME = 'extension-state';
 
+export const SUPPORTED_EXTENSION_HOST_KINDS = ['desktop', 'cli'] as const;
+
+export type ExtensionHostKind = (typeof SUPPORTED_EXTENSION_HOST_KINDS)[number];
+
 export type ExtensionSettingValue = string | number | boolean | null;
 
 export interface ExtensionStateStore {
@@ -62,6 +66,7 @@ export interface InstructionDiscoveryContext {
 
 export interface ExtensionManagementContext {
   spiritDataDir: string;
+  hostKind: ExtensionHostKind;
   stateStore?: ExtensionStateStore;
 }
 
@@ -102,10 +107,11 @@ export function resolveInstructionPaths(context: InstructionDiscoveryContext): I
 }
 
 export function resolveExtensionPaths(context: ExtensionManagementContext): ExtensionPaths {
+  const hostRoot = path.join(context.spiritDataDir, EXTENSIONS_DIR_NAME, context.hostKind);
   return {
-    extensionsDir: path.join(context.spiritDataDir, EXTENSIONS_DIR_NAME),
-    extensionsIndexFile: path.join(context.spiritDataDir, EXTENSIONS_INDEX_FILE_NAME),
-    extensionStateDir: path.join(context.spiritDataDir, EXTENSION_STATE_DIR_NAME),
+    extensionsDir: hostRoot,
+    extensionsIndexFile: path.join(hostRoot, EXTENSIONS_INDEX_FILE_NAME),
+    extensionStateDir: path.join(hostRoot, EXTENSION_STATE_DIR_NAME),
   };
 }
 

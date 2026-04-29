@@ -112,7 +112,7 @@ interface CliHostInternalModule {
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
   ) => OpenAiPlanMetadata;
-  createHostExtensionManager?: (context: { spiritDataDir: string }) => {
+  createHostExtensionManager?: (context: { spiritDataDir: string; hostKind: 'cli' | 'desktop' }) => {
     list(): Promise<
       Array<{
         id: string;
@@ -320,7 +320,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   const module = loaded as unknown as CliHostInternalModule;
   const extensionManager =
     typeof module.createHostExtensionManager === 'function'
-      ? module.createHostExtensionManager({ spiritDataDir })
+      ? module.createHostExtensionManager({ spiritDataDir, hostKind: 'cli' })
       : undefined;
   const serviceOptions = {
     ...(typeof module.createNoopMcpAdapter === 'function'

@@ -205,7 +205,7 @@ export async function removeModelApiKey(modelName: string): Promise<void> {
 }
 
 export function createDesktopExtensionStateStore(
-  context: ExtensionManagementContext = { spiritDataDir: spiritAgentDataDir() },
+  context: ExtensionManagementContext = { spiritDataDir: spiritAgentDataDir(), hostKind: 'desktop' },
 ): ExtensionStateStore {
   const fileStore = createFileExtensionStateStore(context);
 
