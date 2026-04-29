@@ -10,11 +10,13 @@ import type {
   DeleteMcpServerRequest,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
   InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
@@ -41,6 +43,9 @@ declare global {
     listMarketplaceExtensions(): Promise<DesktopMarketplaceCatalogItem[]>;
     getMarketplaceExtensionDetail(extensionId: string): Promise<DesktopMarketplaceDetail>;
     getMarketplaceExtensionReadme(extensionId: string): Promise<string>;
+    prepareMarketplaceExtensionInstall(
+      request: PrepareMarketplaceExtensionInstallRequest,
+    ): Promise<DesktopMarketplacePreparedInstall>;
     installMarketplaceExtension(request: InstallMarketplaceExtensionRequest): Promise<DesktopSnapshot>;
     deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot>;
     runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot>;

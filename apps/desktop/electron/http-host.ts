@@ -416,6 +416,21 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/marketplace/extensions/prepare') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('prepareMarketplaceExtensionInstall', {
+        request: {
+          extensionId: typeof jsonBody?.extensionId === 'string' ? jsonBody.extensionId : '',
+          version: typeof jsonBody?.version === 'string' ? jsonBody.version : undefined,
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/marketplace/extensions/install') {
     writeJson(
       request,

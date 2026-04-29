@@ -14,9 +14,14 @@ import type {
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopMarketplaceCatalogItem,
+  DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
+  InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
@@ -40,7 +45,8 @@ type BusyAction =
   | "models"
   | "mcps"
   | "skills"
-  | "extensions";
+  | "extensions"
+  | "marketplace";
 
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
@@ -540,6 +546,118 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const listMarketplaceExtensions = useCallback(
+    async (): Promise<DesktopMarketplaceCatalogItem[]> => {
+      if (!api) {
+        return [];
+      }
+
+      setBusyAction("marketplace");
+      try {
+        const items = await api.listMarketplaceExtensions();
+        setRuntimeError("");
+        return items;
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api],
+  );
+
+  const getMarketplaceExtensionDetail = useCallback(
+    async (extensionId: string): Promise<DesktopMarketplaceDetail> => {
+      if (!api) {
+        throw new Error("当前宿主尚未就绪。");
+      }
+
+      setBusyAction("marketplace");
+      try {
+        const detail = await api.getMarketplaceExtensionDetail(extensionId);
+        setRuntimeError("");
+        return detail;
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api],
+  );
+
+  const getMarketplaceExtensionReadme = useCallback(
+    async (extensionId: string): Promise<string> => {
+      if (!api) {
+        throw new Error("当前宿主尚未就绪。");
+      }
+
+      setBusyAction("marketplace");
+      try {
+        const readme = await api.getMarketplaceExtensionReadme(extensionId);
+        setRuntimeError("");
+        return readme;
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api],
+  );
+
+  const prepareMarketplaceExtensionInstall = useCallback(
+    async (
+      request: PrepareMarketplaceExtensionInstallRequest,
+    ): Promise<DesktopMarketplacePreparedInstall> => {
+      if (!api) {
+        throw new Error("当前宿主尚未就绪。");
+      }
+
+      setBusyAction("marketplace");
+      try {
+        const prepared = await api.prepareMarketplaceExtensionInstall(request);
+        setRuntimeError("");
+        return prepared;
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api],
+  );
+
+  const installMarketplaceExtension = useCallback(
+    async (request: InstallMarketplaceExtensionRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("marketplace");
+      try {
+        const next = await api.installMarketplaceExtension(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const deleteExtension = useCallback(
     async (request: DeleteExtensionRequest) => {
       if (!api) {
@@ -930,6 +1048,11 @@ export function useDesktopRuntime() {
     removeModel,
     addMcpServer,
     importExtension,
+    listMarketplaceExtensions,
+    getMarketplaceExtensionDetail,
+    getMarketplaceExtensionReadme,
+    prepareMarketplaceExtensionInstall,
+    installMarketplaceExtension,
     createSkill,
     deleteExtension,
     runExtension,

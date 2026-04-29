@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   getMarketplaceExtensionReadme(extensionId: string) {
     return ipcRenderer.invoke('desktop:invoke', 'getMarketplaceExtensionReadme', { extensionId });
   },
+  prepareMarketplaceExtensionInstall(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'prepareMarketplaceExtensionInstall', { request });
+  },
   installMarketplaceExtension(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'installMarketplaceExtension', { request });
   },

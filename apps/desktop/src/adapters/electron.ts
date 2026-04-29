@@ -42,6 +42,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     getMarketplaceExtensionReadme(extensionId) {
       return bridge.getMarketplaceExtensionReadme(extensionId);
     },
+    prepareMarketplaceExtensionInstall(request) {
+      return bridge.prepareMarketplaceExtensionInstall(request);
+    },
     installMarketplaceExtension(request) {
       return bridge.installMarketplaceExtension(request);
     },

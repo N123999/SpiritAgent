@@ -9,11 +9,13 @@ import type {
   DeleteMcpServerRequest,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
   InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
@@ -74,6 +76,9 @@ export function createWebHostApi(): HostApi {
     },
     getMarketplaceExtensionReadme(extensionId: string) {
       return post<string>(baseUrl, '/api/marketplace/extensions/readme', { extensionId });
+    },
+    prepareMarketplaceExtensionInstall(request: PrepareMarketplaceExtensionInstallRequest) {
+      return post<DesktopMarketplacePreparedInstall>(baseUrl, '/api/marketplace/extensions/prepare', request);
     },
     installMarketplaceExtension(request: InstallMarketplaceExtensionRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/marketplace/extensions/install', request);

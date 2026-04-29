@@ -68,6 +68,7 @@ import type {
   DesktopExtensionCssLayer,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
@@ -85,6 +86,7 @@ import type {
   SessionListItem,
   ImportExtensionRequest,
   InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
@@ -178,6 +180,7 @@ type CommandPayloads = {
   listMarketplaceExtensions: undefined;
   getMarketplaceExtensionDetail: { extensionId: string };
   getMarketplaceExtensionReadme: { extensionId: string };
+  prepareMarketplaceExtensionInstall: { request: PrepareMarketplaceExtensionInstallRequest };
   installMarketplaceExtension: { request: InstallMarketplaceExtensionRequest };
   deleteExtension: { request: DeleteExtensionRequest };
   runExtension: { request: RunExtensionRequest };
@@ -586,6 +589,24 @@ description: ${frontmatterDescription}
       }
 
       return this.marketplace().getReadme(trimmedId);
+    });
+  }
+
+  async prepareMarketplaceExtensionInstall(
+    request: PrepareMarketplaceExtensionInstallRequest,
+  ): Promise<DesktopMarketplacePreparedInstall> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const extensionId = request.extensionId.trim();
+      if (!extensionId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const prepared = await this.marketplace().prepareInstall({
+        extensionId,
+        ...(request.version?.trim() ? { version: request.version.trim() } : {}),
+      });
+      return toDesktopMarketplacePreparedInstall(prepared);
     });
   }
 
@@ -1237,6 +1258,10 @@ description: ${frontmatterDescription}
       case 'installMarketplaceExtension': {
         const typedPayload = payload as CommandPayloads['installMarketplaceExtension'];
         return this.installMarketplaceExtension(typedPayload.request);
+      }
+      case 'prepareMarketplaceExtensionInstall': {
+        const typedPayload = payload as CommandPayloads['prepareMarketplaceExtensionInstall'];
+        return this.prepareMarketplaceExtensionInstall(typedPayload.request);
       }
       case 'deleteExtension': {
         const typedPayload = payload as CommandPayloads['deleteExtension'];
@@ -3585,6 +3610,38 @@ function toDesktopMarketplaceDetail(detail: {
           }
         : {}),
     })),
+  };
+}
+
+function toDesktopMarketplacePreparedInstall(prepared: {
+  extensionId: string;
+  packageName: string;
+  displayName: string;
+  description: string;
+  version: string;
+  channel: 'stable' | 'preview' | 'experimental';
+  reviewStatus: 'unverified' | 'verified' | 'revoked';
+  supportedHosts: Array<'cli' | 'desktop'>;
+  supportsCurrentHost: boolean;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  sourceFileName: string;
+}): DesktopMarketplacePreparedInstall {
+  return {
+    extensionId: prepared.extensionId,
+    packageName: prepared.packageName,
+    displayName: prepared.displayName,
+    description: prepared.description,
+    version: prepared.version,
+    channel: prepared.channel,
+    reviewStatus: prepared.reviewStatus,
+    supportedHosts: [...prepared.supportedHosts],
+    supportsCurrentHost: prepared.supportsCurrentHost,
+    ...(prepared.tarballUrl ? { tarballUrl: prepared.tarballUrl } : {}),
+    ...(prepared.integrity ? { integrity: prepared.integrity } : {}),
+    ...(prepared.shasum ? { shasum: prepared.shasum } : {}),
+    sourceFileName: prepared.sourceFileName,
   };
 }
 

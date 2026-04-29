@@ -20,6 +20,7 @@ export type HostCommandName =
   | 'listMarketplaceExtensions'
   | 'getMarketplaceExtensionDetail'
   | 'getMarketplaceExtensionReadme'
+  | 'prepareMarketplaceExtensionInstall'
   | 'installMarketplaceExtension'
   | 'deleteExtension'
   | 'runExtension'

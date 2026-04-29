@@ -72,6 +72,11 @@ export interface InstallMarketplaceExtensionRequest {
   reviewAcknowledged?: boolean;
 }
 
+export interface PrepareMarketplaceExtensionInstallRequest {
+  extensionId: string;
+  version?: string;
+}
+
 export type DesktopExtensionSettingValue = string | boolean | number | null;
 
 export interface UpdateExtensionSettingsRequest {
@@ -231,6 +236,22 @@ export interface DesktopMarketplaceDetail {
   defaultVersion: string;
   readmePath: string;
   versions: DesktopMarketplaceDetailVersion[];
+}
+
+export interface DesktopMarketplacePreparedInstall {
+  extensionId: string;
+  packageName: string;
+  displayName: string;
+  description: string;
+  version: string;
+  channel: DesktopMarketplaceChannel;
+  reviewStatus: DesktopMarketplaceReviewStatus;
+  supportedHosts: DesktopExtensionHostKind[];
+  supportsCurrentHost: boolean;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  sourceFileName: string;
 }
 
 export interface DesktopMcpStdioTransportSnapshot {
