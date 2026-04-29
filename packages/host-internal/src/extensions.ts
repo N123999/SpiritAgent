@@ -173,6 +173,10 @@ export interface HostExtensionCliContributionSet {
   hooks?: HostExtensionCliUiHookDefinition[];
 }
 
+interface HostExtensionManifestParseOptions {
+  readRelativeTextFile?: (relativePath: string, fieldName: string) => Promise<string>;
+}
+
 export interface HostExtensionSettingOption {
   value: string;
   label: string;
@@ -531,9 +535,25 @@ export async function importExtensionArchive(
   }
 
   const extracted = unzipSync(new Uint8Array(archiveBuffer));
+  const normalizedExtracted = new Map(
+    Object.entries(extracted).map(([entryName, content]) => [normalizeArchivePath(entryName), content]),
+  );
   const manifestEntryName = resolveManifestArchivePath(Object.keys(extracted));
-  const manifestRaw = Buffer.from(extracted[manifestEntryName] ?? []).toString('utf8');
-  const manifest = parseExtensionManifest(manifestRaw);
+  const manifestRaw = Buffer.from(normalizedExtracted.get(manifestEntryName) ?? []).toString('utf8');
+  const manifestRoot = manifestEntryName.includes('/')
+    ? manifestEntryName.slice(0, manifestEntryName.lastIndexOf('/'))
+    : '';
+  const manifest = await parseExtensionManifest(manifestRaw, {
+    readRelativeTextFile: async (relativePath, fieldName) => {
+      const normalized = normalizeArchivePath(relativePath);
+      const archivePath = manifestRoot ? `${manifestRoot}/${normalized}` : normalized;
+      const content = normalizedExtracted.get(archivePath);
+      if (!content) {
+        throw new Error(`扩展 ${fieldName} 指向的文件不存在：${relativePath}`);
+      }
+      return Buffer.from(content).toString('utf8');
+    },
+  });
   const directoryName = manifest.id;
   const targetDirectory = path.join(paths.extensionsDir, directoryName);
 
@@ -1242,10 +1262,23 @@ async function ensureExtensionDirectories(paths: ExtensionPaths): Promise<void> 
 
 async function readExtensionManifestFile(filePath: string): Promise<HostExtensionManifest> {
   const raw = await readFile(filePath, 'utf8');
-  return parseExtensionManifest(raw);
+  const manifestDirectory = path.dirname(filePath);
+  return parseExtensionManifest(raw, {
+    readRelativeTextFile: async (relativePath, fieldName) => {
+      const targetPath = path.join(manifestDirectory, ...normalizeArchivePath(relativePath).split('/'));
+      try {
+        return await readFile(targetPath, 'utf8');
+      } catch {
+        throw new Error(`扩展 ${fieldName} 指向的文件不存在：${relativePath}`);
+      }
+    },
+  });
 }
 
-function parseExtensionManifest(raw: string): HostExtensionManifest {
+async function parseExtensionManifest(
+  raw: string,
+  options: HostExtensionManifestParseOptions = {},
+): Promise<HostExtensionManifest> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -1276,7 +1309,7 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
   const main = optionalStringField(parsed.main);
   const activationEvents = optionalActivationEventsField(parsed.activationEvents);
   const requestedCapabilities = optionalRequestedCapabilitiesField(parsed.requestedCapabilities);
-  const contributes = optionalContributionSetField(parsed.contributes);
+  const contributes = await optionalContributionSetField(parsed.contributes, options);
   const settingsSchema = optionalSettingsSchemaField(parsed.settingsSchema);
   const secretSlots = optionalSecretSlotsField(parsed.secretSlots);
 
@@ -1607,14 +1640,17 @@ function optionalRequestedCapabilitiesField(value: unknown): HostExtensionReques
   return result;
 }
 
-function optionalContributionSetField(value: unknown): HostExtensionContributionSet | undefined {
+async function optionalContributionSetField(
+  value: unknown,
+  options: HostExtensionManifestParseOptions,
+): Promise<HostExtensionContributionSet | undefined> {
   if (!isRecord(value)) {
     return undefined;
   }
 
   const tools = optionalContributedToolsField(value.tools);
   const desktop = optionalDesktopContributionSetField(value.desktop);
-  const cli = optionalCliContributionSetField(value.cli);
+  const cli = await optionalCliContributionSetField(value.cli, options);
   if (tools.length === 0 && !desktop && !cli) {
     return undefined;
   }
@@ -1659,14 +1695,15 @@ function optionalDesktopCssDefinitionsField(
   return value.map((entry, index) => parseDesktopCssDefinition(entry, index));
 }
 
-function optionalCliContributionSetField(
+async function optionalCliContributionSetField(
   value: unknown,
-): HostExtensionCliContributionSet | undefined {
+  options: HostExtensionManifestParseOptions,
+): Promise<HostExtensionCliContributionSet | undefined> {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const hooks = optionalCliUiHookDefinitionsField(value.hooks);
+  const hooks = await optionalCliUiHookDefinitionsField(value.hooks, options);
   if (hooks.length === 0) {
     return undefined;
   }
@@ -1674,35 +1711,69 @@ function optionalCliContributionSetField(
   return { hooks };
 }
 
-function optionalCliUiHookDefinitionsField(
+async function optionalCliUiHookDefinitionsField(
   value: unknown,
-): HostExtensionCliUiHookDefinition[] {
-  if (!Array.isArray(value)) {
+  options: HostExtensionManifestParseOptions,
+): Promise<HostExtensionCliUiHookDefinition[]> {
+  if (value === undefined || value === null) {
     return [];
   }
 
-  return value.map((entry, index) => parseCliUiHookDefinition(entry, index));
+  if (!isRecord(value)) {
+    throw new Error('扩展 manifest 字段 contributes.cli.hooks 必须是对象，且必须使用 path 引用外置资源文件。');
+  }
+
+  const hooksPath = stringField(value.path, 'contributes.cli.hooks.path');
+  assertSafeRelativePath(hooksPath, 'contributes.cli.hooks.path');
+  const readRelativeTextFile = options.readRelativeTextFile;
+  if (!readRelativeTextFile) {
+    throw new Error(`当前上下文不支持读取扩展 contributes.cli.hooks.path：${hooksPath}`);
+  }
+
+  const raw = await readRelativeTextFile(hooksPath, 'contributes.cli.hooks.path');
+  return parseCliUiHookDocument(raw, hooksPath);
+}
+
+function parseCliUiHookDocument(
+  raw: string,
+  resourcePath: string,
+): HostExtensionCliUiHookDefinition[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`扩展 CLI hooks 资源不是合法 JSON：${resourcePath}`);
+  }
+
+  if (!isRecord(parsed) || !Array.isArray(parsed.hooks)) {
+    throw new Error(`扩展 CLI hooks 资源必须是形如 { \"hooks\": [...] } 的对象：${resourcePath}`);
+  }
+
+  return parsed.hooks.map((entry, index) =>
+    parseCliUiHookDefinition(entry, index, `CLI hooks 资源 ${resourcePath}.hooks`)
+  );
 }
 
 function parseCliUiHookDefinition(
   value: unknown,
   index: number,
+  fieldPrefix = 'contributes.cli.hooks',
 ): HostExtensionCliUiHookDefinition {
   if (!isRecord(value)) {
-    throw new Error(`扩展 manifest 字段 contributes.cli.hooks[${index}] 必须是对象。`);
+    throw new Error(`扩展 manifest 字段 ${fieldPrefix}[${index}] 必须是对象。`);
   }
 
   const slot = enumField(
     value.slot,
-    `contributes.cli.hooks[${index}].slot`,
+    `${fieldPrefix}[${index}].slot`,
     SUPPORTED_HOST_EXTENSION_CLI_UI_SLOTS,
   );
   const variant = optionalEnumField(
     value.variant,
-    `contributes.cli.hooks[${index}].variant`,
+    `${fieldPrefix}[${index}].variant`,
     SUPPORTED_HOST_EXTENSION_CLI_UI_VARIANTS,
   );
-  const tokens = optionalCliUiHookTokensField(value.tokens, index);
+  const tokens = optionalCliUiHookTokensField(value.tokens, `${fieldPrefix}[${index}].tokens`);
   const prefix = optionalStringField(value.prefix);
   const suffix = optionalStringField(value.suffix);
 
@@ -1717,7 +1788,7 @@ function parseCliUiHookDefinition(
 
 function optionalCliUiHookTokensField(
   value: unknown,
-  index: number,
+  fieldPrefix: string,
 ): HostExtensionCliUiHookTokens | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -1725,17 +1796,17 @@ function optionalCliUiHookTokensField(
 
   const foreground = optionalEnumField(
     value.foreground,
-    `contributes.cli.hooks[${index}].tokens.foreground`,
+    `${fieldPrefix}.foreground`,
     SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES,
   );
   const border = optionalEnumField(
     value.border,
-    `contributes.cli.hooks[${index}].tokens.border`,
+    `${fieldPrefix}.border`,
     SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES,
   );
   const accent = optionalEnumField(
     value.accent,
-    `contributes.cli.hooks[${index}].tokens.accent`,
+    `${fieldPrefix}.accent`,
     SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES,
   );
 
