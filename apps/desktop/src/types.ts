@@ -98,6 +98,20 @@ export interface DesktopExtensionDesktopCssEntry {
   media?: string;
 }
 
+export interface DesktopExtensionCliUiHookTokens {
+  foreground?: string;
+  border?: string;
+  accent?: string;
+}
+
+export interface DesktopExtensionCliUiHookEntry {
+  slot: string;
+  variant?: string;
+  tokens?: DesktopExtensionCliUiHookTokens;
+  prefix?: string;
+  suffix?: string;
+}
+
 export type DesktopExtensionSettingType = 'string' | 'boolean' | 'number' | 'select';
 
 export interface DesktopExtensionSettingOption {
@@ -141,6 +155,7 @@ export interface DesktopExtensionListItem {
   requestedCapabilities?: string[];
   contributedTools?: DesktopExtensionContributedTool[];
   desktopCss?: DesktopExtensionDesktopCssEntry[];
+  cliHooks?: DesktopExtensionCliUiHookEntry[];
   settingsSchema?: DesktopExtensionSettingDefinition[];
   settingsValues?: Record<string, DesktopExtensionSettingValue>;
   secretSlots?: DesktopExtensionSecretSlot[];

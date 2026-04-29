@@ -1387,6 +1387,11 @@ mod tests {
             author: Some("Spirit Agent".to_string()),
             homepage: Some("https://example.com/extensions/basic-metadata-demo".to_string()),
             main: Some("dist/index.js".to_string()),
+            activation_events: None,
+            requested_capabilities: None,
+            contributes: None,
+            settings_schema: None,
+            secret_slots: None,
             archive_file_name: Some("basic-metadata-demo.zip".to_string()),
             installed_at_unix_ms: 0,
         }

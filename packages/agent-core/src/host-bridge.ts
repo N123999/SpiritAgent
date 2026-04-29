@@ -134,6 +134,25 @@ interface CliHostInternalModule {
               approvalMode?: string;
               executionMode?: string;
             }>;
+            desktop?: {
+              css?: Array<{
+                path: string;
+                media?: string;
+              }>;
+            };
+            cli?: {
+              hooks?: Array<{
+                slot: string;
+                variant?: string;
+                tokens?: {
+                  foreground?: string;
+                  border?: string;
+                  accent?: string;
+                };
+                prefix?: string;
+                suffix?: string;
+              }>;
+            };
           };
           settingsSchema?: Array<{
             key: string;
@@ -183,6 +202,25 @@ interface CliHostInternalModule {
             approvalMode?: string;
             executionMode?: string;
           }>;
+          desktop?: {
+            css?: Array<{
+              path: string;
+              media?: string;
+            }>;
+          };
+          cli?: {
+            hooks?: Array<{
+              slot: string;
+              variant?: string;
+              tokens?: {
+                foreground?: string;
+                border?: string;
+                accent?: string;
+              };
+              prefix?: string;
+              suffix?: string;
+            }>;
+          };
         };
         settingsSchema?: Array<{
           key: string;
@@ -423,6 +461,25 @@ function serializeHostExtension(item: {
         approvalMode?: string;
         executionMode?: string;
       }>;
+      desktop?: {
+        css?: Array<{
+          path: string;
+          media?: string;
+        }>;
+      };
+      cli?: {
+        hooks?: Array<{
+          slot: string;
+          variant?: string;
+          tokens?: {
+            foreground?: string;
+            border?: string;
+            accent?: string;
+          };
+          prefix?: string;
+          suffix?: string;
+        }>;
+      };
     };
     settingsSchema?: Array<{
       key: string;
@@ -462,18 +519,7 @@ function serializeHostExtension(item: {
     ...(item.manifest.requestedCapabilities?.length
       ? { requestedCapabilities: [...item.manifest.requestedCapabilities] }
       : {}),
-    ...(item.manifest.contributes?.tools?.length
-      ? {
-          contributes: {
-            tools: item.manifest.contributes.tools.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
-              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
-            })),
-          },
-        }
-      : {}),
+    ...serializeExtensionContributes(item.manifest.contributes),
     ...(item.manifest.settingsSchema?.length
       ? {
           settingsSchema: item.manifest.settingsSchema.map((setting) => ({
@@ -509,6 +555,84 @@ function serializeHostExtension(item: {
     ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
     installedAtUnixMs: item.installedAtUnixMs,
   };
+}
+
+function serializeExtensionContributes(item: {
+  tools?: Array<{
+    name: string;
+    description: string;
+    approvalMode?: string;
+    executionMode?: string;
+  }>;
+  desktop?: {
+    css?: Array<{
+      path: string;
+      media?: string;
+    }>;
+  };
+  cli?: {
+    hooks?: Array<{
+      slot: string;
+      variant?: string;
+      tokens?: {
+        foreground?: string;
+        border?: string;
+        accent?: string;
+      };
+      prefix?: string;
+      suffix?: string;
+    }>;
+  };
+} | undefined) {
+  if (!item) {
+    return {};
+  }
+
+  const contributes = {
+    ...(item.tools?.length
+      ? {
+          tools: item.tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+            ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+          })),
+        }
+      : {}),
+    ...(item.desktop?.css?.length
+      ? {
+          desktop: {
+            css: item.desktop.css.map((entry) => ({
+              path: entry.path,
+              ...(entry.media ? { media: entry.media } : {}),
+            })),
+          },
+        }
+      : {}),
+    ...(item.cli?.hooks?.length
+      ? {
+          cli: {
+            hooks: item.cli.hooks.map((hook) => ({
+              slot: hook.slot,
+              ...(hook.variant ? { variant: hook.variant } : {}),
+              ...(hook.tokens
+                ? {
+                    tokens: {
+                      ...(hook.tokens.foreground ? { foreground: hook.tokens.foreground } : {}),
+                      ...(hook.tokens.border ? { border: hook.tokens.border } : {}),
+                      ...(hook.tokens.accent ? { accent: hook.tokens.accent } : {}),
+                    },
+                  }
+                : {}),
+              ...(hook.prefix ? { prefix: hook.prefix } : {}),
+              ...(hook.suffix ? { suffix: hook.suffix } : {}),
+            })),
+          },
+        }
+      : {}),
+  };
+
+  return Object.keys(contributes).length > 0 ? { contributes } : {};
 }
 
 async function requireCliExtensionManager() {

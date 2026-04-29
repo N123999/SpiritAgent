@@ -248,6 +248,58 @@ pub enum MessageRole {
     Agent,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CliUiHookSlot {
+    MessageUser,
+    MessageAssistant,
+    MessageTool,
+    AssistantThinking,
+    InputFrame,
+    BottomForm,
+    BottomFormSection,
+    SlashSuggestions,
+    ApprovalPanel,
+    QuestionsPanel,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliUiHookVariant {
+    Default,
+    Accented,
+    Muted,
+    Warning,
+    Success,
+    Danger,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliUiHookTokenRole {
+    Default,
+    Primary,
+    Secondary,
+    Muted,
+    Accent,
+    Success,
+    Warning,
+    Danger,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CliUiHookTokensView {
+    pub foreground: Option<CliUiHookTokenRole>,
+    pub border: Option<CliUiHookTokenRole>,
+    pub accent: Option<CliUiHookTokenRole>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliUiHookView {
+    pub slot: CliUiHookSlot,
+    pub variant: Option<CliUiHookVariant>,
+    pub tokens: CliUiHookTokensView,
+    pub prefix: Option<String>,
+    pub suffix: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct TuiViewModel {
     pub input: String,
@@ -294,6 +346,7 @@ pub struct TuiViewModel {
     pub pending_aux: Option<PendingAssistantAux>,
     pub persisted_standalone_pending_aux: Option<PendingAssistantAux>,
     pub persisted_standalone_pending_aux_anchor: Option<usize>,
+    pub cli_ui_hooks: Vec<CliUiHookView>,
     /// 对话区选区：折行后的全局行号 + 显示列（与 WordWrapper 一致）。
     pub conversation_sel_anchor: Option<(usize, usize)>,
     pub conversation_sel_head: Option<(usize, usize)>,

@@ -21,7 +21,8 @@ use crate::{
     session::PendingMcpResource,
     tui::{ConversationPanelHit, TuiShell},
     view::{
-        AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind,
+        AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind, CliUiHookSlot,
+        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
         ChatMessage, InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole,
         PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
@@ -44,6 +45,7 @@ thread_local! {
     static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
         RefCell::new(HashMap::new());
     static INPUT_CURSOR_DEBUG_SIGNATURE: RefCell<Option<String>> = RefCell::new(None);
+    static ACTIVE_CLI_UI_HOOKS: RefCell<Vec<CliUiHookView>> = RefCell::new(Vec::new());
 }
 
 struct BottomFormRenderResult {
@@ -70,6 +72,9 @@ fn conversation_logo_width(available_width: u16) -> u16 {
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let app = shell.view_model();
+    ACTIVE_CLI_UI_HOOKS.with(|hooks| {
+        *hooks.borrow_mut() = app.cli_ui_hooks.clone();
+    });
     let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
     let show_chat_picker = app.chat_picker_active;
@@ -245,7 +250,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             SLASH_SUGGESTION_VISIBLE_ITEMS,
             chunks[2].width.saturating_sub(2) as usize,
         );
-        let suggestion_frame_style = conversation_body_text_style();
+        let suggestion_frame_style = patch_style_border(
+            conversation_body_text_style(),
+            cli_ui_border_color(CliUiHookSlot::SlashSuggestions)
+                .or(cli_ui_accent_color(CliUiHookSlot::SlashSuggestions)),
+        );
         let suggestion_title = input_suggestion_title(&app);
         let suggestions_widget = Paragraph::new(suggestions)
             .block(
@@ -279,6 +288,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             app.subagent_approval_input.as_ref(),
         );
     }
+
+    ACTIVE_CLI_UI_HOOKS.with(|hooks| hooks.borrow_mut().clear());
 }
 
 fn subtle_aux_text_style() -> Style {
@@ -287,6 +298,136 @@ fn subtle_aux_text_style() -> Style {
 
 fn conversation_body_text_style() -> Style {
     Style::default().fg(Color::Rgb(170, 170, 170))
+}
+
+fn active_cli_ui_hook(slot: CliUiHookSlot) -> Option<CliUiHookView> {
+    ACTIVE_CLI_UI_HOOKS.with(|hooks| {
+        hooks
+            .borrow()
+            .iter()
+            .rev()
+            .find(|hook| hook.slot == slot)
+            .cloned()
+    })
+}
+
+fn cli_ui_token_color(role: CliUiHookTokenRole) -> Option<Color> {
+    match role {
+        CliUiHookTokenRole::Default => None,
+        CliUiHookTokenRole::Primary => Some(Color::Cyan),
+        CliUiHookTokenRole::Secondary => Some(Color::Rgb(190, 195, 205)),
+        CliUiHookTokenRole::Muted => Some(Color::DarkGray),
+        CliUiHookTokenRole::Accent => Some(Color::Magenta),
+        CliUiHookTokenRole::Success => Some(Color::Green),
+        CliUiHookTokenRole::Warning => Some(Color::Yellow),
+        CliUiHookTokenRole::Danger => Some(Color::Red),
+    }
+}
+
+fn cli_ui_variant_colors(variant: CliUiHookVariant) -> CliUiHookTokensView {
+    match variant {
+        CliUiHookVariant::Default => CliUiHookTokensView::default(),
+        CliUiHookVariant::Accented => CliUiHookTokensView {
+            border: Some(CliUiHookTokenRole::Accent),
+            accent: Some(CliUiHookTokenRole::Accent),
+            ..CliUiHookTokensView::default()
+        },
+        CliUiHookVariant::Muted => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Muted),
+            border: Some(CliUiHookTokenRole::Muted),
+            ..CliUiHookTokensView::default()
+        },
+        CliUiHookVariant::Warning => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Warning),
+            border: Some(CliUiHookTokenRole::Warning),
+            accent: Some(CliUiHookTokenRole::Warning),
+        },
+        CliUiHookVariant::Success => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Success),
+            border: Some(CliUiHookTokenRole::Success),
+            accent: Some(CliUiHookTokenRole::Success),
+        },
+        CliUiHookVariant::Danger => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Danger),
+            border: Some(CliUiHookTokenRole::Danger),
+            accent: Some(CliUiHookTokenRole::Danger),
+        },
+    }
+}
+
+fn cli_ui_token_role(
+    hook: &CliUiHookView,
+    selector: impl Fn(&CliUiHookTokensView) -> Option<CliUiHookTokenRole>,
+) -> Option<CliUiHookTokenRole> {
+    selector(&hook.tokens).or_else(|| hook.variant.and_then(|variant| selector(&cli_ui_variant_colors(variant))))
+}
+
+fn cli_ui_foreground_color(slot: CliUiHookSlot) -> Option<Color> {
+    active_cli_ui_hook(slot)
+        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.foreground))
+        .and_then(cli_ui_token_color)
+}
+
+fn cli_ui_border_color(slot: CliUiHookSlot) -> Option<Color> {
+    active_cli_ui_hook(slot)
+        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.border))
+        .and_then(cli_ui_token_color)
+}
+
+fn cli_ui_accent_color(slot: CliUiHookSlot) -> Option<Color> {
+    active_cli_ui_hook(slot)
+        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.accent))
+        .and_then(cli_ui_token_color)
+}
+
+fn cli_ui_prefix(slot: CliUiHookSlot) -> Option<String> {
+    active_cli_ui_hook(slot).and_then(|hook| hook.prefix)
+}
+
+fn cli_ui_suffix(slot: CliUiHookSlot) -> Option<String> {
+    active_cli_ui_hook(slot).and_then(|hook| hook.suffix)
+}
+
+fn patch_style_foreground(style: Style, color: Option<Color>) -> Style {
+    match color {
+        Some(color) => style.fg(color),
+        None => style,
+    }
+}
+
+fn patch_style_border(style: Style, color: Option<Color>) -> Style {
+    match color {
+        Some(color) => style.fg(color),
+        None => style,
+    }
+}
+
+fn patch_lines_foreground(lines: Vec<Vec<Span<'static>>>, color: Option<Color>) -> Vec<Vec<Span<'static>>> {
+    let Some(color) = color else {
+        return lines;
+    };
+
+    lines
+        .into_iter()
+        .map(|line| {
+            line.into_iter()
+                .map(|span| Span::styled(span.content, span.style.fg(color)))
+                .collect()
+        })
+        .collect()
+}
+
+fn patch_line_foreground(line: Line<'static>, color: Option<Color>) -> Line<'static> {
+    let Some(color) = color else {
+        return line;
+    };
+
+    let spans: Vec<Span<'static>> = line
+        .spans
+        .into_iter()
+        .map(|span| Span::styled(span.content, span.style.fg(color)))
+        .collect();
+    Line::from(spans)
 }
 
 fn input_mode_title(input_mode: MainInputMode) -> String {
@@ -302,6 +443,9 @@ fn input_block_border_style(
     input_mode: MainInputMode,
     bottom_form_open: bool,
 ) -> Style {
+    if let Some(color) = cli_ui_border_color(CliUiHookSlot::InputFrame) {
+        return Style::default().fg(color);
+    }
     if bottom_form_open {
         return subtle_aux_text_style().add_modifier(Modifier::DIM);
     }
@@ -996,20 +1140,25 @@ fn message_gutter_padding() -> &'static str {
 }
 
 fn assistant_message_prefix_style() -> Style {
-    Style::default()
+    patch_style_foreground(
+        Style::default()
         .fg(Color::Cyan)
-        .add_modifier(Modifier::BOLD)
+        .add_modifier(Modifier::BOLD),
+        cli_ui_accent_color(CliUiHookSlot::MessageAssistant),
+    )
 }
 
 fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
-    match kind {
+    let base = match kind {
         AssistantAuxKind::Thinking => Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::ITALIC),
         AssistantAuxKind::Compressing => {
             assistant_message_prefix_style().add_modifier(Modifier::ITALIC)
         }
-    }
+    };
+
+    patch_style_foreground(base, cli_ui_foreground_color(CliUiHookSlot::AssistantThinking))
 }
 
 fn assistant_aux_title(kind: AssistantAuxKind) -> String {
@@ -1020,17 +1169,21 @@ fn assistant_aux_title(kind: AssistantAuxKind) -> String {
 }
 
 fn assistant_aux_title_style(kind: AssistantAuxKind) -> Style {
-    match kind {
+    let base = match kind {
         AssistantAuxKind::Thinking => Style::default().fg(Color::DarkGray),
         AssistantAuxKind::Compressing => subtle_aux_text_style(),
-    }
+    };
+
+    patch_style_foreground(base, cli_ui_foreground_color(CliUiHookSlot::AssistantThinking))
 }
 
 fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
-    match kind {
+    let base = match kind {
         AssistantAuxKind::Thinking => Style::default().fg(Color::DarkGray),
         AssistantAuxKind::Compressing => subtle_aux_text_style(),
-    }
+    };
+
+    patch_style_foreground(base, cli_ui_foreground_color(CliUiHookSlot::AssistantThinking))
 }
 
 fn is_tool_progress_only_text(text: &str) -> bool {
@@ -1122,8 +1275,15 @@ fn render_message_lines(
     msg: &ChatMessage,
     message_index: usize,
 ) -> Vec<Line<'static>> {
+    let message_slot = match msg.role {
+        MessageRole::User => CliUiHookSlot::MessageUser,
+        MessageRole::Agent => CliUiHookSlot::MessageAssistant,
+    };
     let prefix_style = match msg.role {
-        MessageRole::User => conversation_body_text_style(),
+        MessageRole::User => patch_style_foreground(
+            conversation_body_text_style(),
+            cli_ui_accent_color(CliUiHookSlot::MessageUser),
+        ),
         MessageRole::Agent => assistant_message_prefix_style(),
     };
 
@@ -1162,8 +1322,14 @@ fn render_message_lines(
     let has_message_body = !effective_message_body.trim().is_empty();
     let content_lines = if has_message_body {
         match msg.role {
-            MessageRole::User => plain_text_lines(&effective_message_body),
-            MessageRole::Agent => markdown_lines(&effective_message_body),
+            MessageRole::User => patch_lines_foreground(
+                plain_text_lines(&effective_message_body),
+                cli_ui_foreground_color(CliUiHookSlot::MessageUser),
+            ),
+            MessageRole::Agent => patch_lines_foreground(
+                markdown_lines(&effective_message_body),
+                cli_ui_foreground_color(CliUiHookSlot::MessageAssistant),
+            ),
         }
     } else {
         Vec::new()
@@ -1204,6 +1370,8 @@ fn render_message_lines(
         should_render_aux_after_message_body(stored_thinking_text, has_message_body);
     let render_pending_aux_after_body = pending_aux
         .is_some_and(|_| should_render_aux_after_message_body(pending_aux_detail_text, has_message_body));
+    let slot_prefix = cli_ui_prefix(message_slot);
+    let slot_suffix = cli_ui_suffix(message_slot);
 
     let mut has_rendered_visible_line = false;
     let mut push_message_line = |content_spans: Vec<Span<'static>>| {
@@ -1213,7 +1381,15 @@ fn render_message_lines(
             has_rendered_visible_line = true;
             vec![Span::styled(message_prefix_text(), prefix_style)]
         };
+        if let Some(prefix) = slot_prefix.as_ref() {
+            spans.push(Span::styled(prefix.clone(), prefix_style));
+            spans.push(Span::raw(" "));
+        }
         spans.extend(content_spans);
+        if let Some(suffix) = slot_suffix.as_ref() {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(suffix.clone(), prefix_style));
+        }
         out.push(Line::from(spans));
     };
 
@@ -1331,7 +1507,11 @@ fn render_tool_card_lines(
     show_aux_details: bool,
 ) -> Vec<Line<'static>> {
     let (phase_label, phase_color) = tool_phase_label(tool.phase);
-    let rail = Style::default().fg(Color::Rgb(96, 110, 130));
+    let rail = patch_style_foreground(
+        Style::default().fg(Color::Rgb(96, 110, 130)),
+        cli_ui_border_color(CliUiHookSlot::MessageTool)
+            .or(cli_ui_accent_color(CliUiHookSlot::MessageTool)),
+    );
     let rail_sym = "▌ ";
     let indent = message_gutter_padding();
     let expand_details = show_aux_details
@@ -1346,24 +1526,41 @@ fn render_tool_card_lines(
         Span::styled(message_prefix_text(), prefix_style),
         Span::styled(
             "[tool] ",
-            Style::default()
+            patch_style_foreground(
+                Style::default()
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),
+                cli_ui_accent_color(CliUiHookSlot::MessageTool),
+            ),
         ),
         Span::styled(
             tool.tool_name.clone(),
-            Style::default()
+            patch_style_foreground(
+                Style::default()
                 .fg(Color::Rgb(170, 170, 170))
                 .add_modifier(Modifier::BOLD),
+                cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+            ),
         ),
         Span::raw(" · "),
         Span::styled(
             phase_label.to_string(),
-            Style::default()
+            patch_style_foreground(
+                Style::default()
                 .fg(phase_color)
                 .add_modifier(Modifier::BOLD),
+                cli_ui_accent_color(CliUiHookSlot::MessageTool),
+            ),
         ),
     ];
+    if let Some(prefix) = cli_ui_prefix(CliUiHookSlot::MessageTool) {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(prefix, prefix_style));
+    }
+    if let Some(suffix) = cli_ui_suffix(CliUiHookSlot::MessageTool) {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(suffix, prefix_style));
+    }
     if let Some(ref id) = tool
         .tool_call_id
         .as_ref()
@@ -1389,9 +1586,12 @@ fn render_tool_card_lines(
         Span::styled(rail_sym, rail),
         Span::styled(
             tool.headline.clone(),
-            Style::default()
+            patch_style_foreground(
+                Style::default()
                 .fg(Color::Rgb(170, 170, 170))
                 .add_modifier(Modifier::BOLD),
+                cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+            ),
         ),
     ]));
 
@@ -1402,7 +1602,13 @@ fn render_tool_card_lines(
         out.push(Line::from(vec![
             Span::raw(indent),
             Span::styled(rail_sym, rail),
-            Span::styled(line.clone(), Style::default().fg(Color::Rgb(190, 195, 205))),
+            Span::styled(
+                line.clone(),
+                patch_style_foreground(
+                    Style::default().fg(Color::Rgb(190, 195, 205)),
+                    cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+                ),
+            ),
         ]));
     }
 
@@ -2090,10 +2296,37 @@ fn draw_subagent_viewer(
     let popup = area;
     frame.render_widget(Clear, popup);
 
+    let approval_panel_slot = CliUiHookSlot::ApprovalPanel;
+    let panel_border_style = patch_style_border(
+        conversation_body_text_style(),
+        cli_ui_border_color(approval_panel_slot)
+            .or(cli_ui_accent_color(approval_panel_slot)),
+    );
+    let panel_title_style = patch_style_foreground(
+        subtle_aux_text_style(),
+        cli_ui_foreground_color(approval_panel_slot)
+            .or(cli_ui_accent_color(approval_panel_slot)),
+    );
+    let panel_prefix = cli_ui_prefix(approval_panel_slot);
+    let panel_suffix = cli_ui_suffix(approval_panel_slot);
+    let mut title_spans = Vec::new();
+    if let Some(prefix) = panel_prefix.as_ref() {
+        title_spans.push(Span::styled(prefix.clone(), panel_title_style));
+        title_spans.push(Span::raw(" "));
+    }
+    title_spans.push(Span::styled(
+        format!("SubAgent: {}", view.summary.title),
+        panel_title_style,
+    ));
+    if let Some(suffix) = panel_suffix.as_ref() {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(suffix.clone(), panel_title_style));
+    }
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(conversation_body_text_style())
-        .title(format!("SubAgent: {}", view.summary.title));
+        .border_style(panel_border_style)
+        .title(Line::from(title_spans));
     frame.render_widget(block.clone(), popup);
 
     let inner = block.inner(popup);
@@ -2138,18 +2371,33 @@ fn draw_subagent_viewer(
 
     let (status_label, status_style) = subagent_status_badge(view.summary.status, false);
     let mut header_lines = vec![Line::from(vec![
-        Span::styled("状态: ", subtle_aux_text_style()),
-        Span::styled(status_label.to_string(), status_style),
+        Span::styled(
+            "状态: ",
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
+        ),
+        Span::styled(
+            status_label.to_string(),
+            patch_style_foreground(status_style, cli_ui_accent_color(approval_panel_slot)),
+        ),
         Span::styled(
             format!("   sessionId: {}", view.summary.session_id),
-            subtle_aux_text_style(),
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
         ),
     ])];
 
     if let Some(latest) = view.summary.latest_message.as_deref() {
         header_lines.push(Line::from(Span::styled(
             truncate_to_width(&format!("最新进展: {}", latest), chunks[0].width.saturating_sub(1) as usize),
-            subtle_aux_text_style(),
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
         )));
     }
 
@@ -2182,8 +2430,15 @@ fn draw_subagent_viewer(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow))
-                .title(format!("审批意见: {}", approval.tool_name)),
+                .border_style(patch_style_border(
+                    Style::default().fg(Color::Yellow),
+                    cli_ui_border_color(approval_panel_slot)
+                        .or(cli_ui_accent_color(approval_panel_slot)),
+                ))
+                .title(Line::from(Span::styled(
+                    format!("审批意见: {}", approval.tool_name),
+                    panel_title_style,
+                ))),
         );
         frame.render_widget(editor_widget, editor_area);
 
@@ -2216,7 +2471,13 @@ fn draw_subagent_viewer(
         "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
     };
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(footer_text, subtle_aux_text_style()))),
+        Paragraph::new(Line::from(Span::styled(
+            footer_text,
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
+        ))),
         footer_chunk,
     );
 }
@@ -2893,8 +3154,15 @@ fn draw_ask_questions_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    let outer_border_style = subtle_aux_text_style();
-    let outer_title_style = subtle_aux_text_style();
+    let outer_border_style = patch_style_border(
+        subtle_aux_text_style(),
+        cli_ui_border_color(CliUiHookSlot::QuestionsPanel)
+            .or(cli_ui_accent_color(CliUiHookSlot::QuestionsPanel)),
+    );
+    let outer_title_style = patch_style_foreground(
+        subtle_aux_text_style(),
+        cli_ui_foreground_color(CliUiHookSlot::QuestionsPanel),
+    );
     let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
     let outer_block = Block::default()
         .borders(Borders::ALL)
@@ -2950,7 +3218,10 @@ fn draw_ask_questions_form(
             .collect::<String>();
         Line::from(Span::styled(
             text,
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            patch_style_foreground(
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                cli_ui_foreground_color(CliUiHookSlot::QuestionsPanel),
+            ),
         ))
     })
     .collect::<Vec<_>>();
@@ -3413,8 +3684,15 @@ fn draw_rules_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    let outer_border_style = subtle_aux_text_style();
-    let outer_title_style = subtle_aux_text_style();
+    let outer_border_style = patch_style_border(
+        subtle_aux_text_style(),
+        cli_ui_border_color(CliUiHookSlot::BottomForm)
+            .or(cli_ui_accent_color(CliUiHookSlot::BottomForm)),
+    );
+    let outer_title_style = patch_style_foreground(
+        subtle_aux_text_style(),
+        cli_ui_foreground_color(CliUiHookSlot::BottomForm),
+    );
     let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
     let outer_block = Block::default()
         .borders(Borders::ALL)
@@ -3666,7 +3944,10 @@ fn draw_bottom_form_section_field(
     area: Rect,
     text: &str,
 ) {
-    let lines = build_bottom_form_footer_lines(text, area.width as usize);
+    let lines = build_bottom_form_footer_lines(text, area.width as usize)
+        .into_iter()
+        .map(|line| patch_line_foreground(line, cli_ui_foreground_color(CliUiHookSlot::BottomFormSection)))
+        .collect::<Vec<_>>();
     let max_lines = usize::from(area.height);
     let lines: Vec<Line<'static>> = lines.into_iter().take(max_lines).collect();
     frame.render_widget(Paragraph::new(lines), area);
@@ -3976,6 +4257,7 @@ mod tests {
             pending_aux: None,
             persisted_standalone_pending_aux: None,
             persisted_standalone_pending_aux_anchor: None,
+            cli_ui_hooks: vec![],
             conversation_sel_anchor: None,
             conversation_sel_head: None,
         }

@@ -264,6 +264,43 @@ pub struct CliExtensionSettingOptionEntry {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CliExtensionDesktopCssEntry {
+    pub path: String,
+    pub media: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionCliUiHookTokensEntry {
+    pub foreground: Option<String>,
+    pub border: Option<String>,
+    pub accent: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionCliUiHookEntry {
+    pub slot: String,
+    pub variant: Option<String>,
+    pub tokens: Option<CliExtensionCliUiHookTokensEntry>,
+    pub prefix: Option<String>,
+    pub suffix: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionDesktopContributes {
+    pub css: Option<Vec<CliExtensionDesktopCssEntry>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliExtensionCliContributes {
+    pub hooks: Option<Vec<CliExtensionCliUiHookEntry>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CliExtensionSettingEntry {
     pub key: String,
     pub r#type: String,
@@ -288,6 +325,8 @@ pub struct CliExtensionSecretSlotEntry {
 #[serde(rename_all = "camelCase")]
 pub struct CliExtensionContributes {
     pub tools: Option<Vec<CliExtensionToolEntry>>,
+    pub desktop: Option<CliExtensionDesktopContributes>,
+    pub cli: Option<CliExtensionCliContributes>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -944,6 +944,29 @@ function ExtensionsSettingsPanel({
                     ))}
                   </div>
                 ) : null}
+                {item.cliHooks?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-xs font-medium text-foreground">CLI Hooks</p>
+                    {item.cliHooks.map((hook, index) => (
+                      <div
+                        key={`${item.id}:cli-hook:${hook.slot}:${index}`}
+                        className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <code className="text-[0.7rem] text-foreground">{hook.slot}</code>
+                          {hook.variant ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              variant: {hook.variant}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          这是 CLI 专属的受控语义 hook，不会在 Desktop Renderer 中执行。
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {item.settingsSchema?.length ? (
                   <div className="space-y-2 pt-2">
                     <p className="text-xs font-medium text-foreground">扩展设置</p>

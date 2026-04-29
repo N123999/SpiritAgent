@@ -43,6 +43,7 @@ export const SUPPORTED_HOST_EXTENSION_REQUESTED_CAPABILITIES = [
   'secret-storage',
   'structured-results',
   'desktop-ui',
+  'cli-ui',
 ] as const;
 
 export const SUPPORTED_HOST_EXTENSION_TOOL_APPROVAL_MODES = [
@@ -100,6 +101,7 @@ export interface HostExtensionContributedToolDefinition {
 export interface HostExtensionContributionSet {
   tools?: HostExtensionContributedToolDefinition[];
   desktop?: HostExtensionDesktopContributionSet;
+  cli?: HostExtensionCliContributionSet;
 }
 
 export interface HostExtensionDesktopCssDefinition {
@@ -109,6 +111,66 @@ export interface HostExtensionDesktopCssDefinition {
 
 export interface HostExtensionDesktopContributionSet {
   css?: HostExtensionDesktopCssDefinition[];
+}
+
+export const SUPPORTED_HOST_EXTENSION_CLI_UI_SLOTS = [
+  'message.user',
+  'message.assistant',
+  'message.tool',
+  'assistant.thinking',
+  'input.frame',
+  'bottom_form',
+  'bottom_form.section',
+  'slash_suggestions',
+  'approval.panel',
+  'questions.panel',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_CLI_UI_VARIANTS = [
+  'default',
+  'accented',
+  'muted',
+  'warning',
+  'success',
+  'danger',
+] as const;
+
+export const SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES = [
+  'default',
+  'primary',
+  'secondary',
+  'muted',
+  'accent',
+  'success',
+  'warning',
+  'danger',
+] as const;
+
+export type HostExtensionCliUiSlot =
+  (typeof SUPPORTED_HOST_EXTENSION_CLI_UI_SLOTS)[number];
+
+export type HostExtensionCliUiVariant =
+  (typeof SUPPORTED_HOST_EXTENSION_CLI_UI_VARIANTS)[number];
+
+export type HostExtensionCliUiTokenRole =
+  (typeof SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES)[number];
+
+export interface HostExtensionCliUiHookTokens {
+  foreground?: HostExtensionCliUiTokenRole;
+  border?: HostExtensionCliUiTokenRole;
+  accent?: HostExtensionCliUiTokenRole;
+}
+
+export interface HostExtensionCliUiHookDefinition {
+  slot: HostExtensionCliUiSlot;
+  variant?: HostExtensionCliUiVariant;
+  tokens?: HostExtensionCliUiHookTokens;
+  prefix?: string;
+  suffix?: string;
+}
+
+export interface HostExtensionCliContributionSet {
+  hooks?: HostExtensionCliUiHookDefinition[];
 }
 
 export interface HostExtensionSettingOption {
@@ -1222,6 +1284,8 @@ function parseExtensionManifest(raw: string): HostExtensionManifest {
     assertSafeRelativePath(main, 'main');
   }
 
+  assertHostUiContributionCapabilities(requestedCapabilities, contributes);
+
   return {
     schemaVersion,
     id,
@@ -1550,13 +1614,15 @@ function optionalContributionSetField(value: unknown): HostExtensionContribution
 
   const tools = optionalContributedToolsField(value.tools);
   const desktop = optionalDesktopContributionSetField(value.desktop);
-  if (tools.length === 0 && !desktop) {
+  const cli = optionalCliContributionSetField(value.cli);
+  if (tools.length === 0 && !desktop && !cli) {
     return undefined;
   }
 
   return {
     ...(tools.length > 0 ? { tools } : {}),
     ...(desktop ? { desktop } : {}),
+    ...(cli ? { cli } : {}),
   };
 }
 
@@ -1593,6 +1659,97 @@ function optionalDesktopCssDefinitionsField(
   return value.map((entry, index) => parseDesktopCssDefinition(entry, index));
 }
 
+function optionalCliContributionSetField(
+  value: unknown,
+): HostExtensionCliContributionSet | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const hooks = optionalCliUiHookDefinitionsField(value.hooks);
+  if (hooks.length === 0) {
+    return undefined;
+  }
+
+  return { hooks };
+}
+
+function optionalCliUiHookDefinitionsField(
+  value: unknown,
+): HostExtensionCliUiHookDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => parseCliUiHookDefinition(entry, index));
+}
+
+function parseCliUiHookDefinition(
+  value: unknown,
+  index: number,
+): HostExtensionCliUiHookDefinition {
+  if (!isRecord(value)) {
+    throw new Error(`扩展 manifest 字段 contributes.cli.hooks[${index}] 必须是对象。`);
+  }
+
+  const slot = enumField(
+    value.slot,
+    `contributes.cli.hooks[${index}].slot`,
+    SUPPORTED_HOST_EXTENSION_CLI_UI_SLOTS,
+  );
+  const variant = optionalEnumField(
+    value.variant,
+    `contributes.cli.hooks[${index}].variant`,
+    SUPPORTED_HOST_EXTENSION_CLI_UI_VARIANTS,
+  );
+  const tokens = optionalCliUiHookTokensField(value.tokens, index);
+  const prefix = optionalStringField(value.prefix);
+  const suffix = optionalStringField(value.suffix);
+
+  return {
+    slot,
+    ...(variant ? { variant } : {}),
+    ...(tokens ? { tokens } : {}),
+    ...(prefix ? { prefix } : {}),
+    ...(suffix ? { suffix } : {}),
+  };
+}
+
+function optionalCliUiHookTokensField(
+  value: unknown,
+  index: number,
+): HostExtensionCliUiHookTokens | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const foreground = optionalEnumField(
+    value.foreground,
+    `contributes.cli.hooks[${index}].tokens.foreground`,
+    SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES,
+  );
+  const border = optionalEnumField(
+    value.border,
+    `contributes.cli.hooks[${index}].tokens.border`,
+    SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES,
+  );
+  const accent = optionalEnumField(
+    value.accent,
+    `contributes.cli.hooks[${index}].tokens.accent`,
+    SUPPORTED_HOST_EXTENSION_CLI_UI_TOKEN_ROLES,
+  );
+
+  if (!foreground && !border && !accent) {
+    return undefined;
+  }
+
+  return {
+    ...(foreground ? { foreground } : {}),
+    ...(border ? { border } : {}),
+    ...(accent ? { accent } : {}),
+  };
+}
+
 function parseDesktopCssDefinition(
   value: unknown,
   index: number,
@@ -1609,6 +1766,32 @@ function parseDesktopCssDefinition(
     path: cssPath,
     ...(media ? { media } : {}),
   };
+}
+
+function assertHostUiContributionCapabilities(
+  requestedCapabilities: readonly HostExtensionRequestedCapability[],
+  contributes: HostExtensionContributionSet | undefined,
+): void {
+  const hasDesktopContribution = Boolean(contributes?.desktop);
+  const hasCliContribution = Boolean(contributes?.cli);
+  const hasDesktopCapability = requestedCapabilities.includes('desktop-ui');
+  const hasCliCapability = requestedCapabilities.includes('cli-ui');
+
+  if (hasDesktopContribution !== hasDesktopCapability) {
+    throw new Error(
+      hasDesktopContribution
+        ? '扩展声明了 contributes.desktop，但缺少 requestedCapabilities 中的 desktop-ui。'
+        : '扩展声明了 desktop-ui capability，但缺少 contributes.desktop。'
+    );
+  }
+
+  if (hasCliContribution !== hasCliCapability) {
+    throw new Error(
+      hasCliContribution
+        ? '扩展声明了 contributes.cli，但缺少 requestedCapabilities 中的 cli-ui。'
+        : '扩展声明了 cli-ui capability，但缺少 contributes.cli。'
+    );
+  }
 }
 
 function parseContributedToolDefinition(

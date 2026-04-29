@@ -1609,6 +1609,25 @@ description: ${frontmatterDescription}
             })),
           }
         : {}),
+      ...(item.manifest.contributes?.cli?.hooks?.length
+        ? {
+            cliHooks: item.manifest.contributes.cli.hooks.map((hook) => ({
+              slot: hook.slot,
+              ...(hook.variant ? { variant: hook.variant } : {}),
+              ...(hook.tokens
+                ? {
+                    tokens: {
+                      ...(hook.tokens.foreground ? { foreground: hook.tokens.foreground } : {}),
+                      ...(hook.tokens.border ? { border: hook.tokens.border } : {}),
+                      ...(hook.tokens.accent ? { accent: hook.tokens.accent } : {}),
+                    },
+                  }
+                : {}),
+              ...(hook.prefix ? { prefix: hook.prefix } : {}),
+              ...(hook.suffix ? { suffix: hook.suffix } : {}),
+            })),
+          }
+        : {}),
       ...(item.manifest.settingsSchema?.length
         ? {
             settingsSchema: item.manifest.settingsSchema.map((setting) => ({

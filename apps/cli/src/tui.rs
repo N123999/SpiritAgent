@@ -33,10 +33,11 @@ use crate::{
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry},
-    ts_bridge::CliExtensionEntry,
+    ts_bridge::{CliExtensionCliUiHookEntry, CliExtensionEntry},
     view::{
-        AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, InputSuggestion,
-        InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
+        AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, CliUiHookSlot,
+        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView,
+        InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
         PendingSubagentApprovalView,
         SubagentApprovalInputView, SubagentSessionDetailView, SubagentSessionSummaryView,
         TuiViewModel,
@@ -113,6 +114,7 @@ pub struct TuiShell {
     rule_entries: Vec<RuleEntry>,
     skill_entries: Vec<SkillEntry>,
     extension_entries: Vec<CliExtensionEntry>,
+    cli_ui_hooks: Vec<CliUiHookView>,
 }
 
 impl TuiShell {
@@ -146,6 +148,7 @@ impl TuiShell {
             logging::log_event(&format!("[extensions] 初始化列表失败: {err:#}"));
             Vec::new()
         });
+        let cli_ui_hooks = compile_cli_ui_hooks(&extension_entries);
         let initial_mcp_status = runtime.mcp_status_snapshot();
         let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
         thread::spawn(move || {
@@ -214,6 +217,7 @@ impl TuiShell {
             rule_entries,
             skill_entries,
             extension_entries,
+            cli_ui_hooks,
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
@@ -274,6 +278,7 @@ impl TuiShell {
 
     pub fn refresh_extensions_from_disk(&mut self) -> Result<()> {
         self.extension_entries = self.runtime.list_extensions().context("读取扩展列表失败")?;
+        self.cli_ui_hooks = compile_cli_ui_hooks(&self.extension_entries);
         if self.current_slash_query().is_some() {
             self.refresh_suggestions();
         }
@@ -402,6 +407,7 @@ impl TuiShell {
             pending_aux: self.runtime.pending_aux_state(),
             persisted_standalone_pending_aux: self.persisted_standalone_pending_aux.clone(),
             persisted_standalone_pending_aux_anchor: self.persisted_standalone_pending_aux_anchor,
+            cli_ui_hooks: self.cli_ui_hooks.clone(),
             conversation_sel_anchor: self.conversation_sel_anchor,
             conversation_sel_head: self.conversation_sel_head,
         }
@@ -4516,6 +4522,101 @@ fn trim_wrapped_quotes(input: &str) -> &str {
         }
     }
     trimmed
+}
+
+fn compile_cli_ui_hooks(entries: &[CliExtensionEntry]) -> Vec<CliUiHookView> {
+    let mut hooks = Vec::new();
+
+    for entry in entries {
+        let contributed = entry
+            .contributes
+            .as_ref()
+            .and_then(|contributes| contributes.cli.as_ref())
+            .and_then(|cli| cli.hooks.as_ref());
+        let Some(contributed) = contributed else {
+            continue;
+        };
+
+        for hook in contributed {
+            if let Some(compiled) = compile_cli_ui_hook(hook) {
+                hooks.push(compiled);
+            }
+        }
+    }
+
+    hooks
+}
+
+fn compile_cli_ui_hook(hook: &CliExtensionCliUiHookEntry) -> Option<CliUiHookView> {
+    let slot = parse_cli_ui_hook_slot(&hook.slot)?;
+    let variant = hook.variant.as_deref().and_then(parse_cli_ui_hook_variant);
+    let tokens = CliUiHookTokensView {
+        foreground: hook
+            .tokens
+            .as_ref()
+            .and_then(|tokens| tokens.foreground.as_deref())
+            .and_then(parse_cli_ui_hook_token_role),
+        border: hook
+            .tokens
+            .as_ref()
+            .and_then(|tokens| tokens.border.as_deref())
+            .and_then(parse_cli_ui_hook_token_role),
+        accent: hook
+            .tokens
+            .as_ref()
+            .and_then(|tokens| tokens.accent.as_deref())
+            .and_then(parse_cli_ui_hook_token_role),
+    };
+
+    Some(CliUiHookView {
+        slot,
+        variant,
+        tokens,
+        prefix: hook.prefix.clone(),
+        suffix: hook.suffix.clone(),
+    })
+}
+
+fn parse_cli_ui_hook_slot(slot: &str) -> Option<CliUiHookSlot> {
+    match slot {
+        "message.user" => Some(CliUiHookSlot::MessageUser),
+        "message.assistant" => Some(CliUiHookSlot::MessageAssistant),
+        "message.tool" => Some(CliUiHookSlot::MessageTool),
+        "assistant.thinking" => Some(CliUiHookSlot::AssistantThinking),
+        "input.frame" => Some(CliUiHookSlot::InputFrame),
+        "bottom_form" => Some(CliUiHookSlot::BottomForm),
+        "bottom_form.section" => Some(CliUiHookSlot::BottomFormSection),
+        "slash_suggestions" => Some(CliUiHookSlot::SlashSuggestions),
+        "approval.panel" => Some(CliUiHookSlot::ApprovalPanel),
+        "questions.panel" => Some(CliUiHookSlot::QuestionsPanel),
+        _ => None,
+    }
+}
+
+fn parse_cli_ui_hook_variant(variant: &str) -> Option<CliUiHookVariant> {
+    match variant {
+        "default" => Some(CliUiHookVariant::Default),
+        "accented" => Some(CliUiHookVariant::Accented),
+        "muted" => Some(CliUiHookVariant::Muted),
+        "warning" => Some(CliUiHookVariant::Warning),
+        "success" => Some(CliUiHookVariant::Success),
+        "danger" => Some(CliUiHookVariant::Danger),
+        _ => None,
+    }
+}
+
+fn parse_cli_ui_hook_token_role(role: &str) -> Option<CliUiHookTokenRole> {
+    match role {
+        "default" => Some(CliUiHookTokenRole::Default),
+        "primary" => Some(CliUiHookTokenRole::Primary),
+        "secondary" => Some(CliUiHookTokenRole::Secondary),
+        "muted" => Some(CliUiHookTokenRole::Muted),
+        "accent" => Some(CliUiHookTokenRole::Accent),
+        "success" => Some(CliUiHookTokenRole::Success),
+        "warning" => Some(CliUiHookTokenRole::Warning),
+        "danger" => Some(CliUiHookTokenRole::Danger),
+        _ => None,
+    }
 }
 
 fn format_extension_list_message(entries: &[CliExtensionEntry]) -> String {
