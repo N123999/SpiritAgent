@@ -458,15 +458,13 @@ export function MarketplaceView({
                 </p>
               ) : (
                 <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
-                  {filteredCatalog.map((item) => {
-                    const installed = installedExtensionForCatalog(item, installedExtensions);
-                    return (
+                  {filteredCatalog.map((item) => (
                       <button
                         key={item.extensionId}
                         type="button"
                         onClick={() => openDetail(item.extensionId)}
                         className={cn(
-                          "flex w-full items-start gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-left transition-colors",
+                          "flex w-full items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-left transition-colors",
                           "hover:border-border hover:bg-muted/30",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                         )}
@@ -490,27 +488,16 @@ export function MarketplaceView({
                                 精选
                               </Badge>
                             ) : null}
+                            <Badge variant={reviewStatusBadgeVariant(item.defaultReviewStatus)} className="text-[10px]">
+                              {reviewStatusLabel(item.defaultReviewStatus)}
+                            </Badge>
                           </span>
                           <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                             {item.description}
                           </span>
-                          <span className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                            <Badge variant="outline" className="font-mono text-[10px]">
-                              v{item.defaultVersion}
-                            </Badge>
-                            <Badge variant={reviewStatusBadgeVariant(item.defaultReviewStatus)} className="text-[10px]">
-                              {reviewStatusLabel(item.defaultReviewStatus)}
-                            </Badge>
-                            {installed ? (
-                              <Badge variant="secondary" className="max-w-full truncate text-[10px]">
-                                {installedBadgeLabel(installed, item.defaultVersion)}
-                              </Badge>
-                            ) : null}
-                          </span>
                         </span>
                       </button>
-                    );
-                  })}
+                    ))}
                 </div>
               )}
             </div>
