@@ -143,6 +143,8 @@ export interface DesktopExtensionSecretStatus {
   configured: boolean;
 }
 
+export type DesktopExtensionHostKind = 'cli' | 'desktop';
+
 export interface DesktopExtensionListItem {
   id: string;
   name: string;
@@ -151,6 +153,7 @@ export interface DesktopExtensionListItem {
   author?: string;
   homepage?: string;
   main?: string;
+  supportedHosts: DesktopExtensionHostKind[];
   activationEvents?: string[];
   requestedCapabilities?: string[];
   contributedTools?: DesktopExtensionContributedTool[];

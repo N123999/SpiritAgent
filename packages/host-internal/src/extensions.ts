@@ -11,6 +11,8 @@ import {
   createFileExtensionStateStore,
   EXTENSION_MANIFEST_FILE_NAME,
   resolveExtensionPaths,
+  SUPPORTED_EXTENSION_HOST_KINDS,
+  type ExtensionHostKind,
   type ExtensionSettingValue,
   type ExtensionStateStore,
   type ExtensionManagementContext,
@@ -210,6 +212,8 @@ export interface HostExtensionManifest {
   author?: string;
   homepage?: string;
   main?: string;
+  /** 声明可安装的宿主（cli / desktop）。 */
+  supportedHosts: ExtensionHostKind[];
   activationEvents?: HostExtensionActivationEventName[];
   requestedCapabilities?: HostExtensionRequestedCapability[];
   contributes?: HostExtensionContributionSet;
@@ -522,6 +526,24 @@ export async function listInstalledExtensions(
   return installed;
 }
 
+function assertExtensionImportAllowedForHost(
+  manifest: HostExtensionManifest,
+  hostKind: ExtensionHostKind,
+): void {
+  const allowed = manifest.supportedHosts;
+  if (allowed.includes(hostKind)) {
+    return;
+  }
+  const hostLabel: Record<ExtensionHostKind, string> = {
+    cli: 'CLI',
+    desktop: 'Desktop',
+  };
+  const listed = allowed.map((entry) => hostLabel[entry] ?? entry).join('、');
+  throw new Error(
+    `此扩展不支持在当前宿主安装：当前为 ${hostLabel[hostKind]}，扩展仅支持 ${listed}。`,
+  );
+}
+
 export async function importExtensionArchive(
   context: ExtensionManagementContext,
   request: ImportExtensionArchiveRequest,
@@ -554,6 +576,7 @@ export async function importExtensionArchive(
       return Buffer.from(content).toString('utf8');
     },
   });
+  assertExtensionImportAllowedForHost(manifest, context.hostKind);
   const directoryName = manifest.id;
   const targetDirectory = path.join(paths.extensionsDir, directoryName);
 
@@ -1312,6 +1335,7 @@ async function parseExtensionManifest(
   const contributes = await optionalContributionSetField(parsed.contributes, options);
   const settingsSchema = optionalSettingsSchemaField(parsed.settingsSchema);
   const secretSlots = optionalSecretSlotsField(parsed.secretSlots);
+  const supportedHosts = requiredSupportedHostsField(parsed.supportedHosts);
 
   if (main) {
     assertSafeRelativePath(main, 'main');
@@ -1328,6 +1352,7 @@ async function parseExtensionManifest(
     ...(author ? { author } : {}),
     ...(homepage ? { homepage } : {}),
     ...(main ? { main } : {}),
+    supportedHosts,
     ...(activationEvents.length > 0 ? { activationEvents } : {}),
     ...(requestedCapabilities.length > 0 ? { requestedCapabilities } : {}),
     ...(contributes ? { contributes } : {}),
@@ -1594,6 +1619,34 @@ function optionalStringField(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function requiredSupportedHostsField(value: unknown): ExtensionHostKind[] {
+  if (value === undefined || value === null) {
+    throw new Error('扩展 manifest 缺少 supportedHosts；须为非空数组，元素为 cli 与/或 desktop。');
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('扩展 manifest 字段 supportedHosts 必须是字符串数组。');
+  }
+  if (value.length === 0) {
+    throw new Error('扩展 manifest 字段 supportedHosts 须至少包含一项（cli 或 desktop）。');
+  }
+
+  const result: ExtensionHostKind[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      throw new Error('扩展 manifest 字段 supportedHosts 必须是字符串数组。');
+    }
+    const normalized = entry.trim() as ExtensionHostKind;
+    if (!SUPPORTED_EXTENSION_HOST_KINDS.includes(normalized)) {
+      throw new Error(`扩展 manifest 字段 supportedHosts 取值非法：${entry}`);
+    }
+    if (!result.includes(normalized)) {
+      result.push(normalized);
+    }
+  }
+
+  return result;
 }
 
 function optionalActivationEventsField(value: unknown): HostExtensionActivationEventName[] {

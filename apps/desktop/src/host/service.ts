@@ -1587,6 +1587,7 @@ description: ${frontmatterDescription}
       ...(item.manifest.author ? { author: item.manifest.author } : {}),
       ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
       ...(item.manifest.main ? { main: item.manifest.main } : {}),
+      supportedHosts: [...item.manifest.supportedHosts],
       ...(item.manifest.activationEvents?.length
         ? { activationEvents: [...item.manifest.activationEvents] }
         : {}),

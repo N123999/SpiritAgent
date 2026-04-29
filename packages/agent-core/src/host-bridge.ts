@@ -123,6 +123,7 @@ interface CliHostInternalModule {
           author?: string;
           homepage?: string;
           main?: string;
+          supportedHosts: Array<'cli' | 'desktop'>;
           activationEvents?: string[];
           requestedCapabilities?: string[];
           contributes?: {
@@ -191,6 +192,7 @@ interface CliHostInternalModule {
         author?: string;
         homepage?: string;
         main?: string;
+        supportedHosts: Array<'cli' | 'desktop'>;
         activationEvents?: string[];
         requestedCapabilities?: string[];
         contributes?: {
@@ -452,6 +454,7 @@ function serializeHostExtension(item: {
     author?: string;
     homepage?: string;
     main?: string;
+    supportedHosts: Array<'cli' | 'desktop'>;
     activationEvents?: string[];
     requestedCapabilities?: string[];
     contributes?: {
@@ -513,6 +516,7 @@ function serializeHostExtension(item: {
     ...(item.manifest.author ? { author: item.manifest.author } : {}),
     ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
     ...(item.manifest.main ? { main: item.manifest.main } : {}),
+    supportedHosts: [...item.manifest.supportedHosts],
     ...(item.manifest.activationEvents?.length
       ? { activationEvents: [...item.manifest.activationEvents] }
       : {}),

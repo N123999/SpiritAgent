@@ -1387,6 +1387,7 @@ mod tests {
             author: Some("Spirit Agent".to_string()),
             homepage: Some("https://example.com/extensions/basic-metadata-demo".to_string()),
             main: Some("dist/index.js".to_string()),
+            supported_hosts: vec!["cli".to_string(), "desktop".to_string()],
             activation_events: None,
             requested_capabilities: None,
             contributes: None,

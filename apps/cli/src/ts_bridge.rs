@@ -339,6 +339,7 @@ pub struct CliExtensionEntry {
     pub author: Option<String>,
     pub homepage: Option<String>,
     pub main: Option<String>,
+    pub supported_hosts: Vec<String>,
     pub activation_events: Option<Vec<String>>,
     pub requested_capabilities: Option<Vec<String>>,
     pub contributes: Option<CliExtensionContributes>,
