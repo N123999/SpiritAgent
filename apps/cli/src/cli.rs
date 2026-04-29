@@ -451,7 +451,7 @@ pub fn handle_extension_cli(action: ExtensionCommand) -> Result<()> {
             for extension in extensions {
                 println!(
                     "  - {}\n    id: {}\n    version: {}\n    installed_at: {}",
-                    extension.name,
+                    extension.display_name,
                     extension.id,
                     extension.version,
                     extension.installed_at_unix_ms,
@@ -481,7 +481,7 @@ pub fn handle_extension_cli(action: ExtensionCommand) -> Result<()> {
 
             let mut runtime = new_extension_cli_runtime(workspace_root)?;
             let extension = runtime.import_extension_archive(&archive_bytes, file_name.as_deref())?;
-            println!("已导入扩展: {}", extension.name);
+            println!("已导入扩展: {}", extension.display_name);
             println!("id: {}", extension.id);
             println!("version: {}", extension.version);
             if let Some(description) = extension.description {

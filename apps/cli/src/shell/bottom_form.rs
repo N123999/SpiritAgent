@@ -807,7 +807,7 @@ fn push_extensions_section(
 
     for entry in entries {
         fields.push(BottomFormFieldView {
-            label: format!("{} v{}", entry.name, entry.version),
+            label: format!("{} v{}", entry.display_name, entry.version),
             help: extension_help_text(entry),
             editor: BottomFormFieldEditorView::Checkbox {
                 id: entry.id.clone(),
@@ -1381,7 +1381,7 @@ mod tests {
     fn sample_extension_entry() -> CliExtensionEntry {
         CliExtensionEntry {
             id: "basic-metadata-demo".to_string(),
-            name: "Basic Metadata Demo".to_string(),
+            display_name: "Basic Metadata Demo".to_string(),
             version: "0.1.0".to_string(),
             description: Some("A metadata-only extension fixture.".to_string()),
             author: Some("Spirit Agent".to_string()),

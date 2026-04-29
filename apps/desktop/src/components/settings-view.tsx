@@ -871,7 +871,7 @@ function ExtensionsSettingsPanel({
             >
               <div className="min-w-0 flex-1 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{item.name}</span>
+                  <span className="text-sm font-medium text-foreground">{item.displayName}</span>
                   <Badge variant="secondary" className="text-muted-foreground">
                     {item.version}
                   </Badge>
@@ -1188,7 +1188,7 @@ function ExtensionsSettingsPanel({
           <DialogHeader>
             <DialogTitle>删除扩展</DialogTitle>
             <DialogDescription>
-              确定删除扩展「{deleteTarget?.name ?? ""}」？这会移除本地安装目录。
+              确定删除扩展「{deleteTarget?.displayName ?? ""}」？这会移除本地安装目录。
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">

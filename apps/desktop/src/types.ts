@@ -147,7 +147,7 @@ export type DesktopExtensionHostKind = 'cli' | 'desktop';
 
 export interface DesktopExtensionListItem {
   id: string;
-  name: string;
+  displayName: string;
   version: string;
   description?: string;
   author?: string;

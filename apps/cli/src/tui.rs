@@ -2332,7 +2332,7 @@ impl TuiShell {
 
                         self.push_agent_message(format!(
                             "{}\nid: {}\nversion: {}",
-                            t!("tui.extensions.imported", name = extension.name),
+                            t!("tui.extensions.imported", name = extension.display_name),
                             extension.id,
                             extension.version,
                         ));
@@ -4626,7 +4626,7 @@ fn format_extension_list_message(entries: &[CliExtensionEntry]) -> String {
 
     let mut lines = vec!["扩展列表:".to_string()];
     for entry in entries {
-        lines.push(format!("- {}", entry.name));
+        lines.push(format!("- {}", entry.display_name));
         lines.push(format!("  id: {}", entry.id));
         lines.push(format!("  version: {}", entry.version));
         if let Some(description) = entry.description.as_ref().filter(|value| !value.trim().is_empty()) {

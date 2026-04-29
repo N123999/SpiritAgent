@@ -333,7 +333,7 @@ pub struct CliExtensionContributes {
 #[serde(rename_all = "camelCase")]
 pub struct CliExtensionEntry {
     pub id: String,
-    pub name: String,
+    pub display_name: String,
     pub version: String,
     pub description: Option<String>,
     pub author: Option<String>,
