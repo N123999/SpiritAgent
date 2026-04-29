@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme } from 'electron';
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net } from 'electron';
 
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
@@ -10,6 +10,7 @@ import { WorkspacePtyManager } from './workspace-pty.js';
 import type { DesktopSnapshot } from '../src/types.js';
 import {
   invokeDesktopHostCommand,
+  setDesktopMarketplaceFetchImplementation,
   setDesktopExtensionHostAdapter,
 } from '../src/host/service.js';
 import {
@@ -445,6 +446,10 @@ app.whenReady().then(async () => {
   if (process.platform === 'win32') {
     Menu.setApplicationMenu(null);
   }
+
+  setDesktopMarketplaceFetchImplementation((input, init) =>
+    net.fetch(input instanceof URL ? input.toString() : input, init),
+  );
 
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
     invokeMainDesktopHostCommand(command, payload),

@@ -48,6 +48,7 @@ import {
   SKILL_FILE_NAME,
   validateSkillName,
   restoreHostFileChanges,
+  type HostExtensionMarketplaceManager,
   type HostExtensionEvent,
   type HostInstalledExtension,
   type HostRecordedFileChange,
@@ -228,10 +229,8 @@ class DesktopHostService {
     hostKind: 'desktop',
     stateStore: this.extensionStateStore,
   });
-  private readonly hostExtensionMarketplace = createHostExtensionMarketplace({
-    spiritDataDir: spiritAgentDataDir(),
-    hostKind: 'desktop',
-  });
+  private hostExtensionMarketplace: HostExtensionMarketplaceManager | undefined;
+  private hostExtensionMarketplaceFetchImpl: typeof fetch | undefined;
   private state: HostState | undefined;
   private runtime: DesktopRuntime | undefined;
   private toolExecutor: DesktopToolExecutor | undefined;
@@ -1694,7 +1693,26 @@ description: ${frontmatterDescription}
   }
 
   private marketplace() {
+    if (!this.hostExtensionMarketplace) {
+      this.hostExtensionMarketplace = createHostExtensionMarketplace(
+        {
+          spiritDataDir: spiritAgentDataDir(),
+          hostKind: 'desktop',
+        },
+        this.hostExtensionMarketplaceFetchImpl
+          ? { fetchImpl: this.hostExtensionMarketplaceFetchImpl }
+          : {},
+      );
+    }
     return this.hostExtensionMarketplace;
+  }
+
+  setMarketplaceFetchImpl(fetchImpl: typeof fetch | undefined): void {
+    if (this.hostExtensionMarketplaceFetchImpl === fetchImpl) {
+      return;
+    }
+    this.hostExtensionMarketplaceFetchImpl = fetchImpl;
+    this.hostExtensionMarketplace = undefined;
   }
 
   private async refreshExtensionsList(): Promise<void> {
@@ -4093,6 +4111,12 @@ function formatYamlScalarForSkillFrontmatter(value: string): string {
 }
 
 const desktopHostService = new DesktopHostService();
+
+export function setDesktopMarketplaceFetchImplementation(
+  fetchImpl: typeof fetch | undefined,
+): void {
+  desktopHostService.setMarketplaceFetchImpl(fetchImpl);
+}
 
 export async function invokeDesktopHostCommand(
   command: HostCommandName,
