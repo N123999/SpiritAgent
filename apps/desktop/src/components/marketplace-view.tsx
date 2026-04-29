@@ -417,26 +417,26 @@ export function MarketplaceView({
             )}
           >
             <div className="flex flex-col items-center gap-6">
-              <div className="flex w-full flex-col items-center gap-3">
-                <p className="text-center text-sm font-medium tracking-tight text-foreground">扩展市场</p>
-                <div className="flex w-full max-w-md items-center gap-2">
+              <div className="flex w-full flex-col items-center gap-2">
+                <p className="text-center text-lg font-medium tracking-tight text-foreground">扩展</p>
+                <div className="flex w-full max-w-sm items-center gap-1.5">
                   <div className="relative min-w-0 flex-1">
                     <Search
-                      className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
                       aria-hidden
                     />
                     <Input
                       value={searchText}
                       onChange={(event) => setSearchText(event.target.value)}
                       placeholder="搜索扩展名、描述或包名"
-                      className="h-9 pl-9 text-sm"
+                      className="h-8 pl-8 text-sm"
                     />
                   </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    className="size-9 shrink-0"
+                    className="size-8 shrink-0"
                     disabled={loadingCatalog || marketplaceBusy}
                     title="刷新目录"
                     onClick={() => {
