@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -25,6 +26,8 @@ const TEMP_DIR_PREFIX = 'spirit-extension-';
 const EXTENSION_FIELD_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const SPIRIT_EXTENSION_FIELD_NAME = 'spiritExtension';
 const EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH = 64;
+const EXTENSION_TOOL_ID_FRAGMENT_LIMIT = 16;
+const EXTENSION_TOOL_NAME_FRAGMENT_LIMIT = 24;
 
 export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onStartup',
@@ -1338,23 +1341,23 @@ function collectResolvableExtensionTools(
 }
 
 function buildExtensionToolInvocationName(extensionId: string, toolName: string): string {
-  const normalizedExtensionId = normalizeExtensionToolInvocationSegment(extensionId, '-');
-  const normalizedToolName = normalizeExtensionToolInvocationSegment(toolName, '_');
-  const separator = '_';
-  const maxLength = EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH;
-  if (normalizedExtensionId.length + separator.length + normalizedToolName.length <= maxLength) {
-    return `${normalizedExtensionId}${separator}${normalizedToolName}`;
-  }
-
-  const minExtensionLength = Math.min(normalizedExtensionId.length, 8);
-  const extensionBudget = Math.max(
-    minExtensionLength,
-    maxLength - separator.length - normalizedToolName.length,
+  const extensionFragment = truncateExtensionToolInvocationFragment(
+    sanitizeExtensionToolInvocationFragment(extensionId),
+    EXTENSION_TOOL_ID_FRAGMENT_LIMIT,
   );
-  const trimmedExtensionId = normalizedExtensionId.slice(0, extensionBudget);
-  const toolBudget = Math.max(1, maxLength - separator.length - trimmedExtensionId.length);
-  const trimmedToolName = normalizedToolName.slice(0, toolBudget);
-  return `${trimmedExtensionId}${separator}${trimmedToolName}`;
+  const toolFragment = truncateExtensionToolInvocationFragment(
+    sanitizeExtensionToolInvocationFragment(toolName),
+    EXTENSION_TOOL_NAME_FRAGMENT_LIMIT,
+  );
+  const digest = createHash('sha1')
+    .update(`${extensionFragment}\0${toolFragment}`)
+    .digest('hex')
+    .slice(0, 8);
+  const base = `extension__${extensionFragment}__${toolFragment}__${digest}`;
+
+  return base.length > EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH
+    ? base.slice(0, EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH)
+    : base;
 }
 
 function ensureUniqueExtensionToolInvocationName(
@@ -1366,7 +1369,7 @@ function ensureUniqueExtensionToolInvocationName(
   }
 
   for (let index = 1; ; index += 1) {
-    const suffix = `_${index}`;
+    const suffix = `__${index}`;
     const candidate = `${baseName.slice(0, EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH - suffix.length)}${suffix}`;
     if (!seenInvocationNames.has(candidate)) {
       return candidate;
@@ -1374,19 +1377,30 @@ function ensureUniqueExtensionToolInvocationName(
   }
 }
 
-function normalizeExtensionToolInvocationSegment(
-  value: string,
-  replacement: '-' | '_',
-): string {
-  const normalized = value
-    .trim()
-    .replace(/^@/u, '')
-    .replace(/[/.]+/gu, replacement)
-    .replace(/[^a-z0-9_-]+/gu, replacement)
-    .replace(/[_-]{2,}/gu, (match) => match[0] ?? replacement)
-    .replace(/^[_-]+|[_-]+$/gu, '');
+function sanitizeExtensionToolInvocationFragment(input: string): string {
+  let output = '';
 
-  return normalized || 'extension';
+  for (const char of input) {
+    if (
+      (char >= 'a' && char <= 'z')
+      || (char >= 'A' && char <= 'Z')
+      || (char >= '0' && char <= '9')
+    ) {
+      output += char.toLowerCase();
+      continue;
+    }
+
+    if (!output.endsWith('_')) {
+      output += '_';
+    }
+  }
+
+  const trimmed = output.replace(/^_+|_+$/gu, '');
+  return trimmed || 'tool';
+}
+
+function truncateExtensionToolInvocationFragment(input: string, maxLength: number): string {
+  return Array.from(input).slice(0, maxLength).join('');
 }
 
 function supportsSystemPromptContribution(manifest: HostExtensionManifest): boolean {
