@@ -1106,6 +1106,7 @@ export default function App() {
             <SessionSidebar
               narrow={false}
               mode={settingsMode ? "settings" : "sessions"}
+              workspaceRoot={snapshot?.workspaceRoot ?? null}
               sessions={runtime.sessions}
               activeFilePath={activeFilePath}
               onNewSession={() => {

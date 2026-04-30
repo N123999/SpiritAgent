@@ -1,5 +1,11 @@
+import { useMemo, useState } from "react";
+
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  FolderClosed,
+  FolderOpen,
   Layers,
   Package,
   Palette,
@@ -25,6 +31,7 @@ type SessionSidebarProps = {
   /** 窄轨：只换样式/折叠列表，不切换整棵子树，避免与外层 width 动画错拍 */
   narrow: boolean;
   mode?: "sessions" | "settings";
+  workspaceRoot?: string | null;
   sessions: SessionListItem[];
   activeFilePath: string | null;
   onSelectSession: (path: string) => void;
@@ -44,6 +51,42 @@ type SessionSidebarProps = {
 };
 
 export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills" | "extensions";
+
+type SessionWorkspaceGroup = {
+  id: string;
+  label: string;
+  rootPath: string | null;
+  sessions: SessionListItem[];
+};
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
+}
+
+function deriveWorkspaceLabel(workspaceRoot: string | null | undefined): string {
+  const trimmed = workspaceRoot?.trim();
+  if (!trimmed) {
+    return "当前工作区";
+  }
+  const normalized = trimmed.replace(/\\/g, "/").replace(/\/+$/g, "");
+  const lastSlash = normalized.lastIndexOf("/");
+  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
+}
+
+function buildWorkspaceGroups(
+  sessions: SessionListItem[],
+  workspaceRoot: string | null | undefined,
+): SessionWorkspaceGroup[] {
+  const trimmed = workspaceRoot?.trim() || null;
+  return [
+    {
+      id: trimmed ? normalizePath(trimmed) : "current-workspace",
+      label: deriveWorkspaceLabel(trimmed),
+      rootPath: trimmed,
+      sessions,
+    },
+  ];
+}
 
 const settingsTabs: Array<{
   id: SettingsSidebarTab;
@@ -86,6 +129,7 @@ export function SessionSidebar({
   className,
   narrow,
   mode = "sessions",
+  workspaceRoot,
   sessions,
   activeFilePath,
   onSelectSession,
@@ -103,6 +147,18 @@ export function SessionSidebar({
   disabled,
 }: SessionSidebarProps) {
   const settingsMode = mode === "settings";
+  const workspaceGroups = useMemo(
+    () => buildWorkspaceGroups(sessions, workspaceRoot),
+    [sessions, workspaceRoot],
+  );
+  const [collapsedWorkspaceIds, setCollapsedWorkspaceIds] = useState<Record<string, boolean>>({});
+
+  const toggleWorkspaceGroup = (groupId: string) => {
+    setCollapsedWorkspaceIds((current) => ({
+      ...current,
+      [groupId]: current[groupId] === false ? true : false,
+    }));
+  };
 
   return (
     <aside
@@ -195,6 +251,11 @@ export function SessionSidebar({
         )}
         aria-hidden={!settingsMode && narrow}
       >
+        {settingsMode ? null : (
+          <div className="shrink-0 px-1.5 pt-1.5">
+            <p className="px-2.5 pb-1.5 text-[0.65rem] text-sidebar-faint-foreground">工作区</p>
+          </div>
+        )}
         <ScrollArea className="h-full min-h-0 min-w-0" type="hover" scrollHideDelay={450}>
           {settingsMode ? (
             <nav className="flex min-w-0 flex-col gap-0.5 p-1.5" aria-label="设置页签">
@@ -225,47 +286,86 @@ export function SessionSidebar({
               })}
             </nav>
           ) : (
-            <div className="min-w-0 p-1.5">
-              <p className="px-1 pb-1.5 text-[0.65rem] text-sidebar-faint-foreground">已保存</p>
-              {sessions.length === 0 ? (
-                <p className="px-2 py-2 text-center text-xs text-sidebar-faint-foreground">暂无</p>
-              ) : (
-                <nav className="flex min-w-0 flex-col gap-0.5" aria-label="已保存会话">
-                  {sessions.map((session) => {
-                    const sessionRowSelected =
-                      !marketplaceActive &&
-                      activeFilePath !== null &&
-                      samePath(session.path, activeFilePath);
-                    return (
+            <div className="min-w-0 px-1.5 pb-1.5">
+              <nav className="flex min-w-0 flex-col gap-0.5" aria-label="工作区会话">
+                {workspaceGroups.map((group) => {
+                  const expanded = collapsedWorkspaceIds[group.id] !== false;
+                  const panelId = `workspace-session-group-${group.id.replace(/[^a-z0-9_-]/g, "-")}`;
+
+                  return (
+                    <div key={group.id} className="min-w-0">
                       <button
-                        key={session.path}
                         type="button"
                         disabled={disabled || busy}
-                        aria-current={sessionRowSelected ? "true" : undefined}
-                        onClick={() => onSelectSession(session.path)}
+                        aria-expanded={expanded}
+                        aria-controls={panelId}
+                        onClick={() => toggleWorkspaceGroup(group.id)}
                         className={cn(
-                          "group flex w-full min-w-0 items-center overflow-hidden rounded-md px-2.5 py-2 text-left text-sm",
+                          "group flex h-8 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2.5 text-left text-sm",
                           "outline-none transition-[color,background,box-shadow] duration-150",
                           "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
-                          sessionRowSelected
-                            ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                            : cn(
-                                "text-sidebar-list-foreground",
-                                "hover:bg-foreground/[0.05] hover:text-sidebar-foreground dark:hover:bg-foreground/10",
-                              ),
+                          "text-sidebar-foreground/90 hover:bg-foreground/[0.05] hover:text-sidebar-foreground dark:hover:bg-foreground/10",
                         )}
+                        title={group.rootPath ?? group.label}
                       >
-                        <span
-                          className="min-w-0 flex-1 basis-0 truncate text-xs font-medium"
-                          title={session.displayName}
-                        >
-                          {session.displayName}
-                        </span>
+                        {expanded ? (
+                          <ChevronDown className="size-3 shrink-0 text-sidebar-faint-foreground" aria-hidden />
+                        ) : (
+                          <ChevronRight className="size-3 shrink-0 text-sidebar-faint-foreground" aria-hidden />
+                        )}
+                        {expanded ? (
+                          <FolderOpen className="size-3.5 shrink-0 text-sidebar-faint-foreground" aria-hidden />
+                        ) : (
+                          <FolderClosed className="size-3.5 shrink-0 text-sidebar-faint-foreground" aria-hidden />
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium">{group.label}</span>
                       </button>
-                    );
-                  })}
-                </nav>
-              )}
+
+                      <div id={panelId} className={cn("min-w-0", !expanded && "hidden") }>
+                        {group.sessions.length === 0 ? (
+                          <p className="pl-8 pr-2 py-2 text-xs text-sidebar-faint-foreground">暂无</p>
+                        ) : (
+                          <div className="mt-0.5 flex min-w-0 flex-col gap-0.5">
+                            {group.sessions.map((session) => {
+                              const sessionRowSelected =
+                                !marketplaceActive &&
+                                activeFilePath !== null &&
+                                samePath(session.path, activeFilePath);
+                              return (
+                                <button
+                                  key={session.path}
+                                  type="button"
+                                  disabled={disabled || busy}
+                                  aria-current={sessionRowSelected ? "true" : undefined}
+                                  onClick={() => onSelectSession(session.path)}
+                                  className={cn(
+                                    "group flex w-full min-w-0 items-center overflow-hidden rounded-md py-2 pr-2.5 pl-8 text-left text-sm",
+                                    "outline-none transition-[color,background,box-shadow] duration-150",
+                                    "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
+                                    sessionRowSelected
+                                      ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                                      : cn(
+                                          "text-sidebar-list-foreground",
+                                          "hover:bg-foreground/[0.05] hover:text-sidebar-foreground dark:hover:bg-foreground/10",
+                                        ),
+                                  )}
+                                >
+                                  <span
+                                    className="min-w-0 flex-1 basis-0 truncate text-xs font-medium"
+                                    title={session.displayName}
+                                  >
+                                    {session.displayName}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </nav>
             </div>
           )}
         </ScrollArea>
