@@ -1582,6 +1582,7 @@ description: ${frontmatterDescription}
     state.extensionsList = await Promise.all(extensions.map(async (item) => ({
       id: item.id,
       displayName: item.manifest.name,
+      ...(item.manifest.icon ? { icon: item.manifest.icon } : {}),
       version: item.manifest.version,
       ...(item.manifest.description ? { description: item.manifest.description } : {}),
       ...(item.manifest.author ? { author: item.manifest.author } : {}),

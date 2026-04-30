@@ -209,6 +209,8 @@ export interface HostExtensionManifest {
   id: string;
   /** 用户可见扩展名，来自 package.json 中的 spiritExtension.displayName。 */
   name: string;
+  /** 扩展图标，相对 package 根目录的文件路径，来自 package.json 中的 spiritExtension.icon。 */
+  icon?: string;
   version: string;
   description?: string;
   author?: string;
@@ -1328,6 +1330,7 @@ async function parseExtensionManifest(
 
   const id = packageNameField(parsed.name);
   const name = stringField(spiritExtension.displayName, `${SPIRIT_EXTENSION_FIELD_NAME}.displayName`);
+  const icon = optionalPackageStringField(spiritExtension.icon, `${SPIRIT_EXTENSION_FIELD_NAME}.icon`);
   const version = stringField(parsed.version, 'version');
   const description = optionalPackageStringField(parsed.description, 'description');
   const author = optionalPackageAuthorField(parsed.author);
@@ -1363,12 +1366,17 @@ async function parseExtensionManifest(
     assertSafeRelativePath(main, 'main');
   }
 
+  if (icon) {
+    assertSafeRelativePath(icon, `${SPIRIT_EXTENSION_FIELD_NAME}.icon`);
+  }
+
   assertHostUiContributionCapabilities(requestedCapabilities, contributes);
 
   return {
     schemaVersion,
     id,
     name,
+    ...(icon ? { icon } : {}),
     version,
     ...(description ? { description } : {}),
     ...(author ? { author } : {}),

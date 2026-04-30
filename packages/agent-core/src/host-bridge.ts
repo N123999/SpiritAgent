@@ -118,6 +118,7 @@ interface CliHostInternalModule {
         id: string;
         manifest: {
           name: string;
+          icon?: string;
           version: string;
           description?: string;
           author?: string;
@@ -187,6 +188,7 @@ interface CliHostInternalModule {
       id: string;
       manifest: {
         name: string;
+        icon?: string;
         version: string;
         description?: string;
         author?: string;
@@ -449,6 +451,7 @@ function serializeHostExtension(item: {
   id: string;
   manifest: {
     name: string;
+    icon?: string;
     version: string;
     description?: string;
     author?: string;
@@ -511,6 +514,7 @@ function serializeHostExtension(item: {
   return {
     id: item.id,
     displayName: item.manifest.name,
+    ...(item.manifest.icon ? { icon: item.manifest.icon } : {}),
     version: item.manifest.version,
     ...(item.manifest.description ? { description: item.manifest.description } : {}),
     ...(item.manifest.author ? { author: item.manifest.author } : {}),
