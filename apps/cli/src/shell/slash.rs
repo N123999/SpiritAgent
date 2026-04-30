@@ -144,10 +144,6 @@ fn primary_help_suggestion(primary: &str, query: &str) -> InputSuggestion {
 }
 
 fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
-    if let Some(suggestions) = extension_subcommand_suggestions(query) {
-        return suggestions;
-    }
-
     if query == "/model" || query.starts_with("/model ") {
         return vec![primary_help_suggestion("/model", query)];
     }
@@ -203,48 +199,6 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
     }
 
     Vec::new()
-}
-
-fn extension_subcommand_suggestions(query: &str) -> Option<Vec<InputSuggestion>> {
-    let normalized = query.trim_end();
-    if !normalized.starts_with("/extensions") {
-        return None;
-    }
-    if query == "/extensions" {
-        return None;
-    }
-
-    let candidates = [
-        (
-            "/extensions marketplace",
-            "/extensions marketplace ",
-            "浏览 marketplace，可继续输入过滤词",
-        ),
-        ("/extensions list", "/extensions list", "列出当前已安装扩展"),
-        (
-            "/extensions import",
-            "/extensions import ",
-            "导入本地 ZIP 扩展包",
-        ),
-        (
-            "/extensions remove",
-            "/extensions remove ",
-            "删除已安装扩展",
-        ),
-    ];
-
-    let suggestions = candidates
-        .into_iter()
-        .filter(|(label, _, _)| label.starts_with(normalized))
-        .map(|(label, replacement, summary)| InputSuggestion {
-            label: label.to_string(),
-            replacement: replacement.to_string(),
-            summary: summary.to_string(),
-            details: Vec::new(),
-        })
-        .collect::<Vec<_>>();
-
-    Some(suggestions)
 }
 
 fn skill_alias_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
@@ -544,14 +498,10 @@ mod tests {
     }
 
     #[test]
-    fn extensions_subcommands_include_marketplace() {
-        let suggestions =
-            extension_subcommand_suggestions("/extensions ").expect("extensions subcommands");
+    fn extensions_context_keeps_primary_help_suggestion() {
+        let suggestion = primary_help_suggestion("/extensions", "/extensions ");
 
-        assert!(
-            suggestions
-                .iter()
-                .any(|suggestion| suggestion.label == "/extensions marketplace")
-        );
+        assert_eq!(suggestion.label, "/extensions");
+        assert_eq!(suggestion.replacement, "/extensions ");
     }
 }
