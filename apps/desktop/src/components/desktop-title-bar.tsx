@@ -28,10 +28,10 @@ export function DesktopTitleBar({ useMicaBackdrop }: DesktopTitleBarProps) {
   return (
     <header
       className={cn(
-        "electron-drag flex h-8 w-full shrink-0 items-center gap-1 border-b border-border/40 pl-2",
+        "electron-drag flex h-8 w-full shrink-0 items-center gap-1 border-b pl-2",
         useMicaBackdrop
-          ? "bg-sidebar/30 backdrop-blur-md supports-backdrop-filter:bg-sidebar/20 dark:bg-transparent dark:backdrop-blur-none dark:supports-backdrop-filter:bg-transparent"
-          : "bg-sidebar dark:bg-background",
+          ? "border-black/5 bg-transparent dark:border-white/10"
+          : "border-border/40 bg-sidebar dark:bg-background",
       )}
     >
       <img

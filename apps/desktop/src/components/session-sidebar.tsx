@@ -116,7 +116,7 @@ export function SessionSidebar({
       className={cn(
         "flex h-full w-full min-w-0 flex-col overflow-hidden text-sidebar-foreground dark:text-foreground",
         micaStyle
-          ? "border-r border-black/5 bg-sidebar/30 backdrop-blur-2xl supports-backdrop-filter:bg-sidebar/25 dark:border-white/10 dark:bg-background/30 dark:supports-backdrop-filter:bg-background/25"
+          ? "border-r border-black/5 bg-transparent dark:border-white/10"
           : "border-r border-border/30 bg-sidebar dark:border-border/40 dark:bg-background",
         className,
       )}

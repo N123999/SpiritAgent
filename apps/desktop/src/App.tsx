@@ -804,7 +804,7 @@ function DesktopLayoutChromeBar({
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 px-1.5",
         showWorkspaceToggle ? "justify-between" : "justify-start",
-        useMicaBackdrop ? "bg-background/85 backdrop-blur-md" : "bg-background",
+        useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
       <Button
