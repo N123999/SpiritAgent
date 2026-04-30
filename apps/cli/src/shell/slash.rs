@@ -366,7 +366,7 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。".to_string(),
         "- /create-skill 会走正常 assistant 对话来起草或收紧 SKILL.md；默认写入工作区 .spirit/skills，只有在你明确要求用户级/全局/跨仓库复用时才改写 Spirit 用户目录 skills，skill-name 也由模型自行决定，仍会走标准工具审批。".to_string(),
         "- /skills 打开可滚动的技能启用清单；Enter 切换当前技能，Esc 保存并关闭，鼠标滚轮可浏览长内容。".to_string(),
-        "- /extensions 不带参数时会打开已安装扩展面板；/extensions marketplace 会打开 marketplace 浏览器，支持用 query 作为初始过滤；/extensions list 会输出当前已安装扩展，/extensions import <zip> 导入 ZIP，/extensions remove <id> 删除扩展；面板里的启用/禁用切换暂未实现。".to_string(),
+        "- /extensions 不带参数时会打开已安装扩展面板；/extensions marketplace 会进入极简 marketplace flow：先用 slash 选择扩展，再进入“概述 + README + 底部动作 slash”页面，Enter 前进、Esc 返回；支持用 query 作为初始过滤。/extensions list 会输出当前已安装扩展，/extensions import <zip> 导入 ZIP，/extensions remove <id> 删除扩展；面板里的启用/禁用切换暂未实现。".to_string(),
         "- 已启用的 skill 会直接作为一级 slash 命令暴露，例如 /llm-debug；尾部文本会作为本轮附加说明，skill 正文会作为独立 system prompt 状态注入，不会伪装成模型自行读文件。".to_string(),
         "- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。".to_string(),
         "- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。".to_string(),
@@ -454,6 +454,7 @@ mod tests {
         assert!(help.contains("/create-skill"));
         assert!(help.contains("/skills"));
         assert!(help.contains("/extensions"));
+        assert!(help.contains("概述 + README + 底部动作 slash"));
         assert!(help.contains("/<skill-name> [补充说明]"));
         assert!(help.contains("Enter 保存"));
         assert!(help.contains("@<文件名>"));

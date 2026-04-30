@@ -21,16 +21,11 @@ pub enum MainInputMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MarketplaceFocus {
-    List,
-    Detail,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MarketplaceTab {
-    Readme,
-    Changelog,
-    Versions,
+pub enum MarketplaceFlowStep {
+    CatalogPicker,
+    DetailActions,
+    VersionPicker,
+    UnverifiedConfirm,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -433,22 +428,33 @@ pub struct MarketplaceDetailView {
 }
 
 #[derive(Clone, Debug)]
-pub struct MarketplacePendingInstallView {
-    pub extension_id: String,
-    pub display_name: String,
-    pub version: String,
-    pub review_status: String,
+pub struct SlashFlowItemView {
+    pub label: String,
+    pub summary: String,
+    pub details: Vec<String>,
+    pub disabled: bool,
+    pub muted: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct SlashFlowView {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub filter: String,
+    pub empty_text: String,
+    pub selected_index: usize,
+    pub items: Vec<SlashFlowItemView>,
+    pub footer_hint: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct MarketplaceViewModel {
+    pub step: MarketplaceFlowStep,
     pub query: String,
-    pub focus: MarketplaceFocus,
-    pub selected_index: usize,
-    pub active_tab: MarketplaceTab,
-    pub selected_version_index: usize,
     pub error: Option<String>,
-    pub items: Vec<MarketplaceCatalogItemView>,
+    pub catalog_items: Vec<MarketplaceCatalogItemView>,
+    pub selected_item: Option<MarketplaceCatalogItemView>,
     pub detail: Option<MarketplaceDetailView>,
-    pub pending_install: Option<MarketplacePendingInstallView>,
+    pub slash: SlashFlowView,
+    pub readme_scroll: usize,
 }

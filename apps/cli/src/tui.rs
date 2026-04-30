@@ -16,9 +16,7 @@ use std::{
 
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
-    ask_questions::{
-        AskQuestionsQuestionKind, AskQuestionsQuestionSpec, AskQuestionsRequest, AskQuestionsResult,
-    },
+    ask_questions::AskQuestionsResult,
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
     host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
     locale, logging,
@@ -41,10 +39,10 @@ use crate::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, CliUiHookSlot,
         CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView, InputSuggestion,
         InputSuggestionKind, MainInputMode, MarketplaceCatalogItemView, MarketplaceDetailView,
-        MarketplaceFocus, MarketplacePendingInstallView, MarketplaceTab,
-        MarketplaceVersionChangelogView, MarketplaceVersionView, MarketplaceViewModel, MessageRole,
-        PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
-        SubagentSessionDetailView, SubagentSessionSummaryView, TuiViewModel,
+        MarketplaceFlowStep, MarketplaceVersionChangelogView, MarketplaceVersionView,
+        MarketplaceViewModel, MessageRole, PendingAssistantAux, PendingSubagentApprovalView,
+        SlashFlowItemView, SlashFlowView, SubagentApprovalInputView, SubagentSessionDetailView,
+        SubagentSessionSummaryView, TuiViewModel,
     },
 };
 
@@ -122,13 +120,18 @@ pub struct TuiShell {
     marketplace_detail_cache: HashMap<String, CliMarketplaceDetail>,
     marketplace_readme_cache: HashMap<String, String>,
     marketplace_open: bool,
-    marketplace_filter: String,
-    marketplace_focus: MarketplaceFocus,
-    marketplace_selected_index: usize,
-    marketplace_active_tab: MarketplaceTab,
-    marketplace_selected_version_index: usize,
+    marketplace_step_stack: Vec<MarketplaceFlowStep>,
+    marketplace_catalog_filter: String,
+    marketplace_detail_action_filter: String,
+    marketplace_version_filter: String,
+    marketplace_confirm_filter: String,
+    marketplace_catalog_selected_index: usize,
+    marketplace_detail_action_selected_index: usize,
+    marketplace_version_selected_index: usize,
+    marketplace_confirm_selected_index: usize,
+    marketplace_current_extension_id: Option<String>,
     marketplace_error: Option<String>,
-    marketplace_pending_install: Option<CliMarketplacePreparedInstall>,
+    marketplace_readme_scroll: usize,
     marketplace_install_guard: Option<(String, String)>,
     cli_ui_hooks: Vec<CliUiHookView>,
 }
@@ -237,13 +240,18 @@ impl TuiShell {
             marketplace_detail_cache: HashMap::new(),
             marketplace_readme_cache: HashMap::new(),
             marketplace_open: false,
-            marketplace_filter: String::new(),
-            marketplace_focus: MarketplaceFocus::List,
-            marketplace_selected_index: 0,
-            marketplace_active_tab: MarketplaceTab::Readme,
-            marketplace_selected_version_index: 0,
+            marketplace_step_stack: Vec::new(),
+            marketplace_catalog_filter: String::new(),
+            marketplace_detail_action_filter: String::new(),
+            marketplace_version_filter: String::new(),
+            marketplace_confirm_filter: String::new(),
+            marketplace_catalog_selected_index: 0,
+            marketplace_detail_action_selected_index: 0,
+            marketplace_version_selected_index: 0,
+            marketplace_confirm_selected_index: 0,
+            marketplace_current_extension_id: None,
             marketplace_error: None,
-            marketplace_pending_install: None,
+            marketplace_readme_scroll: 0,
             marketplace_install_guard: None,
             cli_ui_hooks,
         };
@@ -323,206 +331,235 @@ impl TuiShell {
             self.marketplace_catalog.len()
         ));
         self.marketplace_error = None;
-        self.sync_marketplace_selection(true);
+        self.marketplace_sync_current_step_selection();
         Ok(())
     }
 
     pub fn marketplace_selected_catalog_item(&self) -> Option<&CliMarketplaceCatalogItem> {
         let index = self
             .marketplace_filtered_catalog_indices()
-            .get(self.marketplace_selected_index)
+            .get(self.marketplace_catalog_selected_index)
             .copied()?;
         self.marketplace_catalog.get(index)
     }
 
-    pub fn marketplace_selected_extension_id(&self) -> Option<&str> {
-        self.marketplace_selected_catalog_item()
-            .map(|item| item.extension_id.as_str())
+    pub fn marketplace_current_step(&self) -> Option<MarketplaceFlowStep> {
+        self.marketplace_step_stack.last().copied()
+    }
+
+    pub fn marketplace_filter_accepts_input(&self) -> bool {
+        self.marketplace_current_step().is_some()
     }
 
     pub fn marketplace_move_selection_next(&mut self) {
-        let filtered_len = self.marketplace_filtered_catalog_indices().len();
-        if filtered_len == 0 {
+        let len = self.marketplace_current_items_len();
+        if len == 0 {
             return;
         }
-        self.marketplace_selected_index = (self.marketplace_selected_index + 1) % filtered_len;
-        self.marketplace_selected_version_index = 0;
+        let selected = self.marketplace_selected_index_mut();
+        *selected = (*selected + 1) % len;
         self.marketplace_install_guard = None;
-        let _ = self.ensure_marketplace_selected_detail();
     }
 
     pub fn marketplace_move_selection_prev(&mut self) {
-        let filtered_len = self.marketplace_filtered_catalog_indices().len();
-        if filtered_len == 0 {
+        let len = self.marketplace_current_items_len();
+        if len == 0 {
             return;
         }
-        self.marketplace_selected_index = if self.marketplace_selected_index == 0 {
-            filtered_len - 1
+        let selected = self.marketplace_selected_index_mut();
+        *selected = if *selected == 0 {
+            len - 1
         } else {
-            self.marketplace_selected_index - 1
-        };
-        self.marketplace_selected_version_index = 0;
-        self.marketplace_install_guard = None;
-        let _ = self.ensure_marketplace_selected_detail();
-    }
-
-    pub fn marketplace_move_version_next(&mut self) {
-        let Some(detail) = self.marketplace_selected_detail() else {
-            return;
-        };
-        if detail.versions.is_empty() {
-            return;
-        }
-        self.marketplace_selected_version_index =
-            (self.marketplace_selected_version_index + 1) % detail.versions.len();
-        self.marketplace_install_guard = None;
-    }
-
-    pub fn marketplace_move_version_prev(&mut self) {
-        let Some(detail) = self.marketplace_selected_detail() else {
-            return;
-        };
-        if detail.versions.is_empty() {
-            return;
-        }
-        self.marketplace_selected_version_index = if self.marketplace_selected_version_index == 0 {
-            detail.versions.len() - 1
-        } else {
-            self.marketplace_selected_version_index - 1
+            *selected - 1
         };
         self.marketplace_install_guard = None;
     }
 
     pub fn marketplace_clear_filter(&mut self) {
-        self.marketplace_filter.clear();
-        self.marketplace_install_guard = None;
-        self.sync_marketplace_selection(true);
+        self.marketplace_current_filter_mut().clear();
+        self.marketplace_sync_current_step_selection();
     }
 
     pub fn marketplace_insert_filter_char(&mut self, ch: char) {
         if ch == '\n' || ch == '\r' {
             return;
         }
-        self.marketplace_filter.push(ch);
-        self.marketplace_install_guard = None;
-        self.sync_marketplace_selection(true);
+        self.marketplace_current_filter_mut().push(ch);
+        self.marketplace_sync_current_step_selection();
     }
 
     pub fn marketplace_insert_filter_text(&mut self, text: &str) {
         let filtered = text.chars().filter(|ch| *ch != '\n' && *ch != '\r');
-        self.marketplace_filter.extend(filtered);
-        self.marketplace_install_guard = None;
-        self.sync_marketplace_selection(true);
+        self.marketplace_current_filter_mut().extend(filtered);
+        self.marketplace_sync_current_step_selection();
     }
 
     pub fn marketplace_backspace_filter(&mut self) {
-        self.marketplace_filter.pop();
-        self.marketplace_install_guard = None;
-        self.sync_marketplace_selection(true);
+        self.marketplace_current_filter_mut().pop();
+        self.marketplace_sync_current_step_selection();
     }
 
     pub fn marketplace_refresh_selected_detail(&mut self) -> Result<()> {
         self.ensure_marketplace_selected_detail()
     }
 
-    pub fn marketplace_tab_previous(&mut self) {
-        self.marketplace_active_tab = match self.marketplace_active_tab {
-            MarketplaceTab::Readme => MarketplaceTab::Versions,
-            MarketplaceTab::Changelog => MarketplaceTab::Readme,
-            MarketplaceTab::Versions => MarketplaceTab::Changelog,
-        };
+    pub fn marketplace_submit_selection(&mut self) {
+        match self.marketplace_current_step() {
+            Some(MarketplaceFlowStep::CatalogPicker) => self.marketplace_open_selected_detail(),
+            Some(MarketplaceFlowStep::DetailActions) => self.marketplace_open_version_picker(),
+            Some(MarketplaceFlowStep::VersionPicker) => self.marketplace_prepare_selected_version(),
+            Some(MarketplaceFlowStep::UnverifiedConfirm) => {
+                self.marketplace_handle_install_confirmation()
+            }
+            None => {}
+        }
     }
 
-    pub fn marketplace_tab_next(&mut self) {
-        self.marketplace_active_tab = match self.marketplace_active_tab {
-            MarketplaceTab::Readme => MarketplaceTab::Changelog,
-            MarketplaceTab::Changelog => MarketplaceTab::Versions,
-            MarketplaceTab::Versions => MarketplaceTab::Readme,
-        };
+    pub fn marketplace_go_back(&mut self) {
+        match self.marketplace_current_step() {
+            Some(MarketplaceFlowStep::CatalogPicker) | None => self.close_marketplace_view(),
+            Some(MarketplaceFlowStep::DetailActions) => {
+                self.marketplace_step_stack.pop();
+                self.marketplace_readme_scroll = 0;
+            }
+            Some(MarketplaceFlowStep::VersionPicker) => {
+                self.marketplace_step_stack.pop();
+                self.marketplace_version_filter.clear();
+                self.marketplace_version_selected_index = 0;
+            }
+            Some(MarketplaceFlowStep::UnverifiedConfirm) => {
+                self.marketplace_step_stack.pop();
+                self.marketplace_confirm_filter.clear();
+                self.marketplace_confirm_selected_index = 0;
+            }
+        }
+        self.marketplace_error = None;
+        self.marketplace_sync_current_step_selection();
     }
 
-    pub fn marketplace_focus_detail(&mut self) {
-        self.marketplace_focus = MarketplaceFocus::Detail;
+    pub fn marketplace_scroll_readme_up(&mut self, lines: usize) {
+        self.marketplace_readme_scroll = self.marketplace_readme_scroll.saturating_sub(lines);
     }
 
-    pub fn marketplace_focus_list(&mut self) {
-        self.marketplace_focus = MarketplaceFocus::List;
+    pub fn marketplace_scroll_readme_down(&mut self, lines: usize) {
+        self.marketplace_readme_scroll = self.marketplace_readme_scroll.saturating_add(lines);
     }
 
-    pub fn marketplace_install_selected_version(&mut self) {
-        let Some(install_key) = self.marketplace_selected_install_key() else {
-            return;
-        };
+    fn marketplace_current_items_len(&self) -> usize {
+        match self.marketplace_current_step() {
+            Some(MarketplaceFlowStep::CatalogPicker) => {
+                self.marketplace_filtered_catalog_indices().len()
+            }
+            Some(MarketplaceFlowStep::DetailActions) => {
+                self.marketplace_detail_action_items().len()
+            }
+            Some(MarketplaceFlowStep::VersionPicker) => self
+                .marketplace_selected_detail()
+                .map(|detail| self.marketplace_filtered_version_indices(detail).len())
+                .unwrap_or(0),
+            Some(MarketplaceFlowStep::UnverifiedConfirm) => {
+                self.marketplace_confirmation_items().len()
+            }
+            None => 0,
+        }
+    }
 
-        if self
-            .marketplace_install_guard
-            .as_ref()
-            .is_some_and(|current| current == &install_key)
+    fn marketplace_selected_index_mut(&mut self) -> &mut usize {
+        match self
+            .marketplace_current_step()
+            .unwrap_or(MarketplaceFlowStep::CatalogPicker)
         {
-            self.marketplace_error = Some(format!(
-                "已提交过安装请求: {}@{}。如需重试，请切换到其他版本再切回。",
-                install_key.0, install_key.1
-            ));
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!("已忽略重复安装请求: {} {}", install_key.0, install_key.1),
-                tool_block: None,
-            });
-            return;
-        }
-
-        let Some(prepared) = self.prepare_selected_marketplace_install() else {
-            return;
-        };
-
-        if !prepared.supports_current_host {
-            self.marketplace_error = Some(format!(
-                "扩展 {}@{} 不支持当前宿主。",
-                prepared.extension_id, prepared.version
-            ));
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!(
-                    "扩展 {}@{} 不支持当前宿主。",
-                    prepared.display_name, prepared.version
-                ),
-                tool_block: None,
-            });
-            return;
-        }
-
-        if prepared.review_status != "verified" {
-            self.marketplace_pending_install = Some(prepared.clone());
-            self.bottom_form = Some(ask_questions::new_form(
-                "marketplace.install",
-                "marketplace.install",
-                Self::marketplace_install_confirmation_request(&prepared),
-            ));
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!(
-                    "「{} {}」尚未验证，已打开确认表单。Enter 继续，Esc 取消。",
-                    prepared.display_name, prepared.version
-                ),
-                tool_block: None,
-            });
-            return;
-        }
-
-        if let Err(err) = self.install_prepared_marketplace_extension(&prepared, false) {
-            self.marketplace_error = Some(err.to_string());
+            MarketplaceFlowStep::CatalogPicker => &mut self.marketplace_catalog_selected_index,
+            MarketplaceFlowStep::DetailActions => {
+                &mut self.marketplace_detail_action_selected_index
+            }
+            MarketplaceFlowStep::VersionPicker => &mut self.marketplace_version_selected_index,
+            MarketplaceFlowStep::UnverifiedConfirm => &mut self.marketplace_confirm_selected_index,
         }
     }
 
-    fn marketplace_selected_install_key(&self) -> Option<(String, String)> {
-        let extension_id = self.marketplace_selected_extension_id()?.to_string();
-        let detail = self.marketplace_selected_detail()?;
-        let selected_version = self.selected_marketplace_version(detail)?.version.clone();
-        Some((extension_id, selected_version))
+    fn marketplace_current_filter_mut(&mut self) -> &mut String {
+        match self
+            .marketplace_current_step()
+            .unwrap_or(MarketplaceFlowStep::CatalogPicker)
+        {
+            MarketplaceFlowStep::CatalogPicker => &mut self.marketplace_catalog_filter,
+            MarketplaceFlowStep::DetailActions => &mut self.marketplace_detail_action_filter,
+            MarketplaceFlowStep::VersionPicker => &mut self.marketplace_version_filter,
+            MarketplaceFlowStep::UnverifiedConfirm => &mut self.marketplace_confirm_filter,
+        }
+    }
+
+    fn marketplace_current_filter(&self) -> &str {
+        match self
+            .marketplace_current_step()
+            .unwrap_or(MarketplaceFlowStep::CatalogPicker)
+        {
+            MarketplaceFlowStep::CatalogPicker => &self.marketplace_catalog_filter,
+            MarketplaceFlowStep::DetailActions => &self.marketplace_detail_action_filter,
+            MarketplaceFlowStep::VersionPicker => &self.marketplace_version_filter,
+            MarketplaceFlowStep::UnverifiedConfirm => &self.marketplace_confirm_filter,
+        }
+    }
+
+    fn marketplace_sync_current_step_selection(&mut self) {
+        match self.marketplace_current_step() {
+            Some(MarketplaceFlowStep::CatalogPicker) => {
+                let len = self.marketplace_filtered_catalog_indices().len();
+                if len == 0 {
+                    self.marketplace_catalog_selected_index = 0;
+                } else if self.marketplace_catalog_selected_index >= len {
+                    self.marketplace_catalog_selected_index = len - 1;
+                }
+            }
+            Some(MarketplaceFlowStep::DetailActions) => {
+                let len = self.marketplace_detail_action_items().len();
+                if len == 0 {
+                    self.marketplace_detail_action_selected_index = 0;
+                } else if self.marketplace_detail_action_selected_index >= len {
+                    self.marketplace_detail_action_selected_index = len - 1;
+                }
+            }
+            Some(MarketplaceFlowStep::VersionPicker) => {
+                if let Some(detail) = self.marketplace_selected_detail() {
+                    let len = self.marketplace_filtered_version_indices(detail).len();
+                    if len == 0 {
+                        self.marketplace_version_selected_index = 0;
+                    } else if self.marketplace_version_selected_index >= len {
+                        self.marketplace_version_selected_index = len - 1;
+                    }
+                }
+            }
+            Some(MarketplaceFlowStep::UnverifiedConfirm) => {
+                let len = self.marketplace_confirmation_items().len();
+                if len == 0 {
+                    self.marketplace_confirm_selected_index = 0;
+                } else if self.marketplace_confirm_selected_index >= len {
+                    self.marketplace_confirm_selected_index = len - 1;
+                }
+            }
+            None => {}
+        }
+    }
+
+    fn marketplace_detail_action_items(&self) -> Vec<&'static str> {
+        let query = self.marketplace_detail_action_filter.trim().to_lowercase();
+        ["安装扩展"]
+            .into_iter()
+            .filter(|item| query.is_empty() || item.to_lowercase().contains(&query))
+            .collect()
+    }
+
+    fn marketplace_confirmation_items(&self) -> Vec<&'static str> {
+        let query = self.marketplace_confirm_filter.trim().to_lowercase();
+        ["继续安装", "取消"]
+            .into_iter()
+            .filter(|item| query.is_empty() || item.to_lowercase().contains(&query))
+            .collect()
     }
 
     fn marketplace_filtered_catalog_indices(&self) -> Vec<usize> {
-        let query = self.marketplace_filter.trim().to_lowercase();
+        let query = self.marketplace_catalog_filter.trim().to_lowercase();
         self.marketplace_catalog
             .iter()
             .enumerate()
@@ -540,50 +577,64 @@ impl TuiShell {
                     item.author.as_deref().unwrap_or(""),
                     item.keywords.join(" "),
                 );
-                if haystack.to_lowercase().contains(&query) {
-                    Some(index)
-                } else {
-                    None
-                }
+                haystack.to_lowercase().contains(&query).then_some(index)
             })
             .collect()
     }
 
-    fn sync_marketplace_selection(&mut self, load_detail: bool) {
-        let filtered_len = self.marketplace_filtered_catalog_indices().len();
-        if filtered_len == 0 {
-            self.marketplace_selected_index = 0;
-            self.marketplace_selected_version_index = 0;
-            self.marketplace_active_tab = MarketplaceTab::Readme;
-            if load_detail {
-                self.marketplace_error = None;
-            }
-            return;
-        }
-
-        if self.marketplace_selected_index >= filtered_len {
-            self.marketplace_selected_index = filtered_len - 1;
-        }
-
-        self.marketplace_selected_version_index = 0;
-        if load_detail {
-            let _ = self.ensure_marketplace_selected_detail();
-        }
+    fn marketplace_filtered_version_indices(&self, detail: &CliMarketplaceDetail) -> Vec<usize> {
+        let query = self.marketplace_version_filter.trim().to_lowercase();
+        let mut indices = (0..detail.versions.len()).collect::<Vec<_>>();
+        indices.sort_by(|left, right| {
+            Self::compare_marketplace_versions(
+                detail.versions[*right].version.as_str(),
+                detail.versions[*left].version.as_str(),
+            )
+        });
+        indices
+            .into_iter()
+            .filter(|index| {
+                if query.is_empty() {
+                    return true;
+                }
+                let version = &detail.versions[*index];
+                let haystack = format!(
+                    "{} {} {} {} {}",
+                    version.version,
+                    version.channel,
+                    version.review_status,
+                    version.description,
+                    version.supported_hosts.join(" "),
+                );
+                haystack.to_lowercase().contains(&query)
+            })
+            .collect()
     }
 
-    fn selected_marketplace_version<'a>(
-        &self,
-        detail: &'a CliMarketplaceDetail,
-    ) -> Option<&'a CliMarketplaceDetailVersion> {
-        detail.versions.get(
-            self.marketplace_selected_version_index
-                .min(detail.versions.len().saturating_sub(1)),
-        )
+    fn compare_marketplace_versions(left: &str, right: &str) -> std::cmp::Ordering {
+        fn parse(version: &str) -> Vec<u64> {
+            version
+                .split(['.', '-', '+'])
+                .map(|part| part.parse::<u64>().unwrap_or(0))
+                .collect()
+        }
+
+        let left_parts = parse(left);
+        let right_parts = parse(right);
+        let len = left_parts.len().max(right_parts.len());
+        for index in 0..len {
+            let left = *left_parts.get(index).unwrap_or(&0);
+            let right = *right_parts.get(index).unwrap_or(&0);
+            match left.cmp(&right) {
+                std::cmp::Ordering::Equal => {}
+                ordering => return ordering,
+            }
+        }
+        left.cmp(right)
     }
 
     fn selected_marketplace_detail_id(&self) -> Option<String> {
-        self.marketplace_selected_catalog_item()
-            .map(|item| item.extension_id.clone())
+        self.marketplace_current_extension_id.clone()
     }
 
     fn marketplace_selected_detail(&self) -> Option<&CliMarketplaceDetail> {
@@ -618,17 +669,29 @@ impl TuiShell {
             }
         }
 
-        if let Some(detail) = self.marketplace_detail_cache.get(&extension_id) {
-            if self.marketplace_selected_version_index >= detail.versions.len() {
-                self.marketplace_selected_version_index = 0;
-            }
-        }
-
+        self.marketplace_sync_current_step_selection();
         Ok(())
     }
 
+    fn selected_marketplace_version<'a>(
+        &self,
+        detail: &'a CliMarketplaceDetail,
+    ) -> Option<&'a CliMarketplaceDetailVersion> {
+        let index = *self
+            .marketplace_filtered_version_indices(detail)
+            .get(self.marketplace_version_selected_index)?;
+        detail.versions.get(index)
+    }
+
+    fn marketplace_selected_install_key(&self) -> Option<(String, String)> {
+        let extension_id = self.selected_marketplace_detail_id()?;
+        let detail = self.marketplace_selected_detail()?;
+        let selected_version = self.selected_marketplace_version(detail)?.version.clone();
+        Some((extension_id, selected_version))
+    }
+
     fn prepare_selected_marketplace_install(&mut self) -> Option<CliMarketplacePreparedInstall> {
-        let extension_id = self.marketplace_selected_extension_id()?.to_string();
+        let extension_id = self.selected_marketplace_detail_id()?;
         self.ensure_marketplace_selected_detail().ok()?;
         let selected_version = {
             let detail = self.marketplace_selected_detail()?;
@@ -677,8 +740,19 @@ impl TuiShell {
         )?;
         self.refresh_extensions_from_disk()
             .context("刷新已安装扩展列表失败")?;
-        self.marketplace_pending_install = None;
         self.marketplace_error = None;
+        self.marketplace_confirm_filter.clear();
+        self.marketplace_confirm_selected_index = 0;
+        self.marketplace_version_filter.clear();
+        self.marketplace_version_selected_index = 0;
+        self.marketplace_step_stack
+            .retain(|step| *step != MarketplaceFlowStep::UnverifiedConfirm);
+        self.marketplace_step_stack
+            .retain(|step| *step != MarketplaceFlowStep::VersionPicker);
+        if self.marketplace_step_stack.last().copied() != Some(MarketplaceFlowStep::DetailActions) {
+            self.marketplace_step_stack
+                .push(MarketplaceFlowStep::DetailActions);
+        }
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
             content: format!(
@@ -690,90 +764,102 @@ impl TuiShell {
         Ok(())
     }
 
-    fn handle_marketplace_install_confirmation(
-        &mut self,
-        result: AskQuestionsResult,
-        request: AskQuestionsRequest,
-    ) {
-        let confirmed = result.answers.first().is_some_and(|answer| {
-            answer
-                .selected_option_indexes
-                .first()
-                .is_some_and(|index| *index == 0)
-        });
+    fn marketplace_open_selected_detail(&mut self) {
+        let Some(extension_id) = self
+            .marketplace_selected_catalog_item()
+            .map(|item| item.extension_id.clone())
+        else {
+            return;
+        };
+        self.marketplace_current_extension_id = Some(extension_id);
+        self.marketplace_readme_scroll = 0;
+        if let Err(err) = self.ensure_marketplace_selected_detail() {
+            self.marketplace_error = Some(err.to_string());
+            return;
+        }
+        if self.marketplace_step_stack.last().copied() == Some(MarketplaceFlowStep::CatalogPicker) {
+            self.marketplace_step_stack
+                .push(MarketplaceFlowStep::DetailActions);
+        }
+        self.marketplace_detail_action_selected_index = 0;
+        self.marketplace_sync_current_step_selection();
+    }
 
-        let Some(prepared) = self.marketplace_pending_install.take() else {
+    fn marketplace_open_version_picker(&mut self) {
+        if self.marketplace_selected_detail().is_none() {
+            self.marketplace_error = Some("当前扩展详情尚未加载完成。".to_string());
+            return;
+        }
+        if self.marketplace_step_stack.last().copied() != Some(MarketplaceFlowStep::VersionPicker) {
+            self.marketplace_step_stack
+                .push(MarketplaceFlowStep::VersionPicker);
+        }
+        self.marketplace_version_selected_index = 0;
+        self.marketplace_sync_current_step_selection();
+    }
+
+    fn marketplace_prepare_selected_version(&mut self) {
+        let Some(install_key) = self.marketplace_selected_install_key() else {
             return;
         };
 
-        if !confirmed {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!(
-                    "已取消 marketplace 扩展安装: {} {}",
-                    prepared.display_name, prepared.version
-                ),
-                tool_block: None,
-            });
+        if self
+            .marketplace_install_guard
+            .as_ref()
+            .is_some_and(|current| current == &install_key)
+        {
+            self.marketplace_error = Some(format!(
+                "已提交过安装请求: {}@{}。如需重试，请切换到其他版本再切回。",
+                install_key.0, install_key.1
+            ));
             return;
         }
 
-        if let Err(err) = self.install_prepared_marketplace_extension(&prepared, true) {
-            self.marketplace_error = Some(err.to_string());
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!(
-                    "安装 marketplace 扩展失败: {} {}",
-                    prepared.display_name, prepared.version
-                ),
-                tool_block: None,
-            });
-        } else {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: format!(
-                    "已确认安装未验证扩展: {} {}",
-                    prepared.display_name, prepared.version
-                ),
-                tool_block: None,
-            });
+        let Some(prepared) = self.prepare_selected_marketplace_install() else {
+            return;
+        };
+
+        if !prepared.supports_current_host {
+            self.marketplace_error = Some(format!(
+                "扩展 {}@{} 不支持当前宿主。",
+                prepared.display_name, prepared.version
+            ));
+            return;
         }
 
-        self.bottom_form = None;
-        self.scroll_history_to_bottom();
-        let _ = request;
+        if prepared.review_status != "verified" {
+            if self.marketplace_step_stack.last().copied()
+                != Some(MarketplaceFlowStep::UnverifiedConfirm)
+            {
+                self.marketplace_step_stack
+                    .push(MarketplaceFlowStep::UnverifiedConfirm);
+            }
+            self.marketplace_confirm_selected_index = 0;
+            self.marketplace_error = None;
+            return;
+        }
+
+        if let Err(err) = self.install_prepared_marketplace_extension(&prepared, false) {
+            self.marketplace_error = Some(err.to_string());
+        }
     }
 
-    fn marketplace_install_confirmation_request(
-        prepared: &CliMarketplacePreparedInstall,
-    ) -> AskQuestionsRequest {
-        AskQuestionsRequest {
-            title: Some(format!(
-                "确认安装未验证扩展: {} {}",
-                prepared.display_name, prepared.version
-            )),
-            questions: vec![AskQuestionsQuestionSpec {
-                id: "confirm".to_string(),
-                title: format!(
-                    "是否继续安装 {} {}？",
-                    prepared.display_name, prepared.version
-                ),
-                kind: AskQuestionsQuestionKind::SingleSelect,
-                required: true,
-                options: vec![
-                    crate::ask_questions::AskQuestionsOptionSpec {
-                        label: "继续安装".to_string(),
-                        summary: Some("我已知晓该版本尚未验证".to_string()),
-                    },
-                    crate::ask_questions::AskQuestionsOptionSpec {
-                        label: "取消".to_string(),
-                        summary: Some("返回 marketplace 浏览器".to_string()),
-                    },
-                ],
-                allow_custom_input: false,
-                custom_input_placeholder: None,
-                custom_input_label: None,
-            }],
+    fn marketplace_handle_install_confirmation(&mut self) {
+        let choice = self
+            .marketplace_confirmation_items()
+            .get(self.marketplace_confirm_selected_index)
+            .copied();
+        match choice {
+            Some("继续安装") => {
+                let Some(prepared) = self.prepare_selected_marketplace_install() else {
+                    return;
+                };
+                if let Err(err) = self.install_prepared_marketplace_extension(&prepared, true) {
+                    self.marketplace_error = Some(err.to_string());
+                }
+            }
+            Some("取消") => self.marketplace_go_back(),
+            _ => {}
         }
     }
 
@@ -936,7 +1022,7 @@ impl TuiShell {
             })
             .collect::<HashMap<_, _>>();
         let filtered_indices = self.marketplace_filtered_catalog_indices();
-        let items = filtered_indices
+        let catalog_items = filtered_indices
             .iter()
             .filter_map(|index| self.marketplace_catalog.get(*index))
             .map(|item| MarketplaceCatalogItemView {
@@ -959,14 +1045,45 @@ impl TuiShell {
             })
             .collect::<Vec<_>>();
 
+        let selected_item = self
+            .selected_marketplace_detail_id()
+            .and_then(|selected_id| {
+                self.marketplace_catalog
+                    .iter()
+                    .find(|item| item.extension_id == selected_id)
+                    .map(|item| MarketplaceCatalogItemView {
+                        extension_id: item.extension_id.clone(),
+                        package_name: item.package_name.clone(),
+                        display_name: item.display_name.clone(),
+                        description: item.description.clone(),
+                        author: item.author.clone(),
+                        featured: item.featured,
+                        default_version: item.default_version.clone(),
+                        default_channel: item.default_channel.clone(),
+                        default_review_status: item.default_review_status.clone(),
+                        supported_hosts: item.supported_hosts.clone(),
+                        requested_capabilities: item.requested_capabilities.clone(),
+                        icon_url: item.icon_url.clone(),
+                        installed_version: installed_versions
+                            .get(&item.package_name)
+                            .or_else(|| installed_versions.get(&item.extension_id))
+                            .cloned(),
+                    })
+            })
+            .or_else(|| {
+                catalog_items
+                    .get(self.marketplace_catalog_selected_index)
+                    .cloned()
+            });
+
         let detail = self.marketplace_selected_detail().map(|detail| {
-            let selected_id = self.marketplace_selected_extension_id().unwrap_or_default();
+            let selected_id = self.selected_marketplace_detail_id().unwrap_or_default();
             MarketplaceDetailView {
                 package_name: detail.package_name.clone(),
                 status: detail.status.clone(),
                 featured: detail.featured,
                 default_version: detail.default_version.clone(),
-                readme: self.marketplace_readme_cache.get(selected_id).cloned(),
+                readme: self.marketplace_readme_cache.get(&selected_id).cloned(),
                 versions: detail
                     .versions
                     .iter()
@@ -975,28 +1092,23 @@ impl TuiShell {
             }
         });
 
-        let pending_install =
-            self.marketplace_pending_install
-                .as_ref()
-                .map(|item| MarketplacePendingInstallView {
-                    extension_id: item.extension_id.clone(),
-                    display_name: item.display_name.clone(),
-                    version: item.version.clone(),
-                    review_status: item.review_status.clone(),
-                });
+        let slash = self.build_marketplace_slash_view(
+            &catalog_items,
+            selected_item.as_ref(),
+            detail.as_ref(),
+        );
 
         Some(MarketplaceViewModel {
-            query: self.marketplace_filter.clone(),
-            focus: self.marketplace_focus,
-            selected_index: self
-                .marketplace_selected_index
-                .min(items.len().saturating_sub(1)),
-            active_tab: self.marketplace_active_tab,
-            selected_version_index: self.marketplace_selected_version_index,
+            step: self
+                .marketplace_current_step()
+                .unwrap_or(MarketplaceFlowStep::CatalogPicker),
+            query: self.marketplace_current_filter().to_string(),
             error: self.marketplace_error.clone(),
-            items,
+            catalog_items,
+            selected_item,
             detail,
-            pending_install,
+            slash,
+            readme_scroll: self.marketplace_readme_scroll,
         })
     }
 
@@ -1022,6 +1134,164 @@ impl TuiShell {
                     body: changelog.body.clone(),
                 }
             }),
+        }
+    }
+
+    fn build_marketplace_slash_view(
+        &self,
+        catalog_items: &[MarketplaceCatalogItemView],
+        selected_item: Option<&MarketplaceCatalogItemView>,
+        detail: Option<&MarketplaceDetailView>,
+    ) -> SlashFlowView {
+        match self
+            .marketplace_current_step()
+            .unwrap_or(MarketplaceFlowStep::CatalogPicker)
+        {
+            MarketplaceFlowStep::CatalogPicker => SlashFlowView {
+                title: "扩展".to_string(),
+                subtitle: Some("选择扩展".to_string()),
+                filter: self.marketplace_catalog_filter.clone(),
+                empty_text: "没有匹配的扩展。".to_string(),
+                selected_index: self
+                    .marketplace_catalog_selected_index
+                    .min(catalog_items.len().saturating_sub(1)),
+                items: catalog_items
+                    .iter()
+                    .map(|item| SlashFlowItemView {
+                        label: item.display_name.clone(),
+                        summary: item.description.clone(),
+                        details: vec![format!(
+                            "{}  ·  {}  ·  {}",
+                            item.default_version,
+                            item.default_channel,
+                            Self::marketplace_review_text(&item.default_review_status)
+                        )],
+                        disabled: false,
+                        muted: false,
+                    })
+                    .collect(),
+                footer_hint:
+                    "↑/↓ 选择  Enter 打开  直接输入过滤  Backspace 删除  Ctrl+L 清空  Ctrl+R 刷新  Esc 关闭"
+                        .to_string(),
+            },
+            MarketplaceFlowStep::DetailActions => SlashFlowView {
+                title: "操作".to_string(),
+                subtitle: selected_item.map(|item| item.display_name.clone()),
+                filter: self.marketplace_detail_action_filter.clone(),
+                empty_text: "没有匹配的操作。".to_string(),
+                selected_index: self.marketplace_detail_action_selected_index,
+                items: self
+                    .marketplace_detail_action_items()
+                    .into_iter()
+                    .map(|item| SlashFlowItemView {
+                        label: item.to_string(),
+                        summary: "选择版本后安装到当前宿主".to_string(),
+                        details: Vec::new(),
+                        disabled: detail.is_none(),
+                        muted: false,
+                    })
+                    .collect(),
+                footer_hint:
+                    "↑/↓ 选择  Enter 继续  PageUp/Down 滚动 README  直接输入过滤  Backspace 删除  Ctrl+L 清空  Esc 返回"
+                        .to_string(),
+            },
+            MarketplaceFlowStep::VersionPicker => {
+                let items = detail
+                    .map(|detail| {
+                        let selected_version = selected_item
+                            .and_then(|item| item.installed_version.as_deref())
+                            .map(str::to_string);
+                        self.marketplace_filtered_version_indices(
+                            self.marketplace_selected_detail().expect("detail should exist"),
+                        )
+                        .into_iter()
+                        .filter_map(|index| detail.versions.get(index))
+                        .map(|version| {
+                            let supported = version.supported_hosts.iter().any(|host| host == "cli");
+                            let installed = selected_version
+                                .as_ref()
+                                .is_some_and(|installed| installed == &version.version);
+                            SlashFlowItemView {
+                                label: version.version.clone(),
+                                summary: format!(
+                                    "{}  ·  {}",
+                                    Self::marketplace_channel_text(&version.channel),
+                                    Self::marketplace_review_text(&version.review_status)
+                                ),
+                                details: vec![
+                                    if installed {
+                                        "已安装".to_string()
+                                    } else if supported {
+                                        "支持 CLI".to_string()
+                                    } else {
+                                        "不支持 CLI".to_string()
+                                    },
+                                ],
+                                disabled: !supported,
+                                muted: !supported,
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                SlashFlowView {
+                    title: "版本".to_string(),
+                    subtitle: selected_item.map(|item| item.display_name.clone()),
+                    filter: self.marketplace_version_filter.clone(),
+                    empty_text: "没有匹配的版本。".to_string(),
+                    selected_index: self
+                        .marketplace_version_selected_index
+                        .min(items.len().saturating_sub(1)),
+                    items,
+                    footer_hint:
+                        "↑/↓ 选择  Enter 安装  PageUp/Down 滚动 README  直接输入过滤  Backspace 删除  Ctrl+L 清空  Esc 返回"
+                            .to_string(),
+                }
+            }
+            MarketplaceFlowStep::UnverifiedConfirm => SlashFlowView {
+                title: "确认".to_string(),
+                subtitle: selected_item.map(|item| item.display_name.clone()),
+                filter: self.marketplace_confirm_filter.clone(),
+                empty_text: "没有匹配的选项。".to_string(),
+                selected_index: self
+                    .marketplace_confirm_selected_index
+                    .min(self.marketplace_confirmation_items().len().saturating_sub(1)),
+                items: self
+                    .marketplace_confirmation_items()
+                    .into_iter()
+                    .map(|item| SlashFlowItemView {
+                        label: item.to_string(),
+                        summary: if item == "继续安装" {
+                            "我已知晓该版本尚未验证".to_string()
+                        } else {
+                            "返回版本选择".to_string()
+                        },
+                        details: Vec::new(),
+                        disabled: false,
+                        muted: item == "取消",
+                    })
+                    .collect(),
+                footer_hint:
+                    "↑/↓ 选择  Enter 确认  PageUp/Down 滚动 README  直接输入过滤  Backspace 删除  Ctrl+L 清空  Esc 返回"
+                        .to_string(),
+            },
+        }
+    }
+
+    fn marketplace_review_text(status: &str) -> &'static str {
+        match status.trim() {
+            "verified" => "已验证",
+            "revoked" => "已撤销",
+            _ => "未验证",
+        }
+    }
+
+    fn marketplace_channel_text(channel: &str) -> String {
+        match channel.trim() {
+            "stable" => "稳定".to_string(),
+            "preview" => "预览".to_string(),
+            "experimental" => "实验".to_string(),
+            other => other.to_string(),
         }
     }
 
@@ -1266,12 +1536,8 @@ impl TuiShell {
         self.marketplace_open
     }
 
-    pub fn marketplace_focus(&self) -> MarketplaceFocus {
-        self.marketplace_focus
-    }
-
-    pub fn marketplace_active_tab(&self) -> MarketplaceTab {
-        self.marketplace_active_tab
+    pub fn marketplace_step(&self) -> Option<MarketplaceFlowStep> {
+        self.marketplace_current_step()
     }
 
     pub fn has_active_subagent_viewer_approval(&self) -> bool {
@@ -3953,11 +4219,6 @@ impl TuiShell {
             return;
         };
 
-        if tool_name == "marketplace.install" {
-            self.handle_marketplace_install_confirmation(result, request);
-            return;
-        }
-
         let request_value = ToolUiRequest::new(
             "ask_questions",
             serde_json::json!({
@@ -4048,14 +4309,19 @@ impl TuiShell {
         self.close_subagent_view();
         self.image_picker_active = false;
         self.marketplace_open = true;
-        self.marketplace_focus = MarketplaceFocus::List;
-        self.marketplace_active_tab = MarketplaceTab::Readme;
-        self.marketplace_selected_index = 0;
-        self.marketplace_selected_version_index = 0;
+        self.marketplace_step_stack = vec![MarketplaceFlowStep::CatalogPicker];
+        self.marketplace_catalog_filter = query.unwrap_or("").trim().to_string();
+        self.marketplace_detail_action_filter.clear();
+        self.marketplace_version_filter.clear();
+        self.marketplace_confirm_filter.clear();
+        self.marketplace_catalog_selected_index = 0;
+        self.marketplace_detail_action_selected_index = 0;
+        self.marketplace_version_selected_index = 0;
+        self.marketplace_confirm_selected_index = 0;
+        self.marketplace_current_extension_id = None;
         self.marketplace_error = None;
-        self.marketplace_pending_install = None;
+        self.marketplace_readme_scroll = 0;
         self.marketplace_install_guard = None;
-        self.marketplace_filter = query.unwrap_or("").trim().to_string();
 
         if let Err(err) = self.refresh_marketplace_catalog() {
             self.marketplace_error = Some(err.to_string());
@@ -4067,16 +4333,18 @@ impl TuiShell {
             return;
         }
 
-        self.sync_marketplace_selection(true);
+        self.marketplace_sync_current_step_selection();
         self.set_input(String::new());
         self.refresh_suggestions();
     }
 
     pub fn close_marketplace_view(&mut self) {
         self.marketplace_open = false;
-        self.marketplace_focus = MarketplaceFocus::List;
-        self.marketplace_pending_install = None;
+        self.marketplace_step_stack.clear();
+        self.marketplace_current_extension_id = None;
         self.marketplace_install_guard = None;
+        self.marketplace_error = None;
+        self.marketplace_readme_scroll = 0;
     }
 
     fn apply_mcp_prompt_command(
@@ -4926,7 +5194,7 @@ fn should_reanchor_persisted_subagent_status_on_begin_assistant_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_standalone_subagent_status_aux, manual_shell_tool_command,
+        TuiShell, is_standalone_subagent_status_aux, manual_shell_tool_command,
         next_persisted_standalone_pending_aux, next_persisted_standalone_pending_aux_anchor,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
         user_turn_text_for_mode,
@@ -5087,6 +5355,18 @@ mod tests {
             next_persisted_standalone_pending_aux_anchor(None, None, Some(&persisted), Some(5));
 
         assert_eq!(next, Some(5));
+    }
+
+    #[test]
+    fn marketplace_version_compare_prefers_higher_semver() {
+        assert_eq!(
+            TuiShell::compare_marketplace_versions("1.10.0", "1.2.0"),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            TuiShell::compare_marketplace_versions("2.0.0", "10.0.0"),
+            std::cmp::Ordering::Less
+        );
     }
 }
 

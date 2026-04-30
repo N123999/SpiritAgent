@@ -21,7 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use spirit_agent::view::{MarketplaceFocus, MarketplaceTab};
+use spirit_agent::view::MarketplaceFlowStep;
 use spirit_agent::{
     ConfigCommand, ExtensionCommand, KeyCommand, MarketplaceCommand, McpCommand, ModelCommand,
     TuiShell, handle_config_cli, handle_extension_cli, handle_mcp_cli, handle_model_cli, logging,
@@ -443,14 +443,22 @@ fn process_event_batch(
                 flush_pending_text(shell, &mut pending_text);
                 match mouse.kind {
                     MouseEventKind::ScrollUp => {
-                        if shell.is_subagent_view_active() {
+                        if shell.is_marketplace_view_active()
+                            && shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker)
+                        {
+                            shell.marketplace_scroll_readme_up(3);
+                        } else if shell.is_subagent_view_active() {
                             shell.scroll_subagent_view_up(3)
                         } else if !shell.scroll_active_bottom_form_up(3) {
                             shell.scroll_history_up(3)
                         }
                     }
                     MouseEventKind::ScrollDown => {
-                        if shell.is_subagent_view_active() {
+                        if shell.is_marketplace_view_active()
+                            && shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker)
+                        {
+                            shell.marketplace_scroll_readme_down(3);
+                        } else if shell.is_subagent_view_active() {
                             shell.scroll_subagent_view_down(3)
                         } else if !shell.scroll_active_bottom_form_down(3) {
                             shell.scroll_history_down(3)
@@ -561,9 +569,7 @@ fn flush_pending_text(shell: &mut TuiShell, pending_text: &mut String) {
 
     if shell.is_bottom_form_active() {
         shell.bottom_form_insert_text(pending_text);
-    } else if shell.is_marketplace_view_active()
-        && shell.marketplace_focus() == MarketplaceFocus::List
-    {
+    } else if shell.is_marketplace_view_active() && shell.marketplace_filter_accepts_input() {
         shell.marketplace_insert_filter_text(pending_text);
     } else {
         shell.insert_text_at_cursor(pending_text);
@@ -801,52 +807,19 @@ fn process_key_event(
 
     if shell.is_marketplace_view_active() {
         match key.code {
-            KeyCode::Esc => {
-                if shell.marketplace_focus() == MarketplaceFocus::Detail {
-                    shell.marketplace_focus_list();
-                } else {
-                    shell.close_marketplace_view();
-                }
+            KeyCode::Esc => shell.marketplace_go_back(),
+            KeyCode::Enter => shell.marketplace_submit_selection(),
+            KeyCode::Up => shell.marketplace_move_selection_prev(),
+            KeyCode::Down => shell.marketplace_move_selection_next(),
+            KeyCode::PageUp
+                if shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker) =>
+            {
+                shell.marketplace_scroll_readme_up(8);
             }
-            KeyCode::Tab => {
-                if shell.marketplace_focus() == MarketplaceFocus::List {
-                    shell.marketplace_focus_detail();
-                } else {
-                    shell.marketplace_focus_list();
-                }
-            }
-            KeyCode::Enter => {
-                if shell.marketplace_focus() == MarketplaceFocus::List {
-                    shell.marketplace_focus_detail();
-                } else if shell.marketplace_active_tab() == MarketplaceTab::Versions {
-                    shell.marketplace_install_selected_version();
-                } else {
-                    shell.marketplace_tab_next();
-                }
-            }
-            KeyCode::Left if shell.marketplace_focus() == MarketplaceFocus::Detail => {
-                shell.marketplace_tab_previous();
-            }
-            KeyCode::Right if shell.marketplace_focus() == MarketplaceFocus::Detail => {
-                shell.marketplace_tab_next();
-            }
-            KeyCode::Up => {
-                if shell.marketplace_focus() == MarketplaceFocus::Detail
-                    && shell.marketplace_active_tab() == MarketplaceTab::Versions
-                {
-                    shell.marketplace_move_version_prev();
-                } else {
-                    shell.marketplace_move_selection_prev();
-                }
-            }
-            KeyCode::Down => {
-                if shell.marketplace_focus() == MarketplaceFocus::Detail
-                    && shell.marketplace_active_tab() == MarketplaceTab::Versions
-                {
-                    shell.marketplace_move_version_next();
-                } else {
-                    shell.marketplace_move_selection_next();
-                }
+            KeyCode::PageDown
+                if shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker) =>
+            {
+                shell.marketplace_scroll_readme_down(8);
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Err(err) = shell.refresh_marketplace_catalog() {
@@ -856,16 +829,9 @@ fn process_key_event(
             KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.marketplace_clear_filter();
             }
-            KeyCode::Backspace if shell.marketplace_focus() == MarketplaceFocus::List => {
-                shell.marketplace_backspace_filter();
-            }
-            KeyCode::Delete if shell.marketplace_focus() == MarketplaceFocus::List => {
-                shell.marketplace_backspace_filter();
-            }
-            KeyCode::Char(ch)
-                if !key.modifiers.contains(KeyModifiers::CONTROL)
-                    && shell.marketplace_focus() == MarketplaceFocus::List =>
-            {
+            KeyCode::Backspace => shell.marketplace_backspace_filter(),
+            KeyCode::Delete => shell.marketplace_backspace_filter(),
+            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.marketplace_insert_filter_char(ch);
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1211,7 +1177,7 @@ fn paste_target(shell: &TuiShell) -> Option<PasteTarget> {
     {
         None
     } else if shell.is_marketplace_view_active() {
-        if shell.marketplace_focus() == MarketplaceFocus::List {
+        if shell.marketplace_filter_accepts_input() {
             Some(PasteTarget::MarketplaceFilter)
         } else {
             None

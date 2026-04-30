@@ -24,11 +24,9 @@ use crate::{
         AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
         ChatMessage, CliUiHookSlot, CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant,
-        CliUiHookView, InputSuggestion, InputSuggestionKind, MainInputMode,
-        MarketplaceCatalogItemView, MarketplaceDetailView, MarketplaceFocus, MarketplaceTab,
-        MarketplaceViewModel, MessageRole, PendingAssistantAux, PendingSubagentApprovalView,
-        SubagentApprovalInputView, SubagentSessionDetailView, ToolUiBlock, ToolUiPhase,
-        TuiViewModel,
+        CliUiHookView, InputSuggestion, InputSuggestionKind, MainInputMode, MarketplaceViewModel,
+        MessageRole, PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
+        SubagentSessionDetailView, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
 
@@ -2647,267 +2645,237 @@ fn draw_marketplace_view(
     area: Rect,
     view: &MarketplaceViewModel,
 ) {
-    let popup = area;
-    frame.render_widget(Clear, popup);
-
-    let panel_border_style = input_block_border_style(false, MainInputMode::Agent, false);
-    let panel_title_style = Style::default().fg(Color::Rgb(225, 225, 225));
-    let panel_subtle_style = Style::default().fg(Color::Rgb(165, 170, 180));
-    let marketplace_border_dim = Style::default().fg(Color::Rgb(68, 68, 68));
-    let marketplace_border_focus = Style::default().fg(Color::Rgb(205, 205, 205));
-    let mut title_spans = vec![Span::styled("扩展", panel_title_style)];
-    if !view.query.trim().is_empty() {
-        title_spans.push(Span::raw(" "));
-        title_spans.push(Span::styled(
-            format!("· {}", view.query.trim()),
-            panel_subtle_style,
-        ));
+    frame.render_widget(Clear, area);
+    match view.step {
+        crate::view::MarketplaceFlowStep::CatalogPicker => {
+            draw_marketplace_catalog_picker(frame, area, view);
+        }
+        _ => draw_marketplace_detail_page(frame, area, view),
     }
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(panel_border_style)
-        .title(Line::from(title_spans));
-    frame.render_widget(block.clone(), popup);
-
-    let inner = block.inner(popup);
-    let header_height = if view.error.is_some() { 5 } else { 4 };
-    let outer_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(header_height),
-            Constraint::Min(0),
-            Constraint::Length(2),
-        ])
-        .split(inner);
-
-    let header_zone = outer_chunks[0];
-    let mut header_lines = vec![
-        Line::from(vec![
-            Span::styled("过滤 ", panel_subtle_style),
-            Span::styled(
-                if view.query.trim().is_empty() {
-                    "（未输入，直接键入即可）".to_string()
-                } else {
-                    view.query.clone()
-                },
-                panel_title_style,
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("共 ", panel_subtle_style),
-            Span::styled(format!("{}", view.items.len()), panel_title_style),
-            Span::styled(" 项", panel_subtle_style),
-        ]),
-    ];
-    if let Some(error) = view.error.as_deref() {
-        header_lines.push(Line::from(Span::styled(
-            truncate_to_width(error, header_zone.width.saturating_sub(1) as usize),
-            Style::default()
-                .fg(Color::Rgb(200, 200, 200))
-                .add_modifier(Modifier::BOLD),
-        )));
-    }
-    frame.render_widget(
-        Paragraph::new(header_lines).wrap(Wrap { trim: true }),
-        header_zone,
-    );
-
-    let body_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-        .split(outer_chunks[1]);
-
-    let list_border_style = if view.focus == MarketplaceFocus::List {
-        marketplace_border_focus
-    } else {
-        marketplace_border_dim
-    };
-    let detail_border_style = if view.focus == MarketplaceFocus::Detail {
-        marketplace_border_focus
-    } else {
-        marketplace_border_dim
-    };
-
-    let list_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(list_border_style)
-        .title(Line::from(Span::styled("列表", panel_title_style)));
-    let list_inner = list_block.inner(body_chunks[0]);
-    frame.render_widget(list_block, body_chunks[0]);
-    let list_lines =
-        build_marketplace_list_lines(view, list_inner.width.saturating_sub(1) as usize);
-    frame.render_widget(
-        Paragraph::new(list_lines).wrap(Wrap { trim: true }),
-        list_inner,
-    );
-
-    let detail_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(detail_border_style)
-        .title(Line::from(Span::styled("详情", panel_title_style)));
-    let detail_inner = detail_block.inner(body_chunks[1]);
-    frame.render_widget(detail_block, body_chunks[1]);
-    render_marketplace_detail(frame, detail_inner, view, panel_title_style);
-
-    let mut footer_text = match (view.focus, view.active_tab) {
-        (MarketplaceFocus::List, _) => {
-            "↑/↓ 选择  Enter 进入详情  直接输入过滤词  Backspace 删除  Ctrl+L 清空  Ctrl+R 刷新  Esc 关闭".to_string()
-        }
-        (MarketplaceFocus::Detail, MarketplaceTab::Versions) => {
-            "Esc 返回列表  ←/→ 切换标签  ↑/↓ 选择版本  Enter 安装  Ctrl+R 刷新".to_string()
-        }
-        (MarketplaceFocus::Detail, _) => {
-            "Esc 返回列表  ←/→ 切换标签  Ctrl+R 刷新".to_string()
-        }
-    };
-    footer_text.push_str(match view.focus {
-        MarketplaceFocus::List => "  │  焦点：列表",
-        MarketplaceFocus::Detail => "  │  焦点：详情",
-    });
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(footer_text, panel_subtle_style))),
-        outer_chunks[2],
-    );
 }
 
-fn build_marketplace_list_lines(view: &MarketplaceViewModel, width: usize) -> Vec<Line<'static>> {
-    if view.items.is_empty() {
-        let message = if view.error.is_some() {
-            "目录加载失败，按 Ctrl+R 重试。"
-        } else if view.query.trim().is_empty() {
-            "目录为空，按 Ctrl+R 刷新。"
-        } else {
-            "没有匹配结果。"
-        };
-        return vec![
-            Line::from(Span::styled(message, subtle_aux_text_style())),
-            Line::from(Span::styled(
-                "以下为线上目录；已安装扩展请在退出后使用 /extensions。",
-                Style::default().fg(Color::Rgb(120, 125, 135)),
-            )),
-        ];
-    }
-
-    view.items
-        .iter()
-        .enumerate()
-        .flat_map(|(index, item)| {
-            let is_selected = index == view.selected_index;
-            let prefix_style = if is_selected {
-                Style::default().fg(Color::Rgb(225, 225, 225))
-            } else {
-                subtle_aux_text_style()
-            };
-            let title_style = if is_selected {
-                Style::default().fg(Color::Rgb(225, 225, 225))
-            } else {
-                Style::default().fg(Color::Rgb(210, 210, 210))
-            };
-            let review_label = marketplace_review_label(&item.default_review_status);
-            let mut spans: Vec<Span<'static>> = vec![
-                Span::styled(if is_selected { "▸ " } else { "  " }, prefix_style),
-                Span::styled(item.display_name.clone(), title_style),
-            ];
-            if item.featured {
-                spans.push(Span::raw(" "));
-                spans.push(Span::styled(
-                    "精选",
-                    Style::default()
-                        .fg(Color::Rgb(210, 210, 210))
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled(
-                review_label.to_string(),
-                review_status_style(&item.default_review_status),
-            ));
-
-            let mut lines = vec![Line::from(spans)];
-
-            if !item.description.trim().is_empty() {
-                lines.push(Line::from(Span::styled(
-                    format!(
-                        "    {}",
-                        truncate_to_width(&item.description, width.saturating_sub(4))
-                    ),
-                    subtle_aux_text_style(),
-                )));
-            }
-
-            if index + 1 < view.items.len() {
-                lines.push(Line::from(""));
-            }
-
-            lines
-        })
-        .collect()
-}
-
-fn render_marketplace_detail(
+fn draw_marketplace_catalog_picker(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
     view: &MarketplaceViewModel,
-    panel_title_style: Style,
 ) {
+    let border_style = input_block_border_style(false, MainInputMode::Agent, false);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Line::from(Span::styled("扩展市场", border_style)));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    draw_slash_flow_panel(frame, inner, &view.slash, view.error.as_deref());
+}
+
+fn draw_marketplace_detail_page(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+) {
+    let border_style = input_block_border_style(false, MainInputMode::Agent, false);
+    let panel_title_style = Style::default().fg(Color::Rgb(225, 225, 225));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Line::from(Span::styled("扩展详情", border_style)));
+    frame.render_widget(block.clone(), area);
+    let inner = block.inner(area);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
-            Constraint::Length(1),
-            Constraint::Min(0),
+            Constraint::Length(if view.error.is_some() { 7 } else { 6 }),
+            Constraint::Min(8),
+            Constraint::Length(10),
         ])
-        .split(area);
+        .split(inner);
 
-    let selected_item = view.items.get(view.selected_index);
-    let selected_detail = view.detail.as_ref();
+    render_marketplace_overview(
+        frame,
+        chunks[0],
+        view,
+        panel_title_style,
+        subtle_aux_text_style(),
+    );
+    render_marketplace_readme(frame, chunks[1], view, panel_title_style);
+    draw_slash_flow_panel(frame, chunks[2], &view.slash, None);
+}
 
-    let mut header_lines = Vec::new();
-    if let Some(item) = selected_item {
-        header_lines.push(Line::from(vec![
-            Span::styled(item.display_name.clone(), panel_title_style),
-            Span::raw("  "),
+fn render_marketplace_overview(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+    title_style: Style,
+    subtle_style: Style,
+) {
+    let Some(item) = view.selected_item.as_ref() else {
+        frame.render_widget(
+            Paragraph::new("找不到该扩展，请按 Esc 返回列表。").wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    };
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled(item.display_name.clone(), title_style),
+        Span::raw("  "),
+        Span::styled(format!("@{}", item.default_version), subtle_style),
+        Span::raw("  "),
+        Span::styled(
+            marketplace_review_label(&item.default_review_status),
+            review_status_style(&item.default_review_status),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            item.installed_version
+                .as_ref()
+                .map(|installed| format!("已安装 {}", installed))
+                .unwrap_or_else(|| "未安装".to_string()),
+            Style::default().fg(Color::Rgb(215, 215, 215)),
+        ),
+    ])];
+
+    if !item.description.trim().is_empty() {
+        let mut description = String::new();
+        if let Some(author) = item.author.as_deref() {
+            description.push_str(author);
+            description.push_str(" · ");
+        }
+        description.push_str(&item.description);
+        lines.push(Line::from(Span::styled(description, subtle_style)));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("id ", subtle_style),
+        Span::styled(
+            item.extension_id.clone(),
+            Style::default().fg(Color::Rgb(205, 205, 205)),
+        ),
+        Span::raw("  "),
+        Span::styled("package ", subtle_style),
+        Span::styled(
+            item.package_name.clone(),
+            Style::default().fg(Color::Rgb(205, 205, 205)),
+        ),
+    ]));
+
+    if let Some(detail) = view.detail.as_ref() {
+        lines.push(Line::from(vec![
+            Span::styled("状态 ", subtle_style),
             Span::styled(
-                format!("@{}", item.default_version),
+                detail.status.clone(),
+                Style::default().fg(Color::Rgb(185, 185, 185)),
+            ),
+            Span::raw("  "),
+            Span::styled("默认通道 ", subtle_style),
+            Span::styled(
+                marketplace_channel_label(&item.default_channel),
+                Style::default().fg(Color::Rgb(185, 185, 185)),
+            ),
+        ]));
+    }
+
+    if let Some(error) = view.error.as_deref() {
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(error, area.width.saturating_sub(1) as usize),
+            Style::default().fg(Color::Rgb(220, 220, 220)),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
+}
+
+fn render_marketplace_readme(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+    title_style: Style,
+) {
+    let block = Block::default()
+        .title(Line::from(Span::styled("README", title_style)))
+        .borders(Borders::TOP);
+    frame.render_widget(block.clone(), area);
+    let inner = block.inner(area);
+
+    let lines = view
+        .detail
+        .as_ref()
+        .and_then(|detail| detail.readme.as_deref())
+        .filter(|readme| !readme.trim().is_empty())
+        .map(marketplace_markdown_lines)
+        .unwrap_or_else(|| {
+            vec![Line::from(Span::styled(
+                "暂无 README 内容。",
                 subtle_aux_text_style(),
-            ),
-        ]));
-        header_lines.push(Line::from(vec![
-            Span::styled("id", subtle_aux_text_style()),
+            ))]
+        });
+
+    let visible_height = inner.height.max(1) as usize;
+    let max_scroll = lines.len().saturating_sub(visible_height);
+    let scroll = view.readme_scroll.min(max_scroll);
+    let visible = lines
+        .into_iter()
+        .skip(scroll)
+        .take(visible_height)
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), inner);
+}
+
+fn draw_slash_flow_panel(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    flow: &crate::view::SlashFlowView,
+    error: Option<&str>,
+) {
+    let border_style = input_block_border_style(false, MainInputMode::Agent, false);
+    let title_style = Style::default().fg(Color::Rgb(225, 225, 225));
+    let subtle_style = subtle_aux_text_style();
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Line::from(vec![
+            Span::styled(flow.title.clone(), title_style),
             Span::raw(" "),
             Span::styled(
-                item.extension_id.clone(),
-                Style::default().fg(Color::Rgb(210, 210, 210)),
-            ),
-            Span::raw("  "),
-            Span::styled("package", subtle_aux_text_style()),
-            Span::raw(" "),
-            Span::styled(
-                item.package_name.clone(),
-                Style::default().fg(Color::Rgb(210, 210, 210)),
+                flow.subtitle.clone().unwrap_or_default(),
+                Style::default().fg(Color::Rgb(145, 145, 145)),
             ),
         ]));
-        header_lines.push(Line::from(vec![
-            Span::styled("review", subtle_aux_text_style()),
-            Span::raw(" "),
+    frame.render_widget(block.clone(), area);
+    let inner = block.inner(area);
+    let header_height = if error.is_some() { 4 } else { 3 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(header_height),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let mut header_lines = vec![
+        Line::from(vec![
+            Span::styled("过滤 ", subtle_style),
             Span::styled(
-                item.default_review_status.clone(),
-                review_status_style(&item.default_review_status),
+                if flow.filter.trim().is_empty() {
+                    "（未输入，直接键入即可）".to_string()
+                } else {
+                    flow.filter.clone()
+                },
+                title_style,
             ),
-            Span::raw("  "),
-            Span::styled(
-                item.installed_version
-                    .as_ref()
-                    .map(|installed| format!("已安装 {}", installed))
-                    .unwrap_or_else(|| "未安装".to_string()),
-                Style::default().fg(Color::Rgb(210, 210, 210)),
-            ),
-        ]));
-    } else {
+        ]),
+        Line::from(vec![
+            Span::styled("共 ", subtle_style),
+            Span::styled(flow.items.len().to_string(), title_style),
+            Span::styled(" 项", subtle_style),
+        ]),
+    ];
+    if let Some(error) = error {
         header_lines.push(Line::from(Span::styled(
-            "目录为空或过滤后无结果。",
-            Style::default().fg(Color::Rgb(210, 210, 210)),
+            truncate_to_width(error, chunks[0].width.saturating_sub(1) as usize),
+            Style::default().fg(Color::Rgb(220, 220, 220)),
         )));
     }
     frame.render_widget(
@@ -2915,294 +2883,79 @@ fn render_marketplace_detail(
         chunks[0],
     );
 
-    let tab_line = Line::from(vec![
-        marketplace_tab_span("内容", MarketplaceTab::Readme, view.active_tab),
-        Span::raw("  "),
-        marketplace_tab_span("更新日志", MarketplaceTab::Changelog, view.active_tab),
-        Span::raw("  "),
-        marketplace_tab_span("版本", MarketplaceTab::Versions, view.active_tab),
-    ]);
-
-    frame.render_widget(Paragraph::new(tab_line), chunks[1]);
-
-    if let Some(detail) = selected_detail {
-        match view.active_tab {
-            MarketplaceTab::Readme => {
-                let readme = detail
-                    .readme
-                    .clone()
-                    .unwrap_or_else(|| "暂无 README。".to_string());
-                let readme_lines = if readme.trim().is_empty() {
-                    vec![Line::from(Span::styled(
-                        "暂无 README。",
-                        subtle_aux_text_style(),
-                    ))]
-                } else {
-                    marketplace_markdown_lines(&readme)
-                };
-                frame.render_widget(
-                    Paragraph::new(readme_lines).wrap(Wrap { trim: false }),
-                    chunks[2],
-                );
-            }
-            MarketplaceTab::Changelog => {
-                let cards = build_marketplace_changelog_cards(detail, chunks[2].width);
-                render_marketplace_card_stack(frame, chunks[2], cards, false);
-            }
-            MarketplaceTab::Versions => {
-                let cards =
-                    build_marketplace_version_cards(view, selected_item, detail, chunks[2].width);
-                render_marketplace_card_stack(frame, chunks[2], cards, true);
-            }
-        }
-    } else {
-        frame.render_widget(
-            Paragraph::new("请选择一项扩展。").wrap(Wrap { trim: true }),
-            chunks[2],
-        );
-    }
+    let body_lines = build_slash_flow_lines(flow, chunks[1].width.saturating_sub(1) as usize);
+    frame.render_widget(
+        Paragraph::new(body_lines).wrap(Wrap { trim: true }),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            flow.footer_hint.clone(),
+            subtle_style,
+        ))),
+        chunks[2],
+    );
 }
 
-fn marketplace_tab_span(label: &str, tab: MarketplaceTab, active: MarketplaceTab) -> Span<'static> {
-    if tab == active {
-        Span::styled(
-            label.to_string(),
-            Style::default()
-                .fg(Color::Rgb(220, 220, 220))
-                .add_modifier(Modifier::UNDERLINED),
-        )
-    } else {
-        Span::styled(label.to_string(), Style::default().fg(Color::DarkGray))
-    }
-}
-
-#[derive(Clone, Debug)]
-struct MarketplaceCard {
-    title: Line<'static>,
-    body: Vec<Line<'static>>,
-    selected: bool,
-}
-
-fn render_marketplace_card_stack(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    cards: Vec<MarketplaceCard>,
-    show_empty_card: bool,
-) {
-    let border_style = Style::default().fg(Color::Rgb(95, 95, 95));
-    let selected_border_style = Style::default().fg(Color::Rgb(205, 205, 205));
-    let empty_title_style = Style::default().fg(Color::Rgb(175, 175, 175));
-
-    if cards.is_empty() {
-        let title = if show_empty_card {
-            "版本"
-        } else {
-            "更新日志"
-        };
-        let message = if show_empty_card {
-            "暂无版本。"
-        } else {
-            "暂无更新日志。"
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(border_style)
-            .title(Line::from(Span::styled(title, empty_title_style)));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        frame.render_widget(Paragraph::new(message).wrap(Wrap { trim: true }), inner);
-        return;
+fn build_slash_flow_lines(flow: &crate::view::SlashFlowView, width: usize) -> Vec<Line<'static>> {
+    if flow.items.is_empty() {
+        return vec![Line::from(Span::styled(
+            flow.empty_text.clone(),
+            subtle_aux_text_style(),
+        ))];
     }
 
-    let mut y = area.y;
-    let bottom = area.y.saturating_add(area.height);
+    flow.items
+        .iter()
+        .enumerate()
+        .flat_map(|(index, item)| {
+            let is_selected = index == flow.selected_index;
+            let marker = if is_selected { "▸ " } else { "  " };
+            let label_style = if item.disabled {
+                Style::default().fg(Color::Rgb(125, 125, 125))
+            } else if is_selected {
+                Style::default().fg(Color::Rgb(235, 235, 235))
+            } else if item.muted {
+                Style::default().fg(Color::Rgb(155, 155, 155))
+            } else {
+                Style::default().fg(Color::Rgb(205, 205, 205))
+            };
+            let mut lines = vec![Line::from(vec![
+                Span::styled(marker, label_style),
+                Span::styled(
+                    truncate_to_width(&item.label, width.saturating_sub(2)),
+                    label_style,
+                ),
+            ])];
 
-    for (index, card) in cards.into_iter().enumerate() {
-        let card_height = card.body.len() as u16 + 2;
-        let gap = if index == 0 { 0 } else { 1 };
-        let needed = card_height.saturating_add(gap);
-        if y.saturating_add(needed) > bottom {
-            break;
-        }
-        y = y.saturating_add(gap);
-
-        let rect = Rect {
-            x: area.x,
-            y,
-            width: area.width,
-            height: card_height,
-        };
-        let border = if card.selected {
-            selected_border_style
-        } else {
-            border_style
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(border)
-            .title(card.title);
-        let inner = block.inner(rect);
-        frame.render_widget(block, rect);
-        frame.render_widget(Paragraph::new(card.body).wrap(Wrap { trim: false }), inner);
-
-        y = y.saturating_add(card_height);
-    }
-}
-
-fn build_marketplace_changelog_cards(
-    detail: &MarketplaceDetailView,
-    width: u16,
-) -> Vec<MarketplaceCard> {
-    let body_width = width.saturating_sub(2).max(1) as usize;
-    let mut cards = Vec::new();
-
-    for version in &detail.versions {
-        let Some(changelog) = &version.changelog else {
-            continue;
-        };
-
-        let mut body = Vec::new();
-        if !changelog.summary.trim().is_empty() {
-            body.push(Line::from(Span::styled(
-                truncate_to_width(&changelog.summary, body_width),
-                Style::default().fg(Color::Rgb(170, 170, 170)),
-            )));
-        }
-        if !changelog.body.trim().is_empty() {
-            for line in changelog.body.lines() {
-                body.push(Line::from(Span::styled(
-                    truncate_to_width(line, body_width),
-                    Style::default().fg(Color::Rgb(150, 150, 150)),
+            if !item.summary.trim().is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "    {}",
+                        truncate_to_width(&item.summary, width.saturating_sub(4))
+                    ),
+                    if item.disabled {
+                        Style::default().fg(Color::Rgb(115, 115, 115))
+                    } else {
+                        subtle_aux_text_style()
+                    },
                 )));
             }
-        }
-        if body.is_empty() {
-            body.push(Line::from(Span::styled(
-                "暂无更新说明。",
-                subtle_aux_text_style(),
-            )));
-        }
 
-        cards.push(MarketplaceCard {
-            title: Line::from(vec![
-                Span::styled(
-                    version.version.clone(),
-                    Style::default().fg(Color::Rgb(225, 225, 225)),
-                ),
-                Span::raw("  "),
-                Span::styled(
-                    marketplace_channel_label(&version.channel),
+            for detail in &item.details {
+                if detail.trim().is_empty() {
+                    continue;
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", truncate_to_width(detail, width.saturating_sub(4))),
                     Style::default().fg(Color::Rgb(145, 145, 145)),
-                ),
-                Span::raw("  "),
-                Span::styled(
-                    marketplace_review_label(&version.review_status).to_string(),
-                    review_status_style(&version.review_status),
-                ),
-            ]),
-            body,
-            selected: false,
-        });
-    }
-
-    cards
-}
-
-fn build_marketplace_version_cards(
-    view: &MarketplaceViewModel,
-    selected_item: Option<&MarketplaceCatalogItemView>,
-    detail: &MarketplaceDetailView,
-    width: u16,
-) -> Vec<MarketplaceCard> {
-    let body_width = width.saturating_sub(2).max(1) as usize;
-    if detail.versions.is_empty() {
-        return Vec::new();
-    }
-
-    let mut cards = Vec::new();
-    for (index, version) in detail.versions.iter().enumerate() {
-        let is_selected = index == view.selected_version_index;
-        let installed = selected_item
-            .and_then(|item| item.installed_version.as_ref())
-            .is_some_and(|installed_version| installed_version.trim() == version.version.trim());
-
-        let mut body = Vec::new();
-        if !version.description.trim().is_empty() {
-            body.push(Line::from(Span::styled(
-                truncate_to_width(&version.description, body_width),
-                Style::default().fg(Color::Rgb(170, 170, 170)),
-            )));
-        }
-        if !version.supported_hosts.is_empty() {
-            body.push(Line::from(vec![
-                Span::styled("主机 ", subtle_aux_text_style()),
-                Span::styled(
-                    truncate_to_width(&version.supported_hosts.join(", "), body_width),
-                    Style::default().fg(Color::Rgb(150, 150, 150)),
-                ),
-            ]));
-        }
-        if !version.requested_capabilities.is_empty() {
-            body.push(Line::from(vec![
-                Span::styled("能力 ", subtle_aux_text_style()),
-                Span::styled(
-                    truncate_to_width(&version.requested_capabilities.join(", "), body_width),
-                    Style::default().fg(Color::Rgb(150, 150, 150)),
-                ),
-            ]));
-        }
-        if let Some(published_at) = version.published_at.as_deref() {
-            let published_at = published_at.trim();
-            if !published_at.is_empty() {
-                body.push(Line::from(vec![Span::styled(
-                    format!("时间 {}", truncate_to_width(published_at, body_width)),
-                    Style::default().fg(Color::Rgb(150, 150, 150)),
-                )]));
+                )));
             }
-        }
-        if body.is_empty() {
-            body.push(Line::from(Span::styled(
-                "暂无版本说明。",
-                subtle_aux_text_style(),
-            )));
-        }
 
-        let mut title_spans = vec![
-            Span::styled(
-                version.version.clone(),
-                if is_selected {
-                    Style::default().fg(Color::Rgb(225, 225, 225))
-                } else {
-                    Style::default().fg(Color::Rgb(210, 210, 210))
-                },
-            ),
-            Span::raw("  "),
-            Span::styled(
-                marketplace_channel_label(&version.channel),
-                Style::default().fg(Color::Rgb(145, 145, 145)),
-            ),
-            Span::raw("  "),
-            Span::styled(
-                marketplace_review_label(&version.review_status).to_string(),
-                review_status_style(&version.review_status),
-            ),
-        ];
-        if installed {
-            title_spans.push(Span::raw("  "));
-            title_spans.push(Span::styled(
-                "已安装",
-                Style::default().fg(Color::Rgb(190, 190, 190)),
-            ));
-        }
-
-        cards.push(MarketplaceCard {
-            title: Line::from(title_spans),
-            body,
-            selected: is_selected,
-        });
-    }
-
-    cards
+            lines.push(Line::from(""));
+            lines
+        })
+        .collect()
 }
 
 fn review_status_style(status: &str) -> Style {
