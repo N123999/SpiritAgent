@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { LoaderCircle, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -81,8 +81,6 @@ type SettingsViewProps = {
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
   onResetWebHostPairing?: () => Promise<void>;
-  onBootstrap: () => Promise<void>;
-  onResetSession: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
   onAddProviderModels: (request: AddProviderModelsRequest) => Promise<void>;
   onPreviewModels: (request: PreviewModelsRequest) => Promise<PreviewModelsResponse>;
@@ -323,21 +321,6 @@ function BasicSettingsPanel({
 
   return (
     <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
-      <SettingsRow label="Workspace" description="当前工作区根目录（只读）。">
-        <p className="w-full truncate rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-sm text-muted-foreground sm:text-right">
-          {snapshot?.workspaceRoot ?? "Bootstrapping…"}
-        </p>
-      </SettingsRow>
-
-      <SettingsRow label="API Base" description="OpenAI 兼容接口根 URL。" htmlFor="settings-api-base">
-        <Input
-          id="settings-api-base"
-          className="sm:text-right"
-          value={settings.apiBase}
-          onChange={(event) => void onSavePatch({ apiBase: event.target.value })}
-        />
-      </SettingsRow>
-
       <SettingsRow label="UI locale" description="界面语言区域，如 zh-CN。" htmlFor="settings-locale">
         <Input
           id="settings-locale"
@@ -345,25 +328,6 @@ function BasicSettingsPanel({
           value={settings.uiLocale}
           onChange={(event) => void onSavePatch({ uiLocale: event.target.value })}
           placeholder="zh-CN / en"
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        label="API Key"
-        description="保存后写入本地；已配置时可留空保持不变。"
-        htmlFor="settings-key"
-      >
-        <Input
-          id="settings-key"
-          className="sm:text-right"
-          type="password"
-          value={settings.apiKey}
-          onChange={(event) => void onSavePatch({ apiKey: event.target.value })}
-          placeholder={
-            snapshot?.config.activeApiKeyConfigured
-              ? "已配置，可留空保持不变"
-              : "输入 API Key"
-          }
         />
       </SettingsRow>
 
@@ -2115,7 +2079,6 @@ export function SettingsView({
   snapshot,
   runtimeError,
   apiReady,
-  busyAction,
   modelsBusy,
   modelsPreviewBusy,
   mcpsBusy,
@@ -2124,8 +2087,6 @@ export function SettingsView({
   isElectronShell,
   onSavePatch,
   onResetWebHostPairing,
-  onBootstrap,
-  onResetSession,
   onAddModel,
   onAddProviderModels,
   onPreviewModels,
@@ -2144,7 +2105,7 @@ export function SettingsView({
 }: SettingsViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
             {tab !== "models" && tab !== "skills" && tab !== "mcps" && tab !== "extensions" ? (
@@ -2214,45 +2175,7 @@ export function SettingsView({
             )}
           </div>
         </div>
-      </div>
-
-      {tab === "basic" ? (
-        <div className="shrink-0 border-t border-border/30 px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">修改会自动保存；以下为一次性操作。</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void onBootstrap()}
-                disabled={!apiReady || busyAction === "bootstrap"}
-              >
-                {busyAction === "bootstrap" ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                重新装配
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void onResetSession()}
-                disabled={!apiReady || busyAction === "reset"}
-              >
-                {busyAction === "reset" ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <RotateCcw className="size-4" />
-                )}
-                重置会话
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      </ScrollArea>
     </div>
   );
 }
