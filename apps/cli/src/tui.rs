@@ -348,7 +348,10 @@ impl TuiShell {
     }
 
     pub fn marketplace_filter_accepts_input(&self) -> bool {
-        self.marketplace_current_step().is_some()
+        matches!(
+            self.marketplace_current_step(),
+            Some(MarketplaceFlowStep::CatalogPicker | MarketplaceFlowStep::VersionPicker)
+        )
     }
 
     pub fn marketplace_move_selection_next(&mut self) {
@@ -1149,8 +1152,9 @@ impl TuiShell {
         {
             MarketplaceFlowStep::CatalogPicker => SlashFlowView {
                 title: "扩展".to_string(),
-                subtitle: Some("选择扩展".to_string()),
+                subtitle: None,
                 filter: self.marketplace_catalog_filter.clone(),
+                show_filter: true,
                 empty_text: "没有匹配的扩展。".to_string(),
                 selected_index: self
                     .marketplace_catalog_selected_index
@@ -1160,24 +1164,21 @@ impl TuiShell {
                     .map(|item| SlashFlowItemView {
                         label: item.display_name.clone(),
                         summary: item.description.clone(),
-                        details: vec![format!(
-                            "{}  ·  {}  ·  {}",
-                            item.default_version,
-                            item.default_channel,
-                            Self::marketplace_review_text(&item.default_review_status)
-                        )],
+                        details: Vec::new(),
                         disabled: false,
                         muted: false,
                     })
                     .collect(),
+                compact_items: true,
                 footer_hint:
                     "↑/↓ 选择  Enter 打开  直接输入过滤  Backspace 删除  Ctrl+L 清空  Ctrl+R 刷新  Esc 关闭"
                         .to_string(),
             },
             MarketplaceFlowStep::DetailActions => SlashFlowView {
                 title: "操作".to_string(),
-                subtitle: selected_item.map(|item| item.display_name.clone()),
+                subtitle: None,
                 filter: self.marketplace_detail_action_filter.clone(),
+                show_filter: false,
                 empty_text: "没有匹配的操作。".to_string(),
                 selected_index: self.marketplace_detail_action_selected_index,
                 items: self
@@ -1185,14 +1186,15 @@ impl TuiShell {
                     .into_iter()
                     .map(|item| SlashFlowItemView {
                         label: item.to_string(),
-                        summary: "选择版本后安装到当前宿主".to_string(),
+                        summary: String::new(),
                         details: Vec::new(),
                         disabled: detail.is_none(),
                         muted: false,
                     })
                     .collect(),
+                compact_items: false,
                 footer_hint:
-                    "↑/↓ 选择  Enter 继续  PageUp/Down 滚动 README  直接输入过滤  Backspace 删除  Ctrl+L 清空  Esc 返回"
+                    "↑/↓ 选择  Enter 继续  PageUp/Down 滚动 README  Esc 返回"
                         .to_string(),
             },
             MarketplaceFlowStep::VersionPicker => {
@@ -1236,13 +1238,15 @@ impl TuiShell {
                     .unwrap_or_default();
                 SlashFlowView {
                     title: "版本".to_string(),
-                    subtitle: selected_item.map(|item| item.display_name.clone()),
+                    subtitle: None,
                     filter: self.marketplace_version_filter.clone(),
+                    show_filter: true,
                     empty_text: "没有匹配的版本。".to_string(),
                     selected_index: self
                         .marketplace_version_selected_index
                         .min(items.len().saturating_sub(1)),
                     items,
+                    compact_items: false,
                     footer_hint:
                         "↑/↓ 选择  Enter 安装  PageUp/Down 滚动 README  直接输入过滤  Backspace 删除  Ctrl+L 清空  Esc 返回"
                             .to_string(),
@@ -1250,8 +1254,9 @@ impl TuiShell {
             }
             MarketplaceFlowStep::UnverifiedConfirm => SlashFlowView {
                 title: "确认".to_string(),
-                subtitle: selected_item.map(|item| item.display_name.clone()),
+                subtitle: None,
                 filter: self.marketplace_confirm_filter.clone(),
+                show_filter: false,
                 empty_text: "没有匹配的选项。".to_string(),
                 selected_index: self
                     .marketplace_confirm_selected_index
@@ -1271,8 +1276,9 @@ impl TuiShell {
                         muted: item == "取消",
                     })
                     .collect(),
+                compact_items: false,
                 footer_hint:
-                    "↑/↓ 选择  Enter 确认  PageUp/Down 滚动 README  直接输入过滤  Backspace 删除  Ctrl+L 清空  Esc 返回"
+                    "↑/↓ 选择  Enter 确认  PageUp/Down 滚动 README  Esc 返回"
                         .to_string(),
             },
         }

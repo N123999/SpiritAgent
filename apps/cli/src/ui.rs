@@ -87,15 +87,10 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         || show_chat_picker
         || show_subagent_picker
         || show_image_picker;
-    let show_suggestions = app.input_suggestion_kind.is_some() && !show_picker && !show_bottom_form;
-
-    if show_marketplace {
-        if let Some(view) = &app.marketplace_view {
-            draw_marketplace_view(frame, shell, frame.area(), view);
-        }
-        ACTIVE_CLI_UI_HOOKS.with(|hooks| hooks.borrow_mut().clear());
-        return;
-    }
+    let show_suggestions = app.input_suggestion_kind.is_some()
+        && !show_picker
+        && !show_bottom_form
+        && !show_marketplace;
 
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -114,6 +109,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .map(|f| {
             bottom_form_display_height(f, content_area.width, content_area.height, input_height)
         })
+        .unwrap_or(0);
+    let marketplace_height = app
+        .marketplace_view
+        .as_ref()
+        .map(|view| marketplace_panel_height(view, content_area.height, input_height))
         .unwrap_or(0);
 
     let chunks = Layout::default()
@@ -135,7 +135,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             vec![
                 Constraint::Min(0),
                 Constraint::Length(input_height),
-                Constraint::Length(1),
+                Constraint::Length(marketplace_height),
             ]
         } else if show_suggestions {
             vec![
@@ -226,7 +226,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 frame.set_cursor_position((cursor_x, cursor_y));
             }
         }
-    } else if !show_picker {
+    } else if show_marketplace {
+        if let Some(view) = &app.marketplace_view {
+            draw_marketplace_view(frame, shell, chunks[2], view);
+        }
+    } else if !show_picker && !show_marketplace {
         // Use terminal display width so CJK/full-width characters keep cursor aligned.
         let max_cursor_offset = chunks[1].width.saturating_sub(3) as usize;
         let cursor_offset = input_cursor_col.min(max_cursor_offset as u16) as usize;
@@ -2654,6 +2658,24 @@ fn draw_marketplace_view(
     }
 }
 
+fn marketplace_panel_height(
+    view: &MarketplaceViewModel,
+    panel_height: u16,
+    input_height: u16,
+) -> u16 {
+    let available = panel_height.saturating_sub(input_height).max(8);
+    match view.step {
+        crate::view::MarketplaceFlowStep::CatalogPicker => {
+            let half = available.saturating_add(1) / 2;
+            available.min(half.max(10))
+        }
+        _ => {
+            let expanded = available.saturating_mul(4) / 5;
+            available.min(expanded.max(22))
+        }
+    }
+}
+
 fn draw_marketplace_catalog_picker(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
@@ -2666,7 +2688,7 @@ fn draw_marketplace_catalog_picker(
         .title(Line::from(Span::styled("扩展市场", border_style)));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    draw_slash_flow_panel(frame, inner, &view.slash, view.error.as_deref());
+    draw_slash_flow_body(frame, inner, &view.slash, view.error.as_deref());
 }
 
 fn draw_marketplace_detail_page(
@@ -2830,21 +2852,30 @@ fn draw_slash_flow_panel(
 ) {
     let border_style = input_block_border_style(false, MainInputMode::Agent, false);
     let title_style = Style::default().fg(Color::Rgb(225, 225, 225));
-    let subtle_style = subtle_aux_text_style();
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
-        .title(Line::from(vec![
-            Span::styled(flow.title.clone(), title_style),
-            Span::raw(" "),
-            Span::styled(
-                flow.subtitle.clone().unwrap_or_default(),
-                Style::default().fg(Color::Rgb(145, 145, 145)),
-            ),
-        ]));
+        .title(Line::from(Span::styled(flow.title.clone(), title_style)));
     frame.render_widget(block.clone(), area);
     let inner = block.inner(area);
-    let header_height = if error.is_some() { 4 } else { 3 };
+    draw_slash_flow_body(frame, inner, flow, error);
+}
+
+fn draw_slash_flow_body(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    flow: &crate::view::SlashFlowView,
+    error: Option<&str>,
+) {
+    let subtle_style = subtle_aux_text_style();
+    let title_style = Style::default().fg(Color::Rgb(225, 225, 225));
+    let header_height = if flow.show_filter {
+        if error.is_some() { 4 } else { 3 }
+    } else if error.is_some() {
+        1
+    } else {
+        0
+    };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -2852,40 +2883,47 @@ fn draw_slash_flow_panel(
             Constraint::Min(1),
             Constraint::Length(1),
         ])
-        .split(inner);
+        .split(area);
 
-    let mut header_lines = vec![
-        Line::from(vec![
-            Span::styled("过滤 ", subtle_style),
-            Span::styled(
-                if flow.filter.trim().is_empty() {
-                    "（未输入，直接键入即可）".to_string()
-                } else {
-                    flow.filter.clone()
-                },
-                title_style,
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("共 ", subtle_style),
-            Span::styled(flow.items.len().to_string(), title_style),
-            Span::styled(" 项", subtle_style),
-        ]),
-    ];
-    if let Some(error) = error {
-        header_lines.push(Line::from(Span::styled(
-            truncate_to_width(error, chunks[0].width.saturating_sub(1) as usize),
-            Style::default().fg(Color::Rgb(220, 220, 220)),
-        )));
+    if header_height > 0 {
+        let mut header_lines = Vec::new();
+        if flow.show_filter {
+            header_lines.push(Line::from(vec![
+                Span::styled("过滤 ", subtle_style),
+                Span::styled(
+                    if flow.filter.trim().is_empty() {
+                        "（未输入，直接键入即可）".to_string()
+                    } else {
+                        flow.filter.clone()
+                    },
+                    title_style,
+                ),
+            ]));
+            header_lines.push(Line::from(vec![
+                Span::styled("共 ", subtle_style),
+                Span::styled(flow.items.len().to_string(), title_style),
+                Span::styled(" 项", subtle_style),
+            ]));
+        }
+        if let Some(error) = error {
+            header_lines.push(Line::from(Span::styled(
+                truncate_to_width(error, chunks[0].width.saturating_sub(1) as usize),
+                Style::default().fg(Color::Rgb(220, 220, 220)),
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(header_lines).wrap(Wrap { trim: true }),
+            chunks[0],
+        );
     }
-    frame.render_widget(
-        Paragraph::new(header_lines).wrap(Wrap { trim: true }),
-        chunks[0],
-    );
 
-    let body_lines = build_slash_flow_lines(flow, chunks[1].width.saturating_sub(1) as usize);
+    let body_lines = build_slash_flow_lines(
+        flow,
+        chunks[1].width.saturating_sub(1) as usize,
+        flow.compact_items,
+    );
     frame.render_widget(
-        Paragraph::new(body_lines).wrap(Wrap { trim: true }),
+        Paragraph::new(body_lines).wrap(Wrap { trim: false }),
         chunks[1],
     );
     frame.render_widget(
@@ -2897,7 +2935,11 @@ fn draw_slash_flow_panel(
     );
 }
 
-fn build_slash_flow_lines(flow: &crate::view::SlashFlowView, width: usize) -> Vec<Line<'static>> {
+fn build_slash_flow_lines(
+    flow: &crate::view::SlashFlowView,
+    width: usize,
+    compact_items: bool,
+) -> Vec<Line<'static>> {
     if flow.items.is_empty() {
         return vec![Line::from(Span::styled(
             flow.empty_text.clone(),
@@ -2929,10 +2971,13 @@ fn build_slash_flow_lines(flow: &crate::view::SlashFlowView, width: usize) -> Ve
             ])];
 
             if !item.summary.trim().is_empty() {
+                let summary_indent = "  ";
+                let summary_width = width.saturating_sub(summary_indent.len());
                 lines.push(Line::from(Span::styled(
                     format!(
-                        "    {}",
-                        truncate_to_width(&item.summary, width.saturating_sub(4))
+                        "{}{}",
+                        summary_indent,
+                        truncate_to_width(&item.summary, summary_width)
                     ),
                     if item.disabled {
                         Style::default().fg(Color::Rgb(115, 115, 115))
@@ -2942,14 +2987,16 @@ fn build_slash_flow_lines(flow: &crate::view::SlashFlowView, width: usize) -> Ve
                 )));
             }
 
-            for detail in &item.details {
-                if detail.trim().is_empty() {
-                    continue;
+            if !compact_items {
+                for detail in &item.details {
+                    if detail.trim().is_empty() {
+                        continue;
+                    }
+                    lines.push(Line::from(Span::styled(
+                        format!("  {}", truncate_to_width(detail, width.saturating_sub(2))),
+                        Style::default().fg(Color::Rgb(145, 145, 145)),
+                    )));
                 }
-                lines.push(Line::from(Span::styled(
-                    format!("    {}", truncate_to_width(detail, width.saturating_sub(4))),
-                    Style::default().fg(Color::Rgb(145, 145, 145)),
-                )));
             }
 
             lines.push(Line::from(""));

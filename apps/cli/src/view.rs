@@ -441,9 +441,11 @@ pub struct SlashFlowView {
     pub title: String,
     pub subtitle: Option<String>,
     pub filter: String,
+    pub show_filter: bool,
     pub empty_text: String,
     pub selected_index: usize,
     pub items: Vec<SlashFlowItemView>,
+    pub compact_items: bool,
     pub footer_hint: String,
 }
 

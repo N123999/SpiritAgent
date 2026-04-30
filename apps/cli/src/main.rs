@@ -826,12 +826,22 @@ fn process_key_event(
                     shell.push_agent_message(format!("刷新 marketplace 目录失败: {}", err));
                 }
             }
-            KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('l')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.marketplace_filter_accepts_input() =>
+            {
                 shell.marketplace_clear_filter();
             }
-            KeyCode::Backspace => shell.marketplace_backspace_filter(),
-            KeyCode::Delete => shell.marketplace_backspace_filter(),
-            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Backspace if shell.marketplace_filter_accepts_input() => {
+                shell.marketplace_backspace_filter()
+            }
+            KeyCode::Delete if shell.marketplace_filter_accepts_input() => {
+                shell.marketplace_backspace_filter()
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.marketplace_filter_accepts_input() =>
+            {
                 shell.marketplace_insert_filter_char(ch);
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
