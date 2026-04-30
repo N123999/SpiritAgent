@@ -3,6 +3,7 @@ import type { HostToolRequest } from '@spirit-agent/host-internal';
 import type { StoredDesktopRewindMetadata } from './rewind.js';
 
 import type {
+  CommitChangesRequest,
   AskQuestionsQuestionSpec,
   ConversationMessageSnapshot,
 } from '../types.js';
@@ -10,6 +11,7 @@ import type {
 export type HostCommandName =
   | 'bootstrap'
   | 'rememberWorkspaceRoot'
+  | 'commitChanges'
   | 'updateConfig'
   | 'setWebHostAuthTokenHash'
   | 'addModel'
@@ -55,3 +57,5 @@ export interface StoredDesktopSession extends ChatArchive {
   desktopMessages?: ConversationMessageSnapshot[];
   rewind?: StoredDesktopRewindMetadata;
 }
+
+export type DesktopHostCommitRequest = CommitChangesRequest;

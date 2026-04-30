@@ -8,6 +8,13 @@ export interface RememberWorkspaceRequest {
   workspaceRoot: string;
 }
 
+export type DesktopCommitMode = 'commit' | 'commit-and-push';
+
+export interface CommitChangesRequest {
+  message?: string;
+  mode: DesktopCommitMode;
+}
+
 export interface UpdateConfigRequest {
   activeModel: string;
   apiBase: string;
@@ -379,6 +386,8 @@ export interface DesktopSkillListItem {
 export interface ActiveSessionSnapshot {
   filePath: string;
   displayName: string;
+  kind?: 'stored' | 'ephemeral';
+  readOnly?: boolean;
 }
 
 export interface SessionListItem {
@@ -386,6 +395,8 @@ export interface SessionListItem {
   displayName: string;
   modifiedAtUnixMs: number;
   workspaceRoot: string;
+  kind?: 'stored' | 'ephemeral';
+  readOnly?: boolean;
 }
 
 export interface DesktopWorkspaceListItem {
@@ -419,6 +430,7 @@ export interface WriteWorkspaceTextFileRequest {
 export interface DesktopSnapshot {
   workspaceRoot: string;
   availableWorkspaces: DesktopWorkspaceListItem[];
+  git: DesktopGitSnapshot;
   runtimeReady: boolean;
   runtimeError?: string;
   config: DesktopConfigSnapshot;
@@ -456,6 +468,12 @@ export interface DesktopConfigSnapshot {
   planMode: boolean;
   /** 与 `spiritAgentDataDir()/model-catalog-cache` 对齐；无缓存时为空数组。 */
   modelCatalogHints?: DesktopModelCatalogHint[];
+}
+
+export interface DesktopGitSnapshot {
+  isRepository: boolean;
+  hasChanges: boolean;
+  branch?: string;
 }
 
 export interface ModelProfileSnapshot {

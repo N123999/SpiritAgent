@@ -5,6 +5,7 @@ import type {
   AddProviderModelsRequest,
   AskQuestionsResult,
   BootstrapRequest,
+  CommitChangesRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
@@ -47,6 +48,9 @@ export function createWebHostApi(): HostApi {
     kind: 'web',
     bootstrap(request?: BootstrapRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/bootstrap', request ?? {});
+    },
+    commitChanges(request: CommitChangesRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/git/commit', request);
     },
     updateConfig(request: UpdateConfigRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/config', request);

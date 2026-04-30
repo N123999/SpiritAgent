@@ -156,6 +156,19 @@ export interface OpenAiToolResult {
   content: string;
 }
 
+export interface OpenAiJsonSchemaCompletionRequest {
+  userPrompt: string;
+  schemaName: string;
+  schema: JsonObject;
+  systemSections?: Array<string | undefined>;
+}
+
+export interface OpenAiJsonSchemaCompletionResult<T extends JsonValue = JsonValue> {
+  output: T;
+  rawText: string;
+  requestTrace: JsonValue[];
+}
+
 export interface OpenAiRequestTrace extends JsonObject {
   kind: 'openai_sdk_chat_completions';
   stepIndex: number;
@@ -421,6 +434,43 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
 export class OpenAiTransport
   implements LlmTransport<OpenAiTransportConfig, OpenAiToolAgentState>
 {
+  async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(
+    config: OpenAiTransportConfig,
+    request: OpenAiJsonSchemaCompletionRequest,
+  ): Promise<OpenAiJsonSchemaCompletionResult<T>> {
+    const client = createOpenAiClient(config);
+    const structuredOutputSystemSection = buildStructuredOutputSystemSection(config, request);
+    const messages = normalizeMessagesForRequest([
+      {
+        role: 'system',
+        content: buildPrimarySystemMessage(
+          config.model,
+          ...(request.systemSections ?? []),
+          structuredOutputSystemSection,
+        ),
+      },
+      {
+        role: 'user',
+        content: request.userPrompt,
+      },
+    ]);
+    const requestTrace = buildRequestTrace(config, 1, messages, []);
+    const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
+    const response = await client.chat.completions.create({
+      model: config.model,
+      messages: messages as unknown as ChatCompletionMessageParam[],
+      response_format: buildStructuredOutputResponseFormat(config, request),
+      ...vendorExtras,
+    } as ChatCompletionCreateParamsNonStreaming);
+    const content = extractJsonSchemaCompletionContent(response);
+
+    return {
+      output: parseJsonSchemaCompletionOutput<T>(content),
+      rawText: content,
+      requestTrace,
+    };
+  }
+
   async startToolAgentRound(
     config: OpenAiTransportConfig,
     state: OpenAiToolAgentState,
@@ -1325,6 +1375,142 @@ function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): 
       return Object.values(parsed).some(
         (v) => typeof v === 'string' && (v as string).trim().length > 0,
       );
+  }
+}
+
+function extractJsonSchemaCompletionContent(response: {
+  choices?: Array<{ message?: { content?: string | null } }>;
+}): string {
+  const content = response.choices?.at(0)?.message?.content?.trim() ?? '';
+  if (!content) {
+    throw new Error('OpenAI SDK 结构化输出返回为空。');
+  }
+
+  return content;
+}
+
+function parseJsonSchemaCompletionOutput<T extends JsonValue = JsonValue>(content: string): T {
+  const candidates = collectJsonParseCandidates(content);
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // Continue trying progressively looser candidates.
+    }
+  }
+
+  throw new Error('OpenAI SDK 结构化输出不是合法 JSON。');
+}
+
+function collectJsonParseCandidates(content: string): string[] {
+  const trimmed = content.trim();
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string | undefined) => {
+    const next = value?.trim();
+    if (!next || seen.has(next)) {
+      return;
+    }
+    seen.add(next);
+    candidates.push(next);
+  };
+
+  push(trimmed);
+
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  push(fenceMatch?.[1]);
+
+  const firstObjectStart = trimmed.indexOf('{');
+  const lastObjectEnd = trimmed.lastIndexOf('}');
+  if (firstObjectStart >= 0 && lastObjectEnd > firstObjectStart) {
+    push(trimmed.slice(firstObjectStart, lastObjectEnd + 1));
+  }
+
+  const firstArrayStart = trimmed.indexOf('[');
+  const lastArrayEnd = trimmed.lastIndexOf(']');
+  if (firstArrayStart >= 0 && lastArrayEnd > firstArrayStart) {
+    push(trimmed.slice(firstArrayStart, lastArrayEnd + 1));
+  }
+
+  return candidates;
+}
+
+function buildStructuredOutputSystemSection(
+  config: Pick<OpenAiTransportConfig, 'llmVendor'>,
+  request: OpenAiJsonSchemaCompletionRequest,
+): string | undefined {
+  if (config.llmVendor !== 'deepseek') {
+    return undefined;
+  }
+
+  const example = buildJsonSchemaExample(request.schema);
+  return [
+    'Return only raw json that matches the requested schema.',
+    'Do not add Markdown code fences, explanations, or any extra text.',
+    `Schema name: ${request.schemaName}`,
+    '[JSON_SCHEMA]',
+    JSON.stringify(request.schema),
+    ...(example === undefined
+      ? []
+      : ['[JSON_EXAMPLE]', JSON.stringify(example, null, 2)]),
+  ].join('\n');
+}
+
+function buildStructuredOutputResponseFormat(
+  config: Pick<OpenAiTransportConfig, 'llmVendor'>,
+  request: OpenAiJsonSchemaCompletionRequest,
+): ChatCompletionCreateParamsNonStreaming['response_format'] {
+  if (config.llmVendor === 'deepseek') {
+    return { type: 'json_object' };
+  }
+
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: request.schemaName,
+      strict: true,
+      schema: request.schema,
+    },
+  };
+}
+
+function buildJsonSchemaExample(schema: JsonValue | undefined): JsonValue | undefined {
+  if (!isJsonObject(schema)) {
+    return undefined;
+  }
+
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    return cloneJsonValue(schema.enum[0] as JsonValue);
+  }
+
+  const type = typeof schema.type === 'string' ? schema.type : undefined;
+  switch (type) {
+    case 'object': {
+      const properties = isJsonObject(schema.properties) ? schema.properties : undefined;
+      if (!properties) {
+        return {};
+      }
+      const example: JsonObject = {};
+      for (const [key, value] of Object.entries(properties)) {
+        example[key] = buildJsonSchemaExample(value as JsonValue) ?? '<value>';
+      }
+      return example;
+    }
+    case 'array': {
+      const itemExample = buildJsonSchemaExample(schema.items as JsonValue | undefined);
+      return itemExample === undefined ? [] : [itemExample];
+    }
+    case 'string':
+      return '<string>';
+    case 'integer':
+    case 'number':
+      return 0;
+    case 'boolean':
+      return true;
+    case 'null':
+      return null;
+    default:
+      return undefined;
   }
 }
 

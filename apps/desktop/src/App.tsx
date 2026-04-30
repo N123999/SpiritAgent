@@ -71,6 +71,7 @@ import {
 import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import type {
   AskQuestionsQuestionSpec,
+  DesktopCommitMode,
   ConversationMessageSnapshot,
   DesktopSnapshot,
   MessageRewindDraftState,
@@ -100,6 +101,23 @@ function conversationMessageDomId(message: ConversationMessageSnapshot, index: n
 
 /** 主会话列最大宽度（居中） */
 const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
+
+const commitModeOptions: Array<{
+  value: DesktopCommitMode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "commit",
+    label: "提交",
+    hint: "仅在本地创建一次提交。",
+  },
+  {
+    value: "commit-and-push",
+    label: "提交并推送",
+    hint: "提交后立即推送到当前分支远端。",
+  },
+];
 
 function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
@@ -279,6 +297,7 @@ type ComposerSurfaceProps = {
   planMode: boolean;
   canSend: boolean;
   busy: boolean;
+  readOnly?: boolean;
   onChange(value: string): void;
   onSubmit(): void;
   onModelSelect(name: string): void;
@@ -296,6 +315,7 @@ function ComposerSurface({
   planMode,
   canSend,
   busy,
+  readOnly = false,
   onChange,
   onSubmit,
   onModelSelect,
@@ -332,6 +352,7 @@ function ComposerSurface({
         ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        disabled={readOnly}
         placeholder={placeholder}
         className="spirit-scroll block max-h-[12rem] min-h-[3rem] w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-3 pb-1.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none dark:bg-transparent dark:disabled:bg-transparent md:min-h-[3.5rem]"
         onKeyDown={(event) => {
@@ -355,6 +376,7 @@ function ComposerSurface({
                 <button
                   type="button"
                   aria-label="运行方式"
+                  disabled={readOnly}
                   className="inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <span className="min-w-0 flex-1 truncate" title={planMode ? "Plan" : "Agent"}>
@@ -384,6 +406,7 @@ function ComposerSurface({
                   <button
                     type="button"
                     aria-label="选择模型"
+                    disabled={readOnly}
                     className="inline-flex h-7 max-w-[10rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     <span className="min-w-0 flex-1 truncate" title={activeModel}>
@@ -902,6 +925,10 @@ function DesktopLayoutChromeBar({
   sessionSidebarOpen,
   onToggleSessionSidebar,
   showWorkspaceToggle,
+  showCommitButton = false,
+  commitDisabled = false,
+  commitBusy = false,
+  onOpenCommitDialog,
   workspaceToolsOpen = false,
   onToggleWorkspaceTools,
 }: {
@@ -909,6 +936,10 @@ function DesktopLayoutChromeBar({
   sessionSidebarOpen: boolean;
   onToggleSessionSidebar(): void;
   showWorkspaceToggle: boolean;
+  showCommitButton?: boolean;
+  commitDisabled?: boolean;
+  commitBusy?: boolean;
+  onOpenCommitDialog?: () => void;
   workspaceToolsOpen?: boolean;
   onToggleWorkspaceTools?: () => void;
 }) {
@@ -918,7 +949,7 @@ function DesktopLayoutChromeBar({
       aria-label="侧栏与工具区"
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 px-1.5",
-        showWorkspaceToggle ? "justify-between" : "justify-start",
+        showWorkspaceToggle || showCommitButton ? "justify-between" : "justify-start",
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
@@ -934,23 +965,40 @@ function DesktopLayoutChromeBar({
       >
         {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
       </Button>
-      {showWorkspaceToggle ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
-          onClick={() => onToggleWorkspaceTools?.()}
-          aria-label={workspaceToolsOpen ? "收拢工具区" : "展开工具区"}
-          aria-expanded={workspaceToolsOpen}
-          {...(workspaceToolsOpen ? { "aria-controls": "workspace-tools-panel" } : {})}
-        >
-          {workspaceToolsOpen ? (
-            <PanelRightClose className="size-3.5" aria-hidden />
-          ) : (
-            <PanelRightOpen className="size-3.5" aria-hidden />
-          )}
-        </Button>
+      {showWorkspaceToggle || showCommitButton ? (
+        <div className="flex items-center gap-1">
+          {showCommitButton ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-md px-2 text-xs font-medium text-foreground/90 hover:bg-foreground/[0.06] hover:text-foreground dark:hover:bg-foreground/10"
+              disabled={commitDisabled}
+              onClick={onOpenCommitDialog}
+            >
+              {commitBusy ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}
+              <span>Commit</span>
+            </Button>
+          ) : null}
+          {showWorkspaceToggle ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
+              onClick={() => onToggleWorkspaceTools?.()}
+              aria-label={workspaceToolsOpen ? "收拢工具区" : "展开工具区"}
+              aria-expanded={workspaceToolsOpen}
+              {...(workspaceToolsOpen ? { "aria-controls": "workspace-tools-panel" } : {})}
+            >
+              {workspaceToolsOpen ? (
+                <PanelRightClose className="size-3.5" aria-hidden />
+              ) : (
+                <PanelRightOpen className="size-3.5" aria-hidden />
+              )}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -1047,7 +1095,17 @@ export default function App() {
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
+  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [commitMessageDraft, setCommitMessageDraft] = useState("");
+  const [commitMode, setCommitMode] = useState<DesktopCommitMode>("commit");
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
+  const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
+  const canOpenCommitDialog = snapshot?.git.isRepository === true;
+  const commitBusy = runtime.busyAction === "git";
+  const commitActionDisabled =
+    !canOpenCommitDialog ||
+    snapshot?.git.hasChanges !== true ||
+    Boolean(runtime.busyAction);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
@@ -1157,6 +1215,20 @@ export default function App() {
         applySlashSuggestion(`${selected.alias} `);
       }
     }
+  };
+
+  const submitCommitDialog = () => {
+    void runtime.commitChanges({
+      mode: commitMode,
+      ...(commitMessageDraft.trim() ? { message: commitMessageDraft.trim() } : {}),
+    }).then((ok) => {
+      if (!ok) {
+        return;
+      }
+      setCommitDialogOpen(false);
+      setCommitMode("commit");
+      setCommitMessageDraft("");
+    });
   };
 
   const launchSplashActive =
@@ -1269,6 +1341,10 @@ export default function App() {
               sessionSidebarOpen={sessionSidebarOpen}
               onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
               showWorkspaceToggle={false}
+              showCommitButton={canOpenCommitDialog}
+              commitDisabled={commitActionDisabled}
+              commitBusy={commitBusy}
+              onOpenCommitDialog={() => setCommitDialogOpen(true)}
             />
             <SettingsView
               tab={settingsTab}
@@ -1315,6 +1391,10 @@ export default function App() {
               sessionSidebarOpen={sessionSidebarOpen}
               onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
               showWorkspaceToggle={false}
+              showCommitButton={canOpenCommitDialog}
+              commitDisabled={commitActionDisabled}
+              commitBusy={commitBusy}
+              onOpenCommitDialog={() => setCommitDialogOpen(true)}
             />
             <MarketplaceView
               snapshot={snapshot}
@@ -1336,6 +1416,10 @@ export default function App() {
                 sessionSidebarOpen={sessionSidebarOpen}
                 onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
                 showWorkspaceToggle
+                showCommitButton={canOpenCommitDialog}
+                commitDisabled={commitActionDisabled}
+                commitBusy={commitBusy}
+                onOpenCommitDialog={() => setCommitDialogOpen(true)}
                 workspaceToolsOpen={workspaceToolsOpen}
                 onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
               />
@@ -1507,7 +1591,7 @@ export default function App() {
                     value={runtime.composer}
                     onChange={runtime.setComposer}
                     onSubmit={() => void runtime.sendMessage()}
-                    placeholder="输入消息…"
+                    placeholder={activeSessionReadOnly ? "调试会话只读，无法发送消息…" : "输入消息…"}
                     models={models}
                     catalogHints={snapshot?.config.modelCatalogHints}
                     activeModel={runtime.settings.activeModel}
@@ -1520,10 +1604,12 @@ export default function App() {
                     onKeyDown={handleComposerSlashKeyDown}
                     canSend={
                       runtime.summary.canSend &&
+                      !activeSessionReadOnly &&
                       runtime.busyAction !== "send" &&
                       runtime.busyAction !== "session"
                     }
                     busy={runtime.busyAction === "send"}
+                    readOnly={activeSessionReadOnly}
                   />
                   {snapshot?.conversation.pendingQuestions ? (
                     <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
@@ -1634,6 +1720,95 @@ export default function App() {
                 <LoaderCircle className="size-4 animate-spin" />
               ) : null}
               提交答案
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={commitDialogOpen}
+        onOpenChange={(open) => {
+          setCommitDialogOpen(open);
+          if (!open) {
+            setCommitMode("commit");
+            setCommitMessageDraft("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>提交更改</DialogTitle>
+            <DialogDescription>
+              {snapshot?.git.branch
+                ? `当前分支：${snapshot.git.branch}`
+                : "为当前工作区创建一次 Git 提交。"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-1">
+            <div className="grid gap-2">
+              <Label htmlFor="commit-message-input">提交信息</Label>
+              <Textarea
+                id="commit-message-input"
+                value={commitMessageDraft}
+                onChange={(event) => setCommitMessageDraft(event.target.value)}
+                placeholder="提交信息，为空将自动生成"
+                className="min-h-28"
+                autoComplete="off"
+                disabled={runtime.busyAction === "git"}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>方式</Label>
+              <div
+                role="tablist"
+                aria-label="提交方式"
+                className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+              >
+                {commitModeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={commitMode === option.value}
+                    className={cn(
+                      "rounded-md px-2.5 text-xs font-medium transition-colors",
+                      commitMode === option.value
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    disabled={runtime.busyAction === "git"}
+                    onClick={() => setCommitMode(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {commitModeOptions.find((option) => option.value === commitMode)?.hint}
+              </p>
+            </div>
+            {runtime.runtimeError ? (
+              <p className="text-sm leading-relaxed text-destructive">{runtime.runtimeError}</p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCommitDialogOpen(false)}
+              disabled={runtime.busyAction === "git"}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={submitCommitDialog}
+              disabled={commitActionDisabled || commitBusy}
+            >
+              {commitBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              {commitMode === "commit-and-push" ? "提交并推送" : "提交"}
             </Button>
           </DialogFooter>
         </DialogContent>

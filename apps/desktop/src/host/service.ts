@@ -5,6 +5,10 @@ import path from 'node:path';
 
 import {
   AgentRuntime,
+  buildExtensionsSystemMessage,
+  buildPlanSystemMessage,
+  buildRulesSystemMessage,
+  buildSkillsCatalogSystemMessage,
   buildContributedHostToolDefinitions,
   type OpenAiActiveSkill,
   type OpenAiActiveSkillResourceEntry,
@@ -64,6 +68,7 @@ import type {
   PreviewModelsResponse,
   AskQuestionsResult,
   BootstrapRequest,
+  CommitChangesRequest,
   ConversationMessageSnapshot,
   CreateSkillRequest,
   DeleteExtensionRequest,
@@ -74,6 +79,7 @@ import type {
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
+  DesktopGitSnapshot,
   DesktopModelProvider,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
@@ -134,6 +140,11 @@ import {
   type HostMetadataSummary,
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
+import {
+  buildWorkspaceGitCommitMessageContext,
+  commitWorkspaceChanges,
+  readWorkspaceGitSnapshot,
+} from './git.js';
 import {
   DESKTOP_WEB_HOST_POLICY,
   getDesktopWebHostRuntimeStatus,
@@ -203,9 +214,27 @@ function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces
   }));
 }
 
+const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
+const MAX_EPHEMERAL_COMMIT_SESSIONS = 8;
+
+interface EphemeralSessionRecord {
+  path: string;
+  displayName: string;
+  workspaceRoot: string;
+  modifiedAtUnixMs: number;
+  messages: ConversationMessageSnapshot[];
+  llmHistory: ChatArchive['llmHistory'];
+  readOnly: true;
+}
+
+function isEphemeralCommitSessionPath(filePath: string): boolean {
+  return filePath.startsWith(EPHEMERAL_COMMIT_SESSION_PREFIX);
+}
+
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
   rememberWorkspaceRoot: { request: RememberWorkspaceRequest };
+  commitChanges: { request: CommitChangesRequest };
   updateConfig: { request: UpdateConfigRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
@@ -245,11 +274,13 @@ type CommandPayloads = {
 interface HostState {
   workspaceRoot: string;
   config: DesktopConfigFile;
+  git: DesktopGitSnapshot;
   metadata: HostMetadataSummary;
   messages: ConversationMessageSnapshot[];
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
   activeSession?: ActiveSessionSnapshot;
+  ephemeralSessions: EphemeralSessionRecord[];
   archiveHistory: ChatArchive['llmHistory'];
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
   rewind: StoredDesktopRewindMetadata;
@@ -319,6 +350,31 @@ class DesktopHostService {
         recentWorkspaces: mergeRecentWorkspaceRoots(state.config.recentWorkspaces, workspaceRoot),
       };
       await saveConfig(state.config);
+      return this.buildSnapshot();
+    });
+  }
+
+  async commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const state = this.requireState();
+      if (!state.git.isRepository) {
+        throw new Error('当前工作区不是 Git 仓库。');
+      }
+      if (!state.git.hasChanges) {
+        throw new Error('当前工作区没有可提交的更改。');
+      }
+
+      const commitMessage = request.message?.trim()
+        ? request.message.trim()
+        : await this.generateCommitMessageFromModel();
+
+      await commitWorkspaceChanges(state.workspaceRoot, commitMessage, request.mode);
+      await this.refreshGitState();
       return this.buildSnapshot();
     });
   }
@@ -1039,6 +1095,9 @@ description: ${frontmatterDescription}
     }
 
     const state = this.requireState();
+    if (state.activeSession?.readOnly) {
+      throw new Error('当前调试会话为只读，无法继续发送消息。');
+    }
     if (!options.preserveRewindWarnings) {
       state.rewindWarnings = [];
     }
@@ -1080,6 +1139,7 @@ description: ${frontmatterDescription}
     this.syncPendingToolStates();
     this.syncAssistantPrefixFromHistoryBeforeToolRow();
     await this.flushDeferredRuntimeRefreshIfIdle();
+    await this.refreshGitState();
     return this.buildSnapshot();
   }
 
@@ -1099,6 +1159,7 @@ description: ${frontmatterDescription}
     this.resetStreamingPlacementState(false);
     this.appendAssistantMessage(assistantText);
     await this.persistCurrentSessionIfNeeded();
+    await this.refreshGitState();
     return this.buildSnapshot();
   }
 
@@ -1115,6 +1176,7 @@ description: ${frontmatterDescription}
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
+      await this.refreshGitState();
       return this.buildSnapshot();
     });
   }
@@ -1141,6 +1203,7 @@ description: ${frontmatterDescription}
       this.syncPendingToolStates();
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.flushDeferredRuntimeRefreshIfIdle();
+      await this.refreshGitState();
       return this.buildSnapshot();
     });
   }
@@ -1157,6 +1220,7 @@ description: ${frontmatterDescription}
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
+      await this.refreshGitState();
       return this.buildSnapshot();
     });
   }
@@ -1194,7 +1258,20 @@ description: ${frontmatterDescription}
   }
 
   async listSessions(): Promise<SessionListItem[]> {
-    return this.runSerialized(async () => listStoredSessions());
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const stored = await listStoredSessions();
+      const ephemeral: SessionListItem[] = state.ephemeralSessions.map((session) => ({
+        path: session.path,
+        displayName: session.displayName,
+        modifiedAtUnixMs: session.modifiedAtUnixMs,
+        workspaceRoot: session.workspaceRoot,
+        kind: 'ephemeral',
+        readOnly: true,
+      }));
+      return [...stored, ...ephemeral].sort((left, right) => right.modifiedAtUnixMs - left.modifiedAtUnixMs);
+    });
   }
 
   async listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult> {
@@ -1280,6 +1357,7 @@ description: ${frontmatterDescription}
         throw new Error('内容过大，无法保存');
       }
       await writeFile(filePath, request.text, 'utf8');
+      await this.refreshGitState();
     });
   }
 
@@ -1311,6 +1389,38 @@ description: ${frontmatterDescription}
   async openSession(filePath: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       this.deferredRuntimeRefreshWhileBusy = false;
+      if (isEphemeralCommitSessionPath(filePath)) {
+        const ephemeral = this.findEphemeralSession(filePath);
+        if (!ephemeral) {
+          throw new Error('临时调试会话不存在或已过期。');
+        }
+        await this.ensureInitialized(ephemeral.workspaceRoot);
+        const state = this.requireState();
+        state.messages = ephemeral.messages.map((message) => ({ ...message }));
+        state.activeSession = {
+          filePath: ephemeral.path,
+          displayName: ephemeral.displayName,
+          kind: 'ephemeral',
+          readOnly: true,
+        };
+        state.archiveHistory = ephemeral.llmHistory.map((message) => ({
+          role: message.role,
+          content: message.content,
+          imagePaths: [...message.imagePaths],
+        }));
+        state.archiveSubagentSessions = [];
+        state.rewind = createDesktopRewindMetadata();
+        state.rewindWarnings = [];
+        this.currentTurnSkills = [];
+        this.pendingUnboundFileChangeIds = [];
+        this.messageIdCounter = Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+        this.latestPendingAssistantAux = undefined;
+        this.resetStreamingPlacementState(true);
+        await this.refreshRuntime();
+        this.lastRuntimeError = '';
+        return this.buildSnapshot();
+      }
+
       const loaded = await loadStoredSession(filePath);
       await this.ensureInitialized(loaded.workspaceRoot);
       const state = this.requireState();
@@ -1321,6 +1431,7 @@ description: ${frontmatterDescription}
         filePath: path.resolve(filePath),
         displayName:
           loaded.sessionDisplayName ?? deriveDisplayNameFromMessages(state.messages),
+        kind: 'stored',
       };
       state.archiveHistory = loaded.llmHistory.map((message) => ({
         role: message.role,
@@ -1365,6 +1476,10 @@ description: ${frontmatterDescription}
       case 'rememberWorkspaceRoot': {
         const typedPayload = payload as CommandPayloads['rememberWorkspaceRoot'];
         return this.rememberWorkspaceRoot(typedPayload.request);
+      }
+      case 'commitChanges': {
+        const typedPayload = payload as CommandPayloads['commitChanges'];
+        return this.commitChanges(typedPayload.request);
       }
       case 'updateConfig': {
         const typedPayload = payload as CommandPayloads['updateConfig'];
@@ -1512,6 +1627,7 @@ description: ${frontmatterDescription}
       ...loadedConfig,
       recentWorkspaces: mergeRecentWorkspaceRoots(loadedConfig.recentWorkspaces, workspaceRoot),
     } satisfies DesktopConfigFile;
+    const git = await readWorkspaceGitSnapshot(workspaceRoot);
 
     if (
       !loadedConfig.recentWorkspaces ||
@@ -1523,6 +1639,7 @@ description: ${frontmatterDescription}
 
     if (this.initialized && this.state?.workspaceRoot && sameWorkspaceRoot(this.state.workspaceRoot, workspaceRoot)) {
       this.state.config = config;
+      this.state.git = git;
       return;
     }
 
@@ -1550,11 +1667,13 @@ description: ${frontmatterDescription}
     this.state = {
       workspaceRoot,
       config,
+      git,
       metadata,
       messages: switchingWorkspace ? [] : state?.messages ?? [],
       extensionsList: state?.extensionsList ?? [],
       extensionCss: state?.extensionCss ?? [],
       activeSession: switchingWorkspace ? undefined : state?.activeSession,
+      ephemeralSessions: state?.ephemeralSessions ?? [],
       archiveHistory: switchingWorkspace ? [] : state?.archiveHistory ?? [],
       archiveSubagentSessions: switchingWorkspace ? [] : state?.archiveSubagentSessions ?? [],
       rewind: switchingWorkspace
@@ -1643,6 +1762,14 @@ description: ${frontmatterDescription}
     this.runtime = runtime;
     this.lastRuntimeError = '';
     await this.refreshModelKeyPresence();
+  }
+
+  private async refreshGitState(): Promise<void> {
+    const state = this.state;
+    if (!state) {
+      return;
+    }
+    state.git = await readWorkspaceGitSnapshot(state.workspaceRoot);
   }
 
   private async flushDeferredRuntimeRefreshIfIdle(): Promise<void> {
@@ -1761,6 +1888,7 @@ description: ${frontmatterDescription}
         state.workspaceRoot,
         state.config.recentWorkspaces,
       ),
+      git: { ...state.git },
       runtimeReady: this.runtime !== undefined,
       ...(this.lastRuntimeError ? { runtimeError: this.lastRuntimeError } : {}),
       config: {
@@ -1845,6 +1973,130 @@ description: ${frontmatterDescription}
       },
       ...(state.activeSession ? { activeSession: { ...state.activeSession } } : {}),
     };
+  }
+
+  private findEphemeralSession(filePath: string): EphemeralSessionRecord | undefined {
+    return this.state?.ephemeralSessions.find((session) => session.path === filePath);
+  }
+
+  private rememberEphemeralSession(record: EphemeralSessionRecord): void {
+    const state = this.requireState();
+    state.ephemeralSessions = [
+      record,
+      ...state.ephemeralSessions.filter((session) => session.path !== record.path),
+    ].slice(0, MAX_EPHEMERAL_COMMIT_SESSIONS);
+  }
+
+  private async generateCommitMessageFromModel(): Promise<string> {
+    const state = this.requireState();
+    const activeProfile = state.config.models.find((model) => model.name === state.config.activeModel);
+    const apiKey = await resolveApiKeyForModel(state.config.activeModel);
+    if (!apiKey) {
+      throw new Error('自动生成提交信息失败：当前模型未配置 API Key。');
+    }
+
+    const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
+    const commitContext = await buildWorkspaceGitCommitMessageContext(state.workspaceRoot);
+    const prompt = buildCommitMessageGenerationPrompt({
+      workspaceRoot: state.workspaceRoot,
+      branch: state.git.branch,
+      statusText: commitContext.statusText,
+      diffStatText: commitContext.diffStatText,
+      diffText: commitContext.diffText,
+    });
+    const sessionPath = `${EPHEMERAL_COMMIT_SESSION_PREFIX}${Date.now()}`;
+    const baseMessages: ConversationMessageSnapshot[] = [
+      {
+        id: 1,
+        role: 'user',
+        content: prompt,
+        pending: false,
+      },
+    ];
+
+    try {
+      const result = await this.transport.createJsonSchemaCompletion<{
+        message?: string;
+      }>(
+        {
+          apiKey,
+          model: state.config.activeModel,
+          baseUrl: currentApiBase(state.config),
+          workspaceRoot: state.workspaceRoot,
+          ...(activeProfile?.provider ? { llmVendor: activeProfile.provider } : {}),
+        },
+        {
+          userPrompt: prompt,
+          schemaName: 'desktop_commit_message',
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              message: {
+                type: 'string',
+                description: 'A complete commit message following the repository convention.',
+              },
+            },
+            required: ['message'],
+          },
+          systemSections: [
+            buildRulesSystemMessage(state.metadata.rules.enabledRules),
+            buildSkillsCatalogSystemMessage(state.metadata.skills.enabledSkillCatalog),
+            buildPlanSystemMessage(state.metadata.planMetadata),
+            buildExtensionsSystemMessage(extensionSystemPrompts),
+          ],
+        },
+      );
+      const message = normalizeGeneratedCommitMessage(result.output.message);
+      const finalMessages = [
+        ...baseMessages,
+        {
+          id: 2,
+          role: 'assistant' as const,
+          content: message,
+          pending: false,
+        },
+      ];
+      this.rememberEphemeralSession({
+        path: sessionPath,
+        displayName: `[Commit] ${deriveDisplayNameFromSeed(message)}`,
+        workspaceRoot: state.workspaceRoot,
+        modifiedAtUnixMs: Date.now(),
+        messages: finalMessages,
+        llmHistory: finalMessages.map((entry) => ({
+          role: entry.role,
+          content: entry.content,
+          imagePaths: [],
+        })),
+        readOnly: true,
+      });
+      return message;
+    } catch (error) {
+      const failureMessage = `生成失败：${error instanceof Error ? error.message : String(error)}`;
+      const finalMessages = [
+        ...baseMessages,
+        {
+          id: 2,
+          role: 'assistant' as const,
+          content: failureMessage,
+          pending: false,
+        },
+      ];
+      this.rememberEphemeralSession({
+        path: sessionPath,
+        displayName: '[Commit] 自动生成失败',
+        workspaceRoot: state.workspaceRoot,
+        modifiedAtUnixMs: Date.now(),
+        messages: finalMessages,
+        llmHistory: finalMessages.map((entry) => ({
+          role: entry.role,
+          content: entry.content,
+          imagePaths: [],
+        })),
+        readOnly: true,
+      });
+      throw error;
+    }
   }
 
   private messagesWithPendingAssistant(
@@ -2858,6 +3110,7 @@ description: ${frontmatterDescription}
     state.activeSession = {
       filePath: defaultNewSessionPath(),
       displayName: deriveDisplayNameFromSeed(seedText),
+      kind: 'stored',
     };
   }
 
@@ -3150,7 +3403,7 @@ description: ${frontmatterDescription}
 
   private async persistCurrentSessionIfNeeded(): Promise<void> {
     const state = this.requireState();
-    if (!state.activeSession || this.runtime?.isBusy()) {
+    if (!state.activeSession || state.activeSession.kind === 'ephemeral' || this.runtime?.isBusy()) {
       return;
     }
 
@@ -3626,6 +3879,52 @@ description: ${frontmatterDescription}
     }
     return desktopExtensionHostAdapter;
   }
+}
+
+function buildCommitMessageGenerationPrompt(input: {
+  workspaceRoot: string;
+  branch?: string;
+  statusText: string;
+  diffStatText: string;
+  diffText: string;
+}): string {
+  return [
+    '请为以下 Git 变更生成一条提交信息。',
+    '必须遵守仓库约定：type / 可选 scope 使用英文；subject 使用中文。',
+    '输出 JSON，由宿主解析。不要输出 Markdown、解释、代码块或额外字段。',
+    'message 应该是一条可直接执行 git commit 的提交信息。若需要正文，可使用换行。',
+    '',
+    `workspace: ${input.workspaceRoot}`,
+    `branch: ${input.branch ?? '(unknown)'}`,
+    '',
+    '[git status --short --branch]',
+    input.statusText || '(empty)',
+    '',
+    '[git diff --stat HEAD]',
+    input.diffStatText || '(empty)',
+    '',
+    '[git diff HEAD]',
+    input.diffText || '(empty)',
+  ].join('\n');
+}
+
+function normalizeGeneratedCommitMessage(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error('自动生成提交信息失败：模型未返回 message 字段。');
+  }
+
+  const normalized = value
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+
+  if (!normalized) {
+    throw new Error('自动生成提交信息失败：模型返回了空 message。');
+  }
+
+  return normalized;
 }
 
 const MCP_DEFAULT_TIMEOUT_MS = 20_000;

@@ -6,6 +6,7 @@ import type {
   AddProviderModelsRequest,
   AskQuestionsResult,
   BootstrapRequest,
+  CommitChangesRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
@@ -38,6 +39,7 @@ declare global {
   interface SpiritDesktopApi {
     bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
     rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
+    commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot>;
     updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
     addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
     addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot>;

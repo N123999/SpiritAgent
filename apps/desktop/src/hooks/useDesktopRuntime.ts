@@ -12,6 +12,7 @@ import type {
   AskQuestionsRequest,
   AskQuestionsResult,
   BootstrapRequest,
+  CommitChangesRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
@@ -51,7 +52,8 @@ type BusyAction =
   | "mcps"
   | "skills"
   | "extensions"
-  | "marketplace";
+  | "marketplace"
+  | "git";
 
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
@@ -307,6 +309,29 @@ export function useDesktopRuntime() {
       return null;
     }
   }, [api]);
+
+  const commitChanges = useCallback(
+    async (request: CommitChangesRequest): Promise<boolean> => {
+      if (!api) {
+        return false;
+      }
+
+      setBusyAction("git");
+      try {
+        const next = await api.commitChanges(request);
+        applySnapshot(next);
+        setRuntimeError("");
+        void refreshSessions();
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot, refreshSessions],
+  );
 
   const pairWebHost = useCallback(
     async (code: string): Promise<boolean> => {
@@ -925,6 +950,10 @@ export function useDesktopRuntime() {
     if (!text) {
       return;
     }
+    if (snapshot?.activeSession?.readOnly) {
+      setRuntimeError("当前调试会话为只读，无法发送消息。");
+      return;
+    }
 
     setBusyAction("send");
     try {
@@ -1158,6 +1187,7 @@ export function useDesktopRuntime() {
     switchWorkspaceRoot,
     rememberWorkspaceRoot,
     pickWorkspaceDirectory,
+    commitChanges,
     addModel,
     addProviderModels,
     previewModels,

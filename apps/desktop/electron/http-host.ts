@@ -591,6 +591,22 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/git/commit') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('commitChanges', {
+        request: {
+          mode:
+            jsonBody?.mode === 'commit-and-push' ? 'commit-and-push' : 'commit',
+          ...(typeof jsonBody?.message === 'string' ? { message: jsonBody.message } : {}),
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/rewind-submit') {
     writeJson(
       request,
