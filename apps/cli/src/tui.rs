@@ -15,32 +15,36 @@ use std::{
 };
 
 use crate::{
-    ask_questions::AskQuestionsResult,
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
+    ask_questions::{
+        AskQuestionsQuestionKind, AskQuestionsQuestionSpec, AskQuestionsRequest, AskQuestionsResult,
+    },
     conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
     host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
-    locale,
-    logging,
+    locale, logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
     model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
     plan::{self, PlanMetadata},
     ports::{
-        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore,
-        McpStatusSnapshot, McpStatusState, SecretStore, SubagentSessionArchiveEntry,
-        SubagentSessionSummary,
+        AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
+        McpStatusState, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
     rules::{self, RuleEntry, RuleScope},
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry},
-    ts_bridge::{CliExtensionCliUiHookEntry, CliExtensionEntry},
+    ts_bridge::{
+        CliExtensionCliUiHookEntry, CliExtensionEntry, CliMarketplaceCatalogItem,
+        CliMarketplaceDetail, CliMarketplaceDetailVersion, CliMarketplacePreparedInstall,
+    },
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, CliUiHookSlot,
-        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView,
-        InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole, PendingAssistantAux,
-        PendingSubagentApprovalView,
-        SubagentApprovalInputView, SubagentSessionDetailView, SubagentSessionSummaryView,
-        TuiViewModel,
+        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView, InputSuggestion,
+        InputSuggestionKind, MainInputMode, MarketplaceCatalogItemView, MarketplaceDetailView,
+        MarketplaceFocus, MarketplacePendingInstallView, MarketplaceTab,
+        MarketplaceVersionChangelogView, MarketplaceVersionView, MarketplaceViewModel, MessageRole,
+        PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
+        SubagentSessionDetailView, SubagentSessionSummaryView, TuiViewModel,
     },
 };
 
@@ -114,6 +118,18 @@ pub struct TuiShell {
     rule_entries: Vec<RuleEntry>,
     skill_entries: Vec<SkillEntry>,
     extension_entries: Vec<CliExtensionEntry>,
+    marketplace_catalog: Vec<CliMarketplaceCatalogItem>,
+    marketplace_detail_cache: HashMap<String, CliMarketplaceDetail>,
+    marketplace_readme_cache: HashMap<String, String>,
+    marketplace_open: bool,
+    marketplace_filter: String,
+    marketplace_focus: MarketplaceFocus,
+    marketplace_selected_index: usize,
+    marketplace_active_tab: MarketplaceTab,
+    marketplace_selected_version_index: usize,
+    marketplace_error: Option<String>,
+    marketplace_pending_install: Option<CliMarketplacePreparedInstall>,
+    marketplace_install_guard: Option<(String, String)>,
     cli_ui_hooks: Vec<CliUiHookView>,
 }
 
@@ -217,6 +233,18 @@ impl TuiShell {
             rule_entries,
             skill_entries,
             extension_entries,
+            marketplace_catalog: Vec::new(),
+            marketplace_detail_cache: HashMap::new(),
+            marketplace_readme_cache: HashMap::new(),
+            marketplace_open: false,
+            marketplace_filter: String::new(),
+            marketplace_focus: MarketplaceFocus::List,
+            marketplace_selected_index: 0,
+            marketplace_active_tab: MarketplaceTab::Readme,
+            marketplace_selected_version_index: 0,
+            marketplace_error: None,
+            marketplace_pending_install: None,
+            marketplace_install_guard: None,
             cli_ui_hooks,
         };
 
@@ -285,6 +313,470 @@ impl TuiShell {
         Ok(())
     }
 
+    pub fn refresh_marketplace_catalog(&mut self) -> Result<()> {
+        self.marketplace_catalog = self
+            .runtime
+            .list_marketplace_extensions()
+            .context("读取 marketplace 目录失败")?;
+        logging::log_event(&format!(
+            "[marketplace] catalog refreshed items={}",
+            self.marketplace_catalog.len()
+        ));
+        self.marketplace_error = None;
+        self.sync_marketplace_selection(true);
+        Ok(())
+    }
+
+    pub fn marketplace_selected_catalog_item(&self) -> Option<&CliMarketplaceCatalogItem> {
+        let index = self
+            .marketplace_filtered_catalog_indices()
+            .get(self.marketplace_selected_index)
+            .copied()?;
+        self.marketplace_catalog.get(index)
+    }
+
+    pub fn marketplace_selected_extension_id(&self) -> Option<&str> {
+        self.marketplace_selected_catalog_item()
+            .map(|item| item.extension_id.as_str())
+    }
+
+    pub fn marketplace_move_selection_next(&mut self) {
+        let filtered_len = self.marketplace_filtered_catalog_indices().len();
+        if filtered_len == 0 {
+            return;
+        }
+        self.marketplace_selected_index = (self.marketplace_selected_index + 1) % filtered_len;
+        self.marketplace_selected_version_index = 0;
+        self.marketplace_install_guard = None;
+        let _ = self.ensure_marketplace_selected_detail();
+    }
+
+    pub fn marketplace_move_selection_prev(&mut self) {
+        let filtered_len = self.marketplace_filtered_catalog_indices().len();
+        if filtered_len == 0 {
+            return;
+        }
+        self.marketplace_selected_index = if self.marketplace_selected_index == 0 {
+            filtered_len - 1
+        } else {
+            self.marketplace_selected_index - 1
+        };
+        self.marketplace_selected_version_index = 0;
+        self.marketplace_install_guard = None;
+        let _ = self.ensure_marketplace_selected_detail();
+    }
+
+    pub fn marketplace_move_version_next(&mut self) {
+        let Some(detail) = self.marketplace_selected_detail() else {
+            return;
+        };
+        if detail.versions.is_empty() {
+            return;
+        }
+        self.marketplace_selected_version_index =
+            (self.marketplace_selected_version_index + 1) % detail.versions.len();
+        self.marketplace_install_guard = None;
+    }
+
+    pub fn marketplace_move_version_prev(&mut self) {
+        let Some(detail) = self.marketplace_selected_detail() else {
+            return;
+        };
+        if detail.versions.is_empty() {
+            return;
+        }
+        self.marketplace_selected_version_index = if self.marketplace_selected_version_index == 0 {
+            detail.versions.len() - 1
+        } else {
+            self.marketplace_selected_version_index - 1
+        };
+        self.marketplace_install_guard = None;
+    }
+
+    pub fn marketplace_clear_filter(&mut self) {
+        self.marketplace_filter.clear();
+        self.marketplace_install_guard = None;
+        self.sync_marketplace_selection(true);
+    }
+
+    pub fn marketplace_insert_filter_char(&mut self, ch: char) {
+        if ch == '\n' || ch == '\r' {
+            return;
+        }
+        self.marketplace_filter.push(ch);
+        self.marketplace_install_guard = None;
+        self.sync_marketplace_selection(true);
+    }
+
+    pub fn marketplace_insert_filter_text(&mut self, text: &str) {
+        let filtered = text.chars().filter(|ch| *ch != '\n' && *ch != '\r');
+        self.marketplace_filter.extend(filtered);
+        self.marketplace_install_guard = None;
+        self.sync_marketplace_selection(true);
+    }
+
+    pub fn marketplace_backspace_filter(&mut self) {
+        self.marketplace_filter.pop();
+        self.marketplace_install_guard = None;
+        self.sync_marketplace_selection(true);
+    }
+
+    pub fn marketplace_refresh_selected_detail(&mut self) -> Result<()> {
+        self.ensure_marketplace_selected_detail()
+    }
+
+    pub fn marketplace_tab_previous(&mut self) {
+        self.marketplace_active_tab = match self.marketplace_active_tab {
+            MarketplaceTab::Readme => MarketplaceTab::Versions,
+            MarketplaceTab::Changelog => MarketplaceTab::Readme,
+            MarketplaceTab::Versions => MarketplaceTab::Changelog,
+        };
+    }
+
+    pub fn marketplace_tab_next(&mut self) {
+        self.marketplace_active_tab = match self.marketplace_active_tab {
+            MarketplaceTab::Readme => MarketplaceTab::Changelog,
+            MarketplaceTab::Changelog => MarketplaceTab::Versions,
+            MarketplaceTab::Versions => MarketplaceTab::Readme,
+        };
+    }
+
+    pub fn marketplace_focus_detail(&mut self) {
+        self.marketplace_focus = MarketplaceFocus::Detail;
+    }
+
+    pub fn marketplace_focus_list(&mut self) {
+        self.marketplace_focus = MarketplaceFocus::List;
+    }
+
+    pub fn marketplace_install_selected_version(&mut self) {
+        let Some(install_key) = self.marketplace_selected_install_key() else {
+            return;
+        };
+
+        if self
+            .marketplace_install_guard
+            .as_ref()
+            .is_some_and(|current| current == &install_key)
+        {
+            self.marketplace_error = Some(format!(
+                "已提交过安装请求: {}@{}。如需重试，请切换到其他版本再切回。",
+                install_key.0, install_key.1
+            ));
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!("已忽略重复安装请求: {} {}", install_key.0, install_key.1),
+                tool_block: None,
+            });
+            return;
+        }
+
+        let Some(prepared) = self.prepare_selected_marketplace_install() else {
+            return;
+        };
+
+        if !prepared.supports_current_host {
+            self.marketplace_error = Some(format!(
+                "扩展 {}@{} 不支持当前宿主。",
+                prepared.extension_id, prepared.version
+            ));
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!(
+                    "扩展 {}@{} 不支持当前宿主。",
+                    prepared.display_name, prepared.version
+                ),
+                tool_block: None,
+            });
+            return;
+        }
+
+        if prepared.review_status != "verified" {
+            self.marketplace_pending_install = Some(prepared.clone());
+            self.bottom_form = Some(ask_questions::new_form(
+                "marketplace.install",
+                "marketplace.install",
+                Self::marketplace_install_confirmation_request(&prepared),
+            ));
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!(
+                    "「{} {}」尚未验证，已打开确认表单。Enter 继续，Esc 取消。",
+                    prepared.display_name, prepared.version
+                ),
+                tool_block: None,
+            });
+            return;
+        }
+
+        if let Err(err) = self.install_prepared_marketplace_extension(&prepared, false) {
+            self.marketplace_error = Some(err.to_string());
+        }
+    }
+
+    fn marketplace_selected_install_key(&self) -> Option<(String, String)> {
+        let extension_id = self.marketplace_selected_extension_id()?.to_string();
+        let detail = self.marketplace_selected_detail()?;
+        let selected_version = self.selected_marketplace_version(detail)?.version.clone();
+        Some((extension_id, selected_version))
+    }
+
+    fn marketplace_filtered_catalog_indices(&self) -> Vec<usize> {
+        let query = self.marketplace_filter.trim().to_lowercase();
+        self.marketplace_catalog
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                if query.is_empty() {
+                    return Some(index);
+                }
+
+                let haystack = format!(
+                    "{} {} {} {} {} {}",
+                    item.display_name,
+                    item.description,
+                    item.extension_id,
+                    item.package_name,
+                    item.author.as_deref().unwrap_or(""),
+                    item.keywords.join(" "),
+                );
+                if haystack.to_lowercase().contains(&query) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn sync_marketplace_selection(&mut self, load_detail: bool) {
+        let filtered_len = self.marketplace_filtered_catalog_indices().len();
+        if filtered_len == 0 {
+            self.marketplace_selected_index = 0;
+            self.marketplace_selected_version_index = 0;
+            self.marketplace_active_tab = MarketplaceTab::Readme;
+            if load_detail {
+                self.marketplace_error = None;
+            }
+            return;
+        }
+
+        if self.marketplace_selected_index >= filtered_len {
+            self.marketplace_selected_index = filtered_len - 1;
+        }
+
+        self.marketplace_selected_version_index = 0;
+        if load_detail {
+            let _ = self.ensure_marketplace_selected_detail();
+        }
+    }
+
+    fn selected_marketplace_version<'a>(
+        &self,
+        detail: &'a CliMarketplaceDetail,
+    ) -> Option<&'a CliMarketplaceDetailVersion> {
+        detail.versions.get(
+            self.marketplace_selected_version_index
+                .min(detail.versions.len().saturating_sub(1)),
+        )
+    }
+
+    fn selected_marketplace_detail_id(&self) -> Option<String> {
+        self.marketplace_selected_catalog_item()
+            .map(|item| item.extension_id.clone())
+    }
+
+    fn marketplace_selected_detail(&self) -> Option<&CliMarketplaceDetail> {
+        let extension_id = self.selected_marketplace_detail_id()?;
+        self.marketplace_detail_cache.get(&extension_id)
+    }
+
+    fn ensure_marketplace_selected_detail(&mut self) -> Result<()> {
+        let Some(extension_id) = self.selected_marketplace_detail_id() else {
+            self.marketplace_error = None;
+            return Ok(());
+        };
+
+        if !self.marketplace_detail_cache.contains_key(&extension_id) {
+            let detail = self
+                .runtime
+                .get_marketplace_extension_detail(&extension_id)
+                .with_context(|| format!("读取 marketplace 详情失败: {}", extension_id))?;
+            self.marketplace_detail_cache
+                .insert(extension_id.clone(), detail);
+        }
+
+        if !self.marketplace_readme_cache.contains_key(&extension_id) {
+            match self.runtime.get_marketplace_extension_readme(&extension_id) {
+                Ok(readme) => {
+                    self.marketplace_readme_cache
+                        .insert(extension_id.clone(), readme);
+                }
+                Err(err) => {
+                    self.marketplace_error = Some(err.to_string());
+                }
+            }
+        }
+
+        if let Some(detail) = self.marketplace_detail_cache.get(&extension_id) {
+            if self.marketplace_selected_version_index >= detail.versions.len() {
+                self.marketplace_selected_version_index = 0;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn prepare_selected_marketplace_install(&mut self) -> Option<CliMarketplacePreparedInstall> {
+        let extension_id = self.marketplace_selected_extension_id()?.to_string();
+        self.ensure_marketplace_selected_detail().ok()?;
+        let selected_version = {
+            let detail = self.marketplace_selected_detail()?;
+            self.selected_marketplace_version(detail)?.version.clone()
+        };
+        self.runtime
+            .prepare_marketplace_extension_install(&extension_id, Some(&selected_version))
+            .map_err(|err| {
+                self.marketplace_error = Some(err.to_string());
+                err
+            })
+            .ok()
+    }
+
+    fn install_prepared_marketplace_extension(
+        &mut self,
+        prepared: &CliMarketplacePreparedInstall,
+        review_acknowledged: bool,
+    ) -> Result<()> {
+        let install_key = (prepared.extension_id.clone(), prepared.version.clone());
+        if self
+            .marketplace_install_guard
+            .as_ref()
+            .is_some_and(|current| current == &install_key)
+        {
+            self.marketplace_error = Some(format!(
+                "已提交过安装请求: {}@{}。如需重试，请切换到其他版本再切回。",
+                prepared.extension_id, prepared.version
+            ));
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!(
+                    "已忽略重复安装请求: {} {}",
+                    prepared.display_name, prepared.version
+                ),
+                tool_block: None,
+            });
+            return Ok(());
+        }
+
+        self.marketplace_install_guard = Some(install_key);
+        let installed = self.runtime.install_marketplace_extension(
+            &prepared.extension_id,
+            Some(&prepared.version),
+            review_acknowledged,
+        )?;
+        self.refresh_extensions_from_disk()
+            .context("刷新已安装扩展列表失败")?;
+        self.marketplace_pending_install = None;
+        self.marketplace_error = None;
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: format!(
+                "已安装 marketplace 扩展: {} {}",
+                installed.display_name, installed.version
+            ),
+            tool_block: None,
+        });
+        Ok(())
+    }
+
+    fn handle_marketplace_install_confirmation(
+        &mut self,
+        result: AskQuestionsResult,
+        request: AskQuestionsRequest,
+    ) {
+        let confirmed = result.answers.first().is_some_and(|answer| {
+            answer
+                .selected_option_indexes
+                .first()
+                .is_some_and(|index| *index == 0)
+        });
+
+        let Some(prepared) = self.marketplace_pending_install.take() else {
+            return;
+        };
+
+        if !confirmed {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!(
+                    "已取消 marketplace 扩展安装: {} {}",
+                    prepared.display_name, prepared.version
+                ),
+                tool_block: None,
+            });
+            return;
+        }
+
+        if let Err(err) = self.install_prepared_marketplace_extension(&prepared, true) {
+            self.marketplace_error = Some(err.to_string());
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!(
+                    "安装 marketplace 扩展失败: {} {}",
+                    prepared.display_name, prepared.version
+                ),
+                tool_block: None,
+            });
+        } else {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: format!(
+                    "已确认安装未验证扩展: {} {}",
+                    prepared.display_name, prepared.version
+                ),
+                tool_block: None,
+            });
+        }
+
+        self.bottom_form = None;
+        self.scroll_history_to_bottom();
+        let _ = request;
+    }
+
+    fn marketplace_install_confirmation_request(
+        prepared: &CliMarketplacePreparedInstall,
+    ) -> AskQuestionsRequest {
+        AskQuestionsRequest {
+            title: Some(format!(
+                "确认安装未验证扩展: {} {}",
+                prepared.display_name, prepared.version
+            )),
+            questions: vec![AskQuestionsQuestionSpec {
+                id: "confirm".to_string(),
+                title: format!(
+                    "是否继续安装 {} {}？",
+                    prepared.display_name, prepared.version
+                ),
+                kind: AskQuestionsQuestionKind::SingleSelect,
+                required: true,
+                options: vec![
+                    crate::ask_questions::AskQuestionsOptionSpec {
+                        label: "继续安装".to_string(),
+                        summary: Some("我已知晓该版本尚未验证".to_string()),
+                    },
+                    crate::ask_questions::AskQuestionsOptionSpec {
+                        label: "取消".to_string(),
+                        summary: Some("返回 marketplace 浏览器".to_string()),
+                    },
+                ],
+                allow_custom_input: false,
+                custom_input_placeholder: None,
+                custom_input_label: None,
+            }],
+        }
+    }
+
     pub fn refresh_suggestions(&mut self) {
         if self.shell_mode_active {
             self.slash.suggestions.clear();
@@ -299,13 +791,11 @@ impl TuiShell {
                 return;
             }
 
-            self.slash.suggestions = file_reference::compute_suggestions(
-                &query.raw,
-                &self.file_reference_index,
-            )
-            .into_iter()
-            .map(InputSuggestion::simple)
-            .collect();
+            self.slash.suggestions =
+                file_reference::compute_suggestions(&query.raw, &self.file_reference_index)
+                    .into_iter()
+                    .map(InputSuggestion::simple)
+                    .collect();
 
             if self.slash.selected_suggestion >= self.slash.suggestions.len() {
                 self.slash.selected_suggestion = 0;
@@ -361,6 +851,7 @@ impl TuiShell {
             .iter()
             .map(Self::subagent_summary_view)
             .collect();
+        let marketplace_view = self.build_marketplace_view_model();
 
         TuiViewModel {
             input: self.input.clone(),
@@ -408,6 +899,7 @@ impl TuiShell {
             persisted_standalone_pending_aux: self.persisted_standalone_pending_aux.clone(),
             persisted_standalone_pending_aux_anchor: self.persisted_standalone_pending_aux_anchor,
             cli_ui_hooks: self.cli_ui_hooks.clone(),
+            marketplace_view,
             conversation_sel_anchor: self.conversation_sel_anchor,
             conversation_sel_head: self.conversation_sel_head,
         }
@@ -419,6 +911,117 @@ impl TuiShell {
             status: summary.status,
             updated_at_unix_ms: summary.updated_at_unix_ms,
             latest_message: summary.latest_message.clone(),
+        }
+    }
+
+    fn build_marketplace_view_model(&self) -> Option<MarketplaceViewModel> {
+        if !self.marketplace_open {
+            return None;
+        }
+
+        let installed_versions = self
+            .extension_entries
+            .iter()
+            .flat_map(|entry| {
+                let mut pairs = vec![(entry.id.clone(), entry.version.clone())];
+                if let Some(package_name) = self
+                    .marketplace_catalog
+                    .iter()
+                    .find(|item| item.extension_id == entry.id)
+                    .map(|item| item.package_name.clone())
+                {
+                    pairs.push((package_name, entry.version.clone()));
+                }
+                pairs
+            })
+            .collect::<HashMap<_, _>>();
+        let filtered_indices = self.marketplace_filtered_catalog_indices();
+        let items = filtered_indices
+            .iter()
+            .filter_map(|index| self.marketplace_catalog.get(*index))
+            .map(|item| MarketplaceCatalogItemView {
+                extension_id: item.extension_id.clone(),
+                package_name: item.package_name.clone(),
+                display_name: item.display_name.clone(),
+                description: item.description.clone(),
+                author: item.author.clone(),
+                featured: item.featured,
+                default_version: item.default_version.clone(),
+                default_channel: item.default_channel.clone(),
+                default_review_status: item.default_review_status.clone(),
+                supported_hosts: item.supported_hosts.clone(),
+                requested_capabilities: item.requested_capabilities.clone(),
+                icon_url: item.icon_url.clone(),
+                installed_version: installed_versions
+                    .get(&item.package_name)
+                    .or_else(|| installed_versions.get(&item.extension_id))
+                    .cloned(),
+            })
+            .collect::<Vec<_>>();
+
+        let detail = self.marketplace_selected_detail().map(|detail| {
+            let selected_id = self.marketplace_selected_extension_id().unwrap_or_default();
+            MarketplaceDetailView {
+                package_name: detail.package_name.clone(),
+                status: detail.status.clone(),
+                featured: detail.featured,
+                default_version: detail.default_version.clone(),
+                readme: self.marketplace_readme_cache.get(selected_id).cloned(),
+                versions: detail
+                    .versions
+                    .iter()
+                    .map(|version| Self::marketplace_version_view(version))
+                    .collect(),
+            }
+        });
+
+        let pending_install =
+            self.marketplace_pending_install
+                .as_ref()
+                .map(|item| MarketplacePendingInstallView {
+                    extension_id: item.extension_id.clone(),
+                    display_name: item.display_name.clone(),
+                    version: item.version.clone(),
+                    review_status: item.review_status.clone(),
+                });
+
+        Some(MarketplaceViewModel {
+            query: self.marketplace_filter.clone(),
+            focus: self.marketplace_focus,
+            selected_index: self
+                .marketplace_selected_index
+                .min(items.len().saturating_sub(1)),
+            active_tab: self.marketplace_active_tab,
+            selected_version_index: self.marketplace_selected_version_index,
+            error: self.marketplace_error.clone(),
+            items,
+            detail,
+            pending_install,
+        })
+    }
+
+    fn marketplace_version_view(version: &CliMarketplaceDetailVersion) -> MarketplaceVersionView {
+        MarketplaceVersionView {
+            version: version.version.clone(),
+            channel: version.channel.clone(),
+            review_status: version.review_status.clone(),
+            display_name: version.display_name.clone(),
+            description: version.description.clone(),
+            author: version.author.clone(),
+            homepage_url: version.homepage_url.clone(),
+            repository_url: version.repository_url.clone(),
+            keywords: version.keywords.clone(),
+            supported_hosts: version.supported_hosts.clone(),
+            requested_capabilities: version.requested_capabilities.clone(),
+            icon_url: version.icon_url.clone(),
+            published_at: version.published_at.clone(),
+            tarball_url: version.tarball_url.clone(),
+            changelog: version.changelog.as_ref().map(|changelog| {
+                MarketplaceVersionChangelogView {
+                    summary: changelog.summary.clone(),
+                    body: changelog.body.clone(),
+                }
+            }),
         }
     }
 
@@ -442,7 +1045,12 @@ impl TuiShell {
             .find(|message| message.role == "assistant" && !message.content.trim().is_empty())
             .map(|message| message.content.clone());
 
-        if let Some(output) = archive.summary.final_output.as_ref().filter(|value| !value.trim().is_empty()) {
+        if let Some(output) = archive
+            .summary
+            .final_output
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
             let already_present = messages.iter().any(|message| {
                 message.role == MessageRole::Agent
                     && message.tool_block.is_none()
@@ -586,7 +1194,7 @@ impl TuiShell {
         self.should_quit = true;
     }
 
-    pub(crate) fn push_agent_message(&mut self, content: impl Into<String>) {
+    pub fn push_agent_message(&mut self, content: impl Into<String>) {
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
             content: content.into(),
@@ -652,6 +1260,18 @@ impl TuiShell {
 
     pub fn is_subagent_view_active(&self) -> bool {
         self.subagent_view.is_some()
+    }
+
+    pub fn is_marketplace_view_active(&self) -> bool {
+        self.marketplace_open
+    }
+
+    pub fn marketplace_focus(&self) -> MarketplaceFocus {
+        self.marketplace_focus
+    }
+
+    pub fn marketplace_active_tab(&self) -> MarketplaceTab {
+        self.marketplace_active_tab
     }
 
     pub fn has_active_subagent_viewer_approval(&self) -> bool {
@@ -1066,9 +1686,8 @@ impl TuiShell {
                 .map(|resource| resource.short_label())
                 .collect::<Vec<_>>()
                 .join(" | ");
-            user_content.push_str(
-                t!("tui.user.attached_mcp_resources", summary = summary).as_ref(),
-            );
+            user_content
+                .push_str(t!("tui.user.attached_mcp_resources", summary = summary).as_ref());
         }
         self.messages.push(ChatMessage {
             role: MessageRole::User,
@@ -1080,7 +1699,8 @@ impl TuiShell {
             self.handle_slash_command(trimmed_message);
         } else {
             let workspace_root = self.app_paths.workspace_root();
-            let runtime_turn = user_turn_text_for_mode(&workspace_root, self.input_mode, &raw_message);
+            let runtime_turn =
+                user_turn_text_for_mode(&workspace_root, self.input_mode, &raw_message);
             self.submit_runtime_user_turn(runtime_turn, None);
         }
 
@@ -1303,8 +1923,11 @@ impl TuiShell {
         self.model_add_pick_api_base.clear();
         self.model_add_pick_index = 0;
 
-        match self.apply_model_add_and_switch(selected_name.as_str(), api_base.as_str(), api_key.as_str())
-        {
+        match self.apply_model_add_and_switch(
+            selected_name.as_str(),
+            api_base.as_str(),
+            api_key.as_str(),
+        ) {
             Ok(()) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
@@ -1388,13 +2011,15 @@ impl TuiShell {
     }
 
     pub fn scroll_subagent_view_up(&mut self, lines: usize) {
-        self.subagent_history_offset_from_bottom =
-            self.subagent_history_offset_from_bottom.saturating_add(lines);
+        self.subagent_history_offset_from_bottom = self
+            .subagent_history_offset_from_bottom
+            .saturating_add(lines);
     }
 
     pub fn scroll_subagent_view_down(&mut self, lines: usize) {
-        self.subagent_history_offset_from_bottom =
-            self.subagent_history_offset_from_bottom.saturating_sub(lines);
+        self.subagent_history_offset_from_bottom = self
+            .subagent_history_offset_from_bottom
+            .saturating_sub(lines);
     }
 
     pub(crate) fn clamp_subagent_history_scroll(&mut self, max_scroll: usize) -> usize {
@@ -1669,7 +2294,8 @@ impl TuiShell {
             match bottom_form::parse_model_add_connection(form) {
                 Ok((provider_idx, api_base, api_key)) => {
                     self.bottom_form = None;
-                    self.model_add_pick_models = bottom_form::model_add_mock_model_ids(provider_idx);
+                    self.model_add_pick_models =
+                        bottom_form::model_add_mock_model_ids(provider_idx);
                     self.model_add_pick_api_base = api_base;
                     self.model_add_pick_api_key = api_key;
                     self.model_add_pick_index = 0;
@@ -2117,7 +2743,8 @@ impl TuiShell {
             self.scroll_history_to_bottom();
             self.messages.push(ChatMessage {
                 role: MessageRole::User,
-                content: t!("tui.user.attached_image", prompt = prompt, path = raw_path).into_owned(),
+                content: t!("tui.user.attached_image", prompt = prompt, path = raw_path)
+                    .into_owned(),
                 tool_block: None,
             });
             self.submit_runtime_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
@@ -2271,7 +2898,10 @@ impl TuiShell {
     }
 
     pub(crate) fn handle_extensions_slash(&mut self, message: &str) {
-        let tail = message.strip_prefix("/extensions").map(str::trim).unwrap_or("");
+        let tail = message
+            .strip_prefix("/extensions")
+            .map(str::trim)
+            .unwrap_or("");
         if tail.is_empty() {
             if let Err(err) = self.refresh_extensions_from_disk() {
                 self.push_agent_message(t!("tui.extensions.read_failed", err = err).into_owned());
@@ -2283,6 +2913,16 @@ impl TuiShell {
             return;
         }
 
+        if let Some(query) = tail.strip_prefix("marketplace").map(str::trim) {
+            self.open_marketplace_view((!query.is_empty()).then_some(query));
+            self.push_agent_message(if query.is_empty() {
+                t!("tui.marketplace.opened").into_owned()
+            } else {
+                t!("tui.marketplace.opened_filtered", query = query).into_owned()
+            });
+            return;
+        }
+
         let Some(subcommand) = tail.split_whitespace().next() else {
             self.push_agent_message(t!("tui.extensions.usage").into_owned());
             return;
@@ -2290,10 +2930,11 @@ impl TuiShell {
 
         match subcommand {
             "list" if tail == "list" => match self.refresh_extensions_from_disk() {
-                Ok(()) => self.push_agent_message(format_extension_list_message(self.extension_entries())),
-                Err(err) => {
-                    self.push_agent_message(t!("tui.extensions.read_failed", err = err).into_owned())
+                Ok(()) => {
+                    self.push_agent_message(format_extension_list_message(self.extension_entries()))
                 }
+                Err(err) => self
+                    .push_agent_message(t!("tui.extensions.read_failed", err = err).into_owned()),
             },
             "import" => {
                 let raw_path = tail.strip_prefix("import").map(str::trim).unwrap_or("");
@@ -2330,6 +2971,10 @@ impl TuiShell {
                             return;
                         }
 
+                        logging::log_event(&format!(
+                            "[extensions] import ok id={} version={}",
+                            extension.id, extension.version
+                        ));
                         self.push_agent_message(format!(
                             "{}\nid: {}\nversion: {}",
                             t!("tui.extensions.imported", name = extension.display_name),
@@ -2338,6 +2983,7 @@ impl TuiShell {
                         ));
                     }
                     Err(err) => {
+                        logging::log_event(&format!("[extensions] import failed: {}", err));
                         self.push_agent_message(
                             t!("tui.extensions.import_failed", err = err).into_owned(),
                         );
@@ -2452,7 +3098,7 @@ impl TuiShell {
 
         self.set_input_mode(MainInputMode::Agent);
         let user_turn = plan::build_start_implementing_user_turn();
-    self.submit_runtime_user_turn(user_turn, None);
+        self.submit_runtime_user_turn(user_turn, None);
     }
 
     pub(crate) fn handle_skill_alias_slash(&mut self, message: &str) -> bool {
@@ -2469,7 +3115,9 @@ impl TuiShell {
 
     fn activate_skill_slash(&mut self, skill_name: &str, user_message: &str) {
         let Some(skill) = self.find_enabled_skill_entry(skill_name) else {
-            self.push_agent_message(t!("tui.skills.activate_missing", name = skill_name).into_owned());
+            self.push_agent_message(
+                t!("tui.skills.activate_missing", name = skill_name).into_owned(),
+            );
             return;
         };
 
@@ -2707,48 +3355,61 @@ impl TuiShell {
                 return;
             };
             match self.resolve_mcp_prompt_definition(&server, prompt_name) {
-                Ok(prompt_definition) => match classify_prompt_tail(&prompt_definition, prompt_tail) {
-                    PromptTail::ArgsJson(args_json) => {
-                        self.apply_mcp_prompt_command(&server, prompt_name, Some(args_json), None);
+                Ok(prompt_definition) => {
+                    match classify_prompt_tail(&prompt_definition, prompt_tail) {
+                        PromptTail::ArgsJson(args_json) => {
+                            self.apply_mcp_prompt_command(
+                                &server,
+                                prompt_name,
+                                Some(args_json),
+                                None,
+                            );
+                        }
+                        PromptTail::UserMessage(user_message)
+                            if prompt_definition.arguments.is_empty() =>
+                        {
+                            self.apply_mcp_prompt_command(
+                                &server,
+                                prompt_name,
+                                None,
+                                Some(user_message),
+                            );
+                        }
+                        PromptTail::Empty if prompt_definition.arguments.is_empty() => {
+                            self.apply_mcp_prompt_command(&server, prompt_name, None, None);
+                        }
+                        PromptTail::Empty => {
+                            self.open_mcp_prompt_form(&server, &prompt_definition, None);
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::Agent,
+                                content: t!(
+                                    "tui.bottom_form.prompt_opened",
+                                    server = server,
+                                    prompt = prompt_name
+                                )
+                                .into_owned(),
+                                tool_block: None,
+                            });
+                        }
+                        PromptTail::UserMessage(user_message) => {
+                            self.open_mcp_prompt_form(
+                                &server,
+                                &prompt_definition,
+                                Some(user_message),
+                            );
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::Agent,
+                                content: t!(
+                                    "tui.bottom_form.prompt_opened",
+                                    server = server,
+                                    prompt = prompt_name
+                                )
+                                .into_owned(),
+                                tool_block: None,
+                            });
+                        }
                     }
-                    PromptTail::UserMessage(user_message) if prompt_definition.arguments.is_empty() => {
-                        self.apply_mcp_prompt_command(
-                            &server,
-                            prompt_name,
-                            None,
-                            Some(user_message),
-                        );
-                    }
-                    PromptTail::Empty if prompt_definition.arguments.is_empty() => {
-                        self.apply_mcp_prompt_command(&server, prompt_name, None, None);
-                    }
-                    PromptTail::Empty => {
-                        self.open_mcp_prompt_form(&server, &prompt_definition, None);
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::Agent,
-                            content: t!(
-                                "tui.bottom_form.prompt_opened",
-                                server = server,
-                                prompt = prompt_name
-                            )
-                            .into_owned(),
-                            tool_block: None,
-                        });
-                    }
-                    PromptTail::UserMessage(user_message) => {
-                        self.open_mcp_prompt_form(&server, &prompt_definition, Some(user_message));
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::Agent,
-                            content: t!(
-                                "tui.bottom_form.prompt_opened",
-                                server = server,
-                                prompt = prompt_name
-                            )
-                            .into_owned(),
-                            tool_block: None,
-                        });
-                    }
-                },
+                }
                 Err(err) => self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
                     content: format!("读取 MCP prompt 参数失败: {}", err),
@@ -3006,10 +3667,7 @@ impl TuiShell {
         let commands = match self.build_prompt_slash_commands() {
             Ok(commands) => commands,
             Err(err) => {
-                logging::log_event(&format!(
-                    "[mcp] refresh prompt slash cache failed: {}",
-                    err
-                ));
+                logging::log_event(&format!("[mcp] refresh prompt slash cache failed: {}", err));
                 return;
             }
         };
@@ -3295,6 +3953,11 @@ impl TuiShell {
             return;
         };
 
+        if tool_name == "marketplace.install" {
+            self.handle_marketplace_install_confirmation(result, request);
+            return;
+        }
+
         let request_value = ToolUiRequest::new(
             "ask_questions",
             serde_json::json!({
@@ -3341,6 +4004,7 @@ impl TuiShell {
 
     pub fn open_rules_form(&mut self) {
         self.cancel_model_add_pick();
+        self.close_marketplace_view();
         self.bottom_form = Some(bottom_form::new_rules_form(&self.rule_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -3352,6 +4016,7 @@ impl TuiShell {
 
     pub fn open_skills_form(&mut self) {
         self.cancel_model_add_pick();
+        self.close_marketplace_view();
         self.bottom_form = Some(bottom_form::new_skills_form(&self.skill_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -3363,6 +4028,7 @@ impl TuiShell {
 
     pub fn open_extensions_form(&mut self) {
         self.cancel_model_add_pick();
+        self.close_marketplace_view();
         self.bottom_form = Some(bottom_form::new_extensions_form(&self.extension_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -3370,6 +4036,47 @@ impl TuiShell {
         self.image_picker_active = false;
         self.set_input(String::new());
         self.refresh_suggestions();
+    }
+
+    pub fn open_marketplace_view(&mut self, query: Option<&str>) {
+        self.cancel_model_add_pick();
+        self.bottom_form = None;
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.chat_picker_active = false;
+        self.subagent_picker_active = false;
+        self.close_subagent_view();
+        self.image_picker_active = false;
+        self.marketplace_open = true;
+        self.marketplace_focus = MarketplaceFocus::List;
+        self.marketplace_active_tab = MarketplaceTab::Readme;
+        self.marketplace_selected_index = 0;
+        self.marketplace_selected_version_index = 0;
+        self.marketplace_error = None;
+        self.marketplace_pending_install = None;
+        self.marketplace_install_guard = None;
+        self.marketplace_filter = query.unwrap_or("").trim().to_string();
+
+        if let Err(err) = self.refresh_marketplace_catalog() {
+            self.marketplace_error = Some(err.to_string());
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.marketplace.read_failed", err = err).into_owned(),
+                tool_block: None,
+            });
+            return;
+        }
+
+        self.sync_marketplace_selection(true);
+        self.set_input(String::new());
+        self.refresh_suggestions();
+    }
+
+    pub fn close_marketplace_view(&mut self) {
+        self.marketplace_open = false;
+        self.marketplace_focus = MarketplaceFocus::List;
+        self.marketplace_pending_install = None;
+        self.marketplace_install_guard = None;
     }
 
     fn apply_mcp_prompt_command(
@@ -3448,13 +4155,19 @@ impl TuiShell {
         }
 
         if let Ok(prompts) = self.runtime.list_mcp_prompts(server) {
-            if let Some(prompt) = prompts.into_iter().find(|prompt| prompt.name == prompt_name) {
+            if let Some(prompt) = prompts
+                .into_iter()
+                .find(|prompt| prompt.name == prompt_name)
+            {
                 return Ok(prompt);
             }
         }
 
         if let Ok(prompts) = self.runtime.list_cached_mcp_prompts(server) {
-            if let Some(prompt) = prompts.into_iter().find(|prompt| prompt.name == prompt_name) {
+            if let Some(prompt) = prompts
+                .into_iter()
+                .find(|prompt| prompt.name == prompt_name)
+            {
                 return Ok(prompt);
             }
         }
@@ -3524,16 +4237,10 @@ impl TuiShell {
             .last()
             .unwrap_or("<empty>")
             .to_string();
-        first_message.content = welcome_message_text(
-            &active_model,
-            &mcp_welcome_line,
-        );
+        first_message.content = welcome_message_text(&active_model, &mcp_welcome_line);
         logging::log_event(&format!(
             "[mcp] welcome refreshed revision={} state={:?} previous_status={} next_status={}",
-            snapshot.revision,
-            snapshot.state,
-            previous_status_line,
-            mcp_welcome_line,
+            snapshot.revision, snapshot.state, previous_status_line, mcp_welcome_line,
         ));
     }
 
@@ -3933,7 +4640,7 @@ impl TuiShell {
                                         .is_some_and(|value| !value.trim().is_empty())
                             });
                         if !has_persisted_aux && idx < self.messages.len() {
-                                self.adjust_persisted_standalone_pending_aux_anchor_for_removed_message(idx);
+                            self.adjust_persisted_standalone_pending_aux_anchor_for_removed_message(idx);
                             self.assistant_aux_by_message.remove(&idx);
                             self.messages.remove(idx);
                         }
@@ -4000,13 +4707,12 @@ impl TuiShell {
         &mut self,
         removed_message_index: usize,
     ) {
-        self.persisted_standalone_pending_aux_anchor = match self
-            .persisted_standalone_pending_aux_anchor
-        {
-            Some(anchor) if anchor == removed_message_index => None,
-            Some(anchor) if anchor > removed_message_index => Some(anchor - 1),
-            other => other,
-        };
+        self.persisted_standalone_pending_aux_anchor =
+            match self.persisted_standalone_pending_aux_anchor {
+                Some(anchor) if anchor == removed_message_index => None,
+                Some(anchor) if anchor > removed_message_index => Some(anchor - 1),
+                other => other,
+            };
         self.last_completed_assistant_msg_index = match self.last_completed_assistant_msg_index {
             Some(index) if index == removed_message_index => None,
             Some(index) if index > removed_message_index => Some(index - 1),
@@ -4220,14 +4926,13 @@ fn should_reanchor_persisted_subagent_status_on_begin_assistant_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_standalone_subagent_status_aux, next_persisted_standalone_pending_aux,
-        next_persisted_standalone_pending_aux_anchor,
-        manual_shell_tool_command,
+        is_standalone_subagent_status_aux, manual_shell_tool_command,
+        next_persisted_standalone_pending_aux, next_persisted_standalone_pending_aux_anchor,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
         user_turn_text_for_mode,
     };
-    use crate::{
-        view::{AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux},
+    use crate::view::{
+        AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux,
     };
     use std::path::PathBuf;
 
@@ -4287,14 +4992,13 @@ mod tests {
             detail_text: None,
         };
 
-        let next = next_persisted_standalone_pending_aux(
-            true,
-            Some(7),
-            None,
-            Some(persisted.clone()),
-        );
+        let next =
+            next_persisted_standalone_pending_aux(true, Some(7), None, Some(persisted.clone()));
 
-        assert_eq!(next.as_ref().map(|aux| aux.status_text.as_str()), Some(persisted.status_text.as_str()));
+        assert_eq!(
+            next.as_ref().map(|aux| aux.status_text.as_str()),
+            Some(persisted.status_text.as_str())
+        );
     }
 
     #[test]
@@ -4305,7 +5009,8 @@ mod tests {
             detail_text: None,
         };
 
-        let next = next_persisted_standalone_pending_aux_anchor(Some(7), Some(&live), Some(&live), None);
+        let next =
+            next_persisted_standalone_pending_aux_anchor(Some(7), Some(&live), Some(&live), None);
 
         assert_eq!(next, Some(7));
     }
@@ -4318,7 +5023,8 @@ mod tests {
             detail_text: None,
         };
 
-        let next = next_persisted_standalone_pending_aux_anchor(Some(4), Some(&live), Some(&live), None);
+        let next =
+            next_persisted_standalone_pending_aux_anchor(Some(4), Some(&live), Some(&live), None);
 
         assert_eq!(next, Some(4));
     }
@@ -4363,7 +5069,8 @@ mod tests {
             detail_text: None,
         };
 
-        let next = next_persisted_standalone_pending_aux_anchor(None, Some(&live), Some(&live), Some(5));
+        let next =
+            next_persisted_standalone_pending_aux_anchor(None, Some(&live), Some(&live), Some(5));
 
         assert_eq!(next, Some(5));
     }
@@ -4376,7 +5083,8 @@ mod tests {
             detail_text: None,
         };
 
-        let next = next_persisted_standalone_pending_aux_anchor(None, None, Some(&persisted), Some(5));
+        let next =
+            next_persisted_standalone_pending_aux_anchor(None, None, Some(&persisted), Some(5));
 
         assert_eq!(next, Some(5));
     }
@@ -4391,7 +5099,12 @@ fn welcome_message(active_model: &str, mcp_status_line: &str) -> ChatMessage {
 }
 
 fn welcome_message_text(active_model: &str, mcp_status_line: &str) -> String {
-    t!("tui.welcome.body", model = active_model, mcp_status = mcp_status_line).into_owned()
+    t!(
+        "tui.welcome.body",
+        model = active_model,
+        mcp_status = mcp_status_line
+    )
+    .into_owned()
 }
 
 fn split_first_token(input: &str) -> Option<(&str, &str)> {
@@ -4629,10 +5342,18 @@ fn format_extension_list_message(entries: &[CliExtensionEntry]) -> String {
         lines.push(format!("- {}", entry.display_name));
         lines.push(format!("  id: {}", entry.id));
         lines.push(format!("  version: {}", entry.version));
-        if let Some(description) = entry.description.as_ref().filter(|value| !value.trim().is_empty()) {
+        if let Some(description) = entry
+            .description
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
             lines.push(format!("  description: {}", description));
         }
-        if let Some(author) = entry.author.as_ref().filter(|value| !value.trim().is_empty()) {
+        if let Some(author) = entry
+            .author
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
             lines.push(format!("  author: {}", author));
         }
         if let Some(main) = entry.main.as_ref().filter(|value| !value.trim().is_empty()) {

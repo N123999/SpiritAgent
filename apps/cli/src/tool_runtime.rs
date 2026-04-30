@@ -25,11 +25,8 @@ use windows_sys::Win32::{
 
 use crate::logging;
 use crate::{
-    ask_questions::AskQuestionsRequest,
-    mcp::spirit_agent_data_dir,
-    plan::USER_PLAN_FILE_NAME,
-    rules::USER_RULE_FILE_NAME,
-    skills::SKILLS_DIR_NAME,
+    ask_questions::AskQuestionsRequest, mcp::spirit_agent_data_dir, plan::USER_PLAN_FILE_NAME,
+    rules::USER_RULE_FILE_NAME, skills::SKILLS_DIR_NAME,
 };
 
 const PERMISSIONS_FILE: &str = "tool-permissions.json";
@@ -303,9 +300,7 @@ impl ToolRuntime {
 
     pub fn authorize(&self, request: &ToolRequest) -> Result<AuthorizationDecision> {
         match request {
-            ToolRequest::McpTool { .. } => {
-                Err(anyhow!("MCP 工具权限检查应由宿主 bridge 处理"))
-            }
+            ToolRequest::McpTool { .. } => Err(anyhow!("MCP 工具权限检查应由宿主 bridge 处理")),
             ToolRequest::Shell { command } => {
                 if self
                     .permissions
@@ -406,9 +401,7 @@ impl ToolRuntime {
 
     pub fn execute(&self, request: &ToolRequest) -> Result<String> {
         match request {
-            ToolRequest::McpTool { .. } => {
-                Err(anyhow!("MCP 工具执行应由宿主 bridge 处理"))
-            }
+            ToolRequest::McpTool { .. } => Err(anyhow!("MCP 工具执行应由宿主 bridge 处理")),
             ToolRequest::Shell { command } => self.execute_shell(command),
             ToolRequest::WebFetch { url } => self.execute_web_fetch(url),
             ToolRequest::ListDirectory { path } => self.execute_list_directory(path),
@@ -418,9 +411,9 @@ impl ToolRuntime {
                 end_line,
             } => self.execute_read(path, *start_line, *end_line),
             ToolRequest::Search { query } => self.execute_search(query),
-            ToolRequest::AskQuestions { .. } => {
-                Err(anyhow!("ask_questions 应由运行时挂起并等待用户填写，不应直接执行"))
-            }
+            ToolRequest::AskQuestions { .. } => Err(anyhow!(
+                "ask_questions 应由运行时挂起并等待用户填写，不应直接执行"
+            )),
             ToolRequest::CreateFile { path, content } => self.execute_create_file(path, content),
             ToolRequest::EditFile {
                 path,
@@ -524,8 +517,8 @@ impl ToolRuntime {
                 })
             }
             "ask_questions" => {
-                let request: AskQuestionsRequest = serde_json::from_value(args)
-                    .context("ask_questions 参数结构无效")?;
+                let request: AskQuestionsRequest =
+                    serde_json::from_value(args).context("ask_questions 参数结构无效")?;
                 request.validate()?;
                 Ok(ToolRequest::AskQuestions { questions: request })
             }
@@ -804,7 +797,10 @@ impl ToolRuntime {
                 Err(_) => continue,
             };
 
-            if !entry.file_type().is_some_and(|file_type| file_type.is_file()) {
+            if !entry
+                .file_type()
+                .is_some_and(|file_type| file_type.is_file())
+            {
                 continue;
             }
 
@@ -860,21 +856,24 @@ impl ToolRuntime {
         Ok(out)
     }
 
-fn search_entry_allowed(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_some_and(|file_type| file_type.is_dir()) {
-        return true;
+    fn search_entry_allowed(entry: &DirEntry) -> bool {
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_dir())
+        {
+            return true;
+        }
+
+        let Some(name) = entry.file_name().to_str() else {
+            return true;
+        };
+
+        !matches!(name, ".git" | "target" | "node_modules")
     }
 
-    let Some(name) = entry.file_name().to_str() else {
-        return true;
-    };
-
-    !matches!(name, ".git" | "target" | "node_modules")
-}
-
-fn normalize_search_line(line: &str) -> &str {
-    line.trim_end_matches(['\r', '\n']).trim()
-}
+    fn normalize_search_line(line: &str) -> &str {
+        line.trim_end_matches(['\r', '\n']).trim()
+    }
 
     fn execute_create_file(&self, path: &str, content: &str) -> Result<String> {
         let target = self.resolve_workspace_target_path(path)?;
@@ -1028,8 +1027,7 @@ fn normalize_search_line(line: &str) -> &str {
         canonical: &Path,
         prompt_title: &str,
     ) -> AuthorizationDecision {
-        if self.is_inside_workspace(canonical)
-            || self.is_inside_spirit_managed_user_area(canonical)
+        if self.is_inside_workspace(canonical) || self.is_inside_spirit_managed_user_area(canonical)
         {
             return AuthorizationDecision::Allowed;
         }
@@ -1098,12 +1096,18 @@ fn normalize_search_line(line: &str) -> &str {
 
     fn is_inside_spirit_managed_user_area(&self, path: &Path) -> bool {
         let user_rule = normalize_path_lossy(&self.spirit_data_dir.join(USER_RULE_FILE_NAME)).ok();
-        if user_rule.as_ref().is_some_and(|allowed| path_has_prefix(path, allowed)) {
+        if user_rule
+            .as_ref()
+            .is_some_and(|allowed| path_has_prefix(path, allowed))
+        {
             return true;
         }
 
         let user_plan = normalize_path_lossy(&self.spirit_data_dir.join(USER_PLAN_FILE_NAME)).ok();
-        if user_plan.as_ref().is_some_and(|allowed| path_has_prefix(path, allowed)) {
+        if user_plan
+            .as_ref()
+            .is_some_and(|allowed| path_has_prefix(path, allowed))
+        {
             return true;
         }
 
@@ -1440,8 +1444,7 @@ fn normalize_path_lossy(path: &Path) -> Result<PathBuf> {
 fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
     let normalized_path = path_compare_key(path);
     let normalized_prefix = path_compare_key(prefix);
-    normalized_path == normalized_prefix
-        || normalized_path.starts_with(&(normalized_prefix + "/"))
+    normalized_path == normalized_prefix || normalized_path.starts_with(&(normalized_prefix + "/"))
 }
 
 fn path_compare_key(path: &Path) -> String {
@@ -1703,11 +1706,18 @@ mod tests {
         fs::create_dir_all(workspace.join("target")).expect("create target dir");
         fs::create_dir_all(workspace.join("ignored-dir")).expect("create ignored dir");
         fs::write(workspace.join(".gitignore"), "ignored-dir/\n").expect("write gitignore");
-        fs::write(workspace.join("src").join("app.txt"), "Needle in source\n").expect("write source file");
-        fs::write(workspace.join("target").join("generated.txt"), "Needle in target\n")
-            .expect("write target file");
-        fs::write(workspace.join("ignored-dir").join("skip.txt"), "Needle in ignored dir\n")
-            .expect("write ignored file");
+        fs::write(workspace.join("src").join("app.txt"), "Needle in source\n")
+            .expect("write source file");
+        fs::write(
+            workspace.join("target").join("generated.txt"),
+            "Needle in target\n",
+        )
+        .expect("write target file");
+        fs::write(
+            workspace.join("ignored-dir").join("skip.txt"),
+            "Needle in ignored dir\n",
+        )
+        .expect("write ignored file");
 
         let result = ToolRuntime::new_for_workspace(workspace.clone())
             .execute_search("needle")
@@ -1734,7 +1744,8 @@ mod tests {
     fn create_file_allows_spirit_user_skill_paths_and_creates_missing_dirs() {
         let workspace = make_temp_workspace("spirit-user-skill-write-workspace");
         let spirit_dir = make_temp_workspace("spirit-user-skill-write-data");
-        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let runtime =
+            ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
         let target = spirit_dir
             .join(SKILLS_DIR_NAME)
             .join(format!(
@@ -1764,7 +1775,8 @@ mod tests {
     fn create_file_allows_spirit_user_plan_path() {
         let workspace = make_temp_workspace("spirit-user-plan-write-workspace");
         let spirit_dir = make_temp_workspace("spirit-user-plan-write-data");
-        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let runtime =
+            ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
         let target = spirit_dir.join(USER_PLAN_FILE_NAME);
 
         runtime
@@ -1799,7 +1811,8 @@ mod tests {
             .expect("create resource parent");
         fs::write(&resource, "- inspect regression risk\n").expect("write resource");
 
-        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let runtime =
+            ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
         let decision = runtime
             .authorize(&ToolRequest::ReadFile {
                 path: resource.to_string_lossy().to_string(),
@@ -1828,7 +1841,8 @@ mod tests {
         let plan_path = spirit_dir.join(USER_PLAN_FILE_NAME);
         fs::write(&plan_path, "# Plan\n\n- phase 1\n").expect("write plan");
 
-        let runtime = ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
+        let runtime =
+            ToolRuntime::new_for_workspace_and_spirit_dir(workspace.clone(), spirit_dir.clone());
         let decision = runtime
             .authorize(&ToolRequest::ReadFile {
                 path: plan_path.to_string_lossy().to_string(),

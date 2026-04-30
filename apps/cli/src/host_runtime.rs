@@ -104,7 +104,10 @@ pub(crate) fn tool_approval_block(
     tool_call_id: Option<&str>,
     prompt: &str,
 ) -> ToolUiBlock {
-    let detail_lines = prompt.lines().map(|line| line.to_string()).collect::<Vec<_>>();
+    let detail_lines = prompt
+        .lines()
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>();
     ToolUiBlock {
         tool_call_id: tool_call_id.map(String::from),
         tool_name: tool_name.to_string(),
@@ -152,7 +155,10 @@ pub(crate) fn build_tool_result_block(
                     string_arg(request, "display_name").unwrap_or("<unknown>"),
                     string_arg(request, "server").unwrap_or("<unknown>")
                 ),
-                format!("Tool: {}", string_arg(request, "tool_name").unwrap_or("<unknown>")),
+                format!(
+                    "Tool: {}",
+                    string_arg(request, "tool_name").unwrap_or("<unknown>")
+                ),
             ],
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
@@ -162,7 +168,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "网页内容已抓取".to_string(),
-            detail_lines: vec![format!("URL: {}", string_arg(request, "url").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "URL: {}",
+                string_arg(request, "url").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -171,7 +180,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "目录文件已列出".to_string(),
-            detail_lines: vec![format!("路径: {}", string_arg(request, "path").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "路径: {}",
+                string_arg(request, "path").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -186,7 +198,10 @@ pub(crate) fn build_tool_result_block(
                 phase: ToolUiPhase::Succeeded,
                 headline: "已读取文件片段".to_string(),
                 detail_lines: vec![
-                    format!("路径: {}", string_arg(request, "path").unwrap_or("<unknown>")),
+                    format!(
+                        "路径: {}",
+                        string_arg(request, "path").unwrap_or("<unknown>")
+                    ),
                     format!("行范围: {} - {}", start, end),
                 ],
                 args_excerpt: Some(args_excerpt),
@@ -198,7 +213,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "搜索完成".to_string(),
-            detail_lines: vec![format!("查询: {}", string_arg(request, "query").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "查询: {}",
+                string_arg(request, "query").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -207,7 +225,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "SubAgent 委托完成".to_string(),
-            detail_lines: vec![format!("任务: {}", string_arg(request, "task").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "任务: {}",
+                string_arg(request, "task").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -225,7 +246,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "已创建文件".to_string(),
-            detail_lines: vec![format!("路径: {}", string_arg(request, "path").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "路径: {}",
+                string_arg(request, "path").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
@@ -234,7 +258,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "已编辑文件".to_string(),
-            detail_lines: vec![format!("路径: {}", string_arg(request, "path").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "路径: {}",
+                string_arg(request, "path").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
@@ -243,7 +270,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "已删除文件".to_string(),
-            detail_lines: vec![format!("路径: {}", string_arg(request, "path").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "路径: {}",
+                string_arg(request, "path").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
@@ -252,7 +282,10 @@ pub(crate) fn build_tool_result_block(
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
             headline: "命令已执行".to_string(),
-            detail_lines: vec![format!("命令: {}", string_arg(request, "command").unwrap_or("<unknown>"))],
+            detail_lines: vec![format!(
+                "命令: {}",
+                string_arg(request, "command").unwrap_or("<unknown>")
+            )],
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -281,8 +314,14 @@ pub(crate) fn format_tool_ui_message(
             string_arg(request, "tool_name").unwrap_or("<unknown>"),
             truncate_for_preview(output, 1200)
         ),
-        "web_fetch" => format!("[tool] 已抓取网页 {}", string_arg(request, "url").unwrap_or("<unknown>")),
-        "list_directory_files" => format!("[tool] 已列出目录下文件 {}", string_arg(request, "path").unwrap_or("<unknown>")),
+        "web_fetch" => format!(
+            "[tool] 已抓取网页 {}",
+            string_arg(request, "url").unwrap_or("<unknown>")
+        ),
+        "list_directory_files" => format!(
+            "[tool] 已列出目录下文件 {}",
+            string_arg(request, "path").unwrap_or("<unknown>")
+        ),
         "read_file" => {
             let start = u64_arg(request, "start_line").unwrap_or(1);
             let end = u64_arg(request, "end_line")
@@ -306,15 +345,28 @@ pub(crate) fn format_tool_ui_message(
             tool_name,
             truncate_for_preview(output, 1200)
         ),
-        "create_file" => format!("[tool] 已创建文件 {}", string_arg(request, "path").unwrap_or("<unknown>")),
-        "edit_file" => format!("[tool] 已编辑文件 {}", string_arg(request, "path").unwrap_or("<unknown>")),
-        "delete_file" => format!("[tool] 已删除文件 {}", string_arg(request, "path").unwrap_or("<unknown>")),
+        "create_file" => format!(
+            "[tool] 已创建文件 {}",
+            string_arg(request, "path").unwrap_or("<unknown>")
+        ),
+        "edit_file" => format!(
+            "[tool] 已编辑文件 {}",
+            string_arg(request, "path").unwrap_or("<unknown>")
+        ),
+        "delete_file" => format!(
+            "[tool] 已删除文件 {}",
+            string_arg(request, "path").unwrap_or("<unknown>")
+        ),
         "run_shell_command" => format!(
             "[tool] {} 执行完成。\n{}",
             tool_name,
             truncate_for_preview(output, 1200)
         ),
-        _ => format!("[tool] {} 执行完成。\n{}", tool_name, truncate_for_preview(output, 1200)),
+        _ => format!(
+            "[tool] {} 执行完成。\n{}",
+            tool_name,
+            truncate_for_preview(output, 1200)
+        ),
     }
 }
 
@@ -345,7 +397,10 @@ mod tests {
         assert_eq!(block.tool_call_id.as_deref(), Some("call_00_demo"));
         assert_eq!(block.tool_name, "run_shell_command");
         assert_eq!(block.headline, "命令已执行");
-        assert_eq!(block.args_excerpt.as_deref(), Some("{\n  \"command\": \"echo 牛逼\"\n}"));
+        assert_eq!(
+            block.args_excerpt.as_deref(),
+            Some("{\n  \"command\": \"echo 牛逼\"\n}")
+        );
     }
 
     #[test]

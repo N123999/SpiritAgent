@@ -17,16 +17,18 @@ use crate::{
     conversation_select::flatten_wrapped_history,
     logging,
     ports::SubagentSessionStatus,
-    shell::{ask_questions as ask_questions_form, manual_shell},
     session::PendingMcpResource,
+    shell::{ask_questions as ask_questions_form, manual_shell},
     tui::{ConversationPanelHit, TuiShell},
     view::{
-        AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind, CliUiHookSlot,
-        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView,
+        AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
-        ChatMessage, InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole,
-        PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
-        SubagentSessionDetailView, ToolUiBlock, ToolUiPhase, TuiViewModel,
+        ChatMessage, CliUiHookSlot, CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant,
+        CliUiHookView, InputSuggestion, InputSuggestionKind, MainInputMode,
+        MarketplaceCatalogItemView, MarketplaceDetailView, MarketplaceFocus, MarketplaceTab,
+        MarketplaceViewModel, MessageRole, PendingAssistantAux, PendingSubagentApprovalView,
+        SubagentApprovalInputView, SubagentSessionDetailView, ToolUiBlock, ToolUiPhase,
+        TuiViewModel,
     },
 };
 
@@ -81,9 +83,22 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let show_subagent_picker = app.subagent_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_bottom_form = app.bottom_form.is_some();
-    let show_picker =
-        show_model_picker || show_language_picker || show_chat_picker || show_subagent_picker || show_image_picker;
+    let show_marketplace = app.marketplace_view.is_some();
+    let show_picker = show_model_picker
+        || show_language_picker
+        || show_chat_picker
+        || show_subagent_picker
+        || show_image_picker;
     let show_suggestions = app.input_suggestion_kind.is_some() && !show_picker && !show_bottom_form;
+
+    if show_marketplace {
+        if let Some(view) = &app.marketplace_view {
+            draw_marketplace_view(frame, shell, frame.area(), view);
+        }
+        ACTIVE_CLI_UI_HOOKS.with(|hooks| hooks.borrow_mut().clear());
+        return;
+    }
+
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_suggestions || show_bottom_form {
@@ -98,7 +113,9 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let bottom_form_height = app
         .bottom_form
         .as_ref()
-        .map(|f| bottom_form_display_height(f, content_area.width, content_area.height, input_height))
+        .map(|f| {
+            bottom_form_display_height(f, content_area.width, content_area.height, input_height)
+        })
         .unwrap_or(0);
 
     let chunks = Layout::default()
@@ -115,6 +132,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Constraint::Min(0),
                 Constraint::Length(input_height),
                 Constraint::Length(bottom_form_height),
+            ]
+        } else if show_marketplace {
+            vec![
+                Constraint::Min(0),
+                Constraint::Length(input_height),
+                Constraint::Length(1),
             ]
         } else if show_suggestions {
             vec![
@@ -217,31 +240,52 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.model")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.model")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_language_picker {
         let picker_lines = build_language_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.language")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.language")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_chat_picker {
         let picker_lines = build_chat_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.sessions")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.sessions")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_subagent_picker {
-        let picker_lines = build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
+        let picker_lines =
+            build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("SubAgent 会话"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("SubAgent 会话"),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_image_picker {
         let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.image")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.image")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_suggestions {
@@ -270,7 +314,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         frame.render_widget(suggestions_widget, chunks[2]);
     }
 
-    if !show_suggestions && !show_bottom_form {
+    if !show_suggestions && !show_bottom_form && !show_marketplace {
         let help_idx = if show_picker { 3 } else { 2 };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
@@ -359,7 +403,10 @@ fn cli_ui_token_role(
     hook: &CliUiHookView,
     selector: impl Fn(&CliUiHookTokensView) -> Option<CliUiHookTokenRole>,
 ) -> Option<CliUiHookTokenRole> {
-    selector(&hook.tokens).or_else(|| hook.variant.and_then(|variant| selector(&cli_ui_variant_colors(variant))))
+    selector(&hook.tokens).or_else(|| {
+        hook.variant
+            .and_then(|variant| selector(&cli_ui_variant_colors(variant)))
+    })
 }
 
 fn cli_ui_foreground_color(slot: CliUiHookSlot) -> Option<Color> {
@@ -402,7 +449,10 @@ fn patch_style_border(style: Style, color: Option<Color>) -> Style {
     }
 }
 
-fn patch_lines_foreground(lines: Vec<Vec<Span<'static>>>, color: Option<Color>) -> Vec<Vec<Span<'static>>> {
+fn patch_lines_foreground(
+    lines: Vec<Vec<Span<'static>>>,
+    color: Option<Color>,
+) -> Vec<Vec<Span<'static>>> {
     let Some(color) = color else {
         return lines;
     };
@@ -565,7 +615,11 @@ fn input_cursor_position(app: &TuiViewModel, max_width: usize) -> (u16, u16) {
     )
 }
 
-fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: bool) -> Vec<Line<'static>> {
+fn build_input_lines(
+    app: &TuiViewModel,
+    max_width: usize,
+    bottom_form_open: bool,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     if let Some(approval) = &app.pending_subagent_approval {
@@ -590,10 +644,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
 
     if !app.pending_image_paths.is_empty() {
         let count = app.pending_image_paths.len();
-        let summary = format!(
-            "{}",
-            t!("ui.pending.images.summary", count = count)
-        );
+        let summary = format!("{}", t!("ui.pending.images.summary", count = count));
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
             deemphasize_pending_style(
@@ -611,10 +662,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
 
     if !app.pending_mcp_resources.is_empty() {
         let count = app.pending_mcp_resources.len();
-        let summary = format!(
-            "{}",
-            t!("ui.pending.mcp_resources.summary", count = count)
-        );
+        let summary = format!("{}", t!("ui.pending.mcp_resources.summary", count = count));
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
             deemphasize_pending_style(
@@ -690,10 +738,7 @@ fn wrap_editor_text_lines(text: &str, max_width: usize) -> Vec<String> {
             col = 0;
         }
 
-        lines
-            .last_mut()
-            .expect("wrap_editor_text_lines")
-            .push(ch);
+        lines.last_mut().expect("wrap_editor_text_lines").push(ch);
 
         if ch_width > 0 {
             col += ch_width;
@@ -714,9 +759,8 @@ fn maybe_log_input_cursor_diagnostics(
     input_cursor_col: u16,
 ) {
     let input_chars = app.input.chars().count();
-    let should_log = app.input.contains('\n')
-        || input_chars >= 48
-        || app.input.chars().any(|ch| !ch.is_ascii());
+    let should_log =
+        app.input.contains('\n') || input_chars >= 48 || app.input.chars().any(|ch| !ch.is_ascii());
     if !should_log {
         return;
     }
@@ -967,19 +1011,17 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
     let (visible_messages, skipped, start_index) = visible_messages(app);
     let effective_standalone_pending_aux = effective_standalone_pending_aux(app);
     let has_pending_aux = effective_standalone_pending_aux.is_some();
-    let render_standalone_pending_aux = should_render_standalone_pending_aux(
-        app,
-        start_index,
-        visible_messages.len(),
-    );
+    let render_standalone_pending_aux =
+        should_render_standalone_pending_aux(app, start_index, visible_messages.len());
     let standalone_insert_before = standalone_pending_aux_insert_before_message_index(
         app,
         start_index,
         visible_messages.len(),
     );
     let standalone_block = if render_standalone_pending_aux {
-        effective_standalone_pending_aux
-            .map(|pending_aux| render_standalone_pending_aux_lines(pending_aux, app.show_aux_details))
+        effective_standalone_pending_aux.map(|pending_aux| {
+            render_standalone_pending_aux_lines(pending_aux, app.show_aux_details)
+        })
     } else {
         None
     };
@@ -1142,8 +1184,8 @@ fn message_gutter_padding() -> &'static str {
 fn assistant_message_prefix_style() -> Style {
     patch_style_foreground(
         Style::default()
-        .fg(Color::Cyan)
-        .add_modifier(Modifier::BOLD),
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
         cli_ui_accent_color(CliUiHookSlot::MessageAssistant),
     )
 }
@@ -1158,7 +1200,10 @@ fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
         }
     };
 
-    patch_style_foreground(base, cli_ui_foreground_color(CliUiHookSlot::AssistantThinking))
+    patch_style_foreground(
+        base,
+        cli_ui_foreground_color(CliUiHookSlot::AssistantThinking),
+    )
 }
 
 fn assistant_aux_title(kind: AssistantAuxKind) -> String {
@@ -1174,7 +1219,10 @@ fn assistant_aux_title_style(kind: AssistantAuxKind) -> Style {
         AssistantAuxKind::Compressing => subtle_aux_text_style(),
     };
 
-    patch_style_foreground(base, cli_ui_foreground_color(CliUiHookSlot::AssistantThinking))
+    patch_style_foreground(
+        base,
+        cli_ui_foreground_color(CliUiHookSlot::AssistantThinking),
+    )
 }
 
 fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
@@ -1183,7 +1231,10 @@ fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
         AssistantAuxKind::Compressing => subtle_aux_text_style(),
     };
 
-    patch_style_foreground(base, cli_ui_foreground_color(CliUiHookSlot::AssistantThinking))
+    patch_style_foreground(
+        base,
+        cli_ui_foreground_color(CliUiHookSlot::AssistantThinking),
+    )
 }
 
 fn is_tool_progress_only_text(text: &str) -> bool {
@@ -1233,7 +1284,8 @@ fn render_standalone_pending_aux_lines(
     pending_aux: &PendingAssistantAux,
     show_aux_details: bool,
 ) -> Vec<Line<'static>> {
-    let synthetic_subagent_status_text = parse_pending_subagent_status_text(&pending_aux.status_text);
+    let synthetic_subagent_status_text =
+        parse_pending_subagent_status_text(&pending_aux.status_text);
     let detail_text = if synthetic_subagent_status_text.is_none() && show_aux_details {
         pending_aux.detail_text.as_deref()
     } else {
@@ -1349,7 +1401,9 @@ fn render_message_lines(
         .filter(|value| !value.trim().is_empty())
         .filter(|_| !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing));
     let embedded_thinking_text = if msg.role == MessageRole::Agent && app.show_aux_details {
-        embedded_thinking.as_deref().filter(|value| !value.trim().is_empty())
+        embedded_thinking
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
     } else {
         None
     };
@@ -1361,15 +1415,17 @@ fn render_message_lines(
     } else {
         None
     };
-    let pending_aux_detail_text = if synthetic_subagent_status_text.is_none() && app.show_aux_details {
-        pending_aux.and_then(|aux| aux.detail_text.as_deref())
-    } else {
-        None
-    };
+    let pending_aux_detail_text =
+        if synthetic_subagent_status_text.is_none() && app.show_aux_details {
+            pending_aux.and_then(|aux| aux.detail_text.as_deref())
+        } else {
+            None
+        };
     let render_stored_thinking_after_body =
         should_render_aux_after_message_body(stored_thinking_text, has_message_body);
-    let render_pending_aux_after_body = pending_aux
-        .is_some_and(|_| should_render_aux_after_message_body(pending_aux_detail_text, has_message_body));
+    let render_pending_aux_after_body = pending_aux.is_some_and(|_| {
+        should_render_aux_after_message_body(pending_aux_detail_text, has_message_body)
+    });
     let slot_prefix = cli_ui_prefix(message_slot);
     let slot_suffix = cli_ui_suffix(message_slot);
 
@@ -1413,7 +1469,11 @@ fn render_message_lines(
                     assistant_aux_title_style(AssistantAuxKind::Thinking),
                 )]);
             }
-            render_aux_text_lines(&mut push_message_line, AssistantAuxKind::Thinking, thinking_text);
+            render_aux_text_lines(
+                &mut push_message_line,
+                AssistantAuxKind::Thinking,
+                thinking_text,
+            );
         }
     }
 
@@ -1436,7 +1496,11 @@ fn render_message_lines(
 
     if let Some(thinking_text) = stored_thinking_text {
         if render_stored_thinking_after_body {
-            render_aux_text_lines(&mut push_message_line, AssistantAuxKind::Thinking, thinking_text);
+            render_aux_text_lines(
+                &mut push_message_line,
+                AssistantAuxKind::Thinking,
+                thinking_text,
+            );
         }
     }
 
@@ -1494,7 +1558,10 @@ fn split_embedded_thinking_content(text: &str) -> (String, Option<String>) {
 
 fn tool_phase_label(phase: ToolUiPhase) -> (String, Color) {
     match phase {
-        ToolUiPhase::PendingApproval => (t!("ui.tool.phase.pending_approval").into_owned(), Color::Yellow),
+        ToolUiPhase::PendingApproval => (
+            t!("ui.tool.phase.pending_approval").into_owned(),
+            Color::Yellow,
+        ),
         ToolUiPhase::Running => (t!("ui.tool.phase.running").into_owned(), Color::Yellow),
         ToolUiPhase::Succeeded => (t!("ui.tool.phase.succeeded").into_owned(), Color::Green),
         ToolUiPhase::Failed => (t!("ui.tool.phase.failed").into_owned(), Color::Red),
@@ -1528,8 +1595,8 @@ fn render_tool_card_lines(
             "[tool] ",
             patch_style_foreground(
                 Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
                 cli_ui_accent_color(CliUiHookSlot::MessageTool),
             ),
         ),
@@ -1537,8 +1604,8 @@ fn render_tool_card_lines(
             tool.tool_name.clone(),
             patch_style_foreground(
                 Style::default()
-                .fg(Color::Rgb(170, 170, 170))
-                .add_modifier(Modifier::BOLD),
+                    .fg(Color::Rgb(170, 170, 170))
+                    .add_modifier(Modifier::BOLD),
                 cli_ui_foreground_color(CliUiHookSlot::MessageTool),
             ),
         ),
@@ -1547,8 +1614,8 @@ fn render_tool_card_lines(
             phase_label.to_string(),
             patch_style_foreground(
                 Style::default()
-                .fg(phase_color)
-                .add_modifier(Modifier::BOLD),
+                    .fg(phase_color)
+                    .add_modifier(Modifier::BOLD),
                 cli_ui_accent_color(CliUiHookSlot::MessageTool),
             ),
         ),
@@ -1588,8 +1655,8 @@ fn render_tool_card_lines(
             tool.headline.clone(),
             patch_style_foreground(
                 Style::default()
-                .fg(Color::Rgb(170, 170, 170))
-                .add_modifier(Modifier::BOLD),
+                    .fg(Color::Rgb(170, 170, 170))
+                    .add_modifier(Modifier::BOLD),
                 cli_ui_foreground_color(CliUiHookSlot::MessageTool),
             ),
         ),
@@ -1618,7 +1685,10 @@ fn render_tool_card_lines(
                 out.push(Line::from(vec![
                     Span::raw(indent),
                     Span::styled(rail_sym, rail),
-                    Span::styled(t!("ui.tool.args_json").into_owned(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        t!("ui.tool.args_json").into_owned(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]));
                 for seg in args.lines() {
                     out.push(Line::from(vec![
@@ -1638,7 +1708,10 @@ fn render_tool_card_lines(
                 out.push(Line::from(vec![
                     Span::raw(indent),
                     Span::styled(rail_sym, rail),
-                    Span::styled(t!("ui.tool.output").into_owned(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        t!("ui.tool.output").into_owned(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]));
                 let lines: Vec<&str> = output.lines().take(48).collect();
                 for seg in lines.iter() {
@@ -1655,8 +1728,11 @@ fn render_tool_card_lines(
                         Span::raw(indent),
                         Span::raw("  "),
                         Span::styled(
-                            t!("ui.tool.more_lines_hidden", count = total_ln.saturating_sub(48))
-                                .into_owned(),
+                            t!(
+                                "ui.tool.more_lines_hidden",
+                                count = total_ln.saturating_sub(48)
+                            )
+                            .into_owned(),
                             Style::default()
                                 .fg(Color::DarkGray)
                                 .add_modifier(Modifier::ITALIC),
@@ -1875,7 +1951,11 @@ impl MdBuilder {
 }
 
 fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
-    (&app.messages, app.history_truncated_before, app.history_truncated_before)
+    (
+        &app.messages,
+        app.history_truncated_before,
+        app.history_truncated_before,
+    )
 }
 
 fn build_suggestion_lines(
@@ -1911,14 +1991,19 @@ fn build_suggestion_lines(
             }
             None => t!("ui.suggestion.empty.generic").into_owned(),
         };
-        return vec![Line::from(Span::styled(
-            message,
-            default_style,
-        ))];
+        return vec![Line::from(Span::styled(message, default_style))];
     }
 
-    if matches!(app.input_suggestion_kind, Some(InputSuggestionKind::FileReference)) {
-        return build_file_reference_suggestion_lines(app, max_items, default_style, selected_style);
+    if matches!(
+        app.input_suggestion_kind,
+        Some(InputSuggestionKind::FileReference)
+    ) {
+        return build_file_reference_suggestion_lines(
+            app,
+            max_items,
+            default_style,
+            selected_style,
+        );
     }
 
     let selected = app.selected_suggestion;
@@ -2013,7 +2098,11 @@ fn build_file_reference_suggestion_lines(
     for idx in start..end {
         let path = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
-        let style = if is_selected { selected_style } else { default_style };
+        let style = if is_selected {
+            selected_style
+        } else {
+            default_style
+        };
         let prefix = if is_selected { "> " } else { "  " };
         lines.push(Line::from(Span::styled(
             format!("{}{}", prefix, path.label),
@@ -2062,7 +2151,12 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
 fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
     if !suggestion.details.is_empty() {
         let mut lines = vec![t!("ui.suggestion.usage.heading").into_owned()];
-        lines.extend(suggestion.details.iter().map(|detail| format!("    {}", detail)));
+        lines.extend(
+            suggestion
+                .details
+                .iter()
+                .map(|detail| format!("    {}", detail)),
+        );
         return lines;
     }
 
@@ -2120,6 +2214,7 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
         "/extensions" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /extensions".to_string(),
+            "    /extensions marketplace [query]".to_string(),
             "    /extensions list".to_string(),
             "    /extensions import <zip>".to_string(),
             "    /extensions remove <id>".to_string(),
@@ -2275,7 +2370,10 @@ fn build_subagent_picker_lines(
 
         if let Some(latest) = item.latest_message.as_deref() {
             lines.push(Line::from(Span::styled(
-                format!("    {}", truncate_to_width(latest, max_width.saturating_sub(4))),
+                format!(
+                    "    {}",
+                    truncate_to_width(latest, max_width.saturating_sub(4))
+                ),
                 subtle_aux_text_style(),
             )));
         }
@@ -2299,13 +2397,11 @@ fn draw_subagent_viewer(
     let approval_panel_slot = CliUiHookSlot::ApprovalPanel;
     let panel_border_style = patch_style_border(
         conversation_body_text_style(),
-        cli_ui_border_color(approval_panel_slot)
-            .or(cli_ui_accent_color(approval_panel_slot)),
+        cli_ui_border_color(approval_panel_slot).or(cli_ui_accent_color(approval_panel_slot)),
     );
     let panel_title_style = patch_style_foreground(
         subtle_aux_text_style(),
-        cli_ui_foreground_color(approval_panel_slot)
-            .or(cli_ui_accent_color(approval_panel_slot)),
+        cli_ui_foreground_color(approval_panel_slot).or(cli_ui_accent_color(approval_panel_slot)),
     );
     let panel_prefix = cli_ui_prefix(approval_panel_slot);
     let panel_suffix = cli_ui_suffix(approval_panel_slot);
@@ -2330,8 +2426,8 @@ fn draw_subagent_viewer(
     frame.render_widget(block.clone(), popup);
 
     let inner = block.inner(popup);
-    let active_approval = pending_subagent_approval
-        .filter(|approval| approval.session_id == view.summary.session_id);
+    let active_approval =
+        pending_subagent_approval.filter(|approval| approval.session_id == view.summary.session_id);
     let approval_input_height = approval_input
         .map(|input| {
             (input_visual_line_count(&input.value, inner.width.saturating_sub(2) as usize)
@@ -2393,7 +2489,10 @@ fn draw_subagent_viewer(
 
     if let Some(latest) = view.summary.latest_message.as_deref() {
         header_lines.push(Line::from(Span::styled(
-            truncate_to_width(&format!("最新进展: {}", latest), chunks[0].width.saturating_sub(1) as usize),
+            truncate_to_width(
+                &format!("最新进展: {}", latest),
+                chunks[0].width.saturating_sub(1) as usize,
+            ),
             patch_style_foreground(
                 subtle_aux_text_style(),
                 cli_ui_foreground_color(approval_panel_slot),
@@ -2401,7 +2500,10 @@ fn draw_subagent_viewer(
         )));
     }
 
-    frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: true }), chunks[0]);
+    frame.render_widget(
+        Paragraph::new(header_lines).wrap(Wrap { trim: true }),
+        chunks[0],
+    );
 
     let history_lines = build_subagent_history_lines(view, show_aux_details);
     let (flat, _) = flatten_wrapped_history(history_lines, history_chunk.width.max(1), None);
@@ -2419,15 +2521,12 @@ fn draw_subagent_viewer(
     if let (Some(editor), Some(editor_area), Some(approval)) =
         (approval_input, approval_chunk, active_approval)
     {
-        let editor_lines = wrap_editor_text_lines(
-            &editor.value,
-            editor_area.width.saturating_sub(2) as usize,
-        )
-        .into_iter()
-        .map(Line::from)
-        .collect::<Vec<_>>();
-        let editor_widget = Paragraph::new(editor_lines)
-        .block(
+        let editor_lines =
+            wrap_editor_text_lines(&editor.value, editor_area.width.saturating_sub(2) as usize)
+                .into_iter()
+                .map(Line::from)
+                .collect::<Vec<_>>();
+        let editor_widget = Paragraph::new(editor_lines).block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(patch_style_border(
@@ -2443,10 +2542,8 @@ fn draw_subagent_viewer(
         frame.render_widget(editor_widget, editor_area);
 
         let prefix: String = editor.value.chars().take(editor.cursor).collect();
-        let (cursor_row, cursor_col) = wrapped_text_cursor_position(
-            &prefix,
-            editor_area.width.saturating_sub(2) as usize,
-        );
+        let (cursor_row, cursor_col) =
+            wrapped_text_cursor_position(&prefix, editor_area.width.saturating_sub(2) as usize);
         frame.set_cursor_position((
             editor_area.x + 1 + cursor_col as u16,
             editor_area.y + 1 + cursor_row as u16,
@@ -2454,7 +2551,8 @@ fn draw_subagent_viewer(
     }
 
     let footer_text = if active_approval.is_some() && approval_input.is_some() {
-        "Esc 取消输入  |  Enter 提交意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情".to_string()
+        "Esc 取消输入  |  Enter 提交意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情"
+            .to_string()
     } else if active_approval.is_some() {
         "Esc 关闭  |  Enter 输入意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
     } else if let Some(error) = view.error.as_deref() {
@@ -2480,6 +2578,517 @@ fn draw_subagent_viewer(
         ))),
         footer_chunk,
     );
+}
+
+fn draw_marketplace_view(
+    frame: &mut ratatui::Frame<'_>,
+    _shell: &mut TuiShell,
+    area: Rect,
+    view: &MarketplaceViewModel,
+) {
+    let popup = area;
+    frame.render_widget(Clear, popup);
+
+    let panel_slot = CliUiHookSlot::BottomForm;
+    let panel_border_style = Style::default().fg(Color::Rgb(72, 80, 94));
+    let panel_title_style = Style::default()
+        .fg(cli_ui_foreground_color(panel_slot).unwrap_or(Color::Cyan))
+        .add_modifier(Modifier::BOLD);
+    let panel_subtle_style = Style::default().fg(Color::Rgb(165, 170, 180));
+    let mut title_spans = vec![
+        Span::styled("Marketplace", panel_title_style),
+        Span::raw(" "),
+        Span::styled("browser", panel_subtle_style),
+    ];
+    if !view.query.trim().is_empty() {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(
+            format!("query: {}", view.query.trim()),
+            panel_subtle_style,
+        ));
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(panel_border_style)
+        .title(Line::from(title_spans));
+    frame.render_widget(block.clone(), popup);
+
+    let inner = block.inner(popup);
+    let outer_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),
+            Constraint::Min(0),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    let header_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(panel_border_style)
+        .title(Line::from(Span::styled("状态", panel_title_style)));
+    let header_inner = header_block.inner(outer_chunks[0]);
+    frame.render_widget(header_block, outer_chunks[0]);
+
+    let mut header_lines = vec![
+        Line::from(vec![
+            Span::styled("搜索: ", panel_subtle_style),
+            Span::styled(
+                if view.query.trim().is_empty() {
+                    "（未输入过滤词）".to_string()
+                } else {
+                    view.query.clone()
+                },
+                panel_title_style,
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("条目: ", panel_subtle_style),
+            Span::styled(format!("{}", view.items.len()), panel_title_style),
+            Span::raw("  "),
+            Span::styled(
+                format!(
+                    "焦点: {}",
+                    match view.focus {
+                        MarketplaceFocus::List => "列表",
+                        MarketplaceFocus::Detail => "详情",
+                    }
+                ),
+                panel_subtle_style,
+            ),
+            Span::raw("  "),
+            Span::styled(
+                format!(
+                    "标签: {}",
+                    match view.active_tab {
+                        MarketplaceTab::Readme => "内容",
+                        MarketplaceTab::Changelog => "更新日志",
+                        MarketplaceTab::Versions => "版本",
+                    }
+                ),
+                panel_subtle_style,
+            ),
+        ]),
+    ];
+    if let Some(error) = view.error.as_deref() {
+        header_lines.push(Line::from(Span::styled(
+            truncate_to_width(error, header_inner.width.saturating_sub(1) as usize),
+            Style::default().fg(Color::Red),
+        )));
+    }
+    frame.render_widget(
+        Paragraph::new(header_lines).wrap(Wrap { trim: true }),
+        header_inner,
+    );
+
+    let body_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(outer_chunks[1]);
+
+    let list_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(panel_border_style)
+        .title(Line::from(Span::styled("目录", panel_title_style)));
+    let list_inner = list_block.inner(body_chunks[0]);
+    frame.render_widget(list_block, body_chunks[0]);
+    let list_lines =
+        build_marketplace_list_lines(view, list_inner.width.saturating_sub(1) as usize);
+    frame.render_widget(
+        Paragraph::new(list_lines).wrap(Wrap { trim: true }),
+        list_inner,
+    );
+
+    let detail_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(panel_border_style)
+        .title(Line::from(Span::styled("详情", panel_title_style)));
+    let detail_inner = detail_block.inner(body_chunks[1]);
+    frame.render_widget(detail_block, body_chunks[1]);
+    render_marketplace_detail(
+        frame,
+        detail_inner,
+        view,
+        panel_title_style,
+        panel_border_style,
+    );
+
+    let footer_text = match (view.focus, view.active_tab) {
+        (MarketplaceFocus::List, _) => {
+            "↑/↓ 选择  Enter 进入详情  直接输入过滤词  Backspace 删除  Ctrl+L 清空  Ctrl+R 刷新  Esc 关闭".to_string()
+        }
+        (MarketplaceFocus::Detail, MarketplaceTab::Versions) => {
+            "Esc 返回列表  ←/→ 切换标签  ↑/↓ 选择版本  Enter 安装  Ctrl+R 刷新".to_string()
+        }
+        (MarketplaceFocus::Detail, _) => {
+            "Esc 返回列表  ←/→ 切换标签  Ctrl+R 刷新".to_string()
+        }
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(footer_text, panel_subtle_style))),
+        outer_chunks[2],
+    );
+}
+
+fn build_marketplace_list_lines(view: &MarketplaceViewModel, width: usize) -> Vec<Line<'static>> {
+    if view.items.is_empty() {
+        let message = if view.error.is_some() {
+            "目录加载失败，按 Ctrl+R 重试。"
+        } else if view.query.trim().is_empty() {
+            "目录为空。按 Ctrl+R 刷新 registry。"
+        } else {
+            "没有匹配结果。"
+        };
+        return vec![
+            Line::from(Span::styled(message, subtle_aux_text_style())),
+            Line::from(Span::styled(
+                "提示: 这不是本地安装列表；本地安装请退出 marketplace 后看 /extensions。",
+                Style::default().fg(Color::Rgb(120, 125, 135)),
+            )),
+        ];
+    }
+
+    view.items
+        .iter()
+        .enumerate()
+        .flat_map(|(index, item)| {
+            let is_selected = index == view.selected_index;
+            let prefix_style = if is_selected {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                subtle_aux_text_style()
+            };
+            let title_style = if is_selected {
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            let mut lines = vec![Line::from(vec![
+                Span::styled(if is_selected { "▸ " } else { "  " }, prefix_style),
+                Span::styled(item.display_name.clone(), title_style),
+                Span::raw(" "),
+                Span::styled(
+                    format!("@{}", item.default_version),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                if item.featured {
+                    Span::raw(" ")
+                } else {
+                    Span::raw("")
+                },
+                if item.featured {
+                    Span::styled("featured", Style::default().fg(Color::Magenta))
+                } else {
+                    Span::raw("")
+                },
+                if item.installed_version.is_some() {
+                    Span::raw(" ")
+                } else {
+                    Span::raw("")
+                },
+                if let Some(installed_version) = item.installed_version.as_ref() {
+                    Span::styled(
+                        format!("已安装 {}", installed_version),
+                        Style::default().fg(Color::Green),
+                    )
+                } else {
+                    Span::raw("")
+                },
+            ])];
+
+            if !item.description.trim().is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "    {}",
+                        truncate_to_width(&item.description, width.saturating_sub(4))
+                    ),
+                    subtle_aux_text_style(),
+                )));
+            }
+
+            if index + 1 < view.items.len() {
+                lines.push(Line::from(""));
+            }
+
+            lines
+        })
+        .collect()
+}
+
+fn render_marketplace_detail(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+    panel_title_style: Style,
+    panel_border_style: Style,
+) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5),
+            Constraint::Min(0),
+            Constraint::Length(3),
+        ])
+        .split(area);
+
+    let selected_item = view.items.get(view.selected_index);
+    let selected_detail = view.detail.as_ref();
+
+    let header_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(panel_border_style)
+        .title(Line::from(Span::styled(
+            selected_item
+                .map(|item| item.display_name.as_str())
+                .unwrap_or("未选择扩展"),
+            panel_title_style,
+        )));
+    let header_inner = header_block.inner(chunks[0]);
+    frame.render_widget(header_block, chunks[0]);
+
+    let mut header_lines = Vec::new();
+    if let Some(item) = selected_item {
+        header_lines.push(Line::from(vec![
+            Span::styled("id: ", panel_title_style),
+            Span::styled(item.extension_id.clone(), panel_title_style),
+            Span::raw("  "),
+            Span::styled("package: ", panel_title_style),
+            Span::styled(item.package_name.clone(), panel_title_style),
+        ]));
+        header_lines.push(Line::from(vec![
+            Span::styled("version: ", panel_title_style),
+            Span::styled(item.default_version.clone(), panel_title_style),
+            Span::raw("  "),
+            Span::styled("review: ", panel_title_style),
+            Span::styled(item.default_review_status.clone(), panel_title_style),
+            Span::raw("  "),
+            Span::styled(
+                item.installed_version
+                    .as_ref()
+                    .map(|installed| format!("已安装 {}", installed))
+                    .unwrap_or_else(|| "未安装".to_string()),
+                panel_title_style,
+            ),
+        ]));
+        if !item.description.trim().is_empty() {
+            header_lines.push(Line::from(Span::styled(
+                truncate_to_width(
+                    &item.description,
+                    header_inner.width.saturating_sub(1) as usize,
+                ),
+                panel_title_style,
+            )));
+        }
+    } else {
+        header_lines.push(Line::from(Span::styled(
+            "目录为空或过滤后无结果。",
+            panel_title_style,
+        )));
+    }
+    frame.render_widget(
+        Paragraph::new(header_lines).wrap(Wrap { trim: true }),
+        header_inner,
+    );
+
+    let tab_line = Line::from(vec![
+        marketplace_tab_span("内容", MarketplaceTab::Readme, view.active_tab),
+        Span::raw("  "),
+        marketplace_tab_span("更新日志", MarketplaceTab::Changelog, view.active_tab),
+        Span::raw("  "),
+        marketplace_tab_span("版本", MarketplaceTab::Versions, view.active_tab),
+    ]);
+
+    let content_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(panel_border_style)
+        .title(tab_line);
+    let content_inner = content_block.inner(chunks[1]);
+    frame.render_widget(content_block, chunks[1]);
+
+    if let Some(detail) = selected_detail {
+        match view.active_tab {
+            MarketplaceTab::Readme => {
+                let readme = detail
+                    .readme
+                    .clone()
+                    .unwrap_or_else(|| "暂无 README。".to_string());
+                frame.render_widget(
+                    Paragraph::new(readme).wrap(Wrap { trim: false }),
+                    content_inner,
+                );
+            }
+            MarketplaceTab::Changelog => {
+                let changelog_text = build_marketplace_changelog_text(detail);
+                frame.render_widget(
+                    Paragraph::new(changelog_text).wrap(Wrap { trim: false }),
+                    content_inner,
+                );
+            }
+            MarketplaceTab::Versions => {
+                let version_lines = build_marketplace_version_lines(view, selected_item, detail);
+                frame.render_widget(
+                    Paragraph::new(version_lines).wrap(Wrap { trim: true }),
+                    content_inner,
+                );
+            }
+        }
+    } else {
+        frame.render_widget(
+            Paragraph::new("请选择一项扩展。").wrap(Wrap { trim: true }),
+            content_inner,
+        );
+    }
+
+    let footer = if let Some(item) = selected_item {
+        let version = selected_detail
+            .and_then(|detail| detail.versions.get(view.selected_version_index))
+            .map(|entry| entry.version.clone())
+            .unwrap_or_else(|| item.default_version.clone());
+        format!(
+            "当前目标: {}@{}  |  Enter 安装  |  版本: {}",
+            item.display_name, version, version
+        )
+    } else {
+        "目录为空。".to_string()
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            footer,
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(CliUiHookSlot::BottomForm)
+                    .or(cli_ui_accent_color(CliUiHookSlot::BottomForm)),
+            ),
+        ))),
+        chunks[2],
+    );
+}
+
+fn marketplace_tab_span(label: &str, tab: MarketplaceTab, active: MarketplaceTab) -> Span<'static> {
+    if tab == active {
+        Span::styled(
+            label.to_string(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )
+    } else {
+        Span::styled(label.to_string(), Style::default().fg(Color::DarkGray))
+    }
+}
+
+fn build_marketplace_changelog_text(detail: &MarketplaceDetailView) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!("package: {}", detail.package_name));
+    lines.push(format!("status: {}", detail.status));
+    lines.push(format!("default_version: {}", detail.default_version));
+    lines.push(String::new());
+
+    for version in &detail.versions {
+        if let Some(changelog) = &version.changelog {
+            lines.push(format!("{} [{}]", version.version, version.channel));
+            lines.push(changelog.summary.clone());
+            lines.push(changelog.body.clone());
+            lines.push(String::new());
+        }
+    }
+
+    if lines.len() <= 4 {
+        lines.push("暂无更新日志。".to_string());
+    }
+
+    lines.join("\n")
+}
+
+fn build_marketplace_version_lines(
+    view: &MarketplaceViewModel,
+    selected_item: Option<&MarketplaceCatalogItemView>,
+    detail: &MarketplaceDetailView,
+) -> Vec<Line<'static>> {
+    if detail.versions.is_empty() {
+        return vec![Line::from(Span::styled(
+            "暂无版本。",
+            subtle_aux_text_style(),
+        ))];
+    }
+
+    detail
+        .versions
+        .iter()
+        .enumerate()
+        .flat_map(|(index, version)| {
+            let is_selected = index == view.selected_version_index;
+            let installed = selected_item
+                .and_then(|item| item.installed_version.as_ref())
+                .is_some_and(|installed_version| {
+                    installed_version.trim() == version.version.trim()
+                });
+            let mut lines = vec![Line::from(vec![
+                Span::styled(
+                    if is_selected { "▸ " } else { "  " },
+                    if is_selected {
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        subtle_aux_text_style()
+                    },
+                ),
+                Span::styled(
+                    version.version.clone(),
+                    if is_selected {
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    },
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    version.channel.clone(),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    version.review_status.clone(),
+                    review_status_style(&version.review_status),
+                ),
+                if installed {
+                    Span::raw("  ")
+                } else {
+                    Span::raw("")
+                },
+                if installed {
+                    Span::styled("已默认", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("")
+                },
+            ])];
+
+            if !version.description.trim().is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", version.description),
+                    subtle_aux_text_style(),
+                )));
+            }
+
+            lines
+        })
+        .collect()
+}
+
+fn review_status_style(status: &str) -> Style {
+    match status {
+        "verified" => Style::default().fg(Color::Green),
+        "revoked" => Style::default().fg(Color::Red),
+        _ => Style::default().fg(Color::Yellow),
+    }
 }
 
 fn build_subagent_history_lines(
@@ -2512,7 +3121,10 @@ fn build_subagent_history_lines(
         if !lines.is_empty() {
             lines.push(Line::from(""));
         }
-        lines.extend(render_subagent_pending_aux_lines(pending_aux, show_aux_details));
+        lines.extend(render_subagent_pending_aux_lines(
+            pending_aux,
+            show_aux_details,
+        ));
     }
 
     lines
@@ -2741,12 +3353,16 @@ fn bottom_form_text_field_outer_height(
     let label_height = if label.trim().is_empty() {
         0
     } else {
-        build_bottom_form_footer_lines(label, field_width).len().max(1) as u16
+        build_bottom_form_footer_lines(label, field_width)
+            .len()
+            .max(1) as u16
     };
     let help_height = if help.trim().is_empty() {
         0
     } else {
-        build_bottom_form_footer_lines(help, field_width).len().max(1) as u16
+        build_bottom_form_footer_lines(help, field_width)
+            .len()
+            .max(1) as u16
     };
 
     label_height
@@ -2765,7 +3381,9 @@ fn bottom_form_field_outer_height(
 ) -> u16 {
     match &field.editor {
         BottomFormFieldEditorView::Section { text } => {
-            build_bottom_form_footer_lines(text, field_width).len().max(1) as u16
+            build_bottom_form_footer_lines(text, field_width)
+                .len()
+                .max(1) as u16
         }
         BottomFormFieldEditorView::Text {
             value, placeholder, ..
@@ -2806,7 +3424,13 @@ fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let fields_height = form
         .fields
         .iter()
-        .map(|field| u32::from(bottom_form_field_outer_height(field, content_w, text_inner_w)))
+        .map(|field| {
+            u32::from(bottom_form_field_outer_height(
+                field,
+                content_w,
+                text_inner_w,
+            ))
+        })
         .sum::<u32>();
     let field_gaps = form.fields.len().saturating_sub(1) as u32;
     let footer_gap = if form.fields.is_empty() { 0 } else { 1 };
@@ -2841,8 +3465,8 @@ fn generic_bottom_form_selection_visible(
 ) -> bool {
     let mut used_height = 0usize;
     for index in scroll_offset..form.fields.len() {
-        let field_height = bottom_form_field_outer_height(&form.fields[index], field_width, text_inner_w)
-            as usize;
+        let field_height =
+            bottom_form_field_outer_height(&form.fields[index], field_width, text_inner_w) as usize;
         let needed_height = field_height + usize::from(index > scroll_offset);
         if used_height + needed_height > visible_height {
             return false;
@@ -2937,7 +3561,11 @@ fn rules_bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u1
     let layout = build_rules_bottom_form_layout(form, bottom_form_content_width(panel_width));
     let content_height = layout.content_lines.len().max(1) as u16;
     let footer_height = layout.footer_lines.len().max(1) as u16;
-    let footer_gap = if layout.content_lines.is_empty() { 0 } else { 1 };
+    let footer_gap = if layout.content_lines.is_empty() {
+        0
+    } else {
+        1
+    };
 
     content_height
         .saturating_add(footer_height)
@@ -2959,8 +3587,7 @@ fn ask_questions_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let row_heights = (0..ask_questions_form::question_row_count(question))
         .map(|row| ask_questions_row_block_height(question, row, content_w))
         .sum::<u16>();
-    let row_gaps = ask_questions_form::question_row_count(question)
-        .saturating_sub(1) as u16;
+    let row_gaps = ask_questions_form::question_row_count(question).saturating_sub(1) as u16;
     let rows_gap = if ask_questions_form::question_row_count(question) > 0 {
         1
     } else {
@@ -3017,7 +3644,10 @@ fn ask_questions_row_block_height(
     field_width: usize,
 ) -> u16 {
     let inner_width = field_width.saturating_sub(2).max(1);
-    if matches!(question.kind, crate::ask_questions::AskQuestionsQuestionKind::Text) {
+    if matches!(
+        question.kind,
+        crate::ask_questions::AskQuestionsQuestionKind::Text
+    ) {
         let Some(input) = question.text_input.as_ref() else {
             return 0;
         };
@@ -3219,7 +3849,9 @@ fn draw_ask_questions_form(
         Line::from(Span::styled(
             text,
             patch_style_foreground(
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
                 cli_ui_foreground_color(CliUiHookSlot::QuestionsPanel),
             ),
         ))
@@ -3245,7 +3877,10 @@ fn draw_ask_questions_form(
         .y
         .saturating_add(content_area.height.saturating_sub(1));
     let validation_y = tabs_y.saturating_sub(validation_height);
-    let rows_start_y = content_area.y.saturating_add(1).saturating_add(title_height);
+    let rows_start_y = content_area
+        .y
+        .saturating_add(1)
+        .saturating_add(title_height);
     let rows_start_y = if ask_questions_form::question_row_count(question) > 0 {
         rows_start_y.saturating_add(1)
     } else {
@@ -3253,12 +3888,8 @@ fn draw_ask_questions_form(
     };
     let rows_limit_y = validation_y;
     let visible_height = rows_limit_y.saturating_sub(rows_start_y) as usize;
-    let effective_scroll = ask_questions_effective_scroll(
-        form,
-        question,
-        content_area.width as usize,
-        visible_height,
-    );
+    let effective_scroll =
+        ask_questions_effective_scroll(form, question, content_area.width as usize, visible_height);
 
     let mut cursor = None;
     if visible_height > 0 {
@@ -3268,23 +3899,17 @@ fn draw_ask_questions_form(
             width: content_area.width,
             height: rows_limit_y.saturating_sub(rows_start_y),
         };
-        for (row_index, row_area) in ask_questions_visible_row_areas(
-            question,
-            rows_area,
-            rows_limit_y,
-            effective_scroll,
-        ) {
-            let row_selected = !ask_questions_form::submit_selected(form)
-                && row_index == question.selected_row;
+        for (row_index, row_area) in
+            ask_questions_visible_row_areas(question, rows_area, rows_limit_y, effective_scroll)
+        {
+            let row_selected =
+                !ask_questions_form::submit_selected(form) && row_index == question.selected_row;
             let row_cursor = if let Some(option) = question.options.get(row_index) {
-                draw_ask_questions_option_row(
-                    frame,
-                    row_area,
-                    question,
-                    option,
-                    row_selected,
-                )
-            } else if matches!(question.kind, crate::ask_questions::AskQuestionsQuestionKind::Text) {
+                draw_ask_questions_option_row(frame, row_area, question, option, row_selected)
+            } else if matches!(
+                question.kind,
+                crate::ask_questions::AskQuestionsQuestionKind::Text
+            ) {
                 question.text_input.as_ref().and_then(|input| {
                     draw_bottom_form_text_field(
                         frame,
@@ -3333,7 +3958,10 @@ fn draw_ask_questions_form(
     }
 
     frame.render_widget(
-        Paragraph::new(build_ask_questions_tab_line(form, content_area.width as usize)),
+        Paragraph::new(build_ask_questions_tab_line(
+            form,
+            content_area.width as usize,
+        )),
         Rect {
             x: content_area.x,
             y: tabs_y,
@@ -3396,8 +4024,15 @@ fn draw_ask_questions_option_row(
         format!("{} {}", marker, option.label),
         label_style,
     ))];
-    if let Some(summary) = option.summary.as_ref().filter(|value| !value.trim().is_empty()) {
-        lines.extend(build_bottom_form_footer_lines(summary, inner.width as usize));
+    if let Some(summary) = option
+        .summary
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        lines.extend(build_bottom_form_footer_lines(
+            summary,
+            inner.width as usize,
+        ));
     }
     let max_lines = usize::from(inner.height);
     if lines.len() > max_lines {
@@ -3645,9 +4280,7 @@ fn draw_bottom_form(
                 )
             }
             BottomFormFieldEditorView::Checkbox {
-                checked,
-                disabled,
-                ..
+                checked, disabled, ..
             } => draw_bottom_form_checkbox_field(
                 frame,
                 field_area,
@@ -3711,7 +4344,11 @@ fn draw_rules_bottom_form(
 
     let layout = build_rules_bottom_form_layout(form, content_area.width as usize);
     let footer_height = layout.footer_lines.len().max(1) as u16;
-    let footer_gap = if layout.content_lines.is_empty() { 0 } else { 1 };
+    let footer_gap = if layout.content_lines.is_empty() {
+        0
+    } else {
+        1
+    };
     let footer_y = content_area
         .y
         .saturating_add(content_area.height.saturating_sub(footer_height));
@@ -3722,7 +4359,8 @@ fn draw_rules_bottom_form(
         let max_scroll = layout.content_lines.len().saturating_sub(visible_height);
         let mut effective_scroll = form.scroll_offset.min(max_scroll);
 
-        if let Some(Some((selected_start, selected_end))) = layout.field_ranges.get(form.selected_field)
+        if let Some(Some((selected_start, selected_end))) =
+            layout.field_ranges.get(form.selected_field)
         {
             if *selected_start < effective_scroll {
                 effective_scroll = *selected_start;
@@ -3776,16 +4414,19 @@ fn draw_rules_bottom_form(
     }
 }
 
-fn build_rules_bottom_form_layout(form: &BottomFormView, max_width: usize) -> RulesBottomFormLayout {
+fn build_rules_bottom_form_layout(
+    form: &BottomFormView,
+    max_width: usize,
+) -> RulesBottomFormLayout {
     let mut content_lines = Vec::new();
     let mut field_ranges = vec![None; form.fields.len()];
     let checkbox_column_width = form
         .fields
         .iter()
         .filter_map(|field| match &field.editor {
-            BottomFormFieldEditorView::Checkbox { checked, .. } => {
-                Some(UnicodeWidthStr::width(rules_checkbox_label_text(&field.label, *checked).as_str()))
-            }
+            BottomFormFieldEditorView::Checkbox { checked, .. } => Some(UnicodeWidthStr::width(
+                rules_checkbox_label_text(&field.label, *checked).as_str(),
+            )),
             _ => None,
         })
         .max()
@@ -3834,7 +4475,10 @@ fn build_rules_bottom_form_layout(form: &BottomFormView, max_width: usize) -> Ru
         }
 
         if index + 1 < form.fields.len() {
-            content_lines.push(Line::from(Span::styled(String::new(), subtle_aux_text_style())));
+            content_lines.push(Line::from(Span::styled(
+                String::new(),
+                subtle_aux_text_style(),
+            )));
         }
     }
 
@@ -3939,14 +4583,15 @@ fn truncate_from_left_to_width(text: &str, max_width: usize) -> String {
     format!("…{}", collected.into_iter().collect::<String>())
 }
 
-fn draw_bottom_form_section_field(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    text: &str,
-) {
+fn draw_bottom_form_section_field(frame: &mut ratatui::Frame<'_>, area: Rect, text: &str) {
     let lines = build_bottom_form_footer_lines(text, area.width as usize)
         .into_iter()
-        .map(|line| patch_line_foreground(line, cli_ui_foreground_color(CliUiHookSlot::BottomFormSection)))
+        .map(|line| {
+            patch_line_foreground(
+                line,
+                cli_ui_foreground_color(CliUiHookSlot::BottomFormSection),
+            )
+        })
         .collect::<Vec<_>>();
     let max_lines = usize::from(area.height);
     let lines: Vec<Line<'static>> = lines.into_iter().take(max_lines).collect();
@@ -3971,7 +4616,9 @@ fn draw_bottom_form_text_field(
         let budget = bottom_exclusive.saturating_sub(next_y);
         if budget > 0 {
             let label_style = if is_selected {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 subtle_aux_text_style().add_modifier(Modifier::BOLD)
             };
@@ -4019,7 +4666,8 @@ fn draw_bottom_form_text_field(
         let inner = block.inner(body_area);
         frame.render_widget(block, body_area);
 
-        let mut lines = build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
+        let mut lines =
+            build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
         let max_inner_lines = usize::from(inner.height);
         if lines.len() > max_inner_lines {
             lines.truncate(max_inner_lines);
@@ -4251,6 +4899,7 @@ mod tests {
             image_picker_index: 0,
             image_picker_files: vec![],
             bottom_form: None,
+            marketplace_view: None,
             history_offset_from_bottom: 0,
             pending_response_active: false,
             pending_assistant_msg_index: None,
@@ -4314,7 +4963,9 @@ mod tests {
         }
     }
 
-    fn build_subagent_detail_view(pending_aux: Option<PendingAssistantAux>) -> SubagentSessionDetailView {
+    fn build_subagent_detail_view(
+        pending_aux: Option<PendingAssistantAux>,
+    ) -> SubagentSessionDetailView {
         SubagentSessionDetailView {
             summary: SubagentSessionSummaryView {
                 session_id: "subagent-1".to_string(),
@@ -4503,8 +5154,16 @@ mod tests {
 
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
-        assert!(lines.iter().any(|line| line.contains("我已经梳理完主要模块。")));
-        assert!(lines.iter().all(|line| !line.contains("先看一下项目结构。")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("我已经梳理完主要模块。"))
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("先看一下项目结构。"))
+        );
         assert!(lines.iter().all(|line| !line.contains("<think>")));
     }
 
@@ -4537,7 +5196,11 @@ mod tests {
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
         assert!(lines.iter().any(|line| line.contains("我来处理这个问题。")));
-        assert!(lines.iter().all(|line| !line.contains("先检查当前渲染分支。")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("先检查当前渲染分支。"))
+        );
     }
 
     #[test]
@@ -4554,7 +5217,11 @@ mod tests {
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().any(|line| line.contains("先检查当前渲染分支。")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("先检查当前渲染分支。"))
+        );
     }
 
     #[test]
@@ -4571,8 +5238,16 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("已开始处理。")));
-        assert!(lines.iter().any(|line| line.contains("官方新闻抓取: 正在执行")));
-        assert!(lines.iter().all(|line| !line.contains("| 官方新闻抓取: 正在执行")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("官方新闻抓取: 正在执行"))
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("| 官方新闻抓取: 正在执行"))
+        );
     }
 
     #[test]
@@ -4590,7 +5265,11 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().all(|line| !line.contains("继续等待子会话返回。")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("继续等待子会话返回。"))
+        );
     }
 
     #[test]
@@ -4609,13 +5288,19 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("子代理已完成任务。")));
-        assert!(lines.iter().any(|line| line.contains("官方新闻抓取: 已完成")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("官方新闻抓取: 已完成"))
+        );
     }
 
     #[test]
     fn persisted_subagent_status_wins_over_generic_pending_thinking() {
-        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "父会话准备整理结果。"));
-        app.messages.push(ChatMessage::new(MessageRole::Agent, String::new()));
+        let mut app =
+            build_view_model(ChatMessage::new(MessageRole::Agent, "父会话准备整理结果。"));
+        app.messages
+            .push(ChatMessage::new(MessageRole::Agent, String::new()));
         app.pending_response_active = true;
         app.pending_assistant_msg_index = Some(1);
         app.pending_aux = Some(PendingAssistantAux {
@@ -4750,7 +5435,8 @@ mod tests {
     }
 
     #[test]
-    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message() {
+    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message()
+     {
         let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
         app.messages.push(ChatMessage::new(
             MessageRole::Agent,
@@ -4794,7 +5480,11 @@ mod tests {
         let lines = render_text_lines(build_subagent_history_lines(&view, false));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().all(|line| !line.contains("先检查子会话当前进展。")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("先检查子会话当前进展。"))
+        );
     }
 
     #[test]
@@ -4808,7 +5498,11 @@ mod tests {
         let lines = render_text_lines(build_subagent_history_lines(&view, true));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().any(|line| line.contains("先检查子会话当前进展。")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("先检查子会话当前进展。"))
+        );
     }
 
     #[test]

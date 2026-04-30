@@ -20,6 +20,19 @@ pub enum MainInputMode {
     Plan,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarketplaceFocus {
+    List,
+    Detail,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarketplaceTab {
+    Readme,
+    Changelog,
+    Versions,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InputSuggestion {
     pub label: String,
@@ -347,6 +360,7 @@ pub struct TuiViewModel {
     pub persisted_standalone_pending_aux: Option<PendingAssistantAux>,
     pub persisted_standalone_pending_aux_anchor: Option<usize>,
     pub cli_ui_hooks: Vec<CliUiHookView>,
+    pub marketplace_view: Option<MarketplaceViewModel>,
     /// 对话区选区：折行后的全局行号 + 显示列（与 WordWrapper 一致）。
     pub conversation_sel_anchor: Option<(usize, usize)>,
     pub conversation_sel_head: Option<(usize, usize)>,
@@ -364,4 +378,77 @@ impl TuiViewModel {
     pub fn pending_aux_state(&self) -> Option<&PendingAssistantAux> {
         self.pending_aux.as_ref()
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketplaceCatalogItemView {
+    pub extension_id: String,
+    pub package_name: String,
+    pub display_name: String,
+    pub description: String,
+    pub author: Option<String>,
+    pub featured: bool,
+    pub default_version: String,
+    pub default_channel: String,
+    pub default_review_status: String,
+    pub supported_hosts: Vec<String>,
+    pub requested_capabilities: Vec<String>,
+    pub icon_url: Option<String>,
+    pub installed_version: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketplaceVersionChangelogView {
+    pub summary: String,
+    pub body: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketplaceVersionView {
+    pub version: String,
+    pub channel: String,
+    pub review_status: String,
+    pub display_name: String,
+    pub description: String,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub repository_url: Option<String>,
+    pub keywords: Vec<String>,
+    pub supported_hosts: Vec<String>,
+    pub requested_capabilities: Vec<String>,
+    pub icon_url: Option<String>,
+    pub published_at: Option<String>,
+    pub tarball_url: Option<String>,
+    pub changelog: Option<MarketplaceVersionChangelogView>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketplaceDetailView {
+    pub package_name: String,
+    pub status: String,
+    pub featured: bool,
+    pub default_version: String,
+    pub readme: Option<String>,
+    pub versions: Vec<MarketplaceVersionView>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketplacePendingInstallView {
+    pub extension_id: String,
+    pub display_name: String,
+    pub version: String,
+    pub review_status: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketplaceViewModel {
+    pub query: String,
+    pub focus: MarketplaceFocus,
+    pub selected_index: usize,
+    pub active_tab: MarketplaceTab,
+    pub selected_version_index: usize,
+    pub error: Option<String>,
+    pub items: Vec<MarketplaceCatalogItemView>,
+    pub detail: Option<MarketplaceDetailView>,
+    pub pending_install: Option<MarketplacePendingInstallView>,
 }

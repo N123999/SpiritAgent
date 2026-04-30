@@ -6,8 +6,8 @@ use rust_i18n::t;
 use serde_json::{Map, Value};
 
 use crate::{
-    mcp_types::McpDiscoveredPrompt,
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
+    mcp_types::McpDiscoveredPrompt,
     rules::{RuleEntry, RuleScope},
     skills::{SkillEntry, SkillScope},
     ts_bridge::CliExtensionEntry,
@@ -281,10 +281,18 @@ pub(crate) fn new_mcp_prompt_form(
                 t!("form.prompt.field.optional_suffix").into_owned()
             };
             let mut help_lines = Vec::new();
-            if let Some(title) = argument.title.as_ref().filter(|title| *title != &argument.name) {
+            if let Some(title) = argument
+                .title
+                .as_ref()
+                .filter(|title| *title != &argument.name)
+            {
                 help_lines.push(title.clone());
             }
-            if let Some(description) = argument.description.as_ref().filter(|value| !value.is_empty()) {
+            if let Some(description) = argument
+                .description
+                .as_ref()
+                .filter(|value| !value.is_empty())
+            {
                 help_lines.push(description.clone());
             }
 
@@ -322,12 +330,7 @@ pub(crate) fn new_mcp_prompt_form(
             prompt: prompt.name.clone(),
             arguments,
         },
-        title: format!(
-            "{} · {} / {}",
-            t!("form.prompt.title"),
-            server,
-            prompt.name
-        ),
+        title: format!("{} · {} / {}", t!("form.prompt.title"), server, prompt.name),
         fields,
         selected_field: 0,
         scroll_offset: 0,
@@ -443,9 +446,7 @@ pub(crate) fn activate(form: &mut BottomFormView) {
     };
 
     if let BottomFormFieldEditorView::Checkbox {
-        checked,
-        disabled,
-        ..
+        checked, disabled, ..
     } = &mut field.editor
     {
         if !*disabled {
@@ -591,7 +592,9 @@ pub(crate) fn parse_model_add_connection(
         return Err(t!("form.model.validation.provider_invalid").into_owned());
     };
 
-    let api_key = bottom_form_text_value(form, MODEL_ADD_FIELD_API_KEY).trim().to_string();
+    let api_key = bottom_form_text_value(form, MODEL_ADD_FIELD_API_KEY)
+        .trim()
+        .to_string();
     if api_key.is_empty() {
         return Err(t!("form.model.validation.api_key_empty").into_owned());
     }
@@ -599,7 +602,9 @@ pub(crate) fn parse_model_add_connection(
     let api_base = if let Some(preset) = preset_api_base_for_model_add(provider_index) {
         preset.to_string()
     } else {
-        let v = bottom_form_text_value(form, MODEL_ADD_FIELD_API_BASE).trim().to_string();
+        let v = bottom_form_text_value(form, MODEL_ADD_FIELD_API_BASE)
+            .trim()
+            .to_string();
         if v.is_empty() {
             return Err(t!("form.model.validation.api_base_empty").into_owned());
         }
@@ -648,7 +653,9 @@ pub(crate) fn prompt_user_message(
         return Err(t!("form.prompt.validation.invalid_form_kind").into_owned());
     };
 
-    let value = bottom_form_text_value(form, arguments.len()).trim().to_string();
+    let value = bottom_form_text_value(form, arguments.len())
+        .trim()
+        .to_string();
     if value.is_empty() {
         Ok(None)
     } else {
@@ -821,13 +828,25 @@ fn push_extensions_section(
 
 fn extension_help_text(entry: &CliExtensionEntry) -> String {
     let mut lines = Vec::new();
-    if let Some(description) = entry.description.as_ref().filter(|value| !value.trim().is_empty()) {
+    if let Some(description) = entry
+        .description
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
         lines.push(description.clone());
     }
-    if let Some(author) = entry.author.as_ref().filter(|value| !value.trim().is_empty()) {
+    if let Some(author) = entry
+        .author
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
         lines.push(format!("author: {}", author));
     }
-    if let Some(homepage) = entry.homepage.as_ref().filter(|value| !value.trim().is_empty()) {
+    if let Some(homepage) = entry
+        .homepage
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
         lines.push(format!("homepage: {}", homepage));
     }
     if let Some(main) = entry.main.as_ref().filter(|value| !value.trim().is_empty()) {
@@ -864,11 +883,7 @@ fn ensure_selectable_field(form: &mut BottomFormView) {
     }
 
     let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
-    if form
-        .fields
-        .get(selected)
-        .is_some_and(is_field_selectable)
-    {
+    if form.fields.get(selected).is_some_and(is_field_selectable) {
         form.selected_field = selected;
         return;
     }
@@ -1032,11 +1047,10 @@ enum McpAddTransportKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        MetadataFieldKind, activate, insert_text, move_right, new_mcp_add_form, new_mcp_prompt_form,
-        new_extensions_form, new_model_add_form, new_rules_form, new_skills_form,
-        parse_metadata_map,
-        parse_model_add_connection, prompt_user_message, rules_form_overrides, select_next_field,
-        skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
+        MetadataFieldKind, activate, insert_text, move_right, new_extensions_form,
+        new_mcp_add_form, new_mcp_prompt_form, new_model_add_form, new_rules_form, new_skills_form,
+        parse_metadata_map, parse_model_add_connection, prompt_user_message, rules_form_overrides,
+        select_next_field, skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
     };
     use rust_i18n::t;
     use std::path::PathBuf;
@@ -1074,8 +1088,14 @@ mod tests {
     fn new_form_defaults_to_stdio_command_placeholders() {
         let form = new_mcp_add_form();
 
-        assert_eq!(form.fields[2].label, t!("form.mcp.field.endpoint.command.label"));
-        assert_eq!(form.fields[3].label, t!("form.mcp.field.metadata.env.label"));
+        assert_eq!(
+            form.fields[2].label,
+            t!("form.mcp.field.endpoint.command.label")
+        );
+        assert_eq!(
+            form.fields[3].label,
+            t!("form.mcp.field.metadata.env.label")
+        );
     }
 
     #[test]
@@ -1103,7 +1123,10 @@ mod tests {
 
         activate(&mut form);
 
-        assert_eq!(rules_form_overrides(&form), vec![("workspace-rule".to_string(), false)]);
+        assert_eq!(
+            rules_form_overrides(&form),
+            vec![("workspace-rule".to_string(), false)]
+        );
     }
 
     #[test]
@@ -1119,7 +1142,10 @@ mod tests {
 
         activate(&mut form);
 
-        assert_eq!(skills_form_overrides(&form), vec![("workspace-skill".to_string(), false)]);
+        assert_eq!(
+            skills_form_overrides(&form),
+            vec![("workspace-skill".to_string(), false)]
+        );
     }
 
     #[test]
@@ -1179,8 +1205,14 @@ mod tests {
     fn prompt_form_marks_required_arguments() {
         let form = new_mcp_prompt_form("github", &sample_prompt(true), None);
 
-        assert_eq!(form.fields[0].label, format!("issue{}", t!("form.prompt.field.required_suffix")));
-        assert_eq!(form.fields[1].label, format!("style{}", t!("form.prompt.field.optional_suffix")));
+        assert_eq!(
+            form.fields[0].label,
+            format!("issue{}", t!("form.prompt.field.required_suffix"))
+        );
+        assert_eq!(
+            form.fields[1].label,
+            format!("style{}", t!("form.prompt.field.optional_suffix"))
+        );
     }
 
     #[test]

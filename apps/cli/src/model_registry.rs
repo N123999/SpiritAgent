@@ -22,7 +22,12 @@ pub struct AppConfig {
     pub models: Vec<ModelProfile>,
     #[serde(rename = "activeModel", alias = "active_model")]
     pub active_model: String,
-    #[serde(rename = "uiLocale", alias = "ui_locale", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "uiLocale",
+        alias = "ui_locale",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub ui_locale: Option<String>,
 }
 

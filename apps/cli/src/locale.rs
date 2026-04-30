@@ -45,7 +45,7 @@ pub fn language_display_name(locale: &str) -> String {
 }
 
 pub fn is_welcome_message(content: &str) -> bool {
-    supported_ui_locales().iter().any(|locale| {
-        content.starts_with(t!("tui.welcome.prefix", locale = *locale).as_ref())
-    })
+    supported_ui_locales()
+        .iter()
+        .any(|locale| content.starts_with(t!("tui.welcome.prefix", locale = *locale).as_ref()))
 }
