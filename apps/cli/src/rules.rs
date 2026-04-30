@@ -161,10 +161,9 @@ pub fn load_rule_state() -> Result<RuleStateFile> {
         return Ok(RuleStateFile::default());
     }
 
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("读取规则状态失败: {}", path.display()))?;
-    serde_json::from_str(&content)
-        .with_context(|| format!("解析规则状态失败: {}", path.display()))
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("读取规则状态失败: {}", path.display()))?;
+    serde_json::from_str(&content).with_context(|| format!("解析规则状态失败: {}", path.display()))
 }
 
 pub fn save_rule_state(state: &RuleStateFile) -> Result<PathBuf> {
@@ -326,7 +325,9 @@ fn parse_leading_rule_scope(input: &str) -> Option<(RuleScope, &str)> {
 
     match_prefix(input, USER_PREFIXES)
         .map(|rest| (RuleScope::User, rest))
-        .or_else(|| match_prefix(input, WORKSPACE_PREFIXES).map(|rest| (RuleScope::Workspace, rest)))
+        .or_else(|| {
+            match_prefix(input, WORKSPACE_PREFIXES).map(|rest| (RuleScope::Workspace, rest))
+        })
 }
 
 fn match_prefix<'a>(input: &'a str, prefixes: &[&str]) -> Option<&'a str> {
@@ -346,7 +347,6 @@ fn match_prefix<'a>(input: &'a str, prefixes: &[&str]) -> Option<&'a str> {
         None
     })
 }
-
 
 fn build_rule_preview(content: &str) -> RulePreview {
     let mut excerpt_lines = Vec::new();
@@ -417,9 +417,7 @@ fn stable_rule_id(path: &Path) -> String {
 mod tests {
     use super::*;
     use crate::test_support::shared_env_lock;
-    use std::{
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_test_dir(label: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -446,13 +444,16 @@ mod tests {
 
         assert_eq!(
             path,
-            root.join(SPIRIT_DIR_NAME).join(WORKSPACE_SPIRIT_RULE_FILE_NAME)
+            root.join(SPIRIT_DIR_NAME)
+                .join(WORKSPACE_SPIRIT_RULE_FILE_NAME)
         );
     }
 
     #[test]
     fn user_rule_path_lives_under_spirit_agent_data_dir() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("user-rule-path");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -466,7 +467,9 @@ mod tests {
 
     #[test]
     fn load_rule_state_returns_default_when_missing() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("load-state-default");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -480,7 +483,9 @@ mod tests {
 
     #[test]
     fn save_rule_state_round_trips_overrides() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("save-state-roundtrip");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -493,13 +498,18 @@ mod tests {
         let saved_path = save_rule_state(&state).expect("save state");
         let loaded = load_rule_state().expect("load state");
 
-        assert_eq!(saved_path, appdata.join("SpiritAgent").join(RULES_STATE_FILE_NAME));
+        assert_eq!(
+            saved_path,
+            appdata.join("SpiritAgent").join(RULES_STATE_FILE_NAME)
+        );
         assert_eq!(loaded, state);
     }
 
     #[test]
     fn discover_rule_entries_defaults_existing_rules_to_enabled() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-default-enabled-workspace");
         let appdata = temp_test_dir("discover-default-enabled-appdata");
         unsafe {
@@ -512,8 +522,11 @@ mod tests {
             "# spirit rule\nspirit body",
         )
         .expect("write spirit rule");
-        fs::write(workspace_rule_path(&workspace_root), "# agents rule\nagents body")
-            .expect("write agents rule");
+        fs::write(
+            workspace_rule_path(&workspace_root),
+            "# agents rule\nagents body",
+        )
+        .expect("write agents rule");
         fs::create_dir_all(appdata.join("SpiritAgent")).expect("create appdata dir");
         fs::write(user_rule_path(), "# user rule\nuser body").expect("write user rule");
 
@@ -523,14 +536,19 @@ mod tests {
         assert_eq!(entries.len(), 3);
         assert!(entries.iter().all(|entry| entry.exists));
         assert!(entries.iter().all(|entry| entry.enabled));
-        assert!(entries
-            .iter()
-            .all(|entry| entry.content.as_ref().is_some_and(|content| !content.is_empty())));
+        assert!(entries.iter().all(|entry| {
+            entry
+                .content
+                .as_ref()
+                .is_some_and(|content| !content.is_empty())
+        }));
     }
 
     #[test]
     fn discover_rule_entries_applies_disabled_override() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-override-workspace");
         let appdata = temp_test_dir("discover-override-appdata");
         unsafe {
@@ -556,7 +574,9 @@ mod tests {
 
     #[test]
     fn discover_rule_entries_returns_missing_sources() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-missing-workspace");
         let appdata = temp_test_dir("discover-missing-appdata");
         unsafe {
@@ -626,7 +646,9 @@ mod tests {
 
     #[test]
     fn discover_rule_entries_builds_truncated_preview_for_long_content() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-preview-workspace");
         let appdata = temp_test_dir("discover-preview-appdata");
         unsafe {
@@ -665,7 +687,8 @@ mod tests {
 
     #[test]
     fn parse_create_rule_request_recognizes_user_scope_prefixes() {
-        let request = parse_create_rule_request("用户级：强调简洁回答和先查代码").expect("parse request");
+        let request =
+            parse_create_rule_request("用户级：强调简洁回答和先查代码").expect("parse request");
 
         assert_eq!(request.scope, RuleScope::User);
         assert_eq!(request.prompt, "强调简洁回答和先查代码");

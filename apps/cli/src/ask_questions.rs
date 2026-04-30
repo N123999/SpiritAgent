@@ -73,19 +73,13 @@ impl AskQuestionsRequest {
                     }
                     for option in &question.options {
                         if option.label.trim().is_empty() {
-                            return Err(anyhow!(
-                                "ask_questions 选项文本不能为空: {}",
-                                id
-                            ));
+                            return Err(anyhow!("ask_questions 选项文本不能为空: {}", id));
                         }
                     }
                 }
                 AskQuestionsQuestionKind::Text => {
                     if !question.options.is_empty() {
-                        return Err(anyhow!(
-                            "ask_questions 文本题不能包含 options: {}",
-                            id
-                        ));
+                        return Err(anyhow!("ask_questions 文本题不能包含 options: {}", id));
                     }
                 }
             }

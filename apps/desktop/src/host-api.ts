@@ -5,10 +5,20 @@ import type {
   AskQuestionsResult,
   BootstrapRequest,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopMarketplaceCatalogItem,
+  DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DeleteSkillRequest,
   DesktopMcpServerInspection,
   DesktopSnapshot,
+  ImportExtensionRequest,
+  InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
+  RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
   RewindAndSubmitMessageRequest,
@@ -35,6 +45,18 @@ export interface HostApi {
   addMcpServer(request: AddMcpServerRequest): Promise<DesktopSnapshot>;
   deleteMcpServer(request: DeleteMcpServerRequest): Promise<DesktopSnapshot>;
   inspectMcpServer(name: string): Promise<DesktopMcpServerInspection>;
+  importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot>;
+  listMarketplaceExtensions(): Promise<DesktopMarketplaceCatalogItem[]>;
+  getMarketplaceExtensionDetail(extensionId: string): Promise<DesktopMarketplaceDetail>;
+  getMarketplaceExtensionReadme(extensionId: string): Promise<string>;
+  prepareMarketplaceExtensionInstall(
+    request: PrepareMarketplaceExtensionInstallRequest,
+  ): Promise<DesktopMarketplacePreparedInstall>;
+  installMarketplaceExtension(request: InstallMarketplaceExtensionRequest): Promise<DesktopSnapshot>;
+  deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot>;
+  runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot>;
+  updateExtensionSettings(request: UpdateExtensionSettingsRequest): Promise<DesktopSnapshot>;
+  updateExtensionSecret(request: UpdateExtensionSecretRequest): Promise<DesktopSnapshot>;
   createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
   deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
   submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;

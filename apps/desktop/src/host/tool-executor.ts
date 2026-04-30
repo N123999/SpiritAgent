@@ -1,4 +1,5 @@
 import {
+  type AskQuestionsResult,
   buildBuiltinHostToolDefinitions,
   AuthorizationDecision,
   JsonValue,
@@ -9,6 +10,7 @@ import {
   ToolExecutor,
 } from '@spirit-agent/agent-core';
 import {
+  type HostExtensionRuntimeBinding,
   type HostFileChangeObserver,
   NodeHostToolService,
   createNoopMcpAdapter,
@@ -23,26 +25,38 @@ export class DesktopToolExecutor
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
   private readonly mcp: McpService;
+  private extensionToolDefinitions: JsonValue[];
 
   constructor(
     private readonly workspaceRoot: string,
-    fileChangeObserver?: HostFileChangeObserver,
+    options: {
+      extensionToolDefinitions?: JsonValue[];
+      fileChangeObserver?: HostFileChangeObserver;
+      extensions?: HostExtensionRuntimeBinding<unknown>;
+    } = {},
   ) {
     this.mcp = new McpService(workspaceRoot);
+    this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
     }, {
       mcp: createNoopMcpAdapter(),
-      ...(fileChangeObserver ? { fileChangeObserver } : {}),
+      ...(options.fileChangeObserver ? { fileChangeObserver: options.fileChangeObserver } : {}),
+      ...(options.extensions ? { extensions: options.extensions } : {}),
     });
   }
 
   toolDefinitionsJson(): JsonValue {
-    return [
+    return mergeToolDefinitions(
       ...buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment()),
+      ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
-    ];
+    );
+  }
+
+  setExtensionToolDefinitions(definitions: JsonValue[] | undefined): void {
+    this.extensionToolDefinitions = Array.isArray(definitions) ? [...definitions] : [];
   }
 
   async parseCommand(_message: string): Promise<DesktopToolRequest> {
@@ -86,6 +100,34 @@ export class DesktopToolExecutor
     metadata: ToolRequestExecutionMetadata,
   ): DesktopToolRequest {
     return this.tools.attachRequestMetadata(request, metadata);
+  }
+
+  async continueAfterQuestions(
+    request: DesktopToolRequest,
+    result: AskQuestionsResult,
+  ): Promise<DesktopToolRequest | undefined> {
+    if (!isExtensionToolRequest(request)) {
+      return undefined;
+    }
+
+    request.questions_result = result as JsonValue;
+    return request;
+  }
+
+  shouldExecuteInBackground(request: DesktopToolRequest): boolean {
+    if (this.mcp.isToolRequest(request as JsonValue)) {
+      return true;
+    }
+
+    return this.tools.shouldExecuteInBackground?.(request) ?? false;
+  }
+
+  backgroundStatusText(request: DesktopToolRequest): string | undefined {
+    if (this.mcp.isToolRequest(request as JsonValue)) {
+      return this.mcp.backgroundStatusText(request as unknown as McpToolRequest);
+    }
+
+    return this.tools.backgroundStatusText?.(request);
   }
 
   startMcpBackgroundRefresh(): void {
@@ -135,4 +177,41 @@ export class DesktopToolExecutor
   ): Promise<JsonValue> {
     return this.mcp.getPrompt(name, prompt, _argsJson);
   }
+}
+
+function isExtensionToolRequest(request: DesktopToolRequest): request is Extract<
+  DesktopToolRequest,
+  { name: 'extension_tool' }
+> {
+  return typeof request === 'object' && request !== null && request.name === 'extension_tool';
+}
+
+function mergeToolDefinitions(...definitions: JsonValue[]): JsonValue {
+  const seenNames = new Set<string>();
+
+  return definitions.filter((definition) => {
+    const name = toolDefinitionName(definition);
+    if (!name) {
+      return true;
+    }
+    if (seenNames.has(name)) {
+      console.warn(`[desktop-host] duplicate tool definition dropped: ${name}`);
+      return false;
+    }
+    seenNames.add(name);
+    return true;
+  });
+}
+
+function toolDefinitionName(value: JsonValue): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidateFunction = 'function' in value ? value.function : undefined;
+  if (typeof candidateFunction !== 'object' || candidateFunction === null || Array.isArray(candidateFunction)) {
+    return undefined;
+  }
+
+  return typeof candidateFunction.name === 'string' ? candidateFunction.name : undefined;
 }

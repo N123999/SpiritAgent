@@ -81,6 +81,19 @@ export type RuntimeEvent<ToolRequest> =
       questions: RuntimePendingQuestions<ToolRequest>;
     }
   | {
+      kind: 'tool-call-started';
+      toolCallId: string;
+      toolName: string;
+      request: ToolRequest;
+    }
+  | {
+      kind: 'approval-resolved';
+      toolCallId: string;
+      toolName: string;
+      request: ToolRequest;
+      decisionKind: RuntimeApprovalDecision['kind'];
+    }
+  | {
       kind: 'vision-fallback-retry';
       droppedImages: number;
       message: string;

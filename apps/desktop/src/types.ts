@@ -88,6 +88,207 @@ export interface DeleteMcpServerRequest {
   name: string;
 }
 
+export interface ImportExtensionRequest {
+  archiveBase64: string;
+  fileName?: string;
+}
+
+export interface DeleteExtensionRequest {
+  id: string;
+}
+
+export interface RunExtensionRequest {
+  id: string;
+}
+
+export interface InstallMarketplaceExtensionRequest {
+  extensionId: string;
+  version?: string;
+  reviewAcknowledged?: boolean;
+}
+
+export interface PrepareMarketplaceExtensionInstallRequest {
+  extensionId: string;
+  version?: string;
+}
+
+export type DesktopExtensionSettingValue = string | boolean | number | null;
+
+export interface UpdateExtensionSettingsRequest {
+  id: string;
+  values: Record<string, DesktopExtensionSettingValue>;
+}
+
+export interface UpdateExtensionSecretRequest {
+  id: string;
+  key: string;
+  value?: string;
+}
+
+export type DesktopExtensionToolApprovalMode =
+  | 'allowed'
+  | 'need-approval'
+  | 'need-questions';
+
+export type DesktopExtensionToolExecutionMode = 'foreground' | 'background';
+
+export interface DesktopExtensionContributedTool {
+  name: string;
+  description: string;
+  approvalMode?: DesktopExtensionToolApprovalMode;
+  executionMode?: DesktopExtensionToolExecutionMode;
+}
+
+export interface DesktopExtensionDesktopCssEntry {
+  path: string;
+  media?: string;
+}
+
+export interface DesktopExtensionCliUiHookTokens {
+  foreground?: string;
+  border?: string;
+  accent?: string;
+}
+
+export interface DesktopExtensionCliUiHookEntry {
+  slot: string;
+  variant?: string;
+  tokens?: DesktopExtensionCliUiHookTokens;
+  prefix?: string;
+  suffix?: string;
+}
+
+export type DesktopExtensionSettingType = 'string' | 'boolean' | 'number' | 'select';
+
+export interface DesktopExtensionSettingOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface DesktopExtensionSettingDefinition {
+  key: string;
+  type: DesktopExtensionSettingType;
+  title: string;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: string | boolean | number;
+  options?: DesktopExtensionSettingOption[];
+}
+
+export interface DesktopExtensionSecretSlot {
+  key: string;
+  title: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface DesktopExtensionSecretStatus {
+  key: string;
+  configured: boolean;
+}
+
+export type DesktopExtensionHostKind = 'cli' | 'desktop';
+
+export interface DesktopExtensionListItem {
+  id: string;
+  displayName: string;
+  icon?: string;
+  version: string;
+  description?: string;
+  author?: string;
+  homepage?: string;
+  main?: string;
+  supportedHosts: DesktopExtensionHostKind[];
+  activationEvents?: string[];
+  requestedCapabilities?: string[];
+  contributedTools?: DesktopExtensionContributedTool[];
+  desktopCss?: DesktopExtensionDesktopCssEntry[];
+  cliHooks?: DesktopExtensionCliUiHookEntry[];
+  settingsSchema?: DesktopExtensionSettingDefinition[];
+  settingsValues?: Record<string, DesktopExtensionSettingValue>;
+  secretSlots?: DesktopExtensionSecretSlot[];
+  secretStatuses?: DesktopExtensionSecretStatus[];
+  archiveFileName?: string;
+  installedAtUnixMs: number;
+}
+
+export type DesktopMarketplaceChannel = 'stable' | 'preview' | 'experimental';
+
+export type DesktopMarketplaceReviewStatus = 'unverified' | 'verified' | 'revoked';
+
+export interface DesktopMarketplaceCatalogItem {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  defaultChannel: DesktopMarketplaceChannel;
+  defaultReviewStatus: DesktopMarketplaceReviewStatus;
+  detailPath: string;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: DesktopExtensionHostKind[];
+  requestedCapabilities: string[];
+  iconUrl?: string;
+}
+
+export interface DesktopMarketplaceVersionChangelog {
+  summary: string;
+  body: string;
+}
+
+export interface DesktopMarketplaceDetailVersion {
+  version: string;
+  channel: DesktopMarketplaceChannel;
+  reviewStatus: DesktopMarketplaceReviewStatus;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: DesktopExtensionHostKind[];
+  requestedCapabilities: string[];
+  iconUrl?: string;
+  publishedAt?: string;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  changelog?: DesktopMarketplaceVersionChangelog;
+}
+
+export interface DesktopMarketplaceDetail {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  readmePath: string;
+  versions: DesktopMarketplaceDetailVersion[];
+}
+
+export interface DesktopMarketplacePreparedInstall {
+  extensionId: string;
+  packageName: string;
+  displayName: string;
+  description: string;
+  version: string;
+  channel: DesktopMarketplaceChannel;
+  reviewStatus: DesktopMarketplaceReviewStatus;
+  supportedHosts: DesktopExtensionHostKind[];
+  supportsCurrentHost: boolean;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  sourceFileName: string;
+}
+
 export interface DesktopMcpStdioTransportSnapshot {
   type: 'stdio';
   command: string;
@@ -215,12 +416,22 @@ export interface DesktopSnapshot {
   skills: DiscoverySummary;
   /** 当前工作区与用户目录下发现的全部 Skills，供设置页列表。 */
   skillsList: DesktopSkillListItem[];
+  extensionsList: DesktopExtensionListItem[];
+  extensionCss: DesktopExtensionCssLayer[];
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];
   conversation: ConversationSnapshot;
   /** 从磁盘打开的会话；未从文件打开时为 `undefined`（新会话/未保存）。 */
   activeSession?: ActiveSessionSnapshot;
+}
+
+export interface DesktopExtensionCssLayer {
+  extensionId: string;
+  extensionName: string;
+  sourcePath: string;
+  cssText: string;
+  media?: string;
 }
 
 export interface DesktopConfigSnapshot {

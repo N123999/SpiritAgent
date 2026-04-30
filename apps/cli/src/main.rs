@@ -16,11 +16,16 @@ use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
 };
-use std::{io, time::{Duration, Instant}};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 
+use spirit_agent::view::MarketplaceFlowStep;
 use spirit_agent::{
-    ConfigCommand, KeyCommand, McpCommand, ModelCommand, TuiShell, handle_config_cli,
-    handle_mcp_cli, handle_model_cli, logging, ui,
+    ConfigCommand, ExtensionCommand, KeyCommand, MarketplaceCommand, McpCommand, ModelCommand,
+    TuiShell, handle_config_cli, handle_extension_cli, handle_mcp_cli, handle_model_cli, logging,
+    ui,
 };
 
 const MAX_EVENT_BATCH_PER_TICK: usize = 2048;
@@ -64,6 +69,10 @@ enum Commands {
     Mcp {
         #[command(subcommand)]
         action: McpAction,
+    },
+    Extension {
+        #[command(subcommand)]
+        action: ExtensionAction,
     },
 }
 
@@ -162,6 +171,42 @@ enum McpAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ExtensionAction {
+    List,
+    Import {
+        archive: String,
+    },
+    Remove {
+        id: String,
+    },
+    Marketplace {
+        #[command(subcommand)]
+        action: Option<MarketplaceAction>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MarketplaceAction {
+    List {
+        #[arg(value_name = "QUERY")]
+        query: Vec<String>,
+    },
+    Detail {
+        id: String,
+    },
+    Readme {
+        id: String,
+    },
+    Install {
+        id: String,
+        #[arg(long)]
+        version: Option<String>,
+        #[arg(long, default_value_t = false)]
+        review_acknowledged: bool,
+    },
+}
+
 fn main() -> Result<()> {
     spirit_agent::logging::init_logging();
     let cli = Cli::parse();
@@ -191,6 +236,9 @@ fn main() -> Result<()> {
         Some(Commands::Model { action }) => handle_model_cli(into_model_command(action))?,
         Some(Commands::Config { action }) => handle_config_cli(into_config_command(action))?,
         Some(Commands::Mcp { action }) => handle_mcp_cli(into_mcp_command(action))?,
+        Some(Commands::Extension { action }) => {
+            handle_extension_cli(into_extension_command(action))?
+        }
         None => run_tui()?,
     }
 
@@ -221,6 +269,36 @@ fn into_config_command(action: ConfigAction) -> ConfigCommand {
         ConfigAction::SetBase { url } => ConfigCommand::SetBase { url },
         ConfigAction::Key { action } => ConfigCommand::Key {
             action: into_key_command(action),
+        },
+    }
+}
+
+fn into_extension_command(action: ExtensionAction) -> ExtensionCommand {
+    match action {
+        ExtensionAction::List => ExtensionCommand::List,
+        ExtensionAction::Import { archive } => ExtensionCommand::Import { archive },
+        ExtensionAction::Remove { id } => ExtensionCommand::Remove { id },
+        ExtensionAction::Marketplace { action } => ExtensionCommand::Marketplace {
+            action: action
+                .map(into_marketplace_command)
+                .unwrap_or(MarketplaceCommand::List { query: Vec::new() }),
+        },
+    }
+}
+
+fn into_marketplace_command(action: MarketplaceAction) -> MarketplaceCommand {
+    match action {
+        MarketplaceAction::List { query } => MarketplaceCommand::List { query },
+        MarketplaceAction::Detail { id } => MarketplaceCommand::Detail { id },
+        MarketplaceAction::Readme { id } => MarketplaceCommand::Readme { id },
+        MarketplaceAction::Install {
+            id,
+            version,
+            review_acknowledged,
+        } => MarketplaceCommand::Install {
+            id,
+            version,
+            review_acknowledged,
         },
     }
 }
@@ -365,14 +443,22 @@ fn process_event_batch(
                 flush_pending_text(shell, &mut pending_text);
                 match mouse.kind {
                     MouseEventKind::ScrollUp => {
-                        if shell.is_subagent_view_active() {
+                        if shell.is_marketplace_view_active()
+                            && shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker)
+                        {
+                            shell.marketplace_scroll_readme_up(3);
+                        } else if shell.is_subagent_view_active() {
                             shell.scroll_subagent_view_up(3)
                         } else if !shell.scroll_active_bottom_form_up(3) {
                             shell.scroll_history_up(3)
                         }
                     }
                     MouseEventKind::ScrollDown => {
-                        if shell.is_subagent_view_active() {
+                        if shell.is_marketplace_view_active()
+                            && shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker)
+                        {
+                            shell.marketplace_scroll_readme_down(3);
+                        } else if shell.is_subagent_view_active() {
                             shell.scroll_subagent_view_down(3)
                         } else if !shell.scroll_active_bottom_form_down(3) {
                             shell.scroll_history_down(3)
@@ -408,9 +494,10 @@ fn process_event_batch(
                 let normalized = normalize_pasted_text(&text);
                 bracketed_paste_chars += normalized.chars().count();
                 bracketed_paste_lines += normalized.lines().count().max(1);
-                if let Some(target) = paste_target(shell) {
-                    paste_tracker.prime_explicit_replay_suppression(&normalized, target, now);
-                }
+                let Some(target) = paste_target(shell) else {
+                    continue;
+                };
+                paste_tracker.prime_explicit_replay_suppression(&normalized, target, now);
                 pending_text.push_str(&normalized);
             }
             Event::Key(key) => {
@@ -433,6 +520,7 @@ fn process_event_batch(
                     && !shell.is_subagent_picker_active()
                     && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
+                    && !shell.is_marketplace_view_active()
                     && !shell.is_bottom_form_active()
                     && pending_text.is_empty()
                     && matches!(key.code, KeyCode::Char('!'))
@@ -450,6 +538,7 @@ fn process_event_batch(
                     && !shell.is_subagent_picker_active()
                     && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
+                    && !shell.is_marketplace_view_active()
                     && let Some(ch) = batched_text_char(&key)
                 {
                     pending_text.push(ch);
@@ -480,6 +569,8 @@ fn flush_pending_text(shell: &mut TuiShell, pending_text: &mut String) {
 
     if shell.is_bottom_form_active() {
         shell.bottom_form_insert_text(pending_text);
+    } else if shell.is_marketplace_view_active() && shell.marketplace_filter_accepts_input() {
+        shell.marketplace_insert_filter_text(pending_text);
     } else {
         shell.insert_text_at_cursor(pending_text);
         shell.clamp_cursor();
@@ -684,11 +775,7 @@ fn process_key_event(
                     } else {
                         PasteTarget::BottomFormSingleLine
                     };
-                    paste_tracker.prime_explicit_replay_suppression(
-                        &text,
-                        target,
-                        now,
-                    );
+                    paste_tracker.prime_explicit_replay_suppression(&text, target, now);
                 }
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -698,6 +785,53 @@ fn process_key_event(
             KeyCode::Delete => shell.bottom_form_delete(),
             KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.bottom_form_insert_char(ch)
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_marketplace_view_active() {
+        match key.code {
+            KeyCode::Esc => shell.marketplace_go_back(),
+            KeyCode::Enter => shell.marketplace_submit_selection(),
+            KeyCode::Up => shell.marketplace_move_selection_prev(),
+            KeyCode::Down => shell.marketplace_move_selection_next(),
+            KeyCode::PageUp
+                if shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker) =>
+            {
+                shell.marketplace_scroll_readme_up(8);
+            }
+            KeyCode::PageDown
+                if shell.marketplace_step() != Some(MarketplaceFlowStep::CatalogPicker) =>
+            {
+                shell.marketplace_scroll_readme_down(8);
+            }
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Err(err) = shell.refresh_marketplace_catalog() {
+                    shell.push_agent_message(format!("刷新 marketplace 目录失败: {}", err));
+                }
+            }
+            KeyCode::Char('l')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.marketplace_filter_accepts_input() =>
+            {
+                shell.marketplace_clear_filter();
+            }
+            KeyCode::Backspace if shell.marketplace_filter_accepts_input() => {
+                shell.marketplace_backspace_filter()
+            }
+            KeyCode::Delete if shell.marketplace_filter_accepts_input() => {
+                shell.marketplace_backspace_filter()
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && shell.marketplace_filter_accepts_input() =>
+            {
+                shell.marketplace_insert_filter_char(ch);
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
             }
             _ => {}
         }
@@ -819,6 +953,7 @@ fn normalize_pasted_text(text: &str) -> String {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PasteTarget {
     MainInput,
+    MarketplaceFilter,
     BottomFormSingleLine,
     BottomFormMultiline,
 }
@@ -827,6 +962,7 @@ impl PasteTarget {
     fn newline_text(self) -> &'static str {
         match self {
             Self::MainInput => "\n",
+            Self::MarketplaceFilter => " ",
             Self::BottomFormSingleLine => " ",
             Self::BottomFormMultiline => "\n",
         }
@@ -835,6 +971,7 @@ impl PasteTarget {
     fn as_str(self) -> &'static str {
         match self {
             Self::MainInput => "main-input",
+            Self::MarketplaceFilter => "marketplace-filter",
             Self::BottomFormSingleLine => "bottom-form-single-line",
             Self::BottomFormMultiline => "bottom-form-multiline",
         }
@@ -992,7 +1129,9 @@ impl PasteReplayTracker {
         let handling = match state.mode {
             PasteTrackingMode::ExplicitReplaySuppression => {
                 if !state.logged {
-                    logging::log_event("[paste] suppressed replayed key stream after explicit clipboard paste");
+                    logging::log_event(
+                        "[paste] suppressed replayed key stream after explicit clipboard paste",
+                    );
                     state.logged = true;
                 }
                 PasteKeyHandling::Suppress
@@ -1033,6 +1172,12 @@ fn paste_target(shell: &TuiShell) -> Option<PasteTarget> {
         || shell.is_image_picker_active()
     {
         None
+    } else if shell.is_marketplace_view_active() {
+        if shell.marketplace_filter_accepts_input() {
+            Some(PasteTarget::MarketplaceFilter)
+        } else {
+            None
+        }
     } else if shell.is_bottom_form_active() {
         Some(if shell.bottom_form_preserves_newline() {
             PasteTarget::BottomFormMultiline
@@ -1094,7 +1239,9 @@ fn maybe_log_event_batch(shell: &TuiShell, events: &[Event]) {
 
     logging::log_event(&format!(
         "[input-batch] target={} events={} keys={} chars={} enters={} paste_events={} busy={} bottom_form={}",
-        paste_target(shell).map(PasteTarget::as_str).unwrap_or("picker"),
+        paste_target(shell)
+            .map(PasteTarget::as_str)
+            .unwrap_or("picker"),
         events.len(),
         key_events,
         char_keys,

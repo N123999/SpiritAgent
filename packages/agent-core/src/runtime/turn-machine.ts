@@ -9,7 +9,7 @@ import type {
   ToolCallRequest,
 } from '../ports.js';
 
-import { renderError } from './helpers.js';
+import { isCompatibleContinuedToolRequest, renderError } from './helpers.js';
 import { formatUserMessageContentForLlm } from './user-turn-timestamp.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type {
@@ -126,6 +126,13 @@ export async function resumePendingApproval<
   }
 
   runtime.pendingApproval = undefined;
+  runtime.emitEvent({
+    kind: 'approval-resolved',
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+    request: pending.request,
+    decisionKind: decision.kind,
+  });
 
   if (decision.kind === 'allow') {
     if (decision.persistTrust && pending.trustTarget !== undefined) {
@@ -206,6 +213,87 @@ export async function resumePendingQuestions<
   }
 
   runtime.pendingQuestions = undefined;
+  const continuedRequest = runtime.options.toolExecutor.continueAfterQuestions
+    ? await runtime.options.toolExecutor.continueAfterQuestions(pending.request, result)
+    : undefined;
+
+  if (continuedRequest !== undefined) {
+    if (!isCompatibleContinuedToolRequest(pending.request, continuedRequest)) {
+      return continueAfterQuestionsFailure(
+        runtime,
+        pending,
+        '[continueAfterQuestions error] continued request must stay on the same tool.',
+      );
+    }
+
+    let authorization: AuthorizationDecision<TrustTarget>;
+    try {
+      authorization = await runtime.options.toolExecutor.authorize(continuedRequest);
+    } catch (error) {
+      return continueAfterQuestionsFailure(
+        runtime,
+        pending,
+        `[authorization error] ${renderError(error)}`,
+      );
+    }
+
+    if (authorization.kind === 'need-approval') {
+      const approval = createApproval(
+        authorization.prompt,
+        continuedRequest,
+        pending.toolCallId,
+        pending.toolName,
+        authorization.trustTarget,
+      );
+      runtime.pendingApproval = {
+        pendingUserInput: pending.pendingUserInput,
+        state: pending.state,
+        request: continuedRequest,
+        prompt: authorization.prompt,
+        ...(authorization.trustTarget !== undefined
+          ? { trustTarget: authorization.trustTarget }
+          : {}),
+        toolCallId: pending.toolCallId,
+        toolName: pending.toolName,
+        remainingCalls: pending.remainingCalls,
+        turn: pending.turn,
+        resumeAsStreaming: false,
+        streamingEmitBeginResponse: true,
+      };
+      runtime.emitEvent({
+        kind: 'approval-requested',
+        approval,
+      });
+
+      return {
+        kind: 'requires-approval',
+        approval,
+        requestTrace: [...pending.turn.requestTrace],
+        toolExecutions: [...pending.turn.toolExecutions],
+        compactions: [...pending.turn.compactions],
+      };
+    }
+
+    if (authorization.kind === 'need-questions') {
+      return continueAfterQuestionsFailure(
+        runtime,
+        pending,
+        '[continueAfterQuestions error] continued request cannot require questions again.',
+      );
+    }
+
+    return executeAuthorizedToolCall(
+      runtime,
+      pending.pendingUserInput,
+      pending.state,
+      continuedRequest,
+      pending.toolCallId,
+      pending.toolName,
+      pending.remainingCalls,
+      pending.turn,
+    );
+  }
+
   const output = JSON.stringify(result);
   const questionsExecution: RuntimeToolExecution<ToolRequest> = {
     toolCallId: pending.toolCallId,
@@ -402,6 +490,12 @@ export async function processToolCalls<
         toolCallId: call.id,
         toolName: call.name,
       }) ?? request;
+      runtime.emitEvent({
+        kind: 'tool-call-started',
+        toolCallId: call.id,
+        toolName: call.name,
+        request,
+      });
     } catch (error) {
       currentState = runtime.options.appendToolResultMessage(
         currentState,
@@ -549,6 +643,35 @@ export async function executeAuthorizedToolCall<
   }
 
   return runTurnLoop(runtime, resumedState, pendingUserInput, turn);
+}
+
+async function continueAfterQuestionsFailure<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+  pending: PendingQuestionsState<State, ToolRequest>,
+  output: string,
+): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+  const resumedState = runtime.options.appendToolResultMessage(
+    pending.state,
+    pending.toolCallId,
+    output,
+  );
+
+  if (pending.remainingCalls.length > 0) {
+    return processToolCalls(
+      runtime,
+      resumedState,
+      pending.pendingUserInput,
+      pending.remainingCalls,
+      pending.turn,
+    );
+  }
+
+  return runTurnLoop(runtime, resumedState, pending.pendingUserInput, pending.turn);
 }
 
 export function startToolAgentRoundAsync<
@@ -753,6 +876,12 @@ export async function processToolCallsAsync<
         toolCallId: call.id,
         toolName: call.name,
       }) ?? request;
+      runtime.emitEvent({
+        kind: 'tool-call-started',
+        toolCallId: call.id,
+        toolName: call.name,
+        request,
+      });
     } catch (error) {
       currentState = runtime.options.appendToolResultMessage(
         currentState,

@@ -80,7 +80,13 @@ fn grapheme_line_to_owned(
 
 fn graphemes_to_plain(line: &[StyledGrapheme<'_>]) -> String {
     line.iter()
-        .map(|g| if g.symbol == "\u{00a0}" { " " } else { g.symbol })
+        .map(|g| {
+            if g.symbol == "\u{00a0}" {
+                " "
+            } else {
+                g.symbol
+            }
+        })
         .collect()
 }
 
@@ -158,11 +164,13 @@ pub fn flatten_wrapped_history(
 
     for line in logical_lines {
         let alignment = line.alignment.unwrap_or(Alignment::Left);
-        let graphemes = line
-            .styled_graphemes(Style::default())
-            .collect::<Vec<_>>();
+        let graphemes = line.styled_graphemes(Style::default()).collect::<Vec<_>>();
         let indent = build_hanging_indent(&graphemes);
-        let mut composer = WordWrapper::new(std::iter::once((graphemes.into_iter(), alignment)), width, false);
+        let mut composer = WordWrapper::new(
+            std::iter::once((graphemes.into_iter(), alignment)),
+            width,
+            false,
+        );
         let mut visual_index = 0usize;
 
         while let Some(wl) = composer.next_line() {

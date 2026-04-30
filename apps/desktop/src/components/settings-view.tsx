@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { LoaderCircle, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 
@@ -30,12 +30,18 @@ import type {
   AddMcpServerRequest,
   AddProviderModelsRequest,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopExtensionListItem,
   DesktopMcpCapabilityToggles,
   DesktopMcpServerInspection,
   DesktopMcpServerListItem,
   DesktopMcpTransportType,
+  ImportExtensionRequest,
+  RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   DesktopModelProvider,
   DesktopSkillListItem,
   DesktopSkillRootKind,
@@ -71,6 +77,7 @@ type SettingsViewProps = {
   modelsPreviewBusy: boolean;
   mcpsBusy: boolean;
   skillsBusy: boolean;
+  extensionsBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
   onResetWebHostPairing?: () => Promise<void>;
@@ -81,6 +88,11 @@ type SettingsViewProps = {
   onPreviewModels: (request: PreviewModelsRequest) => Promise<PreviewModelsResponse>;
   onRemoveModel: (name: string) => Promise<void>;
   onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
+  onImportExtension: (request: ImportExtensionRequest) => Promise<void>;
+  onDeleteExtension: (request: DeleteExtensionRequest) => Promise<void>;
+  onRunExtension: (request: RunExtensionRequest) => Promise<void>;
+  onUpdateExtensionSettings: (request: UpdateExtensionSettingsRequest) => Promise<void>;
+  onUpdateExtensionSecret: (request: UpdateExtensionSecretRequest) => Promise<void>;
   onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
   onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
@@ -98,10 +110,34 @@ const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
 const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   basic: "工作区与连接",
   models: "模型",
+  extensions: "扩展",
   mcps: "MCP 服务",
   skills: "Skills",
   appearance: "主题与窗口效果",
 };
+
+function formatExtensionInstalledAt(unixMs: number): string {
+  return new Date(unixMs).toLocaleString("zh-CN", {
+    hour12: false,
+  });
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("读取文件失败。"));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("读取文件失败。"));
+        return;
+      }
+      const marker = "base64,";
+      const markerIndex = reader.result.indexOf(marker);
+      resolve(markerIndex >= 0 ? reader.result.slice(markerIndex + marker.length) : reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 const defaultMcpCapabilities: DesktopMcpCapabilityToggles = {
   tools: true,
@@ -726,6 +762,476 @@ function SkillsSettingsPanel({
             >
               {skillsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               创建
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ExtensionsSettingsPanel({
+  snapshot,
+  extensionsBusy,
+  onImportExtension,
+  onDeleteExtension,
+  onRunExtension,
+  onUpdateExtensionSettings,
+  onUpdateExtensionSecret,
+}: Pick<
+  SettingsViewProps,
+  | "snapshot"
+  | "extensionsBusy"
+  | "onImportExtension"
+  | "onDeleteExtension"
+  | "onRunExtension"
+  | "onUpdateExtensionSettings"
+  | "onUpdateExtensionSecret"
+>) {
+  const [deleteTarget, setDeleteTarget] = useState<DesktopExtensionListItem | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [settingDrafts, setSettingDrafts] = useState<Record<string, string>>({});
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
+  const items = snapshot?.extensionsList ?? [];
+
+  const settingDraftKey = (extensionId: string, key: string) => `${extensionId}::setting::${key}`;
+  const secretDraftKey = (extensionId: string, key: string) => `${extensionId}::secret::${key}`;
+
+  const updateSettingDraft = (extensionId: string, key: string, value: string) => {
+    setSettingDrafts((current) => ({
+      ...current,
+      [settingDraftKey(extensionId, key)]: value,
+    }));
+  };
+
+  const updateSecretDraft = (extensionId: string, key: string, value: string) => {
+    setSecretDrafts((current) => ({
+      ...current,
+      [secretDraftKey(extensionId, key)]: value,
+    }));
+  };
+
+  const currentSettingText = (
+    item: DesktopExtensionListItem,
+    key: string,
+    fallback?: string | boolean | number,
+  ): string => {
+    const draft = settingDrafts[settingDraftKey(item.id, key)];
+    if (draft !== undefined) {
+      return draft;
+    }
+
+    const value = item.settingsValues?.[key] ?? fallback;
+    return value === undefined || value === null ? "" : String(value);
+  };
+
+  return (
+    <div className="space-y-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) {
+            return;
+          }
+
+          void (async () => {
+            try {
+              const archiveBase64 = await fileToBase64(file);
+              await onImportExtension({
+                archiveBase64,
+                fileName: file.name,
+              });
+            } catch {
+              /* runtimeError */
+            }
+          })();
+        }}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">扩展</h1>
+          <p className="text-sm text-muted-foreground">管理用户级扩展 ZIP 导入结果与已安装元数据。</p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="shrink-0"
+          disabled={extensionsBusy}
+          onClick={() => inputRef.current?.click()}
+        >
+          导入 ZIP
+        </Button>
+      </div>
+
+      <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+        {items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">未安装扩展</p>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+            >
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{item.displayName}</span>
+                  <Badge variant="secondary" className="text-muted-foreground">
+                    {item.version}
+                  </Badge>
+                  {item.author ? (
+                    <Badge variant="secondary" className="text-muted-foreground">
+                      {item.author}
+                    </Badge>
+                  ) : null}
+                </div>
+                {item.description ? (
+                  <p className="text-xs text-muted-foreground">{item.description}</p>
+                ) : null}
+                <p className="truncate font-mono text-[0.65rem] text-muted-foreground/90" title={item.id}>
+                  {item.id}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  安装时间：{formatExtensionInstalledAt(item.installedAtUnixMs)}
+                  {item.archiveFileName ? ` · 来源：${item.archiveFileName}` : ""}
+                  {item.main ? ` · main: ${item.main}` : ""}
+                </p>
+                {item.activationEvents?.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    activationEvents: {item.activationEvents.join(", ")}
+                  </p>
+                ) : null}
+                {item.contributedTools?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-xs font-medium text-foreground">贡献工具</p>
+                    {item.contributedTools.map((tool) => (
+                      <div key={`${item.id}:${tool.name}`} className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-medium text-foreground">{tool.name}</span>
+                          {tool.approvalMode ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              {tool.approvalMode}
+                            </Badge>
+                          ) : null}
+                          {tool.executionMode ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              {tool.executionMode}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {item.desktopCss?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-xs font-medium text-foreground">Desktop CSS</p>
+                    {item.desktopCss.map((entry) => (
+                      <div
+                        key={`${item.id}:desktop-css:${entry.path}`}
+                        className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <code className="text-[0.7rem] text-foreground">{entry.path}</code>
+                          {entry.media ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              media: {entry.media}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          该样式会以扩展层的形式注入 Desktop Renderer，可配合稳定的
+                          {" "}`data-spirit-*` hooks 覆盖界面表现。
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {item.cliHooks?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-xs font-medium text-foreground">CLI Hooks</p>
+                    {item.cliHooks.map((hook, index) => (
+                      <div
+                        key={`${item.id}:cli-hook:${hook.slot}:${index}`}
+                        className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <code className="text-[0.7rem] text-foreground">{hook.slot}</code>
+                          {hook.variant ? (
+                            <Badge variant="outline" className="text-[0.65rem] text-muted-foreground">
+                              variant: {hook.variant}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          这是 CLI 专属的受控语义 hook，不会在 Desktop Renderer 中执行。
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {item.settingsSchema?.length ? (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-xs font-medium text-foreground">扩展设置</p>
+                    {item.settingsSchema.map((setting) => {
+                      const fieldKey = settingDraftKey(item.id, setting.key);
+                      const currentText = currentSettingText(item, setting.key, setting.defaultValue);
+
+                      if (setting.type === "boolean") {
+                        const checked = Boolean(
+                          item.settingsValues?.[setting.key] ?? setting.defaultValue ?? false,
+                        );
+                        return (
+                          <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium text-foreground">{setting.title}</p>
+                                {setting.description ? (
+                                  <p className="mt-1 text-xs text-muted-foreground">{setting.description}</p>
+                                ) : null}
+                              </div>
+                              <Checkbox
+                                checked={checked}
+                                disabled={extensionsBusy}
+                                onCheckedChange={(value) => {
+                                  void onUpdateExtensionSettings({
+                                    id: item.id,
+                                    values: { [setting.key]: value === true },
+                                  });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (setting.type === "select") {
+                        const selected = currentText || String(setting.defaultValue ?? "");
+                        return (
+                          <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                            <p className="text-xs font-medium text-foreground">{setting.title}</p>
+                            {setting.description ? (
+                              <p className="mt-1 text-xs text-muted-foreground">{setting.description}</p>
+                            ) : null}
+                            <Select
+                              value={selected}
+                              onValueChange={(value) => {
+                                void onUpdateExtensionSettings({
+                                  id: item.id,
+                                  values: { [setting.key]: value || null },
+                                });
+                              }}
+                              disabled={extensionsBusy}
+                            >
+                              <SelectTrigger className="mt-2 h-9 text-sm">
+                                <SelectValue placeholder={setting.placeholder ?? setting.title} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {setting.options?.map((option) => (
+                                  <SelectItem key={`${fieldKey}:${option.value}`} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                          <p className="text-xs font-medium text-foreground">{setting.title}</p>
+                          {setting.description ? (
+                            <p className="mt-1 text-xs text-muted-foreground">{setting.description}</p>
+                          ) : null}
+                          <div className="mt-2 flex gap-2">
+                            <Input
+                              value={currentText}
+                              disabled={extensionsBusy}
+                              type={setting.type === "number" ? "number" : "text"}
+                              placeholder={setting.placeholder ?? setting.title}
+                              onChange={(event) => updateSettingDraft(item.id, setting.key, event.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={extensionsBusy}
+                              onClick={() => {
+                                const raw = settingDrafts[fieldKey] ?? currentText;
+                                const value =
+                                  setting.type === "number"
+                                    ? raw.trim().length === 0
+                                      ? null
+                                      : Number(raw)
+                                    : raw.trim().length === 0
+                                      ? null
+                                      : raw;
+                                void onUpdateExtensionSettings({
+                                  id: item.id,
+                                  values: { [setting.key]: value },
+                                });
+                              }}
+                            >
+                              保存
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {item.secretSlots?.length ? (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-xs font-medium text-foreground">扩展密钥</p>
+                    {item.secretSlots.map((slot) => {
+                      const fieldKey = secretDraftKey(item.id, slot.key);
+                      const configured = item.secretStatuses?.find((entry) => entry.key === slot.key)?.configured === true;
+
+                      return (
+                        <div key={fieldKey} className="rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-medium text-foreground">{slot.title}</p>
+                            <Badge variant={configured ? "secondary" : "outline"} className="text-[0.65rem] text-muted-foreground">
+                              {configured ? "已配置" : "未配置"}
+                            </Badge>
+                          </div>
+                          {slot.description ? (
+                            <p className="mt-1 text-xs text-muted-foreground">{slot.description}</p>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Input
+                              type="password"
+                              value={secretDrafts[fieldKey] ?? ""}
+                              disabled={extensionsBusy}
+                              placeholder={configured ? "输入新值以覆盖" : "输入 secret"}
+                              onChange={(event) => updateSecretDraft(item.id, slot.key, event.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={extensionsBusy}
+                              onClick={() => {
+                                void onUpdateExtensionSecret({
+                                  id: item.id,
+                                  key: slot.key,
+                                  value: secretDrafts[fieldKey] ?? "",
+                                });
+                                updateSecretDraft(item.id, slot.key, "");
+                              }}
+                            >
+                              保存
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={extensionsBusy || !configured}
+                              onClick={() => {
+                                void onUpdateExtensionSecret({
+                                  id: item.id,
+                                  key: slot.key,
+                                  value: "",
+                                });
+                                updateSecretDraft(item.id, slot.key, "");
+                              }}
+                            >
+                              清除
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={extensionsBusy || !item.main}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        await onRunExtension({ id: item.id });
+                      } catch {
+                        /* runtimeError */
+                      }
+                    })();
+                  }}
+                >
+                  手动运行
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={extensionsBusy}
+                  onClick={() => setDeleteTarget(item)}
+                >
+                  删除
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>删除扩展</DialogTitle>
+            <DialogDescription>
+              确定删除扩展「{deleteTarget?.displayName ?? ""}」？这会移除本地安装目录。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={extensionsBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={extensionsBusy || !deleteTarget}
+              onClick={() => {
+                const target = deleteTarget;
+                if (!target) {
+                  return;
+                }
+                void (async () => {
+                  try {
+                    await onDeleteExtension({ id: target.id });
+                    setDeleteTarget(null);
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {extensionsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              删除
             </Button>
           </div>
         </DialogContent>
@@ -1614,6 +2120,7 @@ export function SettingsView({
   modelsPreviewBusy,
   mcpsBusy,
   skillsBusy,
+  extensionsBusy,
   isElectronShell,
   onSavePatch,
   onResetWebHostPairing,
@@ -1624,6 +2131,11 @@ export function SettingsView({
   onPreviewModels,
   onRemoveModel,
   onAddMcpServer,
+  onImportExtension,
+  onDeleteExtension,
+  onRunExtension,
+  onUpdateExtensionSettings,
+  onUpdateExtensionSecret,
   onDeleteMcpServer,
   onInspectMcpServer,
   onCreateSkill,
@@ -1635,7 +2147,7 @@ export function SettingsView({
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {tab !== "models" && tab !== "skills" && tab !== "mcps" ? (
+            {tab !== "models" && tab !== "skills" && tab !== "mcps" && tab !== "extensions" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {settingsPageTitle[tab]}
               </h1>
@@ -1672,6 +2184,16 @@ export function SettingsView({
                 onCreateSkill={onCreateSkill}
                 onDeleteSkill={onDeleteSkill}
                 onGenerateSkillNavigate={onGenerateSkillNavigate}
+              />
+            ) : tab === "extensions" ? (
+              <ExtensionsSettingsPanel
+                snapshot={snapshot}
+                extensionsBusy={extensionsBusy}
+                onImportExtension={onImportExtension}
+                onDeleteExtension={onDeleteExtension}
+                onRunExtension={onRunExtension}
+                onUpdateExtensionSettings={onUpdateExtensionSettings}
+                onUpdateExtensionSecret={onUpdateExtensionSecret}
               />
             ) : tab === "mcps" ? (
               <McpsSettingsPanel

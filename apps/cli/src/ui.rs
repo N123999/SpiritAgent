@@ -17,14 +17,15 @@ use crate::{
     conversation_select::flatten_wrapped_history,
     logging,
     ports::SubagentSessionStatus,
-    shell::{ask_questions as ask_questions_form, manual_shell},
     session::PendingMcpResource,
+    shell::{ask_questions as ask_questions_form, manual_shell},
     tui::{ConversationPanelHit, TuiShell},
     view::{
         AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
-        ChatMessage, InputSuggestion, InputSuggestionKind, MainInputMode, MessageRole,
-        PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
+        ChatMessage, CliUiHookSlot, CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant,
+        CliUiHookView, InputSuggestion, InputSuggestionKind, MainInputMode, MarketplaceViewModel,
+        MessageRole, PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
         SubagentSessionDetailView, ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
@@ -44,6 +45,7 @@ thread_local! {
     static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
         RefCell::new(HashMap::new());
     static INPUT_CURSOR_DEBUG_SIGNATURE: RefCell<Option<String>> = RefCell::new(None);
+    static ACTIVE_CLI_UI_HOOKS: RefCell<Vec<CliUiHookView>> = RefCell::new(Vec::new());
 }
 
 struct BottomFormRenderResult {
@@ -70,15 +72,26 @@ fn conversation_logo_width(available_width: u16) -> u16 {
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let app = shell.view_model();
+    ACTIVE_CLI_UI_HOOKS.with(|hooks| {
+        *hooks.borrow_mut() = app.cli_ui_hooks.clone();
+    });
     let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_subagent_picker = app.subagent_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_bottom_form = app.bottom_form.is_some();
-    let show_picker =
-        show_model_picker || show_language_picker || show_chat_picker || show_subagent_picker || show_image_picker;
-    let show_suggestions = app.input_suggestion_kind.is_some() && !show_picker && !show_bottom_form;
+    let show_marketplace = app.marketplace_view.is_some();
+    let show_picker = show_model_picker
+        || show_language_picker
+        || show_chat_picker
+        || show_subagent_picker
+        || show_image_picker;
+    let show_suggestions = app.input_suggestion_kind.is_some()
+        && !show_picker
+        && !show_bottom_form
+        && !show_marketplace;
+
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if show_suggestions || show_bottom_form {
@@ -93,7 +106,14 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     let bottom_form_height = app
         .bottom_form
         .as_ref()
-        .map(|f| bottom_form_display_height(f, content_area.width, content_area.height, input_height))
+        .map(|f| {
+            bottom_form_display_height(f, content_area.width, content_area.height, input_height)
+        })
+        .unwrap_or(0);
+    let marketplace_height = app
+        .marketplace_view
+        .as_ref()
+        .map(|view| marketplace_panel_height(view, content_area.height, input_height))
         .unwrap_or(0);
 
     let chunks = Layout::default()
@@ -110,6 +130,12 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 Constraint::Min(0),
                 Constraint::Length(input_height),
                 Constraint::Length(bottom_form_height),
+            ]
+        } else if show_marketplace {
+            vec![
+                Constraint::Min(0),
+                Constraint::Length(input_height),
+                Constraint::Length(marketplace_height),
             ]
         } else if show_suggestions {
             vec![
@@ -200,7 +226,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
                 frame.set_cursor_position((cursor_x, cursor_y));
             }
         }
-    } else if !show_picker {
+    } else if show_marketplace {
+        if let Some(view) = &app.marketplace_view {
+            draw_marketplace_view(frame, shell, chunks[2], view);
+        }
+    } else if !show_picker && !show_marketplace {
         // Use terminal display width so CJK/full-width characters keep cursor aligned.
         let max_cursor_offset = chunks[1].width.saturating_sub(3) as usize;
         let cursor_offset = input_cursor_col.min(max_cursor_offset as u16) as usize;
@@ -212,31 +242,52 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.model")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.model")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_language_picker {
         let picker_lines = build_language_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.language")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.language")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_chat_picker {
         let picker_lines = build_chat_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.sessions")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.sessions")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_subagent_picker {
-        let picker_lines = build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
+        let picker_lines =
+            build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title("SubAgent 会话"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("SubAgent 会话"),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_image_picker {
         let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
-            .block(Block::default().borders(Borders::ALL).title(t!("ui.picker.image")))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.picker.image")),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_suggestions {
@@ -245,7 +296,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             SLASH_SUGGESTION_VISIBLE_ITEMS,
             chunks[2].width.saturating_sub(2) as usize,
         );
-        let suggestion_frame_style = conversation_body_text_style();
+        let suggestion_frame_style = patch_style_border(
+            conversation_body_text_style(),
+            cli_ui_border_color(CliUiHookSlot::SlashSuggestions)
+                .or(cli_ui_accent_color(CliUiHookSlot::SlashSuggestions)),
+        );
         let suggestion_title = input_suggestion_title(&app);
         let suggestions_widget = Paragraph::new(suggestions)
             .block(
@@ -261,7 +316,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         frame.render_widget(suggestions_widget, chunks[2]);
     }
 
-    if !show_suggestions && !show_bottom_form {
+    if !show_suggestions && !show_bottom_form && !show_marketplace {
         let help_idx = if show_picker { 3 } else { 2 };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
@@ -279,6 +334,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             app.subagent_approval_input.as_ref(),
         );
     }
+
+    ACTIVE_CLI_UI_HOOKS.with(|hooks| hooks.borrow_mut().clear());
 }
 
 fn subtle_aux_text_style() -> Style {
@@ -287,6 +344,142 @@ fn subtle_aux_text_style() -> Style {
 
 fn conversation_body_text_style() -> Style {
     Style::default().fg(Color::Rgb(170, 170, 170))
+}
+
+fn active_cli_ui_hook(slot: CliUiHookSlot) -> Option<CliUiHookView> {
+    ACTIVE_CLI_UI_HOOKS.with(|hooks| {
+        hooks
+            .borrow()
+            .iter()
+            .rev()
+            .find(|hook| hook.slot == slot)
+            .cloned()
+    })
+}
+
+fn cli_ui_token_color(role: CliUiHookTokenRole) -> Option<Color> {
+    match role {
+        CliUiHookTokenRole::Default => None,
+        CliUiHookTokenRole::Primary => Some(Color::Cyan),
+        CliUiHookTokenRole::Secondary => Some(Color::Rgb(190, 195, 205)),
+        CliUiHookTokenRole::Muted => Some(Color::DarkGray),
+        CliUiHookTokenRole::Accent => Some(Color::Magenta),
+        CliUiHookTokenRole::Success => Some(Color::Green),
+        CliUiHookTokenRole::Warning => Some(Color::Yellow),
+        CliUiHookTokenRole::Danger => Some(Color::Red),
+    }
+}
+
+fn cli_ui_variant_colors(variant: CliUiHookVariant) -> CliUiHookTokensView {
+    match variant {
+        CliUiHookVariant::Default => CliUiHookTokensView::default(),
+        CliUiHookVariant::Accented => CliUiHookTokensView {
+            border: Some(CliUiHookTokenRole::Accent),
+            accent: Some(CliUiHookTokenRole::Accent),
+            ..CliUiHookTokensView::default()
+        },
+        CliUiHookVariant::Muted => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Muted),
+            border: Some(CliUiHookTokenRole::Muted),
+            ..CliUiHookTokensView::default()
+        },
+        CliUiHookVariant::Warning => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Warning),
+            border: Some(CliUiHookTokenRole::Warning),
+            accent: Some(CliUiHookTokenRole::Warning),
+        },
+        CliUiHookVariant::Success => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Success),
+            border: Some(CliUiHookTokenRole::Success),
+            accent: Some(CliUiHookTokenRole::Success),
+        },
+        CliUiHookVariant::Danger => CliUiHookTokensView {
+            foreground: Some(CliUiHookTokenRole::Danger),
+            border: Some(CliUiHookTokenRole::Danger),
+            accent: Some(CliUiHookTokenRole::Danger),
+        },
+    }
+}
+
+fn cli_ui_token_role(
+    hook: &CliUiHookView,
+    selector: impl Fn(&CliUiHookTokensView) -> Option<CliUiHookTokenRole>,
+) -> Option<CliUiHookTokenRole> {
+    selector(&hook.tokens).or_else(|| {
+        hook.variant
+            .and_then(|variant| selector(&cli_ui_variant_colors(variant)))
+    })
+}
+
+fn cli_ui_foreground_color(slot: CliUiHookSlot) -> Option<Color> {
+    active_cli_ui_hook(slot)
+        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.foreground))
+        .and_then(cli_ui_token_color)
+}
+
+fn cli_ui_border_color(slot: CliUiHookSlot) -> Option<Color> {
+    active_cli_ui_hook(slot)
+        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.border))
+        .and_then(cli_ui_token_color)
+}
+
+fn cli_ui_accent_color(slot: CliUiHookSlot) -> Option<Color> {
+    active_cli_ui_hook(slot)
+        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.accent))
+        .and_then(cli_ui_token_color)
+}
+
+fn cli_ui_prefix(slot: CliUiHookSlot) -> Option<String> {
+    active_cli_ui_hook(slot).and_then(|hook| hook.prefix)
+}
+
+fn cli_ui_suffix(slot: CliUiHookSlot) -> Option<String> {
+    active_cli_ui_hook(slot).and_then(|hook| hook.suffix)
+}
+
+fn patch_style_foreground(style: Style, color: Option<Color>) -> Style {
+    match color {
+        Some(color) => style.fg(color),
+        None => style,
+    }
+}
+
+fn patch_style_border(style: Style, color: Option<Color>) -> Style {
+    match color {
+        Some(color) => style.fg(color),
+        None => style,
+    }
+}
+
+fn patch_lines_foreground(
+    lines: Vec<Vec<Span<'static>>>,
+    color: Option<Color>,
+) -> Vec<Vec<Span<'static>>> {
+    let Some(color) = color else {
+        return lines;
+    };
+
+    lines
+        .into_iter()
+        .map(|line| {
+            line.into_iter()
+                .map(|span| Span::styled(span.content, span.style.fg(color)))
+                .collect()
+        })
+        .collect()
+}
+
+fn patch_line_foreground(line: Line<'static>, color: Option<Color>) -> Line<'static> {
+    let Some(color) = color else {
+        return line;
+    };
+
+    let spans: Vec<Span<'static>> = line
+        .spans
+        .into_iter()
+        .map(|span| Span::styled(span.content, span.style.fg(color)))
+        .collect();
+    Line::from(spans)
 }
 
 fn input_mode_title(input_mode: MainInputMode) -> String {
@@ -302,6 +495,9 @@ fn input_block_border_style(
     input_mode: MainInputMode,
     bottom_form_open: bool,
 ) -> Style {
+    if let Some(color) = cli_ui_border_color(CliUiHookSlot::InputFrame) {
+        return Style::default().fg(color);
+    }
     if bottom_form_open {
         return subtle_aux_text_style().add_modifier(Modifier::DIM);
     }
@@ -421,7 +617,11 @@ fn input_cursor_position(app: &TuiViewModel, max_width: usize) -> (u16, u16) {
     )
 }
 
-fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: bool) -> Vec<Line<'static>> {
+fn build_input_lines(
+    app: &TuiViewModel,
+    max_width: usize,
+    bottom_form_open: bool,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     if let Some(approval) = &app.pending_subagent_approval {
@@ -446,10 +646,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
 
     if !app.pending_image_paths.is_empty() {
         let count = app.pending_image_paths.len();
-        let summary = format!(
-            "{}",
-            t!("ui.pending.images.summary", count = count)
-        );
+        let summary = format!("{}", t!("ui.pending.images.summary", count = count));
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
             deemphasize_pending_style(
@@ -467,10 +664,7 @@ fn build_input_lines(app: &TuiViewModel, max_width: usize, bottom_form_open: boo
 
     if !app.pending_mcp_resources.is_empty() {
         let count = app.pending_mcp_resources.len();
-        let summary = format!(
-            "{}",
-            t!("ui.pending.mcp_resources.summary", count = count)
-        );
+        let summary = format!("{}", t!("ui.pending.mcp_resources.summary", count = count));
         lines.push(Line::from(Span::styled(
             truncate_to_width(&summary, max_width),
             deemphasize_pending_style(
@@ -546,10 +740,7 @@ fn wrap_editor_text_lines(text: &str, max_width: usize) -> Vec<String> {
             col = 0;
         }
 
-        lines
-            .last_mut()
-            .expect("wrap_editor_text_lines")
-            .push(ch);
+        lines.last_mut().expect("wrap_editor_text_lines").push(ch);
 
         if ch_width > 0 {
             col += ch_width;
@@ -570,9 +761,8 @@ fn maybe_log_input_cursor_diagnostics(
     input_cursor_col: u16,
 ) {
     let input_chars = app.input.chars().count();
-    let should_log = app.input.contains('\n')
-        || input_chars >= 48
-        || app.input.chars().any(|ch| !ch.is_ascii());
+    let should_log =
+        app.input.contains('\n') || input_chars >= 48 || app.input.chars().any(|ch| !ch.is_ascii());
     if !should_log {
         return;
     }
@@ -823,19 +1013,17 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
     let (visible_messages, skipped, start_index) = visible_messages(app);
     let effective_standalone_pending_aux = effective_standalone_pending_aux(app);
     let has_pending_aux = effective_standalone_pending_aux.is_some();
-    let render_standalone_pending_aux = should_render_standalone_pending_aux(
-        app,
-        start_index,
-        visible_messages.len(),
-    );
+    let render_standalone_pending_aux =
+        should_render_standalone_pending_aux(app, start_index, visible_messages.len());
     let standalone_insert_before = standalone_pending_aux_insert_before_message_index(
         app,
         start_index,
         visible_messages.len(),
     );
     let standalone_block = if render_standalone_pending_aux {
-        effective_standalone_pending_aux
-            .map(|pending_aux| render_standalone_pending_aux_lines(pending_aux, app.show_aux_details))
+        effective_standalone_pending_aux.map(|pending_aux| {
+            render_standalone_pending_aux_lines(pending_aux, app.show_aux_details)
+        })
     } else {
         None
     };
@@ -996,20 +1184,28 @@ fn message_gutter_padding() -> &'static str {
 }
 
 fn assistant_message_prefix_style() -> Style {
-    Style::default()
-        .fg(Color::Cyan)
-        .add_modifier(Modifier::BOLD)
+    patch_style_foreground(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+        cli_ui_accent_color(CliUiHookSlot::MessageAssistant),
+    )
 }
 
 fn pending_aux_status_style(kind: AssistantAuxKind) -> Style {
-    match kind {
+    let base = match kind {
         AssistantAuxKind::Thinking => Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::ITALIC),
         AssistantAuxKind::Compressing => {
             assistant_message_prefix_style().add_modifier(Modifier::ITALIC)
         }
-    }
+    };
+
+    patch_style_foreground(
+        base,
+        cli_ui_foreground_color(CliUiHookSlot::AssistantThinking),
+    )
 }
 
 fn assistant_aux_title(kind: AssistantAuxKind) -> String {
@@ -1020,17 +1216,27 @@ fn assistant_aux_title(kind: AssistantAuxKind) -> String {
 }
 
 fn assistant_aux_title_style(kind: AssistantAuxKind) -> Style {
-    match kind {
+    let base = match kind {
         AssistantAuxKind::Thinking => Style::default().fg(Color::DarkGray),
         AssistantAuxKind::Compressing => subtle_aux_text_style(),
-    }
+    };
+
+    patch_style_foreground(
+        base,
+        cli_ui_foreground_color(CliUiHookSlot::AssistantThinking),
+    )
 }
 
 fn assistant_aux_body_style(kind: AssistantAuxKind) -> Style {
-    match kind {
+    let base = match kind {
         AssistantAuxKind::Thinking => Style::default().fg(Color::DarkGray),
         AssistantAuxKind::Compressing => subtle_aux_text_style(),
-    }
+    };
+
+    patch_style_foreground(
+        base,
+        cli_ui_foreground_color(CliUiHookSlot::AssistantThinking),
+    )
 }
 
 fn is_tool_progress_only_text(text: &str) -> bool {
@@ -1080,7 +1286,8 @@ fn render_standalone_pending_aux_lines(
     pending_aux: &PendingAssistantAux,
     show_aux_details: bool,
 ) -> Vec<Line<'static>> {
-    let synthetic_subagent_status_text = parse_pending_subagent_status_text(&pending_aux.status_text);
+    let synthetic_subagent_status_text =
+        parse_pending_subagent_status_text(&pending_aux.status_text);
     let detail_text = if synthetic_subagent_status_text.is_none() && show_aux_details {
         pending_aux.detail_text.as_deref()
     } else {
@@ -1122,8 +1329,15 @@ fn render_message_lines(
     msg: &ChatMessage,
     message_index: usize,
 ) -> Vec<Line<'static>> {
+    let message_slot = match msg.role {
+        MessageRole::User => CliUiHookSlot::MessageUser,
+        MessageRole::Agent => CliUiHookSlot::MessageAssistant,
+    };
     let prefix_style = match msg.role {
-        MessageRole::User => conversation_body_text_style(),
+        MessageRole::User => patch_style_foreground(
+            conversation_body_text_style(),
+            cli_ui_accent_color(CliUiHookSlot::MessageUser),
+        ),
         MessageRole::Agent => assistant_message_prefix_style(),
     };
 
@@ -1162,8 +1376,14 @@ fn render_message_lines(
     let has_message_body = !effective_message_body.trim().is_empty();
     let content_lines = if has_message_body {
         match msg.role {
-            MessageRole::User => plain_text_lines(&effective_message_body),
-            MessageRole::Agent => markdown_lines(&effective_message_body),
+            MessageRole::User => patch_lines_foreground(
+                plain_text_lines(&effective_message_body),
+                cli_ui_foreground_color(CliUiHookSlot::MessageUser),
+            ),
+            MessageRole::Agent => patch_lines_foreground(
+                markdown_lines(&effective_message_body),
+                cli_ui_foreground_color(CliUiHookSlot::MessageAssistant),
+            ),
         }
     } else {
         Vec::new()
@@ -1183,7 +1403,9 @@ fn render_message_lines(
         .filter(|value| !value.trim().is_empty())
         .filter(|_| !matches!(pending_aux, Some(aux) if aux.kind == AssistantAuxKind::Compressing));
     let embedded_thinking_text = if msg.role == MessageRole::Agent && app.show_aux_details {
-        embedded_thinking.as_deref().filter(|value| !value.trim().is_empty())
+        embedded_thinking
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
     } else {
         None
     };
@@ -1195,15 +1417,19 @@ fn render_message_lines(
     } else {
         None
     };
-    let pending_aux_detail_text = if synthetic_subagent_status_text.is_none() && app.show_aux_details {
-        pending_aux.and_then(|aux| aux.detail_text.as_deref())
-    } else {
-        None
-    };
+    let pending_aux_detail_text =
+        if synthetic_subagent_status_text.is_none() && app.show_aux_details {
+            pending_aux.and_then(|aux| aux.detail_text.as_deref())
+        } else {
+            None
+        };
     let render_stored_thinking_after_body =
         should_render_aux_after_message_body(stored_thinking_text, has_message_body);
-    let render_pending_aux_after_body = pending_aux
-        .is_some_and(|_| should_render_aux_after_message_body(pending_aux_detail_text, has_message_body));
+    let render_pending_aux_after_body = pending_aux.is_some_and(|_| {
+        should_render_aux_after_message_body(pending_aux_detail_text, has_message_body)
+    });
+    let slot_prefix = cli_ui_prefix(message_slot);
+    let slot_suffix = cli_ui_suffix(message_slot);
 
     let mut has_rendered_visible_line = false;
     let mut push_message_line = |content_spans: Vec<Span<'static>>| {
@@ -1213,7 +1439,15 @@ fn render_message_lines(
             has_rendered_visible_line = true;
             vec![Span::styled(message_prefix_text(), prefix_style)]
         };
+        if let Some(prefix) = slot_prefix.as_ref() {
+            spans.push(Span::styled(prefix.clone(), prefix_style));
+            spans.push(Span::raw(" "));
+        }
         spans.extend(content_spans);
+        if let Some(suffix) = slot_suffix.as_ref() {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(suffix.clone(), prefix_style));
+        }
         out.push(Line::from(spans));
     };
 
@@ -1237,7 +1471,11 @@ fn render_message_lines(
                     assistant_aux_title_style(AssistantAuxKind::Thinking),
                 )]);
             }
-            render_aux_text_lines(&mut push_message_line, AssistantAuxKind::Thinking, thinking_text);
+            render_aux_text_lines(
+                &mut push_message_line,
+                AssistantAuxKind::Thinking,
+                thinking_text,
+            );
         }
     }
 
@@ -1260,7 +1498,11 @@ fn render_message_lines(
 
     if let Some(thinking_text) = stored_thinking_text {
         if render_stored_thinking_after_body {
-            render_aux_text_lines(&mut push_message_line, AssistantAuxKind::Thinking, thinking_text);
+            render_aux_text_lines(
+                &mut push_message_line,
+                AssistantAuxKind::Thinking,
+                thinking_text,
+            );
         }
     }
 
@@ -1318,7 +1560,10 @@ fn split_embedded_thinking_content(text: &str) -> (String, Option<String>) {
 
 fn tool_phase_label(phase: ToolUiPhase) -> (String, Color) {
     match phase {
-        ToolUiPhase::PendingApproval => (t!("ui.tool.phase.pending_approval").into_owned(), Color::Yellow),
+        ToolUiPhase::PendingApproval => (
+            t!("ui.tool.phase.pending_approval").into_owned(),
+            Color::Yellow,
+        ),
         ToolUiPhase::Running => (t!("ui.tool.phase.running").into_owned(), Color::Yellow),
         ToolUiPhase::Succeeded => (t!("ui.tool.phase.succeeded").into_owned(), Color::Green),
         ToolUiPhase::Failed => (t!("ui.tool.phase.failed").into_owned(), Color::Red),
@@ -1331,7 +1576,11 @@ fn render_tool_card_lines(
     show_aux_details: bool,
 ) -> Vec<Line<'static>> {
     let (phase_label, phase_color) = tool_phase_label(tool.phase);
-    let rail = Style::default().fg(Color::Rgb(96, 110, 130));
+    let rail = patch_style_foreground(
+        Style::default().fg(Color::Rgb(96, 110, 130)),
+        cli_ui_border_color(CliUiHookSlot::MessageTool)
+            .or(cli_ui_accent_color(CliUiHookSlot::MessageTool)),
+    );
     let rail_sym = "▌ ";
     let indent = message_gutter_padding();
     let expand_details = show_aux_details
@@ -1346,24 +1595,41 @@ fn render_tool_card_lines(
         Span::styled(message_prefix_text(), prefix_style),
         Span::styled(
             "[tool] ",
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
+            patch_style_foreground(
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+                cli_ui_accent_color(CliUiHookSlot::MessageTool),
+            ),
         ),
         Span::styled(
             tool.tool_name.clone(),
-            Style::default()
-                .fg(Color::Rgb(170, 170, 170))
-                .add_modifier(Modifier::BOLD),
+            patch_style_foreground(
+                Style::default()
+                    .fg(Color::Rgb(170, 170, 170))
+                    .add_modifier(Modifier::BOLD),
+                cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+            ),
         ),
         Span::raw(" · "),
         Span::styled(
             phase_label.to_string(),
-            Style::default()
-                .fg(phase_color)
-                .add_modifier(Modifier::BOLD),
+            patch_style_foreground(
+                Style::default()
+                    .fg(phase_color)
+                    .add_modifier(Modifier::BOLD),
+                cli_ui_accent_color(CliUiHookSlot::MessageTool),
+            ),
         ),
     ];
+    if let Some(prefix) = cli_ui_prefix(CliUiHookSlot::MessageTool) {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(prefix, prefix_style));
+    }
+    if let Some(suffix) = cli_ui_suffix(CliUiHookSlot::MessageTool) {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(suffix, prefix_style));
+    }
     if let Some(ref id) = tool
         .tool_call_id
         .as_ref()
@@ -1389,9 +1655,12 @@ fn render_tool_card_lines(
         Span::styled(rail_sym, rail),
         Span::styled(
             tool.headline.clone(),
-            Style::default()
-                .fg(Color::Rgb(170, 170, 170))
-                .add_modifier(Modifier::BOLD),
+            patch_style_foreground(
+                Style::default()
+                    .fg(Color::Rgb(170, 170, 170))
+                    .add_modifier(Modifier::BOLD),
+                cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+            ),
         ),
     ]));
 
@@ -1402,7 +1671,13 @@ fn render_tool_card_lines(
         out.push(Line::from(vec![
             Span::raw(indent),
             Span::styled(rail_sym, rail),
-            Span::styled(line.clone(), Style::default().fg(Color::Rgb(190, 195, 205))),
+            Span::styled(
+                line.clone(),
+                patch_style_foreground(
+                    Style::default().fg(Color::Rgb(190, 195, 205)),
+                    cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+                ),
+            ),
         ]));
     }
 
@@ -1412,7 +1687,10 @@ fn render_tool_card_lines(
                 out.push(Line::from(vec![
                     Span::raw(indent),
                     Span::styled(rail_sym, rail),
-                    Span::styled(t!("ui.tool.args_json").into_owned(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        t!("ui.tool.args_json").into_owned(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]));
                 for seg in args.lines() {
                     out.push(Line::from(vec![
@@ -1432,7 +1710,10 @@ fn render_tool_card_lines(
                 out.push(Line::from(vec![
                     Span::raw(indent),
                     Span::styled(rail_sym, rail),
-                    Span::styled(t!("ui.tool.output").into_owned(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        t!("ui.tool.output").into_owned(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]));
                 let lines: Vec<&str> = output.lines().take(48).collect();
                 for seg in lines.iter() {
@@ -1449,8 +1730,11 @@ fn render_tool_card_lines(
                         Span::raw(indent),
                         Span::raw("  "),
                         Span::styled(
-                            t!("ui.tool.more_lines_hidden", count = total_ln.saturating_sub(48))
-                                .into_owned(),
+                            t!(
+                                "ui.tool.more_lines_hidden",
+                                count = total_ln.saturating_sub(48)
+                            )
+                            .into_owned(),
                             Style::default()
                                 .fg(Color::DarkGray)
                                 .add_modifier(Modifier::ITALIC),
@@ -1500,6 +1784,50 @@ fn markdown_lines(text: &str) -> Vec<Vec<Span<'static>>> {
         cache.insert(text.to_string(), parsed.clone());
         parsed
     })
+}
+
+/// 扩展详情 README：复用 Markdown AST，但强制灰阶以匹配终端黑白灰审美。
+fn marketplace_markdown_lines(text: &str) -> Vec<Line<'static>> {
+    markdown_lines(text)
+        .into_iter()
+        .map(|row| {
+            Line::from(
+                row.into_iter()
+                    .map(marketplace_grayscale_span)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect()
+}
+
+fn marketplace_grayscale_span(span: Span<'static>) -> Span<'static> {
+    let content = span.content;
+    let st = span.style;
+    let m = st.add_modifier;
+    let looks_inline_code = content.starts_with('`') && content.ends_with('`');
+    let fg = if m.contains(Modifier::BOLD) && m.contains(Modifier::UNDERLINED) {
+        Color::Rgb(238, 238, 238)
+    } else if m.contains(Modifier::BOLD) {
+        Color::Rgb(215, 215, 215)
+    } else if looks_inline_code {
+        Color::Rgb(190, 190, 190)
+    } else if m.contains(Modifier::ITALIC) {
+        Color::Rgb(155, 155, 155)
+    } else {
+        Color::Rgb(168, 168, 168)
+    };
+    let mut keep = Modifier::empty();
+    for flag in [
+        Modifier::BOLD,
+        Modifier::ITALIC,
+        Modifier::UNDERLINED,
+        Modifier::CROSSED_OUT,
+    ] {
+        if m.contains(flag) {
+            keep |= flag;
+        }
+    }
+    Span::styled(content, Style::default().fg(fg).add_modifier(keep))
 }
 
 fn markdown_options() -> Options<'static> {
@@ -1669,7 +1997,11 @@ impl MdBuilder {
 }
 
 fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
-    (&app.messages, app.history_truncated_before, app.history_truncated_before)
+    (
+        &app.messages,
+        app.history_truncated_before,
+        app.history_truncated_before,
+    )
 }
 
 fn build_suggestion_lines(
@@ -1705,14 +2037,19 @@ fn build_suggestion_lines(
             }
             None => t!("ui.suggestion.empty.generic").into_owned(),
         };
-        return vec![Line::from(Span::styled(
-            message,
-            default_style,
-        ))];
+        return vec![Line::from(Span::styled(message, default_style))];
     }
 
-    if matches!(app.input_suggestion_kind, Some(InputSuggestionKind::FileReference)) {
-        return build_file_reference_suggestion_lines(app, max_items, default_style, selected_style);
+    if matches!(
+        app.input_suggestion_kind,
+        Some(InputSuggestionKind::FileReference)
+    ) {
+        return build_file_reference_suggestion_lines(
+            app,
+            max_items,
+            default_style,
+            selected_style,
+        );
     }
 
     let selected = app.selected_suggestion;
@@ -1807,7 +2144,11 @@ fn build_file_reference_suggestion_lines(
     for idx in start..end {
         let path = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
-        let style = if is_selected { selected_style } else { default_style };
+        let style = if is_selected {
+            selected_style
+        } else {
+            default_style
+        };
         let prefix = if is_selected { "> " } else { "  " };
         lines.push(Line::from(Span::styled(
             format!("{}{}", prefix, path.label),
@@ -1846,6 +2187,7 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
         "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
         "/create-skill" => t!("ui.suggestion.summary.create_skill").into_owned(),
         "/skills" => t!("ui.suggestion.summary.skills").into_owned(),
+        "/extensions" => t!("ui.suggestion.summary.extensions").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
         _ => String::new(),
@@ -1855,7 +2197,12 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
 fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
     if !suggestion.details.is_empty() {
         let mut lines = vec![t!("ui.suggestion.usage.heading").into_owned()];
-        lines.extend(suggestion.details.iter().map(|detail| format!("    {}", detail)));
+        lines.extend(
+            suggestion
+                .details
+                .iter()
+                .map(|detail| format!("    {}", detail)),
+        );
         return lines;
     }
 
@@ -1910,6 +2257,14 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
         "/skills" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /skills".to_string(),
+        ],
+        "/extensions" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /extensions".to_string(),
+            "    /extensions marketplace [query]".to_string(),
+            "    /extensions list".to_string(),
+            "    /extensions import <zip>".to_string(),
+            "    /extensions remove <id>".to_string(),
         ],
         "/log" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -2062,7 +2417,10 @@ fn build_subagent_picker_lines(
 
         if let Some(latest) = item.latest_message.as_deref() {
             lines.push(Line::from(Span::styled(
-                format!("    {}", truncate_to_width(latest, max_width.saturating_sub(4))),
+                format!(
+                    "    {}",
+                    truncate_to_width(latest, max_width.saturating_sub(4))
+                ),
                 subtle_aux_text_style(),
             )));
         }
@@ -2083,15 +2441,40 @@ fn draw_subagent_viewer(
     let popup = area;
     frame.render_widget(Clear, popup);
 
+    let approval_panel_slot = CliUiHookSlot::ApprovalPanel;
+    let panel_border_style = patch_style_border(
+        conversation_body_text_style(),
+        cli_ui_border_color(approval_panel_slot).or(cli_ui_accent_color(approval_panel_slot)),
+    );
+    let panel_title_style = patch_style_foreground(
+        subtle_aux_text_style(),
+        cli_ui_foreground_color(approval_panel_slot).or(cli_ui_accent_color(approval_panel_slot)),
+    );
+    let panel_prefix = cli_ui_prefix(approval_panel_slot);
+    let panel_suffix = cli_ui_suffix(approval_panel_slot);
+    let mut title_spans = Vec::new();
+    if let Some(prefix) = panel_prefix.as_ref() {
+        title_spans.push(Span::styled(prefix.clone(), panel_title_style));
+        title_spans.push(Span::raw(" "));
+    }
+    title_spans.push(Span::styled(
+        format!("SubAgent: {}", view.summary.title),
+        panel_title_style,
+    ));
+    if let Some(suffix) = panel_suffix.as_ref() {
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(suffix.clone(), panel_title_style));
+    }
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(conversation_body_text_style())
-        .title(format!("SubAgent: {}", view.summary.title));
+        .border_style(panel_border_style)
+        .title(Line::from(title_spans));
     frame.render_widget(block.clone(), popup);
 
     let inner = block.inner(popup);
-    let active_approval = pending_subagent_approval
-        .filter(|approval| approval.session_id == view.summary.session_id);
+    let active_approval =
+        pending_subagent_approval.filter(|approval| approval.session_id == view.summary.session_id);
     let approval_input_height = approval_input
         .map(|input| {
             (input_visual_line_count(&input.value, inner.width.saturating_sub(2) as usize)
@@ -2131,22 +2514,43 @@ fn draw_subagent_viewer(
 
     let (status_label, status_style) = subagent_status_badge(view.summary.status, false);
     let mut header_lines = vec![Line::from(vec![
-        Span::styled("状态: ", subtle_aux_text_style()),
-        Span::styled(status_label.to_string(), status_style),
+        Span::styled(
+            "状态: ",
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
+        ),
+        Span::styled(
+            status_label.to_string(),
+            patch_style_foreground(status_style, cli_ui_accent_color(approval_panel_slot)),
+        ),
         Span::styled(
             format!("   sessionId: {}", view.summary.session_id),
-            subtle_aux_text_style(),
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
         ),
     ])];
 
     if let Some(latest) = view.summary.latest_message.as_deref() {
         header_lines.push(Line::from(Span::styled(
-            truncate_to_width(&format!("最新进展: {}", latest), chunks[0].width.saturating_sub(1) as usize),
-            subtle_aux_text_style(),
+            truncate_to_width(
+                &format!("最新进展: {}", latest),
+                chunks[0].width.saturating_sub(1) as usize,
+            ),
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
         )));
     }
 
-    frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: true }), chunks[0]);
+    frame.render_widget(
+        Paragraph::new(header_lines).wrap(Wrap { trim: true }),
+        chunks[0],
+    );
 
     let history_lines = build_subagent_history_lines(view, show_aux_details);
     let (flat, _) = flatten_wrapped_history(history_lines, history_chunk.width.max(1), None);
@@ -2164,27 +2568,29 @@ fn draw_subagent_viewer(
     if let (Some(editor), Some(editor_area), Some(approval)) =
         (approval_input, approval_chunk, active_approval)
     {
-        let editor_lines = wrap_editor_text_lines(
-            &editor.value,
-            editor_area.width.saturating_sub(2) as usize,
-        )
-        .into_iter()
-        .map(Line::from)
-        .collect::<Vec<_>>();
-        let editor_widget = Paragraph::new(editor_lines)
-        .block(
+        let editor_lines =
+            wrap_editor_text_lines(&editor.value, editor_area.width.saturating_sub(2) as usize)
+                .into_iter()
+                .map(Line::from)
+                .collect::<Vec<_>>();
+        let editor_widget = Paragraph::new(editor_lines).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow))
-                .title(format!("审批意见: {}", approval.tool_name)),
+                .border_style(patch_style_border(
+                    Style::default().fg(Color::Yellow),
+                    cli_ui_border_color(approval_panel_slot)
+                        .or(cli_ui_accent_color(approval_panel_slot)),
+                ))
+                .title(Line::from(Span::styled(
+                    format!("审批意见: {}", approval.tool_name),
+                    panel_title_style,
+                ))),
         );
         frame.render_widget(editor_widget, editor_area);
 
         let prefix: String = editor.value.chars().take(editor.cursor).collect();
-        let (cursor_row, cursor_col) = wrapped_text_cursor_position(
-            &prefix,
-            editor_area.width.saturating_sub(2) as usize,
-        );
+        let (cursor_row, cursor_col) =
+            wrapped_text_cursor_position(&prefix, editor_area.width.saturating_sub(2) as usize);
         frame.set_cursor_position((
             editor_area.x + 1 + cursor_col as u16,
             editor_area.y + 1 + cursor_row as u16,
@@ -2192,7 +2598,8 @@ fn draw_subagent_viewer(
     }
 
     let footer_text = if active_approval.is_some() && approval_input.is_some() {
-        "Esc 取消输入  |  Enter 提交意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情".to_string()
+        "Esc 取消输入  |  Enter 提交意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情"
+            .to_string()
     } else if active_approval.is_some() {
         "Esc 关闭  |  Enter 输入意见  |  Y 允许  |  N 拒绝  |  T 信任  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
     } else if let Some(error) = view.error.as_deref() {
@@ -2209,9 +2616,406 @@ fn draw_subagent_viewer(
         "Esc 关闭  |  Ctrl+O 详情  |  滚轮 / PgUp/PgDn 滚动".to_string()
     };
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(footer_text, subtle_aux_text_style()))),
+        Paragraph::new(Line::from(Span::styled(
+            footer_text,
+            patch_style_foreground(
+                subtle_aux_text_style(),
+                cli_ui_foreground_color(approval_panel_slot),
+            ),
+        ))),
         footer_chunk,
     );
+}
+
+fn marketplace_review_label(status: &str) -> &'static str {
+    match status.trim() {
+        "verified" => "已验证",
+        "revoked" => "已撤销",
+        _ => "未验证",
+    }
+}
+
+fn marketplace_channel_label(channel: &str) -> String {
+    match channel.trim() {
+        "stable" => "稳定".to_string(),
+        "preview" => "预览".to_string(),
+        "experimental" => "实验".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn draw_marketplace_view(
+    frame: &mut ratatui::Frame<'_>,
+    _shell: &mut TuiShell,
+    area: Rect,
+    view: &MarketplaceViewModel,
+) {
+    frame.render_widget(Clear, area);
+    match view.step {
+        crate::view::MarketplaceFlowStep::CatalogPicker => {
+            draw_marketplace_catalog_picker(frame, area, view);
+        }
+        _ => draw_marketplace_detail_page(frame, area, view),
+    }
+}
+
+fn marketplace_panel_height(
+    view: &MarketplaceViewModel,
+    panel_height: u16,
+    input_height: u16,
+) -> u16 {
+    let available = panel_height.saturating_sub(input_height).max(8);
+    match view.step {
+        crate::view::MarketplaceFlowStep::CatalogPicker => {
+            let half = available.saturating_add(1) / 2;
+            available.min(half.max(10))
+        }
+        _ => {
+            let expanded = available.saturating_mul(4) / 5;
+            available.min(expanded.max(22))
+        }
+    }
+}
+
+fn draw_marketplace_catalog_picker(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+) {
+    let border_style = input_block_border_style(false, MainInputMode::Agent, false);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Line::from(Span::styled("扩展市场", border_style)));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    draw_slash_flow_body(frame, inner, &view.slash, view.error.as_deref());
+}
+
+fn draw_marketplace_detail_page(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+) {
+    let border_style = input_block_border_style(false, MainInputMode::Agent, false);
+    let panel_title_style = Style::default().fg(Color::Rgb(225, 225, 225));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Line::from(Span::styled("扩展详情", border_style)));
+    frame.render_widget(block.clone(), area);
+    let inner = block.inner(area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(if view.error.is_some() { 7 } else { 6 }),
+            Constraint::Min(8),
+            Constraint::Length(10),
+        ])
+        .split(inner);
+
+    render_marketplace_overview(
+        frame,
+        chunks[0],
+        view,
+        panel_title_style,
+        subtle_aux_text_style(),
+    );
+    render_marketplace_readme(frame, chunks[1], view, panel_title_style);
+    draw_slash_flow_panel(frame, chunks[2], &view.slash, None);
+}
+
+fn render_marketplace_overview(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+    title_style: Style,
+    subtle_style: Style,
+) {
+    let Some(item) = view.selected_item.as_ref() else {
+        frame.render_widget(
+            Paragraph::new("找不到该扩展，请按 Esc 返回列表。").wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    };
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled(item.display_name.clone(), title_style),
+        Span::raw("  "),
+        Span::styled(format!("@{}", item.default_version), subtle_style),
+        Span::raw("  "),
+        Span::styled(
+            marketplace_review_label(&item.default_review_status),
+            review_status_style(&item.default_review_status),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            item.installed_version
+                .as_ref()
+                .map(|installed| format!("已安装 {}", installed))
+                .unwrap_or_else(|| "未安装".to_string()),
+            Style::default().fg(Color::Rgb(215, 215, 215)),
+        ),
+    ])];
+
+    if !item.description.trim().is_empty() {
+        let mut description = String::new();
+        if let Some(author) = item.author.as_deref() {
+            description.push_str(author);
+            description.push_str(" · ");
+        }
+        description.push_str(&item.description);
+        lines.push(Line::from(Span::styled(description, subtle_style)));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("id ", subtle_style),
+        Span::styled(
+            item.extension_id.clone(),
+            Style::default().fg(Color::Rgb(205, 205, 205)),
+        ),
+        Span::raw("  "),
+        Span::styled("package ", subtle_style),
+        Span::styled(
+            item.package_name.clone(),
+            Style::default().fg(Color::Rgb(205, 205, 205)),
+        ),
+    ]));
+
+    if let Some(detail) = view.detail.as_ref() {
+        lines.push(Line::from(vec![
+            Span::styled("状态 ", subtle_style),
+            Span::styled(
+                detail.status.clone(),
+                Style::default().fg(Color::Rgb(185, 185, 185)),
+            ),
+            Span::raw("  "),
+            Span::styled("默认通道 ", subtle_style),
+            Span::styled(
+                marketplace_channel_label(&item.default_channel),
+                Style::default().fg(Color::Rgb(185, 185, 185)),
+            ),
+        ]));
+    }
+
+    if let Some(error) = view.error.as_deref() {
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(error, area.width.saturating_sub(1) as usize),
+            Style::default().fg(Color::Rgb(220, 220, 220)),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
+}
+
+fn render_marketplace_readme(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    view: &MarketplaceViewModel,
+    title_style: Style,
+) {
+    let block = Block::default()
+        .title(Line::from(Span::styled("README", title_style)))
+        .borders(Borders::TOP);
+    frame.render_widget(block.clone(), area);
+    let inner = block.inner(area);
+
+    let lines = view
+        .detail
+        .as_ref()
+        .and_then(|detail| detail.readme.as_deref())
+        .filter(|readme| !readme.trim().is_empty())
+        .map(marketplace_markdown_lines)
+        .unwrap_or_else(|| {
+            vec![Line::from(Span::styled(
+                "暂无 README 内容。",
+                subtle_aux_text_style(),
+            ))]
+        });
+
+    let visible_height = inner.height.max(1) as usize;
+    let max_scroll = lines.len().saturating_sub(visible_height);
+    let scroll = view.readme_scroll.min(max_scroll);
+    let visible = lines
+        .into_iter()
+        .skip(scroll)
+        .take(visible_height)
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), inner);
+}
+
+fn draw_slash_flow_panel(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    flow: &crate::view::SlashFlowView,
+    error: Option<&str>,
+) {
+    let border_style = input_block_border_style(false, MainInputMode::Agent, false);
+    let title_style = Style::default().fg(Color::Rgb(225, 225, 225));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Line::from(Span::styled(flow.title.clone(), title_style)));
+    frame.render_widget(block.clone(), area);
+    let inner = block.inner(area);
+    draw_slash_flow_body(frame, inner, flow, error);
+}
+
+fn draw_slash_flow_body(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    flow: &crate::view::SlashFlowView,
+    error: Option<&str>,
+) {
+    let subtle_style = subtle_aux_text_style();
+    let title_style = Style::default().fg(Color::Rgb(225, 225, 225));
+    let header_height = if flow.show_filter {
+        if error.is_some() { 4 } else { 3 }
+    } else if error.is_some() {
+        1
+    } else {
+        0
+    };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(header_height),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+    if header_height > 0 {
+        let mut header_lines = Vec::new();
+        if flow.show_filter {
+            header_lines.push(Line::from(vec![
+                Span::styled("过滤 ", subtle_style),
+                Span::styled(
+                    if flow.filter.trim().is_empty() {
+                        "（未输入，直接键入即可）".to_string()
+                    } else {
+                        flow.filter.clone()
+                    },
+                    title_style,
+                ),
+            ]));
+            header_lines.push(Line::from(vec![
+                Span::styled("共 ", subtle_style),
+                Span::styled(flow.items.len().to_string(), title_style),
+                Span::styled(" 项", subtle_style),
+            ]));
+        }
+        if let Some(error) = error {
+            header_lines.push(Line::from(Span::styled(
+                truncate_to_width(error, chunks[0].width.saturating_sub(1) as usize),
+                Style::default().fg(Color::Rgb(220, 220, 220)),
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(header_lines).wrap(Wrap { trim: true }),
+            chunks[0],
+        );
+    }
+
+    let body_lines = build_slash_flow_lines(
+        flow,
+        chunks[1].width.saturating_sub(1) as usize,
+        flow.compact_items,
+    );
+    frame.render_widget(
+        Paragraph::new(body_lines).wrap(Wrap { trim: false }),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            flow.footer_hint.clone(),
+            subtle_style,
+        ))),
+        chunks[2],
+    );
+}
+
+fn build_slash_flow_lines(
+    flow: &crate::view::SlashFlowView,
+    width: usize,
+    compact_items: bool,
+) -> Vec<Line<'static>> {
+    if flow.items.is_empty() {
+        return vec![Line::from(Span::styled(
+            flow.empty_text.clone(),
+            subtle_aux_text_style(),
+        ))];
+    }
+
+    flow.items
+        .iter()
+        .enumerate()
+        .flat_map(|(index, item)| {
+            let is_selected = index == flow.selected_index;
+            let marker = if is_selected { "▸ " } else { "  " };
+            let label_style = if item.disabled {
+                Style::default().fg(Color::Rgb(125, 125, 125))
+            } else if is_selected {
+                Style::default().fg(Color::Rgb(235, 235, 235))
+            } else if item.muted {
+                Style::default().fg(Color::Rgb(155, 155, 155))
+            } else {
+                Style::default().fg(Color::Rgb(205, 205, 205))
+            };
+            let mut lines = vec![Line::from(vec![
+                Span::styled(marker, label_style),
+                Span::styled(
+                    truncate_to_width(&item.label, width.saturating_sub(2)),
+                    label_style,
+                ),
+            ])];
+
+            if !item.summary.trim().is_empty() {
+                let summary_indent = "  ";
+                let summary_width = width.saturating_sub(summary_indent.len());
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "{}{}",
+                        summary_indent,
+                        truncate_to_width(&item.summary, summary_width)
+                    ),
+                    if item.disabled {
+                        Style::default().fg(Color::Rgb(115, 115, 115))
+                    } else {
+                        subtle_aux_text_style()
+                    },
+                )));
+            }
+
+            if !compact_items {
+                for detail in &item.details {
+                    if detail.trim().is_empty() {
+                        continue;
+                    }
+                    lines.push(Line::from(Span::styled(
+                        format!("  {}", truncate_to_width(detail, width.saturating_sub(2))),
+                        Style::default().fg(Color::Rgb(145, 145, 145)),
+                    )));
+                }
+            }
+
+            lines.push(Line::from(""));
+            lines
+        })
+        .collect()
+}
+
+fn review_status_style(status: &str) -> Style {
+    match status.trim() {
+        "verified" => Style::default()
+            .fg(Color::Rgb(228, 228, 228))
+            .add_modifier(Modifier::BOLD),
+        "revoked" => Style::default()
+            .fg(Color::Rgb(135, 135, 135))
+            .add_modifier(Modifier::DIM),
+        _ => Style::default().fg(Color::Rgb(175, 175, 175)),
+    }
 }
 
 fn build_subagent_history_lines(
@@ -2244,7 +3048,10 @@ fn build_subagent_history_lines(
         if !lines.is_empty() {
             lines.push(Line::from(""));
         }
-        lines.extend(render_subagent_pending_aux_lines(pending_aux, show_aux_details));
+        lines.extend(render_subagent_pending_aux_lines(
+            pending_aux,
+            show_aux_details,
+        ));
     }
 
     lines
@@ -2473,12 +3280,16 @@ fn bottom_form_text_field_outer_height(
     let label_height = if label.trim().is_empty() {
         0
     } else {
-        build_bottom_form_footer_lines(label, field_width).len().max(1) as u16
+        build_bottom_form_footer_lines(label, field_width)
+            .len()
+            .max(1) as u16
     };
     let help_height = if help.trim().is_empty() {
         0
     } else {
-        build_bottom_form_footer_lines(help, field_width).len().max(1) as u16
+        build_bottom_form_footer_lines(help, field_width)
+            .len()
+            .max(1) as u16
     };
 
     label_height
@@ -2497,7 +3308,9 @@ fn bottom_form_field_outer_height(
 ) -> u16 {
     match &field.editor {
         BottomFormFieldEditorView::Section { text } => {
-            build_bottom_form_footer_lines(text, field_width).len().max(1) as u16
+            build_bottom_form_footer_lines(text, field_width)
+                .len()
+                .max(1) as u16
         }
         BottomFormFieldEditorView::Text {
             value, placeholder, ..
@@ -2523,7 +3336,10 @@ fn bottom_form_field_outer_height(
 }
 
 fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
-    if matches!(form.kind, BottomFormKind::Rules | BottomFormKind::Skills) {
+    if matches!(
+        form.kind,
+        BottomFormKind::Rules | BottomFormKind::Skills | BottomFormKind::Extensions
+    ) {
         return rules_bottom_form_block_height(form, panel_width);
     }
     if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2535,7 +3351,13 @@ fn bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let fields_height = form
         .fields
         .iter()
-        .map(|field| u32::from(bottom_form_field_outer_height(field, content_w, text_inner_w)))
+        .map(|field| {
+            u32::from(bottom_form_field_outer_height(
+                field,
+                content_w,
+                text_inner_w,
+            ))
+        })
         .sum::<u32>();
     let field_gaps = form.fields.len().saturating_sub(1) as u32;
     let footer_gap = if form.fields.is_empty() { 0 } else { 1 };
@@ -2570,8 +3392,8 @@ fn generic_bottom_form_selection_visible(
 ) -> bool {
     let mut used_height = 0usize;
     for index in scroll_offset..form.fields.len() {
-        let field_height = bottom_form_field_outer_height(&form.fields[index], field_width, text_inner_w)
-            as usize;
+        let field_height =
+            bottom_form_field_outer_height(&form.fields[index], field_width, text_inner_w) as usize;
         let needed_height = field_height + usize::from(index > scroll_offset);
         if used_height + needed_height > visible_height {
             return false;
@@ -2666,7 +3488,11 @@ fn rules_bottom_form_block_height(form: &BottomFormView, panel_width: u16) -> u1
     let layout = build_rules_bottom_form_layout(form, bottom_form_content_width(panel_width));
     let content_height = layout.content_lines.len().max(1) as u16;
     let footer_height = layout.footer_lines.len().max(1) as u16;
-    let footer_gap = if layout.content_lines.is_empty() { 0 } else { 1 };
+    let footer_gap = if layout.content_lines.is_empty() {
+        0
+    } else {
+        1
+    };
 
     content_height
         .saturating_add(footer_height)
@@ -2688,8 +3514,7 @@ fn ask_questions_block_height(form: &BottomFormView, panel_width: u16) -> u16 {
     let row_heights = (0..ask_questions_form::question_row_count(question))
         .map(|row| ask_questions_row_block_height(question, row, content_w))
         .sum::<u16>();
-    let row_gaps = ask_questions_form::question_row_count(question)
-        .saturating_sub(1) as u16;
+    let row_gaps = ask_questions_form::question_row_count(question).saturating_sub(1) as u16;
     let rows_gap = if ask_questions_form::question_row_count(question) > 0 {
         1
     } else {
@@ -2746,7 +3571,10 @@ fn ask_questions_row_block_height(
     field_width: usize,
 ) -> u16 {
     let inner_width = field_width.saturating_sub(2).max(1);
-    if matches!(question.kind, crate::ask_questions::AskQuestionsQuestionKind::Text) {
+    if matches!(
+        question.kind,
+        crate::ask_questions::AskQuestionsQuestionKind::Text
+    ) {
         let Some(input) = question.text_input.as_ref() else {
             return 0;
         };
@@ -2883,8 +3711,15 @@ fn draw_ask_questions_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    let outer_border_style = subtle_aux_text_style();
-    let outer_title_style = subtle_aux_text_style();
+    let outer_border_style = patch_style_border(
+        subtle_aux_text_style(),
+        cli_ui_border_color(CliUiHookSlot::QuestionsPanel)
+            .or(cli_ui_accent_color(CliUiHookSlot::QuestionsPanel)),
+    );
+    let outer_title_style = patch_style_foreground(
+        subtle_aux_text_style(),
+        cli_ui_foreground_color(CliUiHookSlot::QuestionsPanel),
+    );
     let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
     let outer_block = Block::default()
         .borders(Borders::ALL)
@@ -2940,7 +3775,12 @@ fn draw_ask_questions_form(
             .collect::<String>();
         Line::from(Span::styled(
             text,
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            patch_style_foreground(
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+                cli_ui_foreground_color(CliUiHookSlot::QuestionsPanel),
+            ),
         ))
     })
     .collect::<Vec<_>>();
@@ -2964,7 +3804,10 @@ fn draw_ask_questions_form(
         .y
         .saturating_add(content_area.height.saturating_sub(1));
     let validation_y = tabs_y.saturating_sub(validation_height);
-    let rows_start_y = content_area.y.saturating_add(1).saturating_add(title_height);
+    let rows_start_y = content_area
+        .y
+        .saturating_add(1)
+        .saturating_add(title_height);
     let rows_start_y = if ask_questions_form::question_row_count(question) > 0 {
         rows_start_y.saturating_add(1)
     } else {
@@ -2972,12 +3815,8 @@ fn draw_ask_questions_form(
     };
     let rows_limit_y = validation_y;
     let visible_height = rows_limit_y.saturating_sub(rows_start_y) as usize;
-    let effective_scroll = ask_questions_effective_scroll(
-        form,
-        question,
-        content_area.width as usize,
-        visible_height,
-    );
+    let effective_scroll =
+        ask_questions_effective_scroll(form, question, content_area.width as usize, visible_height);
 
     let mut cursor = None;
     if visible_height > 0 {
@@ -2987,23 +3826,17 @@ fn draw_ask_questions_form(
             width: content_area.width,
             height: rows_limit_y.saturating_sub(rows_start_y),
         };
-        for (row_index, row_area) in ask_questions_visible_row_areas(
-            question,
-            rows_area,
-            rows_limit_y,
-            effective_scroll,
-        ) {
-            let row_selected = !ask_questions_form::submit_selected(form)
-                && row_index == question.selected_row;
+        for (row_index, row_area) in
+            ask_questions_visible_row_areas(question, rows_area, rows_limit_y, effective_scroll)
+        {
+            let row_selected =
+                !ask_questions_form::submit_selected(form) && row_index == question.selected_row;
             let row_cursor = if let Some(option) = question.options.get(row_index) {
-                draw_ask_questions_option_row(
-                    frame,
-                    row_area,
-                    question,
-                    option,
-                    row_selected,
-                )
-            } else if matches!(question.kind, crate::ask_questions::AskQuestionsQuestionKind::Text) {
+                draw_ask_questions_option_row(frame, row_area, question, option, row_selected)
+            } else if matches!(
+                question.kind,
+                crate::ask_questions::AskQuestionsQuestionKind::Text
+            ) {
                 question.text_input.as_ref().and_then(|input| {
                     draw_bottom_form_text_field(
                         frame,
@@ -3054,7 +3887,10 @@ fn draw_ask_questions_form(
     }
 
     frame.render_widget(
-        Paragraph::new(build_ask_questions_tab_line(form, content_area.width as usize)),
+        Paragraph::new(build_ask_questions_tab_line(
+            form,
+            content_area.width as usize,
+        )),
         Rect {
             x: content_area.x,
             y: tabs_y,
@@ -3117,8 +3953,15 @@ fn draw_ask_questions_option_row(
         format!("{} {}", marker, option.label),
         label_style,
     ))];
-    if let Some(summary) = option.summary.as_ref().filter(|value| !value.trim().is_empty()) {
-        lines.extend(build_bottom_form_footer_lines(summary, inner.width as usize));
+    if let Some(summary) = option
+        .summary
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        lines.extend(build_bottom_form_footer_lines(
+            summary,
+            inner.width as usize,
+        ));
     }
     let max_lines = usize::from(inner.height);
     if lines.len() > max_lines {
@@ -3282,7 +4125,10 @@ fn draw_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    if matches!(form.kind, BottomFormKind::Rules | BottomFormKind::Skills) {
+    if matches!(
+        form.kind,
+        BottomFormKind::Rules | BottomFormKind::Skills | BottomFormKind::Extensions
+    ) {
         return draw_rules_bottom_form(frame, area, form);
     }
     if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -3365,9 +4211,7 @@ fn draw_bottom_form(
                 )
             }
             BottomFormFieldEditorView::Checkbox {
-                checked,
-                disabled,
-                ..
+                checked, disabled, ..
             } => draw_bottom_form_checkbox_field(
                 frame,
                 field_area,
@@ -3404,8 +4248,15 @@ fn draw_rules_bottom_form(
     area: Rect,
     form: &BottomFormView,
 ) -> BottomFormRenderResult {
-    let outer_border_style = subtle_aux_text_style();
-    let outer_title_style = subtle_aux_text_style();
+    let outer_border_style = patch_style_border(
+        subtle_aux_text_style(),
+        cli_ui_border_color(CliUiHookSlot::BottomForm)
+            .or(cli_ui_accent_color(CliUiHookSlot::BottomForm)),
+    );
+    let outer_title_style = patch_style_foreground(
+        subtle_aux_text_style(),
+        cli_ui_foreground_color(CliUiHookSlot::BottomForm),
+    );
     let title = truncate_to_width(&form.title, area.width.saturating_sub(4) as usize);
     let outer_block = Block::default()
         .borders(Borders::ALL)
@@ -3424,7 +4275,11 @@ fn draw_rules_bottom_form(
 
     let layout = build_rules_bottom_form_layout(form, content_area.width as usize);
     let footer_height = layout.footer_lines.len().max(1) as u16;
-    let footer_gap = if layout.content_lines.is_empty() { 0 } else { 1 };
+    let footer_gap = if layout.content_lines.is_empty() {
+        0
+    } else {
+        1
+    };
     let footer_y = content_area
         .y
         .saturating_add(content_area.height.saturating_sub(footer_height));
@@ -3435,7 +4290,8 @@ fn draw_rules_bottom_form(
         let max_scroll = layout.content_lines.len().saturating_sub(visible_height);
         let mut effective_scroll = form.scroll_offset.min(max_scroll);
 
-        if let Some(Some((selected_start, selected_end))) = layout.field_ranges.get(form.selected_field)
+        if let Some(Some((selected_start, selected_end))) =
+            layout.field_ranges.get(form.selected_field)
         {
             if *selected_start < effective_scroll {
                 effective_scroll = *selected_start;
@@ -3489,16 +4345,19 @@ fn draw_rules_bottom_form(
     }
 }
 
-fn build_rules_bottom_form_layout(form: &BottomFormView, max_width: usize) -> RulesBottomFormLayout {
+fn build_rules_bottom_form_layout(
+    form: &BottomFormView,
+    max_width: usize,
+) -> RulesBottomFormLayout {
     let mut content_lines = Vec::new();
     let mut field_ranges = vec![None; form.fields.len()];
     let checkbox_column_width = form
         .fields
         .iter()
         .filter_map(|field| match &field.editor {
-            BottomFormFieldEditorView::Checkbox { checked, .. } => {
-                Some(UnicodeWidthStr::width(rules_checkbox_label_text(&field.label, *checked).as_str()))
-            }
+            BottomFormFieldEditorView::Checkbox { checked, .. } => Some(UnicodeWidthStr::width(
+                rules_checkbox_label_text(&field.label, *checked).as_str(),
+            )),
             _ => None,
         })
         .max()
@@ -3547,7 +4406,10 @@ fn build_rules_bottom_form_layout(form: &BottomFormView, max_width: usize) -> Ru
         }
 
         if index + 1 < form.fields.len() {
-            content_lines.push(Line::from(Span::styled(String::new(), subtle_aux_text_style())));
+            content_lines.push(Line::from(Span::styled(
+                String::new(),
+                subtle_aux_text_style(),
+            )));
         }
     }
 
@@ -3652,12 +4514,16 @@ fn truncate_from_left_to_width(text: &str, max_width: usize) -> String {
     format!("…{}", collected.into_iter().collect::<String>())
 }
 
-fn draw_bottom_form_section_field(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    text: &str,
-) {
-    let lines = build_bottom_form_footer_lines(text, area.width as usize);
+fn draw_bottom_form_section_field(frame: &mut ratatui::Frame<'_>, area: Rect, text: &str) {
+    let lines = build_bottom_form_footer_lines(text, area.width as usize)
+        .into_iter()
+        .map(|line| {
+            patch_line_foreground(
+                line,
+                cli_ui_foreground_color(CliUiHookSlot::BottomFormSection),
+            )
+        })
+        .collect::<Vec<_>>();
     let max_lines = usize::from(area.height);
     let lines: Vec<Line<'static>> = lines.into_iter().take(max_lines).collect();
     frame.render_widget(Paragraph::new(lines), area);
@@ -3682,7 +4548,9 @@ fn draw_bottom_form_text_field(
         let budget = bottom_exclusive.saturating_sub(next_y);
         if budget > 0 {
             let label_style = if is_selected {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 subtle_aux_text_style().add_modifier(Modifier::BOLD)
             };
@@ -3733,7 +4601,8 @@ fn draw_bottom_form_text_field(
         let inner = block.inner(body_area);
         frame.render_widget(block, body_area);
 
-        let mut lines = build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
+        let mut lines =
+            build_bottom_form_text_lines(value, placeholder, inner.width as usize, is_selected);
         let max_inner_lines = usize::from(inner.height);
         if lines.len() > max_inner_lines {
             lines.truncate(max_inner_lines);
@@ -3961,12 +4830,14 @@ mod tests {
             image_picker_index: 0,
             image_picker_files: vec![],
             bottom_form: None,
+            marketplace_view: None,
             history_offset_from_bottom: 0,
             pending_response_active: false,
             pending_assistant_msg_index: None,
             pending_aux: None,
             persisted_standalone_pending_aux: None,
             persisted_standalone_pending_aux_anchor: None,
+            cli_ui_hooks: vec![],
             conversation_sel_anchor: None,
             conversation_sel_head: None,
         }
@@ -4026,7 +4897,9 @@ mod tests {
         }
     }
 
-    fn build_subagent_detail_view(pending_aux: Option<PendingAssistantAux>) -> SubagentSessionDetailView {
+    fn build_subagent_detail_view(
+        pending_aux: Option<PendingAssistantAux>,
+    ) -> SubagentSessionDetailView {
         SubagentSessionDetailView {
             summary: SubagentSessionSummaryView {
                 session_id: "subagent-1".to_string(),
@@ -4215,8 +5088,16 @@ mod tests {
 
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
-        assert!(lines.iter().any(|line| line.contains("我已经梳理完主要模块。")));
-        assert!(lines.iter().all(|line| !line.contains("先看一下项目结构。")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("我已经梳理完主要模块。"))
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("先看一下项目结构。"))
+        );
         assert!(lines.iter().all(|line| !line.contains("<think>")));
     }
 
@@ -4249,7 +5130,11 @@ mod tests {
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
         assert!(lines.iter().any(|line| line.contains("我来处理这个问题。")));
-        assert!(lines.iter().all(|line| !line.contains("先检查当前渲染分支。")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("先检查当前渲染分支。"))
+        );
     }
 
     #[test]
@@ -4266,7 +5151,11 @@ mod tests {
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().any(|line| line.contains("先检查当前渲染分支。")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("先检查当前渲染分支。"))
+        );
     }
 
     #[test]
@@ -4283,8 +5172,16 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("已开始处理。")));
-        assert!(lines.iter().any(|line| line.contains("官方新闻抓取: 正在执行")));
-        assert!(lines.iter().all(|line| !line.contains("| 官方新闻抓取: 正在执行")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("官方新闻抓取: 正在执行"))
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("| 官方新闻抓取: 正在执行"))
+        );
     }
 
     #[test]
@@ -4302,7 +5199,11 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().all(|line| !line.contains("继续等待子会话返回。")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("继续等待子会话返回。"))
+        );
     }
 
     #[test]
@@ -4321,13 +5222,19 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("子代理已完成任务。")));
-        assert!(lines.iter().any(|line| line.contains("官方新闻抓取: 已完成")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("官方新闻抓取: 已完成"))
+        );
     }
 
     #[test]
     fn persisted_subagent_status_wins_over_generic_pending_thinking() {
-        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "父会话准备整理结果。"));
-        app.messages.push(ChatMessage::new(MessageRole::Agent, String::new()));
+        let mut app =
+            build_view_model(ChatMessage::new(MessageRole::Agent, "父会话准备整理结果。"));
+        app.messages
+            .push(ChatMessage::new(MessageRole::Agent, String::new()));
         app.pending_response_active = true;
         app.pending_assistant_msg_index = Some(1);
         app.pending_aux = Some(PendingAssistantAux {
@@ -4462,7 +5369,8 @@ mod tests {
     }
 
     #[test]
-    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message() {
+    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message()
+     {
         let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
         app.messages.push(ChatMessage::new(
             MessageRole::Agent,
@@ -4506,7 +5414,11 @@ mod tests {
         let lines = render_text_lines(build_subagent_history_lines(&view, false));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().all(|line| !line.contains("先检查子会话当前进展。")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("先检查子会话当前进展。"))
+        );
     }
 
     #[test]
@@ -4520,7 +5432,11 @@ mod tests {
         let lines = render_text_lines(build_subagent_history_lines(&view, true));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(lines.iter().any(|line| line.contains("先检查子会话当前进展。")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("先检查子会话当前进展。"))
+        );
     }
 
     #[test]

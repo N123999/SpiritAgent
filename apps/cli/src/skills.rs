@@ -172,8 +172,7 @@ pub fn load_skill_state() -> Result<SkillStateFile> {
 
     let content = fs::read_to_string(&path)
         .with_context(|| format!("读取技能状态失败: {}", path.display()))?;
-    serde_json::from_str(&content)
-        .with_context(|| format!("解析技能状态失败: {}", path.display()))
+    serde_json::from_str(&content).with_context(|| format!("解析技能状态失败: {}", path.display()))
 }
 
 pub fn save_skill_state(state: &SkillStateFile) -> Result<PathBuf> {
@@ -561,10 +560,16 @@ fn scope_rank(scope: SkillScope) -> u8 {
 fn short_label_for_skill(root_kind: SkillRootKind, skill_name: &str) -> String {
     match root_kind {
         SkillRootKind::WorkspaceSpirit => {
-            format!("{}/{}/{}/{}", SPIRIT_DIR_NAME, SKILLS_DIR_NAME, skill_name, SKILL_FILE_NAME)
+            format!(
+                "{}/{}/{}/{}",
+                SPIRIT_DIR_NAME, SKILLS_DIR_NAME, skill_name, SKILL_FILE_NAME
+            )
         }
         SkillRootKind::WorkspaceAgents => {
-            format!("{}/{}/{}/{}", AGENTS_DIR_NAME, SKILLS_DIR_NAME, skill_name, SKILL_FILE_NAME)
+            format!(
+                "{}/{}/{}/{}",
+                AGENTS_DIR_NAME, SKILLS_DIR_NAME, skill_name, SKILL_FILE_NAME
+            )
         }
         SkillRootKind::User => format!("{}/{}/{}", SKILLS_DIR_NAME, skill_name, SKILL_FILE_NAME),
     }
@@ -617,10 +622,7 @@ fn truncate_active_skill_content(content: &str) -> (String, bool) {
         .take(ACTIVE_SKILL_CONTENT_MAX_CHARS)
         .collect::<String>();
     (
-        format!(
-            "{}\n\n...<skill content truncated>",
-            truncated.trim_end()
-        ),
+        format!("{}\n\n...<skill content truncated>", truncated.trim_end()),
         true,
     )
 }
@@ -716,9 +718,7 @@ fn stable_skill_id(path: &Path) -> String {
 mod tests {
     use super::*;
     use crate::test_support::shared_env_lock;
-    use std::{
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_test_dir(label: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -739,26 +739,31 @@ mod tests {
     }
 
     fn sample_skill(name: &str, description: &str, body: &str) -> String {
-        format!(
-            "---\nname: {name}\ndescription: {description}\n---\n\n{body}\n"
-        )
+        format!("---\nname: {name}\ndescription: {description}\n---\n\n{body}\n")
     }
 
     #[test]
     fn user_skills_dir_lives_under_spirit_agent_data_dir() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("user-skills-dir");
         unsafe {
             env::set_var("APPDATA", &appdata);
             env::remove_var("USERPROFILE");
         }
 
-        assert_eq!(user_skills_dir(), appdata.join("SpiritAgent").join(SKILLS_DIR_NAME));
+        assert_eq!(
+            user_skills_dir(),
+            appdata.join("SpiritAgent").join(SKILLS_DIR_NAME)
+        );
     }
 
     #[test]
     fn save_skill_state_round_trips_overrides() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("skill-state-roundtrip");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -770,13 +775,18 @@ mod tests {
         state.set_enabled("skill-b", true);
         let path = save_skill_state(&state).expect("save skill state");
 
-        assert_eq!(path, appdata.join("SpiritAgent").join(SKILLS_STATE_FILE_NAME));
+        assert_eq!(
+            path,
+            appdata.join("SpiritAgent").join(SKILLS_STATE_FILE_NAME)
+        );
         assert_eq!(load_skill_state().expect("load skill state"), state);
     }
 
     #[test]
     fn discover_skill_entries_prefers_workspace_spirit_over_agents_and_user() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-precedence-workspace");
         let appdata = temp_test_dir("discover-precedence-appdata");
         unsafe {
@@ -805,11 +815,7 @@ mod tests {
         write_skill(
             &user_skills_dir(),
             "code-review",
-            &sample_skill(
-                "code-review",
-                "User review skill.",
-                "# User\n用户级",
-            ),
+            &sample_skill("code-review", "User review skill.", "# User\n用户级"),
         );
 
         let entries = discover_skill_entries(&workspace_root, &SkillStateFile::default())
@@ -822,7 +828,9 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_uses_enabled_override() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-enabled-workspace");
         let appdata = temp_test_dir("discover-enabled-appdata");
         unsafe {
@@ -849,7 +857,9 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_skips_missing_description() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-missing-description-workspace");
         let appdata = temp_test_dir("discover-missing-description-appdata");
         unsafe {
@@ -870,7 +880,9 @@ mod tests {
 
     #[test]
     fn discover_skill_entries_accepts_lenient_description_with_colon() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let workspace_root = temp_test_dir("discover-lenient-yaml-workspace");
         let appdata = temp_test_dir("discover-lenient-yaml-appdata");
         unsafe {
@@ -918,7 +930,9 @@ mod tests {
                     name: "data-analysis".to_string(),
                     description: "Analyze data.".to_string(),
                     short_label: "skills/data-analysis/SKILL.md".to_string(),
-                    path: PathBuf::from("C:/users/demo/AppData/Roaming/SpiritAgent/skills/data-analysis/SKILL.md"),
+                    path: PathBuf::from(
+                        "C:/users/demo/AppData/Roaming/SpiritAgent/skills/data-analysis/SKILL.md",
+                    ),
                 },
                 enabled: false,
                 content: "# Data".to_string(),

@@ -210,6 +210,7 @@ export interface ToolExecutor<
   trust(target: TrustTarget): Promise<void>;
   execute(request: ToolRequest): Promise<string>;
   attachRequestMetadata?(request: ToolRequest, metadata: ToolRequestExecutionMetadata): ToolRequest;
+  continueAfterQuestions?(request: ToolRequest, result: AskQuestionsResult): Promise<ToolRequest | undefined>;
   shouldExecuteInBackground?(request: ToolRequest): boolean;
   backgroundStatusText?(request: ToolRequest): string | undefined;
   startMcpBackgroundRefresh(): void;

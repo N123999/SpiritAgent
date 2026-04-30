@@ -5,8 +5,10 @@ import path from 'node:path';
 
 import {
   AgentRuntime,
+  buildContributedHostToolDefinitions,
   type OpenAiActiveSkill,
   type OpenAiActiveSkillResourceEntry,
+  type OpenAiExtensionSystemPrompt,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   extractLastOpenAiAssistantText,
@@ -19,6 +21,7 @@ import {
   type AssistantAuxArchiveEntry,
   type AskQuestionsResult as RuntimeAskQuestionsResult,
   type ChatArchive,
+  type JsonObject,
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiPlanMetadata,
@@ -38,11 +41,17 @@ import {
   type McpServerConfig,
 } from '@spirit-agent/agent-core';
 import {
+  collectHostExtensionContributedTools,
+  createHostExtensionMarketplace,
+  createHostExtensionManager,
   listOpenAiCompatibleModelIds,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
   restoreHostFileChanges,
+  type HostExtensionMarketplaceManager,
+  type HostExtensionEvent,
+  type HostInstalledExtension,
   type HostRecordedFileChange,
 } from '@spirit-agent/host-internal';
 
@@ -57,8 +66,14 @@ import type {
   BootstrapRequest,
   ConversationMessageSnapshot,
   CreateSkillRequest,
+  DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DesktopMcpServerInspection,
+  DesktopExtensionListItem,
+  DesktopExtensionCssLayer,
+  DesktopMarketplaceCatalogItem,
+  DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DesktopModelProvider,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
@@ -67,12 +82,18 @@ import type {
   DesktopSnapshot,
   DesktopWebHostSnapshot,
   FileRewindWarning,
+  RunExtensionRequest,
+  UpdateExtensionSecretRequest,
+  UpdateExtensionSettingsRequest,
   MessageAuxSnapshot,
   PendingAssistantAux,
   PendingQuestionsSnapshot,
   RewindAndSubmitMessageRequest,
   RemoveModelRequest,
   SessionListItem,
+  ImportExtensionRequest,
+  InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
@@ -100,6 +121,7 @@ import {
   removeModelApiKey,
   resolveApiKeyForModel,
   saveApiKeyForModel,
+  createDesktopExtensionStateStore,
   saveConfig,
   saveStoredSession,
   listStoredSessions,
@@ -135,6 +157,29 @@ type DesktopRuntime = AgentRuntime<
   string
 >;
 
+export interface DesktopExtensionMessageBoxRequest {
+  title: string;
+  message: string;
+  detail?: string;
+  buttons?: string[];
+  cancelId?: number;
+  defaultId?: number;
+  noLink?: boolean;
+  type?: 'none' | 'info' | 'error' | 'question' | 'warning';
+}
+
+export interface DesktopExtensionHostAdapter {
+  showMessageBox(request: DesktopExtensionMessageBoxRequest): Promise<void>;
+}
+
+let desktopExtensionHostAdapter: DesktopExtensionHostAdapter | undefined;
+
+export function setDesktopExtensionHostAdapter(
+  adapter: DesktopExtensionHostAdapter | undefined,
+): void {
+  desktopExtensionHostAdapter = adapter;
+}
+
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
   updateConfig: { request: UpdateConfigRequest };
@@ -146,6 +191,16 @@ type CommandPayloads = {
   addMcpServer: { request: AddMcpServerRequest };
   deleteMcpServer: { request: DeleteMcpServerRequest };
   inspectMcpServer: { name: string };
+  importExtension: { request: ImportExtensionRequest };
+  listMarketplaceExtensions: undefined;
+  getMarketplaceExtensionDetail: { extensionId: string };
+  getMarketplaceExtensionReadme: { extensionId: string };
+  prepareMarketplaceExtensionInstall: { request: PrepareMarketplaceExtensionInstallRequest };
+  installMarketplaceExtension: { request: InstallMarketplaceExtensionRequest };
+  deleteExtension: { request: DeleteExtensionRequest };
+  runExtension: { request: RunExtensionRequest };
+  updateExtensionSettings: { request: UpdateExtensionSettingsRequest };
+  updateExtensionSecret: { request: UpdateExtensionSecretRequest };
   createSkill: { request: CreateSkillRequest };
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
@@ -168,6 +223,8 @@ interface HostState {
   config: DesktopConfigFile;
   metadata: HostMetadataSummary;
   messages: ConversationMessageSnapshot[];
+  extensionsList: DesktopExtensionListItem[];
+  extensionCss: DesktopExtensionCssLayer[];
   activeSession?: ActiveSessionSnapshot;
   archiveHistory: ChatArchive['llmHistory'];
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
@@ -177,6 +234,17 @@ interface HostState {
 
 class DesktopHostService {
   private readonly transport = new OpenAiTransport();
+  private readonly extensionStateStore = createDesktopExtensionStateStore({
+    spiritDataDir: spiritAgentDataDir(),
+    hostKind: 'desktop',
+  });
+  private readonly hostExtensionManager = createHostExtensionManager({
+    spiritDataDir: spiritAgentDataDir(),
+    hostKind: 'desktop',
+    stateStore: this.extensionStateStore,
+  });
+  private hostExtensionMarketplace: HostExtensionMarketplaceManager | undefined;
+  private hostExtensionMarketplaceFetchImpl: typeof fetch | undefined;
   private state: HostState | undefined;
   private runtime: DesktopRuntime | undefined;
   private toolExecutor: DesktopToolExecutor | undefined;
@@ -568,6 +636,191 @@ description: ${frontmatterDescription}
     });
   }
 
+  async importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const archiveBase64 = request.archiveBase64.trim();
+      if (!archiveBase64) {
+        throw new Error('扩展 ZIP 内容不能为空。');
+      }
+
+      const installed = await this.extensionManager().importArchive({
+        archiveBase64,
+        ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
+      });
+      await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
+      await this.dispatchExtensionEvent(
+        {
+          type: 'onExtensionInstalled',
+          detail: {
+            extensionId: installed.id,
+            name: installed.manifest.name,
+            version: installed.manifest.version,
+          },
+        },
+        { targetExtensionIds: [installed.id] },
+      );
+      return this.buildSnapshot();
+    });
+  }
+
+  async listMarketplaceExtensions(): Promise<DesktopMarketplaceCatalogItem[]> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const items = await this.marketplace().listCatalog();
+      return items.map((item) => toDesktopMarketplaceCatalogItem(item));
+    });
+  }
+
+  async getMarketplaceExtensionDetail(extensionId: string): Promise<DesktopMarketplaceDetail> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const trimmedId = extensionId.trim();
+      if (!trimmedId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const detail = await this.marketplace().getDetail(trimmedId);
+      return toDesktopMarketplaceDetail(detail);
+    });
+  }
+
+  async getMarketplaceExtensionReadme(extensionId: string): Promise<string> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const trimmedId = extensionId.trim();
+      if (!trimmedId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      return this.marketplace().getReadme(trimmedId);
+    });
+  }
+
+  async prepareMarketplaceExtensionInstall(
+    request: PrepareMarketplaceExtensionInstallRequest,
+  ): Promise<DesktopMarketplacePreparedInstall> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const extensionId = request.extensionId.trim();
+      if (!extensionId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const prepared = await this.marketplace().prepareInstall({
+        extensionId,
+        ...(request.version?.trim() ? { version: request.version.trim() } : {}),
+      });
+      return toDesktopMarketplacePreparedInstall(prepared);
+    });
+  }
+
+  async installMarketplaceExtension(
+    request: InstallMarketplaceExtensionRequest,
+  ): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const extensionId = request.extensionId.trim();
+      if (!extensionId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const installed = await this.marketplace().install({
+        extensionId,
+        ...(request.version?.trim() ? { version: request.version.trim() } : {}),
+        ...(request.reviewAcknowledged === true ? { reviewAcknowledged: true } : {}),
+      });
+      await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
+      await this.dispatchExtensionEvent(
+        {
+          type: 'onExtensionInstalled',
+          detail: {
+            extensionId: installed.id,
+            name: installed.manifest.name,
+            version: installed.manifest.version,
+          },
+        },
+        { targetExtensionIds: [installed.id] },
+      );
+      return this.buildSnapshot();
+    });
+  }
+
+  async deleteExtension(request: DeleteExtensionRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      await this.extensionManager().remove(id);
+      await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
+      return this.buildSnapshot();
+    });
+  }
+
+  async runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      await this.extensionManager().run({
+        id,
+        host: this.requireExtensionHostAdapter(),
+        logger: console,
+      });
+      return this.buildSnapshot();
+    });
+  }
+
+  async updateExtensionSettings(request: UpdateExtensionSettingsRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      await this.extensionManager().setSettingsValues({
+        id,
+        values: request.values,
+      });
+      await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
+      return this.buildSnapshot();
+    });
+  }
+
+  async updateExtensionSecret(request: UpdateExtensionSecretRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const id = request.id.trim();
+      const key = request.key.trim();
+      if (!id) {
+        throw new Error('扩展 id 不能为空。');
+      }
+      if (!key) {
+        throw new Error('secret key 不能为空。');
+      }
+
+      await this.extensionManager().setSecretValue({
+        id,
+        key,
+        ...(request.value !== undefined ? { value: request.value } : {}),
+      });
+      await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
+      return this.buildSnapshot();
+    });
+  }
+
   async deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -757,6 +1010,14 @@ description: ${frontmatterDescription}
     state.messages.push(userMessage);
     this.resetStreamingPlacementState(false);
     await this.persistCurrentSessionIfNeeded();
+    await this.dispatchExtensionEvent({
+      type: 'onUserMessage',
+      detail: {
+        text: trimmed,
+        displayText,
+        messageId: userMessage.id,
+      },
+    });
 
     try {
       await runtime.startUserTurnStreaming(trimmed);
@@ -878,6 +1139,12 @@ description: ${frontmatterDescription}
       this.messageIdCounter = 1;
       await this.refreshRuntime();
       this.lastRuntimeError = '';
+      await this.dispatchExtensionEvent({
+        type: 'onSessionReset',
+        detail: {
+          workspaceRoot: state.workspaceRoot,
+        },
+      });
       return this.buildSnapshot();
     });
   }
@@ -1034,6 +1301,13 @@ description: ${frontmatterDescription}
       this.resetStreamingPlacementState(true);
       await this.refreshRuntime();
       this.lastRuntimeError = '';
+      await this.dispatchExtensionEvent({
+        type: 'onSessionOpened',
+        detail: {
+          filePath: path.resolve(filePath),
+          displayName: state.activeSession.displayName,
+        },
+      });
       return this.buildSnapshot();
     });
   }
@@ -1079,6 +1353,45 @@ description: ${frontmatterDescription}
       case 'inspectMcpServer': {
         const typedPayload = payload as CommandPayloads['inspectMcpServer'];
         return this.inspectMcpServer(typedPayload.name);
+      }
+      case 'importExtension': {
+        const typedPayload = payload as CommandPayloads['importExtension'];
+        return this.importExtension(typedPayload.request);
+      }
+      case 'listMarketplaceExtensions': {
+        return this.listMarketplaceExtensions();
+      }
+      case 'getMarketplaceExtensionDetail': {
+        const typedPayload = payload as CommandPayloads['getMarketplaceExtensionDetail'];
+        return this.getMarketplaceExtensionDetail(typedPayload.extensionId);
+      }
+      case 'getMarketplaceExtensionReadme': {
+        const typedPayload = payload as CommandPayloads['getMarketplaceExtensionReadme'];
+        return this.getMarketplaceExtensionReadme(typedPayload.extensionId);
+      }
+      case 'installMarketplaceExtension': {
+        const typedPayload = payload as CommandPayloads['installMarketplaceExtension'];
+        return this.installMarketplaceExtension(typedPayload.request);
+      }
+      case 'prepareMarketplaceExtensionInstall': {
+        const typedPayload = payload as CommandPayloads['prepareMarketplaceExtensionInstall'];
+        return this.prepareMarketplaceExtensionInstall(typedPayload.request);
+      }
+      case 'deleteExtension': {
+        const typedPayload = payload as CommandPayloads['deleteExtension'];
+        return this.deleteExtension(typedPayload.request);
+      }
+      case 'runExtension': {
+        const typedPayload = payload as CommandPayloads['runExtension'];
+        return this.runExtension(typedPayload.request);
+      }
+      case 'updateExtensionSettings': {
+        const typedPayload = payload as CommandPayloads['updateExtensionSettings'];
+        return this.updateExtensionSettings(typedPayload.request);
+      }
+      case 'updateExtensionSecret': {
+        const typedPayload = payload as CommandPayloads['updateExtensionSecret'];
+        return this.updateExtensionSecret(typedPayload.request);
       }
       case 'createSkill': {
         const typedPayload = payload as CommandPayloads['createSkill'];
@@ -1151,12 +1464,19 @@ description: ${frontmatterDescription}
     const config = await loadConfig();
     const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
     const state = this.state;
+    const previousWorkspaceRoot = state?.workspaceRoot;
+
+    if (previousWorkspaceRoot && previousWorkspaceRoot !== workspaceRoot) {
+      await this.extensionManager().deactivateAll();
+    }
 
     this.state = {
       workspaceRoot,
       config,
       metadata,
       messages: state?.messages ?? [],
+      extensionsList: state?.extensionsList ?? [],
+      extensionCss: state?.extensionCss ?? [],
       activeSession: state?.activeSession,
       archiveHistory: state?.archiveHistory ?? [],
       archiveSubagentSessions: state?.archiveSubagentSessions ?? [],
@@ -1164,7 +1484,14 @@ description: ${frontmatterDescription}
       rewindWarnings: state?.rewindWarnings ?? [],
     };
     this.initialized = true;
+    await this.refreshExtensionsList();
     await this.refreshRuntime();
+    await this.dispatchExtensionEvent({
+      type: 'onStartup',
+      detail: {
+        workspaceRoot,
+      },
+    });
   }
 
   private async refreshRuntime(): Promise<void> {
@@ -1173,13 +1500,35 @@ description: ${frontmatterDescription}
       state.workspaceRoot,
       state.config.planMode === true,
     );
+    const extensions = await this.extensionManager().list();
     this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
-      recordFileChange: (change) => this.recordHostFileChange(change),
+      extensionToolDefinitions: buildContributedHostToolDefinitions(
+        collectHostExtensionContributedTools(extensions).map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema as JsonObject,
+        })),
+      ),
+      fileChangeObserver: {
+        recordFileChange: (change) => this.recordHostFileChange(change),
+      },
+      extensions: {
+        manager: this.extensionManager(),
+        getHost: () => {
+          const adapter = desktopExtensionHostAdapter;
+          if (!adapter) {
+            throw new Error('当前桌面宿主尚未连接扩展 host adapter。');
+          }
+          return adapter;
+        },
+        logger: console,
+      },
     });
     this.toolExecutor.startMcpBackgroundRefresh();
     this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
+    const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
     if (!apiKey) {
       this.runtime = undefined;
       this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
@@ -1202,6 +1551,7 @@ description: ${frontmatterDescription}
       state.metadata.rules.enabledRules,
       state.metadata.skills.enabledSkillCatalog,
       state.metadata.planMetadata,
+      extensionSystemPrompts,
     );
     if (state.archiveSubagentSessions.length > 0 || state.archiveHistory.length > 0) {
       runtime.replaceFromArchive({
@@ -1245,6 +1595,7 @@ description: ${frontmatterDescription}
     enabledRules: OpenAiEnabledRule[],
     enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
     planMetadata: OpenAiPlanMetadata,
+    extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
     return new AgentRuntime({
@@ -1261,6 +1612,7 @@ description: ${frontmatterDescription}
           cloneActiveSkills(this.currentTurnSkills),
           transportConfig.model,
           planMetadata,
+          extensionSystemPrompts,
         ),
       appendToolResultMessage: appendOpenAiToolResultMessage,
       appendUserMessage: appendOpenAiUserMessage,
@@ -1278,6 +1630,7 @@ description: ${frontmatterDescription}
           cloneActiveSkills(this.currentTurnSkills),
           transportConfig.model,
           planMetadata,
+          extensionSystemPrompts,
         ),
       resolveWorkspaceFilesFromInput: (input) =>
         pendingWorkspaceFilesFromInput(workspaceRoot, input),
@@ -1359,6 +1712,9 @@ description: ${frontmatterDescription}
         rootKind: entry.source.rootKind,
         enabled: entry.enabled,
       })),
+      // 须与 refreshExtensionsList 一致，否则设置页不显示工具/设置/密钥
+      extensionsList: state.extensionsList.map((item) => ({ ...item })),
+      extensionCss: state.extensionCss.map((entry) => ({ ...entry })),
       plan: {
         path: state.metadata.planMetadata.path,
         exists: state.metadata.planMetadata.exists,
@@ -1474,6 +1830,237 @@ description: ${frontmatterDescription}
     this.refreshArchiveFromRuntime();
   }
 
+  private extensionManager() {
+    return this.hostExtensionManager;
+  }
+
+  private marketplace() {
+    if (!this.hostExtensionMarketplace) {
+      this.hostExtensionMarketplace = createHostExtensionMarketplace(
+        {
+          spiritDataDir: spiritAgentDataDir(),
+          hostKind: 'desktop',
+        },
+        this.hostExtensionMarketplaceFetchImpl
+          ? { fetchImpl: this.hostExtensionMarketplaceFetchImpl }
+          : {},
+      );
+    }
+    return this.hostExtensionMarketplace;
+  }
+
+  setMarketplaceFetchImpl(fetchImpl: typeof fetch | undefined): void {
+    if (this.hostExtensionMarketplaceFetchImpl === fetchImpl) {
+      return;
+    }
+    this.hostExtensionMarketplaceFetchImpl = fetchImpl;
+    this.hostExtensionMarketplace = undefined;
+  }
+
+  private async refreshExtensionsList(): Promise<void> {
+    const state = this.requireState();
+    const extensions = await this.extensionManager().list();
+    state.extensionsList = await Promise.all(extensions.map(async (item) => ({
+      id: item.id,
+      displayName: item.manifest.name,
+      ...(item.manifest.icon ? { icon: item.manifest.icon } : {}),
+      version: item.manifest.version,
+      ...(item.manifest.description ? { description: item.manifest.description } : {}),
+      ...(item.manifest.author ? { author: item.manifest.author } : {}),
+      ...(item.manifest.homepage ? { homepage: item.manifest.homepage } : {}),
+      ...(item.manifest.main ? { main: item.manifest.main } : {}),
+      supportedHosts: [...item.manifest.supportedHosts],
+      ...(item.manifest.activationEvents?.length
+        ? { activationEvents: [...item.manifest.activationEvents] }
+        : {}),
+      ...(item.manifest.requestedCapabilities?.length
+        ? { requestedCapabilities: [...item.manifest.requestedCapabilities] }
+        : {}),
+      ...(item.manifest.contributes?.tools?.length
+        ? {
+            contributedTools: item.manifest.contributes.tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
+              ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+            })),
+          }
+        : {}),
+      ...(item.manifest.contributes?.desktop?.css?.length
+        ? {
+            desktopCss: item.manifest.contributes.desktop.css.map((entry) => ({
+              path: entry.path,
+              ...(entry.media ? { media: entry.media } : {}),
+            })),
+          }
+        : {}),
+      ...(item.manifest.contributes?.cli?.hooks?.length
+        ? {
+            cliHooks: item.manifest.contributes.cli.hooks.map((hook) => ({
+              slot: hook.slot,
+              ...(hook.variant ? { variant: hook.variant } : {}),
+              ...(hook.tokens
+                ? {
+                    tokens: {
+                      ...(hook.tokens.foreground ? { foreground: hook.tokens.foreground } : {}),
+                      ...(hook.tokens.border ? { border: hook.tokens.border } : {}),
+                      ...(hook.tokens.accent ? { accent: hook.tokens.accent } : {}),
+                    },
+                  }
+                : {}),
+              ...(hook.prefix ? { prefix: hook.prefix } : {}),
+              ...(hook.suffix ? { suffix: hook.suffix } : {}),
+            })),
+          }
+        : {}),
+      ...(item.manifest.settingsSchema?.length
+        ? {
+            settingsSchema: item.manifest.settingsSchema.map((setting) => ({
+              key: setting.key,
+              type: setting.type,
+              title: setting.title,
+              ...(setting.description ? { description: setting.description } : {}),
+              ...(setting.placeholder ? { placeholder: setting.placeholder } : {}),
+              ...(setting.required !== undefined ? { required: setting.required } : {}),
+              ...(setting.defaultValue !== undefined
+                ? { defaultValue: setting.defaultValue }
+                : {}),
+              ...(setting.options?.length
+                ? {
+                    options: setting.options.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                      ...(option.description ? { description: option.description } : {}),
+                    })),
+                  }
+                : {}),
+            })),
+            settingsValues: await this.extensionManager().getSettingsValues(item.id),
+          }
+        : {}),
+      ...(item.manifest.secretSlots?.length
+        ? {
+            secretSlots: item.manifest.secretSlots.map((slot) => ({
+              key: slot.key,
+              title: slot.title,
+              ...(slot.description ? { description: slot.description } : {}),
+              ...(slot.required !== undefined ? { required: slot.required } : {}),
+            })),
+            secretStatuses: Object.entries(
+              await this.extensionManager().getSecretStatus(item.id),
+            ).map(([key, configured]) => ({
+              key,
+              configured,
+            })),
+          }
+        : {}),
+      ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),
+      installedAtUnixMs: item.installedAtUnixMs,
+    })));
+    state.extensionCss = await this.collectDesktopExtensionCssLayers(extensions);
+  }
+
+  private async collectDesktopExtensionCssLayers(
+    extensions: readonly HostInstalledExtension[],
+  ): Promise<DesktopExtensionCssLayer[]> {
+    const layers: DesktopExtensionCssLayer[] = [];
+
+    for (const item of extensions) {
+      const cssEntries = item.manifest.contributes?.desktop?.css ?? [];
+      for (const entry of cssEntries) {
+        const sourcePath = path.join(item.directoryPath, ...entry.path.split('/'));
+        try {
+          const cssText = await readFile(sourcePath, 'utf8');
+          if (!cssText.trim()) {
+            continue;
+          }
+          layers.push({
+            extensionId: item.id,
+            extensionName: item.manifest.name,
+            sourcePath: entry.path,
+            cssText,
+            ...(entry.media ? { media: entry.media } : {}),
+          });
+        } catch (error) {
+          console.warn(
+            `[desktop-host][extensions] read css failed: ${item.id}:${entry.path}`,
+            error,
+          );
+        }
+      }
+    }
+
+    return layers;
+  }
+
+  private async refreshExtensionToolDefinitions(): Promise<void> {
+    if (!this.toolExecutor) {
+      return;
+    }
+
+    const extensions = await this.extensionManager().list();
+    this.toolExecutor.setExtensionToolDefinitions(
+      buildContributedHostToolDefinitions(
+        collectHostExtensionContributedTools(extensions).map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema as JsonObject,
+        })),
+      ),
+    );
+  }
+
+  private async collectExtensionSystemPrompts(): Promise<OpenAiExtensionSystemPrompt[]> {
+    const adapter = desktopExtensionHostAdapter;
+    if (!adapter) {
+      return [];
+    }
+
+    const collected = await this.extensionManager().collectSystemPromptContributions({
+      host: adapter,
+      logger: console,
+    });
+    return collected.map((entry) => ({
+      extensionId: entry.extensionId,
+      extensionName: entry.extensionName,
+      content: entry.content,
+    }));
+  }
+
+  private async refreshRuntimeAfterExtensionMutation(): Promise<void> {
+    if (this.runtime?.isBusy()) {
+      this.deferredRuntimeRefreshWhileBusy = true;
+      return;
+    }
+
+    this.deferredRuntimeRefreshWhileBusy = false;
+    await this.refreshRuntime();
+    this.lastRuntimeError = '';
+  }
+
+  private async dispatchExtensionEvent(
+    event: HostExtensionEvent,
+    options: {
+      targetExtensionIds?: readonly string[];
+    } = {},
+  ): Promise<void> {
+    const adapter = desktopExtensionHostAdapter;
+    if (!adapter) {
+      return;
+    }
+
+    try {
+      await this.extensionManager().dispatchEvent({
+        event,
+        host: adapter,
+        logger: console,
+        ...(options.targetExtensionIds ? { targetExtensionIds: options.targetExtensionIds } : {}),
+      });
+    } catch (error) {
+      this.lastRuntimeError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
     for (const execution of executions) {
       const message = this.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
@@ -1550,8 +2137,41 @@ description: ${frontmatterDescription}
         }
         continue;
       }
+      if (ev.kind === 'tool-call-started') {
+        void this.dispatchExtensionEvent({
+          type: 'onToolCall',
+          detail: {
+            toolCallId: ev.toolCallId,
+            toolName: ev.toolName,
+            request: ev.request as JsonObject,
+          },
+        });
+        continue;
+      }
+      if (ev.kind === 'approval-resolved') {
+        void this.dispatchExtensionEvent({
+          type: 'onApprovalResolved',
+          detail: {
+            toolCallId: ev.toolCallId,
+            toolName: ev.toolName,
+            decisionKind: ev.decisionKind,
+            request: ev.request as JsonObject,
+          },
+        });
+        continue;
+      }
       if (ev.kind === 'tool-execution-finished') {
         this.integrateToolExecutions([ev.execution]);
+        void this.dispatchExtensionEvent({
+          type: 'onToolResult',
+          detail: {
+            toolCallId: ev.execution.toolCallId,
+            toolName: ev.execution.toolName,
+            output: ev.execution.output,
+            failed: ev.execution.failed,
+            request: ev.execution.request as JsonObject,
+          },
+        });
         continue;
       }
       if (ev.kind !== 'streaming-tool-preview') {
@@ -2817,8 +3437,12 @@ description: ${frontmatterDescription}
         tags.push('rm-pending');
       } else if (ev.kind === 'assistant-thinking-segment-finalized') {
         tags.push(ev.text.trim() ? 'finalize' : 'finalize-empty');
+      } else if (ev.kind === 'tool-call-started') {
+        tags.push(`tool-start:${ev.toolName}`);
       } else if (ev.kind === 'tool-execution-finished') {
         tags.push(`tool-done:${ev.execution.toolName}`);
+      } else if (ev.kind === 'approval-resolved') {
+        tags.push(`approval-${ev.decisionKind}`);
       } else if (ev.kind === 'approval-requested') {
         tags.push(`approval:${ev.approval.toolName}`);
       } else if (ev.kind === 'questions-requested') {
@@ -2910,6 +3534,13 @@ description: ${frontmatterDescription}
       throw new Error('Desktop MCP tool executor 尚未初始化。');
     }
     return this.toolExecutor;
+  }
+
+  private requireExtensionHostAdapter(): DesktopExtensionHostAdapter {
+    if (!desktopExtensionHostAdapter) {
+      throw new Error('当前宿主未提供扩展运行环境；请在 Electron Desktop 中运行该扩展。');
+    }
+    return desktopExtensionHostAdapter;
   }
 }
 
@@ -3033,6 +3664,144 @@ function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): McpServe
       ...(Object.keys(metadata).length > 0 ? { env: metadata } : {}),
       timeoutMs: MCP_DEFAULT_TIMEOUT_MS,
     },
+  };
+}
+
+function toDesktopMarketplaceCatalogItem(item: {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  defaultChannel: 'stable' | 'preview' | 'experimental';
+  defaultReviewStatus: 'unverified' | 'verified' | 'revoked';
+  detailPath: string;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: Array<'cli' | 'desktop'>;
+  requestedCapabilities: string[];
+  iconUrl?: string;
+}): DesktopMarketplaceCatalogItem {
+  return {
+    extensionId: item.extensionId,
+    packageName: item.packageName,
+    status: item.status,
+    featured: item.featured,
+    defaultVersion: item.defaultVersion,
+    defaultChannel: item.defaultChannel,
+    defaultReviewStatus: item.defaultReviewStatus,
+    detailPath: item.detailPath,
+    displayName: item.displayName,
+    description: item.description,
+    ...(item.author ? { author: item.author } : {}),
+    ...(item.homepageUrl ? { homepageUrl: item.homepageUrl } : {}),
+    ...(item.repositoryUrl ? { repositoryUrl: item.repositoryUrl } : {}),
+    keywords: [...item.keywords],
+    supportedHosts: [...item.supportedHosts],
+    requestedCapabilities: [...item.requestedCapabilities],
+    ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
+  };
+}
+
+function toDesktopMarketplaceDetail(detail: {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  readmePath: string;
+  versions: Array<{
+    version: string;
+    channel: 'stable' | 'preview' | 'experimental';
+    reviewStatus: 'unverified' | 'verified' | 'revoked';
+    displayName: string;
+    description: string;
+    author?: string;
+    homepageUrl?: string;
+    repositoryUrl?: string;
+    keywords: string[];
+    supportedHosts: Array<'cli' | 'desktop'>;
+    requestedCapabilities: string[];
+    iconUrl?: string;
+    publishedAt?: string;
+    tarballUrl?: string;
+    integrity?: string;
+    shasum?: string;
+    changelog?: {
+      summary: string;
+      body: string;
+    };
+  }>;
+}): DesktopMarketplaceDetail {
+  return {
+    extensionId: detail.extensionId,
+    packageName: detail.packageName,
+    status: detail.status,
+    featured: detail.featured,
+    defaultVersion: detail.defaultVersion,
+    readmePath: detail.readmePath,
+    versions: detail.versions.map((item) => ({
+      version: item.version,
+      channel: item.channel,
+      reviewStatus: item.reviewStatus,
+      displayName: item.displayName,
+      description: item.description,
+      ...(item.author ? { author: item.author } : {}),
+      ...(item.homepageUrl ? { homepageUrl: item.homepageUrl } : {}),
+      ...(item.repositoryUrl ? { repositoryUrl: item.repositoryUrl } : {}),
+      keywords: [...item.keywords],
+      supportedHosts: [...item.supportedHosts],
+      requestedCapabilities: [...item.requestedCapabilities],
+      ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
+      ...(item.publishedAt ? { publishedAt: item.publishedAt } : {}),
+      ...(item.tarballUrl ? { tarballUrl: item.tarballUrl } : {}),
+      ...(item.integrity ? { integrity: item.integrity } : {}),
+      ...(item.shasum ? { shasum: item.shasum } : {}),
+      ...(item.changelog
+        ? {
+            changelog: {
+              summary: item.changelog.summary,
+              body: item.changelog.body,
+            },
+          }
+        : {}),
+    })),
+  };
+}
+
+function toDesktopMarketplacePreparedInstall(prepared: {
+  extensionId: string;
+  packageName: string;
+  displayName: string;
+  description: string;
+  version: string;
+  channel: 'stable' | 'preview' | 'experimental';
+  reviewStatus: 'unverified' | 'verified' | 'revoked';
+  supportedHosts: Array<'cli' | 'desktop'>;
+  supportsCurrentHost: boolean;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  sourceFileName: string;
+}): DesktopMarketplacePreparedInstall {
+  return {
+    extensionId: prepared.extensionId,
+    packageName: prepared.packageName,
+    displayName: prepared.displayName,
+    description: prepared.description,
+    version: prepared.version,
+    channel: prepared.channel,
+    reviewStatus: prepared.reviewStatus,
+    supportedHosts: [...prepared.supportedHosts],
+    supportsCurrentHost: prepared.supportsCurrentHost,
+    ...(prepared.tarballUrl ? { tarballUrl: prepared.tarballUrl } : {}),
+    ...(prepared.integrity ? { integrity: prepared.integrity } : {}),
+    ...(prepared.shasum ? { shasum: prepared.shasum } : {}),
+    sourceFileName: prepared.sourceFileName,
   };
 }
 
@@ -3491,6 +4260,12 @@ function parseAddModelProvider(value: unknown): DesktopModelProvider | undefined
 }
 
 const desktopHostService = new DesktopHostService();
+
+export function setDesktopMarketplaceFetchImplementation(
+  fetchImpl: typeof fetch | undefined,
+): void {
+  desktopHostService.setMarketplaceFetchImpl(fetchImpl);
+}
 
 export async function invokeDesktopHostCommand(
   command: HostCommandName,

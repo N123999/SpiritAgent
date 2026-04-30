@@ -36,6 +36,36 @@ export async function createElectronHostApi(): Promise<HostApi> {
     inspectMcpServer(name) {
       return bridge.inspectMcpServer(name);
     },
+    importExtension(request) {
+      return bridge.importExtension(request);
+    },
+    listMarketplaceExtensions() {
+      return bridge.listMarketplaceExtensions();
+    },
+    getMarketplaceExtensionDetail(extensionId) {
+      return bridge.getMarketplaceExtensionDetail(extensionId);
+    },
+    getMarketplaceExtensionReadme(extensionId) {
+      return bridge.getMarketplaceExtensionReadme(extensionId);
+    },
+    prepareMarketplaceExtensionInstall(request) {
+      return bridge.prepareMarketplaceExtensionInstall(request);
+    },
+    installMarketplaceExtension(request) {
+      return bridge.installMarketplaceExtension(request);
+    },
+    deleteExtension(request) {
+      return bridge.deleteExtension(request);
+    },
+    runExtension(request) {
+      return bridge.runExtension(request);
+    },
+    updateExtensionSettings(request) {
+      return bridge.updateExtensionSettings(request);
+    },
+    updateExtensionSecret(request) {
+      return bridge.updateExtensionSecret(request);
+    },
     createSkill(request) {
       return bridge.createSkill(request);
     },
