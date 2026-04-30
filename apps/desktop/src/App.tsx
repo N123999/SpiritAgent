@@ -211,14 +211,14 @@ function ComposerSurface({
   return (
     <div
       data-spirit-surface="composer-surface"
-      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 supports-[backdrop-filter]:bg-background/40"
+      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
     >
       <Textarea
         ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="min-h-[5.25rem] w-full resize-y rounded-none border-0 bg-transparent px-3 pb-12 pt-3 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none md:min-h-[6rem]"
+        className="spirit-scroll block max-h-[12rem] min-h-[3rem] w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-3 pb-1.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none dark:bg-transparent dark:disabled:bg-transparent md:min-h-[3.5rem]"
         onKeyDown={(event) => {
           onKeyDown?.(event);
           if (event.defaultPrevented) {
@@ -232,8 +232,8 @@ function ComposerSurface({
           }
         }}
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-3 pb-2 pt-10">
-        <div className="pointer-events-auto flex w-full max-w-full items-center justify-between gap-2">
+      <div className="flex justify-center px-3 pt-0.5 pb-2">
+        <div className="flex w-full max-w-full items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

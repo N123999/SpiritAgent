@@ -30,7 +30,7 @@ function DropdownMenuContent({
         className={cn(
           "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
           "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          "z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-32 overflow-y-auto overflow-x-hidden",
+          "spirit-scroll z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-32 overflow-y-auto overflow-x-hidden",
           "rounded-xl border border-border/80 bg-popover p-1 text-sm text-popover-foreground shadow-lg",
           "ring-1 ring-white/5 backdrop-blur-sm",
           className,
