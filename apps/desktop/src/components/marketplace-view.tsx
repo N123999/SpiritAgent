@@ -84,7 +84,9 @@ function installedExtensionForCatalog(
   if (!catalog) {
     return undefined;
   }
-  return installed.find((item) => item.id === catalog.packageName);
+  return installed.find(
+    (item) => item.id === catalog.extensionId || item.id === catalog.packageName,
+  );
 }
 
 function installedBadgeLabel(installed: DesktopExtensionListItem, targetVersion: string) {

@@ -14,6 +14,7 @@ import {
 import type { ExtensionHostKind, ExtensionManagementContext } from './storage.js';
 
 const MARKETPLACE_TEMP_DIR_PREFIX = 'spirit-marketplace-';
+const SUPPORTED_SRI_HASH_ALGORITHMS = new Set(['sha256', 'sha384', 'sha512']);
 export const DEFAULT_MARKETPLACE_REGISTRY_BASE_URL =
   'https://raw.githubusercontent.com/N123999/awesome-SpiritAgent/refs/heads/main/registry/';
 
@@ -184,6 +185,11 @@ export function createHostExtensionMarketplace(
         return fetchText(readmeUrl, fetchImpl, '扩展 README');
       })();
       readmePromiseCache.set(cacheKey, nextPromise);
+      void nextPromise.catch(() => {
+        if (readmePromiseCache.get(cacheKey) === nextPromise) {
+          readmePromiseCache.delete(cacheKey);
+        }
+      });
       return nextPromise;
     },
     async prepareInstall(request) {
@@ -201,6 +207,11 @@ export function createHostExtensionMarketplace(
       }
       if (!prepared.tarballUrl) {
         throw new Error(`扩展 ${prepared.extensionId}@${prepared.version} 缺少 tarballUrl，无法安装。`);
+      }
+      if (!prepared.integrity && !prepared.shasum) {
+        throw new Error(
+          `扩展 ${prepared.extensionId}@${prepared.version} 缺少 integrity/shasum，无法验证下载内容。`,
+        );
       }
 
       const tarballBuffer = await fetchBinary(prepared.tarballUrl, fetchImpl, '扩展 tarball');
@@ -276,7 +287,7 @@ async function prepareMarketplaceInstall(
     description: version.description,
     version: version.version,
     channel: version.channel,
-    reviewStatus: catalogItem.defaultReviewStatus,
+    reviewStatus: version.reviewStatus,
     supportedHosts: [...version.supportedHosts],
     supportsCurrentHost: version.supportedHosts.includes(hostKind),
     ...(version.tarballUrl ? { tarballUrl: version.tarballUrl } : {}),
@@ -337,6 +348,11 @@ async function loadDetailDocument(
   })();
 
   detailPromiseCache.set(normalizedId, nextPromise);
+  void nextPromise.catch(() => {
+    if (detailPromiseCache.get(normalizedId) === nextPromise) {
+      detailPromiseCache.delete(normalizedId);
+    }
+  });
   return nextPromise;
 }
 
@@ -470,6 +486,10 @@ function verifyDownloadedTarball(
   buffer: Buffer,
   prepared: Pick<MarketplacePreparedInstall, 'extensionId' | 'version' | 'integrity' | 'shasum'>,
 ): void {
+  if (!prepared.integrity && !prepared.shasum) {
+    throw new Error(`扩展 tarball 缺少 integrity/shasum：${prepared.extensionId}@${prepared.version}`);
+  }
+
   if (prepared.integrity) {
     const integrityEntries = prepared.integrity.split(/\s+/u).filter(Boolean);
     const matched = integrityEntries.some((entry) => verifySriEntry(buffer, entry));
@@ -491,7 +511,10 @@ function verifySriEntry(buffer: Buffer, entry: string): boolean {
   if (separatorIndex <= 0 || separatorIndex >= entry.length - 1) {
     return false;
   }
-  const algorithm = entry.slice(0, separatorIndex);
+  const algorithm = entry.slice(0, separatorIndex).toLowerCase();
+  if (!SUPPORTED_SRI_HASH_ALGORITHMS.has(algorithm)) {
+    return false;
+  }
   const expected = entry.slice(separatorIndex + 1);
   try {
     const actual = createHash(algorithm).update(buffer).digest('base64');
@@ -525,10 +548,14 @@ function ensureTrailingSlash(url: string): string {
 }
 
 function resolveRegistryAssetUrl(relativeOrAbsolutePath: string, registryBaseUrl: string): string {
-  if (/^https?:\/\//iu.test(relativeOrAbsolutePath)) {
-    return relativeOrAbsolutePath;
+  const normalized = relativeOrAbsolutePath.trim();
+  const resolved = /^https?:\/\//iu.test(normalized)
+    ? new URL(normalized)
+    : new URL(normalized.replace(/^\.\//u, ''), registryBaseUrl);
+  if (resolved.protocol !== 'https:') {
+    throw new Error(`marketplace 资源 URL 必须使用 https：${resolved.href}`);
   }
-  return new URL(relativeOrAbsolutePath.replace(/^\.\//u, ''), registryBaseUrl).href;
+  return resolved.href;
 }
 
 function requiredRecord(value: unknown, fieldName: string): Record<string, unknown> {

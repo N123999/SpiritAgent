@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -667,15 +667,44 @@ export async function installPreparedExtensionDirectory(
     }
   }
 
-  if (replaceExisting) {
-    await rm(targetDirectory, { recursive: true, force: true });
-  }
+  const stagingRoot = await mkdtemp(path.join(paths.extensionsDir, `${directoryName}.stage-`));
+  const stagedDirectory = path.join(stagingRoot, directoryName);
+  const backupDirectory = path.join(
+    paths.extensionsDir,
+    `${directoryName}.backup-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+  );
+  let renamedExisting = false;
+  let movedIntoPlace = false;
 
-  await cp(preparedDirectoryPath, targetDirectory, {
-    recursive: true,
-    force: false,
-    errorOnExist: true,
-  });
+  try {
+    await cp(preparedDirectoryPath, stagedDirectory, {
+      recursive: true,
+      force: false,
+      errorOnExist: true,
+    });
+
+    if (replaceExisting && existsSync(targetDirectory)) {
+      await rename(targetDirectory, backupDirectory);
+      renamedExisting = true;
+    }
+
+    await rename(stagedDirectory, targetDirectory);
+    movedIntoPlace = true;
+  } catch (error) {
+    if (!movedIntoPlace) {
+      await rm(targetDirectory, { recursive: true, force: true });
+    }
+    if (renamedExisting && !existsSync(targetDirectory) && existsSync(backupDirectory)) {
+      await rename(backupDirectory, targetDirectory);
+      renamedExisting = false;
+    }
+    throw error;
+  } finally {
+    await rm(stagingRoot, { recursive: true, force: true });
+    if (renamedExisting && existsSync(backupDirectory)) {
+      await rm(backupDirectory, { recursive: true, force: true });
+    }
+  }
 
   const installedAtUnixMs = Date.now();
   const nextRegistryEntries = [
