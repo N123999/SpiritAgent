@@ -387,6 +387,66 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'GET' && pathname === '/api/marketplace/extensions') {
+    writeJson(request, response, 200, await runHostCommand('listMarketplaceExtensions'));
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/marketplace/extensions/detail') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('getMarketplaceExtensionDetail', {
+        extensionId: typeof jsonBody?.extensionId === 'string' ? jsonBody.extensionId : '',
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/marketplace/extensions/readme') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('getMarketplaceExtensionReadme', {
+        extensionId: typeof jsonBody?.extensionId === 'string' ? jsonBody.extensionId : '',
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/marketplace/extensions/prepare') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('prepareMarketplaceExtensionInstall', {
+        request: {
+          extensionId: typeof jsonBody?.extensionId === 'string' ? jsonBody.extensionId : '',
+          version: typeof jsonBody?.version === 'string' ? jsonBody.version : undefined,
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/marketplace/extensions/install') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('installMarketplaceExtension', {
+        request: {
+          extensionId: typeof jsonBody?.extensionId === 'string' ? jsonBody.extensionId : '',
+          version: typeof jsonBody?.version === 'string' ? jsonBody.version : undefined,
+          reviewAcknowledged: jsonBody?.reviewAcknowledged === true,
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/extensions/remove') {
     writeJson(
       request,

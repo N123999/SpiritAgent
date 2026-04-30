@@ -42,11 +42,13 @@ import {
 } from '@spirit-agent/agent-core';
 import {
   collectHostExtensionContributedTools,
+  createHostExtensionMarketplace,
   createHostExtensionManager,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
   restoreHostFileChanges,
+  type HostExtensionMarketplaceManager,
   type HostExtensionEvent,
   type HostInstalledExtension,
   type HostRecordedFileChange,
@@ -65,6 +67,9 @@ import type {
   DesktopMcpServerInspection,
   DesktopExtensionListItem,
   DesktopExtensionCssLayer,
+  DesktopMarketplaceCatalogItem,
+  DesktopMarketplaceDetail,
+  DesktopMarketplacePreparedInstall,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
@@ -81,6 +86,8 @@ import type {
   RemoveModelRequest,
   SessionListItem,
   ImportExtensionRequest,
+  InstallMarketplaceExtensionRequest,
+  PrepareMarketplaceExtensionInstallRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
@@ -171,6 +178,11 @@ type CommandPayloads = {
   deleteMcpServer: { request: DeleteMcpServerRequest };
   inspectMcpServer: { name: string };
   importExtension: { request: ImportExtensionRequest };
+  listMarketplaceExtensions: undefined;
+  getMarketplaceExtensionDetail: { extensionId: string };
+  getMarketplaceExtensionReadme: { extensionId: string };
+  prepareMarketplaceExtensionInstall: { request: PrepareMarketplaceExtensionInstallRequest };
+  installMarketplaceExtension: { request: InstallMarketplaceExtensionRequest };
   deleteExtension: { request: DeleteExtensionRequest };
   runExtension: { request: RunExtensionRequest };
   updateExtensionSettings: { request: UpdateExtensionSettingsRequest };
@@ -217,6 +229,8 @@ class DesktopHostService {
     hostKind: 'desktop',
     stateStore: this.extensionStateStore,
   });
+  private hostExtensionMarketplace: HostExtensionMarketplaceManager | undefined;
+  private hostExtensionMarketplaceFetchImpl: typeof fetch | undefined;
   private state: HostState | undefined;
   private runtime: DesktopRuntime | undefined;
   private toolExecutor: DesktopToolExecutor | undefined;
@@ -526,6 +540,89 @@ description: ${frontmatterDescription}
       const installed = await this.extensionManager().importArchive({
         archiveBase64,
         ...(request.fileName?.trim() ? { fileName: request.fileName.trim() } : {}),
+      });
+      await this.refreshExtensionsList();
+      await this.refreshRuntimeAfterExtensionMutation();
+      await this.dispatchExtensionEvent(
+        {
+          type: 'onExtensionInstalled',
+          detail: {
+            extensionId: installed.id,
+            name: installed.manifest.name,
+            version: installed.manifest.version,
+          },
+        },
+        { targetExtensionIds: [installed.id] },
+      );
+      return this.buildSnapshot();
+    });
+  }
+
+  async listMarketplaceExtensions(): Promise<DesktopMarketplaceCatalogItem[]> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const items = await this.marketplace().listCatalog();
+      return items.map((item) => toDesktopMarketplaceCatalogItem(item));
+    });
+  }
+
+  async getMarketplaceExtensionDetail(extensionId: string): Promise<DesktopMarketplaceDetail> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const trimmedId = extensionId.trim();
+      if (!trimmedId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const detail = await this.marketplace().getDetail(trimmedId);
+      return toDesktopMarketplaceDetail(detail);
+    });
+  }
+
+  async getMarketplaceExtensionReadme(extensionId: string): Promise<string> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const trimmedId = extensionId.trim();
+      if (!trimmedId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      return this.marketplace().getReadme(trimmedId);
+    });
+  }
+
+  async prepareMarketplaceExtensionInstall(
+    request: PrepareMarketplaceExtensionInstallRequest,
+  ): Promise<DesktopMarketplacePreparedInstall> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const extensionId = request.extensionId.trim();
+      if (!extensionId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const prepared = await this.marketplace().prepareInstall({
+        extensionId,
+        ...(request.version?.trim() ? { version: request.version.trim() } : {}),
+      });
+      return toDesktopMarketplacePreparedInstall(prepared);
+    });
+  }
+
+  async installMarketplaceExtension(
+    request: InstallMarketplaceExtensionRequest,
+  ): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const extensionId = request.extensionId.trim();
+      if (!extensionId) {
+        throw new Error('扩展 id 不能为空。');
+      }
+
+      const installed = await this.marketplace().install({
+        extensionId,
+        ...(request.version?.trim() ? { version: request.version.trim() } : {}),
+        ...(request.reviewAcknowledged === true ? { reviewAcknowledged: true } : {}),
       });
       await this.refreshExtensionsList();
       await this.refreshRuntimeAfterExtensionMutation();
@@ -1146,6 +1243,25 @@ description: ${frontmatterDescription}
         const typedPayload = payload as CommandPayloads['importExtension'];
         return this.importExtension(typedPayload.request);
       }
+      case 'listMarketplaceExtensions': {
+        return this.listMarketplaceExtensions();
+      }
+      case 'getMarketplaceExtensionDetail': {
+        const typedPayload = payload as CommandPayloads['getMarketplaceExtensionDetail'];
+        return this.getMarketplaceExtensionDetail(typedPayload.extensionId);
+      }
+      case 'getMarketplaceExtensionReadme': {
+        const typedPayload = payload as CommandPayloads['getMarketplaceExtensionReadme'];
+        return this.getMarketplaceExtensionReadme(typedPayload.extensionId);
+      }
+      case 'installMarketplaceExtension': {
+        const typedPayload = payload as CommandPayloads['installMarketplaceExtension'];
+        return this.installMarketplaceExtension(typedPayload.request);
+      }
+      case 'prepareMarketplaceExtensionInstall': {
+        const typedPayload = payload as CommandPayloads['prepareMarketplaceExtensionInstall'];
+        return this.prepareMarketplaceExtensionInstall(typedPayload.request);
+      }
       case 'deleteExtension': {
         const typedPayload = payload as CommandPayloads['deleteExtension'];
         return this.deleteExtension(typedPayload.request);
@@ -1574,6 +1690,29 @@ description: ${frontmatterDescription}
 
   private extensionManager() {
     return this.hostExtensionManager;
+  }
+
+  private marketplace() {
+    if (!this.hostExtensionMarketplace) {
+      this.hostExtensionMarketplace = createHostExtensionMarketplace(
+        {
+          spiritDataDir: spiritAgentDataDir(),
+          hostKind: 'desktop',
+        },
+        this.hostExtensionMarketplaceFetchImpl
+          ? { fetchImpl: this.hostExtensionMarketplaceFetchImpl }
+          : {},
+      );
+    }
+    return this.hostExtensionMarketplace;
+  }
+
+  setMarketplaceFetchImpl(fetchImpl: typeof fetch | undefined): void {
+    if (this.hostExtensionMarketplaceFetchImpl === fetchImpl) {
+      return;
+    }
+    this.hostExtensionMarketplaceFetchImpl = fetchImpl;
+    this.hostExtensionMarketplace = undefined;
   }
 
   private async refreshExtensionsList(): Promise<void> {
@@ -3386,6 +3525,144 @@ function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): McpServe
   };
 }
 
+function toDesktopMarketplaceCatalogItem(item: {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  defaultChannel: 'stable' | 'preview' | 'experimental';
+  defaultReviewStatus: 'unverified' | 'verified' | 'revoked';
+  detailPath: string;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: Array<'cli' | 'desktop'>;
+  requestedCapabilities: string[];
+  iconUrl?: string;
+}): DesktopMarketplaceCatalogItem {
+  return {
+    extensionId: item.extensionId,
+    packageName: item.packageName,
+    status: item.status,
+    featured: item.featured,
+    defaultVersion: item.defaultVersion,
+    defaultChannel: item.defaultChannel,
+    defaultReviewStatus: item.defaultReviewStatus,
+    detailPath: item.detailPath,
+    displayName: item.displayName,
+    description: item.description,
+    ...(item.author ? { author: item.author } : {}),
+    ...(item.homepageUrl ? { homepageUrl: item.homepageUrl } : {}),
+    ...(item.repositoryUrl ? { repositoryUrl: item.repositoryUrl } : {}),
+    keywords: [...item.keywords],
+    supportedHosts: [...item.supportedHosts],
+    requestedCapabilities: [...item.requestedCapabilities],
+    ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
+  };
+}
+
+function toDesktopMarketplaceDetail(detail: {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  readmePath: string;
+  versions: Array<{
+    version: string;
+    channel: 'stable' | 'preview' | 'experimental';
+    reviewStatus: 'unverified' | 'verified' | 'revoked';
+    displayName: string;
+    description: string;
+    author?: string;
+    homepageUrl?: string;
+    repositoryUrl?: string;
+    keywords: string[];
+    supportedHosts: Array<'cli' | 'desktop'>;
+    requestedCapabilities: string[];
+    iconUrl?: string;
+    publishedAt?: string;
+    tarballUrl?: string;
+    integrity?: string;
+    shasum?: string;
+    changelog?: {
+      summary: string;
+      body: string;
+    };
+  }>;
+}): DesktopMarketplaceDetail {
+  return {
+    extensionId: detail.extensionId,
+    packageName: detail.packageName,
+    status: detail.status,
+    featured: detail.featured,
+    defaultVersion: detail.defaultVersion,
+    readmePath: detail.readmePath,
+    versions: detail.versions.map((item) => ({
+      version: item.version,
+      channel: item.channel,
+      reviewStatus: item.reviewStatus,
+      displayName: item.displayName,
+      description: item.description,
+      ...(item.author ? { author: item.author } : {}),
+      ...(item.homepageUrl ? { homepageUrl: item.homepageUrl } : {}),
+      ...(item.repositoryUrl ? { repositoryUrl: item.repositoryUrl } : {}),
+      keywords: [...item.keywords],
+      supportedHosts: [...item.supportedHosts],
+      requestedCapabilities: [...item.requestedCapabilities],
+      ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
+      ...(item.publishedAt ? { publishedAt: item.publishedAt } : {}),
+      ...(item.tarballUrl ? { tarballUrl: item.tarballUrl } : {}),
+      ...(item.integrity ? { integrity: item.integrity } : {}),
+      ...(item.shasum ? { shasum: item.shasum } : {}),
+      ...(item.changelog
+        ? {
+            changelog: {
+              summary: item.changelog.summary,
+              body: item.changelog.body,
+            },
+          }
+        : {}),
+    })),
+  };
+}
+
+function toDesktopMarketplacePreparedInstall(prepared: {
+  extensionId: string;
+  packageName: string;
+  displayName: string;
+  description: string;
+  version: string;
+  channel: 'stable' | 'preview' | 'experimental';
+  reviewStatus: 'unverified' | 'verified' | 'revoked';
+  supportedHosts: Array<'cli' | 'desktop'>;
+  supportsCurrentHost: boolean;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  sourceFileName: string;
+}): DesktopMarketplacePreparedInstall {
+  return {
+    extensionId: prepared.extensionId,
+    packageName: prepared.packageName,
+    displayName: prepared.displayName,
+    description: prepared.description,
+    version: prepared.version,
+    channel: prepared.channel,
+    reviewStatus: prepared.reviewStatus,
+    supportedHosts: [...prepared.supportedHosts],
+    supportsCurrentHost: prepared.supportsCurrentHost,
+    ...(prepared.tarballUrl ? { tarballUrl: prepared.tarballUrl } : {}),
+    ...(prepared.integrity ? { integrity: prepared.integrity } : {}),
+    ...(prepared.shasum ? { shasum: prepared.shasum } : {}),
+    sourceFileName: prepared.sourceFileName,
+  };
+}
+
 function parseDesktopMcpMetadata(
   input: string,
   kind: DesktopMcpMetadataKind,
@@ -3834,6 +4111,12 @@ function formatYamlScalarForSkillFrontmatter(value: string): string {
 }
 
 const desktopHostService = new DesktopHostService();
+
+export function setDesktopMarketplaceFetchImplementation(
+  fetchImpl: typeof fetch | undefined,
+): void {
+  desktopHostService.setMarketplaceFetchImpl(fetchImpl);
+}
 
 export async function invokeDesktopHostCommand(
   command: HostCommandName,

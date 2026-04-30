@@ -48,29 +48,29 @@ pub(crate) fn new_form(
                     selected_row: 0,
                     custom_input: (question.allow_custom_input
                         || matches!(question.kind, AskQuestionsQuestionKind::Text))
-                        .then(|| AskQuestionsInputFieldView {
-                            label: question.custom_input_label.clone().unwrap_or_else(|| {
+                    .then(|| AskQuestionsInputFieldView {
+                        label: question.custom_input_label.clone().unwrap_or_else(|| {
+                            if matches!(question.kind, AskQuestionsQuestionKind::Text) {
+                                t!("form.ask_questions.text_input.label").into_owned()
+                            } else {
+                                t!("form.ask_questions.custom_input.label").into_owned()
+                            }
+                        }),
+                        placeholder: question.custom_input_placeholder.clone().unwrap_or_else(
+                            || {
                                 if matches!(question.kind, AskQuestionsQuestionKind::Text) {
-                                    t!("form.ask_questions.text_input.label").into_owned()
+                                    t!("form.ask_questions.text_input.placeholder").into_owned()
                                 } else {
-                                    t!("form.ask_questions.custom_input.label").into_owned()
+                                    t!("form.ask_questions.custom_input.placeholder").into_owned()
                                 }
-                            }),
-                            placeholder: question.custom_input_placeholder.clone().unwrap_or_else(
-                                || {
-                                    if matches!(question.kind, AskQuestionsQuestionKind::Text) {
-                                        t!("form.ask_questions.text_input.placeholder").into_owned()
-                                    } else {
-                                        t!("form.ask_questions.custom_input.placeholder").into_owned()
-                                    }
-                                },
-                            ),
-                            value: String::new(),
-                            cursor: 0,
-                        })
-                        .filter(|_| !matches!(question.kind, AskQuestionsQuestionKind::Text)),
-                    text_input: matches!(question.kind, AskQuestionsQuestionKind::Text).then(|| {
-                        AskQuestionsInputFieldView {
+                            },
+                        ),
+                        value: String::new(),
+                        cursor: 0,
+                    })
+                    .filter(|_| !matches!(question.kind, AskQuestionsQuestionKind::Text)),
+                    text_input: matches!(question.kind, AskQuestionsQuestionKind::Text).then(
+                        || AskQuestionsInputFieldView {
                             label: question.custom_input_label.clone().unwrap_or_else(|| {
                                 t!("form.ask_questions.text_input.label").into_owned()
                             }),
@@ -79,8 +79,8 @@ pub(crate) fn new_form(
                             ),
                             value: String::new(),
                             cursor: 0,
-                        }
-                    }),
+                        },
+                    ),
                 },
             },
         })
@@ -297,9 +297,7 @@ pub(crate) fn delete(form: &mut BottomFormView) {
     input.value.replace_range(start..end, "");
 }
 
-pub(crate) fn activate(
-    form: &mut BottomFormView,
-) -> Result<AskQuestionsActivateOutcome, String> {
+pub(crate) fn activate(form: &mut BottomFormView) -> Result<AskQuestionsActivateOutcome, String> {
     clear_validation(form);
     if submit_selected(form) {
         return match build_answered_result(form) {
@@ -324,49 +322,51 @@ pub(crate) fn activate(
         };
 
         match question.kind {
-        AskQuestionsQuestionKind::SingleSelect => {
-            let row = question.selected_row;
-            if row < question.options.len() {
-                clear_option_selections(question);
-                if let Some(option) = question.options.get_mut(row) {
-                    option.selected = true;
-                }
-                if let Some(input) = question.custom_input.as_mut() {
-                    input.value.clear();
-                    input.cursor = 0;
-                }
-            } else if let Some(input) = question.custom_input.as_mut() {
-                if input.value.trim().is_empty() {
-                    validation = Some(t!("form.ask_questions.validation.custom_required").into_owned());
-                } else {
+            AskQuestionsQuestionKind::SingleSelect => {
+                let row = question.selected_row;
+                if row < question.options.len() {
                     clear_option_selections(question);
+                    if let Some(option) = question.options.get_mut(row) {
+                        option.selected = true;
+                    }
+                    if let Some(input) = question.custom_input.as_mut() {
+                        input.value.clear();
+                        input.cursor = 0;
+                    }
+                } else if let Some(input) = question.custom_input.as_mut() {
+                    if input.value.trim().is_empty() {
+                        validation =
+                            Some(t!("form.ask_questions.validation.custom_required").into_owned());
+                    } else {
+                        clear_option_selections(question);
+                        should_advance = true;
+                    }
+                } else {
                     should_advance = true;
                 }
-            } else {
-                should_advance = true;
-            }
-            if row < question.options.len() {
-                should_advance = true;
-            }
-        }
-        AskQuestionsQuestionKind::MultiSelect => {
-            let row = question.selected_row;
-            if row < question.options.len() {
-                if let Some(option) = question.options.get_mut(row) {
-                    option.selected = !option.selected;
+                if row < question.options.len() {
+                    should_advance = true;
                 }
             }
-        }
-        AskQuestionsQuestionKind::Text => {
-            let Some(input) = question.text_input.as_ref() else {
-                return Ok(AskQuestionsActivateOutcome::None);
-            };
-            if question.required && input.value.trim().is_empty() {
-                validation = Some(t!("form.ask_questions.validation.text_required").into_owned());
-            } else {
-                should_advance = true;
+            AskQuestionsQuestionKind::MultiSelect => {
+                let row = question.selected_row;
+                if row < question.options.len() {
+                    if let Some(option) = question.options.get_mut(row) {
+                        option.selected = !option.selected;
+                    }
+                }
             }
-        }
+            AskQuestionsQuestionKind::Text => {
+                let Some(input) = question.text_input.as_ref() else {
+                    return Ok(AskQuestionsActivateOutcome::None);
+                };
+                if question.required && input.value.trim().is_empty() {
+                    validation =
+                        Some(t!("form.ask_questions.validation.text_required").into_owned());
+                } else {
+                    should_advance = true;
+                }
+            }
         }
     }
 
@@ -670,7 +670,10 @@ mod tests {
         assert_eq!(result.answers.len(), 1);
         assert_eq!(result.answers[0].question_id, "q1");
         assert_eq!(result.answers[0].selected_option_indexes, vec![0]);
-        assert_eq!(result.answers[0].selected_option_labels, vec!["A".to_string()]);
+        assert_eq!(
+            result.answers[0].selected_option_labels,
+            vec!["A".to_string()]
+        );
         assert!(result.answers[0].answered);
     }
 

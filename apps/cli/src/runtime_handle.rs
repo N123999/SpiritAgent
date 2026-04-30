@@ -16,9 +16,12 @@ use crate::{
         AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
         SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
-    skills::ActiveSkillPayload,
     session::SessionModel,
-    ts_bridge::{CliExtensionEntry, CliHostMetadataSnapshot, TsBridgeRuntime},
+    skills::ActiveSkillPayload,
+    ts_bridge::{
+        CliExtensionEntry, CliHostMetadataSnapshot, CliMarketplaceCatalogItem,
+        CliMarketplaceDetail, CliMarketplacePreparedInstall, TsBridgeRuntime,
+    },
     view::{ChatMessage, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
@@ -99,11 +102,46 @@ impl RuntimeHandle {
         archive_bytes: &[u8],
         file_name: Option<&str>,
     ) -> Result<CliExtensionEntry> {
-        self.runtime.import_extension_archive(archive_bytes, file_name)
+        self.runtime
+            .import_extension_archive(archive_bytes, file_name)
     }
 
     pub fn delete_extension(&mut self, id: &str) -> Result<()> {
         self.runtime.delete_extension(id)
+    }
+
+    pub fn list_marketplace_extensions(&mut self) -> Result<Vec<CliMarketplaceCatalogItem>> {
+        self.runtime.list_marketplace_extensions()
+    }
+
+    pub fn get_marketplace_extension_detail(
+        &mut self,
+        extension_id: &str,
+    ) -> Result<CliMarketplaceDetail> {
+        self.runtime.get_marketplace_extension_detail(extension_id)
+    }
+
+    pub fn get_marketplace_extension_readme(&mut self, extension_id: &str) -> Result<String> {
+        self.runtime.get_marketplace_extension_readme(extension_id)
+    }
+
+    pub fn prepare_marketplace_extension_install(
+        &mut self,
+        extension_id: &str,
+        version: Option<&str>,
+    ) -> Result<CliMarketplacePreparedInstall> {
+        self.runtime
+            .prepare_marketplace_extension_install(extension_id, version)
+    }
+
+    pub fn install_marketplace_extension(
+        &mut self,
+        extension_id: &str,
+        version: Option<&str>,
+        review_acknowledged: bool,
+    ) -> Result<CliExtensionEntry> {
+        self.runtime
+            .install_marketplace_extension(extension_id, version, review_acknowledged)
     }
 
     pub fn session(&self) -> &SessionModel {

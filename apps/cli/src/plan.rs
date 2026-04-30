@@ -75,8 +75,7 @@ mod tests {
     use crate::test_support::shared_env_lock;
 
     use std::{
-        env,
-        fs,
+        env, fs,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -92,7 +91,9 @@ mod tests {
 
     #[test]
     fn user_plan_path_lives_under_spirit_agent_data_dir() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("user-plan-path");
         unsafe {
             env::set_var("APPDATA", &appdata);
@@ -106,7 +107,9 @@ mod tests {
 
     #[test]
     fn current_plan_metadata_reports_existing_file() {
-        let _guard = shared_env_lock().lock().unwrap_or_else(|err| err.into_inner());
+        let _guard = shared_env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
         let appdata = temp_test_dir("plan-metadata");
         unsafe {
             env::set_var("APPDATA", &appdata);

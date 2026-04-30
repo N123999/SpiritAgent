@@ -266,6 +266,199 @@ interface CliHostInternalModule {
       targetExtensionIds?: readonly string[];
     }): Promise<void>;
   };
+  createHostExtensionMarketplace?: (context: {
+    spiritDataDir: string;
+    hostKind: 'cli' | 'desktop';
+  }) => {
+    listCatalog(): Promise<
+      Array<{
+        extensionId: string;
+        packageName: string;
+        status: string;
+        featured: boolean;
+        defaultVersion: string;
+        defaultChannel: 'stable' | 'preview' | 'experimental';
+        defaultReviewStatus: 'unverified' | 'verified' | 'revoked';
+        detailPath: string;
+        displayName: string;
+        description: string;
+        author?: string;
+        homepageUrl?: string;
+        repositoryUrl?: string;
+        keywords: string[];
+        supportedHosts: Array<'cli' | 'desktop'>;
+        requestedCapabilities: string[];
+        iconUrl?: string;
+      }>
+    >;
+    getDetail(extensionId: string): Promise<{
+      extensionId: string;
+      packageName: string;
+      status: string;
+      featured: boolean;
+      defaultVersion: string;
+      readmePath: string;
+      versions: Array<{
+        version: string;
+        channel: 'stable' | 'preview' | 'experimental';
+        reviewStatus: 'unverified' | 'verified' | 'revoked';
+        displayName: string;
+        description: string;
+        author?: string;
+        homepageUrl?: string;
+        repositoryUrl?: string;
+        keywords: string[];
+        supportedHosts: Array<'cli' | 'desktop'>;
+        requestedCapabilities: string[];
+        iconUrl?: string;
+        publishedAt?: string;
+        tarballUrl?: string;
+        integrity?: string;
+        shasum?: string;
+        changelog?: {
+          summary: string;
+          body: string;
+        };
+      }>;
+    }>;
+    getReadme(extensionId: string): Promise<string>;
+    prepareInstall(request: {
+      extensionId: string;
+      version?: string;
+    }): Promise<{
+      extensionId: string;
+      packageName: string;
+      displayName: string;
+      description: string;
+      version: string;
+      channel: 'stable' | 'preview' | 'experimental';
+      reviewStatus: 'unverified' | 'verified' | 'revoked';
+      supportedHosts: Array<'cli' | 'desktop'>;
+      supportsCurrentHost: boolean;
+      tarballUrl?: string;
+      integrity?: string;
+      shasum?: string;
+      sourceFileName: string;
+      catalogItem: {
+        extensionId: string;
+        packageName: string;
+        status: string;
+        featured: boolean;
+        defaultVersion: string;
+        defaultChannel: 'stable' | 'preview' | 'experimental';
+        defaultReviewStatus: 'unverified' | 'verified' | 'revoked';
+        detailPath: string;
+        displayName: string;
+        description: string;
+        author?: string;
+        homepageUrl?: string;
+        repositoryUrl?: string;
+        keywords: string[];
+        supportedHosts: Array<'cli' | 'desktop'>;
+        requestedCapabilities: string[];
+        iconUrl?: string;
+      };
+      detail: {
+        extensionId: string;
+        packageName: string;
+        status: string;
+        featured: boolean;
+        defaultVersion: string;
+        readmePath: string;
+        versions: Array<{
+          version: string;
+          channel: 'stable' | 'preview' | 'experimental';
+          reviewStatus: 'unverified' | 'verified' | 'revoked';
+          displayName: string;
+          description: string;
+          author?: string;
+          homepageUrl?: string;
+          repositoryUrl?: string;
+          keywords: string[];
+          supportedHosts: Array<'cli' | 'desktop'>;
+          requestedCapabilities: string[];
+          iconUrl?: string;
+          publishedAt?: string;
+          tarballUrl?: string;
+          integrity?: string;
+          shasum?: string;
+          changelog?: {
+            summary: string;
+            body: string;
+          };
+        }>;
+      };
+    }>;
+    install(request: {
+      extensionId: string;
+      version?: string;
+      reviewAcknowledged?: boolean;
+    }): Promise<{
+      id: string;
+      manifest: {
+        name: string;
+        version: string;
+        description?: string;
+        author?: string;
+        homepage?: string;
+        main?: string;
+        supportedHosts: Array<'cli' | 'desktop'>;
+        activationEvents?: string[];
+        requestedCapabilities?: string[];
+        contributes?: {
+          tools?: Array<{
+            name: string;
+            description: string;
+            inputSchema: JsonObject;
+            outputSchema?: JsonObject;
+            approvalMode?: string;
+            executionMode?: string;
+          }>;
+          desktop?: {
+            css?: Array<{
+              path: string;
+              media?: string;
+            }>;
+          };
+          cli?: {
+            hooks?: Array<{
+              slot: string;
+              variant?: string;
+              tokens?: {
+                foreground?: string;
+                border?: string;
+                accent?: string;
+              };
+              prefix?: string;
+              suffix?: string;
+            }>;
+          };
+        };
+        settingsSchema?: Array<{
+          key: string;
+          type: string;
+          title: string;
+          description?: string;
+          placeholder?: string;
+          required?: boolean;
+          defaultValue?: string | boolean | number;
+          options?: Array<{
+            value: string;
+            label: string;
+            description?: string;
+          }>;
+        }>;
+        secretSlots?: Array<{
+          key: string;
+          title: string;
+          description?: string;
+          required?: boolean;
+        }>;
+      };
+      installedAtUnixMs: number;
+      archiveFileName?: string;
+    }>;
+  };
   resolveInstructionPaths?: (context: { workspaceRoot: string; spiritDataDir: string }) => {
     rulesStateFile: string;
     skillsStateFile: string;
@@ -274,12 +467,16 @@ interface CliHostInternalModule {
 }
 
 type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
+type CliHostExtensionMarketplace = ReturnType<
+  NonNullable<CliHostInternalModule['createHostExtensionMarketplace']>
+>;
 
 interface CliHostInternalState {
   module: CliHostInternalModule;
   workspaceRoot: string;
   spiritDataDir: string;
   extensionManager?: CliHostExtensionManager;
+  extensionMarketplace?: CliHostExtensionMarketplace;
 }
 
 let cliHostInternal: CliHostInternalState | undefined;
@@ -326,6 +523,10 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
     typeof module.createHostExtensionManager === 'function'
       ? module.createHostExtensionManager({ spiritDataDir, hostKind: 'cli' })
       : undefined;
+  const extensionMarketplace =
+    typeof module.createHostExtensionMarketplace === 'function'
+      ? module.createHostExtensionMarketplace({ spiritDataDir, hostKind: 'cli' })
+      : undefined;
   const serviceOptions = {
     ...(typeof module.createNoopMcpAdapter === 'function'
       ? { mcp: module.createNoopMcpAdapter() }
@@ -350,6 +551,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
     workspaceRoot,
     spiritDataDir,
     ...(extensionManager ? { extensionManager } : {}),
+    ...(extensionMarketplace ? { extensionMarketplace } : {}),
   };
   return cliHostInternal;
 }
@@ -565,6 +767,195 @@ function serializeHostExtension(item: {
   };
 }
 
+function serializeMarketplaceCatalogItem(item: {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  defaultChannel: 'stable' | 'preview' | 'experimental';
+  defaultReviewStatus: 'unverified' | 'verified' | 'revoked';
+  detailPath: string;
+  displayName: string;
+  description: string;
+  author?: string;
+  homepageUrl?: string;
+  repositoryUrl?: string;
+  keywords: string[];
+  supportedHosts: Array<'cli' | 'desktop'>;
+  requestedCapabilities: string[];
+  iconUrl?: string;
+}) {
+  return {
+    extensionId: item.extensionId,
+    packageName: item.packageName,
+    status: item.status,
+    featured: item.featured,
+    defaultVersion: item.defaultVersion,
+    defaultChannel: item.defaultChannel,
+    defaultReviewStatus: item.defaultReviewStatus,
+    detailPath: item.detailPath,
+    displayName: item.displayName,
+    description: item.description,
+    ...(item.author ? { author: item.author } : {}),
+    ...(item.homepageUrl ? { homepageUrl: item.homepageUrl } : {}),
+    ...(item.repositoryUrl ? { repositoryUrl: item.repositoryUrl } : {}),
+    keywords: [...item.keywords],
+    supportedHosts: [...item.supportedHosts],
+    requestedCapabilities: [...item.requestedCapabilities],
+    ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
+  };
+}
+
+function serializeMarketplaceDetail(detail: {
+  extensionId: string;
+  packageName: string;
+  status: string;
+  featured: boolean;
+  defaultVersion: string;
+  readmePath: string;
+  versions: Array<{
+    version: string;
+    channel: 'stable' | 'preview' | 'experimental';
+    reviewStatus: 'unverified' | 'verified' | 'revoked';
+    displayName: string;
+    description: string;
+    author?: string;
+    homepageUrl?: string;
+    repositoryUrl?: string;
+    keywords: string[];
+    supportedHosts: Array<'cli' | 'desktop'>;
+    requestedCapabilities: string[];
+    iconUrl?: string;
+    publishedAt?: string;
+    tarballUrl?: string;
+    integrity?: string;
+    shasum?: string;
+    changelog?: {
+      summary: string;
+      body: string;
+    };
+  }>;
+}) {
+  return {
+    extensionId: detail.extensionId,
+    packageName: detail.packageName,
+    status: detail.status,
+    featured: detail.featured,
+    defaultVersion: detail.defaultVersion,
+    readmePath: detail.readmePath,
+    versions: detail.versions.map((item) => ({
+      version: item.version,
+      channel: item.channel,
+      reviewStatus: item.reviewStatus,
+      displayName: item.displayName,
+      description: item.description,
+      ...(item.author ? { author: item.author } : {}),
+      ...(item.homepageUrl ? { homepageUrl: item.homepageUrl } : {}),
+      ...(item.repositoryUrl ? { repositoryUrl: item.repositoryUrl } : {}),
+      keywords: [...item.keywords],
+      supportedHosts: [...item.supportedHosts],
+      requestedCapabilities: [...item.requestedCapabilities],
+      ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
+      ...(item.publishedAt ? { publishedAt: item.publishedAt } : {}),
+      ...(item.tarballUrl ? { tarballUrl: item.tarballUrl } : {}),
+      ...(item.integrity ? { integrity: item.integrity } : {}),
+      ...(item.shasum ? { shasum: item.shasum } : {}),
+      ...(item.changelog
+        ? {
+            changelog: {
+              summary: item.changelog.summary,
+              body: item.changelog.body,
+            },
+          }
+        : {}),
+    })),
+  };
+}
+
+function serializeMarketplacePreparedInstall(item: {
+  extensionId: string;
+  packageName: string;
+  displayName: string;
+  description: string;
+  version: string;
+  channel: 'stable' | 'preview' | 'experimental';
+  reviewStatus: 'unverified' | 'verified' | 'revoked';
+  supportedHosts: Array<'cli' | 'desktop'>;
+  supportsCurrentHost: boolean;
+  tarballUrl?: string;
+  integrity?: string;
+  shasum?: string;
+  sourceFileName: string;
+  catalogItem: {
+    extensionId: string;
+    packageName: string;
+    status: string;
+    featured: boolean;
+    defaultVersion: string;
+    defaultChannel: 'stable' | 'preview' | 'experimental';
+    defaultReviewStatus: 'unverified' | 'verified' | 'revoked';
+    detailPath: string;
+    displayName: string;
+    description: string;
+    author?: string;
+    homepageUrl?: string;
+    repositoryUrl?: string;
+    keywords: string[];
+    supportedHosts: Array<'cli' | 'desktop'>;
+    requestedCapabilities: string[];
+    iconUrl?: string;
+  };
+  detail: {
+    extensionId: string;
+    packageName: string;
+    status: string;
+    featured: boolean;
+    defaultVersion: string;
+    readmePath: string;
+    versions: Array<{
+      version: string;
+      channel: 'stable' | 'preview' | 'experimental';
+      reviewStatus: 'unverified' | 'verified' | 'revoked';
+      displayName: string;
+      description: string;
+      author?: string;
+      homepageUrl?: string;
+      repositoryUrl?: string;
+      keywords: string[];
+      supportedHosts: Array<'cli' | 'desktop'>;
+      requestedCapabilities: string[];
+      iconUrl?: string;
+      publishedAt?: string;
+      tarballUrl?: string;
+      integrity?: string;
+      shasum?: string;
+      changelog?: {
+        summary: string;
+        body: string;
+      };
+    }>;
+  };
+}) {
+  return {
+    extensionId: item.extensionId,
+    packageName: item.packageName,
+    displayName: item.displayName,
+    description: item.description,
+    version: item.version,
+    channel: item.channel,
+    reviewStatus: item.reviewStatus,
+    supportedHosts: [...item.supportedHosts],
+    supportsCurrentHost: item.supportsCurrentHost,
+    ...(item.tarballUrl ? { tarballUrl: item.tarballUrl } : {}),
+    ...(item.integrity ? { integrity: item.integrity } : {}),
+    ...(item.shasum ? { shasum: item.shasum } : {}),
+    sourceFileName: item.sourceFileName,
+    catalogItem: serializeMarketplaceCatalogItem(item.catalogItem),
+    detail: serializeMarketplaceDetail(item.detail),
+  };
+}
+
 function serializeExtensionContributes(item: {
   tools?: Array<{
     name: string;
@@ -650,6 +1041,15 @@ async function requireCliExtensionManager() {
   }
 
   return hostInternal.extensionManager;
+}
+
+async function requireCliExtensionMarketplace() {
+  const hostInternal = await requireCliHostInternal();
+  if (!hostInternal.extensionMarketplace) {
+    throw new Error('host-internal 模块未导出扩展市场接口。');
+  }
+
+  return hostInternal.extensionMarketplace;
 }
 
 /** 与 NodeHostToolService 传入的 getHost() 一致，供扩展 activate/onEvent 使用。 */
@@ -997,6 +1397,83 @@ peer.on('hostInternal.deleteExtension', async (rawParams) => {
   await refreshExtensionToolDefinitions();
   await refreshExtensionSystemPrompts();
   return { id };
+});
+
+peer.on('hostInternal.listMarketplaceExtensions', async () => {
+  const marketplace = await requireCliExtensionMarketplace();
+  const items = await marketplace.listCatalog();
+  return items.map((item) => serializeMarketplaceCatalogItem(item));
+});
+
+peer.on('hostInternal.getMarketplaceExtensionDetail', async (rawParams) => {
+  const params = (rawParams ?? {}) as { extensionId?: string };
+  const extensionId = params.extensionId?.trim() ?? '';
+  if (!extensionId) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const marketplace = await requireCliExtensionMarketplace();
+  const detail = await marketplace.getDetail(extensionId);
+  return serializeMarketplaceDetail(detail);
+});
+
+peer.on('hostInternal.getMarketplaceExtensionReadme', async (rawParams) => {
+  const params = (rawParams ?? {}) as { extensionId?: string };
+  const extensionId = params.extensionId?.trim() ?? '';
+  if (!extensionId) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const marketplace = await requireCliExtensionMarketplace();
+  return marketplace.getReadme(extensionId);
+});
+
+peer.on('hostInternal.prepareMarketplaceExtensionInstall', async (rawParams) => {
+  const params = (rawParams ?? {}) as { extensionId?: string; version?: string };
+  const extensionId = params.extensionId?.trim() ?? '';
+  if (!extensionId) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const marketplace = await requireCliExtensionMarketplace();
+  const prepared = await marketplace.prepareInstall({
+    extensionId,
+    ...(params.version?.trim() ? { version: params.version.trim() } : {}),
+  });
+  return serializeMarketplacePreparedInstall(prepared);
+});
+
+peer.on('hostInternal.installMarketplaceExtension', async (rawParams) => {
+  const params = (rawParams ?? {}) as {
+    extensionId?: string;
+    version?: string;
+    reviewAcknowledged?: boolean;
+  };
+  const extensionId = params.extensionId?.trim() ?? '';
+  if (!extensionId) {
+    throw new Error('扩展 id 不能为空。');
+  }
+
+  const marketplace = await requireCliExtensionMarketplace();
+  const item = await marketplace.install({
+    extensionId,
+    ...(params.version?.trim() ? { version: params.version.trim() } : {}),
+    ...(params.reviewAcknowledged === true ? { reviewAcknowledged: true } : {}),
+  });
+  await refreshExtensionToolDefinitions();
+  await refreshExtensionSystemPrompts();
+  await dispatchCliExtensionEvent(
+    {
+      type: 'onExtensionInstalled',
+      detail: {
+        extensionId: item.id,
+        name: item.manifest.name,
+        version: item.manifest.version,
+      },
+    },
+    { targetExtensionIds: [item.id] },
+  );
+  return serializeHostExtension(item);
 });
 
 peer.on('runtime.activateSkill', async (rawParams) => {

@@ -29,8 +29,10 @@ type SessionSidebarProps = {
   activeFilePath: string | null;
   onSelectSession: (path: string) => void;
   onNewSession: () => void;
+  onOpenMarketplace?: () => void;
   onOpenSettings: () => void;
   onBackToSessions?: () => void;
+  marketplaceActive?: boolean;
   settingsTab?: SettingsSidebarTab;
   onSettingsTabChange?: (tab: SettingsSidebarTab) => void;
   hostStatus: string;
@@ -95,8 +97,10 @@ export function SessionSidebar({
   activeFilePath,
   onSelectSession,
   onNewSession,
+  onOpenMarketplace,
   onOpenSettings,
   onBackToSessions,
+  marketplaceActive = false,
   settingsTab = "basic",
   onSettingsTabChange,
   hostStatus,
@@ -170,6 +174,24 @@ export function SessionSidebar({
             <Plus className="size-3.5" aria-hidden />
             <span className={cn(narrow && "sr-only")}>新会话</span>
           </Button>
+          <Button
+            type="button"
+            variant={marketplaceActive ? "secondary" : "ghost"}
+            size={narrow ? "icon" : "sm"}
+            title={narrow ? "扩展" : undefined}
+            aria-current={marketplaceActive ? "page" : undefined}
+            className={cn(
+              "text-xs text-sidebar-foreground/90 hover:bg-foreground/[0.05] dark:hover:bg-foreground/10",
+              narrow
+                ? "size-8 shrink-0"
+                : "h-8 w-full justify-start gap-2",
+            )}
+            disabled={disabled || busy}
+            onClick={onOpenMarketplace}
+          >
+            <Package className="size-3.5" aria-hidden />
+            <span className={cn(narrow && "sr-only")}>扩展</span>
+          </Button>
         </div>
       )}
 
@@ -227,21 +249,27 @@ export function SessionSidebar({
               ) : (
                 <nav className="flex min-w-0 flex-col gap-0.5" aria-label="已保存会话">
                   {sessions.map((session) => {
-                    const selected =
-                      activeFilePath !== null && samePath(session.path, activeFilePath);
+                    const sessionRowSelected =
+                      !marketplaceActive &&
+                      activeFilePath !== null &&
+                      samePath(session.path, activeFilePath);
                     return (
                       <button
                         key={session.path}
                         type="button"
                         disabled={disabled || busy}
+                        aria-current={sessionRowSelected ? "true" : undefined}
                         onClick={() => onSelectSession(session.path)}
                         className={cn(
                           "group flex w-full min-w-0 items-center overflow-hidden rounded-md px-2.5 py-2 text-left text-sm",
-                          "text-sidebar-list-foreground outline-none transition-[color,background,box-shadow] duration-150",
-                          "hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.07]",
-                          "hover:text-sidebar-foreground",
+                          "outline-none transition-[color,background,box-shadow] duration-150",
                           "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
-                          selected && "bg-foreground/[0.08] text-sidebar-foreground dark:bg-foreground/12",
+                          sessionRowSelected
+                            ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                            : cn(
+                                "text-sidebar-list-foreground",
+                                "hover:bg-foreground/[0.05] hover:text-sidebar-foreground dark:hover:bg-foreground/10",
+                              ),
                         )}
                       >
                         <span

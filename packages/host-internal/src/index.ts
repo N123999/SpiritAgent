@@ -1,6 +1,7 @@
 export * from './discovery.js';
 export * from './extensions.js';
 export * from './file-rewind.js';
+export * from './marketplace.js';
 export * from './runtime.js';
 export * from './storage.js';
 export * from './tools.js';

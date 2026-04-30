@@ -90,7 +90,11 @@ pub(crate) fn collect_workspace_files(workspace_root: &Path) -> Vec<String> {
     let mut files = walker
         .build()
         .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_some_and(|file_type| file_type.is_file()))
+        .filter(|entry| {
+            entry
+                .file_type()
+                .is_some_and(|file_type| file_type.is_file())
+        })
         .filter_map(|entry| {
             entry
                 .path()
@@ -136,7 +140,10 @@ pub(crate) fn compute_suggestions(query: &str, files: &[String]) -> Vec<String> 
 }
 
 fn reference_entry_allowed(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_some_and(|file_type| file_type.is_dir()) {
+    if !entry
+        .file_type()
+        .is_some_and(|file_type| file_type.is_dir())
+    {
         return true;
     }
 
@@ -274,10 +281,7 @@ mod tests {
             })
         );
         assert_eq!(
-            current_query(
-                "@host_runtime.rs ",
-                "@host_runtime.rs ".chars().count()
-            ),
+            current_query("@host_runtime.rs ", "@host_runtime.rs ".chars().count()),
             None
         );
         assert_eq!(

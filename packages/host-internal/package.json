@@ -19,6 +19,10 @@
       "types": "./dist/extensions.d.ts",
       "default": "./dist/extensions.js"
     },
+    "./marketplace": {
+      "types": "./dist/marketplace.d.ts",
+      "default": "./dist/marketplace.js"
+    },
     "./runtime": {
       "types": "./dist/runtime.d.ts",
       "default": "./dist/runtime.js"
@@ -32,7 +36,6 @@
       "default": "./dist/tools.js"
     }
   },
-      "fflate": "^0.8.2",
   "files": [
     "dist"
   ],
@@ -52,6 +55,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.2",
-    "spirit-agent-repo": "file:../.."
+    "spirit-agent-repo": "file:../..",
+    "tar": "^7.5.13"
   }
 }

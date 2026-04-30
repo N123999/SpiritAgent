@@ -8,7 +8,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{Arc, Mutex, mpsc::{self, Receiver}},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver},
+    },
     thread,
 };
 
@@ -28,8 +31,8 @@ use crate::{
     model_registry::AppConfig,
     plan::PlanMetadata,
     ports::{
-        ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot,
-        SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
+        ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
+        SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
     rules::{EnabledRule, RuleEntry},
     runtime_handle::RuntimeExportState,
@@ -349,6 +352,89 @@ pub struct CliExtensionEntry {
     pub installed_at_unix_ms: u64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMarketplaceCatalogItem {
+    pub extension_id: String,
+    pub package_name: String,
+    pub status: String,
+    pub featured: bool,
+    pub default_version: String,
+    pub default_channel: String,
+    pub default_review_status: String,
+    pub detail_path: String,
+    pub display_name: String,
+    pub description: String,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub repository_url: Option<String>,
+    pub keywords: Vec<String>,
+    pub supported_hosts: Vec<String>,
+    pub requested_capabilities: Vec<String>,
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMarketplaceVersionChangelog {
+    pub summary: String,
+    pub body: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMarketplaceDetailVersion {
+    pub version: String,
+    pub channel: String,
+    pub review_status: String,
+    pub display_name: String,
+    pub description: String,
+    pub author: Option<String>,
+    pub homepage_url: Option<String>,
+    pub repository_url: Option<String>,
+    pub keywords: Vec<String>,
+    pub supported_hosts: Vec<String>,
+    pub requested_capabilities: Vec<String>,
+    pub icon_url: Option<String>,
+    pub published_at: Option<String>,
+    pub tarball_url: Option<String>,
+    pub integrity: Option<String>,
+    pub shasum: Option<String>,
+    pub changelog: Option<CliMarketplaceVersionChangelog>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMarketplaceDetail {
+    pub extension_id: String,
+    pub package_name: String,
+    pub status: String,
+    pub featured: bool,
+    pub default_version: String,
+    pub readme_path: String,
+    pub versions: Vec<CliMarketplaceDetailVersion>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMarketplacePreparedInstall {
+    pub extension_id: String,
+    pub package_name: String,
+    pub display_name: String,
+    pub description: String,
+    pub version: String,
+    pub channel: String,
+    pub review_status: String,
+    pub supported_hosts: Vec<String>,
+    pub supports_current_host: bool,
+    pub tarball_url: Option<String>,
+    pub integrity: Option<String>,
+    pub shasum: Option<String>,
+    pub source_file_name: String,
+    pub catalog_item: CliMarketplaceCatalogItem,
+    pub detail: CliMarketplaceDetail,
+}
+
 fn bootstrap_plan_metadata() -> PlanMetadata {
     PlanMetadata {
         path: PathBuf::new(),
@@ -551,10 +637,11 @@ impl TsBridgeRuntime {
     pub fn replace_config(&mut self, config: AppConfig) {
         let transport_config_changed = self.transport_config_will_change(&config);
         if let Err(err) = self.validate_config_change(&config) {
-            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                MessageRole::Agent,
-                err.to_string(),
-            )));
+            self.events
+                .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                    MessageRole::Agent,
+                    err.to_string(),
+                )));
             return;
         }
 
@@ -596,9 +683,10 @@ impl TsBridgeRuntime {
 
         match serde_json::from_value::<BridgeRuntimeSnapshot>(snapshot) {
             Ok(snapshot) => self.apply_snapshot(snapshot),
-            Err(err) => {
-                self.handle_bridge_error(anyhow!("解析 TS replacePlanMetadata snapshot 失败: {}", err))
-            }
+            Err(err) => self.handle_bridge_error(anyhow!(
+                "解析 TS replacePlanMetadata snapshot 失败: {}",
+                err
+            )),
         }
     }
 
@@ -699,6 +787,75 @@ impl TsBridgeRuntime {
             })),
         )?;
         Ok(())
+    }
+
+    pub fn list_marketplace_extensions(&mut self) -> Result<Vec<CliMarketplaceCatalogItem>> {
+        let value = self.call_bridge("hostInternal.listMarketplaceExtensions", None)?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn get_marketplace_extension_detail(
+        &mut self,
+        extension_id: &str,
+    ) -> Result<CliMarketplaceDetail> {
+        let value = self.call_bridge(
+            "hostInternal.getMarketplaceExtensionDetail",
+            Some(json!({
+                "extensionId": extension_id,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn get_marketplace_extension_readme(&mut self, extension_id: &str) -> Result<String> {
+        let value = self.call_bridge(
+            "hostInternal.getMarketplaceExtensionReadme",
+            Some(json!({
+                "extensionId": extension_id,
+            })),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn prepare_marketplace_extension_install(
+        &mut self,
+        extension_id: &str,
+        version: Option<&str>,
+    ) -> Result<CliMarketplacePreparedInstall> {
+        let mut params = json!({
+            "extensionId": extension_id,
+        });
+        if let Some(version) = version {
+            if !version.trim().is_empty() {
+                params["version"] = Value::String(version.trim().to_string());
+            }
+        }
+        let value = self.call_bridge(
+            "hostInternal.prepareMarketplaceExtensionInstall",
+            Some(params),
+        )?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn install_marketplace_extension(
+        &mut self,
+        extension_id: &str,
+        version: Option<&str>,
+        review_acknowledged: bool,
+    ) -> Result<CliExtensionEntry> {
+        let mut params = json!({
+            "extensionId": extension_id,
+        });
+        if let Some(version) = version {
+            if !version.trim().is_empty() {
+                params["version"] = Value::String(version.trim().to_string());
+            }
+        }
+        if review_acknowledged {
+            params["reviewAcknowledged"] = Value::Bool(true);
+        }
+        let value = self.call_bridge("hostInternal.installMarketplaceExtension", Some(params))?;
+        Ok(serde_json::from_value(value)?)
     }
 
     pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
@@ -1003,7 +1160,10 @@ impl TsBridgeRuntime {
     }
 
     pub fn list_cached_mcp_prompts(&mut self, name: &str) -> Result<Vec<McpDiscoveredPrompt>> {
-        let value = self.call_bridge("runtime.listCachedMcpPrompts", Some(json!({ "name": name })))?;
+        let value = self.call_bridge(
+            "runtime.listCachedMcpPrompts",
+            Some(json!({ "name": name })),
+        )?;
         Ok(serde_json::from_value(value)?)
     }
 
@@ -1153,7 +1313,10 @@ impl TsBridgeRuntime {
         }
     }
 
-    pub fn respond_to_pending_questions(&mut self, result: &crate::ask_questions::AskQuestionsResult) {
+    pub fn respond_to_pending_questions(
+        &mut self,
+        result: &crate::ask_questions::AskQuestionsResult,
+    ) {
         if self.bridge_failed {
             return;
         }
@@ -1223,10 +1386,8 @@ impl TsBridgeRuntime {
         if self.bridge_failed {
             return;
         }
-        let value = match self.call_bridge(
-            "runtime.addPendingImage",
-            Some(json!({ "path": path })),
-        ) {
+        let value = match self.call_bridge("runtime.addPendingImage", Some(json!({ "path": path })))
+        {
             Ok(value) => value,
             Err(err) => {
                 self.handle_bridge_error(err);
@@ -1236,7 +1397,9 @@ impl TsBridgeRuntime {
 
         match serde_json::from_value::<BridgeRuntimeSnapshot>(value) {
             Ok(snapshot) => self.apply_snapshot(snapshot),
-            Err(err) => self.handle_bridge_error(anyhow!("解析 TS addPendingImage snapshot 失败: {}", err)),
+            Err(err) => {
+                self.handle_bridge_error(anyhow!("解析 TS addPendingImage snapshot 失败: {}", err))
+            }
         }
     }
 
@@ -1311,7 +1474,9 @@ impl TsBridgeRuntime {
             return true;
         }
 
-        self.config.active_model_profile().map(|profile| profile.api_base.as_str())
+        self.config
+            .active_model_profile()
+            .map(|profile| profile.api_base.as_str())
             != config
                 .active_model_profile()
                 .map(|profile| profile.api_base.as_str())
@@ -1349,7 +1514,11 @@ impl TsBridgeRuntime {
                     .and_then(Value::as_u64)
                     .ok_or_else(|| anyhow!("JSON-RPC 响应缺少 id"))?;
                 if message_id != request_id {
-                    return Err(anyhow!("收到不匹配的 JSON-RPC 响应 id: {} != {}", message_id, request_id));
+                    return Err(anyhow!(
+                        "收到不匹配的 JSON-RPC 响应 id: {} != {}",
+                        message_id,
+                        request_id
+                    ));
                 }
 
                 if let Some(error) = message.get("error") {
@@ -1377,17 +1546,19 @@ impl TsBridgeRuntime {
         let request_id = message.get("id").and_then(Value::as_u64);
 
         let response = match self.dispatch_host_method(&method, params) {
-            Ok(result) => request_id.map(|id| {
-                json!({ "jsonrpc": "2.0", "id": id, "result": result.unwrap_or(Value::Null) })
+            Ok(result) => request_id.map(
+                |id| json!({ "jsonrpc": "2.0", "id": id, "result": result.unwrap_or(Value::Null) }),
+            ),
+            Err(err) => request_id.map(|id| {
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "message": err.to_string(),
+                    }
+                })
             }),
-            Err(err) => request_id.map(|id| json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32000,
-                    "message": err.to_string(),
-                }
-            })),
         };
 
         if let Some(response) = response {
@@ -1396,7 +1567,11 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
-    fn dispatch_host_method(&mut self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
+    fn dispatch_host_method(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<Option<Value>> {
         match method {
             "host.builtinToolDefinitionEnvironment"
             | "host.parseCommand"
@@ -1572,20 +1747,25 @@ impl TsBridgeRuntime {
                                 session_id,
                                 ChatMessage::new(
                                     MessageRole::Agent,
-                                    format!("待确认工具调用（解析失败）: {}\n{}", err, approval.prompt),
+                                    format!(
+                                        "待确认工具调用（解析失败）: {}\n{}",
+                                        err, approval.prompt
+                                    ),
                                 ),
                             ),
                         }
                     } else {
-                        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                            MessageRole::Agent,
-                            approval.prompt.clone(),
-                            tool_approval_block(
-                                &approval.tool_name,
-                                approval.tool_call_id.as_deref(),
-                                &approval.prompt,
+                        self.events.push_back(RuntimeEvent::PushMessage(
+                            ChatMessage::with_tool_block(
+                                MessageRole::Agent,
+                                approval.prompt.clone(),
+                                tool_approval_block(
+                                    &approval.tool_name,
+                                    approval.tool_call_id.as_deref(),
+                                    &approval.prompt,
+                                ),
                             ),
-                        )));
+                        ));
                     }
                 }
                 BridgeRuntimeEvent::QuestionsRequested { questions } => {
@@ -1614,61 +1794,68 @@ impl TsBridgeRuntime {
                 BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
                     match tool_request_from_host_value(execution.request) {
                         Ok(request) => {
-                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                                MessageRole::Agent,
-                                if execution.failed {
-                                    format!("工具执行失败: {}", execution.output)
-                                } else {
-                                    format_tool_ui_message(
-                                        &request,
-                                        &execution.tool_name,
-                                        &execution.output,
-                                    )
-                                },
-                                if execution.failed {
-                                    tool_failed_block(
-                                        &execution.tool_name,
-                                        Some(execution.tool_call_id.as_str()),
-                                        "工具执行失败",
-                                        &execution.output,
-                                    )
-                                } else {
-                                    build_tool_result_block(
-                                        &request,
-                                        &execution.tool_name,
-                                        Some(execution.tool_call_id.as_str()),
-                                        &execution.output,
-                                    )
-                                },
-                            )));
+                            self.events.push_back(RuntimeEvent::PushMessage(
+                                ChatMessage::with_tool_block(
+                                    MessageRole::Agent,
+                                    if execution.failed {
+                                        format!("工具执行失败: {}", execution.output)
+                                    } else {
+                                        format_tool_ui_message(
+                                            &request,
+                                            &execution.tool_name,
+                                            &execution.output,
+                                        )
+                                    },
+                                    if execution.failed {
+                                        tool_failed_block(
+                                            &execution.tool_name,
+                                            Some(execution.tool_call_id.as_str()),
+                                            "工具执行失败",
+                                            &execution.output,
+                                        )
+                                    } else {
+                                        build_tool_result_block(
+                                            &request,
+                                            &execution.tool_name,
+                                            Some(execution.tool_call_id.as_str()),
+                                            &execution.output,
+                                        )
+                                    },
+                                ),
+                            ));
                         }
                         Err(err) => {
-                            self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                                MessageRole::Agent,
-                                if execution.failed {
-                                    format!("工具执行失败（请求解析失败）: {}", execution.output)
-                                } else {
-                                    format!(
-                                        "工具执行完成（请求解析失败）: {}\n{}",
-                                        err, execution.output
-                                    )
-                                },
-                                if execution.failed {
-                                    tool_failed_block(
-                                        &execution.tool_name,
-                                        Some(execution.tool_call_id.as_str()),
-                                        "工具执行失败",
-                                        &execution.output,
-                                    )
-                                } else {
-                                    tool_failed_block(
-                                        &execution.tool_name,
-                                        Some(execution.tool_call_id.as_str()),
-                                        "工具执行完成但请求解析失败",
-                                        &err.to_string(),
-                                    )
-                                },
-                            )));
+                            self.events.push_back(RuntimeEvent::PushMessage(
+                                ChatMessage::with_tool_block(
+                                    MessageRole::Agent,
+                                    if execution.failed {
+                                        format!(
+                                            "工具执行失败（请求解析失败）: {}",
+                                            execution.output
+                                        )
+                                    } else {
+                                        format!(
+                                            "工具执行完成（请求解析失败）: {}\n{}",
+                                            err, execution.output
+                                        )
+                                    },
+                                    if execution.failed {
+                                        tool_failed_block(
+                                            &execution.tool_name,
+                                            Some(execution.tool_call_id.as_str()),
+                                            "工具执行失败",
+                                            &execution.output,
+                                        )
+                                    } else {
+                                        tool_failed_block(
+                                            &execution.tool_name,
+                                            Some(execution.tool_call_id.as_str()),
+                                            "工具执行完成但请求解析失败",
+                                            &err.to_string(),
+                                        )
+                                    },
+                                ),
+                            ));
                         }
                     }
                 }
@@ -1689,16 +1876,17 @@ impl TsBridgeRuntime {
             return;
         }
 
-        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-            MessageRole::Agent,
-            format_tool_ui_message(&request, &event.tool_name, &event.output),
-            build_tool_result_block(
-                &request,
-                &event.tool_name,
-                event.tool_call_id.as_deref(),
-                &event.output,
-            ),
-        )));
+        self.events
+            .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                format_tool_ui_message(&request, &event.tool_name, &event.output),
+                build_tool_result_block(
+                    &request,
+                    &event.tool_name,
+                    event.tool_call_id.as_deref(),
+                    &event.output,
+                ),
+            )));
     }
 
     fn push_local_mcp_tool_failure(&mut self, event: LocalMcpToolFailedEvent) {
@@ -1712,16 +1900,17 @@ impl TsBridgeRuntime {
             return;
         }
 
-        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-            MessageRole::Agent,
-            format!("工具执行失败: {}", event.error),
-            tool_failed_block(
-                &event.tool_name,
-                event.tool_call_id.as_deref(),
-                "工具执行失败",
-                &event.error,
-            ),
-        )));
+        self.events
+            .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
+                MessageRole::Agent,
+                format!("工具执行失败: {}", event.error),
+                tool_failed_block(
+                    &event.tool_name,
+                    event.tool_call_id.as_deref(),
+                    "工具执行失败",
+                    &event.error,
+                ),
+            )));
     }
 
     fn push_subagent_live_message(&mut self, session_id: &str, message: ChatMessage) {
@@ -1786,7 +1975,11 @@ impl TsBridgeRuntime {
         }
         logging::log_event(&format!(
             "[ts-bridge-host] {}: {}",
-            if fatal { "fatal error" } else { "runtime error" },
+            if fatal {
+                "fatal error"
+            } else {
+                "runtime error"
+            },
             summary
         ));
         let had_inflight_response = self.is_busy_cache || self.pending_aux_state.is_some();
@@ -1803,14 +1996,15 @@ impl TsBridgeRuntime {
                 RuntimeEvent::RemovePendingAssistant
             });
         }
-        self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-            MessageRole::Agent,
-            if fatal {
-                format!("TS runtime bridge 失败: {}", summary)
-            } else {
-                format!("TS runtime 执行失败: {}", summary)
-            },
-        )));
+        self.events
+            .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                MessageRole::Agent,
+                if fatal {
+                    format!("TS runtime bridge 失败: {}", summary)
+                } else {
+                    format!("TS runtime 执行失败: {}", summary)
+                },
+            )));
         self.flush_deferred_transport_replace();
     }
 
@@ -1822,7 +2016,8 @@ impl TsBridgeRuntime {
 
 impl JsonRpcProcess {
     fn spawn(script_path: PathBuf) -> Result<Self> {
-        let node_path = env::var(ENV_RUNTIME_BACKEND_NODE_PATH).unwrap_or_else(|_| "node".to_string());
+        let node_path =
+            env::var(ENV_RUNTIME_BACKEND_NODE_PATH).unwrap_or_else(|_| "node".to_string());
         let mut command = Command::new(&node_path);
         command
             .arg(script_path)
@@ -1840,9 +2035,18 @@ impl JsonRpcProcess {
             .spawn()
             .with_context(|| format!("启动 TS bridge 失败: {}", node_path))?;
 
-        let stdin = child.stdin.take().ok_or_else(|| anyhow!("获取 TS bridge stdin 失败"))?;
-        let stdout = child.stdout.take().ok_or_else(|| anyhow!("获取 TS bridge stdout 失败"))?;
-        let stderr = child.stderr.take().ok_or_else(|| anyhow!("获取 TS bridge stderr 失败"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("获取 TS bridge stdin 失败"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("获取 TS bridge stdout 失败"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("获取 TS bridge stderr 失败"))?;
         let (tx, rx) = mpsc::channel::<Result<Value>>();
         spawn_stdout_reader(stdout, tx);
         spawn_stderr_drain(stderr);
@@ -1913,13 +2117,21 @@ fn resolve_bridge_script(workspace_root: &Path) -> Result<PathBuf> {
         return Ok(from_crate);
     }
 
-    let direct = workspace_root.join("packages").join("agent-core").join("dist").join("host-bridge.js");
+    let direct = workspace_root
+        .join("packages")
+        .join("agent-core")
+        .join("dist")
+        .join("host-bridge.js");
     if direct.exists() {
         return Ok(direct);
     }
 
     if let Some(parent) = workspace_root.parent() {
-        let sibling = parent.join("packages").join("agent-core").join("dist").join("host-bridge.js");
+        let sibling = parent
+            .join("packages")
+            .join("agent-core")
+            .join("dist")
+            .join("host-bridge.js");
         if sibling.exists() {
             return Ok(sibling);
         }
@@ -1982,7 +2194,9 @@ fn spawn_stdout_reader(stdout: ChildStdout, tx: mpsc::Sender<Result<Value>>) {
         loop {
             let next = read_framed_message(&mut reader)
                 .context("读取 TS bridge stdout 消息失败")
-                .and_then(|body| serde_json::from_slice::<Value>(&body).context("解析 TS bridge JSON 失败"));
+                .and_then(|body| {
+                    serde_json::from_slice::<Value>(&body).context("解析 TS bridge JSON 失败")
+                });
 
             match next {
                 Ok(value) => {
@@ -2071,7 +2285,8 @@ fn write_message_to_stdin(stdin: &Arc<Mutex<ChildStdin>>, payload: &Value) -> Re
 }
 
 fn is_json_rpc_response(message: &Value) -> bool {
-    message.get("id").is_some() && (message.get("result").is_some() || message.get("error").is_some())
+    message.get("id").is_some()
+        && (message.get("result").is_some() || message.get("error").is_some())
 }
 
 fn approval_decision_from_input(message: &str) -> Value {
@@ -2174,8 +2389,7 @@ mod tests {
             ui_locale: None,
         };
 
-        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root)
-        .ok()
+        TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root).ok()
     }
 
     fn busy_snapshot() -> BridgeRuntimeSnapshot {
@@ -2292,7 +2506,11 @@ mod tests {
         assert!(runtime.session().pending_user_turn().is_none());
 
         let events = runtime.drain_events();
-        assert!(events.iter().any(|event| matches!(event, RuntimeEvent::RemovePendingAssistant)));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RuntimeEvent::RemovePendingAssistant))
+        );
         assert!(events.iter().any(|event| matches!(
             event,
             RuntimeEvent::PushMessage(message)
@@ -2311,7 +2529,8 @@ mod tests {
             "failed": false,
         });
 
-        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        let event: BridgeRuntimeEvent =
+            serde_json::from_value(value).expect("event should deserialize");
         match event {
             BridgeRuntimeEvent::BackgroundToolStatus {
                 phase,
@@ -2323,7 +2542,10 @@ mod tests {
                 assert_eq!(phase, "finished");
                 assert_eq!(tool_name.as_deref(), Some("mcp_tool"));
                 assert!(request.is_some());
-                assert_eq!(status_text.as_deref(), Some("MCP 工具执行中: github / get_me"));
+                assert_eq!(
+                    status_text.as_deref(),
+                    Some("MCP 工具执行中: github / get_me")
+                );
                 assert_eq!(failed, Some(false));
             }
             other => panic!("unexpected event variant: {other:?}"),
@@ -2338,7 +2560,8 @@ mod tests {
             "summaryPreview": "summary",
         });
 
-        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        let event: BridgeRuntimeEvent =
+            serde_json::from_value(value).expect("event should deserialize");
         match event {
             BridgeRuntimeEvent::HistoryCompacted {
                 dropped_messages,
@@ -2358,7 +2581,8 @@ mod tests {
             "text": "先分析一下用户意图",
         });
 
-        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        let event: BridgeRuntimeEvent =
+            serde_json::from_value(value).expect("event should deserialize");
         match event {
             BridgeRuntimeEvent::AssistantThinkingSegmentFinalized { text } => {
                 assert_eq!(text, "先分析一下用户意图");
@@ -2373,9 +2597,11 @@ mod tests {
             return;
         };
 
-        runtime.apply_bridge_events(vec![BridgeRuntimeEvent::AssistantThinkingSegmentFinalized {
-            text: "整理完成态 thinking".to_string(),
-        }]);
+        runtime.apply_bridge_events(vec![
+            BridgeRuntimeEvent::AssistantThinkingSegmentFinalized {
+                text: "整理完成态 thinking".to_string(),
+            },
+        ]);
 
         let events = runtime.drain_events();
         assert!(events.iter().any(|event| matches!(
@@ -2431,7 +2657,8 @@ mod tests {
             }
         });
 
-        let event: BridgeRuntimeEvent = serde_json::from_value(value).expect("event should deserialize");
+        let event: BridgeRuntimeEvent =
+            serde_json::from_value(value).expect("event should deserialize");
         match event {
             BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
                 assert_eq!(execution.tool_name, "run_shell_command");
@@ -2479,7 +2706,6 @@ mod tests {
             })
         );
     }
-
 }
 
 fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {

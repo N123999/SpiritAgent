@@ -122,7 +122,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 fn command_replacement(command: &str) -> String {
     match command {
         "/model" | "/sessions" | "/subagents" | "/image" | "/mcp" | "/create-rule" | "/log"
-        | "/language" | "/create-skill" => {
+        | "/language" | "/create-skill" | "/extensions" => {
             format!("{} ", command)
         }
         _ => command.to_string(),
@@ -347,7 +347,7 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "- /rules".to_string(),
         "- /create-skill <自然语言需求>".to_string(),
         "- /skills".to_string(),
-        "- /extensions [list|import <zip>|remove <id>]".to_string(),
+        "- /extensions [list|import <zip>|remove <id>|marketplace [query]]".to_string(),
         "- /<skill-name> [补充说明]".to_string(),
         "- /log（或 /log export、/log session export）".to_string(),
         "- /language [en|zh-CN]".to_string(),
@@ -366,7 +366,7 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。".to_string(),
         "- /create-skill 会走正常 assistant 对话来起草或收紧 SKILL.md；默认写入工作区 .spirit/skills，只有在你明确要求用户级/全局/跨仓库复用时才改写 Spirit 用户目录 skills，skill-name 也由模型自行决定，仍会走标准工具审批。".to_string(),
         "- /skills 打开可滚动的技能启用清单；Enter 切换当前技能，Esc 保存并关闭，鼠标滚轮可浏览长内容。".to_string(),
-        "- /extensions 不带参数时会打开已安装扩展面板；/extensions list 会输出当前已安装扩展，/extensions import <zip> 导入 ZIP，/extensions remove <id> 删除扩展；面板里的启用/禁用切换暂未实现。".to_string(),
+        "- /extensions 不带参数时会打开已安装扩展面板；/extensions marketplace 会进入极简 marketplace flow：先用 slash 选择扩展，再进入“概述 + README + 底部动作 slash”页面，Enter 前进、Esc 返回；支持用 query 作为初始过滤。/extensions list 会输出当前已安装扩展，/extensions import <zip> 导入 ZIP，/extensions remove <id> 删除扩展；面板里的启用/禁用切换暂未实现。".to_string(),
         "- 已启用的 skill 会直接作为一级 slash 命令暴露，例如 /llm-debug；尾部文本会作为本轮附加说明，skill 正文会作为独立 system prompt 状态注入，不会伪装成模型自行读文件。".to_string(),
         "- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。".to_string(),
         "- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。".to_string(),
@@ -426,7 +426,10 @@ mod tests {
     #[test]
     fn current_query_rejects_multiline_input_and_preserves_trailing_space() {
         assert_eq!(current_query("/mcp list"), Some("/mcp list"));
-        assert_eq!(current_query("/github_issue_to_fix_workflow "), Some("/github_issue_to_fix_workflow "));
+        assert_eq!(
+            current_query("/github_issue_to_fix_workflow "),
+            Some("/github_issue_to_fix_workflow ")
+        );
         assert_eq!(current_query("/mcp\nlist"), None);
         assert_eq!(current_query("hello"), None);
     }
@@ -451,6 +454,7 @@ mod tests {
         assert!(help.contains("/create-skill"));
         assert!(help.contains("/skills"));
         assert!(help.contains("/extensions"));
+        assert!(help.contains("概述 + README + 底部动作 slash"));
         assert!(help.contains("/<skill-name> [补充说明]"));
         assert!(help.contains("Enter 保存"));
         assert!(help.contains("@<文件名>"));
@@ -461,7 +465,13 @@ mod tests {
         let commands = default_commands();
         assert!(commands.contains(&"/skills".to_string()));
         assert!(commands.contains(&"/extensions".to_string()));
-        assert_eq!(commands, DEFAULT_SLASH_COMMANDS.iter().map(|command| (*command).to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            commands,
+            DEFAULT_SLASH_COMMANDS
+                .iter()
+                .map(|command| (*command).to_string())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -481,5 +491,18 @@ mod tests {
     #[test]
     fn skill_slash_alias_is_first_level() {
         assert_eq!(skill_slash_alias("llm-debug"), "/llm-debug");
+    }
+
+    #[test]
+    fn extensions_command_completion_appends_space() {
+        assert_eq!(command_replacement("/extensions"), "/extensions ");
+    }
+
+    #[test]
+    fn extensions_context_keeps_primary_help_suggestion() {
+        let suggestion = primary_help_suggestion("/extensions", "/extensions ");
+
+        assert_eq!(suggestion.label, "/extensions");
+        assert_eq!(suggestion.replacement, "/extensions ");
     }
 }

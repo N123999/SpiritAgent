@@ -25,6 +25,21 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   importExtension(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'importExtension', { request });
   },
+  listMarketplaceExtensions() {
+    return ipcRenderer.invoke('desktop:invoke', 'listMarketplaceExtensions');
+  },
+  getMarketplaceExtensionDetail(extensionId: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'getMarketplaceExtensionDetail', { extensionId });
+  },
+  getMarketplaceExtensionReadme(extensionId: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'getMarketplaceExtensionReadme', { extensionId });
+  },
+  prepareMarketplaceExtensionInstall(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'prepareMarketplaceExtensionInstall', { request });
+  },
+  installMarketplaceExtension(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'installMarketplaceExtension', { request });
+  },
   deleteExtension(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'deleteExtension', { request });
   },
