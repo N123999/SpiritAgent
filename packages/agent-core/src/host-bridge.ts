@@ -112,6 +112,29 @@ interface CliHostInternalModule {
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
   ) => OpenAiPlanMetadata;
+  collectHostExtensionContributedTools?: (
+    extensions: Array<{
+      id: string;
+      manifest: {
+        name: string;
+        requestedCapabilities?: string[];
+        contributes?: {
+          tools?: Array<{
+            name: string;
+            description: string;
+            inputSchema: JsonObject;
+            outputSchema?: JsonObject;
+            approvalMode?: string;
+            executionMode?: string;
+          }>;
+        };
+      };
+    }>,
+  ) => Array<{
+    name: string;
+    description: string;
+    inputSchema: JsonObject;
+  }>;
   createHostExtensionManager?: (context: { spiritDataDir: string; hostKind: 'cli' | 'desktop' }) => {
     list(): Promise<
       Array<{
@@ -592,17 +615,19 @@ async function refreshExtensionToolDefinitions(
 
   const manager = hostInternal.extensionManager;
   const installedExtensions = await manager.list();
-  const contributedTools = installedExtensions.flatMap((item) => {
-    if (!item.manifest.requestedCapabilities?.includes('tool-definitions')) {
-      return [];
-    }
+  const contributedTools = hostInternal.module.collectHostExtensionContributedTools
+    ? hostInternal.module.collectHostExtensionContributedTools(installedExtensions)
+    : installedExtensions.flatMap((item) => {
+        if (!item.manifest.requestedCapabilities?.includes('tool-definitions')) {
+          return [];
+        }
 
-    return (item.manifest.contributes?.tools ?? []).map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    }));
-  });
+        return (item.manifest.contributes?.tools ?? []).map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        }));
+      });
 
   toolExecutor.setExtensionToolDefinitions(
     buildContributedHostToolDefinitions(contributedTools),

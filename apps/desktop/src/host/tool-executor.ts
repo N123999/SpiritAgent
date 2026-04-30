@@ -48,11 +48,11 @@ export class DesktopToolExecutor
   }
 
   toolDefinitionsJson(): JsonValue {
-    return [
+    return mergeToolDefinitions(
       ...buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment()),
       ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
-    ];
+    );
   }
 
   setExtensionToolDefinitions(definitions: JsonValue[] | undefined): void {
@@ -184,4 +184,34 @@ function isExtensionToolRequest(request: DesktopToolRequest): request is Extract
   { name: 'extension_tool' }
 > {
   return typeof request === 'object' && request !== null && request.name === 'extension_tool';
+}
+
+function mergeToolDefinitions(...definitions: JsonValue[]): JsonValue {
+  const seenNames = new Set<string>();
+
+  return definitions.filter((definition) => {
+    const name = toolDefinitionName(definition);
+    if (!name) {
+      return true;
+    }
+    if (seenNames.has(name)) {
+      console.warn(`[desktop-host] duplicate tool definition dropped: ${name}`);
+      return false;
+    }
+    seenNames.add(name);
+    return true;
+  });
+}
+
+function toolDefinitionName(value: JsonValue): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidateFunction = 'function' in value ? value.function : undefined;
+  if (typeof candidateFunction !== 'object' || candidateFunction === null || Array.isArray(candidateFunction)) {
+    return undefined;
+  }
+
+  return typeof candidateFunction.name === 'string' ? candidateFunction.name : undefined;
 }

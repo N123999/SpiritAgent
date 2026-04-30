@@ -24,6 +24,7 @@ const EXTENSION_PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-
 const TEMP_DIR_PREFIX = 'spirit-extension-';
 const EXTENSION_FIELD_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const SPIRIT_EXTENSION_FIELD_NAME = 'spiritExtension';
+const EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH = 64;
 
 export const SUPPORTED_HOST_EXTENSION_ACTIVATION_EVENTS = [
   'onStartup',
@@ -329,6 +330,7 @@ export interface HostResolvedExtensionTool {
   extensionId: string;
   extensionName: string;
   tool: HostExtensionContributedToolDefinition;
+  invocationName: string;
 }
 
 export interface InvokeExtensionToolRequest<THostApi> {
@@ -382,30 +384,16 @@ export interface HostExtensionManager {
 }
 
 export function collectHostExtensionContributedTools(
-  extensions: readonly Pick<HostInstalledExtension, 'manifest'>[],
+  extensions: readonly Pick<HostInstalledExtension, 'id' | 'manifest'>[],
 ): HostExtensionContributedToolDefinition[] {
-  const collected: HostExtensionContributedToolDefinition[] = [];
-
-  for (const extension of extensions) {
-    if (!supportsResolvableToolContribution(extension.manifest)) {
-      continue;
-    }
-
-    if (!extension.manifest.contributes?.tools?.length) {
-      continue;
-    }
-
-    collected.push(...extension.manifest.contributes.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
-      ...(tool.approvalMode ? { approvalMode: tool.approvalMode } : {}),
-      ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
-    })));
-  }
-
-  return collected;
+  return collectResolvableExtensionTools(extensions).map((entry) => ({
+    name: entry.invocationName,
+    description: entry.tool.description,
+    inputSchema: entry.tool.inputSchema,
+    ...(entry.tool.outputSchema ? { outputSchema: entry.tool.outputSchema } : {}),
+    ...(entry.tool.approvalMode ? { approvalMode: entry.tool.approvalMode } : {}),
+    ...(entry.tool.executionMode ? { executionMode: entry.tool.executionMode } : {}),
+  }));
 }
 
 export function createHostExtensionManager(
@@ -789,26 +777,11 @@ export async function resolveExtensionTool(
   if (!normalizedName) {
     return undefined;
   }
-
   const installed = await listInstalledExtensions(context);
-  for (const extension of installed) {
-    if (!supportsResolvableToolContribution(extension.manifest)) {
-      continue;
-    }
-
-    const tool = extension.manifest.contributes?.tools?.find((item) => item.name === normalizedName);
-    if (!tool) {
-      continue;
-    }
-
-    return {
-      extensionId: extension.id,
-      extensionName: extension.manifest.name,
-      tool,
-    };
-  }
-
-  return undefined;
+  return (
+    collectResolvableExtensionTools(installed).find((entry) => entry.invocationName === normalizedName) ??
+    undefined
+  );
 }
 
 export async function invokeExtensionTool<THostApi>(
@@ -1335,6 +1308,85 @@ function supportsResolvableToolContribution(manifest: HostExtensionManifest): bo
     manifest.requestedCapabilities?.includes('tool-definitions') === true &&
     manifest.requestedCapabilities?.includes('tool-execution') === true
   );
+}
+
+function collectResolvableExtensionTools(
+  extensions: readonly Pick<HostInstalledExtension, 'id' | 'manifest'>[],
+): HostResolvedExtensionTool[] {
+  const collected: HostResolvedExtensionTool[] = [];
+  const seenInvocationNames = new Set<string>();
+
+  for (const extension of extensions) {
+    if (!supportsResolvableToolContribution(extension.manifest)) {
+      continue;
+    }
+
+    for (const tool of extension.manifest.contributes?.tools ?? []) {
+      const baseName = buildExtensionToolInvocationName(extension.id, tool.name);
+      const invocationName = ensureUniqueExtensionToolInvocationName(baseName, seenInvocationNames);
+      seenInvocationNames.add(invocationName);
+      collected.push({
+        extensionId: extension.id,
+        extensionName: extension.manifest.name,
+        tool,
+        invocationName,
+      });
+    }
+  }
+
+  return collected;
+}
+
+function buildExtensionToolInvocationName(extensionId: string, toolName: string): string {
+  const normalizedExtensionId = normalizeExtensionToolInvocationSegment(extensionId, '-');
+  const normalizedToolName = normalizeExtensionToolInvocationSegment(toolName, '_');
+  const separator = '_';
+  const maxLength = EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH;
+  if (normalizedExtensionId.length + separator.length + normalizedToolName.length <= maxLength) {
+    return `${normalizedExtensionId}${separator}${normalizedToolName}`;
+  }
+
+  const minExtensionLength = Math.min(normalizedExtensionId.length, 8);
+  const extensionBudget = Math.max(
+    minExtensionLength,
+    maxLength - separator.length - normalizedToolName.length,
+  );
+  const trimmedExtensionId = normalizedExtensionId.slice(0, extensionBudget);
+  const toolBudget = Math.max(1, maxLength - separator.length - trimmedExtensionId.length);
+  const trimmedToolName = normalizedToolName.slice(0, toolBudget);
+  return `${trimmedExtensionId}${separator}${trimmedToolName}`;
+}
+
+function ensureUniqueExtensionToolInvocationName(
+  baseName: string,
+  seenInvocationNames: ReadonlySet<string>,
+): string {
+  if (!seenInvocationNames.has(baseName)) {
+    return baseName;
+  }
+
+  for (let index = 1; ; index += 1) {
+    const suffix = `_${index}`;
+    const candidate = `${baseName.slice(0, EXTENSION_TOOL_INVOCATION_NAME_MAX_LENGTH - suffix.length)}${suffix}`;
+    if (!seenInvocationNames.has(candidate)) {
+      return candidate;
+    }
+  }
+}
+
+function normalizeExtensionToolInvocationSegment(
+  value: string,
+  replacement: '-' | '_',
+): string {
+  const normalized = value
+    .trim()
+    .replace(/^@/u, '')
+    .replace(/[/.]+/gu, replacement)
+    .replace(/[^a-z0-9_-]+/gu, replacement)
+    .replace(/[_-]{2,}/gu, (match) => match[0] ?? replacement)
+    .replace(/^[_-]+|[_-]+$/gu, '');
+
+  return normalized || 'extension';
 }
 
 function supportsSystemPromptContribution(manifest: HostExtensionManifest): boolean {

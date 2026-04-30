@@ -15,6 +15,10 @@ import type { ExtensionHostKind, ExtensionManagementContext } from './storage.js
 
 const MARKETPLACE_TEMP_DIR_PREFIX = 'spirit-marketplace-';
 const SUPPORTED_SRI_HASH_ALGORITHMS = new Set(['sha256', 'sha384', 'sha512']);
+const MARKETPLACE_FETCH_TIMEOUT_MS = 20_000;
+const MAX_MARKETPLACE_JSON_BYTES = 512 * 1024;
+const MAX_MARKETPLACE_TEXT_BYTES = 2 * 1024 * 1024;
+const MAX_MARKETPLACE_TARBALL_BYTES = 50 * 1024 * 1024;
 export const DEFAULT_MARKETPLACE_REGISTRY_BASE_URL =
   'https://raw.githubusercontent.com/N123999/awesome-SpiritAgent/refs/heads/main/registry/';
 
@@ -214,7 +218,11 @@ export function createHostExtensionMarketplace(
         );
       }
 
-      const tarballBuffer = await fetchBinary(prepared.tarballUrl, fetchImpl, '扩展 tarball');
+      const tarballBuffer = await fetchBinary(
+        prepared.tarballUrl,
+        fetchImpl,
+        '扩展 tarball',
+      );
       verifyDownloadedTarball(tarballBuffer, prepared);
 
       const tempDirectory = await mkdtemp(path.join(os.tmpdir(), MARKETPLACE_TEMP_DIR_PREFIX));
@@ -290,7 +298,9 @@ async function prepareMarketplaceInstall(
     reviewStatus: version.reviewStatus,
     supportedHosts: [...version.supportedHosts],
     supportsCurrentHost: version.supportedHosts.includes(hostKind),
-    ...(version.tarballUrl ? { tarballUrl: version.tarballUrl } : {}),
+    ...(version.tarballUrl
+      ? { tarballUrl: normalizeMarketplaceHttpsUrl(version.tarballUrl, 'marketplace tarball') }
+      : {}),
     ...(version.integrity ? { integrity: version.integrity } : {}),
     ...(version.shasum ? { shasum: version.shasum } : {}),
     sourceFileName: deriveDownloadFileName(version.tarballUrl, extensionId, version.version),
@@ -357,38 +367,105 @@ async function loadDetailDocument(
 }
 
 async function fetchJson(url: string, fetchImpl: typeof fetch, label: string): Promise<unknown> {
-  const response = await fetchResponse(url, fetchImpl, label);
+  const response = await fetchResponse(url, fetchImpl, label, MAX_MARKETPLACE_JSON_BYTES);
   if (!response.ok) {
     throw new Error(`${label} 拉取失败：${response.status} ${response.statusText}`);
   }
   try {
-    return await response.json();
+    return JSON.parse((await readResponseBuffer(response, label, MAX_MARKETPLACE_JSON_BYTES)).toString('utf8'));
   } catch {
     throw new Error(`${label} 不是合法 JSON：${url}`);
   }
 }
 
 async function fetchText(url: string, fetchImpl: typeof fetch, label: string): Promise<string> {
-  const response = await fetchResponse(url, fetchImpl, label);
+  const response = await fetchResponse(url, fetchImpl, label, MAX_MARKETPLACE_TEXT_BYTES);
   if (!response.ok) {
     throw new Error(`${label} 拉取失败：${response.status} ${response.statusText}`);
   }
-  return response.text();
+  return (await readResponseBuffer(response, label, MAX_MARKETPLACE_TEXT_BYTES)).toString('utf8');
 }
 
-async function fetchBinary(url: string, fetchImpl: typeof fetch, label: string): Promise<Buffer> {
-  const response = await fetchResponse(url, fetchImpl, label);
+async function fetchBinary(
+  url: string,
+  fetchImpl: typeof fetch,
+  label: string,
+): Promise<Buffer> {
+  const response = await fetchResponse(url, fetchImpl, label, MAX_MARKETPLACE_TARBALL_BYTES);
   if (!response.ok) {
     throw new Error(`${label} 下载失败：${response.status} ${response.statusText}`);
   }
-  return Buffer.from(await response.arrayBuffer());
+  return readResponseBuffer(response, label, MAX_MARKETPLACE_TARBALL_BYTES);
 }
 
-async function fetchResponse(url: string, fetchImpl: typeof fetch, label: string): Promise<Response> {
+async function fetchResponse(
+  url: string,
+  fetchImpl: typeof fetch,
+  label: string,
+  maxBytes: number,
+): Promise<Response> {
+  const normalizedUrl = normalizeMarketplaceHttpsUrl(url, label);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MARKETPLACE_FETCH_TIMEOUT_MS);
   try {
-    return await fetchImpl(url);
+    const response = await fetchImpl(normalizedUrl, { signal: controller.signal });
+    assertMarketplaceContentLength(response, label, maxBytes);
+    return response;
   } catch (error) {
-    throw new Error(`${label} 请求失败：${url}；${extractErrorMessage(error)}`);
+    throw new Error(`${label} 请求失败：${normalizedUrl}；${extractErrorMessage(error)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readResponseBuffer(
+  response: Response,
+  label: string,
+  maxBytes: number,
+): Promise<Buffer> {
+  assertMarketplaceContentLength(response, label, maxBytes);
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength > maxBytes) {
+      throw new Error(`${label} 响应过大：${buffer.byteLength} bytes，限制 ${maxBytes} bytes`);
+    }
+    return buffer;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!value) {
+      continue;
+    }
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      throw new Error(`${label} 响应过大：超过 ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), totalBytes);
+}
+
+function assertMarketplaceContentLength(response: Response, label: string, maxBytes: number): void {
+  const headerValue = response.headers.get('content-length');
+  if (!headerValue) {
+    return;
+  }
+
+  const contentLength = Number.parseInt(headerValue, 10);
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    return;
+  }
+  if (contentLength > maxBytes) {
+    throw new Error(`${label} 响应过大：${contentLength} bytes，限制 ${maxBytes} bytes`);
   }
 }
 
@@ -549,11 +626,21 @@ function ensureTrailingSlash(url: string): string {
 
 function resolveRegistryAssetUrl(relativeOrAbsolutePath: string, registryBaseUrl: string): string {
   const normalized = relativeOrAbsolutePath.trim();
-  const resolved = /^https?:\/\//iu.test(normalized)
-    ? new URL(normalized)
-    : new URL(normalized.replace(/^\.\//u, ''), registryBaseUrl);
+  if (/^https?:\/\//iu.test(normalized)) {
+    return normalizeMarketplaceHttpsUrl(normalized, 'marketplace 资源');
+  }
+  return normalizeMarketplaceHttpsUrl(new URL(normalized.replace(/^\.\//u, ''), registryBaseUrl).href, 'marketplace 资源');
+}
+
+function normalizeMarketplaceHttpsUrl(url: string, label: string): string {
+  let resolved: URL;
+  try {
+    resolved = new URL(url);
+  } catch {
+    throw new Error(`${label} URL 非法：${url}`);
+  }
   if (resolved.protocol !== 'https:') {
-    throw new Error(`marketplace 资源 URL 必须使用 https：${resolved.href}`);
+    throw new Error(`${label} URL 必须使用 https：${resolved.href}`);
   }
   return resolved.href;
 }
