@@ -455,6 +455,21 @@ app.whenReady().then(async () => {
     invokeMainDesktopHostCommand(command, payload),
   );
 
+  ipcMain.handle('desktop:pick-workspace-directory', async (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+    const result = targetWindow
+      ? await dialog.showOpenDialog(targetWindow, {
+          properties: ['openDirectory'],
+        })
+      : await dialog.showOpenDialog({
+          properties: ['openDirectory'],
+        });
+    if (result.canceled) {
+      return null;
+    }
+    return result.filePaths[0] ?? null;
+  });
+
   ipcMain.handle(
     'desktop:application-menu-popup',
     (

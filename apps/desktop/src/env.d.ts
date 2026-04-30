@@ -23,6 +23,7 @@ import type {
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  RememberWorkspaceRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   SubmitCreateSkillSlashRequest,
@@ -36,6 +37,7 @@ import type {
 declare global {
   interface SpiritDesktopApi {
     bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
+    rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
     updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
     addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
     addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot>;
@@ -71,6 +73,7 @@ declare global {
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
     readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
+    pickWorkspaceDirectory(): Promise<string | null>;
     syncWindowFrame(request: {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';

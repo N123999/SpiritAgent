@@ -12,6 +12,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     bootstrap(request) {
       return bridge.bootstrap(request);
     },
+    rememberWorkspaceRoot(request) {
+      return bridge.rememberWorkspaceRoot(request);
+    },
     updateConfig(request) {
       return bridge.updateConfig(request);
     },
@@ -110,6 +113,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     },
     writeWorkspaceTextFile(request) {
       return bridge.writeWorkspaceTextFile(request);
+    },
+    pickWorkspaceDirectory() {
+      return bridge.pickWorkspaceDirectory();
     },
   };
 }

@@ -37,10 +37,12 @@ export const DEFAULT_DESKTOP_WEB_PORT = 7788;
 const APP_DATA_DIR_NAME = 'SpiritAgent';
 const CONFIG_FILE_NAME = 'config.json';
 const CHATS_DIR_NAME = 'chats';
+const MAX_RECENT_WORKSPACES = 20;
 
 export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
   activeModel: string;
+  recentWorkspaces?: string[];
   uiLocale?: string;
   windowsMica?: boolean;
   planMode?: boolean;
@@ -281,6 +283,8 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
           displayName:
             normalizeDisplayName(parsed.sessionDisplayName) ??
             deriveDisplayName(parsed.desktopMessages, parsed.messages),
+          workspaceRoot:
+            resolveStoredWorkspaceRoot(parsed.workspaceRoot) ?? discoverWorkspaceRoot(),
           modifiedAtUnixMs:
             typeof parsed.savedAtUnixMs === 'number'
               ? parsed.savedAtUnixMs
@@ -313,6 +317,9 @@ export async function loadStoredSession(filePath: string): Promise<StoredDesktop
     ...(normalizeDisplayName(parsed.sessionDisplayName)
       ? { sessionDisplayName: normalizeDisplayName(parsed.sessionDisplayName) }
       : {}),
+    ...(resolveStoredWorkspaceRoot(parsed.workspaceRoot)
+      ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
+      : {}),
     ...(Array.isArray(parsed.desktopMessages)
       ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
       : {}),
@@ -339,6 +346,7 @@ function defaultConfig(): DesktopConfigFile {
       },
     ],
     activeModel: DEFAULT_MODEL,
+    recentWorkspaces: [],
     windowsMica: true,
     planMode: false,
     webHost: defaultWebHostConfig(),
@@ -385,6 +393,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
   return {
     models: normalizedModels,
     activeModel,
+    recentWorkspaces: normalizeRecentWorkspaceRoots(raw.recentWorkspaces),
     ...(typeof raw.uiLocale === 'string' && raw.uiLocale.trim()
       ? { uiLocale: raw.uiLocale.trim() }
       : {}),
@@ -419,6 +428,58 @@ function normalizePort(value: unknown, fallback: number): number {
     return fallback;
   }
   return value >= 1 && value <= 65535 ? value : fallback;
+}
+
+function normalizeWorkspaceKey(value: string): string {
+  return path.resolve(value).replace(/\\/g, '/').replace(/\/+$/g, '').toLowerCase();
+}
+
+export function resolveStoredWorkspaceRoot(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  return path.resolve(value.trim());
+}
+
+function normalizeRecentWorkspaceRoots(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const entry of value) {
+    const workspaceRoot = resolveStoredWorkspaceRoot(entry);
+    if (!workspaceRoot) {
+      continue;
+    }
+    const key = normalizeWorkspaceKey(workspaceRoot);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(workspaceRoot);
+    if (normalized.length >= MAX_RECENT_WORKSPACES) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+export function mergeRecentWorkspaceRoots(
+  existing: string[] | undefined,
+  workspaceRoot: string,
+): string[] {
+  const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+  const targetKey = normalizeWorkspaceKey(resolvedWorkspaceRoot);
+  return [
+    resolvedWorkspaceRoot,
+    ...normalizeRecentWorkspaceRoots(existing).filter(
+      (entry) => normalizeWorkspaceKey(entry) !== targetKey,
+    ),
+  ].slice(0, MAX_RECENT_WORKSPACES);
 }
 
 function resolveSessionPath(filePath: string | undefined): string {

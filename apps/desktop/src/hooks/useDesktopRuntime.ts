@@ -11,6 +11,7 @@ import type {
   AskQuestionsQuestionSpec,
   AskQuestionsRequest,
   AskQuestionsResult,
+  BootstrapRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
@@ -225,14 +226,14 @@ export function useDesktopRuntime() {
     }
   }, [api]);
 
-  const bootstrap = useCallback(async () => {
+  const bootstrap = useCallback(async (request?: BootstrapRequest) => {
     if (!api) {
       return;
     }
 
     setBusyAction("bootstrap");
     try {
-      const next = await api.bootstrap();
+      const next = await api.bootstrap(request);
       applySnapshot(next);
       setRuntimeError("");
       setWebHostPairingRequired(false);
@@ -244,6 +245,68 @@ export function useDesktopRuntime() {
       setBusyAction("");
     }
   }, [api, applySnapshot, refreshSessions]);
+
+  const switchWorkspaceRoot = useCallback(
+    async (workspaceRoot: string): Promise<boolean> => {
+      if (!api) {
+        return false;
+      }
+
+      setBusyAction("bootstrap");
+      try {
+        const next = await api.bootstrap({ workspaceRoot });
+        applySnapshot(next);
+        setComposer("");
+        setQuestionError("");
+        setRuntimeError("");
+        void refreshSessions();
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot, refreshSessions],
+  );
+
+  const rememberWorkspaceRoot = useCallback(
+    async (workspaceRoot: string): Promise<boolean> => {
+      if (!api?.rememberWorkspaceRoot) {
+        setRuntimeError("当前宿主不支持添加工作区。");
+        return false;
+      }
+
+      setBusyAction("bootstrap");
+      try {
+        const next = await api.rememberWorkspaceRoot({ workspaceRoot });
+        applySnapshot(next);
+        setRuntimeError("");
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const pickWorkspaceDirectory = useCallback(async (): Promise<string | null> => {
+    if (!api?.pickWorkspaceDirectory) {
+      setRuntimeError("当前宿主不支持选择工作区目录。");
+      return null;
+    }
+
+    try {
+      return await api.pickWorkspaceDirectory();
+    } catch (error) {
+      setRuntimeError(describeError(error));
+      return null;
+    }
+  }, [api]);
 
   const pairWebHost = useCallback(
     async (code: string): Promise<boolean> => {
@@ -319,6 +382,7 @@ export function useDesktopRuntime() {
           }
           applySnapshot(next);
           if (!next.conversation.isBusy) {
+            void refreshSessions();
             break;
           }
         }
@@ -332,7 +396,7 @@ export function useDesktopRuntime() {
     return () => {
       cancelled = true;
     };
-  }, [api, applySnapshot, snapshot?.conversation.isBusy]);
+  }, [api, applySnapshot, refreshSessions, snapshot?.conversation.isBusy]);
 
   const updateQuestionDraft = useCallback(
     (questionId: string, updater: (draft: QuestionDraft) => QuestionDraft) => {
@@ -879,12 +943,13 @@ export function useDesktopRuntime() {
       applySnapshot(next);
       setComposer("");
       setRuntimeError("");
+      void refreshSessions();
     } catch (error) {
       setRuntimeError(describeError(error));
     } finally {
       setBusyAction("");
     }
-  }, [api, applySnapshot, composer, snapshot]);
+  }, [api, applySnapshot, composer, refreshSessions, snapshot]);
   
   const rewindAndSubmitMessage = useCallback(
     async (request: RewindAndSubmitMessageRequest): Promise<boolean> => {
@@ -1090,6 +1155,9 @@ export function useDesktopRuntime() {
     setSettings,
     updateQuestionDraft,
     bootstrap,
+    switchWorkspaceRoot,
+    rememberWorkspaceRoot,
+    pickWorkspaceDirectory,
     addModel,
     addProviderModels,
     previewModels,

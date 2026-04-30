@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   bootstrap(request?: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'bootstrap', { request });
   },
+  rememberWorkspaceRoot(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'rememberWorkspaceRoot', { request });
+  },
   updateConfig(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'updateConfig', { request });
   },
@@ -104,6 +107,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   },
   writeWorkspaceTextFile(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'writeWorkspaceTextFile', { request });
+  },
+  pickWorkspaceDirectory() {
+    return ipcRenderer.invoke('desktop:pick-workspace-directory');
   },
   syncWindowFrame(request: {
     dark: boolean;

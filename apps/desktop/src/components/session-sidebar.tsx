@@ -57,6 +57,7 @@ type SessionWorkspaceGroup = {
   label: string;
   rootPath: string | null;
   sessions: SessionListItem[];
+  latestModifiedAtUnixMs: number;
 };
 
 function normalizePath(value: string): string {
@@ -77,15 +78,43 @@ function buildWorkspaceGroups(
   sessions: SessionListItem[],
   workspaceRoot: string | null | undefined,
 ): SessionWorkspaceGroup[] {
-  const trimmed = workspaceRoot?.trim() || null;
-  return [
-    {
-      id: trimmed ? normalizePath(trimmed) : "current-workspace",
-      label: deriveWorkspaceLabel(trimmed),
-      rootPath: trimmed,
-      sessions,
-    },
-  ];
+  const currentWorkspaceRoot = workspaceRoot?.trim() || null;
+  const groups = new Map<string, SessionWorkspaceGroup>();
+
+  for (const session of sessions) {
+    const rootPath = session.workspaceRoot?.trim() || currentWorkspaceRoot;
+    if (!rootPath) {
+      continue;
+    }
+
+    const id = normalizePath(rootPath);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.sessions.push(session);
+      existing.latestModifiedAtUnixMs = Math.max(
+        existing.latestModifiedAtUnixMs,
+        session.modifiedAtUnixMs,
+      );
+      continue;
+    }
+
+    groups.set(id, {
+      id,
+      label: deriveWorkspaceLabel(rootPath),
+      rootPath,
+      sessions: [session],
+      latestModifiedAtUnixMs: session.modifiedAtUnixMs,
+    });
+  }
+
+  return [...groups.values()].sort((left, right) => {
+    const leftIsCurrent = Boolean(currentWorkspaceRoot && samePath(left.rootPath ?? "", currentWorkspaceRoot));
+    const rightIsCurrent = Boolean(currentWorkspaceRoot && samePath(right.rootPath ?? "", currentWorkspaceRoot));
+    if (leftIsCurrent !== rightIsCurrent) {
+      return leftIsCurrent ? -1 : 1;
+    }
+    return right.latestModifiedAtUnixMs - left.latestModifiedAtUnixMs;
+  });
 }
 
 const settingsTabs: Array<{
@@ -322,45 +351,41 @@ export function SessionSidebar({
                       </button>
 
                       <div id={panelId} className={cn("min-w-0", !expanded && "hidden") }>
-                        {group.sessions.length === 0 ? (
-                          <p className="pl-8 pr-2 py-2 text-xs text-sidebar-faint-foreground">暂无</p>
-                        ) : (
-                          <div className="mt-0.5 flex min-w-0 flex-col gap-0.5">
-                            {group.sessions.map((session) => {
-                              const sessionRowSelected =
-                                !marketplaceActive &&
-                                activeFilePath !== null &&
-                                samePath(session.path, activeFilePath);
-                              return (
-                                <button
-                                  key={session.path}
-                                  type="button"
-                                  disabled={disabled || busy}
-                                  aria-current={sessionRowSelected ? "true" : undefined}
-                                  onClick={() => onSelectSession(session.path)}
-                                  className={cn(
-                                    "group flex w-full min-w-0 items-center overflow-hidden rounded-md py-2 pr-2.5 pl-8 text-left text-sm",
-                                    "outline-none transition-[color,background,box-shadow] duration-150",
-                                    "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
-                                    sessionRowSelected
-                                      ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                                      : cn(
-                                          "text-sidebar-list-foreground",
-                                          "hover:bg-foreground/[0.05] hover:text-sidebar-foreground dark:hover:bg-foreground/10",
-                                        ),
-                                  )}
+                        <div className="mt-0.5 flex min-w-0 flex-col gap-0.5">
+                          {group.sessions.map((session) => {
+                            const sessionRowSelected =
+                              !marketplaceActive &&
+                              activeFilePath !== null &&
+                              samePath(session.path, activeFilePath);
+                            return (
+                              <button
+                                key={session.path}
+                                type="button"
+                                disabled={disabled || busy}
+                                aria-current={sessionRowSelected ? "true" : undefined}
+                                onClick={() => onSelectSession(session.path)}
+                                className={cn(
+                                  "group flex w-full min-w-0 items-center overflow-hidden rounded-md py-2 pr-2.5 pl-8 text-left text-sm",
+                                  "outline-none transition-[color,background,box-shadow] duration-150",
+                                  "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
+                                  sessionRowSelected
+                                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                                    : cn(
+                                        "text-sidebar-list-foreground",
+                                        "hover:bg-foreground/[0.05] hover:text-sidebar-foreground dark:hover:bg-foreground/10",
+                                      ),
+                                )}
+                              >
+                                <span
+                                  className="min-w-0 flex-1 basis-0 truncate text-xs font-medium"
+                                  title={session.displayName}
                                 >
-                                  <span
-                                    className="min-w-0 flex-1 basis-0 truncate text-xs font-medium"
-                                    title={session.displayName}
-                                  >
-                                    {session.displayName}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
+                                  {session.displayName}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );

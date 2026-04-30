@@ -21,6 +21,7 @@ import type {
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  RememberWorkspaceRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -37,6 +38,7 @@ import { createWebHostApi } from './adapters/web';
 export interface HostApi {
   kind: 'electron' | 'web';
   bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
+  rememberWorkspaceRoot?(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
   updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
   addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
   addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot>;
@@ -72,6 +74,7 @@ export interface HostApi {
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
+  pickWorkspaceDirectory?(): Promise<string | null>;
   pairWebHost?(code: string): Promise<void>;
 }
 

@@ -9,6 +9,7 @@ import type {
 
 export type HostCommandName =
   | 'bootstrap'
+  | 'rememberWorkspaceRoot'
   | 'updateConfig'
   | 'setWebHostAuthTokenHash'
   | 'addModel'
@@ -50,6 +51,7 @@ export type DesktopToolRequest = HostToolRequest<AskQuestionsQuestionSpec>;
 export interface StoredDesktopSession extends ChatArchive {
   savedAtUnixMs: number;
   sessionDisplayName?: string;
+  workspaceRoot?: string;
   desktopMessages?: ConversationMessageSnapshot[];
   rewind?: StoredDesktopRewindMetadata;
 }

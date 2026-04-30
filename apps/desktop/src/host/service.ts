@@ -89,6 +89,7 @@ import type {
   PendingAssistantAux,
   PendingQuestionsSnapshot,
   RewindAndSubmitMessageRequest,
+  RememberWorkspaceRequest,
   RemoveModelRequest,
   SessionListItem,
   ImportExtensionRequest,
@@ -118,6 +119,7 @@ import {
   loadHostMetadata,
   loadStoredSession,
   modelSecretKeyPresence,
+  mergeRecentWorkspaceRoots,
   removeModelApiKey,
   resolveApiKeyForModel,
   saveApiKeyForModel,
@@ -180,8 +182,30 @@ export function setDesktopExtensionHostAdapter(
   desktopExtensionHostAdapter = adapter;
 }
 
+function normalizeWorkspaceRootKey(workspaceRoot: string): string {
+  return workspaceRoot.replace(/\\/g, '/').replace(/\/+$/g, '').toLowerCase();
+}
+
+function sameWorkspaceRoot(left: string, right: string): boolean {
+  return normalizeWorkspaceRootKey(left) === normalizeWorkspaceRootKey(right);
+}
+
+function deriveWorkspaceLabel(workspaceRoot: string): string {
+  const normalized = workspaceRoot.replace(/\\/g, '/').replace(/\/+$/g, '');
+  const lastSlash = normalized.lastIndexOf('/');
+  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
+}
+
+function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces?: string[]) {
+  return mergeRecentWorkspaceRoots(recentWorkspaces, currentWorkspaceRoot).map((workspaceRoot) => ({
+    path: workspaceRoot,
+    label: deriveWorkspaceLabel(workspaceRoot),
+  }));
+}
+
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
+  rememberWorkspaceRoot: { request: RememberWorkspaceRequest };
   updateConfig: { request: UpdateConfigRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
@@ -275,6 +299,26 @@ class DesktopHostService {
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(request?.workspaceRoot);
+      return this.buildSnapshot();
+    });
+  }
+
+  async rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const workspaceRoot = request.workspaceRoot?.trim()
+        ? path.resolve(request.workspaceRoot.trim())
+        : '';
+      if (!workspaceRoot) {
+        throw new Error('工作区路径不能为空。');
+      }
+
+      const state = this.requireState();
+      state.config = {
+        ...state.config,
+        recentWorkspaces: mergeRecentWorkspaceRoots(state.config.recentWorkspaces, workspaceRoot),
+      };
+      await saveConfig(state.config);
       return this.buildSnapshot();
     });
   }
@@ -1266,9 +1310,9 @@ description: ${frontmatterDescription}
 
   async openSession(filePath: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
       this.deferredRuntimeRefreshWhileBusy = false;
       const loaded = await loadStoredSession(filePath);
+      await this.ensureInitialized(loaded.workspaceRoot);
       const state = this.requireState();
       state.messages = loaded.desktopMessages
         ? loaded.desktopMessages.map((message) => ({ ...message }))
@@ -1317,6 +1361,10 @@ description: ${frontmatterDescription}
       case 'bootstrap': {
         const typedPayload = payload as CommandPayloads['bootstrap'] | undefined;
         return this.bootstrap(typedPayload?.request);
+      }
+      case 'rememberWorkspaceRoot': {
+        const typedPayload = payload as CommandPayloads['rememberWorkspaceRoot'];
+        return this.rememberWorkspaceRoot(typedPayload.request);
       }
       case 'updateConfig': {
         const typedPayload = payload as CommandPayloads['updateConfig'];
@@ -1453,35 +1501,66 @@ description: ${frontmatterDescription}
   }
 
   private async ensureInitialized(workspaceRootOverride?: string): Promise<void> {
-    const workspaceRoot = workspaceRootOverride?.trim()
+    const requestedWorkspaceRoot = workspaceRootOverride?.trim()
       ? path.resolve(workspaceRootOverride.trim())
-      : discoverWorkspaceRoot();
+      : undefined;
+    const loadedConfig = await loadConfig();
+    const workspaceRoot = requestedWorkspaceRoot
+      ?? loadedConfig.recentWorkspaces?.[0]
+      ?? discoverWorkspaceRoot();
+    const config = {
+      ...loadedConfig,
+      recentWorkspaces: mergeRecentWorkspaceRoots(loadedConfig.recentWorkspaces, workspaceRoot),
+    } satisfies DesktopConfigFile;
 
-    if (this.initialized && this.state?.workspaceRoot === workspaceRoot) {
+    if (
+      !loadedConfig.recentWorkspaces ||
+      config.recentWorkspaces.length !== loadedConfig.recentWorkspaces.length ||
+      config.recentWorkspaces.some((entry, index) => entry !== loadedConfig.recentWorkspaces?.[index])
+    ) {
+      await saveConfig(config);
+    }
+
+    if (this.initialized && this.state?.workspaceRoot && sameWorkspaceRoot(this.state.workspaceRoot, workspaceRoot)) {
+      this.state.config = config;
       return;
     }
 
-    const config = await loadConfig();
     const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
     const state = this.state;
     const previousWorkspaceRoot = state?.workspaceRoot;
+    const switchingWorkspace = Boolean(
+      previousWorkspaceRoot && !sameWorkspaceRoot(previousWorkspaceRoot, workspaceRoot),
+    );
 
-    if (previousWorkspaceRoot && previousWorkspaceRoot !== workspaceRoot) {
+    if (switchingWorkspace) {
       await this.extensionManager().deactivateAll();
+    }
+
+    if (switchingWorkspace) {
+      this.deferredRuntimeRefreshWhileBusy = false;
+      this.currentTurnSkills = [];
+      this.pendingUnboundFileChangeIds = [];
+      this.latestPendingAssistantAux = undefined;
+      this.resetStreamingPlacementState(true);
+      this.messageIdCounter = 1;
+      this.lastRuntimeError = '';
     }
 
     this.state = {
       workspaceRoot,
       config,
       metadata,
-      messages: state?.messages ?? [],
+      messages: switchingWorkspace ? [] : state?.messages ?? [],
       extensionsList: state?.extensionsList ?? [],
       extensionCss: state?.extensionCss ?? [],
-      activeSession: state?.activeSession,
-      archiveHistory: state?.archiveHistory ?? [],
-      archiveSubagentSessions: state?.archiveSubagentSessions ?? [],
-      rewind: state?.rewind ?? createDesktopRewindMetadata(),
-      rewindWarnings: state?.rewindWarnings ?? [],
+      activeSession: switchingWorkspace ? undefined : state?.activeSession,
+      archiveHistory: switchingWorkspace ? [] : state?.archiveHistory ?? [],
+      archiveSubagentSessions: switchingWorkspace ? [] : state?.archiveSubagentSessions ?? [],
+      rewind: switchingWorkspace
+        ? createDesktopRewindMetadata()
+        : state?.rewind ?? createDesktopRewindMetadata(),
+      rewindWarnings: switchingWorkspace ? [] : state?.rewindWarnings ?? [],
     };
     this.initialized = true;
     await this.refreshExtensionsList();
@@ -1678,6 +1757,10 @@ description: ${frontmatterDescription}
 
     return {
       workspaceRoot: state.workspaceRoot,
+      availableWorkspaces: buildAvailableWorkspaces(
+        state.workspaceRoot,
+        state.config.recentWorkspaces,
+      ),
       runtimeReady: this.runtime !== undefined,
       ...(this.lastRuntimeError ? { runtimeError: this.lastRuntimeError } : {}),
       config: {
@@ -3086,6 +3169,7 @@ description: ${frontmatterDescription}
       ...archive,
       savedAtUnixMs: Date.now(),
       sessionDisplayName: state.activeSession.displayName,
+      workspaceRoot: state.workspaceRoot,
       desktopMessages: state.messages.map((message) => ({ ...message })),
       rewind: state.rewind,
     };

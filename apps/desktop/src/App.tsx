@@ -4,6 +4,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  FolderPlus,
   LoaderCircle,
   PanelLeftClose,
   PanelLeftOpen,
@@ -99,6 +100,120 @@ function conversationMessageDomId(message: ConversationMessageSnapshot, index: n
 
 /** 主会话列最大宽度（居中） */
 const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
+
+function normalizeWorkspacePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
+}
+
+function sameWorkspacePath(left: string, right: string): boolean {
+  return normalizeWorkspacePath(left) === normalizeWorkspacePath(right);
+}
+
+function deriveWorkspaceLabel(workspaceRoot: string): string {
+  const normalized = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/g, "");
+  const lastSlash = normalized.lastIndexOf("/");
+  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
+}
+
+type EmptyStateWorkspaceSelectorProps = {
+  currentWorkspaceRoot: string;
+  availableWorkspaces: DesktopSnapshot["availableWorkspaces"];
+  disabled?: boolean;
+  onSelectWorkspace(workspaceRoot: string): void;
+  onAddWorkspace(): void;
+};
+
+function EmptyStateWorkspaceSelector({
+  currentWorkspaceRoot,
+  availableWorkspaces,
+  disabled,
+  onSelectWorkspace,
+  onAddWorkspace,
+}: EmptyStateWorkspaceSelectorProps) {
+  const [workspaceFilter, setWorkspaceFilter] = useState("");
+  const filteredWorkspaces = useMemo(() => {
+    const query = workspaceFilter.trim().toLowerCase();
+    if (!query) {
+      return availableWorkspaces;
+    }
+    return availableWorkspaces.filter((workspace) =>
+      workspace.label.toLowerCase().includes(query) || workspace.path.toLowerCase().includes(query),
+    );
+  }, [availableWorkspaces, workspaceFilter]);
+  const currentWorkspaceLabel = useMemo(() => {
+    const matched = availableWorkspaces.find((workspace) =>
+      sameWorkspacePath(workspace.path, currentWorkspaceRoot),
+    );
+    return matched?.label ?? deriveWorkspaceLabel(currentWorkspaceRoot);
+  }, [availableWorkspaces, currentWorkspaceRoot]);
+
+  return (
+    <div className="flex justify-start px-0.5">
+      <DropdownMenu onOpenChange={(open) => !open && setWorkspaceFilter("") }>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label="选择工作区"
+            className="inline-flex h-8 max-w-[min(24rem,100%)] min-w-0 items-center gap-1 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+          >
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={currentWorkspaceRoot}>
+              {currentWorkspaceLabel}
+            </span>
+            <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          side="top"
+          className="w-[min(24rem,calc(100vw-1.25rem))] p-0 text-xs"
+        >
+          <div className="border-b border-border/40 p-1.5">
+            <Input
+              value={workspaceFilter}
+              onChange={(event) => setWorkspaceFilter(event.target.value)}
+              placeholder="搜索工作区"
+              className="h-8 w-full min-w-0 text-xs"
+              onKeyDown={(event) => event.stopPropagation()}
+              autoComplete="off"
+            />
+          </div>
+          <div className="max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto p-1">
+            {filteredWorkspaces.length === 0 ? (
+              <p className="px-2 py-4 text-center text-xs text-muted-foreground">无匹配项</p>
+            ) : (
+              filteredWorkspaces.map((workspace) => {
+                const selected = sameWorkspacePath(workspace.path, currentWorkspaceRoot);
+                return (
+                  <DropdownMenuItem
+                    key={workspace.path}
+                    onSelect={() => onSelectWorkspace(workspace.path)}
+                    className={cn("items-start px-2 py-2", selected && "bg-accent/40")}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-foreground" title={workspace.label}>
+                        {workspace.label}
+                      </div>
+                      <div className="truncate text-[11px] text-muted-foreground" title={workspace.path}>
+                        {workspace.path}
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })
+            )}
+          </div>
+          <div className="border-t border-border/40 p-1">
+            <DropdownMenuItem onSelect={onAddWorkspace} className="gap-2 px-2 py-2 text-sm">
+              <FolderPlus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span>添加工作区</span>
+            </DropdownMenuItem>
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
   const hasExpandableContent =
@@ -1313,6 +1428,28 @@ export default function App() {
                 className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
               >
                 <div className={cn("pointer-events-auto mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
+                {messages.length === 0 ? (
+                  <EmptyStateWorkspaceSelector
+                    currentWorkspaceRoot={snapshot?.workspaceRoot ?? ""}
+                    availableWorkspaces={snapshot?.availableWorkspaces ?? []}
+                    disabled={runtime.busyAction === "bootstrap" || runtime.busyAction === "session"}
+                    onSelectWorkspace={(workspaceRoot) => {
+                      if (!snapshot?.workspaceRoot || sameWorkspacePath(snapshot.workspaceRoot, workspaceRoot)) {
+                        return;
+                      }
+                      void runtime.switchWorkspaceRoot(workspaceRoot);
+                    }}
+                    onAddWorkspace={() => {
+                      void (async () => {
+                        const workspaceRoot = await runtime.pickWorkspaceDirectory();
+                        if (!workspaceRoot) {
+                          return;
+                        }
+                        await runtime.rememberWorkspaceRoot(workspaceRoot);
+                      })();
+                    }}
+                  />
+                ) : null}
                 {runtime.runtimeError ? (
                   <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
                     {runtime.runtimeError}

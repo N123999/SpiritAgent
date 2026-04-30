@@ -4,6 +4,10 @@ export interface BootstrapRequest {
   workspaceRoot?: string;
 }
 
+export interface RememberWorkspaceRequest {
+  workspaceRoot: string;
+}
+
 export interface UpdateConfigRequest {
   activeModel: string;
   apiBase: string;
@@ -381,6 +385,12 @@ export interface SessionListItem {
   path: string;
   displayName: string;
   modifiedAtUnixMs: number;
+  workspaceRoot: string;
+}
+
+export interface DesktopWorkspaceListItem {
+  path: string;
+  label: string;
 }
 
 /** 工作区文件树子节点（相对工作区根的路径由前端用 `name` 与父路径拼接）。 */
@@ -408,6 +418,7 @@ export interface WriteWorkspaceTextFileRequest {
 
 export interface DesktopSnapshot {
   workspaceRoot: string;
+  availableWorkspaces: DesktopWorkspaceListItem[];
   runtimeReady: boolean;
   runtimeError?: string;
   config: DesktopConfigSnapshot;
