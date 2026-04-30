@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { DesktopSnapshot, SessionListItem } from "@/types";
@@ -48,43 +48,36 @@ export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "s
 const settingsTabs: Array<{
   id: SettingsSidebarTab;
   label: string;
-  description: string;
   icon: LucideIcon;
 }> = [
   {
     id: "basic",
     label: "基础",
-    description: "工作区与连接",
     icon: SlidersHorizontal,
   },
   {
     id: "models",
     label: "模型",
-    description: "列表与密钥",
     icon: Layers,
   },
   {
     id: "skills",
     label: "Skills",
-    description: "用户技能目录",
     icon: Sparkles,
   },
   {
     id: "extensions",
     label: "扩展",
-    description: "导入、列表与删除",
     icon: Package,
   },
   {
     id: "mcps",
     label: "MCPs",
-    description: "服务与传输配置",
     icon: Plug,
   },
   {
     id: "appearance",
     label: "外观",
-    description: "主题与窗口效果",
     icon: Palette,
   },
 ];
@@ -204,7 +197,7 @@ export function SessionSidebar({
       >
         <ScrollArea className="h-full min-h-0 min-w-0" type="hover" scrollHideDelay={450}>
           {settingsMode ? (
-            <nav className="flex flex-col gap-1 p-1.5" aria-label="设置页签">
+            <nav className="flex min-w-0 flex-col gap-0.5 p-1.5" aria-label="设置页签">
               {settingsTabs.map((tab) => {
                 const selected = tab.id === settingsTab;
                 const Icon = tab.icon;
@@ -215,28 +208,18 @@ export function SessionSidebar({
                     disabled={disabled}
                     onClick={() => onSettingsTabChange?.(tab.id)}
                     aria-current={selected ? "page" : undefined}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left outline-none transition-[color,background,box-shadow] duration-150",
-                      "hover:bg-foreground/[0.04] hover:text-sidebar-foreground dark:hover:bg-foreground/[0.07]",
-                      "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
-                      selected
-                        ? "bg-foreground/[0.08] text-sidebar-foreground dark:bg-foreground/12"
-                        : "text-sidebar-list-foreground",
-                      narrow && "justify-center px-2.5",
-                    )}
                     title={narrow ? tab.label : undefined}
-                  >
-                    <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-                    {narrow ? (
-                      <span className="sr-only">{tab.label}</span>
-                    ) : (
-                      <span className="min-w-0 space-y-0.5">
-                        <span className="block text-sm font-medium">{tab.label}</span>
-                        <span className="block text-xs leading-5 text-sidebar-faint-foreground">
-                          {tab.description}
-                        </span>
-                      </span>
+                    className={cn(
+                      buttonVariants({
+                        variant: selected ? "secondary" : "ghost",
+                        size: narrow ? "icon" : "sm",
+                      }),
+                      "text-xs text-sidebar-foreground/90 hover:bg-foreground/[0.05] dark:hover:bg-foreground/10",
+                      narrow ? "size-8 shrink-0" : "h-8 w-full justify-start gap-2",
                     )}
+                  >
+                    <Icon className="size-3.5" aria-hidden />
+                    <span className={cn("min-w-0 truncate", narrow && "sr-only")}>{tab.label}</span>
                   </button>
                 );
               })}
