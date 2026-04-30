@@ -1,4 +1,4 @@
-import type { ModelProviderId } from '@spirit-agent/host-internal';
+import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
 
 export interface BootstrapRequest {
   workspaceRoot?: string;

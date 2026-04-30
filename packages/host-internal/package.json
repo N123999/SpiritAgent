@@ -15,6 +15,14 @@
       "types": "./dist/discovery.d.ts",
       "default": "./dist/discovery.js"
     },
+    "./model-provider-presets": {
+      "types": "./dist/model-provider-presets.d.ts",
+      "default": "./dist/model-provider-presets.js"
+    },
+    "./openai-models": {
+      "types": "./dist/openai-models.d.ts",
+      "default": "./dist/openai-models.js"
+    },
     "./extensions": {
       "types": "./dist/extensions.d.ts",
       "default": "./dist/extensions.js"
