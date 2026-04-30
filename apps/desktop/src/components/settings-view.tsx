@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import type {
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
@@ -41,10 +42,15 @@ import type {
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
+  DesktopModelProvider,
   DesktopSkillListItem,
   DesktopSkillRootKind,
   DesktopSnapshot,
+  PreviewModelsRequest,
+  PreviewModelsResponse,
 } from "@/types";
+import { PROVIDER_PICKER_ROWS, resolveConnectApiBase } from "@/host/provider-presets";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export type SettingsFormState = {
   activeModel: string;
@@ -68,6 +74,7 @@ type SettingsViewProps = {
   apiReady: boolean;
   busyAction: string;
   modelsBusy: boolean;
+  modelsPreviewBusy: boolean;
   mcpsBusy: boolean;
   skillsBusy: boolean;
   extensionsBusy: boolean;
@@ -77,6 +84,8 @@ type SettingsViewProps = {
   onBootstrap: () => Promise<void>;
   onResetSession: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
+  onAddProviderModels: (request: AddProviderModelsRequest) => Promise<void>;
+  onPreviewModels: (request: PreviewModelsRequest) => Promise<PreviewModelsResponse>;
   onRemoveModel: (name: string) => Promise<void>;
   onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
   onImportExtension: (request: ImportExtensionRequest) => Promise<void>;
@@ -1586,25 +1595,114 @@ function McpsSettingsPanel({
 function ModelsSettingsPanel({
   snapshot,
   modelsBusy,
+  modelsPreviewBusy,
   onAddModel,
+  onAddProviderModels,
+  onPreviewModels,
   onRemoveModel,
 }: Pick<
   SettingsViewProps,
-  "snapshot" | "modelsBusy" | "onAddModel" | "onRemoveModel"
+  | "snapshot"
+  | "modelsBusy"
+  | "modelsPreviewBusy"
+  | "onAddModel"
+  | "onAddProviderModels"
+  | "onPreviewModels"
+  | "onRemoveModel"
 >) {
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [providerQuery, setProviderQuery] = useState("");
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<DesktopModelProvider | null>(null);
+  const [connectApiKey, setConnectApiKey] = useState("");
+  const [connectName, setConnectName] = useState("");
+  const [connectApiBase, setConnectApiBase] = useState("");
+  const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
+    "single",
+  );
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newApiBase, setNewApiBase] = useState("");
-  const [newApiKey, setNewApiKey] = useState("");
 
   const models = snapshot?.config.models ?? [];
   const activeModel = snapshot?.config.activeModel ?? "";
 
-  const resetForm = () => {
-    setNewName("");
-    setNewApiBase("");
-    setNewApiKey("");
+  const resetConnectWizard = () => {
+    setConnectApiKey("");
+    setConnectName("");
+    setConnectApiBase("");
+    setCustomConnectMode("single");
+    setSelectedProvider(null);
+  };
+
+  const openProviderPicker = () => {
+    setProviderQuery("");
+    setProviderDialogOpen(true);
+  };
+
+  const startConnect = (id: DesktopModelProvider) => {
+    setProviderDialogOpen(false);
+    setSelectedProvider(id);
+    setConnectApiKey("");
+    setConnectName("");
+    setConnectApiBase("");
+    setCustomConnectMode("single");
+    setConnectDialogOpen(true);
+  };
+
+  const filteredProviders = PROVIDER_PICKER_ROWS.filter((row) =>
+    row.label.toLowerCase().includes(providerQuery.trim().toLowerCase()),
+  );
+
+  const effectiveApiBase =
+    selectedProvider === null
+      ? ""
+      : resolveConnectApiBase(selectedProvider, connectApiBase);
+
+  const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
+    if (selectedProvider === null) {
+      return;
+    }
+    if (!connectApiKey.trim()) {
+      throw new Error("API Key 不能为空。");
+    }
+    const res = await onPreviewModels({
+      apiBase: effectiveApiBase,
+      apiKey: connectApiKey,
+      forceRefresh,
+    });
+    if (res.modelIds.length === 0) {
+      throw new Error("未返回任何模型，请检查密钥或端点。");
+    }
+    const bulk: AddProviderModelsRequest = {
+      apiBase: effectiveApiBase,
+      apiKey: connectApiKey,
+      modelIds: res.modelIds,
+      provider: selectedProvider,
+    };
+    await onAddProviderModels(bulk);
+    setConnectDialogOpen(false);
+    resetConnectWizard();
+  };
+
+  const saveCustomSingle = async () => {
+    if (selectedProvider === null || selectedProvider !== "custom") {
+      return;
+    }
+    const name = connectName.trim();
+    const apiBase = effectiveApiBase;
+    if (!name) {
+      throw new Error("模型名称不能为空。");
+    }
+    if (!connectApiKey.trim()) {
+      throw new Error("API Key 不能为空。");
+    }
+    await onAddModel({
+      name,
+      apiBase,
+      apiKey: connectApiKey,
+      provider: "custom",
+    });
+    setConnectDialogOpen(false);
+    resetConnectWizard();
   };
 
   return (
@@ -1615,12 +1713,11 @@ function ModelsSettingsPanel({
           type="button"
           size="sm"
           onClick={() => {
-            resetForm();
-            setAddDialogOpen(true);
+            openProviderPicker();
           }}
-          disabled={modelsBusy}
+          disabled={modelsBusy || modelsPreviewBusy}
         >
-          添加模型
+          连接提供商
         </Button>
       </div>
 
@@ -1639,14 +1736,14 @@ function ModelsSettingsPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{model.name}</span>
                     {isActive ? (
-                        <Badge variant="secondary" className="text-muted-foreground">
+                      <Badge variant="secondary" className="text-muted-foreground">
                         当前
-                        </Badge>
+                      </Badge>
                     ) : null}
                     {model.keyConfigured ? (
-                        <Badge variant="secondary" className="text-muted-foreground">
+                      <Badge variant="secondary" className="text-muted-foreground">
                         已存密钥
-                        </Badge>
+                      </Badge>
                     ) : null}
                   </div>
                   <p className="truncate text-xs text-muted-foreground" title={model.apiBase}>
@@ -1658,7 +1755,7 @@ function ModelsSettingsPanel({
                   variant="destructive"
                   size="sm"
                   className="shrink-0 self-start sm:self-center"
-                  disabled={modelsBusy || isActive}
+                  disabled={modelsBusy || modelsPreviewBusy || isActive}
                   title={isActive ? "不能删除当前模型" : undefined}
                   onClick={() => setDeleteTarget(model.name)}
                 >
@@ -1723,85 +1820,233 @@ function ModelsSettingsPanel({
       </Dialog>
 
       <Dialog
-        open={addDialogOpen}
+        open={providerDialogOpen}
         onOpenChange={(open) => {
-          setAddDialogOpen(open);
+          setProviderDialogOpen(open);
           if (!open) {
-            resetForm();
+            setProviderQuery("");
           }
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        {/* Radix Dialog 会在打开时聚焦第一个可聚焦子节点；抑制以避免无交互下的焦点环。 */}
+        <DialogContent
+          className="sm:max-w-md"
+          showCloseButton
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader>
-            <DialogTitle>添加模型</DialogTitle>
-            <DialogDescription>保存名称、接口地址与密钥；添加后会设为当前模型。</DialogDescription>
+            <DialogTitle>选择提供商</DialogTitle>
+            <DialogDescription>选择后填写连接信息。</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
+            <Input
+              value={providerQuery}
+              onChange={(e) => setProviderQuery(e.target.value)}
+              placeholder="搜索"
+              autoComplete="off"
+            />
+            <ScrollArea className="h-56 rounded-md border border-border/40">
+              <div className="p-1">
+                {filteredProviders.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-sm text-muted-foreground">无匹配项</p>
+                ) : (
+                  filteredProviders.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      className="flex w-full rounded-md px-3 py-2.5 text-left text-sm hover:bg-muted/60"
+                      onClick={() => startConnect(row.id)}
+                    >
+                      {row.label}
+                    </button>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={connectDialogOpen}
+        onOpenChange={(open) => {
+          setConnectDialogOpen(open);
+          if (!open) {
+            resetConnectWizard();
+          }
+        }}
+      >
+        {/* 同上：连接步骤内首项输入不应在打开瞬间自动获焦。 */}
+        <DialogContent
+          className="sm:max-w-lg"
+          showCloseButton
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {selectedProvider === "custom"
+                ? "自定义连接"
+                : selectedProvider === "deepseek"
+                  ? "DeepSeek"
+                  : selectedProvider === "kimi"
+                    ? "Kimi"
+                    : selectedProvider === "minimax"
+                      ? "MiniMax"
+                      : "连接提供商"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedProvider === "custom"
+                ? "填写端点与密钥。"
+                : "填写 API Key 即可连接。"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 py-1">
+            {selectedProvider === "custom" ? (
+              <div className="grid gap-2">
+                <Label>模型添加方式</Label>
+                <div
+                  role="tablist"
+                  aria-label="模型添加方式"
+                  className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+                >
+                  {(["single", "bulk"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={customConnectMode === value}
+                      className={cn(
+                        "rounded-md px-2.5 text-xs font-medium transition-colors",
+                        customConnectMode === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      disabled={modelsBusy || modelsPreviewBusy}
+                      onClick={() => setCustomConnectMode(value)}
+                    >
+                      {value === "single" ? "仅添加单个" : "添加所有"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {selectedProvider === "custom" && customConnectMode === "single" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-model-name">模型名称</Label>
+                <Input
+                  id="connect-model-name"
+                  value={connectName}
+                  onChange={(e) => setConnectName(e.target.value)}
+                  placeholder="例如 my-model"
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
+            {selectedProvider === "custom" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-api-base">端点</Label>
+                <Input
+                  id="connect-api-base"
+                  value={connectApiBase}
+                  onChange={(e) => setConnectApiBase(e.target.value)}
+                  placeholder="可选"
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
             <div className="grid gap-2">
-              <Label htmlFor="new-model-name">名称</Label>
+              <Label htmlFor="connect-api-key">API Key</Label>
               <Input
-                id="new-model-name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="例如 my-openai"
-                autoComplete="off"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-model-base">端点</Label>
-              <Input
-                id="new-model-base"
-                value={newApiBase}
-                onChange={(e) => setNewApiBase(e.target.value)}
-                placeholder="留空则使用默认根地址"
-                autoComplete="off"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-model-key">API Key</Label>
-              <Input
-                id="new-model-key"
+                id="connect-api-key"
                 type="password"
-                value={newApiKey}
-                onChange={(e) => setNewApiKey(e.target.value)}
+                value={connectApiKey}
+                onChange={(e) => setConnectApiKey(e.target.value)}
                 placeholder="输入密钥"
                 autoComplete="off"
               />
             </div>
-          </div>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setAddDialogOpen(false)}
-              disabled={modelsBusy}
-            >
-              取消
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={modelsBusy}
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await onAddModel({
-                      name: newName,
-                      apiBase: newApiBase,
-                      apiKey: newApiKey,
-                    });
-                    setAddDialogOpen(false);
-                    resetForm();
-                  } catch {
-                    /* runtimeError */
-                  }
-                })();
-              }}
-            >
-              {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-              保存
-            </Button>
+            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setConnectDialogOpen(false)}
+                disabled={modelsBusy || modelsPreviewBusy}
+              >
+                取消
+              </Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                {selectedProvider === "custom" && customConnectMode === "single" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      modelsBusy ||
+                      modelsPreviewBusy ||
+                      !connectName.trim() ||
+                      !connectApiKey.trim()
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await saveCustomSingle();
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                    添加此模型
+                  </Button>
+                ) : null}
+                {selectedProvider === "custom" && customConnectMode === "bulk" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await syncCatalogFromUpstream(true);
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy || modelsPreviewBusy ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="size-4" />
+                    )}
+                    添加提供商
+                  </Button>
+                ) : null}
+                {selectedProvider !== null && selectedProvider !== "custom" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await syncCatalogFromUpstream(false);
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy || modelsPreviewBusy ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : null}
+                    添加提供商
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1872,6 +2117,7 @@ export function SettingsView({
   apiReady,
   busyAction,
   modelsBusy,
+  modelsPreviewBusy,
   mcpsBusy,
   skillsBusy,
   extensionsBusy,
@@ -1881,6 +2127,8 @@ export function SettingsView({
   onBootstrap,
   onResetSession,
   onAddModel,
+  onAddProviderModels,
+  onPreviewModels,
   onRemoveModel,
   onAddMcpServer,
   onImportExtension,
@@ -1922,7 +2170,10 @@ export function SettingsView({
               <ModelsSettingsPanel
                 snapshot={snapshot}
                 modelsBusy={modelsBusy}
+                modelsPreviewBusy={modelsPreviewBusy}
                 onAddModel={onAddModel}
+                onAddProviderModels={onAddProviderModels}
+                onPreviewModels={onPreviewModels}
                 onRemoveModel={onRemoveModel}
               />
             ) : tab === "skills" ? (

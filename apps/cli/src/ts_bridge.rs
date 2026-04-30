@@ -28,7 +28,7 @@ use crate::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
     },
-    model_registry::AppConfig,
+    model_registry::{AppConfig, ModelProvider},
     plan::PlanMetadata,
     ports::{
         ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
@@ -1461,12 +1461,24 @@ impl TsBridgeRuntime {
 
         let api_base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
 
-        Ok(json!({
+        let mut transport = serde_json::json!({
             "apiKey": api_key,
             "model": active.name,
             "baseUrl": api_base,
             "workspaceRoot": self.workspace_root,
-        }))
+        });
+        if let Some(provider) = active.provider {
+            let vendor = match provider {
+                ModelProvider::Deepseek => "deepseek",
+                ModelProvider::Kimi => "kimi",
+                ModelProvider::Minimax => "minimax",
+                ModelProvider::Custom => "custom",
+            };
+            if let Some(obj) = transport.as_object_mut() {
+                obj.insert("llmVendor".to_string(), json!(vendor));
+            }
+        }
+        Ok(transport)
     }
 
     fn transport_config_will_change(&self, config: &AppConfig) -> bool {
@@ -1474,12 +1486,16 @@ impl TsBridgeRuntime {
             return true;
         }
 
-        self.config
-            .active_model_profile()
-            .map(|profile| profile.api_base.as_str())
+        if self.config.active_model_profile().map(|profile| profile.api_base.as_str())
             != config
                 .active_model_profile()
                 .map(|profile| profile.api_base.as_str())
+        {
+            return true;
+        }
+
+        self.config.active_model_profile().map(|profile| profile.provider)
+            != config.active_model_profile().map(|profile| profile.provider)
     }
 
     fn resolve_key_from_store(&self, model_name: &str) -> Result<String> {
@@ -2379,10 +2395,12 @@ mod tests {
                 ModelProfile {
                     name: "gpt-4o-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
+                    provider: None,
                 },
                 ModelProfile {
                     name: "gpt-4.1-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
+                    provider: None,
                 },
             ],
             active_model: "gpt-4o-mini".to_string(),
@@ -2488,6 +2506,7 @@ mod tests {
         next.models.push(ModelProfile {
             name: "gpt-4.1".to_string(),
             api_base: DEFAULT_API_BASE.to_string(),
+            provider: None,
         });
 
         assert!(runtime.validate_config_change(&next).is_ok());

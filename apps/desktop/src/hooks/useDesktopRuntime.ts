@@ -6,6 +6,7 @@ import { isCreateSkillSlashInput, matchSkillSlashInput } from "@/lib/skill-slash
 import type {
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
   AskQuestionsAnswer,
   AskQuestionsQuestionSpec,
   AskQuestionsRequest,
@@ -25,6 +26,8 @@ import type {
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
+  PreviewModelsRequest,
+  PreviewModelsResponse,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
@@ -43,6 +46,7 @@ type BusyAction =
   | "reset"
   | "session"
   | "models"
+  | "modelsPreview"
   | "mcps"
   | "skills"
   | "extensions"
@@ -402,6 +406,48 @@ export function useDesktopRuntime() {
       }
     },
     [api, applySnapshot],
+  );
+
+  const addProviderModels = useCallback(
+    async (request: AddProviderModelsRequest) => {
+      if (!api) {
+        return;
+      }
+      setBusyAction("models");
+      try {
+        const next = await api.addProviderModels(request);
+        applySnapshot(next);
+        setRuntimeError("");
+        setSettings((current) => ({ ...current, apiKey: "" }));
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const previewModels = useCallback(
+    async (request: PreviewModelsRequest): Promise<PreviewModelsResponse> => {
+      if (!api) {
+        throw new Error("宿主未就绪。");
+      }
+      setBusyAction("modelsPreview");
+      try {
+        setRuntimeError("");
+        return await api.previewModels(request);
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api],
   );
 
   const removeModel = useCallback(
@@ -1045,6 +1091,8 @@ export function useDesktopRuntime() {
     updateQuestionDraft,
     bootstrap,
     addModel,
+    addProviderModels,
+    previewModels,
     removeModel,
     addMcpServer,
     importExtension,

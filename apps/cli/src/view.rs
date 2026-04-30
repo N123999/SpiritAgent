@@ -150,6 +150,8 @@ pub enum BottomFormFieldEditorView {
         cursor: usize,
         /// When true, the TUI renders the value masked (e.g. API keys).
         mask: bool,
+        /// When true, field is shown read-only and skipped in field navigation.
+        disabled: bool,
     },
     Choice {
         options: Vec<String>,
@@ -327,11 +329,6 @@ pub struct TuiViewModel {
     pub selected_suggestion: usize,
     pub model_picker_active: bool,
     pub model_picker_index: usize,
-    /// Mock “list models” step after `/model add` (UI test; not real HTTP).
-    pub model_add_pick_active: bool,
-    pub model_add_pick_index: usize,
-    pub model_add_pick_models: Vec<String>,
-    pub model_add_pick_api_base: String,
     pub language_picker_active: bool,
     pub language_picker_index: usize,
     pub chat_picker_active: bool,

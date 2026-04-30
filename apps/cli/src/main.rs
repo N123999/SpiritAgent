@@ -592,20 +592,6 @@ fn process_key_event(
     paste_tracker: &mut PasteReplayTracker,
     now: Instant,
 ) {
-    if shell.is_model_add_pick_active() {
-        match key.code {
-            KeyCode::Esc => shell.cancel_model_add_pick(),
-            KeyCode::Up => shell.select_prev_model(),
-            KeyCode::Down => shell.select_next_model(),
-            KeyCode::Enter => shell.confirm_model_add_pick(),
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                shell.request_quit();
-            }
-            _ => {}
-        }
-        return;
-    }
-
     if shell.is_model_picker_active() {
         match key.code {
             KeyCode::Esc => shell.cancel_model_picker(),

@@ -23,6 +23,7 @@ import {
 
 import type {
   ConversationMessageSnapshot,
+  DesktopModelProvider,
   ModelProfileSnapshot,
   SessionListItem,
 } from '../types.js';
@@ -352,6 +353,13 @@ export function defaultWebHostConfig(): DesktopWebHostConfigFile {
   };
 }
 
+function parsePersistedModelProvider(value: unknown): DesktopModelProvider | undefined {
+  if (value === 'deepseek' || value === 'kimi' || value === 'minimax' || value === 'custom') {
+    return value;
+  }
+  return undefined;
+}
+
 function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
   const models = Array.isArray(raw.models)
     ? raw.models
@@ -359,10 +367,14 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
           (model): model is ModelProfileSnapshot =>
             typeof model?.name === 'string' && model.name.trim().length > 0,
         )
-        .map((model) => ({
-          name: model.name.trim(),
-          apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
-        }))
+        .map((model) => {
+          const provider = parsePersistedModelProvider(model.provider);
+          return {
+            name: model.name.trim(),
+            apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
+            ...(provider ? { provider } : {}),
+          };
+        })
     : [];
 
   const normalizedModels = models.length > 0 ? models : defaultConfig().models;

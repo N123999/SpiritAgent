@@ -313,6 +313,50 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/models/preview') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('previewModels', {
+        request: {
+          apiBase: typeof jsonBody?.apiBase === 'string' ? jsonBody.apiBase : '',
+          apiKey: typeof jsonBody?.apiKey === 'string' ? jsonBody.apiKey : '',
+          forceRefresh: jsonBody?.forceRefresh === true,
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/models/add-provider') {
+    const modelIds = Array.isArray(jsonBody?.modelIds)
+      ? jsonBody.modelIds.filter((id: unknown): id is string => typeof id === 'string')
+      : [];
+    const providerRaw = jsonBody?.provider;
+    const provider =
+      providerRaw === 'deepseek' ||
+      providerRaw === 'kimi' ||
+      providerRaw === 'minimax' ||
+      providerRaw === 'custom'
+        ? providerRaw
+        : undefined;
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('addProviderModels', {
+        request: {
+          apiBase: typeof jsonBody?.apiBase === 'string' ? jsonBody.apiBase : '',
+          apiKey: typeof jsonBody?.apiKey === 'string' ? jsonBody.apiKey : '',
+          modelIds,
+          ...(provider ? { provider } : {}),
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/models') {
     writeJson(request, response, 200, await runHostCommand('addModel', { request: jsonBody }));
     return;

@@ -60,6 +60,9 @@ const PLAN_SECTION_PREFIX = '[SPIRIT_PLAN]';
 const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
 const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
 
+/** 与宿主 `ModelProfile.provider` 对齐；用于在 OpenAI 形态 API 上附加厂商扩展字段。 */
+export type OpenAiLlmVendor = 'deepseek' | 'kimi' | 'minimax' | 'custom';
+
 export interface OpenAiTransportConfig {
   apiKey: string;
   model: string;
@@ -68,6 +71,31 @@ export interface OpenAiTransportConfig {
   project?: string;
   compactModel?: string;
   workspaceRoot?: string;
+  /**
+   * 当前模型在配置中的提供方（小写）。缺省时不附加任何厂商专有请求体字段。
+   */
+  llmVendor?: OpenAiLlmVendor;
+  /**
+   * 仅对 `deepseek` / `kimi`：是否在所有经本 transport 的 chat.completions 请求体中加入
+   * `thinking: { type: 'enabled' | 'disabled' }`（含主对话、工具轮与历史压缩）。
+   * 缺省为 `true`（enabled）；设为 `false` 时发送 `disabled`。
+   */
+  vendorExtendedThinking?: boolean;
+}
+
+/**
+ * DeepSeek / Kimi 等网关常在 OpenAI 兼容路径上接受顶层 `thinking` 字段以开关思考链输出。
+ * 凡走 `OpenAiTransport` 的 chat.completions（含压缩）均合并，避免同一连接上部分请求缺字段导致网关行为不一致。
+ */
+function openAiVendorChatCompletionBodyExtras(
+  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'vendorExtendedThinking'>,
+): Record<string, unknown> {
+  const vendor = config.llmVendor;
+  if (vendor !== 'deepseek' && vendor !== 'kimi') {
+    return {};
+  }
+  const enabled = config.vendorExtendedThinking !== false;
+  return { thinking: { type: enabled ? 'enabled' : 'disabled' } };
 }
 
 export interface OpenAiEnabledRule {
@@ -136,6 +164,8 @@ export interface OpenAiRequestTrace extends JsonObject {
   toolChoice?: 'auto';
   messages: JsonValue[];
   tools?: JsonValue[];
+  /** 与 SDK 请求体一并发送的厂商扩展（若有）。 */
+  vendorExtras?: JsonValue;
 }
 
 interface AggregatedStreamingToolCall {
@@ -411,7 +441,8 @@ export class OpenAiTransport
       normalizedTools,
     );
 
-    const payload: ChatCompletionCreateParamsNonStreaming = {
+    const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
+    const payload = {
       model: config.model,
       messages: requestMessages as unknown as ChatCompletionMessageParam[],
       ...(normalizedTools.length > 0
@@ -420,7 +451,8 @@ export class OpenAiTransport
             tool_choice: 'auto' as const,
           }
         : {}),
-    };
+      ...vendorExtras,
+    } as ChatCompletionCreateParamsNonStreaming;
 
     try {
       const response = await client.chat.completions.create(payload);
@@ -494,7 +526,8 @@ export class OpenAiTransport
       normalizedTools,
       true,
     );
-    const payload: ChatCompletionCreateParamsStreaming = {
+    const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
+    const payload = {
       model: config.model,
       messages: requestMessages as unknown as ChatCompletionMessageParam[],
       stream: true,
@@ -504,7 +537,8 @@ export class OpenAiTransport
             tool_choice: 'auto' as const,
           }
         : {}),
-    };
+      ...vendorExtras,
+    } as ChatCompletionCreateParamsStreaming;
 
     const abortController = new AbortController();
     try {
@@ -574,6 +608,7 @@ export class OpenAiTransport
       },
     ];
 
+    const compactionVendorExtras = openAiVendorChatCompletionBodyExtras(config);
     let summary = '';
     if (onProgress) {
       let emittedProgress = false;
@@ -582,7 +617,8 @@ export class OpenAiTransport
           model: config.compactModel ?? config.model,
           stream: true,
           messages: compactionMessages,
-        });
+          ...compactionVendorExtras,
+        } as ChatCompletionCreateParamsStreaming);
 
         for await (const chunk of stream) {
           for (const choice of chunk.choices) {
@@ -613,7 +649,8 @@ export class OpenAiTransport
       const response = await client.chat.completions.create({
         model: config.compactModel ?? config.model,
         messages: compactionMessages,
-      });
+        ...compactionVendorExtras,
+      } as ChatCompletionCreateParamsNonStreaming);
       summary = response.choices.at(0)?.message?.content ?? '';
     }
 
@@ -866,6 +903,7 @@ function buildRequestTrace(
   tools: ChatCompletionTool[],
   stream = false,
 ): JsonValue[] {
+  const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
   const trace: OpenAiRequestTrace = {
     kind: 'openai_sdk_chat_completions',
     stepIndex,
@@ -877,6 +915,9 @@ function buildRequestTrace(
           toolChoice: 'auto',
           tools: tools.map((tool) => cloneJsonValue(tool as unknown as JsonValue)),
         }
+      : {}),
+    ...(Object.keys(vendorExtras).length > 0
+      ? { vendorExtras: vendorExtras as unknown as JsonValue }
       : {}),
   };
 

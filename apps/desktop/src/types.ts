@@ -1,3 +1,5 @@
+import type { ModelProviderId } from '@spirit-agent/host-internal';
+
 export interface BootstrapRequest {
   workspaceRoot?: string;
 }
@@ -22,11 +24,44 @@ export interface DesktopWebHostConfigUpdate {
   resetPairing?: boolean;
 }
 
+/** 模型提供方（与 `packages/host-internal` 中 `ModelProviderId` 同源）。 */
+export type DesktopModelProvider = ModelProviderId;
+
+/** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
+export interface PreviewModelsRequest {
+  apiBase: string;
+  apiKey: string;
+  /** 为 true 时忽略 TTL，强制请求上游。 */
+  forceRefresh?: boolean;
+}
+
+export interface PreviewModelsResponse {
+  modelIds: string[];
+  fromCache: boolean;
+}
+
+/** 批量写入同一端点下的多个模型 id（共享 API Key），用于提供商连接批量导入。 */
+export interface AddProviderModelsRequest {
+  apiBase: string;
+  apiKey: string;
+  modelIds: string[];
+  provider?: DesktopModelProvider;
+}
+
+/** 快照附带：某 apiBase 在本地 `model-catalog-cache` 中的最近一次列模型结果（供主界面分组与排序）。 */
+export interface DesktopModelCatalogHint {
+  apiBase: string;
+  modelIds: string[];
+  fetchedAtUnixMs: number;
+}
+
 /** 与 CLI `model add` 一致：新增模型、写入密钥，并将当前模型切到新模型。 */
 export interface AddModelRequest {
   name: string;
   apiBase: string;
   apiKey: string;
+  /** 缺省时不写入配置（与旧版三字段一致）。 */
+  provider?: DesktopModelProvider;
 }
 
 export interface RemoveModelRequest {
@@ -408,11 +443,15 @@ export interface DesktopConfigSnapshot {
   windowsMica?: boolean;
   /** 与 CLI Plan 模式一致：影响宿主指令元数据与运行时 plan 元数据。 */
   planMode: boolean;
+  /** 与 `spiritAgentDataDir()/model-catalog-cache` 对齐；无缓存时为空数组。 */
+  modelCatalogHints?: DesktopModelCatalogHint[];
 }
 
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;
+  /** 持久化来源；缺省表示历史自定义配置。 */
+  provider?: DesktopModelProvider;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
   keyConfigured?: boolean;
 }

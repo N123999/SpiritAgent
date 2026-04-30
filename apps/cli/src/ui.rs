@@ -2211,7 +2211,8 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /model list".to_string(),
             "    /model use <name>".to_string(),
-            "    /model add <name> <api_base> <api_key>".to_string(),
+            t!("ui.suggestion.usage.model.add_form").into_owned(),
+            t!("ui.suggestion.usage.model.add_cli").into_owned(),
             "    /model remove <name>".to_string(),
         ],
         "/sessions" => vec![
@@ -3846,6 +3847,7 @@ fn draw_ask_questions_form(
                         &input.placeholder,
                         input.cursor,
                         row_selected,
+                        false,
                     )
                 })
             } else {
@@ -3859,6 +3861,7 @@ fn draw_ask_questions_form(
                         &input.placeholder,
                         input.cursor,
                         row_selected,
+                        false,
                     )
                 })
             };
@@ -4184,6 +4187,7 @@ fn draw_bottom_form(
                 value,
                 placeholder,
                 cursor,
+                disabled,
                 ..
             } => draw_bottom_form_text_field(
                 frame,
@@ -4194,6 +4198,7 @@ fn draw_bottom_form(
                 placeholder,
                 *cursor,
                 index == form.selected_field,
+                *disabled,
             ),
             BottomFormFieldEditorView::Choice { options, selected } => {
                 draw_bottom_form_choice_field(
@@ -4533,6 +4538,7 @@ fn draw_bottom_form_text_field(
     placeholder: &str,
     cursor_chars: usize,
     is_selected: bool,
+    disabled: bool,
 ) -> Option<(u16, u16)> {
     // 自 `next_y` 到 `area` 下边的剩余行，须与底部 footer（快捷键提示）错开，不可画出区域外。
     let bottom_exclusive = area.y.saturating_add(area.height);
@@ -4586,9 +4592,12 @@ fn draw_bottom_form_text_field(
             width: area.width,
             height: body_height,
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(bottom_form_field_style(is_selected));
+        let border_style = if disabled {
+            Style::default().fg(Color::DarkGray)
+        } else {
+            bottom_form_field_style(is_selected)
+        };
+        let block = Block::default().borders(Borders::ALL).border_style(border_style);
         let inner = block.inner(body_area);
         frame.render_widget(block, body_area);
 
@@ -4625,7 +4634,7 @@ fn draw_bottom_form_text_field(
         }
     }
 
-    if !is_selected {
+    if !is_selected || disabled {
         return None;
     }
 
@@ -4805,10 +4814,6 @@ mod tests {
             selected_suggestion: 0,
             model_picker_active: false,
             model_picker_index: 0,
-            model_add_pick_active: false,
-            model_add_pick_index: 0,
-            model_add_pick_models: vec![],
-            model_add_pick_api_base: String::new(),
             language_picker_active: false,
             language_picker_index: 0,
             chat_picker_active: false,
@@ -4851,6 +4856,7 @@ mod tests {
                         placeholder: "名称，例如 github".to_string(),
                         cursor: 0,
                         mask: false,
+                        disabled: false,
                     },
                 },
                 BottomFormFieldView {
@@ -4870,6 +4876,7 @@ mod tests {
                             .to_string(),
                         cursor: 0,
                         mask: false,
+                        disabled: false,
                     },
                 },
                 BottomFormFieldView {
@@ -4880,6 +4887,7 @@ mod tests {
                         placeholder: "环境变量，可选，例如 GITHUB_TOKEN=demo".to_string(),
                         cursor: 0,
                         mask: false,
+                        disabled: false,
                     },
                 },
             ],

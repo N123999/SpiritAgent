@@ -44,6 +44,7 @@ import {
   collectHostExtensionContributedTools,
   createHostExtensionMarketplace,
   createHostExtensionManager,
+  listOpenAiCompatibleModelIds,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
@@ -58,6 +59,9 @@ import type {
   ActiveSessionSnapshot,
   AddModelRequest,
   AddMcpServerRequest,
+  AddProviderModelsRequest,
+  PreviewModelsRequest,
+  PreviewModelsResponse,
   AskQuestionsResult,
   BootstrapRequest,
   ConversationMessageSnapshot,
@@ -70,9 +74,11 @@ import type {
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
+  DesktopModelProvider,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
   DesktopSkillRootKind,
+  DesktopModelCatalogHint,
   DesktopSnapshot,
   DesktopWebHostSnapshot,
   FileRewindWarning,
@@ -98,6 +104,12 @@ import type {
   WriteWorkspaceTextFileRequest,
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
+import {
+  isModelCatalogCacheFresh,
+  readModelCatalogCache,
+  readModelCatalogCacheSync,
+  writeModelCatalogCache,
+} from './model-catalog-cache.js';
 import {
   DEFAULT_API_BASE,
   defaultNewSessionPath,
@@ -173,6 +185,8 @@ type CommandPayloads = {
   updateConfig: { request: UpdateConfigRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
+  addProviderModels: { request: AddProviderModelsRequest };
+  previewModels: { request: PreviewModelsRequest };
   removeModel: { request: RemoveModelRequest };
   addMcpServer: { request: AddMcpServerRequest };
   deleteMcpServer: { request: DeleteMcpServerRequest };
@@ -349,6 +363,91 @@ class DesktopHostService {
     });
   }
 
+  async previewModels(request: PreviewModelsRequest): Promise<PreviewModelsResponse> {
+    const apiBaseRaw = request.apiBase.trim();
+    const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+    const apiKey = request.apiKey.trim();
+    if (!apiKey) {
+      throw new Error('API Key 不能为空。');
+    }
+    const forceRefresh = request.forceRefresh === true;
+    const cached = await readModelCatalogCache(apiBase, apiKey);
+    const now = Date.now();
+    if (cached && isModelCatalogCacheFresh(cached, now, forceRefresh)) {
+      return { modelIds: cached.modelIds, fromCache: true };
+    }
+    const modelIds = await listOpenAiCompatibleModelIds({ baseUrl: apiBase, apiKey });
+    await writeModelCatalogCache(apiBase, modelIds, apiKey);
+    return { modelIds, fromCache: false };
+  }
+
+  async addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+
+      if (this.runtime?.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const apiBaseRaw = request.apiBase.trim();
+      const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+      const apiKey = request.apiKey.trim();
+      if (!apiKey) {
+        throw new Error('API Key 不能为空。');
+      }
+
+      const provider = parseAddModelProvider(request.provider);
+      const rawIds = request.modelIds.map((id) => id.trim()).filter((id) => id.length > 0);
+      const uniqueIds = [...new Set(rawIds)];
+      if (uniqueIds.length === 0) {
+        throw new Error('模型列表为空。');
+      }
+
+      type NewProfile = { name: string; apiBase: string; provider?: DesktopModelProvider };
+      const toAdd: NewProfile[] = [];
+      for (const name of uniqueIds) {
+        if (state.config.models.some((model) => model.name === name)) {
+          continue;
+        }
+        const profile: NewProfile = { name, apiBase };
+        if (provider !== undefined) {
+          profile.provider = provider;
+        }
+        toAdd.push(profile);
+      }
+
+      if (toAdd.length === 0) {
+        throw new Error('所选模型均已存在于配置中。');
+      }
+
+      const keySaveOrder: string[] = [];
+      try {
+        for (const { name } of toAdd) {
+          await saveApiKeyForModel(name, apiKey);
+          keySaveOrder.push(name);
+        }
+      } catch (err) {
+        for (const name of keySaveOrder) {
+          await removeModelApiKey(name);
+        }
+        throw err;
+      }
+
+      const firstNew = toAdd[0]?.name;
+      for (const profile of toAdd) {
+        state.config.models.push(profile);
+      }
+
+      state.config.activeModel = firstNew ?? state.config.activeModel;
+      await saveConfig(state.config);
+      await this.refreshRuntime();
+      this.lastRuntimeError = '';
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
   async addModel(request: AddModelRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -373,7 +472,15 @@ class DesktopHostService {
         throw new Error(`模型已存在: ${name}`);
       }
 
-      state.config.models.push({ name, apiBase });
+      const provider = parseAddModelProvider(request.provider);
+      const profile: { name: string; apiBase: string; provider?: DesktopModelProvider } = {
+        name,
+        apiBase,
+      };
+      if (provider !== undefined) {
+        profile.provider = provider;
+      }
+      state.config.models.push(profile);
       state.config.activeModel = name;
       await saveConfig(state.config);
       await saveApiKeyForModel(name, apiKey);
@@ -1223,6 +1330,14 @@ description: ${frontmatterDescription}
         const typedPayload = payload as CommandPayloads['addModel'];
         return this.addModel(typedPayload.request);
       }
+      case 'addProviderModels': {
+        const typedPayload = payload as CommandPayloads['addProviderModels'];
+        return this.addProviderModels(typedPayload.request);
+      }
+      case 'previewModels': {
+        const typedPayload = payload as CommandPayloads['previewModels'];
+        return this.previewModels(typedPayload.request);
+      }
       case 'removeModel': {
         const typedPayload = payload as CommandPayloads['removeModel'];
         return this.removeModel(typedPayload.request);
@@ -1421,12 +1536,16 @@ description: ${frontmatterDescription}
       return;
     }
 
+    const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
+    const llmVendor = activeProfile?.provider;
+
     const runtime = this.createRuntime(
       {
         apiKey,
         model: state.config.activeModel,
         baseUrl: currentApiBase(state.config),
         workspaceRoot: state.workspaceRoot,
+        ...(llmVendor ? { llmVendor } : {}),
       },
       state.archiveHistory,
       state.metadata.rules.enabledRules,
@@ -1522,6 +1641,27 @@ description: ${frontmatterDescription}
     })));
   }
 
+  private buildModelCatalogHints(state: HostState): DesktopModelCatalogHint[] {
+    const seen = new Set<string>();
+    const hints: DesktopModelCatalogHint[] = [];
+    for (const model of state.config.models) {
+      const base = model.apiBase.trim() || DEFAULT_API_BASE;
+      if (seen.has(base)) {
+        continue;
+      }
+      seen.add(base);
+      const hit = readModelCatalogCacheSync(base);
+      if (hit && hit.modelIds.length > 0) {
+        hints.push({
+          apiBase: hit.apiBase,
+          modelIds: hit.modelIds,
+          fetchedAtUnixMs: hit.fetchedAtUnixMs,
+        });
+      }
+    }
+    return hints;
+  }
+
   private buildSnapshot(): DesktopSnapshot {
     const state = this.requireState();
     const pendingApproval = this.runtime?.currentPendingApproval();
@@ -1544,6 +1684,7 @@ description: ${frontmatterDescription}
         models: state.config.models.map((model) => ({
           name: model.name,
           apiBase: model.apiBase,
+          ...(model.provider ? { provider: model.provider } : {}),
           keyConfigured: this.modelKeyPresence[model.name] ?? false,
         })),
         activeModel: state.config.activeModel,
@@ -1551,6 +1692,7 @@ description: ${frontmatterDescription}
         activeApiKeyConfigured: this.activeApiKeyConfigured,
         windowsMica: state.config.windowsMica !== false,
         planMode: state.config.planMode === true,
+        modelCatalogHints: this.buildModelCatalogHints(state),
       },
       webHost: buildWebHostSnapshot(state.config.webHost),
       rules: {
@@ -4108,6 +4250,13 @@ function assistantPlainTextsInCurrentTurnMessages(
 function formatYamlScalarForSkillFrontmatter(value: string): string {
   const flat = value.replace(/\r?\n/g, ' ').trim() || '说明';
   return `"${flat.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
+}
+
+function parseAddModelProvider(value: unknown): DesktopModelProvider | undefined {
+  if (value === 'deepseek' || value === 'kimi' || value === 'minimax' || value === 'custom') {
+    return value;
+  }
+  return undefined;
 }
 
 const desktopHostService = new DesktopHostService();

@@ -147,6 +147,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 cfg.add_model(ModelProfile {
                     name: name.clone(),
                     api_base: api_base.clone(),
+                    provider: None,
                 });
                 cfg.active_model = name.clone();
                 secret_store.save_model_api_key(&name, &key_value)?;
