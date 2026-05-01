@@ -33,7 +33,6 @@ import {
   type OpenAiPlanMetadata,
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
-  type RuntimeApprovalDecision,
   type RuntimePendingApproval,
   type RuntimePendingQuestions,
   type RuntimeEvent,
@@ -94,14 +93,12 @@ import type {
   DesktopSkillRootKind,
   DesktopModelCatalogHint,
   DesktopSnapshot,
-  DesktopWebHostSnapshot,
   FileRewindWarning,
   RunExtensionRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
   MessageAuxSnapshot,
   PendingAssistantAux,
-  PendingQuestionsSnapshot,
   RewindAndSubmitMessageRequest,
   RememberWorkspaceRequest,
   RemoveModelRequest,
@@ -151,14 +148,54 @@ import {
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
 import {
+  archiveBeforeLastUser,
+  buildAvailableWorkspaces,
+  buildWebHostSnapshot,
+  cloneChatArchive,
+  cloneDesktopConfig,
+  currentApiBase,
+  formatYamlScalarForSkillFrontmatter,
+  mapPendingQuestions,
+  normalizeGeneratedCommitMessage,
+  parseAddModelProvider,
+  parseApprovalDecision,
+  sameDreamCollectorSnapshot,
+  sameWorkspaceRoot,
+  toRuntimeAskQuestionsResult,
+} from './service-utils.js';
+import {
+  assistantPrefixBeforeFirstToolInCurrentTurn,
+  describeAuxForDebug,
+  describeOptionalAuxForDebug,
+  headlineForStreamingToolPreview,
+  hasStandaloneThinkingMessageInCurrentTurn,
+  indexForThinkingInsertAfterLastUser,
+  indexForThinkingInsertBeforeFirstToolAfterLastUser,
+  isStandaloneSubagentStatusAux,
+  lastAssistantPlainTextInHistory,
+  latestUnsyncedAssistantTextInCurrentTurn,
+  messageIndexIsInCurrentTurn,
+  messageOrderDebugLevel,
+  normalizeMessageAuxSnapshot,
+  normalizeToolBlockSnapshot,
+  parsePendingSubagentStatusText,
+  restoreMessagesFromArchive,
+  rewindStandalonePendingAuxInsertIndexForThinking,
+  shouldDropEmptyAssistantMessage,
+  shouldHideEmptyPendingAssistantSnapshot,
+  shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus,
+  shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse,
+  stripPendingThinkingMatchingFinalized,
+  stripThinkingFromAux,
+  summarizeMessagesTailForOrderDebug,
+  truncateOneLineForDebug,
+  toolMessageKey,
+} from './message-ordering.js';
+import {
   buildWorkspaceGitCommitMessageContext,
   commitWorkspaceChanges,
   readWorkspaceGitSnapshot,
 } from './git.js';
-import {
-  DESKTOP_WEB_HOST_POLICY,
-  getDesktopWebHostRuntimeStatus,
-} from './web-host-state.js';
 import {
   createDesktopRewindMetadata,
   createRewindCheckpointMetadata,
@@ -201,27 +238,6 @@ export function setDesktopExtensionHostAdapter(
   adapter: DesktopExtensionHostAdapter | undefined,
 ): void {
   desktopExtensionHostAdapter = adapter;
-}
-
-function normalizeWorkspaceRootKey(workspaceRoot: string): string {
-  return workspaceRoot.replace(/\\/g, '/').replace(/\/+$/g, '').toLowerCase();
-}
-
-function sameWorkspaceRoot(left: string, right: string): boolean {
-  return normalizeWorkspaceRootKey(left) === normalizeWorkspaceRootKey(right);
-}
-
-function deriveWorkspaceLabel(workspaceRoot: string): string {
-  const normalized = workspaceRoot.replace(/\\/g, '/').replace(/\/+$/g, '');
-  const lastSlash = normalized.lastIndexOf('/');
-  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
-}
-
-function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces?: string[]) {
-  return mergeRecentWorkspaceRoots(recentWorkspaces, currentWorkspaceRoot).map((workspaceRoot) => ({
-    path: workspaceRoot,
-    label: deriveWorkspaceLabel(workspaceRoot),
-  }));
 }
 
 const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
@@ -4640,29 +4656,6 @@ function clearDreamCollectorIssue(
   return clean;
 }
 
-function cloneDesktopConfig(config: DesktopConfigFile): DesktopConfigFile {
-  return JSON.parse(JSON.stringify(config)) as DesktopConfigFile;
-}
-
-function normalizeGeneratedCommitMessage(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new Error('自动生成提交信息失败：模型未返回 message 字段。');
-  }
-
-  const normalized = value
-    .replace(/\r\n/g, '\n')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join('\n');
-
-  if (!normalized) {
-    throw new Error('自动生成提交信息失败：模型返回了空 message。');
-  }
-
-  return normalized;
-}
-
 const MCP_DEFAULT_TIMEOUT_MS = 20_000;
 
 type DesktopMcpMetadataKind = 'env' | 'header';
@@ -5179,205 +5172,6 @@ function cloneActiveSkills(skills: OpenAiActiveSkill[]): OpenAiActiveSkill[] {
   }));
 }
 
-/** 环境变量 `SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG`：不设为关；`1`/compact/on 紧凑；`2`/verbose 更详并节流纯 preview；`0`/off 显式关闭。 */
-type MessageOrderDebugLevel = 'off' | 'compact' | 'verbose';
-
-function messageOrderDebugLevel(): MessageOrderDebugLevel {
-  const raw = process.env.SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG?.trim().toLowerCase() ?? '';
-  if (raw === '') {
-    return 'off';
-  }
-  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on' || raw === 'compact') {
-    return 'compact';
-  }
-  if (raw === '0' || raw === 'false' || raw === 'off' || raw === 'no') {
-    return 'off';
-  }
-  if (raw === '2' || raw === 'verbose' || raw === 'debug' || raw === 'all') {
-    return 'verbose';
-  }
-  return 'off';
-}
-
-function summarizeMessagesTailForOrderDebug(
-  messages: ConversationMessageSnapshot[],
-  max: number,
-): string {
-  if (messages.length === 0) {
-    return '∅';
-  }
-  const slice = messages.slice(Math.max(0, messages.length - max));
-  return slice.map(formatMessageOrderToken).join('«');
-}
-
-function formatMessageOrderToken(m: ConversationMessageSnapshot): string {
-  if (m.role === 'user') {
-    return 'U';
-  }
-  const toolName = m.tool?.toolName;
-  if (toolName) {
-    const phase = m.tool?.phase ?? '?';
-    const p =
-      phase === 'running' ? '~' : phase === 'succeeded' ? '=' : phase === 'failed' ? '!' : phase === 'pending-approval' ? '?' : '.';
-    return `${p}${truncateOneLineForDebug(toolName, 20)}`;
-  }
-  if (m.aux?.thinking && !m.content.trim()) {
-    return `H#${m.id}`;
-  }
-  if (m.aux?.compaction && !m.content.trim()) {
-    return `C#${m.id}`;
-  }
-  const c = m.content.trim();
-  if (!c) {
-    return 'Aε';
-  }
-  const hasThinking = Boolean(m.aux?.thinking?.trim());
-  const hasCompaction = Boolean(m.aux?.compaction?.trim());
-  const prefix = hasThinking ? (hasCompaction ? 'aTC' : 'aT') : hasCompaction ? 'aC' : 'a';
-  return `${prefix}#${m.id}:${truncateOneLineForDebug(c, 18)}`;
-}
-
-function truncateOneLineForDebug(s: string, max: number): string {
-  const t = s.replace(/\s+/g, ' ').trim();
-  if (t.length <= max) {
-    return t;
-  }
-  return `${t.slice(0, max)}…`;
-}
-
-/** 自 history 尾部向前找**最后一条**非空 `assistant` 正文（OpenAI 路径下 `historyStore` 常无 `role: tool`，需用此作待审批时的兜底）。 */
-function lastAssistantPlainTextInHistory(
-  hist: ReadonlyArray<{ role: string; content: string }>,
-): string | undefined {
-  for (let i = hist.length - 1; i >= 0; i -= 1) {
-    const m = hist[i];
-    if (m?.role === 'assistant' && m.content.trim()) {
-      return m.content.trim();
-    }
-  }
-  return undefined;
-}
-
-/**
- * 自「最后一条 user」起至首条 `tool` 前，取**第一个**非空 assistant 正文。
- * OpenAI 路径下 tool 结果通常不在 `history()` 的 LlmMessage 里，若仍用「最后一个」assistant
- * 会误取工具执行后的终稿，从而覆盖/错配流式阶段已显示的前缀（如「好的，我来查看…」）。
- */
-function assistantPrefixBeforeFirstToolInCurrentTurn(
-  hist: ReadonlyArray<{ role: string; content: string }>,
-): string | undefined {
-  let lastUserIdx = -1;
-  for (let i = hist.length - 1; i >= 0; i -= 1) {
-    if (hist[i]?.role === 'user') {
-      lastUserIdx = i;
-      break;
-    }
-  }
-
-  let firstToolIdx = -1;
-  for (let i = lastUserIdx + 1; i < hist.length; i += 1) {
-    if (hist[i]?.role === 'tool') {
-      firstToolIdx = i;
-      break;
-    }
-  }
-
-  const end = firstToolIdx >= 0 ? firstToolIdx : hist.length;
-  for (let i = lastUserIdx + 1; i < end; i += 1) {
-    const m = hist[i];
-    if (!m) {
-      continue;
-    }
-    if (m.role === 'assistant' && m.content.trim()) {
-      return m.content.trim();
-    }
-  }
-
-  return undefined;
-}
-
-function latestUnsyncedAssistantTextInCurrentTurn(
-  hist: ReadonlyArray<{ role: string; content: string }>,
-  messages: ReadonlyArray<ConversationMessageSnapshot>,
-): string | undefined {
-  const historyTexts = assistantPlainTextsInCurrentTurnHistory(hist);
-  if (historyTexts.length === 0) {
-    return undefined;
-  }
-
-  const existing = new Set(assistantPlainTextsInCurrentTurnMessages(messages));
-  for (let i = historyTexts.length - 1; i >= 0; i -= 1) {
-    const text = historyTexts[i]!;
-    if (!existing.has(text)) {
-      return text;
-    }
-  }
-
-  return undefined;
-}
-
-function assistantPlainTextsInCurrentTurnHistory(
-  hist: ReadonlyArray<{ role: string; content: string }>,
-): string[] {
-  let lastUserIdx = -1;
-  for (let i = hist.length - 1; i >= 0; i -= 1) {
-    if (hist[i]?.role === 'user') {
-      lastUserIdx = i;
-      break;
-    }
-  }
-
-  const texts: string[] = [];
-  for (let i = lastUserIdx + 1; i < hist.length; i += 1) {
-    const item = hist[i];
-    if (!item || item.role !== 'assistant') {
-      continue;
-    }
-    const text = item.content.trim();
-    if (text) {
-      texts.push(text);
-    }
-  }
-  return texts;
-}
-
-function assistantPlainTextsInCurrentTurnMessages(
-  messages: ReadonlyArray<ConversationMessageSnapshot>,
-): string[] {
-  let lastUserIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.role === 'user') {
-      lastUserIdx = i;
-      break;
-    }
-  }
-
-  const texts: string[] = [];
-  for (let i = lastUserIdx + 1; i < messages.length; i += 1) {
-    const item = messages[i];
-    if (!item || item.role !== 'assistant' || item.tool) {
-      continue;
-    }
-    const text = item.content.trim();
-    if (text) {
-      texts.push(text);
-    }
-  }
-  return texts;
-}
-
-function formatYamlScalarForSkillFrontmatter(value: string): string {
-  const flat = value.replace(/\r?\n/g, ' ').trim() || '说明';
-  return `"${flat.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
-}
-
-function parseAddModelProvider(value: unknown): DesktopModelProvider | undefined {
-  if (value === 'deepseek' || value === 'kimi' || value === 'minimax' || value === 'custom') {
-    return value;
-  }
-  return undefined;
-}
-
 const desktopHostService = new DesktopHostService();
 
 export function setDesktopMarketplaceFetchImplementation(
@@ -5397,473 +5191,6 @@ export function subscribeDesktopDreamUpdates(
   listener: (snapshot: DesktopSnapshot) => void,
 ): () => void {
   return desktopHostService.subscribeDreamUpdates(listener);
-}
-
-function sameDreamCollectorSnapshot(
-  left: DesktopDreamCollectorSnapshot,
-  right: DesktopDreamCollectorSnapshot,
-): boolean {
-  return left.state === right.state &&
-    left.lastRunAtUnixMs === right.lastRunAtUnixMs &&
-    left.lastSuccessAtUnixMs === right.lastSuccessAtUnixMs &&
-    left.lastError === right.lastError &&
-    left.pendingCount === right.pendingCount &&
-    left.processedCount === right.processedCount &&
-    left.backoffUntilUnixMs === right.backoffUntilUnixMs;
-}
-
-function buildWebHostSnapshot(config: DesktopWebHostConfigFile): DesktopWebHostSnapshot {
-  const runtimeStatus = getDesktopWebHostRuntimeStatus();
-  const status = config.enabled
-    ? {
-        ...runtimeStatus,
-        host: runtimeStatus.host || config.host,
-        port: runtimeStatus.port || config.port,
-        ...(config.authTokenHash ? { pairingCode: undefined } : {}),
-      }
-    : {
-        state: 'disabled' as const,
-        host: config.host,
-        port: config.port,
-      };
-
-  return {
-    config: {
-      enabled: config.enabled,
-      host: config.host,
-      port: config.port,
-      paired: Boolean(config.authTokenHash),
-      authMode: 'pairing',
-    },
-    status,
-    policy: DESKTOP_WEB_HOST_POLICY,
-  };
-}
-
-function currentApiBase(config: DesktopConfigFile): string {
-  return (
-    config.models.find((model) => model.name === config.activeModel)?.apiBase ||
-    config.models[0]?.apiBase ||
-    ''
-  );
-}
-
-function cloneChatArchive(archive: ChatArchive): ChatArchive {
-  return {
-    messages: archive.messages.map((message) => ({ ...message })),
-    assistantAux: archive.assistantAux.map((entry) => ({ ...entry })),
-    llmHistory: archive.llmHistory.map((message) => ({
-      role: message.role,
-      content: message.content,
-      imagePaths: [...message.imagePaths],
-    })),
-    subagentSessions: (archive.subagentSessions ?? []).map((entry) => ({
-      summary: { ...entry.summary },
-      llmHistory: entry.llmHistory.map((message) => ({
-        role: message.role,
-        content: message.content,
-        imagePaths: [...message.imagePaths],
-      })),
-    })),
-  };
-}
-
-function archiveBeforeLastUser(archive: ChatArchive): ChatArchive {
-  const cloned = cloneChatArchive(archive);
-  const messageIndex = findLastIndex(cloned.messages, (message) => message.role === 'user');
-  const historyIndex = findLastIndex(cloned.llmHistory, (message) => message.role === 'user');
-  return {
-    ...cloned,
-    messages: messageIndex >= 0 ? cloned.messages.slice(0, messageIndex) : cloned.messages,
-    assistantAux:
-      messageIndex >= 0
-        ? cloned.assistantAux.filter((entry) => entry.messageIndex < messageIndex)
-        : cloned.assistantAux,
-    llmHistory: historyIndex >= 0 ? cloned.llmHistory.slice(0, historyIndex) : cloned.llmHistory,
-  };
-}
-
-function findLastIndex<T>(items: readonly T[], predicate: (item: T) => boolean): number {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (predicate(items[index]!)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function parseApprovalDecision(message: string): RuntimeApprovalDecision {
-  const trimmed = message.trim().toLowerCase();
-  if (!trimmed || trimmed === 'y' || trimmed === 'yes' || trimmed === 'approve') {
-    return { kind: 'allow' };
-  }
-  if (trimmed === 't' || trimmed === 'trust') {
-    return { kind: 'allow', persistTrust: true };
-  }
-  if (trimmed === 'n' || trimmed === 'no' || trimmed === 'deny') {
-    return { kind: 'deny' };
-  }
-  return {
-    kind: 'guidance',
-    userMessage: message,
-  };
-}
-
-function toRuntimeAskQuestionsResult(
-  result: AskQuestionsResult,
-): RuntimeAskQuestionsResult {
-  if (result.status === 'skipped') {
-    return { status: 'skipped' };
-  }
-
-  return {
-    status: 'answered',
-    answers: result.answers ?? [],
-  };
-}
-
-function mapPendingQuestions(
-  pending: RuntimePendingQuestions<DesktopToolRequest>,
-): PendingQuestionsSnapshot {
-  return {
-    toolCallId: pending.toolCallId,
-    toolName: pending.toolName,
-    request: {
-      ...(pending.questions.title ? { title: pending.questions.title } : {}),
-      questions: pending.questions.questions.map((question) => ({
-        id: question.id,
-        title: question.title,
-        kind: question.kind,
-        required: question.required === true,
-        options: (question.options ?? []).map((option) => ({
-          label: option.label,
-          ...(option.summary ? { summary: option.summary } : {}),
-        })),
-        allowCustomInput: question.allowCustomInput === true,
-        ...(question.customInputPlaceholder
-          ? { customInputPlaceholder: question.customInputPlaceholder }
-          : {}),
-        ...(question.customInputLabel
-          ? { customInputLabel: question.customInputLabel }
-          : {}),
-      })),
-    },
-  };
-}
-
-function stripPendingThinkingMatchingFinalized(
-  aux: MessageAuxSnapshot | undefined,
-  finalizedText: string,
-): MessageAuxSnapshot | undefined {
-  if (!aux?.thinking) {
-    return aux;
-  }
-  if (aux.thinking.trim() !== finalizedText.trim()) {
-    return aux;
-  }
-  const { thinking: _t, ...rest } = aux;
-  return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
-function stripThinkingFromAux(aux: MessageAuxSnapshot | undefined): MessageAuxSnapshot | undefined {
-  if (!aux?.thinking) {
-    return normalizeMessageAuxSnapshot(aux);
-  }
-  const { thinking: _thinking, ...rest } = aux;
-  return normalizeMessageAuxSnapshot(rest);
-}
-
-function isStandaloneThinkingMessage(
-  message: ConversationMessageSnapshot | undefined,
-): boolean {
-  return Boolean(
-    message?.role === 'assistant' &&
-      !message.tool &&
-      !message.content.trim() &&
-      message.aux?.thinking?.trim(),
-  );
-}
-
-function rewindStandalonePendingAuxInsertIndexForThinking(
-  messages: ReadonlyArray<ConversationMessageSnapshot>,
-  anchorIndex: number,
-): number {
-  let index = anchorIndex;
-  while (index > 0 && isStandaloneThinkingMessage(messages[index - 1])) {
-    index -= 1;
-  }
-  return index;
-}
-
-function parsePendingSubagentStatusText(text: string | undefined): string | undefined {
-  if (!text) {
-    return undefined;
-  }
-
-  const status = text
-    .trim()
-    .replace(/^[|/\\-]\s*/, '')
-    .trim();
-
-  if (!status || status === 'Thinking...' || status === 'Compressing...') {
-    return undefined;
-  }
-
-  return status;
-}
-
-function isStandaloneSubagentStatusAux(
-  pendingAux: PendingAssistantAux | undefined,
-): boolean {
-  return Boolean(pendingAux && parsePendingSubagentStatusText(pendingAux.statusText));
-}
-
-function shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
-  message: ConversationMessageSnapshot,
-  livePendingAux: PendingAssistantAux | undefined,
-): boolean {
-  return Boolean(
-    isStandaloneSubagentStatusAux(livePendingAux) &&
-      message.role === 'assistant' &&
-      message.pending &&
-      !message.tool &&
-      !message.content.trim(),
-  );
-}
-
-function shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
-  lastMessage: ConversationMessageSnapshot | undefined,
-  persistedStandalonePendingAux: PendingAssistantAux | undefined,
-): boolean {
-  return Boolean(
-    lastMessage?.role === 'assistant' &&
-      isStandaloneSubagentStatusAux(persistedStandalonePendingAux),
-  );
-}
-
-function messageIndexIsInCurrentTurn(
-  messages: ReadonlyArray<ConversationMessageSnapshot>,
-  index: number,
-): boolean {
-  let lastUserIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.role === 'user') {
-      lastUserIdx = i;
-      break;
-    }
-  }
-  return index > lastUserIdx;
-}
-
-function hasStandaloneThinkingMessageInCurrentTurn(
-  messages: ReadonlyArray<ConversationMessageSnapshot>,
-): boolean {
-  let lastUserIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.role === 'user') {
-      lastUserIdx = i;
-      break;
-    }
-  }
-
-  for (let i = lastUserIdx + 1; i < messages.length; i += 1) {
-    const message = messages[i];
-    if (
-      message?.role === 'assistant' &&
-      !message.tool &&
-      !message.content.trim() &&
-      Boolean(message.aux?.thinking?.trim())
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function describeAuxForDebug(aux: MessageAuxSnapshot): string {
-  const parts: string[] = [];
-  if (aux.thinking?.trim()) {
-    parts.push(`T≈${truncateOneLineForDebug(aux.thinking, 28)}`);
-  }
-  if (aux.compaction?.trim()) {
-    parts.push(`C≈${truncateOneLineForDebug(aux.compaction, 28)}`);
-  }
-  return parts.join('+') || 'none';
-}
-
-function describeOptionalAuxForDebug(aux: MessageAuxSnapshot | undefined): string {
-  return aux ? describeAuxForDebug(aux) : 'none';
-}
-
-function normalizeToolBlockSnapshot(
-  tool: ToolBlockSnapshot | undefined,
-): ToolBlockSnapshot | undefined {
-  if (!tool) {
-    return undefined;
-  }
-
-  const toolName = tool.toolName.trim() || 'unknown-tool';
-  const headline = tool.headline.trim() || defaultToolHeadline(tool.phase, toolName);
-  const detailLines = tool.detailLines.filter((line) => line.trim().length > 0);
-  const argsExcerpt = tool.argsExcerpt?.trim() ? tool.argsExcerpt : undefined;
-  const outputExcerpt = tool.outputExcerpt?.trim() ? tool.outputExcerpt : undefined;
-
-  return {
-    ...tool,
-    toolName,
-    headline,
-    detailLines,
-    ...(argsExcerpt ? { argsExcerpt } : {}),
-    ...(outputExcerpt ? { outputExcerpt } : {}),
-  };
-}
-
-function normalizeMessageAuxSnapshot(
-  aux: MessageAuxSnapshot | undefined,
-): MessageAuxSnapshot | undefined {
-  if (!aux) {
-    return undefined;
-  }
-
-  const thinking = aux.thinking?.trim() ? aux.thinking : undefined;
-  const compaction = aux.compaction?.trim() ? aux.compaction : undefined;
-  if (!thinking && !compaction) {
-    return undefined;
-  }
-
-  return {
-    ...(thinking ? { thinking } : {}),
-    ...(compaction ? { compaction } : {}),
-  };
-}
-
-function shouldDropEmptyAssistantMessage(
-  message: ConversationMessageSnapshot,
-  tool: ToolBlockSnapshot | undefined,
-  aux: MessageAuxSnapshot | undefined,
-): boolean {
-  return (
-    message.role === 'assistant' &&
-    !message.pending &&
-    !message.content.trim() &&
-    !tool &&
-    !aux
-  );
-}
-
-function shouldHideEmptyPendingAssistantSnapshot(message: ConversationMessageSnapshot): boolean {
-  return (
-    message.role === 'assistant' &&
-    message.pending &&
-    !message.content.trim() &&
-    !message.tool &&
-    !normalizeMessageAuxSnapshot(message.aux)
-  );
-}
-
-function defaultToolHeadline(
-  phase: ToolBlockSnapshot['phase'],
-  toolName: string,
-): string {
-  switch (phase) {
-    case 'pending-approval':
-      return `等待确认: ${toolName}`;
-    case 'running':
-      return `调用中: ${toolName}`;
-    case 'failed':
-      return `工具执行失败: ${toolName}`;
-    case 'succeeded':
-    default:
-      return `工具执行完成: ${toolName}`;
-  }
-}
-
-/** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为插在「最后一条 user」之后）。 */
-function indexForThinkingInsertBeforeFirstToolAfterLastUser(
-  messages: ConversationMessageSnapshot[],
-): number | undefined {
-  let lastUser = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i]?.role === 'user') {
-      lastUser = i;
-    }
-  }
-  for (let i = lastUser + 1; i < messages.length; i += 1) {
-    const m = messages[i];
-    if (m?.role === 'assistant' && m.tool) {
-      return i;
-    }
-  }
-  return undefined;
-}
-
-/** 与 `historyStore` 中最后一条 user 对齐：在其后插入思考，避免审批指导后尚无新工具行时误用 `push` 落到整段末尾。 */
-function indexForThinkingInsertAfterLastUser(messages: ConversationMessageSnapshot[]): number {
-  let lastUser = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i]?.role === 'user') {
-      lastUser = i;
-    }
-  }
-  return lastUser < 0 ? 0 : lastUser + 1;
-}
-
-/** 末条 user 之后是否已有其它工具卡为「待审批」或「执行中」（不含当前 toolCallId）。 */
-function hasBlockingToolAheadOfSameTurnPreview(
-  messages: ConversationMessageSnapshot[],
-  thisToolCallId: string,
-): boolean {
-  let lastUser = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i]?.role === 'user') {
-      lastUser = i;
-    }
-  }
-  for (let i = lastUser + 1; i < messages.length; i += 1) {
-    const m = messages[i];
-    if (m?.role !== 'assistant' || !m.tool) {
-      continue;
-    }
-    if (m.tool.toolCallId === thisToolCallId) {
-      continue;
-    }
-    const p = m.tool.phase;
-    if (p === 'pending-approval' || p === 'running') {
-      return true;
-    }
-  }
-  return false;
-}
-
-function headlineForStreamingToolPreview(
-  messages: ConversationMessageSnapshot[],
-  toolCallId: string,
-  toolName: string,
-): string {
-  return hasBlockingToolAheadOfSameTurnPreview(messages, toolCallId)
-    ? `排队中: ${toolName}`
-    : `调用中: ${toolName}`;
-}
-
-function restoreMessagesFromArchive(
-  archive: StoredDesktopSession,
-): ConversationMessageSnapshot[] {
-  const auxByIndex = new Map<number, MessageAuxSnapshot>();
-  for (const entry of archive.assistantAux) {
-    auxByIndex.set(entry.messageIndex, {
-      ...(entry.thinking ? { thinking: entry.thinking } : {}),
-      ...(entry.compaction ? { compaction: entry.compaction } : {}),
-    });
-  }
-
-  return archive.messages.map((message, index) => ({
-    id: index + 1,
-    role: message.role,
-    content: message.content,
-    ...(auxByIndex.get(index) ? { aux: auxByIndex.get(index) } : {}),
-    pending: false,
-  }));
 }
 
 function truncateJson(value: unknown): string {
@@ -5891,14 +5218,4 @@ function deriveDisplayNameFromMessages(messages: ConversationMessageSnapshot[]):
     (message) => message.role === 'user' && message.content.trim().length > 0,
   );
   return deriveDisplayNameFromSeed(firstUser?.content ?? 'New conversation');
-}
-
-function toolMessageKey(
-  pending:
-    | RuntimePendingApproval<DesktopToolRequest, string>
-    | RuntimePendingQuestions<DesktopToolRequest>,
-): string {
-  return 'toolCallId' in pending && pending.toolCallId
-    ? pending.toolCallId
-    : `pending:${pending.toolName}`;
 }
