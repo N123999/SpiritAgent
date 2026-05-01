@@ -39,6 +39,83 @@ export interface SubagentSessionArchiveEntry {
   llmHistory: Array<{ role: ChatRole; content: string; imagePaths: string[] }>;
 }
 
+export interface DreamScope {
+  workspaceRoot: string;
+  gitBranch: string;
+}
+
+export type DreamRecordStatus = 'active' | 'superseded' | 'deleted';
+
+export interface DreamSourceSessionRef {
+  path: string;
+  displayName?: string;
+  savedAtUnixMs?: number;
+}
+
+export interface DreamRecord {
+  id: string;
+  scope: DreamScope;
+  title: string;
+  summary: string;
+  details?: string;
+  tags?: string[];
+  status: DreamRecordStatus;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  expiresAtUnixMs: number;
+  sourceSessions: DreamSourceSessionRef[];
+}
+
+export interface DreamQuery {
+  scope: DreamScope;
+  nowUnixMs?: number;
+  includeExpired?: boolean;
+  includeDeleted?: boolean;
+}
+
+export type DreamCollectorRunStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'backoff';
+
+export type DreamCollectorDecision = 'created' | 'updated' | 'deleted' | 'unchanged' | 'skipped';
+
+export interface DreamCollectorRun {
+  runId: string;
+  scope: DreamScope;
+  sourceSession?: DreamSourceSessionRef;
+  status: DreamCollectorRunStatus;
+  decision?: DreamCollectorDecision;
+  dreamIds?: string[];
+  startedAtUnixMs: number;
+  completedAtUnixMs?: number;
+  backoffUntilUnixMs?: number;
+  error?: string;
+  logPath?: string;
+}
+
+export type DreamLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface DreamLogEntry {
+  timeUnixMs: number;
+  level: DreamLogLevel;
+  event: string;
+  runId?: string;
+  scope?: DreamScope;
+  sourceSessionPath?: string;
+  message?: string;
+  data?: JsonObject;
+}
+
+export interface DreamSettings {
+  enabled: boolean;
+  collectorModel?: string;
+  debugMode: boolean;
+}
+
 export interface ChatArchive {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   assistantAux: AssistantAuxArchiveEntry[];

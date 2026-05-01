@@ -37,6 +37,7 @@ export type HostCommandName =
   | 'submitSkillSlash'
   | 'submitUserTurn'
   | 'poll'
+  | 'listDreamsOverview'
   | 'replyPendingApproval'
   | 'replyPendingQuestions'
   | 'resetSession'
@@ -54,6 +55,7 @@ export interface StoredDesktopSession extends ChatArchive {
   savedAtUnixMs: number;
   sessionDisplayName?: string;
   workspaceRoot?: string;
+  gitBranch?: string;
   desktopMessages?: ConversationMessageSnapshot[];
   rewind?: StoredDesktopRewindMetadata;
 }

@@ -85,6 +85,18 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   poll() {
     return ipcRenderer.invoke('desktop:invoke', 'poll');
   },
+  listDreamsOverview() {
+    return ipcRenderer.invoke('desktop:invoke', 'listDreamsOverview');
+  },
+  dreamSubscribe(callback: (snapshot: unknown) => void) {
+    const onDreamUpdate = (_event: Electron.IpcRendererEvent, snapshot: unknown) => {
+      callback(snapshot);
+    };
+    ipcRenderer.on('desktop:dream-updated', onDreamUpdate);
+    return () => {
+      ipcRenderer.removeListener('desktop:dream-updated', onDreamUpdate);
+    };
+  },
   replyPendingApproval(message: string) {
     return ipcRenderer.invoke('desktop:invoke', 'replyPendingApproval', { message });
   },

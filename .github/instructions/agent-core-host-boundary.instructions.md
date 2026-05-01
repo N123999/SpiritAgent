@@ -53,6 +53,7 @@ applyTo: "**/*"
 - Rules / Skills / Plan / Active Skills 这些系统段落的语义与拼装
 - 内建工具的模型可见定义：名称、描述、JSON Schema
 - MCP 协议、MCP 工具 / resource / prompt 语义与运行时接入
+- 梦境工具的模型可见契约与收集者系统提示语义
 - Agent runtime、turn machine、streaming、tool round 等通用编排能力
 - 面向宿主的接口定义
 
@@ -80,6 +81,7 @@ applyTo: "**/*"
 - 工具请求类型、参数解析、参数校验
 - 授权、审批、追问、宿主错误文案
 - 搜索、文件读写、网页抓取、shell 执行等宿主能力实现
+- 梦境工具的宿主执行、文件存储、过期清理与日志落盘
 - 与平台、路径、权限、配置、用户目录相关的细节
 
 它不负责：
@@ -102,6 +104,7 @@ applyTo: "**/*"
 - Rust CLI、Electron、Desktop Web、TUI 等最终入口
 - 将平台事件、UI 交互、权限确认结果接到宿主内部库
 - 将宿主内部库接到 `agent-core`
+- Desktop 梦境设置页、后台调度器与 Commit 等宿主消费入口
 
 它不负责：
 
@@ -120,12 +123,15 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | 主系统提示词 | `agent-core` |
 | Rules / Skills / Plan 的系统段落语义 | `agent-core` |
 | 内建工具名称、描述、JSON Schema | `agent-core` |
+| 梦境工具名称、描述、JSON Schema 与收集者系统提示 | `agent-core` |
 | MCP 协议、MCP tool / resource / prompt 运行时 | `agent-core` |
 | Host 接口定义 | `agent-core` |
 | Rules / Skills / Plan 的发现与管理 | 宿主内部库 |
 | 宿主工具请求类型、解析、校验、审批、执行 | 宿主内部库 |
+| 梦境文件存储、过期清理与运行日志 | 宿主内部库 |
 | shell / search / file / web fetch 的平台适配 | 宿主内部库 |
 | CLI / Desktop UI 与平台接线 | apps |
+| Desktop 梦境设置页、后台调度与 Commit 消费 | apps |
 
 ## 强约束
 
@@ -141,6 +147,9 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 按这个边界解释，当前仓库应这样理解：
 
 - `packages/agent-core` 继续承载 runtime、MCP、系统提示词、工具契约。
+- `packages/agent-core` 承载梦境工具契约与收集者系统提示，不承载 Desktop 会话扫描或文件存储。
+- `packages/host-internal` 承载梦境工具执行、dream store 与日志目录等宿主能力。
+- `apps/desktop` 承载梦境设置、后台调度与 Commit 消费。
 - CLI 与 Desktop 当前重复的宿主工具实现、rules / skills / plan 发现与管理逻辑，应收敛到宿主内部库。
 - `agent-core` 不应吸收这些发现与管理实现，因为那会把 Host / UI 责任错误抬升成 Agent SDK 的一部分。
 

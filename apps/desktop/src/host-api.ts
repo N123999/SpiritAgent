@@ -8,6 +8,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -68,6 +69,8 @@ export interface HostApi {
   submitUserTurn(text: string): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
+  listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
+  subscribeDreamUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
   replyPendingApproval(message: string): Promise<DesktopSnapshot>;
   replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
   resetSession(): Promise<DesktopSnapshot>;

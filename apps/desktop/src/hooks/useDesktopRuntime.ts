@@ -17,6 +17,7 @@ import type {
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -55,6 +56,8 @@ type BusyAction =
   | "marketplace"
   | "git";
 
+const DREAM_IDLE_POLL_INTERVAL_MS = 30_000;
+
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
   customInput: string;
@@ -87,6 +90,12 @@ function updateConfigFromSettingsForm(
     windowsMica: s.windowsMica,
     planMode: s.planMode,
     webHost,
+    dreams: {
+      enabled: s.dreamEnabled,
+      collectorModel: s.dreamCollectorModel,
+      clearCollectorModel: !s.dreamCollectorModel.trim(),
+      debugMode: s.dreamDebugMode,
+    },
     ...(s.uiLocale.trim() ? { uiLocale: s.uiLocale.trim() } : { uiLocale: undefined }),
     ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : undefined),
   };
@@ -166,6 +175,18 @@ function emptyQuestionDraft(): QuestionDraft {
   };
 }
 
+function shouldRefreshDreamSessions(prev: DesktopSnapshot, next: DesktopSnapshot): boolean {
+  if (!next.dreams.settings.debugMode) {
+    return false;
+  }
+
+  return (
+    prev.dreams.collector.state !== next.dreams.collector.state ||
+    prev.dreams.collector.processedCount !== next.dreams.collector.processedCount ||
+    prev.dreams.collector.lastSuccessAtUnixMs !== next.dreams.collector.lastSuccessAtUnixMs
+  );
+}
+
 export function useDesktopRuntime() {
   const { api, error: hostError, kind, ready: hostReady } = useHostApi();
   const [snapshot, setSnapshot] = useState<DesktopSnapshot | null>(null);
@@ -184,15 +205,23 @@ export function useDesktopRuntime() {
     webHostEnabled: false,
     webHostHost: "127.0.0.1",
     webHostPort: 7788,
+    dreamEnabled: false,
+    dreamCollectorModel: "",
+    dreamDebugMode: false,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, QuestionDraft>>({});
   const settingsRef = useRef(settings);
+  const snapshotRef = useRef<DesktopSnapshot | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   const applySnapshot = useCallback((next: DesktopSnapshot) => {
     setSnapshot(next);
@@ -212,6 +241,9 @@ export function useDesktopRuntime() {
         webHostEnabled: next.webHost.config.enabled,
         webHostHost: next.webHost.config.host,
         webHostPort: next.webHost.config.port,
+        dreamEnabled: next.dreams.settings.enabled,
+        dreamCollectorModel: next.dreams.settings.collectorModel ?? "",
+        dreamDebugMode: next.dreams.settings.debugMode,
       };
     });
   }, []);
@@ -226,6 +258,13 @@ export function useDesktopRuntime() {
     } catch {
       setSessions([]);
     }
+  }, [api]);
+
+  const listDreamsOverview = useCallback(async (): Promise<DesktopDreamOverviewItem[]> => {
+    if (!api) {
+      return [];
+    }
+    return api.listDreamsOverview();
   }, [api]);
 
   const bootstrap = useCallback(async (request?: BootstrapRequest) => {
@@ -422,6 +461,64 @@ export function useDesktopRuntime() {
       cancelled = true;
     };
   }, [api, applySnapshot, refreshSessions, snapshot?.conversation.isBusy]);
+
+  useEffect(() => {
+    if (!api?.subscribeDreamUpdates) {
+      return;
+    }
+
+    return api.subscribeDreamUpdates((next) => {
+      const previous = snapshotRef.current;
+      const needRefreshSessions = previous ? shouldRefreshDreamSessions(previous, next) : false;
+      applySnapshot(next);
+      if (needRefreshSessions) {
+        void refreshSessions();
+      }
+    });
+  }, [api, applySnapshot, refreshSessions]);
+
+  useEffect(() => {
+    if (!api || !snapshot || snapshot.conversation.isBusy || !snapshot.dreams.settings.enabled) {
+      return;
+    }
+    if (api.subscribeDreamUpdates) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const pollDreams = async () => {
+      try {
+        const next = await api.poll();
+        if (cancelled) {
+          return;
+        }
+        const needRefreshSessions = shouldRefreshDreamSessions(snapshot, next);
+        applySnapshot(next);
+        if (needRefreshSessions) {
+          void refreshSessions();
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRuntimeError(describeError(error));
+        }
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(pollDreams, DREAM_IDLE_POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    timer = setTimeout(pollDreams, DREAM_IDLE_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [api, applySnapshot, refreshSessions, snapshot]);
 
   const updateQuestionDraft = useCallback(
     (questionId: string, updater: (draft: QuestionDraft) => QuestionDraft) => {
@@ -1170,6 +1267,7 @@ export function useDesktopRuntime() {
     questionDrafts,
     questionError,
     refreshSessions,
+    listDreamsOverview,
     runtimeError,
     sessions,
     settings,

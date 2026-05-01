@@ -12,6 +12,7 @@ import {
   invokeDesktopHostCommand,
   setDesktopMarketplaceFetchImplementation,
   setDesktopExtensionHostAdapter,
+  subscribeDesktopDreamUpdates,
 } from '../src/host/service.js';
 import {
   configFilePath,
@@ -41,6 +42,7 @@ let desktopWebHost: DesktopHttpHost | undefined;
 let desktopWebHostConfig: DesktopWebHostConfigFile | undefined;
 let desktopWebHostPairingCode = createDesktopWebPairingCode();
 let quittingAfterDesktopWebHostStop = false;
+let unsubscribeDesktopDreamUpdates: (() => void) | undefined;
 
 const workspacePtyManager = new WorkspacePtyManager();
 
@@ -451,6 +453,14 @@ app.whenReady().then(async () => {
     net.fetch(input instanceof URL ? input.toString() : input, init),
   );
 
+  unsubscribeDesktopDreamUpdates = subscribeDesktopDreamUpdates((snapshot) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('desktop:dream-updated', snapshot);
+      }
+    }
+  });
+
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
     invokeMainDesktopHostCommand(command, payload),
   );
@@ -534,6 +544,8 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', (event) => {
+  unsubscribeDesktopDreamUpdates?.();
+  unsubscribeDesktopDreamUpdates = undefined;
   if (quittingAfterDesktopWebHostStop || !desktopWebHost?.isRunning()) {
     return;
   }

@@ -47,6 +47,7 @@ export interface DesktopConfigFile {
   windowsMica?: boolean;
   planMode?: boolean;
   webHost: DesktopWebHostConfigFile;
+  dreams: DesktopDreamConfigFile;
 }
 
 export interface DesktopWebHostConfigFile {
@@ -54,6 +55,12 @@ export interface DesktopWebHostConfigFile {
   host: string;
   port: number;
   authTokenHash?: string;
+}
+
+export interface DesktopDreamConfigFile {
+  enabled: boolean;
+  collectorModel?: string;
+  debugMode: boolean;
 }
 
 /** 与 `apps/cli/src/model_registry.rs` 中 keyring 命名一致。 */
@@ -278,6 +285,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
         const raw = await readFile(filePath, 'utf8');
         const parsed = JSON.parse(raw) as Partial<StoredDesktopSession>;
         const info = await stat(filePath);
+        const gitBranch = normalizeGitBranch(parsed.gitBranch);
         return {
           path: filePath,
           displayName:
@@ -285,6 +293,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
             deriveDisplayName(parsed.desktopMessages, parsed.messages),
           workspaceRoot:
             resolveStoredWorkspaceRoot(parsed.workspaceRoot) ?? discoverWorkspaceRoot(),
+          ...(gitBranch ? { gitBranch } : {}),
           modifiedAtUnixMs:
             typeof parsed.savedAtUnixMs === 'number'
               ? parsed.savedAtUnixMs
@@ -320,6 +329,7 @@ export async function loadStoredSession(filePath: string): Promise<StoredDesktop
     ...(resolveStoredWorkspaceRoot(parsed.workspaceRoot)
       ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
       : {}),
+    ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
     ...(Array.isArray(parsed.desktopMessages)
       ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
       : {}),
@@ -350,7 +360,12 @@ function defaultConfig(): DesktopConfigFile {
     windowsMica: true,
     planMode: false,
     webHost: defaultWebHostConfig(),
+    dreams: defaultDreamConfig(),
   };
+}
+
+function normalizeGitBranch(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 export function defaultWebHostConfig(): DesktopWebHostConfigFile {
@@ -358,6 +373,13 @@ export function defaultWebHostConfig(): DesktopWebHostConfigFile {
     enabled: false,
     host: DEFAULT_DESKTOP_WEB_HOST,
     port: DEFAULT_DESKTOP_WEB_PORT,
+  };
+}
+
+export function defaultDreamConfig(): DesktopDreamConfigFile {
+  return {
+    enabled: false,
+    debugMode: false,
   };
 }
 
@@ -400,6 +422,20 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
     windowsMica: raw.windowsMica !== false,
     planMode: raw.planMode === true,
     webHost: normalizeWebHostConfig(raw.webHost),
+    dreams: normalizeDreamConfig(raw.dreams),
+  };
+}
+
+export function normalizeDreamConfig(
+  raw?: Partial<DesktopDreamConfigFile>,
+): DesktopDreamConfigFile {
+  const collectorModel = typeof raw?.collectorModel === 'string' && raw.collectorModel.trim()
+    ? raw.collectorModel.trim()
+    : undefined;
+  return {
+    enabled: raw?.enabled === true,
+    ...(collectorModel ? { collectorModel } : {}),
+    debugMode: raw?.debugMode === true,
   };
 }
 

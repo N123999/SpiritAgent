@@ -9,6 +9,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -128,6 +129,9 @@ export function createWebHostApi(): HostApi {
     },
     poll() {
       return post<DesktopSnapshot>(baseUrl, '/api/poll');
+    },
+    listDreamsOverview() {
+      return get<DesktopDreamOverviewItem[]>(baseUrl, '/api/dreams');
     },
     replyPendingApproval(message: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/approval', { message });

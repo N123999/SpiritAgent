@@ -1,6 +1,7 @@
 import {
   type AskQuestionsResult,
   buildBuiltinHostToolDefinitions,
+  buildDreamHostToolDefinitions,
   AuthorizationDecision,
   JsonValue,
   McpService,
@@ -10,6 +11,8 @@ import {
   ToolExecutor,
 } from '@spirit-agent/agent-core';
 import {
+  type HostDreamScope,
+  type HostDreamSourceSessionRef,
   type HostExtensionRuntimeBinding,
   type HostFileChangeObserver,
   NodeHostToolService,
@@ -25,6 +28,7 @@ export class DesktopToolExecutor
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
   private readonly mcp: McpService;
+  private readonly dreamToolDefinitions: JsonValue[];
   private extensionToolDefinitions: JsonValue[];
 
   constructor(
@@ -33,10 +37,13 @@ export class DesktopToolExecutor
       extensionToolDefinitions?: JsonValue[];
       fileChangeObserver?: HostFileChangeObserver;
       extensions?: HostExtensionRuntimeBinding<unknown>;
+      dreamScope?: HostDreamScope;
+      dreamSourceSession?: HostDreamSourceSessionRef;
     } = {},
   ) {
     this.mcp = new McpService(workspaceRoot);
     this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
+    this.dreamToolDefinitions = options.dreamScope ? buildDreamHostToolDefinitions() : [];
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
@@ -44,12 +51,15 @@ export class DesktopToolExecutor
       mcp: createNoopMcpAdapter(),
       ...(options.fileChangeObserver ? { fileChangeObserver: options.fileChangeObserver } : {}),
       ...(options.extensions ? { extensions: options.extensions } : {}),
+      ...(options.dreamScope ? { dreamScope: options.dreamScope } : {}),
+      ...(options.dreamSourceSession ? { dreamSourceSession: options.dreamSourceSession } : {}),
     });
   }
 
   toolDefinitionsJson(): JsonValue {
     return mergeToolDefinitions(
       ...buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment()),
+      ...this.dreamToolDefinitions,
       ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
     );

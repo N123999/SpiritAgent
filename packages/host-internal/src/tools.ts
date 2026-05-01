@@ -26,6 +26,12 @@ import {
   type HostExtensionToolExecutionMode,
 } from './extensions.js';
 import { resolveInstructionPaths, type InstructionDiscoveryContext } from './storage.js';
+import {
+  createHostDreamStore,
+  type HostDreamScope,
+  type HostDreamStore,
+  type HostDreamSourceSessionRef,
+} from './dreams.js';
 
 const exec = promisify(execCallback);
 
@@ -136,7 +142,12 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
     }
   | { name: 'create_file'; path: string; content: string }
   | { name: 'edit_file'; path: string; old_text: string; new_text: string }
-  | { name: 'delete_file'; path: string };
+  | { name: 'delete_file'; path: string }
+  | { name: 'dream_list'; include_deleted: boolean; include_expired: boolean }
+  | { name: 'dream_read'; id: string }
+  | { name: 'dream_record'; title: string; summary: string; details?: string; tags: string[] }
+  | { name: 'dream_update'; id: string; title?: string; summary?: string; details?: string; tags?: string[] }
+  | { name: 'dream_delete'; id: string; reason: string };
 
 export type HostAuthorizationDecision<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { kind: 'allowed' }
@@ -287,6 +298,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly mcp: HostMcpAdapter;
   private readonly fileChangeObserver: HostFileChangeObserver | undefined;
   private readonly extensions: HostExtensionRuntimeBinding<unknown> | undefined;
+  private readonly dreamStore: HostDreamStore | undefined;
+  private readonly dreamSourceSession: HostDreamSourceSessionRef | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
 
@@ -296,6 +309,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       mcp?: HostMcpAdapter;
       fileChangeObserver?: HostFileChangeObserver;
       extensions?: HostExtensionRuntimeBinding<unknown>;
+      dreamScope?: HostDreamScope;
+      dreamSourceSession?: HostDreamSourceSessionRef;
     } = {},
   ) {
     this.workspaceRoot = path.resolve(context.workspaceRoot);
@@ -304,6 +319,10 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     this.mcp = options.mcp ?? createNoopMcpAdapter();
     this.fileChangeObserver = options.fileChangeObserver;
     this.extensions = options.extensions;
+    this.dreamStore = options.dreamScope
+      ? createHostDreamStore({ spiritDataDir: this.spiritDataDir, scope: options.dreamScope })
+      : undefined;
+    this.dreamSourceSession = options.dreamSourceSession;
   }
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
@@ -439,6 +458,49 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           name,
           path: requiredString(parsed, 'path'),
         };
+      case 'dream_list':
+        return {
+          name,
+          include_deleted: optionalBoolean(parsed, 'include_deleted') ?? false,
+          include_expired: optionalBoolean(parsed, 'include_expired') ?? false,
+        };
+      case 'dream_read':
+        return {
+          name,
+          id: requiredString(parsed, 'id'),
+        };
+      case 'dream_record':
+        {
+          const details = optionalStringStrict(parsed, 'details');
+        return {
+          name,
+          title: requiredString(parsed, 'title'),
+          summary: requiredString(parsed, 'summary'),
+          ...(details ? { details } : {}),
+          tags: optionalStringArrayStrict(parsed, 'tags'),
+        };
+        }
+      case 'dream_update':
+        {
+          const title = optionalStringStrict(parsed, 'title');
+          const summary = optionalStringStrict(parsed, 'summary');
+          const details = optionalStringStrict(parsed, 'details');
+          const tags = optionalStringArrayPatch(parsed, 'tags');
+        return {
+          name,
+          id: requiredString(parsed, 'id'),
+          ...(title ? { title } : {}),
+          ...(summary ? { summary } : {}),
+          ...(details ? { details } : {}),
+          ...(tags !== undefined ? { tags } : {}),
+        };
+        }
+      case 'dream_delete':
+        return {
+          name,
+          id: requiredString(parsed, 'id'),
+          reason: requiredString(parsed, 'reason'),
+        };
       default:
         {
           const extensionTool = await this.resolveExtensionToolRequest(name, parsed);
@@ -520,6 +582,12 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           kind: 'need-approval',
           prompt: `高风险工具调用: 删除文件\n路径: ${request.path}\n\n输入 y 允许一次，n 拒绝。`,
         };
+      case 'dream_list':
+      case 'dream_read':
+      case 'dream_record':
+      case 'dream_update':
+      case 'dream_delete':
+        return { kind: 'allowed' };
     }
   }
 
@@ -590,6 +658,46 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         return this.executeEditFile(request);
       case 'delete_file':
         return this.executeDeleteFile(request);
+      case 'dream_list':
+        return JSON.stringify({
+          dreams: await this.requireDreamStore().list({
+            includeDeleted: request.include_deleted,
+            includeExpired: request.include_expired,
+          }),
+        });
+      case 'dream_read':
+        {
+          const dream = await this.requireDreamStore().read(request.id);
+          if (!dream) {
+            throw new Error(`梦境不存在: ${request.id}`);
+          }
+        return JSON.stringify({ dream });
+        }
+      case 'dream_record':
+        return JSON.stringify({
+          dream: await this.requireDreamStore().record({
+            title: request.title,
+            summary: request.summary,
+            ...(request.details ? { details: request.details } : {}),
+            tags: request.tags,
+            ...(this.dreamSourceSession ? { sourceSession: this.dreamSourceSession } : {}),
+          }),
+        });
+      case 'dream_update':
+        return JSON.stringify({
+          dream: await this.requireDreamStore().update({
+            id: request.id,
+            ...(request.title ? { title: request.title } : {}),
+            ...(request.summary ? { summary: request.summary } : {}),
+            ...(request.details ? { details: request.details } : {}),
+            ...(request.tags !== undefined ? { tags: request.tags } : {}),
+            ...(this.dreamSourceSession ? { sourceSession: this.dreamSourceSession } : {}),
+          }),
+        });
+      case 'dream_delete':
+        return JSON.stringify({
+          dream: await this.requireDreamStore().delete(request.id, request.reason),
+        });
     }
   }
 
@@ -679,6 +787,13 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       ...(resolved.tool.approvalMode ? { approval_mode: resolved.tool.approvalMode } : {}),
       ...(resolved.tool.executionMode ? { execution_mode: resolved.tool.executionMode } : {}),
     };
+  }
+
+  private requireDreamStore(): HostDreamStore {
+    if (!this.dreamStore) {
+      throw new Error('当前宿主未配置梦境 scope，无法执行梦境工具。');
+    }
+    return this.dreamStore;
   }
 
   private async loadPermissions(): Promise<ToolPermissionStore> {
@@ -1276,6 +1391,13 @@ function optionalStringArrayStrict(obj: HostJsonObject, key: string): string[] {
     }
     return item.trim();
   });
+}
+
+function optionalStringArrayPatch(obj: HostJsonObject, key: string): string[] | undefined {
+  if (!(key in obj) || obj[key] === null) {
+    return undefined;
+  }
+  return optionalStringArrayStrict(obj, key);
 }
 
 function parseAskQuestionsRequest(
