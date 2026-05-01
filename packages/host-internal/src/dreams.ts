@@ -397,7 +397,7 @@ function normalizeRequiredSessionProgressInput(
 }
 
 function normalizeTags(tags: string[]): string[] {
-  return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0))].slice(0, 12);
+  return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0))].slice(0, 6);
 }
 
 function normalizeNonEmpty(value: unknown, field: string): string {

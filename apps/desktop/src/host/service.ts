@@ -4535,6 +4535,7 @@ function buildDreamCollectorPrompt(input: {
     '请收集这条源会话的梦境摘要。',
     '你必须先调用 dream_list 查看当前 scope 的已有梦境。',
     '如果源会话延续了已有动向，请调用 dream_update；如果是新动向，请调用 dream_record；如果已有梦境已经误导或过时，可调用 dream_delete。',
+    '如果写 tags，只保留最关键的 2 到 4 个短标签；优先使用简短 lowercase/kebab-case 词，不要把所有子话题都枚举进去。',
     '如果源会话完全没有可沉淀的近期工作动向，可以不写入梦境，但不要执行任何非梦境维护操作。',
     '',
     `[scope] workspace=${input.scope.workspaceRoot}`,

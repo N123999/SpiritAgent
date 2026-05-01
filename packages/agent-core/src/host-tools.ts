@@ -306,7 +306,8 @@ export function buildDreamHostToolDefinitions(): JsonValue[] {
           tags: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Optional short tags such as desktop, agent-core, git, commit.',
+            description:
+              'Optional high-signal tags only. Prefer 1-2 word lowercase tags such as desktop, git, commit. Keep the list short and do not enumerate every subtopic.',
           },
         },
         required: ['title', 'summary'],
@@ -338,7 +339,8 @@ export function buildDreamHostToolDefinitions(): JsonValue[] {
           tags: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Replacement tags. Omit to keep existing tags.',
+            description:
+              'Replacement high-signal tags only. Prefer a short list of 1-2 word lowercase tags. Omit to keep existing tags.',
           },
         },
         required: ['id'],
