@@ -88,7 +88,20 @@ import type {
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
 } from '../types.js';
-import type { DesktopToolRequest, HostCommandName, StoredDesktopSession } from './contracts.js';
+import type { DesktopToolRequest, HostCommandName } from './contracts.js';
+import {
+  buildCommitEphemeralSessionRecord,
+  buildStoredDesktopSession,
+  createEphemeralCommitSessionPath,
+  deriveDisplayNameFromSeed,
+  ephemeralSessionsToListItems,
+  type EphemeralSessionRecord,
+  isEphemeralCommitSessionPath,
+  nextMessageIdFromMessages,
+  rememberEphemeralSessionRecord,
+  restoreEphemeralSessionState,
+  restoreStoredSessionState,
+} from './sessions.js';
 import {
   isModelCatalogCacheFresh,
   readModelCatalogCache,
@@ -209,15 +222,19 @@ import {
   readWorkspaceGitSnapshot,
 } from './git.js';
 import {
+  bindRewindFileChangesToToolMessage,
+  canRewindMessage,
   createDesktopRewindMetadata,
   createRewindCheckpointMetadata,
   fileChangeMetadata,
   loadRewindCheckpointSnapshot,
   loadRewindFileChange,
   nextDesktopRewindSequence,
+  pruneRewindMetadataAfterCheckpoint,
   saveRewindCheckpointSnapshot,
   saveRewindFileChange,
   toDesktopFileChange,
+  upsertRewindCheckpointMetadata,
   type DesktopRewindCheckpointSnapshot,
   type StoredDesktopRewindMetadata,
 } from './rewind.js';
@@ -250,23 +267,6 @@ export function setDesktopExtensionHostAdapter(
   adapter: DesktopExtensionHostAdapter | undefined,
 ): void {
   desktopExtensionHostAdapter = adapter;
-}
-
-const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
-const MAX_EPHEMERAL_COMMIT_SESSIONS = 8;
-
-interface EphemeralSessionRecord {
-  path: string;
-  displayName: string;
-  workspaceRoot: string;
-  modifiedAtUnixMs: number;
-  messages: ConversationMessageSnapshot[];
-  llmHistory: ChatArchive['llmHistory'];
-  readOnly: true;
-}
-
-function isEphemeralCommitSessionPath(filePath: string): boolean {
-  return filePath.startsWith(EPHEMERAL_COMMIT_SESSION_PREFIX);
 }
 
 type CommandPayloads = {
@@ -1298,14 +1298,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const state = this.requireState();
       const stored = await listStoredSessions();
-      const ephemeral: SessionListItem[] = state.ephemeralSessions.map((session) => ({
-        path: session.path,
-        displayName: session.displayName,
-        modifiedAtUnixMs: session.modifiedAtUnixMs,
-        workspaceRoot: session.workspaceRoot,
-        kind: 'ephemeral',
-        readOnly: true,
-      }));
+      const ephemeral: SessionListItem[] = ephemeralSessionsToListItems(state.ephemeralSessions);
       return [...stored, ...ephemeral].sort((left, right) => right.modifiedAtUnixMs - left.modifiedAtUnixMs);
     });
   }
@@ -1376,24 +1369,16 @@ class DesktopHostService {
         }
         await this.ensureInitialized(ephemeral.workspaceRoot);
         const state = this.requireState();
-        state.messages = ephemeral.messages.map((message) => ({ ...message }));
-        state.activeSession = {
-          filePath: ephemeral.path,
-          displayName: ephemeral.displayName,
-          kind: 'ephemeral',
-          readOnly: true,
-        };
-        state.archiveHistory = ephemeral.llmHistory.map((message) => ({
-          role: message.role,
-          content: message.content,
-          imagePaths: [...message.imagePaths],
-        }));
-        state.archiveSubagentSessions = [];
-        state.rewind = createDesktopRewindMetadata();
+        const restored = restoreEphemeralSessionState(ephemeral);
+        state.messages = restored.messages;
+        state.activeSession = restored.activeSession;
+        state.archiveHistory = restored.archiveHistory;
+        state.archiveSubagentSessions = restored.archiveSubagentSessions;
+        state.rewind = restored.rewind;
         state.rewindWarnings = [];
         this.currentTurnSkills = [];
         this.pendingUnboundFileChangeIds = [];
-        this.messageIdCounter = Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+        this.messageIdCounter = nextMessageIdFromMessages(state.messages);
         this.latestPendingAssistantAux = undefined;
         this.resetStreamingPlacementState(true);
         await this.refreshRuntime();
@@ -1404,34 +1389,20 @@ class DesktopHostService {
       const loaded = await loadStoredSession(filePath);
       await this.ensureInitialized(loaded.workspaceRoot);
       const state = this.requireState();
-      state.messages = loaded.desktopMessages
-        ? loaded.desktopMessages.map((message) => ({ ...message }))
-        : restoreMessagesFromArchive(loaded);
-      state.activeSession = {
-        filePath: path.resolve(filePath),
-        displayName:
-          loaded.sessionDisplayName ?? deriveDisplayNameFromMessages(state.messages),
-        kind: 'stored',
-      };
-      state.archiveHistory = loaded.llmHistory.map((message) => ({
-        role: message.role,
-        content: message.content,
-        imagePaths: [...message.imagePaths],
-      }));
-      state.archiveSubagentSessions = (loaded.subagentSessions ?? []).map((entry) => ({
-        summary: { ...entry.summary },
-        llmHistory: entry.llmHistory.map((message) => ({
-          role: message.role,
-          content: message.content,
-          imagePaths: [...message.imagePaths],
-        })),
-      }));
-      state.rewind = loaded.rewind ?? createDesktopRewindMetadata();
+      const restored = restoreStoredSessionState({
+        filePath,
+        loaded,
+        fallbackMessages: restoreMessagesFromArchive(loaded),
+      });
+      state.messages = restored.messages;
+      state.activeSession = restored.activeSession;
+      state.archiveHistory = restored.archiveHistory;
+      state.archiveSubagentSessions = restored.archiveSubagentSessions;
+      state.rewind = restored.rewind;
       state.rewindWarnings = [];
       this.currentTurnSkills = [];
       this.pendingUnboundFileChangeIds = [];
-      this.messageIdCounter =
-        Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+      this.messageIdCounter = nextMessageIdFromMessages(state.messages);
       this.latestPendingAssistantAux = undefined;
       this.resetStreamingPlacementState(true);
       await this.refreshRuntime();
@@ -2100,10 +2071,7 @@ class DesktopHostService {
 
   private rememberEphemeralSession(record: EphemeralSessionRecord): void {
     const state = this.requireState();
-    state.ephemeralSessions = [
-      record,
-      ...state.ephemeralSessions.filter((session) => session.path !== record.path),
-    ].slice(0, MAX_EPHEMERAL_COMMIT_SESSIONS);
+    state.ephemeralSessions = rememberEphemeralSessionRecord(state.ephemeralSessions, record);
   }
 
   private async generateCommitMessageFromModel(): Promise<string> {
@@ -2128,7 +2096,7 @@ class DesktopHostService {
       diffStatText: commitContext.diffStatText,
       diffText: commitContext.diffText,
     });
-    const sessionPath = `${EPHEMERAL_COMMIT_SESSION_PREFIX}${Date.now()}`;
+    const sessionPath = createEphemeralCommitSessionPath();
     const baseMessages: ConversationMessageSnapshot[] = [
       {
         id: 1,
@@ -2181,19 +2149,12 @@ class DesktopHostService {
           pending: false,
         },
       ];
-      this.rememberEphemeralSession({
+      this.rememberEphemeralSession(buildCommitEphemeralSessionRecord({
         path: sessionPath,
         displayName: `[Commit] ${deriveDisplayNameFromSeed(message)}`,
         workspaceRoot: state.workspaceRoot,
-        modifiedAtUnixMs: Date.now(),
         messages: finalMessages,
-        llmHistory: finalMessages.map((entry) => ({
-          role: entry.role,
-          content: entry.content,
-          imagePaths: [],
-        })),
-        readOnly: true,
-      });
+      }));
       return message;
     } catch (error) {
       const failureMessage = `生成失败：${error instanceof Error ? error.message : String(error)}`;
@@ -2206,19 +2167,12 @@ class DesktopHostService {
           pending: false,
         },
       ];
-      this.rememberEphemeralSession({
+      this.rememberEphemeralSession(buildCommitEphemeralSessionRecord({
         path: sessionPath,
         displayName: '[Commit] 自动生成失败',
         workspaceRoot: state.workspaceRoot,
-        modifiedAtUnixMs: Date.now(),
         messages: finalMessages,
-        llmHistory: finalMessages.map((entry) => ({
-          role: entry.role,
-          content: entry.content,
-          imagePaths: [],
-        })),
-        readOnly: true,
-      });
+      }));
       throw error;
     }
   }
@@ -3149,32 +3103,11 @@ class DesktopHostService {
     messageId: number,
   ): void {
     const state = this.requireState();
-    const targetIds = new Set<string>();
-    const toolCallId = execution.toolCallId || `tool:${execution.toolName}`;
-    for (const change of state.rewind.fileChanges) {
-      if (change.messageId !== undefined) {
-        continue;
-      }
-      if (change.toolCallId === toolCallId) {
-        targetIds.add(change.id);
-      }
-    }
-    if (targetIds.size === 0) {
-      for (const id of this.pendingUnboundFileChangeIds) {
-        targetIds.add(id);
-      }
-    }
-    if (targetIds.size === 0) {
-      return;
-    }
-
-    for (const change of state.rewind.fileChanges) {
-      if (targetIds.has(change.id)) {
-        change.messageId = messageId;
-      }
-    }
-    this.pendingUnboundFileChangeIds = this.pendingUnboundFileChangeIds.filter(
-      (id) => !targetIds.has(id),
+    this.pendingUnboundFileChangeIds = bindRewindFileChangesToToolMessage(
+      state.rewind,
+      this.pendingUnboundFileChangeIds,
+      execution,
+      messageId,
     );
   }
 
@@ -3221,15 +3154,7 @@ class DesktopHostService {
       },
     );
 
-    const existing = state.rewind.checkpoints.findIndex(
-      (candidate) => candidate.messageId === messageId,
-    );
-    if (existing >= 0) {
-      state.rewind.checkpoints.splice(existing, 1, checkpoint);
-    } else {
-      state.rewind.checkpoints.push(checkpoint);
-    }
-    state.rewind.checkpoints.sort((left, right) => left.sequence - right.sequence);
+    upsertRewindCheckpointMetadata(state.rewind, checkpoint);
   }
 
   private buildRewindCheckpointSnapshot(): DesktopRewindCheckpointSnapshot {
@@ -3271,15 +3196,10 @@ class DesktopHostService {
         imagePaths: [...message.imagePaths],
       })),
     }));
-    state.rewind.checkpoints = state.rewind.checkpoints.filter(
-      (checkpoint) => checkpoint.sequence < checkpointSequence,
-    );
-    state.rewind.fileChanges = state.rewind.fileChanges.filter(
-      (change) => change.sequence <= checkpointSequence,
-    );
+    pruneRewindMetadataAfterCheckpoint(state.rewind, checkpointSequence);
     this.pendingUnboundFileChangeIds = [];
     this.latestPendingAssistantAux = undefined;
-    this.messageIdCounter = Math.max(0, ...state.messages.map((message) => message.id)) + 1;
+    this.messageIdCounter = nextMessageIdFromMessages(state.messages);
     this.resetStreamingPlacementState(true);
     this.pruneEmptyAssistantMessages('restoreBeforeRewindCheckpoint');
     this.requireRuntime().replaceFromArchive(archive);
@@ -3305,7 +3225,7 @@ class DesktopHostService {
       ...base,
       ...(tool ? { tool } : {}),
       ...(aux ? { aux } : {}),
-      ...(this.canRewindMessage(message) ? { canRewind: true } : {}),
+      ...(canRewindMessage(this.requireState().rewind, message) ? { canRewind: true } : {}),
     };
   }
 
@@ -3371,15 +3291,6 @@ class DesktopHostService {
     });
   }
 
-  private canRewindMessage(message: ConversationMessageSnapshot): boolean {
-    if (message.pending || message.role !== 'user') {
-      return false;
-    }
-    return this.requireState().rewind.checkpoints.some(
-      (checkpoint) => checkpoint.messageId === message.id,
-    );
-  }
-
   private async persistCurrentSessionIfNeeded(): Promise<void> {
     const state = this.requireState();
     if (!state.activeSession || state.activeSession.kind === 'ephemeral' || this.runtime?.isBusy()) {
@@ -3397,15 +3308,14 @@ class DesktopHostService {
           subagentSessions: state.archiveSubagentSessions ?? [],
         } satisfies ChatArchive;
 
-    const stored: StoredDesktopSession = {
-      ...archive,
-      savedAtUnixMs: Date.now(),
+    const stored = buildStoredDesktopSession({
+      archive,
       sessionDisplayName: state.activeSession.displayName,
       workspaceRoot: state.workspaceRoot,
-      ...(state.git.branch ? { gitBranch: state.git.branch } : {}),
-      desktopMessages: state.messages.map((message) => ({ ...message })),
+      gitBranch: state.git.branch,
+      desktopMessages: state.messages,
       rewind: state.rewind,
-    };
+    });
     state.activeSession.filePath = await saveStoredSession(state.activeSession.filePath, stored);
   }
 
@@ -3858,17 +3768,3 @@ function truncateText(value: string, maxChars: number): string {
   return `${chars.slice(0, maxChars).join('')}...<truncated>`;
 }
 
-function deriveDisplayNameFromSeed(seed: string): string {
-  const trimmed = seed.trim();
-  if (!trimmed) {
-    return 'New conversation';
-  }
-  return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
-}
-
-function deriveDisplayNameFromMessages(messages: ConversationMessageSnapshot[]): string {
-  const firstUser = messages.find(
-    (message) => message.role === 'user' && message.content.trim().length > 0,
-  );
-  return deriveDisplayNameFromSeed(firstUser?.content ?? 'New conversation');
-}
