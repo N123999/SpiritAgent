@@ -165,6 +165,7 @@ import {
   sameWorkspaceRoot,
   toRuntimeAskQuestionsResult,
 } from './service-utils.js';
+import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot } from './snapshot.js';
 import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
@@ -174,7 +175,6 @@ import {
   hasStandaloneThinkingMessageInCurrentTurn,
   indexForThinkingInsertAfterLastUser,
   indexForThinkingInsertBeforeFirstToolAfterLastUser,
-  isStandaloneSubagentStatusAux,
   lastAssistantPlainTextInHistory,
   latestUnsyncedAssistantTextInCurrentTurn,
   messageIndexIsInCurrentTurn,
@@ -182,8 +182,6 @@ import {
   normalizeMessageAuxSnapshot,
   parsePendingSubagentStatusText,
   restoreMessagesFromArchive,
-  rewindStandalonePendingAuxInsertIndexForThinking,
-  shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse,
   stripPendingThinkingMatchingFinalized,
   stripThinkingFromAux,
   summarizeMessagesTailForOrderDebug,
@@ -191,7 +189,6 @@ import {
   toolMessageKey,
 } from './message-ordering.js';
 import {
-  buildVisibleMessageSnapshots,
   pruneEmptyAssistantMessages as pruneEmptyAssistantMessagesFromSnapshots,
   shiftStreamAssistantThinkingAnchorForInsertion as shiftThinkingAnchorForInsertion,
   shiftStreamAssistantThinkingAnchorForRemoval as shiftThinkingAnchorForRemoval,
@@ -332,11 +329,8 @@ class DesktopHostService {
   private lastRuntimeError = '';
   private activeApiKeyConfigured = false;
   private modelKeyPresence: Record<string, boolean> = {};
+  private readonly conversationSnapshotView = new DesktopConversationSnapshotView(() => this.allocateMessageId());
   private latestPendingAssistantAux: MessageAuxSnapshot | undefined;
-  private persistedStandalonePendingAux: PendingAssistantAux | undefined;
-  private persistedStandalonePendingAuxAnchorMessageId: number | undefined;
-  private standalonePendingAuxMessageId: number | undefined;
-  private lastStandalonePendingAuxSnapshotLogSignature: string | undefined;
   private pendingAssistantMessageId: number | undefined;
   private lastSettledAssistantMessageId: number | undefined;
   /** 思考段 finalize 去重、插入锚点与 apply 批次（见 `applyRuntimeHostEvents` / `appendAssistantThinkingSegment`）。 */
@@ -1891,7 +1885,11 @@ class DesktopHostService {
     const pendingApproval = this.runtime?.currentPendingApproval();
     const pendingQuestions = this.runtime?.currentPendingQuestions();
     const pendingAux = this.runtime?.pendingAuxState();
-    this.syncStandalonePendingAux(pendingAux);
+    this.conversationSnapshotView.syncStandalonePendingAux({
+      livePendingAux: pendingAux,
+      pendingAssistantMessageId: this.pendingAssistantMessageId,
+      lastSettledAssistantMessageId: this.lastSettledAssistantMessageId,
+    });
     if (pendingAux && !parsePendingSubagentStatusText(pendingAux.statusText)) {
       this.updatePendingAssistantAux(
         pendingAux.kind,
@@ -1915,7 +1913,11 @@ class DesktopHostService {
       mcpStatus: this.toolExecutor?.mcpStatusSnapshot() ?? emptyMcpStatusSnapshot(),
       mcpServers: listDesktopMcpServersFromDisk(),
       conversation: {
-        messages: this.messagesWithPendingAssistant(pendingAux),
+        messages: this.conversationSnapshotView.buildMessagesWithPendingAssistant({
+          messages: state.messages,
+          livePendingAux: pendingAux,
+          rewind: state.rewind,
+        }),
         ...(this.runtime?.pendingUserTurn()
           ? { pendingUserTurn: this.runtime.pendingUserTurn() }
           : {}),
@@ -2067,28 +2069,6 @@ class DesktopHostService {
       }));
       throw error;
     }
-  }
-
-  private messagesWithPendingAssistant(
-    livePendingAux?: PendingAssistantAux,
-  ): ConversationMessageSnapshot[] {
-    const state = this.requireState();
-    const snapshots = buildVisibleMessageSnapshots({
-      messages: state.messages,
-      livePendingAux,
-      rewind: state.rewind,
-    });
-
-    const standalonePendingAux = this.standalonePendingAuxSnapshot(livePendingAux, snapshots);
-    if (!standalonePendingAux) {
-      this.lastStandalonePendingAuxSnapshotLogSignature = undefined;
-      return snapshots;
-    }
-
-    const insertAt = Math.max(0, Math.min(standalonePendingAux.insertAt, snapshots.length));
-    snapshots.splice(insertAt, 0, standalonePendingAux.message);
-    this.logSnapshotStandalonePendingAux(standalonePendingAux, snapshots);
-    return snapshots;
   }
 
   private consumeCompletedTurnResult(): void {
@@ -2251,9 +2231,8 @@ class DesktopHostService {
       if (ev.kind === 'begin-assistant-response') {
         const at = state.messages.length;
         const shouldReanchorStandalonePendingAux =
-          shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
+          this.conversationSnapshotView.shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
             state.messages[state.messages.length - 1],
-            this.persistedStandalonePendingAux,
           );
         this.pendingAssistantMessageId = undefined;
         this.latestPendingAssistantAux = undefined;
@@ -2264,7 +2243,7 @@ class DesktopHostService {
         this.streamAssistantAnchorSetInApplyBatchId = batchId;
         const pendingAssistant = this.ensurePendingAssistantMessage();
         if (shouldReanchorStandalonePendingAux) {
-          this.persistedStandalonePendingAuxAnchorMessageId = pendingAssistant.id;
+          this.conversationSnapshotView.reanchorPersistedStandalonePendingAux(pendingAssistant.id);
         }
         continue;
       }
@@ -3200,150 +3179,12 @@ class DesktopHostService {
       this.streamAssistantThinkingAnchor = undefined;
       return;
     }
-    this.clearStandalonePendingAuxState();
+    this.conversationSnapshotView.clearStandalonePendingAuxState();
     this.lastFinalizedThinkingSegment = '';
     this.streamAssistantThinkingAnchor = undefined;
     this.streamAssistantAnchorSetInApplyBatchId = 0;
     this.lastApplyEventBatchId = 0;
     this.messageOrderDebugLastVerboseLogMs = 0;
-  }
-
-  private syncStandalonePendingAux(livePendingAux: PendingAssistantAux | undefined): void {
-    if (livePendingAux && isStandaloneSubagentStatusAux(livePendingAux)) {
-      this.persistedStandalonePendingAux = {
-        kind: livePendingAux.kind,
-        statusText: livePendingAux.statusText,
-        ...(livePendingAux.detailText ? { detailText: livePendingAux.detailText } : {}),
-      };
-      if (this.standalonePendingAuxMessageId === undefined) {
-        this.standalonePendingAuxMessageId = this.allocateMessageId();
-      }
-      const anchorMessageId = this.pendingAssistantMessageId ?? this.lastSettledAssistantMessageId;
-      if (anchorMessageId !== undefined) {
-        this.persistedStandalonePendingAuxAnchorMessageId = anchorMessageId;
-      }
-      return;
-    }
-
-    if (!isStandaloneSubagentStatusAux(this.persistedStandalonePendingAux)) {
-      this.clearStandalonePendingAuxState();
-    }
-  }
-
-  private standalonePendingAuxSnapshot(
-    livePendingAux: PendingAssistantAux | undefined,
-    snapshots: ConversationMessageSnapshot[],
-  ):
-    | {
-        message: ConversationMessageSnapshot;
-        insertAt: number;
-        source: 'live' | 'persisted';
-        anchorMessageId?: number;
-        anchorResolvedIndex?: number;
-      }
-    | undefined {
-    const liveStandalonePendingAux =
-      livePendingAux && isStandaloneSubagentStatusAux(livePendingAux)
-        ? livePendingAux
-        : undefined;
-    const liveStatusText = liveStandalonePendingAux
-      ? parsePendingSubagentStatusText(liveStandalonePendingAux.statusText)
-      : undefined;
-    if (liveStatusText) {
-      return {
-        source: 'live',
-        insertAt: snapshots.length,
-        message: this.standalonePendingAuxMessage(liveStatusText),
-      };
-    }
-
-    const persistedStandalonePendingAux =
-      this.persistedStandalonePendingAux && isStandaloneSubagentStatusAux(this.persistedStandalonePendingAux)
-        ? this.persistedStandalonePendingAux
-        : undefined;
-    const persistedStatusText = persistedStandalonePendingAux
-      ? parsePendingSubagentStatusText(persistedStandalonePendingAux.statusText)
-      : undefined;
-    if (!persistedStatusText) {
-      return undefined;
-    }
-
-    const anchorMessageId = this.persistedStandalonePendingAuxAnchorMessageId;
-    let anchorResolvedIndex: number | undefined;
-    let insertAt: number | undefined;
-    if (anchorMessageId !== undefined) {
-      const anchoredIndex = snapshots.findIndex((message) => message.id === anchorMessageId);
-      if (anchoredIndex >= 0) {
-        anchorResolvedIndex = anchoredIndex;
-        insertAt = rewindStandalonePendingAuxInsertIndexForThinking(snapshots, anchoredIndex);
-      }
-    }
-
-    if (insertAt === undefined) {
-      insertAt = snapshots.length > 0 ? Math.max(0, snapshots.length - 1) : 0;
-    }
-
-    return {
-      source: 'persisted',
-      anchorMessageId,
-      anchorResolvedIndex,
-      insertAt,
-      message: this.standalonePendingAuxMessage(persistedStatusText),
-    };
-  }
-
-  private standalonePendingAuxMessage(statusText: string): ConversationMessageSnapshot {
-    if (this.standalonePendingAuxMessageId === undefined) {
-      this.standalonePendingAuxMessageId = this.allocateMessageId();
-    }
-
-    return {
-      id: this.standalonePendingAuxMessageId,
-      role: 'assistant',
-      content: statusText,
-      pending: false,
-    };
-  }
-
-  private clearStandalonePendingAuxState(): void {
-    this.persistedStandalonePendingAux = undefined;
-    this.persistedStandalonePendingAuxAnchorMessageId = undefined;
-    this.standalonePendingAuxMessageId = undefined;
-    this.lastStandalonePendingAuxSnapshotLogSignature = undefined;
-  }
-
-  private logSnapshotStandalonePendingAux(
-    standalonePendingAux: {
-      message: ConversationMessageSnapshot;
-      insertAt: number;
-      source: 'live' | 'persisted';
-      anchorMessageId?: number;
-      anchorResolvedIndex?: number;
-    },
-    snapshots: ConversationMessageSnapshot[],
-  ): void {
-    if (messageOrderDebugLevel() !== 'verbose') {
-      return;
-    }
-
-    const status = truncateOneLineForDebug(standalonePendingAux.message.content, 48);
-    const tail = summarizeMessagesTailForOrderDebug(snapshots, 6);
-    const signature = [
-      standalonePendingAux.source,
-      standalonePendingAux.message.id,
-      standalonePendingAux.insertAt,
-      standalonePendingAux.anchorMessageId ?? '∅',
-      standalonePendingAux.anchorResolvedIndex ?? '∅',
-      standalonePendingAux.message.content,
-      tail,
-    ].join('|');
-    if (signature === this.lastStandalonePendingAuxSnapshotLogSignature) {
-      return;
-    }
-    this.lastStandalonePendingAuxSnapshotLogSignature = signature;
-    console.log(
-      `[desktop-host][snapshot] standalone-subagent-status source=${standalonePendingAux.source} msg=${standalonePendingAux.message.id} insert=${standalonePendingAux.insertAt} anchorMsg=${standalonePendingAux.anchorMessageId ?? '∅'} anchorIdx=${standalonePendingAux.anchorResolvedIndex ?? '∅'} status≈${status}${standalonePendingAux.message.content.length > 48 ? '…' : ''} tail=${tail}`,
-    );
   }
 
   private logToolMessageUpdate(
