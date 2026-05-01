@@ -159,6 +159,7 @@ export async function runDesktopDreamCollectorOnce(
   let sourceContextMode: DreamCollectorSourceContextMode | undefined;
   let pendingCount = 0;
   let toolCalls: DesktopDreamCollectorRunLog['toolCalls'] = [];
+  let blockedToolName: string | undefined;
   let promptForDebug = '';
   let debugSessionPersisted = false;
   try {
@@ -222,6 +223,9 @@ export async function runDesktopDreamCollectorOnce(
       }));
       return;
     }
+    // Collector 目前仍复用完整的 DesktopToolExecutor；这里只额外挂载 dream scope，
+    // 不会把可见工具面裁成 dream-only。要真正收紧到特许可用工具，需要连同扩展/MCP
+    // 的暴露策略一起设计清楚，避免现在先做一层局部限制后再打破宿主边界。
     const toolExecutor = new DesktopToolExecutor(input.workspaceRoot, {
       dreamScope: scope,
       dreamSourceSession: {
@@ -246,7 +250,27 @@ export async function runDesktopDreamCollectorOnce(
       scope,
       sourceContext,
     });
-    const result = await runtime.submitUserTurn(promptForDebug);
+    let result = await runtime.submitUserTurn(promptForDebug);
+    for (let guard = 0; guard < 4; guard += 1) {
+      toolCalls = result.toolExecutions.map((execution) => ({
+        toolName: execution.toolName,
+        failed: execution.failed,
+      }));
+      if (result.kind === 'requires-approval') {
+        blockedToolName = result.approval.toolName;
+        result = await runtime.resumePendingApproval({
+          kind: 'deny',
+          resultText: `[dream collector policy] denied non-dream tool: ${result.approval.toolName}`,
+        });
+        continue;
+      }
+      if (result.kind === 'requires-questions') {
+        blockedToolName = result.questions.toolName;
+        result = await runtime.resumePendingQuestions({ status: 'skipped' });
+        continue;
+      }
+      break;
+    }
     toolCalls = result.toolExecutions.map((execution) => ({
       toolName: execution.toolName,
       failed: execution.failed,
@@ -297,6 +321,7 @@ export async function runDesktopDreamCollectorOnce(
       pendingCount,
       resultSummary: truncateText(result.assistantText, 1_000),
       toolCalls,
+      ...(blockedToolName ? { blockedToolName } : {}),
     });
   } catch (error) {
     if (input.config.dreams.debugMode && sourceSession && promptForDebug && !debugSessionPersisted) {
@@ -324,6 +349,7 @@ export async function runDesktopDreamCollectorOnce(
       pendingCount,
       error: error instanceof Error ? error.message : String(error),
       toolCalls,
+      ...(blockedToolName ? { blockedToolName } : {}),
     });
     throw error;
   }
@@ -524,6 +550,7 @@ interface DesktopDreamCollectorRunLog {
   pendingCount: number;
   resultSummary?: string;
   error?: string;
+  blockedToolName?: string;
   toolCalls: Array<{
     toolName: string;
     failed: boolean;
