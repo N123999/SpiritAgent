@@ -226,6 +226,7 @@ const DREAM_RETENTION_MS = 5 * 24 * 60 * 60 * 1000;
 const DREAM_COLLECTOR_TICK_INTERVAL_MS = 30_000;
 const DREAM_COLLECTOR_BACKOFF_MS = 60_000;
 const DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS = 16_000;
+const DREAM_COMMIT_CONTEXT_MAX_CHARS = 6_000;
 
 interface EphemeralSessionRecord {
   path: string;
@@ -2249,9 +2250,14 @@ description: ${frontmatterDescription}
 
     const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
     const commitContext = await buildWorkspaceGitCommitMessageContext(state.workspaceRoot);
+    const dreamContextText = await buildDreamCommitContext({
+      workspaceRoot: state.workspaceRoot,
+      gitBranch: state.git.branch,
+    });
     const prompt = buildCommitMessageGenerationPrompt({
       workspaceRoot: state.workspaceRoot,
       branch: state.git.branch,
+      dreamContextText,
       statusText: commitContext.statusText,
       diffStatText: commitContext.diffStatText,
       diffText: commitContext.diffText,
@@ -4134,21 +4140,66 @@ description: ${frontmatterDescription}
   }
 }
 
+async function buildDreamCommitContext(input: {
+  workspaceRoot: string;
+  gitBranch?: string;
+}): Promise<string> {
+  const gitBranch = input.gitBranch?.trim();
+  if (!gitBranch) {
+    return '';
+  }
+
+  const dreamStore = createHostDreamStore({
+    spiritDataDir: spiritAgentDataDir(),
+    scope: {
+      workspaceRoot: input.workspaceRoot,
+      gitBranch,
+    },
+  });
+  await dreamStore.pruneExpired();
+  const dreams = await dreamStore.list({ includeDeleted: false, includeExpired: false });
+  if (dreams.length === 0) {
+    return '';
+  }
+
+  const rendered = dreams.map((dream, index) => {
+    const lines = [
+      `${index + 1}. ${dream.title}`,
+      `summary: ${dream.summary}`,
+      dream.details ? `details: ${dream.details}` : '',
+      dream.tags?.length ? `tags: ${dream.tags.join(', ')}` : '',
+      `updatedAtUnixMs: ${dream.updatedAtUnixMs}`,
+    ].filter(Boolean);
+    return lines.join('\n');
+  }).join('\n\n');
+  return truncateText(rendered, DREAM_COMMIT_CONTEXT_MAX_CHARS);
+}
+
 function buildCommitMessageGenerationPrompt(input: {
   workspaceRoot: string;
   branch?: string;
+  dreamContextText?: string;
   statusText: string;
   diffStatText: string;
   diffText: string;
 }): string {
+  const dreamSection = input.dreamContextText?.trim()
+    ? [
+        '',
+        '[dream summaries] 当前工作动向摘要',
+        input.dreamContextText.trim(),
+      ]
+    : [];
   return [
     '请为以下 Git 变更生成一条提交信息。',
     '必须遵守仓库约定：type / 可选 scope 使用英文；subject 使用中文。',
     '输出 JSON，由宿主解析。不要输出 Markdown、解释、代码块或额外字段。',
     'message 应该是一条可直接执行 git commit 的提交信息。若需要正文，可使用换行。',
+    '如果提供了 dream summaries，请把它作为“为什么做这些变更”的语义背景；最终提交信息仍以 Git diff 为准。',
     '',
     `workspace: ${input.workspaceRoot}`,
     `branch: ${input.branch ?? '(unknown)'}`,
+    ...dreamSection,
     '',
     '[git status --short --branch]',
     input.statusText || '(empty)',
