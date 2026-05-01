@@ -55,7 +55,6 @@ import type {
   DesktopDreamCollectorSnapshot,
   DesktopModelProvider,
   DeleteSkillRequest,
-  DesktopModelCatalogHint,
   DesktopSnapshot,
   FileRewindWarning,
   RunExtensionRequest,
@@ -95,7 +94,6 @@ import {
 import {
   isModelCatalogCacheFresh,
   readModelCatalogCache,
-  readModelCatalogCacheSync,
   writeModelCatalogCache,
 } from './model-catalog-cache.js';
 import {
@@ -156,8 +154,6 @@ import {
 } from './mcp-config.js';
 import {
   archiveBeforeLastUser,
-  buildAvailableWorkspaces,
-  buildWebHostSnapshot,
   cloneChatArchive,
   cloneDesktopConfig,
   currentApiBase,
@@ -169,6 +165,7 @@ import {
   sameWorkspaceRoot,
   toRuntimeAskQuestionsResult,
 } from './service-utils.js';
+import { buildDesktopSnapshot } from './snapshot.js';
 import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
   describeAuxForDebug,
@@ -1889,27 +1886,6 @@ class DesktopHostService {
     });
   }
 
-  private buildModelCatalogHints(state: HostState): DesktopModelCatalogHint[] {
-    const seen = new Set<string>();
-    const hints: DesktopModelCatalogHint[] = [];
-    for (const model of state.config.models) {
-      const base = model.apiBase.trim() || DEFAULT_API_BASE;
-      if (seen.has(base)) {
-        continue;
-      }
-      seen.add(base);
-      const hit = readModelCatalogCacheSync(base);
-      if (hit && hit.modelIds.length > 0) {
-        hints.push({
-          apiBase: hit.apiBase,
-          modelIds: hit.modelIds,
-          fetchedAtUnixMs: hit.fetchedAtUnixMs,
-        });
-      }
-    }
-    return hints;
-  }
-
   private buildSnapshot(): DesktopSnapshot {
     const state = this.requireState();
     const pendingApproval = this.runtime?.currentPendingApproval();
@@ -1924,62 +1900,18 @@ class DesktopHostService {
     }
     this.pruneEmptyAssistantMessages('buildSnapshot');
 
-    return {
+    return buildDesktopSnapshot({
       workspaceRoot: state.workspaceRoot,
-      availableWorkspaces: buildAvailableWorkspaces(
-        state.workspaceRoot,
-        state.config.recentWorkspaces,
-      ),
-      git: { ...state.git },
-      dreams: {
-        settings: {
-          enabled: state.config.dreams.enabled === true,
-          ...(state.config.dreams.collectorModel ? { collectorModel: state.config.dreams.collectorModel } : {}),
-          debugMode: state.config.dreams.debugMode === true,
-        },
-        collector: { ...this.dreamCollectorStatus },
-      },
+      config: state.config,
+      git: state.git,
+      metadata: state.metadata,
+      extensionsList: state.extensionsList,
+      extensionCss: state.extensionCss,
+      dreamCollectorStatus: this.dreamCollectorStatus,
       runtimeReady: this.runtime !== undefined,
-      ...(this.lastRuntimeError ? { runtimeError: this.lastRuntimeError } : {}),
-      config: {
-        models: state.config.models.map((model) => ({
-          name: model.name,
-          apiBase: model.apiBase,
-          ...(model.provider ? { provider: model.provider } : {}),
-          keyConfigured: this.modelKeyPresence[model.name] ?? false,
-        })),
-        activeModel: state.config.activeModel,
-        ...(state.config.uiLocale ? { uiLocale: state.config.uiLocale } : {}),
-        activeApiKeyConfigured: this.activeApiKeyConfigured,
-        windowsMica: state.config.windowsMica !== false,
-        planMode: state.config.planMode === true,
-        modelCatalogHints: this.buildModelCatalogHints(state),
-      },
-      webHost: buildWebHostSnapshot(state.config.webHost),
-      rules: {
-        discovered: state.metadata.rules.discovered,
-        enabled: state.metadata.rules.enabled,
-      },
-      skills: {
-        discovered: state.metadata.skills.discovered,
-        enabled: state.metadata.skills.enabled,
-      },
-      skillsList: state.metadata.skills.entries.map((entry) => ({
-        id: entry.source.id,
-        name: entry.source.name,
-        description: entry.source.description,
-        shortLabel: entry.source.shortLabel,
-        scope: entry.source.scope,
-        rootKind: entry.source.rootKind,
-        enabled: entry.enabled,
-      })),
-      // 须与 refreshExtensionsList 一致，否则设置页不显示工具/设置/密钥
-      extensionsList: state.extensionsList.map((item) => ({ ...item })),
-      extensionCss: state.extensionCss.map((entry) => ({ ...entry })),
-      plan: {
-        path: state.metadata.planMetadata.path,
-        exists: state.metadata.planMetadata.exists,
-      },
+      runtimeError: this.lastRuntimeError,
+      modelKeyPresence: this.modelKeyPresence,
+      activeApiKeyConfigured: this.activeApiKeyConfigured,
       mcpStatus: this.toolExecutor?.mcpStatusSnapshot() ?? emptyMcpStatusSnapshot(),
       mcpServers: listDesktopMcpServersFromDisk(),
       conversation: {
@@ -2021,8 +1953,8 @@ class DesktopHostService {
           ? { rewindWarnings: state.rewindWarnings.map((warning) => ({ ...warning })) }
           : {}),
       },
-      ...(state.activeSession ? { activeSession: { ...state.activeSession } } : {}),
-    };
+      ...(state.activeSession ? { activeSession: state.activeSession } : {}),
+    });
   }
 
   private findEphemeralSession(filePath: string): EphemeralSessionRecord | undefined {
