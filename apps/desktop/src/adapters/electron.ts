@@ -93,6 +93,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     poll() {
       return bridge.poll();
     },
+    listDreamsOverview() {
+      return bridge.listDreamsOverview();
+    },
     replyPendingApproval(message) {
       return bridge.replyPendingApproval(message);
     },

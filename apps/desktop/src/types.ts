@@ -510,6 +510,15 @@ export interface DesktopDreamSnapshot {
   collector: DesktopDreamCollectorSnapshot;
 }
 
+export interface DesktopDreamOverviewItem {
+  id: string;
+  title: string;
+  summary: string;
+  workspaceRoot: string;
+  gitBranch: string;
+  updatedAtUnixMs: number;
+}
+
 export interface DesktopGitSnapshot {
   isRepository: boolean;
   hasChanges: boolean;

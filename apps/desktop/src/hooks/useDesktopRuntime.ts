@@ -17,6 +17,7 @@ import type {
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -252,6 +253,13 @@ export function useDesktopRuntime() {
     } catch {
       setSessions([]);
     }
+  }, [api]);
+
+  const listDreamsOverview = useCallback(async (): Promise<DesktopDreamOverviewItem[]> => {
+    if (!api) {
+      return [];
+    }
+    return api.listDreamsOverview();
   }, [api]);
 
   const bootstrap = useCallback(async (request?: BootstrapRequest) => {
@@ -1236,6 +1244,7 @@ export function useDesktopRuntime() {
     questionDrafts,
     questionError,
     refreshSessions,
+    listDreamsOverview,
     runtimeError,
     sessions,
     settings,

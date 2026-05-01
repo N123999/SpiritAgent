@@ -78,6 +78,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopDreamOverviewItem,
   DesktopMcpServerInspection,
   DesktopExtensionListItem,
   DesktopExtensionCssLayer,
@@ -278,6 +279,7 @@ type CommandPayloads = {
   submitSkillSlash: { request: SubmitSkillSlashRequest };
   submitUserTurn: { text: string };
   poll: undefined;
+  listDreamsOverview: undefined;
   replyPendingApproval: { message: string };
   replyPendingQuestions: { result: AskQuestionsResult };
   resetSession: undefined;
@@ -1314,6 +1316,35 @@ description: ${frontmatterDescription}
     });
   }
 
+  async listDreamsOverview(): Promise<DesktopDreamOverviewItem[]> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      const gitBranch = state.git.branch?.trim();
+      if (!state.git.isRepository || !gitBranch) {
+        return [];
+      }
+
+      const dreamStore = createHostDreamStore({
+        spiritDataDir: spiritAgentDataDir(),
+        scope: {
+          workspaceRoot: state.workspaceRoot,
+          gitBranch,
+        },
+      });
+      await dreamStore.pruneExpired();
+      const dreams = await dreamStore.list({ includeDeleted: false, includeExpired: false });
+      return dreams.map((dream) => ({
+        id: dream.id,
+        title: dream.title,
+        summary: dream.summary,
+        workspaceRoot: dream.scope.workspaceRoot,
+        gitBranch: dream.scope.gitBranch,
+        updatedAtUnixMs: dream.updatedAtUnixMs,
+      }));
+    });
+  }
+
   async listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -1618,6 +1649,8 @@ description: ${frontmatterDescription}
       }
       case 'poll':
         return this.poll();
+      case 'listDreamsOverview':
+        return this.listDreamsOverview();
       case 'replyPendingApproval': {
         const typedPayload = payload as CommandPayloads['replyPendingApproval'];
         return this.replyPendingApproval(typedPayload.message);

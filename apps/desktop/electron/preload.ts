@@ -85,6 +85,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   poll() {
     return ipcRenderer.invoke('desktop:invoke', 'poll');
   },
+  listDreamsOverview() {
+    return ipcRenderer.invoke('desktop:invoke', 'listDreamsOverview');
+  },
   replyPendingApproval(message: string) {
     return ipcRenderer.invoke('desktop:invoke', 'replyPendingApproval', { message });
   },

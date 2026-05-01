@@ -303,6 +303,11 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'GET' && pathname === '/api/dreams') {
+    writeJson(request, response, 200, await runHostCommand('listDreamsOverview'));
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/bootstrap') {
     writeJson(request, response, 200, await runHostCommand('bootstrap', { request: jsonBody ?? {} }));
     return;

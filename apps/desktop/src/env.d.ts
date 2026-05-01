@@ -10,6 +10,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -67,6 +68,7 @@ declare global {
     submitUserTurn(text: string): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
+    listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
     replyPendingApproval(message: string): Promise<DesktopSnapshot>;
     replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
     resetSession(): Promise<DesktopSnapshot>;

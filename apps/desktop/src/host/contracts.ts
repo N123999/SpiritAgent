@@ -37,6 +37,7 @@ export type HostCommandName =
   | 'submitSkillSlash'
   | 'submitUserTurn'
   | 'poll'
+  | 'listDreamsOverview'
   | 'replyPendingApproval'
   | 'replyPendingQuestions'
   | 'resetSession'

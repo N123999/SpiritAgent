@@ -1377,6 +1377,7 @@ export default function App() {
               onInspectMcpServer={runtime.inspectMcpServer}
               onCreateSkill={runtime.createSkill}
               onDeleteSkill={runtime.deleteSkill}
+              onListDreamsOverview={runtime.listDreamsOverview}
               onGenerateSkillNavigate={() => {
                 setLastNonSettingsSurface("conversation");
                 setActiveSurface("conversation");
