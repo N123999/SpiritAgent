@@ -1,7 +1,6 @@
 import path from 'node:path';
 
 import {
-  AgentRuntime,
   buildDreamCollectorSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
@@ -9,22 +8,13 @@ import {
   buildSkillsCatalogSystemMessage,
   type OpenAiActiveSkill,
   type OpenAiExtensionSystemPrompt,
-  appendOpenAiToolResultMessage,
-  appendOpenAiUserMessage,
-  extractLastOpenAiAssistantText,
   OpenAiTransport,
-  pendingWorkspaceFilesFromInput,
-  rebuildOpenAiToolAgentStateAfterCompaction,
-  startOpenAiToolAgentState,
-  truncateOpenAiHistoryForCompaction,
-  truncateOpenAiToolAgentStateForContextRetry,
   type AssistantAuxArchiveEntry,
   type ChatArchive,
   type JsonObject,
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiPlanMetadata,
-  type OpenAiToolAgentState,
   type OpenAiTransportConfig,
   type RuntimeEvent,
   type RuntimeToolExecution,
@@ -133,6 +123,11 @@ import {
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
 import {
+  cloneActiveSkills,
+  createDesktopRuntime,
+  type DesktopRuntime,
+} from './runtime.js';
+import {
   buildCommitMessageGenerationPrompt,
   buildDreamCommitContext,
   clearDreamCollectorIssue,
@@ -239,13 +234,6 @@ import {
   type DesktopRewindCheckpointSnapshot,
   type StoredDesktopRewindMetadata,
 } from './rewind.js';
-
-type DesktopRuntime = AgentRuntime<
-  OpenAiTransportConfig,
-  OpenAiToolAgentState,
-  DesktopToolRequest,
-  string
->;
 
 export interface DesktopExtensionMessageBoxRequest {
   title: string;
@@ -1887,47 +1875,18 @@ class DesktopHostService {
     toolExecutor: DesktopToolExecutor = this.requireToolExecutor(),
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
-    return new AgentRuntime({
-      config: transportConfig,
-      llmTransport: this.transport,
+    return createDesktopRuntime({
+      transportConfig,
+      history,
+      enabledRules,
+      enabledSkillCatalog,
+      planMetadata,
+      extensionSystemPrompts,
       toolExecutor,
-      createToolAgentState: (messages, userInput) =>
-        startOpenAiToolAgentState(
-          messages,
-          userInput,
-          workspaceRoot,
-          enabledRules,
-          enabledSkillCatalog,
-          cloneActiveSkills(this.currentTurnSkills),
-          transportConfig.model,
-          planMetadata,
-          extensionSystemPrompts,
-        ),
-      appendToolResultMessage: appendOpenAiToolResultMessage,
-      appendUserMessage: appendOpenAiUserMessage,
-      extractAssistantText: extractLastOpenAiAssistantText,
-      truncateStateForContextRetry: truncateOpenAiToolAgentStateForContextRetry,
-      truncateHistoryForCompaction: truncateOpenAiHistoryForCompaction,
-      rebuildRetryStateAfterCompaction: (messages, userInput, retryState) =>
-        rebuildOpenAiToolAgentStateAfterCompaction(
-          messages,
-          userInput,
-          retryState,
-          workspaceRoot,
-          enabledRules,
-          enabledSkillCatalog,
-          cloneActiveSkills(this.currentTurnSkills),
-          transportConfig.model,
-          planMetadata,
-          extensionSystemPrompts,
-        ),
-      resolveWorkspaceFilesFromInput: (input) =>
-        pendingWorkspaceFilesFromInput(workspaceRoot, input),
-    }, history.map((message) => ({
-      role: message.role,
-      content: message.content,
-      imagePaths: [...message.imagePaths],
-    })));
+      llmTransport: this.transport,
+      activeSkills: this.currentTurnSkills,
+      workspaceRoot,
+    });
   }
 
   private buildModelCatalogHints(state: HostState): DesktopModelCatalogHint[] {
@@ -3686,13 +3645,6 @@ class DesktopHostService {
     }
     return desktopExtensionHostAdapter;
   }
-}
-
-function cloneActiveSkills(skills: OpenAiActiveSkill[]): OpenAiActiveSkill[] {
-  return skills.map((skill) => ({
-    ...skill,
-    resources: skill.resources.map((resource) => ({ ...resource })),
-  }));
 }
 
 const desktopHostService = new DesktopHostService();
