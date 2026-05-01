@@ -11,6 +11,13 @@ export interface ContributedHostToolDefinition {
   inputSchema: JsonObject;
 }
 
+export type DreamHostToolName =
+  | 'dream_list'
+  | 'dream_read'
+  | 'dream_record'
+  | 'dream_update'
+  | 'dream_delete';
+
 export function buildBuiltinHostToolDefinitions(
   environment: BuiltinHostToolDefinitionEnvironment,
 ): JsonValue[] {
@@ -241,6 +248,138 @@ export function buildContributedHostToolDefinitions(
   return definitions.map((definition) =>
     functionTool(definition.name, definition.description, definition.inputSchema),
   );
+}
+
+export function buildDreamHostToolDefinitions(): JsonValue[] {
+  return [
+    functionTool(
+      'dream_list',
+      'List all non-expired dream summaries in the current collector scope. The host scope is fixed to the collector workspace and Git branch; do not ask for broader memory. Use this before recording a new dream so you can update or delete stale dreams instead of duplicating them.',
+      {
+        type: 'object',
+        properties: {
+          include_deleted: {
+            type: 'boolean',
+            description: 'Whether to include dreams previously marked as deleted. Defaults to false.',
+          },
+          include_expired: {
+            type: 'boolean',
+            description: 'Whether to include expired dreams. Defaults to false.',
+          },
+        },
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'dream_read',
+      'Read one dream summary by id within the current collector scope. Use this when the list result indicates an existing dream may need to be updated or deleted.',
+      {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Dream id returned by dream_list.',
+          },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'dream_record',
+      'Record a new dream summary for the current collector scope. Only use this when existing dreams do not already cover the source session movement.',
+      {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Short human-readable title for the recent work movement.',
+          },
+          summary: {
+            type: 'string',
+            description: 'Concise summary of what changed and why it matters.',
+          },
+          details: {
+            type: 'string',
+            description: 'Optional supporting detail, decisions, constraints, or unresolved follow-ups.',
+          },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional short tags such as desktop, agent-core, git, commit.',
+          },
+        },
+        required: ['title', 'summary'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'dream_update',
+      'Update an existing dream summary in the current collector scope. Prefer updating a related dream over creating a duplicate when a source session continues the same work movement.',
+      {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Dream id returned by dream_list.',
+          },
+          title: {
+            type: 'string',
+            description: 'Replacement title, if the existing title is no longer accurate.',
+          },
+          summary: {
+            type: 'string',
+            description: 'Replacement concise summary.',
+          },
+          details: {
+            type: 'string',
+            description: 'Replacement supporting detail. Omit to keep existing details.',
+          },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Replacement tags. Omit to keep existing tags.',
+          },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'dream_delete',
+      'Mark an existing dream as deleted within the current collector scope. Use this only when the dream is stale, misleading, or superseded by another dream. Normal expiry is handled by the host.',
+      {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Dream id returned by dream_list.',
+          },
+          reason: {
+            type: 'string',
+            description: 'Short reason for deleting the dream.',
+          },
+        },
+        required: ['id', 'reason'],
+        additionalProperties: false,
+      },
+    ),
+  ];
+}
+
+export function buildDreamCollectorSystemMessage(): string {
+  return [
+    '[SPIRIT_DREAM_COLLECTOR]',
+    'You are the dream collector for Spirit Agent.',
+    'Dreams are short-lived summaries of recent work movement, not permanent memory.',
+    'The host has already scoped this collection run to one workspace and one Git branch.',
+    'First call dream_list to inspect existing dreams in this scope.',
+    'Then decide whether the source session should create a new dream, update an existing dream, delete a stale dream, or leave dreams unchanged.',
+    'Prefer updating an existing related dream over creating duplicates.',
+    'Record why the work matters, user intent, important decisions, constraints, and unresolved follow-ups.',
+    'Do not summarize every message mechanically. Preserve signal that helps future host consumers understand the current work direction.',
+    'Do not perform production work. Only read the provided context and maintain dreams through the dream tools.',
+  ].join('\n');
 }
 
 function buildShellToolDescription(shellDisplayName: string): string {
