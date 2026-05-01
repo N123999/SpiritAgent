@@ -55,6 +55,8 @@ type BusyAction =
   | "marketplace"
   | "git";
 
+const DREAM_IDLE_POLL_INTERVAL_MS = 2_000;
+
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
   customInput: string;
@@ -170,6 +172,18 @@ function emptyQuestionDraft(): QuestionDraft {
     customInput: "",
     text: "",
   };
+}
+
+function shouldRefreshDreamSessions(prev: DesktopSnapshot, next: DesktopSnapshot): boolean {
+  if (!next.dreams.settings.debugMode) {
+    return false;
+  }
+
+  return (
+    prev.dreams.collector.state !== next.dreams.collector.state ||
+    prev.dreams.collector.processedCount !== next.dreams.collector.processedCount ||
+    prev.dreams.collector.lastSuccessAtUnixMs !== next.dreams.collector.lastSuccessAtUnixMs
+  );
 }
 
 export function useDesktopRuntime() {
@@ -434,6 +448,46 @@ export function useDesktopRuntime() {
       cancelled = true;
     };
   }, [api, applySnapshot, refreshSessions, snapshot?.conversation.isBusy]);
+
+  useEffect(() => {
+    if (!api || !snapshot || snapshot.conversation.isBusy || !snapshot.dreams.settings.enabled) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const pollDreams = async () => {
+      try {
+        const next = await api.poll();
+        if (cancelled) {
+          return;
+        }
+        const needRefreshSessions = shouldRefreshDreamSessions(snapshot, next);
+        applySnapshot(next);
+        if (needRefreshSessions) {
+          void refreshSessions();
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRuntimeError(describeError(error));
+        }
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(pollDreams, DREAM_IDLE_POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    timer = setTimeout(pollDreams, DREAM_IDLE_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [api, applySnapshot, refreshSessions, snapshot]);
 
   const updateQuestionDraft = useCallback(
     (questionId: string, updater: (draft: QuestionDraft) => QuestionDraft) => {
