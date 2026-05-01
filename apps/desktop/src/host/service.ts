@@ -984,7 +984,7 @@ description: ${frontmatterDescription}
 
   async submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
         throw new Error('当前已有响应或审批在处理中，请稍候。');
@@ -1010,7 +1010,7 @@ description: ${frontmatterDescription}
 
   async submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
         throw new Error('当前已有响应或审批在处理中，请稍候。');
@@ -1038,14 +1038,14 @@ description: ${frontmatterDescription}
 
   async submitUserTurn(text: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       return this.submitUserTurnAfterInitialized(text);
     });
   }
 
   async rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       const state = this.requireState();
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
@@ -1170,7 +1170,9 @@ description: ${frontmatterDescription}
     this.syncPendingToolStates();
     this.syncAssistantPrefixFromHistoryBeforeToolRow();
     await this.flushDeferredRuntimeRefreshIfIdle();
-    await this.refreshGitState();
+    if (!runtime.isBusy()) {
+      await this.refreshGitState();
+    }
     return this.buildSnapshot();
   }
 
@@ -1196,7 +1198,7 @@ description: ${frontmatterDescription}
 
   async poll(): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       if (this.runtime) {
         this.runtime.tickThinkingSpinner();
         await this.runtime.poll();
@@ -1207,7 +1209,9 @@ description: ${frontmatterDescription}
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
-      await this.refreshGitState();
+      if (!this.runtime?.isBusy()) {
+        await this.refreshGitState();
+      }
       this.startDreamCollectorIfNeeded();
       return this.buildSnapshot();
     });
@@ -1215,7 +1219,7 @@ description: ${frontmatterDescription}
 
   async replyPendingApproval(message: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       const decision = parseApprovalDecision(message);
       const state = this.requireState();
@@ -1235,14 +1239,16 @@ description: ${frontmatterDescription}
       this.syncPendingToolStates();
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.flushDeferredRuntimeRefreshIfIdle();
-      await this.refreshGitState();
+      if (!runtime.isBusy()) {
+        await this.refreshGitState();
+      }
       return this.buildSnapshot();
     });
   }
 
   async replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       await runtime.continuePendingQuestions(toRuntimeAskQuestionsResult(result));
       await runtime.poll();
@@ -1252,7 +1258,9 @@ description: ${frontmatterDescription}
       this.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
-      await this.refreshGitState();
+      if (!runtime.isBusy()) {
+        await this.refreshGitState();
+      }
       return this.buildSnapshot();
     });
   }
@@ -1647,10 +1655,22 @@ description: ${frontmatterDescription}
     }
   }
 
-  private async ensureInitialized(workspaceRootOverride?: string): Promise<void> {
+  private async ensureInitialized(
+    workspaceRootOverride?: string,
+    options: { fastPath?: boolean } = {},
+  ): Promise<void> {
     const requestedWorkspaceRoot = workspaceRootOverride?.trim()
       ? path.resolve(workspaceRootOverride.trim())
       : undefined;
+    if (
+      options.fastPath === true &&
+      this.initialized &&
+      this.state?.workspaceRoot &&
+      (!requestedWorkspaceRoot || sameWorkspaceRoot(this.state.workspaceRoot, requestedWorkspaceRoot))
+    ) {
+      return;
+    }
+
     const loadedConfig = await loadConfig();
     const workspaceRoot = requestedWorkspaceRoot
       ?? loadedConfig.recentWorkspaces?.[0]
