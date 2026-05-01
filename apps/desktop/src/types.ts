@@ -395,6 +395,7 @@ export interface SessionListItem {
   displayName: string;
   modifiedAtUnixMs: number;
   workspaceRoot: string;
+  gitBranch?: string;
   kind?: 'stored' | 'ephemeral';
   readOnly?: boolean;
 }

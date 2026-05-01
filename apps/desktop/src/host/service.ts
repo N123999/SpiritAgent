@@ -3423,6 +3423,7 @@ description: ${frontmatterDescription}
       savedAtUnixMs: Date.now(),
       sessionDisplayName: state.activeSession.displayName,
       workspaceRoot: state.workspaceRoot,
+      ...(state.git.branch ? { gitBranch: state.git.branch } : {}),
       desktopMessages: state.messages.map((message) => ({ ...message })),
       rewind: state.rewind,
     };

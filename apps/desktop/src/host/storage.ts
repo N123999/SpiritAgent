@@ -285,6 +285,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
             deriveDisplayName(parsed.desktopMessages, parsed.messages),
           workspaceRoot:
             resolveStoredWorkspaceRoot(parsed.workspaceRoot) ?? discoverWorkspaceRoot(),
+          ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
           modifiedAtUnixMs:
             typeof parsed.savedAtUnixMs === 'number'
               ? parsed.savedAtUnixMs
@@ -320,6 +321,7 @@ export async function loadStoredSession(filePath: string): Promise<StoredDesktop
     ...(resolveStoredWorkspaceRoot(parsed.workspaceRoot)
       ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
       : {}),
+    ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
     ...(Array.isArray(parsed.desktopMessages)
       ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
       : {}),
@@ -351,6 +353,10 @@ function defaultConfig(): DesktopConfigFile {
     planMode: false,
     webHost: defaultWebHostConfig(),
   };
+}
+
+function normalizeGitBranch(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 export function defaultWebHostConfig(): DesktopWebHostConfigFile {
