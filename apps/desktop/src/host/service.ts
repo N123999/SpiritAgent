@@ -51,6 +51,7 @@ import {
   createHostExtensionMarketplace,
   createHostExtensionManager,
   createHostDreamStore,
+  DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,
   dreamLogsDirPath,
   listOpenAiCompatibleModelIds,
   resolveInstructionPaths,
@@ -226,8 +227,8 @@ function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces
 const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
 const MAX_EPHEMERAL_COMMIT_SESSIONS = 8;
 const DREAM_DEBUG_SESSION_FILE_PREFIX = 'dream-collector-';
-const DREAM_RETENTION_MS = 5 * 24 * 60 * 60 * 1000;
 const DREAM_COLLECTOR_TICK_INTERVAL_MS = 30_000;
+const DREAM_COLLECTOR_MONITOR_INTERVAL_MS = 5_000;
 const DREAM_COLLECTOR_BACKOFF_MS = 60_000;
 const DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS = 16_000;
 const DREAM_COLLECTOR_INCREMENTAL_CONTEXT_MAX_CHARS = 8_000;
@@ -349,12 +350,23 @@ class DesktopHostService {
   private dreamCollectorStatus: DesktopDreamCollectorSnapshot = emptyDreamCollectorSnapshot('disabled');
   private dreamCollectorRunning = false;
   private dreamCollectorLastTickUnixMs = 0;
+  private dreamCollectorMonitorTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly dreamUpdateListeners = new Set<(snapshot: DesktopSnapshot) => void>();
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(request?.workspaceRoot);
+      this.startDreamCollectorMonitorIfNeeded();
       return this.buildSnapshot();
     });
+  }
+
+  subscribeDreamUpdates(listener: (snapshot: DesktopSnapshot) => void): () => void {
+    this.dreamUpdateListeners.add(listener);
+    this.startDreamCollectorMonitorIfNeeded();
+    return () => {
+      this.dreamUpdateListeners.delete(listener);
+    };
   }
 
   async rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot> {
@@ -1318,7 +1330,7 @@ description: ${frontmatterDescription}
 
   async listDreamsOverview(): Promise<DesktopDreamOverviewItem[]> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized();
+      await this.ensureInitialized(undefined, { fastPath: true });
       const state = this.requireState();
       const gitBranch = state.git.branch?.trim();
       if (!state.git.isRepository || !gitBranch) {
@@ -1866,28 +1878,28 @@ description: ${frontmatterDescription}
     const settings = state.config.dreams;
     const now = Date.now();
     if (!settings.enabled) {
-      this.dreamCollectorStatus = emptyDreamCollectorSnapshot('disabled');
+      this.setDreamCollectorStatus(emptyDreamCollectorSnapshot('disabled'));
       return;
     }
     if (!settings.collectorModel) {
-      this.dreamCollectorStatus = {
+      this.setDreamCollectorStatus({
         ...emptyDreamCollectorSnapshot('missing-model'),
         lastError: '梦境收集模型未配置。',
-      };
+      });
       return;
     }
     if (!state.git.isRepository || !state.git.branch) {
-      this.dreamCollectorStatus = emptyDreamCollectorSnapshot('idle');
+      this.setDreamCollectorStatus(emptyDreamCollectorSnapshot('idle'));
       return;
     }
     if (this.runtime?.isBusy() || this.dreamCollectorRunning) {
       return;
     }
     if (this.dreamCollectorStatus.backoffUntilUnixMs && now < this.dreamCollectorStatus.backoffUntilUnixMs) {
-      this.dreamCollectorStatus = {
+      this.setDreamCollectorStatus({
         ...this.dreamCollectorStatus,
         state: 'backoff',
-      };
+      });
       return;
     }
     if (now - this.dreamCollectorLastTickUnixMs < DREAM_COLLECTOR_TICK_INTERVAL_MS) {
@@ -1896,13 +1908,13 @@ description: ${frontmatterDescription}
 
     this.dreamCollectorLastTickUnixMs = now;
     this.dreamCollectorRunning = true;
-    this.dreamCollectorStatus = {
+    this.setDreamCollectorStatus({
       ...this.dreamCollectorStatus,
       state: 'running',
       lastRunAtUnixMs: now,
       pendingCount: this.dreamCollectorStatus.pendingCount,
       processedCount: this.dreamCollectorStatus.processedCount,
-    };
+    });
 
     const collectorInput = {
       workspaceRoot: state.workspaceRoot,
@@ -1915,16 +1927,50 @@ description: ${frontmatterDescription}
     void this.runDreamCollectorOnce(collectorInput)
       .catch((error) => {
         const backoffUntilUnixMs = Date.now() + DREAM_COLLECTOR_BACKOFF_MS;
-        this.dreamCollectorStatus = {
+        this.setDreamCollectorStatus({
           ...this.dreamCollectorStatus,
           state: 'backoff',
           lastError: error instanceof Error ? error.message : String(error),
           backoffUntilUnixMs,
-        };
+        });
       })
       .finally(() => {
         this.dreamCollectorRunning = false;
       });
+  }
+
+  private startDreamCollectorMonitorIfNeeded(): void {
+    if (this.dreamCollectorMonitorTimer) {
+      return;
+    }
+
+    this.dreamCollectorMonitorTimer = setInterval(() => {
+      void this.runSerialized(async () => {
+        if (!this.initialized || !this.state || this.runtime?.isBusy()) {
+          return;
+        }
+        this.startDreamCollectorIfNeeded();
+      });
+    }, DREAM_COLLECTOR_MONITOR_INTERVAL_MS);
+    this.dreamCollectorMonitorTimer.unref?.();
+  }
+
+  private setDreamCollectorStatus(next: DesktopDreamCollectorSnapshot): void {
+    if (sameDreamCollectorSnapshot(this.dreamCollectorStatus, next)) {
+      return;
+    }
+    this.dreamCollectorStatus = next;
+    this.emitDreamUpdate();
+  }
+
+  private emitDreamUpdate(): void {
+    if (!this.state || this.dreamUpdateListeners.size === 0) {
+      return;
+    }
+    const snapshot = this.buildSnapshot();
+    for (const listener of this.dreamUpdateListeners) {
+      listener(snapshot);
+    }
   }
 
   private async runDreamCollectorOnce(input: {
@@ -1947,7 +1993,7 @@ description: ${frontmatterDescription}
     let promptForDebug = '';
     let debugSessionPersisted = false;
     try {
-      const cutoffUnixMs = Date.now() - DREAM_RETENTION_MS;
+      const cutoffUnixMs = Date.now() - HOST_DREAM_RETENTION_MS;
       const now = Date.now();
       const storedSessions = (await listStoredSessions())
         .filter((session) => sameWorkspaceRoot(session.workspaceRoot, input.workspaceRoot))
@@ -1965,20 +2011,20 @@ description: ${frontmatterDescription}
       );
       pendingCount = pendingSessions.length;
       if (pendingSessions.length === 0) {
-        this.dreamCollectorStatus = clearDreamCollectorIssue({
+        this.setDreamCollectorStatus(clearDreamCollectorIssue({
           ...this.dreamCollectorStatus,
           state: 'idle',
           pendingCount: 0,
-        });
+        }));
         return;
       }
 
       sourceSession = pendingSessions[0]!;
-      this.dreamCollectorStatus = clearDreamCollectorIssue({
+      this.setDreamCollectorStatus(clearDreamCollectorIssue({
         ...this.dreamCollectorStatus,
         state: 'running',
         pendingCount: pendingSessions.length,
-      });
+      }));
 
       const apiKey = await resolveApiKeyForModel(input.collectorModel);
       if (!apiKey) {
@@ -2000,11 +2046,11 @@ description: ${frontmatterDescription}
           lastRunAtUnixMs: Date.now(),
           cooldownUntilUnixMs: Date.now() + DREAM_COLLECTOR_SESSION_COOLDOWN_MS,
         });
-        this.dreamCollectorStatus = clearDreamCollectorIssue({
+        this.setDreamCollectorStatus(clearDreamCollectorIssue({
           ...this.dreamCollectorStatus,
           state: 'idle',
           pendingCount: Math.max(0, pendingSessions.length - 1),
-        });
+        }));
         return;
       }
       const toolExecutor = new DesktopToolExecutor(input.workspaceRoot, {
@@ -2072,13 +2118,13 @@ description: ${frontmatterDescription}
         lastRunAtUnixMs: Date.now(),
         cooldownUntilUnixMs: Date.now() + DREAM_COLLECTOR_SESSION_COOLDOWN_MS,
       });
-      this.dreamCollectorStatus = clearDreamCollectorIssue({
+      this.setDreamCollectorStatus(clearDreamCollectorIssue({
         ...this.dreamCollectorStatus,
         state: 'idle',
         lastSuccessAtUnixMs: Date.now(),
         pendingCount: Math.max(0, pendingSessions.length - 1),
         processedCount: this.dreamCollectorStatus.processedCount + 1,
-      });
+      }));
       await writeDreamCollectorRunLog({
         runId,
         startedAtUnixMs,
@@ -4406,11 +4452,11 @@ function normalizeDreamCollectorMessages(
       (message): message is { role: 'user' | 'assistant'; content: string; imagePaths: string[] } =>
         message.role === 'user' || message.role === 'assistant',
     )
+    .filter((message) => message.content.trim().length > 0)
     .map((message) => ({
       role: message.role,
       rendered: `${message.role.toUpperCase()}:\n${message.content.trim()}`,
-    }))
-    .filter((entry) => entry.rendered.trim().length > 0);
+    }));
 }
 
 function hashDreamCollectorMessages(
@@ -5342,6 +5388,25 @@ export async function invokeDesktopHostCommand(
   payload?: unknown,
 ): Promise<unknown> {
   return desktopHostService.invoke(command, payload);
+}
+
+export function subscribeDesktopDreamUpdates(
+  listener: (snapshot: DesktopSnapshot) => void,
+): () => void {
+  return desktopHostService.subscribeDreamUpdates(listener);
+}
+
+function sameDreamCollectorSnapshot(
+  left: DesktopDreamCollectorSnapshot,
+  right: DesktopDreamCollectorSnapshot,
+): boolean {
+  return left.state === right.state &&
+    left.lastRunAtUnixMs === right.lastRunAtUnixMs &&
+    left.lastSuccessAtUnixMs === right.lastSuccessAtUnixMs &&
+    left.lastError === right.lastError &&
+    left.pendingCount === right.pendingCount &&
+    left.processedCount === right.processedCount &&
+    left.backoffUntilUnixMs === right.backoffUntilUnixMs;
 }
 
 function buildWebHostSnapshot(config: DesktopWebHostConfigFile): DesktopWebHostSnapshot {

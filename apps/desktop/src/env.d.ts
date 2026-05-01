@@ -69,6 +69,7 @@ declare global {
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
+    dreamSubscribe(callback: (snapshot: DesktopSnapshot) => void): () => void;
     replyPendingApproval(message: string): Promise<DesktopSnapshot>;
     replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
     resetSession(): Promise<DesktopSnapshot>;

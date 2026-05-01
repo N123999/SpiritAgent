@@ -74,7 +74,7 @@ export interface HostDreamSessionProgressInput {
   lastProcessedSavedAtUnixMs: number;
   lastProcessedMessageCount: number;
   lastProcessedPrefixHash: string;
-  lastRunAtUnixMs?: number;
+  lastRunAtUnixMs: number;
   cooldownUntilUnixMs?: number;
 }
 
@@ -274,7 +274,12 @@ export class HostDreamStore {
     }
 
     const raw = await readFile(this.filePath, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<HostDreamFile>;
+    let parsed: Partial<HostDreamFile>;
+    try {
+      parsed = JSON.parse(raw) as Partial<HostDreamFile>;
+    } catch {
+      return { version: 2, scope: this.scope, records: [], sessionProgress: [] };
+    }
     return {
       version: 2,
       scope: normalizeDreamScope(parsed.scope ?? this.scope),

@@ -285,6 +285,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
         const raw = await readFile(filePath, 'utf8');
         const parsed = JSON.parse(raw) as Partial<StoredDesktopSession>;
         const info = await stat(filePath);
+        const gitBranch = normalizeGitBranch(parsed.gitBranch);
         return {
           path: filePath,
           displayName:
@@ -292,7 +293,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
             deriveDisplayName(parsed.desktopMessages, parsed.messages),
           workspaceRoot:
             resolveStoredWorkspaceRoot(parsed.workspaceRoot) ?? discoverWorkspaceRoot(),
-          ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
+          ...(gitBranch ? { gitBranch } : {}),
           modifiedAtUnixMs:
             typeof parsed.savedAtUnixMs === 'number'
               ? parsed.savedAtUnixMs

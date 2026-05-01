@@ -100,10 +100,7 @@ function fallbackDreamSummaries(input: {
 function DreamInfoNode({ data }: NodeProps<Node<DreamNodeData>>) {
   return (
     <div
-      className={cn(
-        "max-w-[13rem] cursor-grab select-none overflow-hidden rounded-md border border-border/35 bg-background/45 px-3 py-2 text-left backdrop-blur-xl transition-colors hover:bg-background/60 active:cursor-grabbing dark:border-white/10 dark:bg-background/30 dark:hover:bg-background/40 supports-[backdrop-filter]:bg-background/30 dark:supports-[backdrop-filter]:bg-background/20",
-        data.interactive ? "" : "",
-      )}
+      className="max-w-[13rem] cursor-grab select-none overflow-hidden rounded-md border border-border/35 bg-background/45 px-3 py-2 text-left backdrop-blur-xl transition-colors hover:bg-background/60 active:cursor-grabbing dark:border-white/10 dark:bg-background/30 dark:hover:bg-background/40 supports-[backdrop-filter]:bg-background/30 dark:supports-[backdrop-filter]:bg-background/20"
     >
       <Handle
         type="target"

@@ -70,6 +70,7 @@ export interface HostApi {
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
+  subscribeDreamUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
   replyPendingApproval(message: string): Promise<DesktopSnapshot>;
   replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
   resetSession(): Promise<DesktopSnapshot>;

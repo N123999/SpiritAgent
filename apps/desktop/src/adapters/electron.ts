@@ -96,6 +96,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     listDreamsOverview() {
       return bridge.listDreamsOverview();
     },
+    subscribeDreamUpdates(callback) {
+      return bridge.dreamSubscribe(callback);
+    },
     replyPendingApproval(message) {
       return bridge.replyPendingApproval(message);
     },

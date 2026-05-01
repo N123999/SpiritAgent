@@ -56,7 +56,7 @@ type BusyAction =
   | "marketplace"
   | "git";
 
-const DREAM_IDLE_POLL_INTERVAL_MS = 2_000;
+const DREAM_IDLE_POLL_INTERVAL_MS = 30_000;
 
 export interface QuestionDraft {
   selectedOptionIndexes: number[];
@@ -213,10 +213,15 @@ export function useDesktopRuntime() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, QuestionDraft>>({});
   const settingsRef = useRef(settings);
+  const snapshotRef = useRef<DesktopSnapshot | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   const applySnapshot = useCallback((next: DesktopSnapshot) => {
     setSnapshot(next);
@@ -458,7 +463,25 @@ export function useDesktopRuntime() {
   }, [api, applySnapshot, refreshSessions, snapshot?.conversation.isBusy]);
 
   useEffect(() => {
+    if (!api?.subscribeDreamUpdates) {
+      return;
+    }
+
+    return api.subscribeDreamUpdates((next) => {
+      const previous = snapshotRef.current;
+      const needRefreshSessions = previous ? shouldRefreshDreamSessions(previous, next) : false;
+      applySnapshot(next);
+      if (needRefreshSessions) {
+        void refreshSessions();
+      }
+    });
+  }, [api, applySnapshot, refreshSessions]);
+
+  useEffect(() => {
     if (!api || !snapshot || snapshot.conversation.isBusy || !snapshot.dreams.settings.enabled) {
+      return;
+    }
+    if (api.subscribeDreamUpdates) {
       return;
     }
 
