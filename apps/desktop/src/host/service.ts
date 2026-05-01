@@ -11,12 +11,10 @@ import {
   OpenAiTransport,
   type AssistantAuxArchiveEntry,
   type ChatArchive,
-  type JsonObject,
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiPlanMetadata,
   type OpenAiTransportConfig,
-  type RuntimeEvent,
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
 import {
@@ -166,19 +164,11 @@ import {
 import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot } from './snapshot.js';
 import {
-  assistantPrefixBeforeFirstToolInCurrentTurn,
-  headlineForStreamingToolPreview,
-  indexForThinkingInsertBeforeFirstToolAfterLastUser,
-  lastAssistantPlainTextInHistory,
-  latestUnsyncedAssistantTextInCurrentTurn,
-  messageOrderDebugLevel,
   parsePendingSubagentStatusText,
   restoreMessagesFromArchive,
-  summarizeMessagesTailForOrderDebug,
-  truncateOneLineForDebug,
-  toolMessageKey,
 } from './message-ordering.js';
 import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
+import { DesktopRuntimeEventOrchestrator } from './runtime-event-orchestrator.js';
 import {
   buildActiveSkillPayload,
   buildActivateSkillUserTurn,
@@ -324,9 +314,26 @@ class DesktopHostService {
     allocateMessageId: () => this.allocateMessageId(),
     isRuntimeBusy: () => this.runtime?.isBusy() ?? false,
   });
-  /** 思考段 finalize 去重、插入锚点与 apply 批次（见 `applyRuntimeHostEvents` / `appendAssistantThinkingSegment`）。 */
-  private lastApplyEventBatchId = 0;
-  private messageOrderDebugLastVerboseLogMs = 0;
+  private readonly runtimeEvents = new DesktopRuntimeEventOrchestrator({
+    runtime: () => this.runtime,
+    messages: () => this.requireState().messages,
+    allocateMessageId: () => this.allocateMessageId(),
+    assistantMessages: this.assistantMessages,
+    conversationSnapshotView: this.conversationSnapshotView,
+    clearCurrentTurnSkills: () => {
+      this.currentTurnSkills = [];
+    },
+    setLastRuntimeError: (error) => {
+      this.lastRuntimeError = error;
+    },
+    refreshArchiveFromRuntime: () => this.refreshArchiveFromRuntime(),
+    dispatchExtensionEvent: (event) => {
+      void this.dispatchExtensionEvent(event);
+    },
+    bindFileChangesToToolMessage: (execution, messageId) => {
+      this.bindFileChangesToToolMessage(execution, messageId);
+    },
+  });
   private messageIdCounter = 1;
   private pendingUnboundFileChangeIds: string[] = [];
   private currentTurnSkills: OpenAiActiveSkill[] = [];
@@ -1122,7 +1129,7 @@ class DesktopHostService {
       this.refreshArchiveFromRuntime();
       await this.recordRewindCheckpoint(userMessage.id, beforeUserCheckpoint);
       await runtime.poll();
-      this.applyRuntimeHostEvents(runtime.drainEvents());
+      this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
     } catch (error) {
       this.currentTurnSkills = [];
       this.assistantMessages.handleMessageRemoved(state.messages.length - 1, userMessage.id, 'send-user-rollback');
@@ -1130,9 +1137,9 @@ class DesktopHostService {
       throw error;
     }
 
-    this.consumeCompletedTurnResult();
-    this.syncPendingToolStates();
-    this.syncAssistantPrefixFromHistoryBeforeToolRow();
+    this.runtimeEvents.consumeCompletedTurnResult();
+    this.runtimeEvents.syncPendingToolStates();
+    this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
     await this.flushDeferredRuntimeRefreshIfIdle();
     if (!runtime.isBusy()) {
       await this.refreshGitState();
@@ -1166,11 +1173,11 @@ class DesktopHostService {
       if (this.runtime) {
         this.runtime.tickThinkingSpinner();
         await this.runtime.poll();
-        this.applyRuntimeHostEvents(this.runtime.drainEvents());
+        this.runtimeEvents.applyRuntimeHostEvents(this.runtime.drainEvents());
       }
-      this.consumeCompletedTurnResult();
-      this.syncPendingToolStates();
-      this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      this.runtimeEvents.consumeCompletedTurnResult();
+      this.runtimeEvents.syncPendingToolStates();
+      this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
       if (!this.runtime?.isBusy()) {
@@ -1198,10 +1205,10 @@ class DesktopHostService {
       }
       await runtime.continuePendingApproval(decision);
       await runtime.poll();
-      this.applyRuntimeHostEvents(runtime.drainEvents());
-      this.consumeCompletedTurnResult();
-      this.syncPendingToolStates();
-      this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
+      this.runtimeEvents.consumeCompletedTurnResult();
+      this.runtimeEvents.syncPendingToolStates();
+      this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.flushDeferredRuntimeRefreshIfIdle();
       if (!runtime.isBusy()) {
         await this.refreshGitState();
@@ -1216,10 +1223,10 @@ class DesktopHostService {
       const runtime = this.requireRuntime();
       await runtime.continuePendingQuestions(toRuntimeAskQuestionsResult(result));
       await runtime.poll();
-      this.applyRuntimeHostEvents(runtime.drainEvents());
-      this.consumeCompletedTurnResult();
-      this.syncPendingToolStates();
-      this.syncAssistantPrefixFromHistoryBeforeToolRow();
+      this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
+      this.runtimeEvents.consumeCompletedTurnResult();
+      this.runtimeEvents.syncPendingToolStates();
+      this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
       if (!runtime.isBusy()) {
@@ -2056,51 +2063,6 @@ class DesktopHostService {
     }
   }
 
-  private consumeCompletedTurnResult(): void {
-    if (!this.runtime) {
-      return;
-    }
-
-    const result = this.runtime.takeCompletedTurnResult();
-    if (!result) {
-      return;
-    }
-
-    this.integrateToolExecutions(result.toolExecutions);
-    switch (result.kind) {
-      case 'completed':
-        this.currentTurnSkills = [];
-        if (result.assistantText.trim()) {
-          const aux = this.assistantMessages.takeLatestPendingAux();
-          if (!this.assistantMessages.materializeExistingCompletedAssistantMessage(result.assistantText, aux)) {
-            this.assistantMessages.appendAssistantMessage(result.assistantText, aux);
-          }
-        }
-        this.lastRuntimeError = '';
-        break;
-      case 'failed':
-        this.currentTurnSkills = [];
-        {
-          const aux = this.assistantMessages.takeLatestPendingAux();
-          if (!this.assistantMessages.materializeExistingCompletedAssistantMessage(result.error, aux)) {
-            this.assistantMessages.appendAssistantMessage(result.error, aux);
-          }
-        }
-        this.lastRuntimeError = result.error;
-        break;
-      case 'requires-approval':
-      case 'requires-questions':
-        this.syncPendingToolStates();
-        this.syncAssistantPrefixFromHistoryBeforeToolRow();
-        this.lastRuntimeError = '';
-        break;
-      default:
-        break;
-    }
-
-    this.refreshArchiveFromRuntime();
-  }
-
   private extensionManager() {
     return this.hostExtensionManager;
   }
@@ -2184,363 +2146,6 @@ class DesktopHostService {
       });
     } catch (error) {
       this.lastRuntimeError = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
-    for (const execution of executions) {
-      const message = this.assistantMessages.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
-        toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
-        toolName: execution.toolName,
-        phase: execution.failed ? 'failed' : 'succeeded',
-        headline: execution.failed
-          ? `工具执行失败: ${execution.toolName}`
-          : `工具执行完成: ${execution.toolName}`,
-        detailLines: [],
-        argsExcerpt: truncateJson(execution.request),
-        outputExcerpt: truncateText(execution.output, 4_000),
-      }, this.lastApplyEventBatchId);
-      this.bindFileChangesToToolMessage(execution, message.id);
-    }
-  }
-
-  private applyRuntimeHostEvents(events: RuntimeEvent<DesktopToolRequest>[]): void {
-    const state = this.requireState();
-    // 空 drain 不递增批次：否则同一 poll 里后续 consume→integrate 的 upsert 会误判批次并清空 preview 记下的锚点。
-    const batchId =
-      events.length > 0 ? (this.lastApplyEventBatchId += 1) : this.lastApplyEventBatchId;
-    // 严格按事件时序单遍处理；begin 一律 anchor := min(已有, messages.length)：
-    // - 同批内 preview 先于 begin：保留首条工具下标。
-    // - 同批内 finalize/tool-done 先于 begin 导致 at 已含新工具：保留先前跨 poll preview 写下的较小下标。
-    for (const ev of events) {
-      if (ev.kind === 'begin-assistant-response') {
-        const at = state.messages.length;
-        const shouldReanchorStandalonePendingAux =
-          this.conversationSnapshotView.shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
-            state.messages[state.messages.length - 1],
-          );
-        const pendingAssistant = this.assistantMessages.beginAssistantResponse(at, batchId);
-        if (shouldReanchorStandalonePendingAux) {
-          this.conversationSnapshotView.reanchorPersistedStandalonePendingAux(pendingAssistant.id);
-        }
-        continue;
-      }
-      if (ev.kind === 'update-pending-assistant-thinking') {
-        this.assistantMessages.updatePendingAssistantAux('thinking', ev.text);
-        continue;
-      }
-      if (ev.kind === 'update-pending-assistant-compaction') {
-        this.assistantMessages.updatePendingAssistantAux('compressing', ev.text);
-        continue;
-      }
-      if (ev.kind === 'assistant-chunk') {
-        this.assistantMessages.appendPendingAssistantChunk(ev.text);
-        continue;
-      }
-      if (ev.kind === 'replace-pending-assistant') {
-        this.assistantMessages.replacePendingAssistantText(ev.text);
-        continue;
-      }
-      if (ev.kind === 'assistant-response-completed') {
-        this.assistantMessages.completePendingAssistantMessage();
-        continue;
-      }
-      if (ev.kind === 'remove-pending-assistant') {
-        this.assistantMessages.removePendingAssistantMessage();
-        continue;
-      }
-      if (ev.kind === 'assistant-thinking-segment-finalized') {
-        if (ev.text.trim()) {
-          this.assistantMessages.appendAssistantThinkingSegment(ev.text);
-        }
-        continue;
-      }
-      if (ev.kind === 'tool-call-started') {
-        void this.dispatchExtensionEvent({
-          type: 'onToolCall',
-          detail: {
-            toolCallId: ev.toolCallId,
-            toolName: ev.toolName,
-            request: ev.request as JsonObject,
-          },
-        });
-        continue;
-      }
-      if (ev.kind === 'approval-resolved') {
-        void this.dispatchExtensionEvent({
-          type: 'onApprovalResolved',
-          detail: {
-            toolCallId: ev.toolCallId,
-            toolName: ev.toolName,
-            decisionKind: ev.decisionKind,
-            request: ev.request as JsonObject,
-          },
-        });
-        continue;
-      }
-      if (ev.kind === 'tool-execution-finished') {
-        this.integrateToolExecutions([ev.execution]);
-        void this.dispatchExtensionEvent({
-          type: 'onToolResult',
-          detail: {
-            toolCallId: ev.execution.toolCallId,
-            toolName: ev.execution.toolName,
-            output: ev.execution.output,
-            failed: ev.execution.failed,
-            request: ev.execution.request as JsonObject,
-          },
-        });
-        continue;
-      }
-      if (ev.kind !== 'streaming-tool-preview') {
-        continue;
-      }
-      let argsExcerpt: string;
-      try {
-        argsExcerpt = truncateJson(JSON.parse(ev.argumentsJson) as unknown);
-      } catch {
-        argsExcerpt = truncateText(ev.argumentsJson, 4_000);
-      }
-      this.assistantMessages.upsertToolMessage(ev.toolCallId, {
-        toolCallId: ev.toolCallId,
-        toolName: ev.toolName,
-        phase: 'running',
-        headline: headlineForStreamingToolPreview(state.messages, ev.toolCallId, ev.toolName),
-        detailLines: [],
-        argsExcerpt,
-      }, batchId);
-    }
-    const placement = this.assistantMessages.placementState();
-    this.logMessageOrderApplyBatch(
-      batchId,
-      events,
-      state,
-      placement.streamAssistantThinkingAnchor,
-      placement.streamAssistantAnchorSetInApplyBatchId,
-    );
-  }
-
-  /**
-   * 将 `runtime.history()` 中的助手正文同步到 `state.messages`（首轮：首条 tool 前前缀；待审批/问卷：
-   * 用 `lastAssistantPlainTextInHistory` 兜底，因 OpenAI 路径下 `history()` 常不含 `role: tool`）。
-   */
-  private syncAssistantPrefixFromHistoryBeforeToolRow(): void {
-    if (!this.runtime) {
-      return;
-    }
-    const pendingTrim = this.runtime.pendingAssistantText().trim();
-    const awaitingInteractive =
-      Boolean(this.runtime.currentPendingApproval()) ||
-      Boolean(this.runtime.currentPendingQuestions());
-
-    if (pendingTrim && !awaitingInteractive) {
-      return;
-    }
-
-    const hist = this.runtime.history();
-    const state = this.requireState();
-    const prefixFromUnsyncedLatest = latestUnsyncedAssistantTextInCurrentTurn(
-      hist,
-      state.messages,
-    );
-    const prefixFromBeforeFirst = assistantPrefixBeforeFirstToolInCurrentTurn(hist);
-    const prefixFromLastAssistant = lastAssistantPlainTextInHistory(hist);
-    const prefix = (
-      awaitingInteractive && pendingTrim
-        ? pendingTrim
-        : awaitingInteractive
-          ? (prefixFromUnsyncedLatest ?? prefixFromLastAssistant ?? prefixFromBeforeFirst)
-          : (prefixFromUnsyncedLatest ?? prefixFromBeforeFirst)
-    )
-      ?.trim() ?? '';
-    const n = state.messages.length;
-    const last = n > 0 ? state.messages[n - 1] : undefined;
-
-    if (!prefix) {
-      return;
-    }
-
-    if (n === 0) {
-      return;
-    }
-
-    const hasPlainPrefix = state.messages.some(
-      (m) => m.role === 'assistant' && m.content === prefix && !m.tool,
-    );
-    if (hasPlainPrefix) {
-      return;
-    }
-
-    const isLaterUnsyncedPrefix =
-      !awaitingInteractive &&
-      prefixFromUnsyncedLatest !== undefined &&
-      prefix === prefixFromUnsyncedLatest &&
-      prefixFromUnsyncedLatest !== prefixFromBeforeFirst;
-
-    if (isLaterUnsyncedPrefix) {
-      const anchor = this.assistantMessages.streamAssistantThinkingAnchorOr(state.messages.length);
-      const insertAt = Math.max(0, Math.min(anchor, state.messages.length));
-      const before = insertAt > 0 ? state.messages[insertAt - 1] : undefined;
-      if (
-        before?.role === 'assistant' &&
-        !before.tool &&
-        before.content.trim() === prefix
-      ) {
-        return;
-      }
-      this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
-      state.messages.splice(insertAt, 0, {
-        id: this.allocateMessageId(),
-        role: 'assistant',
-        content: prefix,
-        pending: false,
-      });
-      this.logMessageOrderPrefixSync(`splice-at-anchor@${insertAt}`, state);
-      return;
-    }
-
-    if (awaitingInteractive) {
-      const approval = this.runtime.currentPendingApproval();
-      const questions = this.runtime.currentPendingQuestions();
-      const key = approval
-        ? toolMessageKey(approval)
-        : questions
-          ? toolMessageKey(questions)
-          : undefined;
-      if (key) {
-        const idx = state.messages.findIndex(
-          (m) => m.role === 'assistant' && m.tool?.toolCallId === key,
-        );
-        if (idx >= 0) {
-          const before = idx > 0 ? state.messages[idx - 1] : undefined;
-          if (
-            before?.role === 'assistant' &&
-            !before.tool &&
-            before.content.trim() === prefix
-          ) {
-            return;
-          }
-          this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(idx);
-          state.messages.splice(idx, 0, {
-            id: this.allocateMessageId(),
-            role: 'assistant',
-            content: prefix,
-            pending: false,
-          });
-          this.logMessageOrderPrefixSync(`splice-before-approval@${idx}`, state);
-        }
-      }
-      return;
-    }
-
-    if (last!.role === 'user') {
-      state.messages.push({
-        id: this.allocateMessageId(),
-        role: 'assistant',
-        content: prefix,
-        pending: false,
-      });
-      this.logMessageOrderPrefixSync('push-after-user', state);
-      return;
-    }
-
-    if (last!.role === 'assistant' && last!.tool) {
-      const firstToolIdx = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
-      if (firstToolIdx === undefined) {
-        return;
-      }
-      const beforeFirst = firstToolIdx > 0 ? state.messages[firstToolIdx - 1] : undefined;
-      if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
-        return;
-      }
-      this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(firstToolIdx);
-      state.messages.splice(firstToolIdx, 0, {
-        id: this.allocateMessageId(),
-        role: 'assistant',
-        content: prefix,
-        pending: false,
-      });
-      this.logMessageOrderPrefixSync(`splice-before-first-tool@${firstToolIdx}`, state);
-      return;
-    }
-
-    if (last!.role === 'assistant' && !last!.tool && last!.content.trim() && last!.content !== prefix) {
-      const firstToolIdx = indexForThinkingInsertBeforeFirstToolAfterLastUser(state.messages);
-      if (firstToolIdx !== undefined) {
-        const beforeFirst = firstToolIdx > 0 ? state.messages[firstToolIdx - 1] : undefined;
-        if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
-          return;
-        }
-        this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(firstToolIdx);
-        state.messages.splice(firstToolIdx, 0, {
-          id: this.allocateMessageId(),
-          role: 'assistant',
-          content: prefix,
-          pending: false,
-        });
-        this.logMessageOrderPrefixSync(`splice-before-first-tool@${firstToolIdx}`, state);
-        return;
-      }
-      let toolIdx = -1;
-      for (let i = n - 2; i >= 0; i -= 1) {
-        const m = state.messages[i];
-        if (m.role === 'assistant' && m.tool) {
-          toolIdx = i;
-          break;
-        }
-      }
-      if (toolIdx >= 0) {
-        const beforeTool = toolIdx > 0 ? state.messages[toolIdx - 1] : undefined;
-        if (beforeTool?.role === 'assistant' && beforeTool.content === prefix && !beforeTool.tool) {
-          return;
-        }
-        this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(toolIdx);
-        state.messages.splice(toolIdx, 0, {
-          id: this.allocateMessageId(),
-          role: 'assistant',
-          content: prefix,
-          pending: false,
-        });
-        this.logMessageOrderPrefixSync(`splice-before-tool@${toolIdx}`, state);
-        return;
-      }
-      if (!last!.content.startsWith(prefix)) {
-        this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(n - 1);
-        state.messages.splice(n - 1, 0, {
-          id: this.allocateMessageId(),
-          role: 'assistant',
-          content: prefix,
-          pending: false,
-        });
-        this.logMessageOrderPrefixSync(`splice-before-tail@${n - 1}`, state);
-      }
-      return;
-    }
-  }
-
-  private syncPendingToolStates(): void {
-    const approval = this.runtime?.currentPendingApproval();
-    if (approval) {
-      this.assistantMessages.upsertToolMessage(toolMessageKey(approval), {
-        toolCallId: toolMessageKey(approval),
-        toolName: approval.toolName,
-        phase: 'pending-approval',
-        headline: `等待确认: ${approval.toolName}`,
-        detailLines: [approval.prompt],
-        argsExcerpt: truncateJson(approval.request),
-      }, this.lastApplyEventBatchId);
-    }
-
-    const questions = this.runtime?.currentPendingQuestions();
-    if (questions) {
-      this.assistantMessages.upsertToolMessage(toolMessageKey(questions), {
-        toolCallId: toolMessageKey(questions),
-        toolName: questions.toolName,
-        phase: 'pending-approval',
-        headline: `等待补充信息: ${questions.toolName}`,
-        detailLines: [questions.questions.title ?? '请回答表单问题'],
-        argsExcerpt: truncateJson(questions.questions),
-      }, this.lastApplyEventBatchId);
     }
   }
 
@@ -2771,78 +2376,7 @@ class DesktopHostService {
       return;
     }
     this.conversationSnapshotView.clearStandalonePendingAuxState();
-    this.lastApplyEventBatchId = 0;
-    this.messageOrderDebugLastVerboseLogMs = 0;
-  }
-
-  private logMessageOrderApplyBatch(
-    batchId: number,
-    events: RuntimeEvent<DesktopToolRequest>[],
-    state: HostState,
-    anchorEnd: number | undefined,
-    anchorSourceBatchEnd: number,
-  ): void {
-    const mode = messageOrderDebugLevel();
-    if (mode === 'off') return;
-
-    const tags: string[] = [];
-    let previewCount = 0;
-    for (const ev of events) {
-      if (ev.kind === 'begin-assistant-response') {
-        tags.push('begin');
-      } else if (ev.kind === 'assistant-response-completed') {
-        tags.push('resp-done');
-      } else if (ev.kind === 'remove-pending-assistant') {
-        tags.push('rm-pending');
-      } else if (ev.kind === 'assistant-thinking-segment-finalized') {
-        tags.push(ev.text.trim() ? 'finalize' : 'finalize-empty');
-      } else if (ev.kind === 'tool-call-started') {
-        tags.push(`tool-start:${ev.toolName}`);
-      } else if (ev.kind === 'tool-execution-finished') {
-        tags.push(`tool-done:${ev.execution.toolName}`);
-      } else if (ev.kind === 'approval-resolved') {
-        tags.push(`approval-${ev.decisionKind}`);
-      } else if (ev.kind === 'approval-requested') {
-        tags.push(`approval:${ev.approval.toolName}`);
-      } else if (ev.kind === 'questions-requested') {
-        tags.push(`questions:${ev.questions.toolName}`);
-      } else if (ev.kind === 'streaming-tool-preview') {
-        previewCount += 1;
-      }
-    }
-
-    const hasOrderTags = tags.length > 0;
-    if (!hasOrderTags && previewCount === 0) {
-      return;
-    }
-
-    if (mode === 'compact' && !hasOrderTags) {
-      return;
-    }
-
-    if (!hasOrderTags && previewCount > 0 && mode === 'verbose') {
-      const now = Date.now();
-      if (now - this.messageOrderDebugLastVerboseLogMs < 1200) {
-        return;
-      }
-      this.messageOrderDebugLastVerboseLogMs = now;
-      tags.push(`preview×${previewCount}`);
-    } else if (hasOrderTags && previewCount > 0 && mode === 'verbose') {
-      tags.push(`pv×${previewCount}`);
-    }
-
-    const tail = summarizeMessagesTailForOrderDebug(state.messages, 12);
-    console.log(
-      `[desktop-host][msg-order] apply#${batchId} kinds=${tags.join(',')} anchor=${anchorEnd ?? '∅'} anchorBatch=${anchorSourceBatchEnd} len=${state.messages.length} tail=${tail}`,
-    );
-  }
-
-  private logMessageOrderPrefixSync(how: string, state: HostState): void {
-    if (messageOrderDebugLevel() === 'off') {
-      return;
-    }
-    const tail = summarizeMessagesTailForOrderDebug(state.messages, 10);
-    console.log(`[desktop-host][msg-order] prefix-sync ${how} len=${state.messages.length} tail=${tail}`);
+    this.runtimeEvents.reset();
   }
 
   private async runSerialized<T>(work: () => Promise<T>): Promise<T> {
@@ -2904,17 +2438,5 @@ export function subscribeDesktopDreamUpdates(
   listener: (snapshot: DesktopSnapshot) => void,
 ): () => void {
   return desktopHostService.subscribeDreamUpdates(listener);
-}
-
-function truncateJson(value: unknown): string {
-  return truncateText(JSON.stringify(value, null, 2), 4_000);
-}
-
-function truncateText(value: string, maxChars: number): string {
-  const chars = Array.from(value);
-  if (chars.length <= maxChars) {
-    return value;
-  }
-  return `${chars.slice(0, maxChars).join('')}...<truncated>`;
 }
 
