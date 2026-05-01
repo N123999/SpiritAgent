@@ -7,6 +7,7 @@ import {
   FolderClosed,
   FolderOpen,
   Layers,
+  MoonStar,
   Package,
   Palette,
   Plus,
@@ -50,7 +51,7 @@ type SessionSidebarProps = {
   disabled?: boolean;
 };
 
-export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills" | "extensions";
+export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills" | "extensions" | "dreams";
 
 type SessionWorkspaceGroup = {
   id: string;
@@ -136,6 +137,11 @@ const settingsTabs: Array<{
     id: "skills",
     label: "Skills",
     icon: Sparkles,
+  },
+  {
+    id: "dreams",
+    label: "梦境",
+    icon: MoonStar,
   },
   {
     id: "extensions",

@@ -62,6 +62,9 @@ export type SettingsFormState = {
   webHostEnabled: boolean;
   webHostHost: string;
   webHostPort: number;
+  dreamEnabled: boolean;
+  dreamCollectorModel: string;
+  dreamDebugMode: boolean;
 };
 
 type SettingsViewProps = {
@@ -111,6 +114,7 @@ const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   extensions: "扩展",
   mcps: "MCP 服务",
   skills: "Skills",
+  dreams: "梦境",
   appearance: "主题与窗口效果",
 };
 
@@ -257,6 +261,30 @@ function webHostStatusLabel(state: DesktopSnapshot["webHost"]["status"]["state"]
     default:
       return "关闭";
   }
+}
+
+function dreamCollectorStateLabel(state: DesktopSnapshot["dreams"]["collector"]["state"]): string {
+  switch (state) {
+    case "disabled":
+      return "已关闭";
+    case "missing-model":
+      return "等待模型";
+    case "running":
+      return "收集中";
+    case "backoff":
+      return "退避中";
+    case "error":
+      return "异常";
+    default:
+      return "空闲";
+  }
+}
+
+function formatSettingsTime(unixMs?: number): string {
+  if (typeof unixMs !== "number") {
+    return "—";
+  }
+  return new Date(unixMs).toLocaleString("zh-CN", { hour12: false });
 }
 
 function SettingsRow({
@@ -2071,6 +2099,105 @@ function AppearanceSettingsPanel({
   );
 }
 
+function DreamSettingsPanel({
+  settings,
+  snapshot,
+  onSavePatch,
+}: Pick<SettingsViewProps, "settings" | "snapshot" | "onSavePatch">) {
+  const models = snapshot?.config.models ?? [];
+  const collector = snapshot?.dreams.collector;
+  const disabled = !settings.dreamEnabled;
+  const selectValue = settings.dreamCollectorModel.trim() || "__none";
+
+  return (
+    <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
+      <SettingsRow
+        label="梦境"
+        description="后台汇总当前工作区与分支的近期会话动向。"
+        htmlFor="settings-dream-enabled"
+      >
+        <div className="flex items-center justify-end gap-3">
+          <Badge variant="outline">Beta</Badge>
+          <Checkbox
+            id="settings-dream-enabled"
+            checked={settings.dreamEnabled}
+            onCheckedChange={(value) => void onSavePatch({ dreamEnabled: value === true })}
+            className="size-5"
+          />
+        </div>
+      </SettingsRow>
+
+      <SettingsRow
+        label="收集者模型"
+        description="用于后台摘要；未选择时不会启动收集。"
+        htmlFor="settings-dream-model"
+      >
+        <Select
+          value={selectValue}
+          disabled={disabled || models.length === 0}
+          onValueChange={(value) =>
+            void onSavePatch({ dreamCollectorModel: value === "__none" ? "" : value })
+          }
+        >
+          <SelectTrigger id="settings-dream-model" className="w-full sm:min-w-[14rem]">
+            <SelectValue placeholder="选择模型" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none">未选择</SelectItem>
+            {models.map((model) => (
+              <SelectItem key={model.name} value={model.name}>
+                {model.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+
+      <SettingsRow
+        label="调试模式"
+        description="后续收集会话保留为可追踪记录。"
+        htmlFor="settings-dream-debug"
+      >
+        <div className="flex justify-end">
+          <Checkbox
+            id="settings-dream-debug"
+            checked={settings.dreamDebugMode}
+            disabled={disabled}
+            onCheckedChange={(value) => void onSavePatch({ dreamDebugMode: value === true })}
+            className="size-5"
+          />
+        </div>
+      </SettingsRow>
+
+      <div className="py-4">
+        <p className="text-sm font-medium text-foreground">收集状态</p>
+        <div className="mt-2 grid gap-1 text-sm text-muted-foreground sm:text-right">
+          <p>
+            状态：
+            <span className="font-medium text-foreground">
+              {dreamCollectorStateLabel(collector?.state ?? "disabled")}
+            </span>
+          </p>
+          <p>
+            待处理：{collector?.pendingCount ?? 0} · 已处理：{collector?.processedCount ?? 0}
+          </p>
+          <p>上次运行：{formatSettingsTime(collector?.lastRunAtUnixMs)}</p>
+          <p>上次成功：{formatSettingsTime(collector?.lastSuccessAtUnixMs)}</p>
+          {collector?.backoffUntilUnixMs ? (
+            <p>退避到：{formatSettingsTime(collector.backoffUntilUnixMs)}</p>
+          ) : null}
+          {collector?.lastError ? (
+            <p className="break-words text-destructive">{collector.lastError}</p>
+          ) : null}
+          {settings.dreamEnabled && !settings.dreamCollectorModel.trim() ? (
+            <p className="text-amber-600 dark:text-amber-400">请选择收集者模型。</p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView({
   tab,
   theme,
@@ -2126,6 +2253,12 @@ export function SettingsView({
                 snapshot={snapshot}
                 onSavePatch={onSavePatch}
                 onResetWebHostPairing={onResetWebHostPairing}
+              />
+            ) : tab === "dreams" ? (
+              <DreamSettingsPanel
+                settings={settings}
+                snapshot={snapshot}
+                onSavePatch={onSavePatch}
               />
             ) : tab === "models" ? (
               <ModelsSettingsPanel

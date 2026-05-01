@@ -87,6 +87,12 @@ function updateConfigFromSettingsForm(
     windowsMica: s.windowsMica,
     planMode: s.planMode,
     webHost,
+    dreams: {
+      enabled: s.dreamEnabled,
+      collectorModel: s.dreamCollectorModel,
+      clearCollectorModel: !s.dreamCollectorModel.trim(),
+      debugMode: s.dreamDebugMode,
+    },
     ...(s.uiLocale.trim() ? { uiLocale: s.uiLocale.trim() } : { uiLocale: undefined }),
     ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : undefined),
   };
@@ -184,6 +190,9 @@ export function useDesktopRuntime() {
     webHostEnabled: false,
     webHostHost: "127.0.0.1",
     webHostPort: 7788,
+    dreamEnabled: false,
+    dreamCollectorModel: "",
+    dreamDebugMode: false,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -212,6 +221,9 @@ export function useDesktopRuntime() {
         webHostEnabled: next.webHost.config.enabled,
         webHostHost: next.webHost.config.host,
         webHostPort: next.webHost.config.port,
+        dreamEnabled: next.dreams.settings.enabled,
+        dreamCollectorModel: next.dreams.settings.collectorModel ?? "",
+        dreamDebugMode: next.dreams.settings.debugMode,
       };
     });
   }, []);
