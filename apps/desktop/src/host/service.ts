@@ -124,6 +124,7 @@ import {
 } from './model-catalog-cache.js';
 import {
   DEFAULT_API_BASE,
+  chatsDirPath,
   defaultNewSessionPath,
   discoverWorkspaceRoot,
   loadConfig,
@@ -222,6 +223,7 @@ function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces
 
 const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
 const MAX_EPHEMERAL_COMMIT_SESSIONS = 8;
+const DREAM_DEBUG_SESSION_FILE_PREFIX = 'dream-collector-';
 const DREAM_RETENTION_MS = 5 * 24 * 60 * 60 * 1000;
 const DREAM_COLLECTOR_TICK_INTERVAL_MS = 30_000;
 const DREAM_COLLECTOR_BACKOFF_MS = 60_000;
@@ -1884,11 +1886,14 @@ description: ${frontmatterDescription}
     let sourceSession: SessionListItem | undefined;
     let pendingCount = 0;
     let toolCalls: DesktopDreamCollectorRunLog['toolCalls'] = [];
+    let promptForDebug = '';
+    let debugSessionPersisted = false;
     try {
       const cutoffUnixMs = Date.now() - DREAM_RETENTION_MS;
       const storedSessions = (await listStoredSessions())
         .filter((session) => sameWorkspaceRoot(session.workspaceRoot, input.workspaceRoot))
         .filter((session) => session.gitBranch === input.gitBranch)
+        .filter((session) => !isDreamCollectorDebugSessionPath(session.path))
         .filter((session) => session.modifiedAtUnixMs >= cutoffUnixMs)
         .sort((left, right) => left.modifiedAtUnixMs - right.modifiedAtUnixMs);
 
@@ -1964,17 +1969,31 @@ description: ${frontmatterDescription}
         ],
         toolExecutor,
       );
-      const result = await runtime.submitUserTurn(buildDreamCollectorPrompt({
+      promptForDebug = buildDreamCollectorPrompt({
         sourceSession,
         scope,
         sourceContext,
-      }));
+      });
+      const result = await runtime.submitUserTurn(promptForDebug);
       toolCalls = result.toolExecutions.map((execution) => ({
         toolName: execution.toolName,
         failed: execution.failed,
       }));
       if (result.kind !== 'completed') {
         throw new Error(result.kind === 'failed' ? result.error : `梦境收集未完成: ${result.kind}`);
+      }
+      if (input.config.dreams.debugMode) {
+        await persistDreamCollectorDebugSession({
+          runId,
+          workspaceRoot: input.workspaceRoot,
+          gitBranch: input.gitBranch,
+          collectorModel: input.collectorModel,
+          sourceSession,
+          prompt: promptForDebug,
+          assistantText: result.assistantText,
+          failed: false,
+        });
+        debugSessionPersisted = true;
       }
 
       this.dreamCollectorProcessedSessionPaths.add(sourceSession.path);
@@ -1999,6 +2018,18 @@ description: ${frontmatterDescription}
         toolCalls,
       });
     } catch (error) {
+      if (input.config.dreams.debugMode && sourceSession && promptForDebug && !debugSessionPersisted) {
+        await persistDreamCollectorDebugSession({
+          runId,
+          workspaceRoot: input.workspaceRoot,
+          gitBranch: input.gitBranch,
+          collectorModel: input.collectorModel,
+          sourceSession,
+          prompt: promptForDebug,
+          assistantText: error instanceof Error ? error.message : String(error),
+          failed: true,
+        });
+      }
       await writeDreamCollectorRunLog({
         runId,
         startedAtUnixMs,
@@ -4279,6 +4310,53 @@ async function writeDreamCollectorRunLog(log: DesktopDreamCollectorRunLog): Prom
   await mkdir(logsDir, { recursive: true });
   const fileName = `${log.startedAtUnixMs}-${log.runId}.json`;
   await writeFile(path.join(logsDir, fileName), `${JSON.stringify(log, null, 2)}\n`, 'utf8');
+}
+
+async function persistDreamCollectorDebugSession(input: {
+  runId: string;
+  workspaceRoot: string;
+  gitBranch: string;
+  collectorModel: string;
+  sourceSession: SessionListItem;
+  prompt: string;
+  assistantText: string;
+  failed: boolean;
+}): Promise<void> {
+  const now = Date.now();
+  const messages: ConversationMessageSnapshot[] = [
+    {
+      id: 1,
+      role: 'user',
+      content: input.prompt,
+      pending: false,
+    },
+    {
+      id: 2,
+      role: 'assistant',
+      content: input.failed ? `生成失败：${input.assistantText}` : input.assistantText,
+      pending: false,
+    },
+  ];
+  const sessionFile = path.join(chatsDirPath(), `${DREAM_DEBUG_SESSION_FILE_PREFIX}${now}-${input.runId}.json`);
+  await saveStoredSession(sessionFile, {
+    messages,
+    assistantAux: [],
+    llmHistory: messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [],
+    })),
+    subagentSessions: [],
+    savedAtUnixMs: now,
+    sessionDisplayName: `[梦境] ${input.sourceSession.displayName}`,
+    workspaceRoot: input.workspaceRoot,
+    gitBranch: input.gitBranch,
+    desktopMessages: messages,
+  });
+}
+
+function isDreamCollectorDebugSessionPath(filePath: string): boolean {
+  return path.basename(filePath).startsWith(DREAM_DEBUG_SESSION_FILE_PREFIX);
 }
 
 function emptyDreamCollectorSnapshot(
