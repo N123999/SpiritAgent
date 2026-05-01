@@ -1350,6 +1350,8 @@ description: ${frontmatterDescription}
         id: dream.id,
         title: dream.title,
         summary: dream.summary,
+        ...(dream.details ? { details: dream.details } : {}),
+        tags: dream.tags ?? [],
         workspaceRoot: dream.scope.workspaceRoot,
         gitBranch: dream.scope.gitBranch,
         updatedAtUnixMs: dream.updatedAtUnixMs,

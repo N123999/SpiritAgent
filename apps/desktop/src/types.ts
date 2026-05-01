@@ -514,6 +514,8 @@ export interface DesktopDreamOverviewItem {
   id: string;
   title: string;
   summary: string;
+  details?: string;
+  tags: string[];
   workspaceRoot: string;
   gitBranch: string;
   updatedAtUnixMs: number;

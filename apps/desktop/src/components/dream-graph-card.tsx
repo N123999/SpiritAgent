@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { LoaderCircle } from "lucide-react";
 import {
@@ -16,6 +16,10 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { Badge } from "@/components/ui/badge";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { ThemePreference } from "@/lib/theme";
 import type { DesktopDreamCollectorState, DesktopDreamOverviewItem } from "@/types";
@@ -29,12 +33,14 @@ type DreamGraphCardProps = {
   dreamEnabled: boolean;
   debugMode: boolean;
   loading?: boolean;
-  onDreamSelect?: (dreamId: string) => void;
 };
 
 type DreamNodeData = {
   label: string;
   subtitle: string;
+  dream?: DesktopDreamOverviewItem;
+  open?: boolean;
+  onOpenChange?: (open: boolean, dreamId?: string) => void;
   interactive?: boolean;
 };
 
@@ -55,6 +61,15 @@ function deriveWorkspaceLabel(workspaceRoot?: string): string {
 function buildDreamSubtitle(workspaceRoot?: string, gitBranch?: string): string {
   const parts = [deriveWorkspaceLabel(workspaceRoot), gitBranch?.trim()].filter(Boolean);
   return parts.join(" · ");
+}
+
+function formatDreamTimestamp(updatedAtUnixMs: number): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(updatedAtUnixMs);
 }
 
 function fallbackDreamSummaries(input: {
@@ -80,6 +95,10 @@ function fallbackDreamSummaries(input: {
       id: "fallback-primary",
       title: "近期动向",
       summary: primarySummary,
+      details: input.collectorState === "running"
+        ? "收集者已在后台运行，完成后这里会显示更完整的梦境细节。"
+        : "当前还没有可展示的梦境详情，继续工作后会逐步沉淀。",
+      tags: input.collectorState === "running" ? ["collecting", "active"] : ["placeholder"],
       workspaceRoot,
       gitBranch,
       updatedAtUnixMs: Date.now(),
@@ -90,6 +109,10 @@ function fallbackDreamSummaries(input: {
       summary: input.debugMode
         ? "调试模式已开启，后续收集会话会保留为可追踪记录"
         : "调试模式已关闭，当前仅保留梦境摘要本身",
+      details: input.debugMode
+        ? "梦境调试日志会保留更多可追踪信息，便于检查收集链路。"
+        : "未开启调试模式时，这里只显示收集产物本身。",
+      tags: input.debugMode ? ["debug", "trace"] : ["summary-only"],
       workspaceRoot,
       gitBranch,
       updatedAtUnixMs: Date.now() - 1,
@@ -98,23 +121,112 @@ function fallbackDreamSummaries(input: {
 }
 
 function DreamInfoNode({ data }: NodeProps<Node<DreamNodeData>>) {
+  const dream = data.dream;
+  const tags = dream?.tags ?? [];
+  const visibleTags = tags.slice(0, 3);
+  const overflowTags = tags.slice(3);
+
   return (
-    <div
-      className="max-w-[13rem] cursor-grab select-none overflow-hidden rounded-md border border-border/35 bg-background/45 px-3 py-2 text-left backdrop-blur-xl transition-colors hover:bg-background/60 active:cursor-grabbing dark:border-white/10 dark:bg-background/30 dark:hover:bg-background/40 supports-[backdrop-filter]:bg-background/30 dark:supports-[backdrop-filter]:bg-background/20"
+    <Popover
+      modal
+      open={Boolean(data.interactive && data.open && dream)}
+      onOpenChange={(open) => data.onOpenChange?.(open, dream?.id)}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0"
-      />
-      <p className="line-clamp-2 text-[13px] font-medium leading-5 text-foreground/95">{data.label}</p>
-      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{data.subtitle}</p>
-    </div>
+      <PopoverTrigger asChild>
+        <div
+          className={cn(
+            "max-w-[13rem] select-none overflow-hidden rounded-md border border-border/35 bg-background/45 px-3 py-2 text-left backdrop-blur-xl transition-colors dark:border-white/10 dark:bg-background/30 supports-[backdrop-filter]:bg-background/30 dark:supports-[backdrop-filter]:bg-background/20",
+            data.interactive
+              ? "cursor-pointer hover:bg-background/60 dark:hover:bg-background/40"
+              : "cursor-grab hover:bg-background/60 active:cursor-grabbing dark:hover:bg-background/40",
+          )}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Handle
+            type="target"
+            position={Position.Left}
+            className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0"
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0"
+          />
+          <p className="line-clamp-2 text-[13px] font-medium leading-5 text-foreground/95">{data.label}</p>
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{data.subtitle}</p>
+        </div>
+      </PopoverTrigger>
+      {dream ? (
+        <PopoverContent
+          side="bottom"
+          align="start"
+          collisionPadding={16}
+          className="nodrag nopan flex h-[min(36rem,var(--radix-popover-content-available-height))] w-[22rem] flex-col overflow-hidden p-0"
+        >
+          <div className="border-b border-border/60 px-4 py-3">
+            <p className="line-clamp-2 text-sm font-medium text-foreground">{dream.title}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {formatDreamTimestamp(dream.updatedAtUnixMs)}
+            </p>
+            {tags.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {visibleTags.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="max-w-[8rem] truncate text-[10px] text-secondary-foreground"
+                    title={tag}
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+                {overflowTags.length > 0 ? (
+                  <HoverCard openDelay={150} closeDelay={100}>
+                    <HoverCardTrigger asChild>
+                      <Badge variant="outline" className="cursor-default text-[10px] text-muted-foreground">
+                        ...
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent align="start" className="w-[18rem]">
+                      <p className="mb-2 text-[11px] text-muted-foreground">更多标签</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="max-w-[8rem] truncate text-[10px] text-secondary-foreground"
+                            title={tag}
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <ScrollArea type="always" className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:h-full">
+            <div className="space-y-3 px-4 py-3 text-xs">
+              <section className="space-y-1.5">
+                <p className="text-[11px] text-muted-foreground">摘要</p>
+                <p className="whitespace-pre-wrap leading-5 text-foreground/90">{dream.summary}</p>
+              </section>
+              <section className="space-y-1.5">
+                <p className="text-[11px] text-muted-foreground">详情</p>
+                <p className="whitespace-pre-wrap leading-5 text-foreground/90">
+                  {dream.details?.trim() || "暂无更详细的梦境记录。"}
+                </p>
+              </section>
+            </div>
+          </ScrollArea>
+          <div className="border-t border-border/60 bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground">
+            {buildDreamSubtitle(dream.workspaceRoot, dream.gitBranch)}
+          </div>
+        </PopoverContent>
+      ) : null}
+    </Popover>
   );
 }
 
@@ -149,6 +261,8 @@ const nodeTypes: NodeTypes = {
 function buildGraph(
   items: DesktopDreamOverviewItem[],
   iconSrc: string,
+  selectedDreamId: string | null,
+  onDreamOpenChange: (open: boolean, dreamId?: string) => void,
   workspaceRoot?: string,
   gitBranch?: string,
 ) {
@@ -189,6 +303,9 @@ function buildGraph(
       data: {
         label: item.summary,
         subtitle: buildDreamSubtitle(item.workspaceRoot, item.gitBranch),
+        dream: item,
+        open: item.id === selectedDreamId,
+        onOpenChange: onDreamOpenChange,
         interactive: true,
       },
     });
@@ -224,18 +341,35 @@ function DreamGraphCanvas({
   theme,
   workspaceRoot,
   gitBranch,
-  onDreamSelect,
 }: {
   items: DesktopDreamOverviewItem[];
   theme: ThemePreference;
   workspaceRoot?: string;
   gitBranch?: string;
-  onDreamSelect?: (dreamId: string) => void;
 }) {
+  const [selectedDreamId, setSelectedDreamId] = useState<string | null>(null);
   const iconSrc = theme === "light" ? "/spirit-agent-icon-light.png" : "/spirit-agent-icon.png";
+  const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
+
+  useEffect(() => {
+    if (selectedDreamId && !itemIds.has(selectedDreamId)) {
+      setSelectedDreamId(null);
+    }
+  }, [itemIds, selectedDreamId]);
+
   const graph = useMemo(
-    () => buildGraph(items, iconSrc, workspaceRoot, gitBranch),
-    [gitBranch, iconSrc, items, workspaceRoot],
+    () =>
+      buildGraph(
+        items,
+        iconSrc,
+        selectedDreamId,
+        (open, dreamId) => {
+          setSelectedDreamId(open ? dreamId ?? null : null);
+        },
+        workspaceRoot,
+        gitBranch,
+      ),
+    [gitBranch, iconSrc, items, selectedDreamId, workspaceRoot],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
@@ -252,11 +386,7 @@ function DreamGraphCanvas({
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
-      onNodeClick={(_event, node) => {
-        if (node.id !== "context" && node.id !== "logo") {
-          onDreamSelect?.(node.id);
-        }
-      }}
+      onPaneClick={() => setSelectedDreamId(null)}
       fitView={false}
       defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       minZoom={0.65}
@@ -285,7 +415,6 @@ export function DreamGraphCard({
   dreamEnabled,
   debugMode,
   loading,
-  onDreamSelect,
 }: DreamGraphCardProps) {
   const graphItems =
     items.length > 0
@@ -313,7 +442,6 @@ export function DreamGraphCard({
             theme={theme}
             workspaceRoot={workspaceRoot}
             gitBranch={gitBranch}
-            onDreamSelect={onDreamSelect}
           />
         </ReactFlowProvider>
       </div>
