@@ -26,6 +26,8 @@ export interface UpdateConfigRequest {
   planMode?: boolean;
   /** 缺省时不修改已保存的 Desktop Web 远程访问配置。 */
   webHost?: DesktopWebHostConfigUpdate;
+  /** 缺省时不修改已保存的梦境配置。 */
+  dreams?: DesktopDreamConfigUpdate;
 }
 
 export interface DesktopWebHostConfigUpdate {
@@ -33,6 +35,13 @@ export interface DesktopWebHostConfigUpdate {
   host?: string;
   port?: number;
   resetPairing?: boolean;
+}
+
+export interface DesktopDreamConfigUpdate {
+  enabled?: boolean;
+  collectorModel?: string;
+  clearCollectorModel?: boolean;
+  debugMode?: boolean;
 }
 
 /** 模型提供方（与 `packages/host-internal` 中 `ModelProviderId` 同源）。 */
@@ -432,6 +441,7 @@ export interface DesktopSnapshot {
   workspaceRoot: string;
   availableWorkspaces: DesktopWorkspaceListItem[];
   git: DesktopGitSnapshot;
+  dreams: DesktopDreamSnapshot;
   runtimeReady: boolean;
   runtimeError?: string;
   config: DesktopConfigSnapshot;
@@ -469,6 +479,35 @@ export interface DesktopConfigSnapshot {
   planMode: boolean;
   /** 与 `spiritAgentDataDir()/model-catalog-cache` 对齐；无缓存时为空数组。 */
   modelCatalogHints?: DesktopModelCatalogHint[];
+}
+
+export interface DesktopDreamSettingsSnapshot {
+  enabled: boolean;
+  collectorModel?: string;
+  debugMode: boolean;
+}
+
+export type DesktopDreamCollectorState =
+  | 'disabled'
+  | 'missing-model'
+  | 'idle'
+  | 'running'
+  | 'backoff'
+  | 'error';
+
+export interface DesktopDreamCollectorSnapshot {
+  state: DesktopDreamCollectorState;
+  lastRunAtUnixMs?: number;
+  lastSuccessAtUnixMs?: number;
+  lastError?: string;
+  pendingCount: number;
+  processedCount: number;
+  backoffUntilUnixMs?: number;
+}
+
+export interface DesktopDreamSnapshot {
+  settings: DesktopDreamSettingsSnapshot;
+  collector: DesktopDreamCollectorSnapshot;
 }
 
 export interface DesktopGitSnapshot {

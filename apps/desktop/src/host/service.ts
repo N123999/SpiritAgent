@@ -1,10 +1,12 @@
 import { Buffer } from 'node:buffer';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
   AgentRuntime,
+  buildDreamCollectorSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
@@ -48,6 +50,8 @@ import {
   collectHostExtensionContributedTools,
   createHostExtensionMarketplace,
   createHostExtensionManager,
+  createHostDreamStore,
+  dreamLogsDirPath,
   listOpenAiCompatibleModelIds,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
@@ -80,6 +84,7 @@ import type {
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
   DesktopGitSnapshot,
+  DesktopDreamCollectorSnapshot,
   DesktopModelProvider,
   DeleteSkillRequest,
   DesktopMcpServerListItem,
@@ -134,6 +139,7 @@ import {
   saveStoredSession,
   listStoredSessions,
   spiritAgentDataDir,
+  normalizeDreamConfig,
   normalizeWebHostConfig,
   type DesktopConfigFile,
   type DesktopWebHostConfigFile,
@@ -216,6 +222,10 @@ function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces
 
 const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
 const MAX_EPHEMERAL_COMMIT_SESSIONS = 8;
+const DREAM_RETENTION_MS = 5 * 24 * 60 * 60 * 1000;
+const DREAM_COLLECTOR_TICK_INTERVAL_MS = 30_000;
+const DREAM_COLLECTOR_BACKOFF_MS = 60_000;
+const DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS = 16_000;
 
 interface EphemeralSessionRecord {
   path: string;
@@ -326,6 +336,10 @@ class DesktopHostService {
   private serialized = Promise.resolve();
   /** 忙时改 planMode / 模型或 endpoint 时推迟 `refreshRuntime`，避免替换 runtime 导致流式输出丢失；空闲后由 `flushDeferredRuntimeRefreshIfIdle` 应用。 */
   private deferredRuntimeRefreshWhileBusy = false;
+  private dreamCollectorStatus: DesktopDreamCollectorSnapshot = emptyDreamCollectorSnapshot('disabled');
+  private dreamCollectorRunning = false;
+  private dreamCollectorLastTickUnixMs = 0;
+  private readonly dreamCollectorProcessedSessionPaths = new Set<string>();
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
@@ -415,6 +429,16 @@ class DesktopHostService {
           delete nextWebHost.authTokenHash;
         }
         state.config.webHost = nextWebHost;
+      }
+      if (request.dreams !== undefined) {
+        const nextDreamConfig = {
+          ...state.config.dreams,
+          ...request.dreams,
+        };
+        if (request.dreams.clearCollectorModel === true) {
+          delete nextDreamConfig.collectorModel;
+        }
+        state.config.dreams = normalizeDreamConfig(nextDreamConfig);
       }
       await saveConfig(state.config);
       if (request.apiKey?.trim()) {
@@ -1177,6 +1201,7 @@ description: ${frontmatterDescription}
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
       await this.refreshGitState();
+      this.startDreamCollectorIfNeeded();
       return this.buildSnapshot();
     });
   }
@@ -1772,6 +1797,224 @@ description: ${frontmatterDescription}
     state.git = await readWorkspaceGitSnapshot(state.workspaceRoot);
   }
 
+  private startDreamCollectorIfNeeded(): void {
+    const state = this.state;
+    if (!state) {
+      return;
+    }
+
+    const settings = state.config.dreams;
+    const now = Date.now();
+    if (!settings.enabled) {
+      this.dreamCollectorStatus = emptyDreamCollectorSnapshot('disabled');
+      return;
+    }
+    if (!settings.collectorModel) {
+      this.dreamCollectorStatus = {
+        ...emptyDreamCollectorSnapshot('missing-model'),
+        lastError: '梦境收集模型未配置。',
+      };
+      return;
+    }
+    if (!state.git.isRepository || !state.git.branch) {
+      this.dreamCollectorStatus = emptyDreamCollectorSnapshot('idle');
+      return;
+    }
+    if (this.runtime?.isBusy() || this.dreamCollectorRunning) {
+      return;
+    }
+    if (this.dreamCollectorStatus.backoffUntilUnixMs && now < this.dreamCollectorStatus.backoffUntilUnixMs) {
+      this.dreamCollectorStatus = {
+        ...this.dreamCollectorStatus,
+        state: 'backoff',
+      };
+      return;
+    }
+    if (now - this.dreamCollectorLastTickUnixMs < DREAM_COLLECTOR_TICK_INTERVAL_MS) {
+      return;
+    }
+
+    this.dreamCollectorLastTickUnixMs = now;
+    this.dreamCollectorRunning = true;
+    this.dreamCollectorStatus = {
+      ...this.dreamCollectorStatus,
+      state: 'running',
+      lastRunAtUnixMs: now,
+      pendingCount: this.dreamCollectorStatus.pendingCount,
+      processedCount: this.dreamCollectorStatus.processedCount,
+    };
+
+    const collectorInput = {
+      workspaceRoot: state.workspaceRoot,
+      gitBranch: state.git.branch,
+      collectorModel: settings.collectorModel,
+      config: cloneDesktopConfig(state.config),
+      planMetadata: { ...state.metadata.planMetadata },
+    };
+
+    void this.runDreamCollectorOnce(collectorInput)
+      .catch((error) => {
+        const backoffUntilUnixMs = Date.now() + DREAM_COLLECTOR_BACKOFF_MS;
+        this.dreamCollectorStatus = {
+          ...this.dreamCollectorStatus,
+          state: 'backoff',
+          lastError: error instanceof Error ? error.message : String(error),
+          backoffUntilUnixMs,
+        };
+      })
+      .finally(() => {
+        this.dreamCollectorRunning = false;
+      });
+  }
+
+  private async runDreamCollectorOnce(input: {
+    workspaceRoot: string;
+    gitBranch: string;
+    collectorModel: string;
+    config: DesktopConfigFile;
+    planMetadata: OpenAiPlanMetadata;
+  }): Promise<void> {
+    const runId = randomUUID();
+    const startedAtUnixMs = Date.now();
+    const scope = {
+      workspaceRoot: input.workspaceRoot,
+      gitBranch: input.gitBranch,
+    };
+    let sourceSession: SessionListItem | undefined;
+    let pendingCount = 0;
+    let toolCalls: DesktopDreamCollectorRunLog['toolCalls'] = [];
+    try {
+      const cutoffUnixMs = Date.now() - DREAM_RETENTION_MS;
+      const storedSessions = (await listStoredSessions())
+        .filter((session) => sameWorkspaceRoot(session.workspaceRoot, input.workspaceRoot))
+        .filter((session) => session.gitBranch === input.gitBranch)
+        .filter((session) => session.modifiedAtUnixMs >= cutoffUnixMs)
+        .sort((left, right) => left.modifiedAtUnixMs - right.modifiedAtUnixMs);
+
+      const dreamStore = createHostDreamStore({ spiritDataDir: spiritAgentDataDir(), scope });
+      const existingDreams = await dreamStore.list({ includeDeleted: true, includeExpired: false });
+      const processedPaths = new Set<string>([
+        ...this.dreamCollectorProcessedSessionPaths,
+        ...existingDreams.flatMap((dream) => dream.sourceSessions.map((source) => source.path)),
+      ]);
+      const pendingSessions = storedSessions.filter((session) => !processedPaths.has(session.path));
+      pendingCount = pendingSessions.length;
+      if (pendingSessions.length === 0) {
+        this.dreamCollectorStatus = clearDreamCollectorIssue({
+          ...this.dreamCollectorStatus,
+          state: 'idle',
+          pendingCount: 0,
+        });
+        await writeDreamCollectorRunLog({
+          runId,
+          startedAtUnixMs,
+          finishedAtUnixMs: Date.now(),
+          workspaceRoot: input.workspaceRoot,
+          gitBranch: input.gitBranch,
+          collectorModel: input.collectorModel,
+          decision: 'no-pending',
+          pendingCount: 0,
+          toolCalls,
+        });
+        return;
+      }
+
+      sourceSession = pendingSessions[0]!;
+      this.dreamCollectorStatus = clearDreamCollectorIssue({
+        ...this.dreamCollectorStatus,
+        state: 'running',
+        pendingCount: pendingSessions.length,
+      });
+
+      const apiKey = await resolveApiKeyForModel(input.collectorModel);
+      if (!apiKey) {
+        throw new Error('梦境收集模型未配置 API Key。');
+      }
+
+      const activeProfile = input.config.models.find((model) => model.name === input.collectorModel);
+      const archive = await loadStoredSession(sourceSession.path);
+      const sourceContext = buildDreamCollectorSourceContext(archive);
+      const toolExecutor = new DesktopToolExecutor(input.workspaceRoot, {
+        dreamScope: scope,
+        dreamSourceSession: {
+          path: sourceSession.path,
+          displayName: sourceSession.displayName,
+          savedAtUnixMs: sourceSession.modifiedAtUnixMs,
+        },
+      });
+      const runtime = this.createRuntime(
+        {
+          apiKey,
+          model: input.collectorModel,
+          baseUrl: activeProfile?.apiBase ?? currentApiBase(input.config),
+          workspaceRoot: input.workspaceRoot,
+          ...(activeProfile?.provider ? { llmVendor: activeProfile.provider } : {}),
+        },
+        [],
+        [],
+        [],
+        input.planMetadata,
+        [
+          {
+            extensionId: 'dream-collector',
+            extensionName: '梦境收集器',
+            content: buildDreamCollectorSystemMessage(),
+          },
+        ],
+        toolExecutor,
+      );
+      const result = await runtime.submitUserTurn(buildDreamCollectorPrompt({
+        sourceSession,
+        scope,
+        sourceContext,
+      }));
+      toolCalls = result.toolExecutions.map((execution) => ({
+        toolName: execution.toolName,
+        failed: execution.failed,
+      }));
+      if (result.kind !== 'completed') {
+        throw new Error(result.kind === 'failed' ? result.error : `梦境收集未完成: ${result.kind}`);
+      }
+
+      this.dreamCollectorProcessedSessionPaths.add(sourceSession.path);
+      this.dreamCollectorStatus = clearDreamCollectorIssue({
+        ...this.dreamCollectorStatus,
+        state: 'idle',
+        lastSuccessAtUnixMs: Date.now(),
+        pendingCount: Math.max(0, pendingSessions.length - 1),
+        processedCount: this.dreamCollectorStatus.processedCount + 1,
+      });
+      await writeDreamCollectorRunLog({
+        runId,
+        startedAtUnixMs,
+        finishedAtUnixMs: Date.now(),
+        workspaceRoot: input.workspaceRoot,
+        gitBranch: input.gitBranch,
+        collectorModel: input.collectorModel,
+        sourceSessionPath: sourceSession.path,
+        decision: 'processed',
+        pendingCount,
+        resultSummary: truncateText(result.assistantText, 1_000),
+        toolCalls,
+      });
+    } catch (error) {
+      await writeDreamCollectorRunLog({
+        runId,
+        startedAtUnixMs,
+        finishedAtUnixMs: Date.now(),
+        workspaceRoot: input.workspaceRoot,
+        gitBranch: input.gitBranch,
+        collectorModel: input.collectorModel,
+        ...(sourceSession ? { sourceSessionPath: sourceSession.path } : {}),
+        decision: 'failed',
+        pendingCount,
+        error: error instanceof Error ? error.message : String(error),
+        toolCalls,
+      });
+      throw error;
+    }
+  }
+
   private async flushDeferredRuntimeRefreshIfIdle(): Promise<void> {
     if (!this.deferredRuntimeRefreshWhileBusy) {
       return;
@@ -1802,12 +2045,13 @@ description: ${frontmatterDescription}
     enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
     planMetadata: OpenAiPlanMetadata,
     extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
+    toolExecutor: DesktopToolExecutor = this.requireToolExecutor(),
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
     return new AgentRuntime({
       config: transportConfig,
       llmTransport: this.transport,
-      toolExecutor: this.requireToolExecutor(),
+      toolExecutor,
       createToolAgentState: (messages, userInput) =>
         startOpenAiToolAgentState(
           messages,
@@ -1889,6 +2133,14 @@ description: ${frontmatterDescription}
         state.config.recentWorkspaces,
       ),
       git: { ...state.git },
+      dreams: {
+        settings: {
+          enabled: state.config.dreams.enabled === true,
+          ...(state.config.dreams.collectorModel ? { collectorModel: state.config.dreams.collectorModel } : {}),
+          debugMode: state.config.dreams.debugMode === true,
+        },
+        collector: { ...this.dreamCollectorStatus },
+      },
       runtimeReady: this.runtime !== undefined,
       ...(this.lastRuntimeError ? { runtimeError: this.lastRuntimeError } : {}),
       config: {
@@ -3907,6 +4159,96 @@ function buildCommitMessageGenerationPrompt(input: {
     '[git diff HEAD]',
     input.diffText || '(empty)',
   ].join('\n');
+}
+
+function buildDreamCollectorSourceContext(archive: StoredDesktopSession): string {
+  const source = archive.llmHistory.length > 0
+    ? archive.llmHistory
+    : archive.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        imagePaths: [],
+      }));
+  return compactDreamSourceMessages(source);
+}
+
+function compactDreamSourceMessages(
+  messages: ChatArchive['llmHistory'],
+): string {
+  const rendered = messages
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => `${message.role.toUpperCase()}:\n${message.content.trim()}`)
+    .filter((entry) => entry.trim().length > 0)
+    .join('\n\n');
+  return truncateText(rendered || '(empty session)', DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS);
+}
+
+function buildDreamCollectorPrompt(input: {
+  sourceSession: SessionListItem;
+  scope: { workspaceRoot: string; gitBranch: string };
+  sourceContext: string;
+}): string {
+  return [
+    '请收集这条源会话的梦境摘要。',
+    '你必须先调用 dream_list 查看当前 scope 的已有梦境。',
+    '如果源会话延续了已有动向，请调用 dream_update；如果是新动向，请调用 dream_record；如果已有梦境已经误导或过时，可调用 dream_delete。',
+    '如果源会话完全没有可沉淀的近期工作动向，可以不写入梦境，但不要执行任何非梦境维护操作。',
+    '',
+    `[scope] workspace=${input.scope.workspaceRoot}`,
+    `[scope] branch=${input.scope.gitBranch}`,
+    `[source_session] path=${input.sourceSession.path}`,
+    `[source_session] title=${input.sourceSession.displayName}`,
+    `[source_session] modifiedAtUnixMs=${input.sourceSession.modifiedAtUnixMs}`,
+    '',
+    '[source_session_context]',
+    input.sourceContext,
+  ].join('\n');
+}
+
+interface DesktopDreamCollectorRunLog {
+  runId: string;
+  startedAtUnixMs: number;
+  finishedAtUnixMs: number;
+  workspaceRoot: string;
+  gitBranch: string;
+  collectorModel: string;
+  sourceSessionPath?: string;
+  decision: 'no-pending' | 'processed' | 'failed';
+  pendingCount: number;
+  resultSummary?: string;
+  error?: string;
+  toolCalls: Array<{
+    toolName: string;
+    failed: boolean;
+  }>;
+}
+
+async function writeDreamCollectorRunLog(log: DesktopDreamCollectorRunLog): Promise<void> {
+  const logsDir = dreamLogsDirPath(spiritAgentDataDir());
+  await mkdir(logsDir, { recursive: true });
+  const fileName = `${log.startedAtUnixMs}-${log.runId}.json`;
+  await writeFile(path.join(logsDir, fileName), `${JSON.stringify(log, null, 2)}\n`, 'utf8');
+}
+
+function emptyDreamCollectorSnapshot(
+  state: DesktopDreamCollectorSnapshot['state'],
+): DesktopDreamCollectorSnapshot {
+  return {
+    state,
+    pendingCount: 0,
+    processedCount: 0,
+  };
+}
+
+function clearDreamCollectorIssue(
+  snapshot: DesktopDreamCollectorSnapshot,
+): DesktopDreamCollectorSnapshot {
+  const { lastError: _lastError, backoffUntilUnixMs: _backoffUntilUnixMs, ...clean } = snapshot;
+  return clean;
+}
+
+function cloneDesktopConfig(config: DesktopConfigFile): DesktopConfigFile {
+  return JSON.parse(JSON.stringify(config)) as DesktopConfigFile;
 }
 
 function normalizeGeneratedCommitMessage(value: unknown): string {

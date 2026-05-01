@@ -55,6 +55,7 @@ export interface HostDreamUpdateInput {
   summary?: string;
   details?: string;
   tags?: string[];
+  sourceSession?: HostDreamSourceSessionRef;
 }
 
 interface HostDreamFile {
@@ -164,6 +165,9 @@ export class HostDreamStore {
       } else {
         delete next.tags;
       }
+    }
+    if (input.sourceSession) {
+      next.sourceSessions = appendSourceSession(next.sourceSessions, input.sourceSession);
     }
     file.records[index] = stripUndefinedRecordFields(next);
     await this.saveFile(file);
@@ -296,6 +300,16 @@ function normalizeUnixMs(value: unknown): number | undefined {
 
 function appendDetails(existing: string | undefined, addition: string): string {
   return [existing?.trim(), addition.trim()].filter(Boolean).join('\n');
+}
+
+function appendSourceSession(
+  existing: HostDreamSourceSessionRef[],
+  next: HostDreamSourceSessionRef,
+): HostDreamSourceSessionRef[] {
+  if (existing.some((entry) => entry.path === next.path)) {
+    return existing;
+  }
+  return [...existing, next];
 }
 
 function stripUndefinedRecordFields(record: HostDreamRecord): HostDreamRecord {

@@ -30,6 +30,7 @@ import {
   createHostDreamStore,
   type HostDreamScope,
   type HostDreamStore,
+  type HostDreamSourceSessionRef,
 } from './dreams.js';
 
 const exec = promisify(execCallback);
@@ -298,6 +299,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly fileChangeObserver: HostFileChangeObserver | undefined;
   private readonly extensions: HostExtensionRuntimeBinding<unknown> | undefined;
   private readonly dreamStore: HostDreamStore | undefined;
+  private readonly dreamSourceSession: HostDreamSourceSessionRef | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
 
@@ -308,6 +310,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       fileChangeObserver?: HostFileChangeObserver;
       extensions?: HostExtensionRuntimeBinding<unknown>;
       dreamScope?: HostDreamScope;
+      dreamSourceSession?: HostDreamSourceSessionRef;
     } = {},
   ) {
     this.workspaceRoot = path.resolve(context.workspaceRoot);
@@ -319,6 +322,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     this.dreamStore = options.dreamScope
       ? createHostDreamStore({ spiritDataDir: this.spiritDataDir, scope: options.dreamScope })
       : undefined;
+    this.dreamSourceSession = options.dreamSourceSession;
   }
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
@@ -676,6 +680,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
             summary: request.summary,
             ...(request.details ? { details: request.details } : {}),
             tags: request.tags,
+            ...(this.dreamSourceSession ? { sourceSession: this.dreamSourceSession } : {}),
           }),
         });
       case 'dream_update':
@@ -686,6 +691,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
             ...(request.summary ? { summary: request.summary } : {}),
             ...(request.details ? { details: request.details } : {}),
             ...(request.tags !== undefined ? { tags: request.tags } : {}),
+            ...(this.dreamSourceSession ? { sourceSession: this.dreamSourceSession } : {}),
           }),
         });
       case 'dream_delete':

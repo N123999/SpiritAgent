@@ -12,6 +12,7 @@ import {
 } from '@spirit-agent/agent-core';
 import {
   type HostDreamScope,
+  type HostDreamSourceSessionRef,
   type HostExtensionRuntimeBinding,
   type HostFileChangeObserver,
   NodeHostToolService,
@@ -37,6 +38,7 @@ export class DesktopToolExecutor
       fileChangeObserver?: HostFileChangeObserver;
       extensions?: HostExtensionRuntimeBinding<unknown>;
       dreamScope?: HostDreamScope;
+      dreamSourceSession?: HostDreamSourceSessionRef;
     } = {},
   ) {
     this.mcp = new McpService(workspaceRoot);
@@ -50,6 +52,7 @@ export class DesktopToolExecutor
       ...(options.fileChangeObserver ? { fileChangeObserver: options.fileChangeObserver } : {}),
       ...(options.extensions ? { extensions: options.extensions } : {}),
       ...(options.dreamScope ? { dreamScope: options.dreamScope } : {}),
+      ...(options.dreamSourceSession ? { dreamSourceSession: options.dreamSourceSession } : {}),
     });
   }
 
