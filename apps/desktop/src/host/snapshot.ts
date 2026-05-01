@@ -30,7 +30,7 @@ export interface BuildDesktopSnapshotInput {
   extensionCss: DesktopExtensionCssLayer[];
   dreamCollectorStatus: DesktopDreamCollectorSnapshot;
   runtimeReady: boolean;
-  runtimeError: string;
+  runtimeError?: string;
   modelKeyPresence: Record<string, boolean>;
   activeApiKeyConfigured: boolean;
   mcpStatus: McpStatusSnapshot;

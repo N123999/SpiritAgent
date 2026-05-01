@@ -8,8 +8,8 @@ import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 import type { ConversationMessageSnapshot } from '../types.js';
 import type { DesktopToolRequest } from './contracts.js';
 import type { DesktopRuntime } from './runtime.js';
-import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
-import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
+import type { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
+import type { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
   headlineForStreamingToolPreview,
