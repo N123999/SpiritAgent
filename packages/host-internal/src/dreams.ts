@@ -21,6 +21,16 @@ export interface HostDreamSourceSessionRef {
   savedAtUnixMs?: number;
 }
 
+export interface HostDreamSessionProgress {
+  path: string;
+  displayName?: string;
+  lastProcessedSavedAtUnixMs: number;
+  lastProcessedMessageCount: number;
+  lastProcessedPrefixHash: string;
+  lastRunAtUnixMs: number;
+  cooldownUntilUnixMs?: number;
+}
+
 export interface HostDreamRecord {
   id: string;
   scope: HostDreamScope;
@@ -58,10 +68,21 @@ export interface HostDreamUpdateInput {
   sourceSession?: HostDreamSourceSessionRef;
 }
 
+export interface HostDreamSessionProgressInput {
+  path: string;
+  displayName?: string;
+  lastProcessedSavedAtUnixMs: number;
+  lastProcessedMessageCount: number;
+  lastProcessedPrefixHash: string;
+  lastRunAtUnixMs?: number;
+  cooldownUntilUnixMs?: number;
+}
+
 interface HostDreamFile {
-  version: 1;
+  version: 2;
   scope: HostDreamScope;
   records: HostDreamRecord[];
+  sessionProgress: HostDreamSessionProgress[];
 }
 
 export function dreamsDirPath(spiritDataDir: string): string {
@@ -195,25 +216,75 @@ export class HostDreamStore {
   async pruneExpired(nowUnixMs = Date.now()): Promise<number> {
     const file = await this.loadFile();
     const before = file.records.length;
+    const progressBefore = file.sessionProgress.length;
     file.records = file.records.filter((record) => record.expiresAtUnixMs > nowUnixMs);
-    if (file.records.length !== before) {
+    const progressCutoffUnixMs = nowUnixMs - DREAM_RETENTION_MS;
+    file.sessionProgress = file.sessionProgress.filter((progress) => {
+      const latestUnixMs = Math.max(progress.lastRunAtUnixMs, progress.lastProcessedSavedAtUnixMs);
+      return latestUnixMs > progressCutoffUnixMs;
+    });
+    if (file.records.length !== before || file.sessionProgress.length !== progressBefore) {
       await this.saveFile(file);
     }
     return before - file.records.length;
   }
 
+  async listSessionProgress(): Promise<HostDreamSessionProgress[]> {
+    const file = await this.loadFile();
+    return [...file.sessionProgress].sort((left, right) => right.lastRunAtUnixMs - left.lastRunAtUnixMs);
+  }
+
+  async readSessionProgress(sessionPath: string): Promise<HostDreamSessionProgress | undefined> {
+    const file = await this.loadFile();
+    return file.sessionProgress.find((entry) => entry.path === sessionPath);
+  }
+
+  async upsertSessionProgress(
+    input: HostDreamSessionProgressInput,
+  ): Promise<HostDreamSessionProgress> {
+    const file = await this.loadFile();
+    const normalized = normalizeRequiredSessionProgressInput(input);
+    const index = file.sessionProgress.findIndex((entry) => entry.path === normalized.path);
+    if (index < 0) {
+      file.sessionProgress.push(normalized);
+      await this.saveFile(file);
+      return normalized;
+    }
+
+    const current = file.sessionProgress[index]!;
+    const next: HostDreamSessionProgress = {
+      ...current,
+      ...normalized,
+      ...(normalized.displayName ? { displayName: normalized.displayName } : current.displayName ? { displayName: current.displayName } : {}),
+    };
+    if (!normalized.displayName && !current.displayName) {
+      delete next.displayName;
+    }
+    if (normalized.cooldownUntilUnixMs === undefined && current.cooldownUntilUnixMs === undefined) {
+      delete next.cooldownUntilUnixMs;
+    }
+    file.sessionProgress[index] = stripUndefinedSessionProgressFields(next);
+    await this.saveFile(file);
+    return file.sessionProgress[index]!;
+  }
+
   private async loadFile(): Promise<HostDreamFile> {
     if (!existsSync(this.filePath)) {
-      return { version: 1, scope: this.scope, records: [] };
+      return { version: 2, scope: this.scope, records: [], sessionProgress: [] };
     }
 
     const raw = await readFile(this.filePath, 'utf8');
     const parsed = JSON.parse(raw) as Partial<HostDreamFile>;
     return {
-      version: 1,
+      version: 2,
       scope: normalizeDreamScope(parsed.scope ?? this.scope),
       records: Array.isArray(parsed.records)
         ? parsed.records.map((record) => normalizeDreamRecord(record, this.scope))
+        : [],
+      sessionProgress: Array.isArray(parsed.sessionProgress)
+        ? parsed.sessionProgress
+            .map(normalizeSessionProgress)
+            .filter((entry): entry is HostDreamSessionProgress => entry !== undefined)
         : [],
     };
   }
@@ -278,6 +349,48 @@ function normalizeSourceSession(value: unknown): HostDreamSourceSessionRef | und
   };
 }
 
+function normalizeSessionProgress(value: unknown): HostDreamSessionProgress | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const progress = value as Partial<HostDreamSessionProgress>;
+  const pathValue = normalizeOptionalText(progress.path);
+  const lastProcessedSavedAtUnixMs = normalizeUnixMs(progress.lastProcessedSavedAtUnixMs);
+  const lastProcessedMessageCount = normalizeNonNegativeInt(progress.lastProcessedMessageCount);
+  const lastProcessedPrefixHash = normalizeOptionalText(progress.lastProcessedPrefixHash);
+  const lastRunAtUnixMs = normalizeUnixMs(progress.lastRunAtUnixMs);
+  if (
+    !pathValue ||
+    lastProcessedSavedAtUnixMs === undefined ||
+    lastProcessedMessageCount === undefined ||
+    !lastProcessedPrefixHash ||
+    lastRunAtUnixMs === undefined
+  ) {
+    return undefined;
+  }
+  const displayName = normalizeOptionalText(progress.displayName);
+  const cooldownUntilUnixMs = normalizeUnixMs(progress.cooldownUntilUnixMs);
+  return {
+    path: pathValue,
+    ...(displayName ? { displayName } : {}),
+    lastProcessedSavedAtUnixMs,
+    lastProcessedMessageCount,
+    lastProcessedPrefixHash,
+    lastRunAtUnixMs,
+    ...(cooldownUntilUnixMs !== undefined ? { cooldownUntilUnixMs } : {}),
+  };
+}
+
+function normalizeRequiredSessionProgressInput(
+  value: HostDreamSessionProgressInput,
+): HostDreamSessionProgress {
+  const normalized = normalizeSessionProgress(value);
+  if (!normalized) {
+    throw new Error('会话进度无效');
+  }
+  return normalized;
+}
+
 function normalizeTags(tags: string[]): string[] {
   return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0))].slice(0, 12);
 }
@@ -298,6 +411,10 @@ function normalizeUnixMs(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : undefined;
 }
 
+function normalizeNonNegativeInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
 function appendDetails(existing: string | undefined, addition: string): string {
   return [existing?.trim(), addition.trim()].filter(Boolean).join('\n');
 }
@@ -306,12 +423,29 @@ function appendSourceSession(
   existing: HostDreamSourceSessionRef[],
   next: HostDreamSourceSessionRef,
 ): HostDreamSourceSessionRef[] {
-  if (existing.some((entry) => entry.path === next.path)) {
-    return existing;
+  const index = existing.findIndex((entry) => entry.path === next.path);
+  if (index < 0) {
+    return [...existing, next];
   }
-  return [...existing, next];
+  const current = existing[index]!;
+  const merged: HostDreamSourceSessionRef = {
+    path: current.path,
+    ...(next.displayName ? { displayName: next.displayName } : current.displayName ? { displayName: current.displayName } : {}),
+    ...(((next.savedAtUnixMs ?? current.savedAtUnixMs) !== undefined)
+      ? { savedAtUnixMs: Math.max(next.savedAtUnixMs ?? 0, current.savedAtUnixMs ?? 0) }
+      : {}),
+  };
+  const nextEntries = [...existing];
+  nextEntries[index] = merged;
+  return nextEntries;
 }
 
 function stripUndefinedRecordFields(record: HostDreamRecord): HostDreamRecord {
   return JSON.parse(JSON.stringify(record)) as HostDreamRecord;
+}
+
+function stripUndefinedSessionProgressFields(
+  progress: HostDreamSessionProgress,
+): HostDreamSessionProgress {
+  return JSON.parse(JSON.stringify(progress)) as HostDreamSessionProgress;
 }

@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -58,6 +58,7 @@ import {
   validateSkillName,
   restoreHostFileChanges,
   type HostExtensionMarketplaceManager,
+  type HostDreamSessionProgress,
   type HostExtensionEvent,
   type HostInstalledExtension,
   type HostRecordedFileChange,
@@ -228,6 +229,10 @@ const DREAM_RETENTION_MS = 5 * 24 * 60 * 60 * 1000;
 const DREAM_COLLECTOR_TICK_INTERVAL_MS = 30_000;
 const DREAM_COLLECTOR_BACKOFF_MS = 60_000;
 const DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS = 16_000;
+const DREAM_COLLECTOR_INCREMENTAL_CONTEXT_MAX_CHARS = 8_000;
+const DREAM_COLLECTOR_ANCHOR_CONTEXT_MAX_CHARS = 4_000;
+const DREAM_COLLECTOR_ANCHOR_MESSAGE_COUNT = 4;
+const DREAM_COLLECTOR_SESSION_COOLDOWN_MS = 2 * 60 * 1000;
 const DREAM_COMMIT_CONTEXT_MAX_CHARS = 6_000;
 
 interface EphemeralSessionRecord {
@@ -342,7 +347,6 @@ class DesktopHostService {
   private dreamCollectorStatus: DesktopDreamCollectorSnapshot = emptyDreamCollectorSnapshot('disabled');
   private dreamCollectorRunning = false;
   private dreamCollectorLastTickUnixMs = 0;
-  private readonly dreamCollectorProcessedSessionPaths = new Set<string>();
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
@@ -1884,12 +1888,14 @@ description: ${frontmatterDescription}
       gitBranch: input.gitBranch,
     };
     let sourceSession: SessionListItem | undefined;
+    let sourceContextMode: DreamCollectorSourceContextMode | undefined;
     let pendingCount = 0;
     let toolCalls: DesktopDreamCollectorRunLog['toolCalls'] = [];
     let promptForDebug = '';
     let debugSessionPersisted = false;
     try {
       const cutoffUnixMs = Date.now() - DREAM_RETENTION_MS;
+      const now = Date.now();
       const storedSessions = (await listStoredSessions())
         .filter((session) => sameWorkspaceRoot(session.workspaceRoot, input.workspaceRoot))
         .filter((session) => session.gitBranch === input.gitBranch)
@@ -1898,12 +1904,12 @@ description: ${frontmatterDescription}
         .sort((left, right) => left.modifiedAtUnixMs - right.modifiedAtUnixMs);
 
       const dreamStore = createHostDreamStore({ spiritDataDir: spiritAgentDataDir(), scope });
-      const existingDreams = await dreamStore.list({ includeDeleted: true, includeExpired: false });
-      const processedPaths = new Set<string>([
-        ...this.dreamCollectorProcessedSessionPaths,
-        ...existingDreams.flatMap((dream) => dream.sourceSessions.map((source) => source.path)),
-      ]);
-      const pendingSessions = storedSessions.filter((session) => !processedPaths.has(session.path));
+      await dreamStore.pruneExpired(now);
+      const sessionProgressList = await dreamStore.listSessionProgress();
+      const sessionProgressMap = new Map(sessionProgressList.map((entry) => [entry.path, entry]));
+      const pendingSessions = storedSessions.filter((session) =>
+        shouldQueueDreamCollectorSession(session, sessionProgressMap.get(session.path), now),
+      );
       pendingCount = pendingSessions.length;
       if (pendingSessions.length === 0) {
         this.dreamCollectorStatus = clearDreamCollectorIssue({
@@ -1928,7 +1934,26 @@ description: ${frontmatterDescription}
 
       const activeProfile = input.config.models.find((model) => model.name === input.collectorModel);
       const archive = await loadStoredSession(sourceSession.path);
-      const sourceContext = buildDreamCollectorSourceContext(archive);
+      const sessionProgress = sessionProgressMap.get(sourceSession.path);
+      const sourceContext = buildDreamCollectorSourceContext(archive, sessionProgress);
+      sourceContextMode = sourceContext.mode;
+      if (!sourceContext.shouldRunCollector) {
+        await dreamStore.upsertSessionProgress({
+          path: sourceSession.path,
+          ...(sourceSession.displayName ? { displayName: sourceSession.displayName } : {}),
+          lastProcessedSavedAtUnixMs: sourceSession.modifiedAtUnixMs,
+          lastProcessedMessageCount: sourceContext.processedMessageCount,
+          lastProcessedPrefixHash: sourceContext.prefixHash,
+          lastRunAtUnixMs: Date.now(),
+          cooldownUntilUnixMs: Date.now() + DREAM_COLLECTOR_SESSION_COOLDOWN_MS,
+        });
+        this.dreamCollectorStatus = clearDreamCollectorIssue({
+          ...this.dreamCollectorStatus,
+          state: 'idle',
+          pendingCount: Math.max(0, pendingSessions.length - 1),
+        });
+        return;
+      }
       const toolExecutor = new DesktopToolExecutor(input.workspaceRoot, {
         dreamScope: scope,
         dreamSourceSession: {
@@ -1985,7 +2010,15 @@ description: ${frontmatterDescription}
         debugSessionPersisted = true;
       }
 
-      this.dreamCollectorProcessedSessionPaths.add(sourceSession.path);
+      await dreamStore.upsertSessionProgress({
+        path: sourceSession.path,
+        ...(sourceSession.displayName ? { displayName: sourceSession.displayName } : {}),
+        lastProcessedSavedAtUnixMs: sourceSession.modifiedAtUnixMs,
+        lastProcessedMessageCount: sourceContext.processedMessageCount,
+        lastProcessedPrefixHash: sourceContext.prefixHash,
+        lastRunAtUnixMs: Date.now(),
+        cooldownUntilUnixMs: Date.now() + DREAM_COLLECTOR_SESSION_COOLDOWN_MS,
+      });
       this.dreamCollectorStatus = clearDreamCollectorIssue({
         ...this.dreamCollectorStatus,
         state: 'idle',
@@ -2002,6 +2035,7 @@ description: ${frontmatterDescription}
         collectorModel: input.collectorModel,
         sourceSessionPath: sourceSession.path,
         decision: 'processed',
+        ...(sourceContextMode ? { sourceContextMode } : {}),
         pendingCount,
         resultSummary: truncateText(result.assistantText, 1_000),
         toolCalls,
@@ -2028,6 +2062,7 @@ description: ${frontmatterDescription}
         collectorModel: input.collectorModel,
         ...(sourceSession ? { sourceSessionPath: sourceSession.path } : {}),
         decision: 'failed',
+        ...(sourceContextMode ? { sourceContextMode } : {}),
         pendingCount,
         error: error instanceof Error ? error.message : String(error),
         toolCalls,
@@ -4232,7 +4267,80 @@ function buildCommitMessageGenerationPrompt(input: {
   ].join('\n');
 }
 
-function buildDreamCollectorSourceContext(archive: StoredDesktopSession): string {
+type DreamCollectorSourceContextMode = 'full' | 'incremental';
+
+interface DreamCollectorNormalizedMessage {
+  role: 'user' | 'assistant';
+  rendered: string;
+}
+
+interface DreamCollectorSourceContext {
+  mode: DreamCollectorSourceContextMode;
+  rendered: string;
+  prefixHash: string;
+  processedMessageCount: number;
+  shouldRunCollector: boolean;
+}
+
+function buildDreamCollectorSourceContext(
+  archive: StoredDesktopSession,
+  progress?: HostDreamSessionProgress,
+): DreamCollectorSourceContext {
+  const normalizedMessages = normalizeDreamCollectorMessages(archive);
+  const processedMessageCount = normalizedMessages.length;
+  const prefixHash = hashDreamCollectorMessages(normalizedMessages);
+  if (!progress) {
+    return {
+      mode: 'full',
+      rendered: renderDreamCollectorFullContext(normalizedMessages),
+      prefixHash,
+      processedMessageCount,
+      shouldRunCollector: true,
+    };
+  }
+
+  const needsFullRebuild =
+    progress.lastProcessedMessageCount > processedMessageCount ||
+    hashDreamCollectorMessages(
+      normalizedMessages.slice(0, Math.min(progress.lastProcessedMessageCount, processedMessageCount)),
+    ) !== progress.lastProcessedPrefixHash;
+  if (needsFullRebuild) {
+    return {
+      mode: 'full',
+      rendered: renderDreamCollectorFullContext(normalizedMessages),
+      prefixHash,
+      processedMessageCount,
+      shouldRunCollector: true,
+    };
+  }
+
+  const newMessages = normalizedMessages.slice(progress.lastProcessedMessageCount);
+  if (newMessages.length === 0) {
+    return {
+      mode: 'incremental',
+      rendered: '',
+      prefixHash,
+      processedMessageCount,
+      shouldRunCollector: false,
+    };
+  }
+
+  const anchorMessages = normalizedMessages.slice(
+    Math.max(0, progress.lastProcessedMessageCount - DREAM_COLLECTOR_ANCHOR_MESSAGE_COUNT),
+    progress.lastProcessedMessageCount,
+  );
+  return {
+    mode: 'incremental',
+    rendered: renderDreamCollectorIncrementalContext(anchorMessages, newMessages),
+    prefixHash,
+    processedMessageCount,
+    shouldRunCollector: true,
+  };
+}
+
+function normalizeDreamCollectorMessages(
+  archive: StoredDesktopSession,
+): DreamCollectorNormalizedMessage[] {
   const source = archive.llmHistory.length > 0
     ? archive.llmHistory
     : archive.messages.map((message) => ({
@@ -4240,25 +4348,88 @@ function buildDreamCollectorSourceContext(archive: StoredDesktopSession): string
         content: message.content,
         imagePaths: [],
       }));
-  return compactDreamSourceMessages(source);
+  return source
+    .filter(
+      (message): message is { role: 'user' | 'assistant'; content: string; imagePaths: string[] } =>
+        message.role === 'user' || message.role === 'assistant',
+    )
+    .map((message) => ({
+      role: message.role,
+      rendered: `${message.role.toUpperCase()}:\n${message.content.trim()}`,
+    }))
+    .filter((entry) => entry.rendered.trim().length > 0);
 }
 
-function compactDreamSourceMessages(
-  messages: ChatArchive['llmHistory'],
+function hashDreamCollectorMessages(
+  messages: DreamCollectorNormalizedMessage[],
 ): string {
-  const rendered = messages
-    .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map((message) => `${message.role.toUpperCase()}:\n${message.content.trim()}`)
-    .filter((entry) => entry.trim().length > 0)
-    .join('\n\n');
-  return truncateText(rendered || '(empty session)', DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS);
+  return createHash('sha256')
+    .update(messages.map((message) => message.rendered).join('\n\n'), 'utf8')
+    .digest('hex')
+    .slice(0, 32);
+}
+
+function renderDreamCollectorFullContext(
+  messages: DreamCollectorNormalizedMessage[],
+): string {
+  return truncateText(
+    messages.map((message) => message.rendered).join('\n\n') || '(empty session)',
+    DREAM_COLLECTOR_SOURCE_CONTEXT_MAX_CHARS,
+  );
+}
+
+function renderDreamCollectorIncrementalContext(
+  anchorMessages: DreamCollectorNormalizedMessage[],
+  newMessages: DreamCollectorNormalizedMessage[],
+): string {
+  const anchorText = truncateText(
+    anchorMessages.map((message) => message.rendered).join('\n\n') || '(no prior anchor)',
+    DREAM_COLLECTOR_ANCHOR_CONTEXT_MAX_CHARS,
+  );
+  const deltaText = truncateText(
+    newMessages.map((message) => message.rendered).join('\n\n') || '(no delta)',
+    DREAM_COLLECTOR_INCREMENTAL_CONTEXT_MAX_CHARS,
+  );
+  return [
+    '[recent_anchor]',
+    anchorText,
+    '',
+    '[new_delta]',
+    deltaText,
+  ].join('\n');
+}
+
+function shouldQueueDreamCollectorSession(
+  session: SessionListItem,
+  progress: HostDreamSessionProgress | undefined,
+  nowUnixMs: number,
+): boolean {
+  if (!progress) {
+    return true;
+  }
+  if (session.modifiedAtUnixMs <= progress.lastProcessedSavedAtUnixMs) {
+    return false;
+  }
+  if (progress.cooldownUntilUnixMs !== undefined && nowUnixMs < progress.cooldownUntilUnixMs) {
+    return false;
+  }
+  return true;
 }
 
 function buildDreamCollectorPrompt(input: {
   sourceSession: SessionListItem;
   scope: { workspaceRoot: string; gitBranch: string };
-  sourceContext: string;
+  sourceContext: DreamCollectorSourceContext;
 }): string {
+  const modeBlock = input.sourceContext.mode === 'incremental'
+    ? [
+        '这是同一会话在上次梦境收集后的新增内容。优先更新已有梦境，不要重复总结旧内容。',
+        '[source_session_incremental_context]',
+      ]
+    : [
+        '这是该会话当前可用的完整摘要上下文。',
+        '[source_session_full_context]',
+      ];
   return [
     '请收集这条源会话的梦境摘要。',
     '你必须先调用 dream_list 查看当前 scope 的已有梦境。',
@@ -4270,9 +4441,10 @@ function buildDreamCollectorPrompt(input: {
     `[source_session] path=${input.sourceSession.path}`,
     `[source_session] title=${input.sourceSession.displayName}`,
     `[source_session] modifiedAtUnixMs=${input.sourceSession.modifiedAtUnixMs}`,
+    `[source_session] mode=${input.sourceContext.mode}`,
     '',
-    '[source_session_context]',
-    input.sourceContext,
+    ...modeBlock,
+    input.sourceContext.rendered,
   ].join('\n');
 }
 
@@ -4285,6 +4457,7 @@ interface DesktopDreamCollectorRunLog {
   collectorModel: string;
   sourceSessionPath?: string;
   decision: 'no-pending' | 'processed' | 'failed';
+  sourceContextMode?: DreamCollectorSourceContextMode;
   pendingCount: number;
   resultSummary?: string;
   error?: string;

@@ -376,6 +376,7 @@ export function buildDreamCollectorSystemMessage(): string {
     'First call dream_list to inspect existing dreams in this scope.',
     'Then decide whether the source session should create a new dream, update an existing dream, delete a stale dream, or leave dreams unchanged.',
     'Prefer updating an existing related dream over creating duplicates.',
+    'When the host marks the source session context as incremental, focus on the newly added movement and merge it into existing dreams instead of restating older context.',
     'Record why the work matters, user intent, important decisions, constraints, and unresolved follow-ups.',
     'Do not summarize every message mechanically. Preserve signal that helps future host consumers understand the current work direction.',
     'Do not perform production work. Only read the provided context and maintain dreams through the dream tools.',
