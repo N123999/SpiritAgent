@@ -1911,17 +1911,6 @@ description: ${frontmatterDescription}
           state: 'idle',
           pendingCount: 0,
         });
-        await writeDreamCollectorRunLog({
-          runId,
-          startedAtUnixMs,
-          finishedAtUnixMs: Date.now(),
-          workspaceRoot: input.workspaceRoot,
-          gitBranch: input.gitBranch,
-          collectorModel: input.collectorModel,
-          decision: 'no-pending',
-          pendingCount: 0,
-          toolCalls,
-        });
         return;
       }
 
