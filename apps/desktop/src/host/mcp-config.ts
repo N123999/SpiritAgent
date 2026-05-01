@@ -109,13 +109,28 @@ export function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): M
   );
 
   if (request.transportType === 'http') {
+    const endpoint = request.endpoint.trim();
+    if (!endpoint) {
+      throw new Error('HTTP endpoint 不能为空。');
+    }
+
+    let url: URL;
+    try {
+      url = new URL(endpoint);
+    } catch {
+      throw new Error('HTTP endpoint 必须是合法 URL。');
+    }
+    if (!url.protocol || !url.host) {
+      throw new Error('HTTP endpoint 必须包含 scheme 和 host。');
+    }
+
     return {
       displayName: name,
       enabled: true,
       capabilities,
       transport: {
         type: 'http',
-        url: request.endpoint.trim(),
+        url: url.toString(),
         ...(Object.keys(metadata).length > 0 ? { headers: metadata } : {}),
         timeoutMs: MCP_DEFAULT_TIMEOUT_MS,
       },
