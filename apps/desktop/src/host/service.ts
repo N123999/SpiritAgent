@@ -188,13 +188,9 @@ import {
   messageIndexIsInCurrentTurn,
   messageOrderDebugLevel,
   normalizeMessageAuxSnapshot,
-  normalizeToolBlockSnapshot,
   parsePendingSubagentStatusText,
   restoreMessagesFromArchive,
   rewindStandalonePendingAuxInsertIndexForThinking,
-  shouldDropEmptyAssistantMessage,
-  shouldHideEmptyPendingAssistantSnapshot,
-  shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus,
   shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse,
   stripPendingThinkingMatchingFinalized,
   stripThinkingFromAux,
@@ -202,6 +198,12 @@ import {
   truncateOneLineForDebug,
   toolMessageKey,
 } from './message-ordering.js';
+import {
+  buildVisibleMessageSnapshots,
+  pruneEmptyAssistantMessages as pruneEmptyAssistantMessagesFromSnapshots,
+  shiftStreamAssistantThinkingAnchorForInsertion as shiftThinkingAnchorForInsertion,
+  shiftStreamAssistantThinkingAnchorForRemoval as shiftThinkingAnchorForRemoval,
+} from './message-snapshots.js';
 import {
   buildActiveSkillPayload,
   buildActivateSkillUserTurn,
@@ -223,7 +225,6 @@ import {
 } from './git.js';
 import {
   bindRewindFileChangesToToolMessage,
-  canRewindMessage,
   createDesktopRewindMetadata,
   createRewindCheckpointMetadata,
   fileChangeMetadata,
@@ -2181,9 +2182,10 @@ class DesktopHostService {
     livePendingAux?: PendingAssistantAux,
   ): ConversationMessageSnapshot[] {
     const state = this.requireState();
-    const snapshots = state.messages.flatMap((message) => {
-      const snapshot = this.messageSnapshot(message, livePendingAux);
-      return snapshot && !shouldHideEmptyPendingAssistantSnapshot(snapshot) ? [snapshot] : [];
+    const snapshots = buildVisibleMessageSnapshots({
+      messages: state.messages,
+      livePendingAux,
+      rewind: state.rewind,
     });
 
     const standalonePendingAux = this.standalonePendingAuxSnapshot(livePendingAux, snapshots);
@@ -3205,47 +3207,15 @@ class DesktopHostService {
     this.requireRuntime().replaceFromArchive(archive);
   }
 
-  private messageSnapshot(
-    message: ConversationMessageSnapshot,
-    livePendingAux?: PendingAssistantAux,
-  ): ConversationMessageSnapshot | undefined {
-    const tool = normalizeToolBlockSnapshot(message.tool);
-    const aux = shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
-      message,
-      livePendingAux,
-    )
-      ? stripThinkingFromAux(message.aux)
-      : normalizeMessageAuxSnapshot(message.aux);
-    if (shouldDropEmptyAssistantMessage(message, tool, aux)) {
-      return undefined;
-    }
-
-    const { canRewind: _canRewind, ...base } = message;
-    return {
-      ...base,
-      ...(tool ? { tool } : {}),
-      ...(aux ? { aux } : {}),
-      ...(canRewindMessage(this.requireState().rewind, message) ? { canRewind: true } : {}),
-    };
-  }
-
   private pruneEmptyAssistantMessages(reason: string): void {
     const state = this.requireState();
-    const removedIds: number[] = [];
-    state.messages = state.messages.filter((message, index) => {
-      const drop = shouldDropEmptyAssistantMessage(
-        message,
-        normalizeToolBlockSnapshot(message.tool),
-        normalizeMessageAuxSnapshot(message.aux),
-      );
-      if (drop) {
-        const currentIndex = index - removedIds.length;
-        this.handleMessageRemoved(currentIndex, message.id, `prune:${reason}`);
-        removedIds.push(message.id);
-      }
-      return !drop;
-    });
-    if (removedIds.length > 0) {
+    const { messages, removed } = pruneEmptyAssistantMessagesFromSnapshots(state.messages);
+    state.messages = messages;
+    for (const removal of removed) {
+      this.handleMessageRemoved(removal.messageIndex, removal.messageId, `prune:${reason}`);
+    }
+    if (removed.length > 0) {
+      const removedIds = removed.map((removal) => removal.messageId);
       console.warn(
         `[desktop-host][messages] dropped ${removedIds.length} empty assistant message(s) during ${reason}: ${removedIds.join(', ')}`,
       );
@@ -3253,28 +3223,18 @@ class DesktopHostService {
   }
 
   private shiftStreamAssistantThinkingAnchorForInsertion(insertAt: number): void {
-    if (
-      this.streamAssistantThinkingAnchor !== undefined &&
-      insertAt <= this.streamAssistantThinkingAnchor
-    ) {
-      this.streamAssistantThinkingAnchor += 1;
-    }
+    this.streamAssistantThinkingAnchor = shiftThinkingAnchorForInsertion(
+      this.streamAssistantThinkingAnchor,
+      insertAt,
+    );
   }
 
   private shiftStreamAssistantThinkingAnchorForRemoval(removeAt: number, removeCount = 1): void {
-    if (this.streamAssistantThinkingAnchor === undefined || removeCount <= 0) {
-      return;
-    }
-
-    const anchor = this.streamAssistantThinkingAnchor;
-    if (removeAt + removeCount <= anchor) {
-      this.streamAssistantThinkingAnchor = anchor - removeCount;
-      return;
-    }
-
-    if (removeAt < anchor) {
-      this.streamAssistantThinkingAnchor = removeAt;
-    }
+    this.streamAssistantThinkingAnchor = shiftThinkingAnchorForRemoval(
+      this.streamAssistantThinkingAnchor,
+      removeAt,
+      removeCount,
+    );
   }
 
   private handleMessageRemoved(messageIndex: number, messageId: number, reason: string): void {
