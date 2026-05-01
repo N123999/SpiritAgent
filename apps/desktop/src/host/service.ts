@@ -1,7 +1,5 @@
-import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
@@ -13,7 +11,6 @@ import {
   buildSkillsCatalogSystemMessage,
   buildContributedHostToolDefinitions,
   type OpenAiActiveSkill,
-  type OpenAiActiveSkillResourceEntry,
   type OpenAiExtensionSystemPrompt,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
@@ -25,7 +22,6 @@ import {
   truncateOpenAiHistoryForCompaction,
   truncateOpenAiToolAgentStateForContextRetry,
   type AssistantAuxArchiveEntry,
-  type AskQuestionsResult as RuntimeAskQuestionsResult,
   type ChatArchive,
   type JsonObject,
   type OpenAiEnabledRule,
@@ -33,17 +29,8 @@ import {
   type OpenAiPlanMetadata,
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
-  type RuntimePendingApproval,
-  type RuntimePendingQuestions,
   type RuntimeEvent,
   type RuntimeToolExecution,
-  mcpUserConfigPath,
-  normalizeCapabilityToggles,
-  normalizeMcpServerConfig,
-  parseMcpConfigFile,
-  summarizeTransport,
-  type McpConfigFile,
-  type McpServerConfig,
 } from '@spirit-agent/agent-core';
 import {
   collectHostExtensionContributedTools,
@@ -53,9 +40,6 @@ import {
   DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,
   dreamLogsDirPath,
   listOpenAiCompatibleModelIds,
-  resolveInstructionPaths,
-  SKILL_FILE_NAME,
-  validateSkillName,
   restoreHostFileChanges,
   type HostExtensionMarketplaceManager,
   type HostDreamSessionProgress,
@@ -89,8 +73,6 @@ import type {
   DesktopDreamCollectorSnapshot,
   DesktopModelProvider,
   DeleteSkillRequest,
-  DesktopMcpServerListItem,
-  DesktopSkillRootKind,
   DesktopModelCatalogHint,
   DesktopSnapshot,
   FileRewindWarning,
@@ -110,7 +92,6 @@ import type {
   SubmitSkillSlashRequest,
   ToolBlockSnapshot,
   UpdateConfigRequest,
-  WorkspaceExplorerEntry,
   WorkspaceExplorerListResult,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
@@ -148,13 +129,19 @@ import {
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
 import {
+  buildMcpServerConfigFromRequest,
+  emptyMcpStatusSnapshot,
+  listDesktopMcpServersFromDisk,
+  loadMcpConfigFileFromDisk,
+  saveMcpConfigFileToDisk,
+} from './mcp-config.js';
+import {
   archiveBeforeLastUser,
   buildAvailableWorkspaces,
   buildWebHostSnapshot,
   cloneChatArchive,
   cloneDesktopConfig,
   currentApiBase,
-  formatYamlScalarForSkillFrontmatter,
   mapPendingQuestions,
   normalizeGeneratedCommitMessage,
   parseAddModelProvider,
@@ -191,6 +178,20 @@ import {
   truncateOneLineForDebug,
   toolMessageKey,
 } from './message-ordering.js';
+import {
+  buildActiveSkillPayload,
+  buildActivateSkillUserTurn,
+  buildCreateSkillUserTurn,
+  createSkillFile,
+  deleteSkillDir,
+  desktopInstructionPaths,
+  parseCreateSkillSlashPrompt,
+} from './skills.js';
+import {
+  listWorkspaceExplorerChildren as listWorkspaceExplorerChildrenFromDisk,
+  readWorkspaceTextFile as readWorkspaceTextFileFromDisk,
+  writeWorkspaceTextFile as writeWorkspaceTextFileToDisk,
+} from './workspace-files.js';
 import {
   buildWorkspaceGitCommitMessageContext,
   commitWorkspaceChanges,
@@ -686,34 +687,8 @@ class DesktopHostService {
       if (this.runtime?.isBusy()) {
         throw new Error('当前已有回复或审批在进行，请稍后再添加 Skill。');
       }
-
-      const rootKind = this.parseSkillRootKind(request.rootKind);
-      const name = request.name.trim().toLowerCase();
-      const nameIssue = validateSkillName(name);
-      if (nameIssue) {
-        throw new Error(nameIssue);
-      }
-
-      const description = (request.description ?? '').trim();
-      if (!description) {
-        throw new Error('描述不能为空。');
-      }
-      const skillDir = this.resolveSkillDir(name, rootKind);
-      if (existsSync(skillDir)) {
-        throw new Error(`该位置已存在同名 Skill：${name}`);
-      }
-
-      const frontmatterDescription = formatYamlScalarForSkillFrontmatter(description);
-      const fileContent = `---
-name: ${name}
-description: ${frontmatterDescription}
----
-
-在此编写技能正文：步骤、示例、边界条件与相对路径引用。
-`;
-
-      await mkdir(skillDir, { recursive: true });
-      await writeFile(path.join(skillDir, SKILL_FILE_NAME), fileContent, 'utf8');
+      const state = this.requireState();
+      await createSkillFile(state.workspaceRoot, request);
 
       await this.refreshRuntime();
       this.lastRuntimeError = '';
@@ -988,22 +963,8 @@ description: ${frontmatterDescription}
       if (this.runtime?.isBusy()) {
         throw new Error('当前已有回复或审批在进行，请稍后再删除 Skill。');
       }
-
-      const rootKind = this.parseSkillRootKind(request.rootKind);
-      const name = request.name.trim().toLowerCase();
-      const nameIssue = validateSkillName(name);
-      if (nameIssue) {
-        throw new Error(nameIssue);
-      }
-
-      const skillDir = this.resolveSkillDir(name, rootKind);
-      this.assertPathUnderSkillRoot(skillDir, rootKind);
-
-      if (!existsSync(skillDir)) {
-        throw new Error(`Skill 不存在：${name}`);
-      }
-
-      await rm(skillDir, { recursive: true, force: true });
+      const state = this.requireState();
+      await deleteSkillDir(state.workspaceRoot, request);
 
       await this.refreshRuntime();
       this.lastRuntimeError = '';
@@ -1058,7 +1019,11 @@ description: ${frontmatterDescription}
 
       const state = this.requireState();
       return this.submitUserTurnAfterInitialized(
-        buildCreateSkillUserTurn(state.workspaceRoot, this.instructionPaths(), prompt),
+        buildCreateSkillUserTurn(
+          state.workspaceRoot,
+          desktopInstructionPaths(state.workspaceRoot),
+          prompt,
+        ),
         {
           displayText: rawText,
         },
@@ -1379,59 +1344,15 @@ description: ${frontmatterDescription}
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       const state = this.requireState();
-      const dir = this.resolveWorkspaceRelativePath(state, relativePath);
-      let st;
-      try {
-        st = await stat(dir);
-      } catch {
-        return { entries: [] };
-      }
-      if (!st.isDirectory()) {
-        return { entries: [] };
-      }
-      const dirents = await readdir(dir, { withFileTypes: true });
-      const entries: WorkspaceExplorerEntry[] = dirents
-        .filter((d) => d.name && d.name !== '.' && d.name !== '..')
-        .map((d) => ({
-          name: d.name,
-          kind: d.isDirectory() ? 'dir' : 'file',
-        }));
-      entries.sort((a, b) => {
-        if (a.kind !== b.kind) {
-          return a.kind === 'dir' ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-      });
-      return { entries };
+      return listWorkspaceExplorerChildrenFromDisk(state.workspaceRoot, relativePath);
     });
   }
-
-  /** 单文件上限，避免大文件拖垮渲染进程。 */
-  private static readonly workspaceTextFileMaxBytes = 2 * 1024 * 1024;
 
   async readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       const state = this.requireState();
-      const posix = relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
-      if (!posix) {
-        throw new Error('未指定文件路径');
-      }
-      const filePath = this.resolveWorkspaceRelativePath(state, relativePath);
-      let st;
-      try {
-        st = await stat(filePath);
-      } catch {
-        throw new Error('文件不存在或无法访问');
-      }
-      if (!st.isFile()) {
-        throw new Error('不是文件');
-      }
-      if (st.size > DesktopHostService.workspaceTextFileMaxBytes) {
-        throw new Error('文件过大，无法在侧栏打开');
-      }
-      const buf = await readFile(filePath);
-      return { text: buf.toString('utf8') };
+      return readWorkspaceTextFileFromDisk(state.workspaceRoot, relativePath);
     });
   }
 
@@ -1439,52 +1360,9 @@ description: ${frontmatterDescription}
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       const state = this.requireState();
-      const posix = request.relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
-      if (!posix) {
-        throw new Error('未指定文件路径');
-      }
-      const filePath = this.resolveWorkspaceRelativePath(state, request.relativePath);
-      let st;
-      try {
-        st = await stat(filePath);
-      } catch {
-        throw new Error('文件不存在或无法访问');
-      }
-      if (!st.isFile()) {
-        throw new Error('只能保存为普通文件');
-      }
-      const bytes = Buffer.byteLength(request.text, 'utf8');
-      if (bytes > DesktopHostService.workspaceTextFileMaxBytes) {
-        throw new Error('内容过大，无法保存');
-      }
-      await writeFile(filePath, request.text, 'utf8');
+      await writeWorkspaceTextFileToDisk(state.workspaceRoot, request);
       await this.refreshGitState();
     });
-  }
-
-  /**
-   * 将工作区相对路径解析为绝对路径；使用 `/` 分段，禁止 `..` 与绝对路径。
-   */
-  private resolveWorkspaceRelativePath(state: HostState, relativePath: string): string {
-    const root = path.resolve(state.workspaceRoot);
-    const cleaned = relativePath.replace(/\0/g, '');
-    const posix = cleaned.replace(/\\/g, '/').trim();
-    if (posix.startsWith('/') || /^[a-zA-Z]:/.test(posix)) {
-      throw new Error('无效路径');
-    }
-    const segments = posix.split('/').filter((s) => s.length > 0);
-    for (const seg of segments) {
-      if (seg === '..' || seg === '.') {
-        throw new Error('无效路径');
-      }
-    }
-    const target =
-      segments.length === 0 ? root : path.resolve(root, ...segments);
-    const rel = path.relative(root, target);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
-      throw new Error('路径越出工作区');
-    }
-    return target;
   }
 
   async openSession(filePath: string): Promise<DesktopSnapshot> {
@@ -3860,49 +3738,6 @@ description: ${frontmatterDescription}
     state.activeSession.filePath = await saveStoredSession(state.activeSession.filePath, stored);
   }
 
-  private instructionPaths() {
-    const state = this.requireState();
-    return resolveInstructionPaths({
-      workspaceRoot: state.workspaceRoot,
-      spiritDataDir: spiritAgentDataDir(),
-    });
-  }
-
-  private parseSkillRootKind(value: unknown): DesktopSkillRootKind {
-    if (value === 'user' || value === 'workspaceSpirit' || value === 'workspaceAgents') {
-      return value;
-    }
-    throw new Error('无效的 Skill 根类型。');
-  }
-
-  private resolveSkillRootDir(rootKind: DesktopSkillRootKind): string {
-    const paths = this.instructionPaths();
-    switch (rootKind) {
-      case 'user':
-        return paths.userSkillsDir;
-      case 'workspaceSpirit':
-        return paths.workspaceSpiritSkillsDir;
-      case 'workspaceAgents':
-        return paths.workspaceAgentsSkillsDir;
-      default: {
-        const _exhaustive: never = rootKind;
-        return _exhaustive;
-      }
-    }
-  }
-
-  private resolveSkillDir(skillDirectoryName: string, rootKind: DesktopSkillRootKind): string {
-    return path.join(this.resolveSkillRootDir(rootKind), skillDirectoryName);
-  }
-
-  private assertPathUnderSkillRoot(targetDir: string, rootKind: DesktopSkillRootKind): void {
-    const root = path.resolve(this.resolveSkillRootDir(rootKind));
-    const resolved = path.resolve(targetDir);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-      throw new Error('Skill 路径不在允许的根目录内。');
-    }
-  }
-
   private requireState(): HostState {
     if (!this.state) {
       throw new Error('宿主尚未初始化。');
@@ -4656,129 +4491,6 @@ function clearDreamCollectorIssue(
   return clean;
 }
 
-const MCP_DEFAULT_TIMEOUT_MS = 20_000;
-
-type DesktopMcpMetadataKind = 'env' | 'header';
-
-function emptyMcpStatusSnapshot(): DesktopSnapshot['mcpStatus'] {
-  return {
-    revision: 0,
-    state: 'idle',
-    configuredServers: 0,
-    loadedServers: 0,
-    cachedTools: 0,
-  };
-}
-
-function desktopMcpConfigPath(): string {
-  return mcpUserConfigPath(spiritAgentDataDir());
-}
-
-function loadMcpConfigFileFromDisk(): McpConfigFile {
-  const configPath = desktopMcpConfigPath();
-  if (!existsSync(configPath)) {
-    return { servers: {} };
-  }
-
-  const content = readFileSync(configPath, 'utf8');
-  return parseMcpConfigFile(JSON.parse(content) as unknown);
-}
-
-async function saveMcpConfigFileToDisk(config: McpConfigFile): Promise<void> {
-  const configPath = desktopMcpConfigPath();
-  await mkdir(path.dirname(configPath), { recursive: true });
-  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-}
-
-function listDesktopMcpServersFromDisk(): DesktopMcpServerListItem[] {
-  try {
-    const configFile = loadMcpConfigFileFromDisk();
-    return Object.entries(configFile.servers).map(([name, server]) => {
-      const normalized = normalizeMcpServerConfig(name, server);
-      switch (normalized.transport.type) {
-        case 'stdio':
-          return {
-            name: normalized.name,
-            displayName: normalized.displayName,
-            enabled: normalized.enabled,
-            capabilities: normalized.capabilities,
-            transport: {
-              type: 'stdio',
-              command: normalized.transport.command,
-              args: normalized.transport.args,
-              metadata: normalized.transport.env,
-              ...(normalized.transport.cwd ? { cwd: normalized.transport.cwd } : {}),
-              ...(normalized.transport.timeoutMs !== undefined
-                ? { timeoutMs: normalized.transport.timeoutMs }
-                : {}),
-              summary: summarizeTransport(normalized.transport),
-            },
-          };
-        case 'http':
-          return {
-            name: normalized.name,
-            displayName: normalized.displayName,
-            enabled: normalized.enabled,
-            capabilities: normalized.capabilities,
-            transport: {
-              type: 'http',
-              url: normalized.transport.url,
-              metadata: normalized.transport.headers,
-              ...(normalized.transport.timeoutMs !== undefined
-                ? { timeoutMs: normalized.transport.timeoutMs }
-                : {}),
-              summary: summarizeTransport(normalized.transport),
-            },
-          };
-      }
-    });
-  } catch {
-    return [];
-  }
-}
-
-function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): McpServerConfig {
-  const name = request.name.trim();
-  const capabilities = normalizeCapabilityToggles(request.capabilities);
-  const metadata = parseDesktopMcpMetadata(
-    request.metadata ?? '',
-    request.transportType === 'http' ? 'header' : 'env',
-  );
-
-  if (request.transportType === 'http') {
-    return {
-      displayName: name,
-      enabled: true,
-      capabilities,
-      transport: {
-        type: 'http',
-        url: request.endpoint.trim(),
-        ...(Object.keys(metadata).length > 0 ? { headers: metadata } : {}),
-        timeoutMs: MCP_DEFAULT_TIMEOUT_MS,
-      },
-    };
-  }
-
-  const tokens = splitDesktopCommandLine(request.endpoint.trim());
-  const [command, ...args] = tokens;
-  if (!command) {
-    throw new Error('命令不能为空。');
-  }
-
-  return {
-    displayName: name,
-    enabled: true,
-    capabilities,
-    transport: {
-      type: 'stdio',
-      command,
-      ...(args.length > 0 ? { args } : {}),
-      ...(Object.keys(metadata).length > 0 ? { env: metadata } : {}),
-      timeoutMs: MCP_DEFAULT_TIMEOUT_MS,
-    },
-  };
-}
-
 function toDesktopMarketplaceCatalogItem(item: {
   extensionId: string;
   packageName: string;
@@ -4915,254 +4627,6 @@ function toDesktopMarketplacePreparedInstall(prepared: {
     ...(prepared.shasum ? { shasum: prepared.shasum } : {}),
     sourceFileName: prepared.sourceFileName,
   };
-}
-
-function parseDesktopMcpMetadata(
-  input: string,
-  kind: DesktopMcpMetadataKind,
-): Record<string, string> {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return {};
-  }
-
-  const result: Record<string, string> = {};
-  for (const item of trimmed.split(';')) {
-    const pair = item.trim();
-    if (!pair) {
-      continue;
-    }
-
-    const parsed = kind === 'env'
-      ? pair.split(/=(.*)/su, 2)
-      : pair.includes(':')
-        ? pair.split(/:(.*)/su, 2)
-        : pair.split(/=(.*)/su, 2);
-
-    if (parsed.length < 2) {
-      throw new Error(kind === 'env'
-        ? '环境变量格式应为 KEY=value；多个条目用分号分隔。'
-        : 'Header 格式应为 Key: Value；多个条目用分号分隔。');
-    }
-
-    const key = parsed[0]?.trim() ?? '';
-    if (!key) {
-      throw new Error(kind === 'env' ? '环境变量名不能为空。' : 'Header 名不能为空。');
-    }
-
-    result[key] = (parsed[1] ?? '').trim();
-  }
-
-  return result;
-}
-
-function splitDesktopCommandLine(input: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | undefined;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const ch = input[index]!;
-    if (quote) {
-      if (ch === quote) {
-        quote = undefined;
-        continue;
-      }
-      if (ch === '\\' && index + 1 < input.length) {
-        current += input[index + 1]!;
-        index += 1;
-        continue;
-      }
-      current += ch;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-    if (/\s/u.test(ch)) {
-      if (current) {
-        tokens.push(current);
-        current = '';
-      }
-      continue;
-    }
-    if (ch === '\\' && index + 1 < input.length) {
-      current += input[index + 1]!;
-      index += 1;
-      continue;
-    }
-    current += ch;
-  }
-
-  if (quote) {
-    throw new Error('命令格式错误：存在未闭合的引号。');
-  }
-  if (current) {
-    tokens.push(current);
-  }
-  return tokens;
-}
-
-const ACTIVE_SKILL_CONTENT_MAX_CHARS = 12_000;
-const ACTIVE_SKILL_RESOURCE_MAX_ENTRIES = 24;
-const ACTIVE_SKILL_RESOURCE_DIRS: ReadonlyArray<{
-  kind: OpenAiActiveSkillResourceEntry['kind'];
-  dirname: string;
-}> = [
-  { kind: 'scripts', dirname: 'scripts' },
-  { kind: 'references', dirname: 'references' },
-  { kind: 'assets', dirname: 'assets' },
-];
-
-function buildActivateSkillUserTurn(skillName: string, extraNote: string): string {
-  const trimmed = extraNote.trim();
-  if (!trimmed) {
-    return `请按 skill "${skillName}" 处理当前任务。`;
-  }
-  return trimmed;
-}
-
-const CREATE_SKILL_PROMPT_HINT =
-  '请在 /create-skill 后描述你想生成或收紧的 Skill，例如：/create-skill 做一个用于排查 Electron 白屏的 Skill';
-
-function parseCreateSkillSlashPrompt(input: string): string | Error {
-  const trimmed = input.trim();
-  const prompt = trimmed.startsWith('/create-skill')
-    ? trimmed.slice('/create-skill'.length).trim()
-    : trimmed;
-  if (!prompt) {
-    return new Error(CREATE_SKILL_PROMPT_HINT);
-  }
-
-  return prompt;
-}
-
-function buildCreateSkillUserTurn(
-  workspaceRoot: string,
-  instructionPaths: ReturnType<typeof resolveInstructionPaths>,
-  prompt: string,
-): string {
-  const workspaceTargetRoot = instructionPaths.workspaceSpiritSkillsDir;
-  const userTargetRoot = instructionPaths.userSkillsDir;
-
-  return `你现在在处理一个 /create-skill 请求。
-
-目标:
-- default_scope: 工作区
-- workspace_skill_root: ${workspaceTargetRoot}
-- user_skill_root: ${userTargetRoot}
-- workspace_root: ${workspaceRoot}
-
-用户需求:
-${prompt}
-
-要求:
-- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。
-- 默认创建到工作区 skill 根目录 ${workspaceTargetRoot}；只有在用户明确要求“用户级 / 全局 / 跨仓库复用 / 写到用户目录”这类语义时，才改为用户目录 ${userTargetRoot}。
-- 你需要先根据用户需求自行决定一个合适的 skill_name；名称必须是 1-64 个字符，只能使用小写字母、数字和连字符，不能以连字符开头或结尾，也不能包含连续连字符。
-- 最终目标目录名与 frontmatter \`name\` 必须完全等于你决定的 skill_name。
-- 最终文件路径必须是 \`<选定根目录>/<skill_name>/SKILL.md\`；不要写到其他位置。
-- 如果目标 Skill 已存在，先读取原有 \`SKILL.md\`，再基于现有内容压缩重写或收紧，不要在旧内容后面继续堆砌模板化废话。
-- \`SKILL.md\` 必须以 YAML frontmatter 开头，至少包含 \`name\` 和 \`description\`；正文使用 Markdown，重点写清“做什么、何时用、怎么做”。
-- \`description\` 要具体说明适用场景，便于 agent 在 catalog 中识别。
-- Skill 是给后续 agent/LLM 直接消费的能力说明，不是给人类流程管理看的。
-- 正文优先写步骤、输入输出示例、边界条件；避免空话、组织治理废话和泛泛 checklist。
-- 需要事实时先读取仓库内相关文件，不要臆造项目结构、技术栈、目录或既有工作流。
-- 如果技能需要引用其他文件，正文里使用相对路径表达，不要假设这些文件已经存在。
-- 如果你选择工作区 scope，优先提炼当前仓库内可复用的流程知识、约束和操作步骤，避免写成泛化的团队治理文档。
-- 如果你选择用户 scope，优先提炼跨仓库稳定复用的个人工作流、判断标准与执行步骤。
-- 写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。
-
-交付方式:
-- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。
-- 如果不能直接落盘，就把最终 \`SKILL.md\` 完整贴在回复里，并明确说明未写入。`;
-}
-
-async function buildActiveSkillPayload(
-  entry: HostMetadataSummary['skills']['entries'][number],
-): Promise<OpenAiActiveSkill> {
-  const skillRoot = path.dirname(entry.source.path);
-  const { content, truncated } = truncateActiveSkillContent(entry.content);
-  const { resources, truncated: resourcesTruncated } = await collectSkillResources(skillRoot);
-
-  return {
-    id: entry.source.id,
-    scope: entry.source.scope,
-    name: entry.source.name,
-    description: entry.source.description,
-    path: entry.source.path,
-    content,
-    truncated,
-    resources,
-    resourcesTruncated,
-  };
-}
-
-function truncateActiveSkillContent(content: string): {
-  content: string;
-  truncated: boolean;
-} {
-  const chars = [...content];
-  if (chars.length <= ACTIVE_SKILL_CONTENT_MAX_CHARS) {
-    return {
-      content: content.trim(),
-      truncated: false,
-    };
-  }
-
-  return {
-    content: `${chars.slice(0, ACTIVE_SKILL_CONTENT_MAX_CHARS).join('').trimEnd()}\n\n...<skill content truncated>`,
-    truncated: true,
-  };
-}
-
-async function collectSkillResources(skillRoot: string): Promise<{
-  resources: OpenAiActiveSkillResourceEntry[];
-  truncated: boolean;
-}> {
-  const resources: OpenAiActiveSkillResourceEntry[] = [];
-  let truncated = false;
-
-  for (const { kind, dirname } of ACTIVE_SKILL_RESOURCE_DIRS) {
-    const root = path.join(skillRoot, dirname);
-    if (!existsSync(root)) {
-      continue;
-    }
-
-    const stack = [root];
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current) {
-        continue;
-      }
-
-      const entries = await readdir(current, { withFileTypes: true });
-      entries.sort((left, right) => left.name.localeCompare(right.name));
-      for (const entry of entries) {
-        const fullPath = path.join(current, entry.name);
-        if (entry.isDirectory()) {
-          stack.push(fullPath);
-          continue;
-        }
-        if (!entry.isFile()) {
-          continue;
-        }
-        if (resources.length >= ACTIVE_SKILL_RESOURCE_MAX_ENTRIES) {
-          truncated = true;
-          return { resources, truncated };
-        }
-
-        resources.push({
-          kind,
-          path: path.relative(skillRoot, fullPath).replace(/\\/gu, '/'),
-        });
-      }
-    }
-  }
-
-  return { resources, truncated };
 }
 
 function cloneActiveSkills(skills: OpenAiActiveSkill[]): OpenAiActiveSkill[] {
