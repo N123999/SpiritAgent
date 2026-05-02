@@ -113,6 +113,76 @@ export function createRewindCheckpointMetadata(
   };
 }
 
+export function upsertRewindCheckpointMetadata(
+  metadata: StoredDesktopRewindMetadata,
+  checkpoint: DesktopRewindCheckpointMetadata,
+): void {
+  const existing = metadata.checkpoints.findIndex(
+    (candidate) => candidate.messageId === checkpoint.messageId,
+  );
+  if (existing >= 0) {
+    metadata.checkpoints.splice(existing, 1, checkpoint);
+  } else {
+    metadata.checkpoints.push(checkpoint);
+  }
+  metadata.checkpoints.sort((left, right) => left.sequence - right.sequence);
+}
+
+export function pruneRewindMetadataAfterCheckpoint(
+  metadata: StoredDesktopRewindMetadata,
+  checkpointSequence: number,
+): void {
+  metadata.checkpoints = metadata.checkpoints.filter(
+    (checkpoint) => checkpoint.sequence < checkpointSequence,
+  );
+  metadata.fileChanges = metadata.fileChanges.filter(
+    (change) => change.sequence <= checkpointSequence,
+  );
+}
+
+export function canRewindMessage(
+  metadata: StoredDesktopRewindMetadata,
+  message: ConversationMessageSnapshot,
+): boolean {
+  if (message.pending || message.role !== 'user') {
+    return false;
+  }
+  return metadata.checkpoints.some((checkpoint) => checkpoint.messageId === message.id);
+}
+
+export function bindRewindFileChangesToToolMessage(
+  metadata: StoredDesktopRewindMetadata,
+  pendingUnboundFileChangeIds: string[],
+  execution: { toolCallId?: string; toolName: string },
+  messageId: number,
+): string[] {
+  const targetIds = new Set<string>();
+  const toolCallId = execution.toolCallId || `tool:${execution.toolName}`;
+  for (const change of metadata.fileChanges) {
+    if (change.messageId !== undefined) {
+      continue;
+    }
+    if (change.toolCallId === toolCallId) {
+      targetIds.add(change.id);
+    }
+  }
+  if (targetIds.size === 0) {
+    for (const id of pendingUnboundFileChangeIds) {
+      targetIds.add(id);
+    }
+  }
+  if (targetIds.size === 0) {
+    return pendingUnboundFileChangeIds;
+  }
+
+  for (const change of metadata.fileChanges) {
+    if (targetIds.has(change.id)) {
+      change.messageId = messageId;
+    }
+  }
+  return pendingUnboundFileChangeIds.filter((id) => !targetIds.has(id));
+}
+
 export function toDesktopFileChange(
   change: HostRecordedFileChange,
   sequence: number,
