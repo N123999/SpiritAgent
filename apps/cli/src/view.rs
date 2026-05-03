@@ -7,6 +7,17 @@ use crate::model_registry::AppConfig;
 use crate::ports::SubagentSessionStatus;
 use crate::session::PendingMcpResource;
 
+/// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ConversationPanelHit {
+    pub x: u16,
+    pub y: u16,
+    pub w: u16,
+    pub h: u16,
+    pub scroll: usize,
+    pub total_lines: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputSuggestionKind {
     Slash,

@@ -405,7 +405,9 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         shell.handle_stream_stall_timeout();
         shell.tick();
         terminal.draw(|frame| {
-            ui::draw_ui(frame, &mut shell);
+            let app = shell.view_model();
+            let feedback = ui::draw_ui(frame, &app);
+            shell.apply_render_feedback(feedback);
         })?;
 
         if !event::poll(Duration::from_millis(100))? {

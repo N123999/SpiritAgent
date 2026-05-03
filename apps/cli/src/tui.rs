@@ -17,7 +17,7 @@ use std::{
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     ask_questions::AskQuestionsResult,
-    conversation_select::{CellPointer, NormRange, normalize_selection, selection_plain_text},
+    conversation_select::{CellPointer, normalize_selection, selection_plain_text},
     host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
     locale, logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -36,29 +36,20 @@ use crate::{
         CliExtensionCliUiHookEntry, CliExtensionEntry, CliMarketplaceCatalogItem,
         CliMarketplaceDetail, CliMarketplaceDetailVersion, CliMarketplacePreparedInstall,
     },
+    ui::UiRenderFeedback,
     view::{
         AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, CliUiHookSlot,
-        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView, InputSuggestion,
-        InputSuggestionKind, MainInputMode, MarketplaceCatalogItemView, MarketplaceDetailView,
-        MarketplaceFlowStep, MarketplaceVersionChangelogView, MarketplaceVersionView,
-        MarketplaceViewModel, MessageRole, PendingAssistantAux, PendingSubagentApprovalView,
-        SlashFlowItemView, SlashFlowView, SubagentApprovalInputView, SubagentSessionDetailView,
-        SubagentSessionSummaryView, TuiViewModel,
+        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView,
+        ConversationPanelHit, InputSuggestion, InputSuggestionKind, MainInputMode,
+        MarketplaceCatalogItemView, MarketplaceDetailView, MarketplaceFlowStep,
+        MarketplaceVersionChangelogView, MarketplaceVersionView, MarketplaceViewModel, MessageRole,
+        PendingAssistantAux, PendingSubagentApprovalView, SlashFlowItemView, SlashFlowView,
+        SubagentApprovalInputView, SubagentSessionDetailView, SubagentSessionSummaryView,
+        TuiViewModel,
     },
 };
 
 const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
-
-/// 上一帧对话面板的可点击内缘（与 Block 内文字区域一致），用于鼠标命中。
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ConversationPanelHit {
-    pub x: u16,
-    pub y: u16,
-    pub w: u16,
-    pub h: u16,
-    pub scroll: usize,
-    pub total_lines: usize,
-}
 
 pub struct TuiShell {
     input: String,
@@ -1347,6 +1338,21 @@ impl TuiShell {
         self.sync_conversation_selection_to_bounds(max_line);
     }
 
+    pub fn apply_render_feedback(&mut self, feedback: UiRenderFeedback) {
+        if let Some(conversation) = feedback.conversation_panel {
+            self.history_offset_from_bottom = conversation.history_offset_from_bottom;
+            self.note_conversation_panel(conversation.hit, conversation.plain_rows);
+        }
+
+        if let Some(scroll_offset) = feedback.bottom_form_scroll_offset {
+            self.sync_active_bottom_form_scroll(scroll_offset);
+        }
+
+        if let Some(offset) = feedback.subagent_history_offset_from_bottom {
+            self.subagent_history_offset_from_bottom = offset;
+        }
+    }
+
     fn sync_conversation_selection_to_bounds(&mut self, max_line: usize) {
         let clamp = |(l, c): (usize, usize)| (l.min(max_line), c);
         if let Some(p) = &mut self.conversation_sel_anchor {
@@ -1430,22 +1436,6 @@ impl TuiShell {
             .map_err(|e| e.to_string())?;
         self.clear_conversation_selection();
         Ok(())
-    }
-
-    pub(crate) fn conversation_norm_for_paint(&self, total_lines: usize) -> Option<NormRange> {
-        let (Some(a), Some(b)) = (self.conversation_sel_anchor, self.conversation_sel_head) else {
-            return None;
-        };
-        let max_line = total_lines.saturating_sub(1);
-        let a = CellPointer {
-            line: a.0.min(max_line),
-            col: a.1,
-        };
-        let b = CellPointer {
-            line: b.0.min(max_line),
-            col: b.1,
-        };
-        Some(normalize_selection(a, b))
     }
 
     pub fn should_quit(&self) -> bool {
@@ -2040,12 +2030,6 @@ impl TuiShell {
         self.history_offset_from_bottom = 0;
     }
 
-    /// 在对话折行高度变化后，避免 “贴底偏移” 超出范围导致布局/滚动错位（偶现整屏错乱，resize 后恢复）。
-    pub(crate) fn clamp_history_scroll(&mut self, max_scroll: usize) -> usize {
-        self.history_offset_from_bottom = self.history_offset_from_bottom.min(max_scroll);
-        self.history_offset_from_bottom
-    }
-
     pub fn cancel_model_picker(&mut self) {
         self.model_picker_active = false;
     }
@@ -2209,12 +2193,6 @@ impl TuiShell {
         self.subagent_history_offset_from_bottom = self
             .subagent_history_offset_from_bottom
             .saturating_sub(lines);
-    }
-
-    pub(crate) fn clamp_subagent_history_scroll(&mut self, max_scroll: usize) -> usize {
-        self.subagent_history_offset_from_bottom =
-            self.subagent_history_offset_from_bottom.min(max_scroll);
-        self.subagent_history_offset_from_bottom
     }
 
     pub fn select_next_chat(&mut self) {
@@ -2725,7 +2703,10 @@ impl TuiShell {
                 api_base: parsed.api_base.clone(),
                 provider: Some(parsed.provider),
             });
-            if let Err(err) = self.secret_store.save_model_api_key(id, parsed.api_key.as_str()) {
+            if let Err(err) = self
+                .secret_store
+                .save_model_api_key(id, parsed.api_key.as_str())
+            {
                 return Err(t!("tui.model_add.key_save_failed", err = err.to_string()).into_owned());
             }
             added += 1;
@@ -2746,9 +2727,7 @@ impl TuiShell {
         }
 
         if let Err(err) = self.config_store.save(&config) {
-            return Err(
-                t!("tui.model_add.config_save_failed", err = err.to_string()).into_owned(),
-            );
+            return Err(t!("tui.model_add.config_save_failed", err = err.to_string()).into_owned());
         }
 
         self.runtime.replace_config(config);

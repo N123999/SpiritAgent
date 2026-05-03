@@ -14,19 +14,19 @@ use std::{cell::RefCell, collections::HashMap, path::Path};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
-    conversation_select::flatten_wrapped_history,
+    conversation_select::{CellPointer, NormRange, flatten_wrapped_history, normalize_selection},
     logging,
     ports::SubagentSessionStatus,
     session::PendingMcpResource,
     shell::{ask_questions as ask_questions_form, manual_shell},
-    tui::{ConversationPanelHit, TuiShell},
     view::{
         AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
         ChatMessage, CliUiHookSlot, CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant,
-        CliUiHookView, InputSuggestion, InputSuggestionKind, MainInputMode, MarketplaceViewModel,
-        MessageRole, PendingAssistantAux, PendingSubagentApprovalView, SubagentApprovalInputView,
-        SubagentSessionDetailView, ToolUiBlock, ToolUiPhase, TuiViewModel,
+        CliUiHookView, ConversationPanelHit, InputSuggestion, InputSuggestionKind, MainInputMode,
+        MarketplaceViewModel, MessageRole, PendingAssistantAux, PendingSubagentApprovalView,
+        SubagentApprovalInputView, SubagentSessionDetailView, ToolUiBlock, ToolUiPhase,
+        TuiViewModel,
     },
 };
 
@@ -53,6 +53,20 @@ struct BottomFormRenderResult {
     scroll_offset: Option<usize>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct UiRenderFeedback {
+    pub conversation_panel: Option<ConversationPanelRenderFeedback>,
+    pub bottom_form_scroll_offset: Option<usize>,
+    pub subagent_history_offset_from_bottom: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConversationPanelRenderFeedback {
+    pub hit: ConversationPanelHit,
+    pub plain_rows: Vec<String>,
+    pub history_offset_from_bottom: usize,
+}
+
 struct RulesBottomFormLayout {
     content_lines: Vec<Line<'static>>,
     field_ranges: Vec<Option<(usize, usize)>>,
@@ -70,8 +84,8 @@ fn conversation_logo_width(available_width: u16) -> u16 {
     desired_width.min(available_width.max(1))
 }
 
-pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
-    let app = shell.view_model();
+pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFeedback {
+    let mut feedback = UiRenderFeedback::default();
     ACTIVE_CLI_UI_HOOKS.with(|hooks| {
         *hooks.borrow_mut() = app.cli_ui_hooks.clone();
     });
@@ -163,11 +177,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     // 以 WordWrapper 折行为准，避免 Paragraph::line_count 与自定义折行在少数宽度/CJK 下不一致导致滚动错位。
     let (flat_measure, _) = flatten_wrapped_history(history_lines.clone(), w, None);
     let total_visual_lines = flat_measure.len();
-    let norm = shell.conversation_norm_for_paint(total_visual_lines);
+    let norm = conversation_norm_for_paint(app, total_visual_lines);
     let (flat, plain) = flatten_wrapped_history(history_lines, w, norm);
     debug_assert_eq!(flat.len(), total_visual_lines);
     let max_scroll = flat.len().saturating_sub(history_view_height);
-    let offset_bottom = shell.clamp_history_scroll(max_scroll);
+    let offset_bottom = app.history_offset_from_bottom.min(max_scroll);
     let history_scroll = max_scroll.saturating_sub(offset_bottom);
     let visible: Vec<Line<'static>> = flat
         .into_iter()
@@ -176,8 +190,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         .collect();
     let history = Paragraph::new(visible);
     frame.render_widget(history, chunks[0]);
-    shell.note_conversation_panel(
-        ConversationPanelHit {
+    feedback.conversation_panel = Some(ConversationPanelRenderFeedback {
+        hit: ConversationPanelHit {
             x: inner_x,
             y: inner_y,
             w: inner_w,
@@ -185,8 +199,9 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
             scroll: history_scroll,
             total_lines: total_visual_lines,
         },
-        plain,
-    );
+        plain_rows: plain,
+        history_offset_from_bottom: offset_bottom,
+    });
 
     let (input_cursor_row, input_cursor_col) =
         input_cursor_position(&app, chunks[1].width.saturating_sub(2) as usize);
@@ -220,7 +235,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         if let Some(form) = &app.bottom_form {
             let render = draw_bottom_form(frame, chunks[2], form);
             if let Some(scroll_offset) = render.scroll_offset {
-                shell.sync_active_bottom_form_scroll(scroll_offset);
+                feedback.bottom_form_scroll_offset = Some(scroll_offset);
             }
             if let Some((cursor_x, cursor_y)) = render.cursor {
                 frame.set_cursor_position((cursor_x, cursor_y));
@@ -228,7 +243,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
         }
     } else if show_marketplace {
         if let Some(view) = &app.marketplace_view {
-            draw_marketplace_view(frame, shell, chunks[2], view);
+            draw_marketplace_view(frame, chunks[2], view);
         }
     } else if !show_picker && !show_marketplace {
         // Use terminal display width so CJK/full-width characters keep cursor aligned.
@@ -324,11 +339,11 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     }
 
     if let Some(view) = &app.subagent_view {
-        draw_subagent_viewer(
+        feedback.subagent_history_offset_from_bottom = draw_subagent_viewer(
             frame,
-            shell,
             frame.area(),
             view,
+            app.subagent_history_offset_from_bottom,
             app.show_aux_details,
             app.pending_subagent_approval.as_ref(),
             app.subagent_approval_input.as_ref(),
@@ -336,6 +351,23 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, shell: &mut TuiShell) {
     }
 
     ACTIVE_CLI_UI_HOOKS.with(|hooks| hooks.borrow_mut().clear());
+    feedback
+}
+
+fn conversation_norm_for_paint(app: &TuiViewModel, total_lines: usize) -> Option<NormRange> {
+    let (Some(a), Some(b)) = (app.conversation_sel_anchor, app.conversation_sel_head) else {
+        return None;
+    };
+    let max_line = total_lines.saturating_sub(1);
+    let a = CellPointer {
+        line: a.0.min(max_line),
+        col: a.1,
+    };
+    let b = CellPointer {
+        line: b.0.min(max_line),
+        col: b.1,
+    };
+    Some(normalize_selection(a, b))
 }
 
 fn subtle_aux_text_style() -> Style {
@@ -2431,13 +2463,13 @@ fn build_subagent_picker_lines(
 
 fn draw_subagent_viewer(
     frame: &mut ratatui::Frame<'_>,
-    shell: &mut TuiShell,
     area: Rect,
     view: &SubagentSessionDetailView,
+    offset_from_bottom: usize,
     show_aux_details: bool,
     pending_subagent_approval: Option<&PendingSubagentApprovalView>,
     approval_input: Option<&SubagentApprovalInputView>,
-) {
+) -> Option<usize> {
     let popup = area;
     frame.render_widget(Clear, popup);
 
@@ -2556,7 +2588,7 @@ fn draw_subagent_viewer(
     let (flat, _) = flatten_wrapped_history(history_lines, history_chunk.width.max(1), None);
     let history_view_height = history_chunk.height.max(1) as usize;
     let max_scroll = flat.len().saturating_sub(history_view_height);
-    let offset_bottom = shell.clamp_subagent_history_scroll(max_scroll);
+    let offset_bottom = offset_from_bottom.min(max_scroll);
     let history_scroll = max_scroll.saturating_sub(offset_bottom);
     let visible = flat
         .into_iter()
@@ -2625,6 +2657,8 @@ fn draw_subagent_viewer(
         ))),
         footer_chunk,
     );
+
+    Some(offset_bottom)
 }
 
 fn marketplace_review_label(status: &str) -> &'static str {
@@ -2644,12 +2678,7 @@ fn marketplace_channel_label(channel: &str) -> String {
     }
 }
 
-fn draw_marketplace_view(
-    frame: &mut ratatui::Frame<'_>,
-    _shell: &mut TuiShell,
-    area: Rect,
-    view: &MarketplaceViewModel,
-) {
+fn draw_marketplace_view(frame: &mut ratatui::Frame<'_>, area: Rect, view: &MarketplaceViewModel) {
     frame.render_widget(Clear, area);
     match view.step {
         crate::view::MarketplaceFlowStep::CatalogPicker => {
@@ -4597,7 +4626,9 @@ fn draw_bottom_form_text_field(
         } else {
             bottom_form_field_style(is_selected)
         };
-        let block = Block::default().borders(Borders::ALL).border_style(border_style);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border_style);
         let inner = block.inner(body_area);
         frame.render_widget(block, body_area);
 
