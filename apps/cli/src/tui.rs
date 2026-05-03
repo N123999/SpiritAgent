@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -7,8 +7,8 @@ use std::{
     path::Path,
     process::Command,
     sync::{
-        Arc,
         mpsc::{self, Receiver, TryRecvError},
+        Arc,
     },
     thread,
     time::{SystemTime, UNIX_EPOCH},
@@ -17,11 +17,11 @@ use std::{
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     ask_questions::AskQuestionsResult,
-    conversation_select::{CellPointer, normalize_selection, selection_plain_text},
-    host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
+    conversation_select::{normalize_selection, selection_plain_text, CellPointer},
+    host_runtime::{build_tool_result_block, format_tool_ui_message, RuntimeEvent, ToolUiRequest},
     locale, logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
-    model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider},
+    model_registry::{AppConfig, ModelProfile, ModelProvider, DEFAULT_API_BASE},
     openai_models_list,
     plan::{self, PlanMetadata},
     ports::{
@@ -48,6 +48,10 @@ use crate::{
         TuiViewModel,
     },
 };
+
+mod marketplace;
+
+use marketplace::MarketplaceState;
 
 const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
 
@@ -102,23 +106,7 @@ pub struct TuiShell {
     rule_entries: Vec<RuleEntry>,
     skill_entries: Vec<SkillEntry>,
     extension_entries: Vec<CliExtensionEntry>,
-    marketplace_catalog: Vec<CliMarketplaceCatalogItem>,
-    marketplace_detail_cache: HashMap<String, CliMarketplaceDetail>,
-    marketplace_readme_cache: HashMap<String, String>,
-    marketplace_open: bool,
-    marketplace_step_stack: Vec<MarketplaceFlowStep>,
-    marketplace_catalog_filter: String,
-    marketplace_detail_action_filter: String,
-    marketplace_version_filter: String,
-    marketplace_confirm_filter: String,
-    marketplace_catalog_selected_index: usize,
-    marketplace_detail_action_selected_index: usize,
-    marketplace_version_selected_index: usize,
-    marketplace_confirm_selected_index: usize,
-    marketplace_current_extension_id: Option<String>,
-    marketplace_error: Option<String>,
-    marketplace_readme_scroll: usize,
-    marketplace_install_guard: Option<(String, String)>,
+    marketplace: MarketplaceState,
     cli_ui_hooks: Vec<CliUiHookView>,
 }
 
@@ -217,23 +205,7 @@ impl TuiShell {
             rule_entries,
             skill_entries,
             extension_entries,
-            marketplace_catalog: Vec::new(),
-            marketplace_detail_cache: HashMap::new(),
-            marketplace_readme_cache: HashMap::new(),
-            marketplace_open: false,
-            marketplace_step_stack: Vec::new(),
-            marketplace_catalog_filter: String::new(),
-            marketplace_detail_action_filter: String::new(),
-            marketplace_version_filter: String::new(),
-            marketplace_confirm_filter: String::new(),
-            marketplace_catalog_selected_index: 0,
-            marketplace_detail_action_selected_index: 0,
-            marketplace_version_selected_index: 0,
-            marketplace_confirm_selected_index: 0,
-            marketplace_current_extension_id: None,
-            marketplace_error: None,
-            marketplace_readme_scroll: 0,
-            marketplace_install_guard: None,
+            marketplace: MarketplaceState::default(),
             cli_ui_hooks,
         };
 
@@ -303,15 +275,15 @@ impl TuiShell {
     }
 
     pub fn refresh_marketplace_catalog(&mut self) -> Result<()> {
-        self.marketplace_catalog = self
+        self.marketplace.catalog = self
             .runtime
             .list_marketplace_extensions()
             .context("读取 marketplace 目录失败")?;
         logging::log_event(&format!(
             "[marketplace] catalog refreshed items={}",
-            self.marketplace_catalog.len()
+            self.marketplace.catalog.len()
         ));
-        self.marketplace_error = None;
+        self.marketplace.error = None;
         self.marketplace_sync_current_step_selection();
         Ok(())
     }
@@ -319,13 +291,13 @@ impl TuiShell {
     pub fn marketplace_selected_catalog_item(&self) -> Option<&CliMarketplaceCatalogItem> {
         let index = self
             .marketplace_filtered_catalog_indices()
-            .get(self.marketplace_catalog_selected_index)
+            .get(self.marketplace.catalog_selected_index)
             .copied()?;
-        self.marketplace_catalog.get(index)
+        self.marketplace.catalog.get(index)
     }
 
     pub fn marketplace_current_step(&self) -> Option<MarketplaceFlowStep> {
-        self.marketplace_step_stack.last().copied()
+        self.marketplace.step_stack.last().copied()
     }
 
     pub fn marketplace_filter_accepts_input(&self) -> bool {
@@ -342,7 +314,7 @@ impl TuiShell {
         }
         let selected = self.marketplace_selected_index_mut();
         *selected = (*selected + 1) % len;
-        self.marketplace_install_guard = None;
+        self.marketplace.install_guard = None;
     }
 
     pub fn marketplace_move_selection_prev(&mut self) {
@@ -356,7 +328,7 @@ impl TuiShell {
         } else {
             *selected - 1
         };
-        self.marketplace_install_guard = None;
+        self.marketplace.install_guard = None;
     }
 
     pub fn marketplace_clear_filter(&mut self) {
@@ -403,30 +375,30 @@ impl TuiShell {
         match self.marketplace_current_step() {
             Some(MarketplaceFlowStep::CatalogPicker) | None => self.close_marketplace_view(),
             Some(MarketplaceFlowStep::DetailActions) => {
-                self.marketplace_step_stack.pop();
-                self.marketplace_readme_scroll = 0;
+                self.marketplace.step_stack.pop();
+                self.marketplace.readme_scroll = 0;
             }
             Some(MarketplaceFlowStep::VersionPicker) => {
-                self.marketplace_step_stack.pop();
-                self.marketplace_version_filter.clear();
-                self.marketplace_version_selected_index = 0;
+                self.marketplace.step_stack.pop();
+                self.marketplace.version_filter.clear();
+                self.marketplace.version_selected_index = 0;
             }
             Some(MarketplaceFlowStep::UnverifiedConfirm) => {
-                self.marketplace_step_stack.pop();
-                self.marketplace_confirm_filter.clear();
-                self.marketplace_confirm_selected_index = 0;
+                self.marketplace.step_stack.pop();
+                self.marketplace.confirm_filter.clear();
+                self.marketplace.confirm_selected_index = 0;
             }
         }
-        self.marketplace_error = None;
+        self.marketplace.error = None;
         self.marketplace_sync_current_step_selection();
     }
 
     pub fn marketplace_scroll_readme_up(&mut self, lines: usize) {
-        self.marketplace_readme_scroll = self.marketplace_readme_scroll.saturating_sub(lines);
+        self.marketplace.readme_scroll = self.marketplace.readme_scroll.saturating_sub(lines);
     }
 
     pub fn marketplace_scroll_readme_down(&mut self, lines: usize) {
-        self.marketplace_readme_scroll = self.marketplace_readme_scroll.saturating_add(lines);
+        self.marketplace.readme_scroll = self.marketplace.readme_scroll.saturating_add(lines);
     }
 
     fn marketplace_current_items_len(&self) -> usize {
@@ -453,12 +425,12 @@ impl TuiShell {
             .marketplace_current_step()
             .unwrap_or(MarketplaceFlowStep::CatalogPicker)
         {
-            MarketplaceFlowStep::CatalogPicker => &mut self.marketplace_catalog_selected_index,
+            MarketplaceFlowStep::CatalogPicker => &mut self.marketplace.catalog_selected_index,
             MarketplaceFlowStep::DetailActions => {
-                &mut self.marketplace_detail_action_selected_index
+                &mut self.marketplace.detail_action_selected_index
             }
-            MarketplaceFlowStep::VersionPicker => &mut self.marketplace_version_selected_index,
-            MarketplaceFlowStep::UnverifiedConfirm => &mut self.marketplace_confirm_selected_index,
+            MarketplaceFlowStep::VersionPicker => &mut self.marketplace.version_selected_index,
+            MarketplaceFlowStep::UnverifiedConfirm => &mut self.marketplace.confirm_selected_index,
         }
     }
 
@@ -467,10 +439,10 @@ impl TuiShell {
             .marketplace_current_step()
             .unwrap_or(MarketplaceFlowStep::CatalogPicker)
         {
-            MarketplaceFlowStep::CatalogPicker => &mut self.marketplace_catalog_filter,
-            MarketplaceFlowStep::DetailActions => &mut self.marketplace_detail_action_filter,
-            MarketplaceFlowStep::VersionPicker => &mut self.marketplace_version_filter,
-            MarketplaceFlowStep::UnverifiedConfirm => &mut self.marketplace_confirm_filter,
+            MarketplaceFlowStep::CatalogPicker => &mut self.marketplace.catalog_filter,
+            MarketplaceFlowStep::DetailActions => &mut self.marketplace.detail_action_filter,
+            MarketplaceFlowStep::VersionPicker => &mut self.marketplace.version_filter,
+            MarketplaceFlowStep::UnverifiedConfirm => &mut self.marketplace.confirm_filter,
         }
     }
 
@@ -479,10 +451,10 @@ impl TuiShell {
             .marketplace_current_step()
             .unwrap_or(MarketplaceFlowStep::CatalogPicker)
         {
-            MarketplaceFlowStep::CatalogPicker => &self.marketplace_catalog_filter,
-            MarketplaceFlowStep::DetailActions => &self.marketplace_detail_action_filter,
-            MarketplaceFlowStep::VersionPicker => &self.marketplace_version_filter,
-            MarketplaceFlowStep::UnverifiedConfirm => &self.marketplace_confirm_filter,
+            MarketplaceFlowStep::CatalogPicker => &self.marketplace.catalog_filter,
+            MarketplaceFlowStep::DetailActions => &self.marketplace.detail_action_filter,
+            MarketplaceFlowStep::VersionPicker => &self.marketplace.version_filter,
+            MarketplaceFlowStep::UnverifiedConfirm => &self.marketplace.confirm_filter,
         }
     }
 
@@ -491,35 +463,35 @@ impl TuiShell {
             Some(MarketplaceFlowStep::CatalogPicker) => {
                 let len = self.marketplace_filtered_catalog_indices().len();
                 if len == 0 {
-                    self.marketplace_catalog_selected_index = 0;
-                } else if self.marketplace_catalog_selected_index >= len {
-                    self.marketplace_catalog_selected_index = len - 1;
+                    self.marketplace.catalog_selected_index = 0;
+                } else if self.marketplace.catalog_selected_index >= len {
+                    self.marketplace.catalog_selected_index = len - 1;
                 }
             }
             Some(MarketplaceFlowStep::DetailActions) => {
                 let len = self.marketplace_detail_action_items().len();
                 if len == 0 {
-                    self.marketplace_detail_action_selected_index = 0;
-                } else if self.marketplace_detail_action_selected_index >= len {
-                    self.marketplace_detail_action_selected_index = len - 1;
+                    self.marketplace.detail_action_selected_index = 0;
+                } else if self.marketplace.detail_action_selected_index >= len {
+                    self.marketplace.detail_action_selected_index = len - 1;
                 }
             }
             Some(MarketplaceFlowStep::VersionPicker) => {
                 if let Some(detail) = self.marketplace_selected_detail() {
                     let len = self.marketplace_filtered_version_indices(detail).len();
                     if len == 0 {
-                        self.marketplace_version_selected_index = 0;
-                    } else if self.marketplace_version_selected_index >= len {
-                        self.marketplace_version_selected_index = len - 1;
+                        self.marketplace.version_selected_index = 0;
+                    } else if self.marketplace.version_selected_index >= len {
+                        self.marketplace.version_selected_index = len - 1;
                     }
                 }
             }
             Some(MarketplaceFlowStep::UnverifiedConfirm) => {
                 let len = self.marketplace_confirmation_items().len();
                 if len == 0 {
-                    self.marketplace_confirm_selected_index = 0;
-                } else if self.marketplace_confirm_selected_index >= len {
-                    self.marketplace_confirm_selected_index = len - 1;
+                    self.marketplace.confirm_selected_index = 0;
+                } else if self.marketplace.confirm_selected_index >= len {
+                    self.marketplace.confirm_selected_index = len - 1;
                 }
             }
             None => {}
@@ -527,7 +499,7 @@ impl TuiShell {
     }
 
     fn marketplace_detail_action_items(&self) -> Vec<&'static str> {
-        let query = self.marketplace_detail_action_filter.trim().to_lowercase();
+        let query = self.marketplace.detail_action_filter.trim().to_lowercase();
         ["安装扩展"]
             .into_iter()
             .filter(|item| query.is_empty() || item.to_lowercase().contains(&query))
@@ -535,7 +507,7 @@ impl TuiShell {
     }
 
     fn marketplace_confirmation_items(&self) -> Vec<&'static str> {
-        let query = self.marketplace_confirm_filter.trim().to_lowercase();
+        let query = self.marketplace.confirm_filter.trim().to_lowercase();
         ["继续安装", "取消"]
             .into_iter()
             .filter(|item| query.is_empty() || item.to_lowercase().contains(&query))
@@ -543,8 +515,9 @@ impl TuiShell {
     }
 
     fn marketplace_filtered_catalog_indices(&self) -> Vec<usize> {
-        let query = self.marketplace_catalog_filter.trim().to_lowercase();
-        self.marketplace_catalog
+        let query = self.marketplace.catalog_filter.trim().to_lowercase();
+        self.marketplace
+            .catalog
             .iter()
             .enumerate()
             .filter_map(|(index, item)| {
@@ -567,7 +540,7 @@ impl TuiShell {
     }
 
     fn marketplace_filtered_version_indices(&self, detail: &CliMarketplaceDetail) -> Vec<usize> {
-        let query = self.marketplace_version_filter.trim().to_lowercase();
+        let query = self.marketplace.version_filter.trim().to_lowercase();
         let mut indices = (0..detail.versions.len()).collect::<Vec<_>>();
         indices.sort_by(|left, right| {
             Self::compare_marketplace_versions(
@@ -618,37 +591,39 @@ impl TuiShell {
     }
 
     fn selected_marketplace_detail_id(&self) -> Option<String> {
-        self.marketplace_current_extension_id.clone()
+        self.marketplace.current_extension_id.clone()
     }
 
     fn marketplace_selected_detail(&self) -> Option<&CliMarketplaceDetail> {
         let extension_id = self.selected_marketplace_detail_id()?;
-        self.marketplace_detail_cache.get(&extension_id)
+        self.marketplace.detail_cache.get(&extension_id)
     }
 
     fn ensure_marketplace_selected_detail(&mut self) -> Result<()> {
         let Some(extension_id) = self.selected_marketplace_detail_id() else {
-            self.marketplace_error = None;
+            self.marketplace.error = None;
             return Ok(());
         };
 
-        if !self.marketplace_detail_cache.contains_key(&extension_id) {
+        if !self.marketplace.detail_cache.contains_key(&extension_id) {
             let detail = self
                 .runtime
                 .get_marketplace_extension_detail(&extension_id)
                 .with_context(|| format!("读取 marketplace 详情失败: {}", extension_id))?;
-            self.marketplace_detail_cache
+            self.marketplace
+                .detail_cache
                 .insert(extension_id.clone(), detail);
         }
 
-        if !self.marketplace_readme_cache.contains_key(&extension_id) {
+        if !self.marketplace.readme_cache.contains_key(&extension_id) {
             match self.runtime.get_marketplace_extension_readme(&extension_id) {
                 Ok(readme) => {
-                    self.marketplace_readme_cache
+                    self.marketplace
+                        .readme_cache
                         .insert(extension_id.clone(), readme);
                 }
                 Err(err) => {
-                    self.marketplace_error = Some(err.to_string());
+                    self.marketplace.error = Some(err.to_string());
                 }
             }
         }
@@ -663,7 +638,7 @@ impl TuiShell {
     ) -> Option<&'a CliMarketplaceDetailVersion> {
         let index = *self
             .marketplace_filtered_version_indices(detail)
-            .get(self.marketplace_version_selected_index)?;
+            .get(self.marketplace.version_selected_index)?;
         detail.versions.get(index)
     }
 
@@ -684,7 +659,7 @@ impl TuiShell {
         self.runtime
             .prepare_marketplace_extension_install(&extension_id, Some(&selected_version))
             .map_err(|err| {
-                self.marketplace_error = Some(err.to_string());
+                self.marketplace.error = Some(err.to_string());
                 err
             })
             .ok()
@@ -697,11 +672,12 @@ impl TuiShell {
     ) -> Result<()> {
         let install_key = (prepared.extension_id.clone(), prepared.version.clone());
         if self
-            .marketplace_install_guard
+            .marketplace
+            .install_guard
             .as_ref()
             .is_some_and(|current| current == &install_key)
         {
-            self.marketplace_error = Some(format!(
+            self.marketplace.error = Some(format!(
                 "已提交过安装请求: {}@{}。如需重试，请切换到其他版本再切回。",
                 prepared.extension_id, prepared.version
             ));
@@ -716,7 +692,7 @@ impl TuiShell {
             return Ok(());
         }
 
-        self.marketplace_install_guard = Some(install_key);
+        self.marketplace.install_guard = Some(install_key);
         let installed = self.runtime.install_marketplace_extension(
             &prepared.extension_id,
             Some(&prepared.version),
@@ -724,17 +700,20 @@ impl TuiShell {
         )?;
         self.refresh_extensions_from_disk()
             .context("刷新已安装扩展列表失败")?;
-        self.marketplace_error = None;
-        self.marketplace_confirm_filter.clear();
-        self.marketplace_confirm_selected_index = 0;
-        self.marketplace_version_filter.clear();
-        self.marketplace_version_selected_index = 0;
-        self.marketplace_step_stack
+        self.marketplace.error = None;
+        self.marketplace.confirm_filter.clear();
+        self.marketplace.confirm_selected_index = 0;
+        self.marketplace.version_filter.clear();
+        self.marketplace.version_selected_index = 0;
+        self.marketplace
+            .step_stack
             .retain(|step| *step != MarketplaceFlowStep::UnverifiedConfirm);
-        self.marketplace_step_stack
+        self.marketplace
+            .step_stack
             .retain(|step| *step != MarketplaceFlowStep::VersionPicker);
-        if self.marketplace_step_stack.last().copied() != Some(MarketplaceFlowStep::DetailActions) {
-            self.marketplace_step_stack
+        if self.marketplace.step_stack.last().copied() != Some(MarketplaceFlowStep::DetailActions) {
+            self.marketplace
+                .step_stack
                 .push(MarketplaceFlowStep::DetailActions);
         }
         self.messages.push(ChatMessage {
@@ -755,30 +734,32 @@ impl TuiShell {
         else {
             return;
         };
-        self.marketplace_current_extension_id = Some(extension_id);
-        self.marketplace_readme_scroll = 0;
+        self.marketplace.current_extension_id = Some(extension_id);
+        self.marketplace.readme_scroll = 0;
         if let Err(err) = self.ensure_marketplace_selected_detail() {
-            self.marketplace_error = Some(err.to_string());
+            self.marketplace.error = Some(err.to_string());
             return;
         }
-        if self.marketplace_step_stack.last().copied() == Some(MarketplaceFlowStep::CatalogPicker) {
-            self.marketplace_step_stack
+        if self.marketplace.step_stack.last().copied() == Some(MarketplaceFlowStep::CatalogPicker) {
+            self.marketplace
+                .step_stack
                 .push(MarketplaceFlowStep::DetailActions);
         }
-        self.marketplace_detail_action_selected_index = 0;
+        self.marketplace.detail_action_selected_index = 0;
         self.marketplace_sync_current_step_selection();
     }
 
     fn marketplace_open_version_picker(&mut self) {
         if self.marketplace_selected_detail().is_none() {
-            self.marketplace_error = Some("当前扩展详情尚未加载完成。".to_string());
+            self.marketplace.error = Some("当前扩展详情尚未加载完成。".to_string());
             return;
         }
-        if self.marketplace_step_stack.last().copied() != Some(MarketplaceFlowStep::VersionPicker) {
-            self.marketplace_step_stack
+        if self.marketplace.step_stack.last().copied() != Some(MarketplaceFlowStep::VersionPicker) {
+            self.marketplace
+                .step_stack
                 .push(MarketplaceFlowStep::VersionPicker);
         }
-        self.marketplace_version_selected_index = 0;
+        self.marketplace.version_selected_index = 0;
         self.marketplace_sync_current_step_selection();
     }
 
@@ -788,11 +769,12 @@ impl TuiShell {
         };
 
         if self
-            .marketplace_install_guard
+            .marketplace
+            .install_guard
             .as_ref()
             .is_some_and(|current| current == &install_key)
         {
-            self.marketplace_error = Some(format!(
+            self.marketplace.error = Some(format!(
                 "已提交过安装请求: {}@{}。如需重试，请切换到其他版本再切回。",
                 install_key.0, install_key.1
             ));
@@ -804,7 +786,7 @@ impl TuiShell {
         };
 
         if !prepared.supports_current_host {
-            self.marketplace_error = Some(format!(
+            self.marketplace.error = Some(format!(
                 "扩展 {}@{} 不支持当前宿主。",
                 prepared.display_name, prepared.version
             ));
@@ -812,26 +794,27 @@ impl TuiShell {
         }
 
         if prepared.review_status != "verified" {
-            if self.marketplace_step_stack.last().copied()
+            if self.marketplace.step_stack.last().copied()
                 != Some(MarketplaceFlowStep::UnverifiedConfirm)
             {
-                self.marketplace_step_stack
+                self.marketplace
+                    .step_stack
                     .push(MarketplaceFlowStep::UnverifiedConfirm);
             }
-            self.marketplace_confirm_selected_index = 0;
-            self.marketplace_error = None;
+            self.marketplace.confirm_selected_index = 0;
+            self.marketplace.error = None;
             return;
         }
 
         if let Err(err) = self.install_prepared_marketplace_extension(&prepared, false) {
-            self.marketplace_error = Some(err.to_string());
+            self.marketplace.error = Some(err.to_string());
         }
     }
 
     fn marketplace_handle_install_confirmation(&mut self) {
         let choice = self
             .marketplace_confirmation_items()
-            .get(self.marketplace_confirm_selected_index)
+            .get(self.marketplace.confirm_selected_index)
             .copied();
         match choice {
             Some("继续安装") => {
@@ -839,7 +822,7 @@ impl TuiShell {
                     return;
                 };
                 if let Err(err) = self.install_prepared_marketplace_extension(&prepared, true) {
-                    self.marketplace_error = Some(err.to_string());
+                    self.marketplace.error = Some(err.to_string());
                 }
             }
             Some("取消") => self.marketplace_go_back(),
@@ -981,7 +964,7 @@ impl TuiShell {
     }
 
     fn build_marketplace_view_model(&self) -> Option<MarketplaceViewModel> {
-        if !self.marketplace_open {
+        if !self.marketplace.open {
             return None;
         }
 
@@ -991,7 +974,8 @@ impl TuiShell {
             .flat_map(|entry| {
                 let mut pairs = vec![(entry.id.clone(), entry.version.clone())];
                 if let Some(package_name) = self
-                    .marketplace_catalog
+                    .marketplace
+                    .catalog
                     .iter()
                     .find(|item| item.extension_id == entry.id)
                     .map(|item| item.package_name.clone())
@@ -1004,7 +988,7 @@ impl TuiShell {
         let filtered_indices = self.marketplace_filtered_catalog_indices();
         let catalog_items = filtered_indices
             .iter()
-            .filter_map(|index| self.marketplace_catalog.get(*index))
+            .filter_map(|index| self.marketplace.catalog.get(*index))
             .map(|item| MarketplaceCatalogItemView {
                 extension_id: item.extension_id.clone(),
                 package_name: item.package_name.clone(),
@@ -1028,7 +1012,8 @@ impl TuiShell {
         let selected_item = self
             .selected_marketplace_detail_id()
             .and_then(|selected_id| {
-                self.marketplace_catalog
+                self.marketplace
+                    .catalog
                     .iter()
                     .find(|item| item.extension_id == selected_id)
                     .map(|item| MarketplaceCatalogItemView {
@@ -1052,7 +1037,7 @@ impl TuiShell {
             })
             .or_else(|| {
                 catalog_items
-                    .get(self.marketplace_catalog_selected_index)
+                    .get(self.marketplace.catalog_selected_index)
                     .cloned()
             });
 
@@ -1063,7 +1048,7 @@ impl TuiShell {
                 status: detail.status.clone(),
                 featured: detail.featured,
                 default_version: detail.default_version.clone(),
-                readme: self.marketplace_readme_cache.get(&selected_id).cloned(),
+                readme: self.marketplace.readme_cache.get(&selected_id).cloned(),
                 versions: detail
                     .versions
                     .iter()
@@ -1083,12 +1068,12 @@ impl TuiShell {
                 .marketplace_current_step()
                 .unwrap_or(MarketplaceFlowStep::CatalogPicker),
             query: self.marketplace_current_filter().to_string(),
-            error: self.marketplace_error.clone(),
+            error: self.marketplace.error.clone(),
             catalog_items,
             selected_item,
             detail,
             slash,
-            readme_scroll: self.marketplace_readme_scroll,
+            readme_scroll: self.marketplace.readme_scroll,
         })
     }
 
@@ -1130,11 +1115,12 @@ impl TuiShell {
             MarketplaceFlowStep::CatalogPicker => SlashFlowView {
                 title: "扩展".to_string(),
                 subtitle: None,
-                filter: self.marketplace_catalog_filter.clone(),
+                filter: self.marketplace.catalog_filter.clone(),
                 show_filter: true,
                 empty_text: "没有匹配的扩展。".to_string(),
                 selected_index: self
-                    .marketplace_catalog_selected_index
+                    .marketplace
+                    .catalog_selected_index
                     .min(catalog_items.len().saturating_sub(1)),
                 items: catalog_items
                     .iter()
@@ -1154,10 +1140,10 @@ impl TuiShell {
             MarketplaceFlowStep::DetailActions => SlashFlowView {
                 title: "操作".to_string(),
                 subtitle: None,
-                filter: self.marketplace_detail_action_filter.clone(),
+                filter: self.marketplace.detail_action_filter.clone(),
                 show_filter: false,
                 empty_text: "没有匹配的操作。".to_string(),
-                selected_index: self.marketplace_detail_action_selected_index,
+                selected_index: self.marketplace.detail_action_selected_index,
                 items: self
                     .marketplace_detail_action_items()
                     .into_iter()
@@ -1216,11 +1202,12 @@ impl TuiShell {
                 SlashFlowView {
                     title: "版本".to_string(),
                     subtitle: None,
-                    filter: self.marketplace_version_filter.clone(),
+                    filter: self.marketplace.version_filter.clone(),
                     show_filter: true,
                     empty_text: "没有匹配的版本。".to_string(),
                     selected_index: self
-                        .marketplace_version_selected_index
+                        .marketplace
+                        .version_selected_index
                         .min(items.len().saturating_sub(1)),
                     items,
                     compact_items: false,
@@ -1232,11 +1219,12 @@ impl TuiShell {
             MarketplaceFlowStep::UnverifiedConfirm => SlashFlowView {
                 title: "确认".to_string(),
                 subtitle: None,
-                filter: self.marketplace_confirm_filter.clone(),
+                filter: self.marketplace.confirm_filter.clone(),
                 show_filter: false,
                 empty_text: "没有匹配的选项。".to_string(),
                 selected_index: self
-                    .marketplace_confirm_selected_index
+                    .marketplace
+                    .confirm_selected_index
                     .min(self.marketplace_confirmation_items().len().saturating_sub(1)),
                 items: self
                     .marketplace_confirmation_items()
@@ -1511,7 +1499,7 @@ impl TuiShell {
     }
 
     pub fn is_marketplace_view_active(&self) -> bool {
-        self.marketplace_open
+        self.marketplace.open
     }
 
     pub fn marketplace_step(&self) -> Option<MarketplaceFlowStep> {
@@ -4304,23 +4292,23 @@ impl TuiShell {
         self.subagent_picker_active = false;
         self.close_subagent_view();
         self.image_picker_active = false;
-        self.marketplace_open = true;
-        self.marketplace_step_stack = vec![MarketplaceFlowStep::CatalogPicker];
-        self.marketplace_catalog_filter = query.unwrap_or("").trim().to_string();
-        self.marketplace_detail_action_filter.clear();
-        self.marketplace_version_filter.clear();
-        self.marketplace_confirm_filter.clear();
-        self.marketplace_catalog_selected_index = 0;
-        self.marketplace_detail_action_selected_index = 0;
-        self.marketplace_version_selected_index = 0;
-        self.marketplace_confirm_selected_index = 0;
-        self.marketplace_current_extension_id = None;
-        self.marketplace_error = None;
-        self.marketplace_readme_scroll = 0;
-        self.marketplace_install_guard = None;
+        self.marketplace.open = true;
+        self.marketplace.step_stack = vec![MarketplaceFlowStep::CatalogPicker];
+        self.marketplace.catalog_filter = query.unwrap_or("").trim().to_string();
+        self.marketplace.detail_action_filter.clear();
+        self.marketplace.version_filter.clear();
+        self.marketplace.confirm_filter.clear();
+        self.marketplace.catalog_selected_index = 0;
+        self.marketplace.detail_action_selected_index = 0;
+        self.marketplace.version_selected_index = 0;
+        self.marketplace.confirm_selected_index = 0;
+        self.marketplace.current_extension_id = None;
+        self.marketplace.error = None;
+        self.marketplace.readme_scroll = 0;
+        self.marketplace.install_guard = None;
 
         if let Err(err) = self.refresh_marketplace_catalog() {
-            self.marketplace_error = Some(err.to_string());
+            self.marketplace.error = Some(err.to_string());
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
                 content: t!("tui.marketplace.read_failed", err = err).into_owned(),
@@ -4335,12 +4323,7 @@ impl TuiShell {
     }
 
     pub fn close_marketplace_view(&mut self) {
-        self.marketplace_open = false;
-        self.marketplace_step_stack.clear();
-        self.marketplace_current_extension_id = None;
-        self.marketplace_install_guard = None;
-        self.marketplace_error = None;
-        self.marketplace_readme_scroll = 0;
+        self.marketplace.close();
     }
 
     fn apply_mcp_prompt_command(
@@ -5190,10 +5173,10 @@ fn should_reanchor_persisted_subagent_status_on_begin_assistant_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        TuiShell, is_standalone_subagent_status_aux, manual_shell_tool_command,
+        is_standalone_subagent_status_aux, manual_shell_tool_command,
         next_persisted_standalone_pending_aux, next_persisted_standalone_pending_aux_anchor,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
-        user_turn_text_for_mode,
+        user_turn_text_for_mode, TuiShell,
     };
     use crate::view::{
         AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux,
