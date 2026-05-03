@@ -42,3 +42,29 @@ impl InputState {
         self.cursor = self.len_chars();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::InputState;
+    use std::sync::mpsc;
+
+    #[test]
+    fn cursor_byte_index_handles_multibyte_input() {
+        let (_tx, rx) = mpsc::channel();
+        let mut input = InputState::new(rx);
+        input.value = "a你b".to_string();
+        input.cursor = 2;
+
+        assert_eq!(input.cursor_byte_index(), "a你".len());
+    }
+
+    #[test]
+    fn set_value_moves_cursor_to_end() {
+        let (_tx, rx) = mpsc::channel();
+        let mut input = InputState::new(rx);
+
+        input.set_value("计划".to_string());
+
+        assert_eq!(input.cursor, 2);
+    }
+}

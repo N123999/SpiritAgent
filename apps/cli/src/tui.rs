@@ -52,6 +52,7 @@ mod forms;
 mod input;
 mod marketplace;
 mod projection;
+mod runtime_events;
 mod subagent;
 
 use conversation::ConversationUiState;
@@ -4625,132 +4626,7 @@ impl TuiShell {
     }
 
     fn apply_runtime_events(&mut self) {
-        for event in self.runtime.drain_events() {
-            match event {
-                RuntimeEvent::PushMessage(msg) => self.messages.push(msg),
-                RuntimeEvent::OpenAskQuestions {
-                    tool_call_id,
-                    tool_name,
-                    questions,
-                } => {
-                    self.open_ask_questions_form(tool_call_id, tool_name, questions);
-                }
-                RuntimeEvent::BeginAssistantResponse => {
-                    let should_reanchor_persisted_subagent_status =
-                        should_reanchor_persisted_subagent_status_on_begin_assistant_response(
-                            self.messages.last(),
-                            self.persisted_standalone_pending_aux.as_ref(),
-                        );
-                    self.messages
-                        .push(ChatMessage::new(MessageRole::Agent, String::new()));
-                    let idx = self.messages.len() - 1;
-                    self.assistant_aux_by_message.remove(&idx);
-                    self.pending_assistant_msg_index = Some(idx);
-                    self.last_completed_assistant_msg_index = None;
-                    if should_reanchor_persisted_subagent_status {
-                        let previous_anchor = self.persisted_standalone_pending_aux_anchor;
-                        self.persisted_standalone_pending_aux_anchor = Some(idx);
-                        if previous_anchor != Some(idx) {
-                            logging::log_event(&format!(
-                                "[tui-subagent-anchor] begin-response-reanchor prev_anchor={:?} next_anchor={:?} status={}",
-                                previous_anchor,
-                                Some(idx),
-                                self.persisted_standalone_pending_aux
-                                    .as_ref()
-                                    .map(|aux| aux.status_text.as_str())
-                                    .unwrap_or("<none>"),
-                            ));
-                        }
-                    }
-                }
-                RuntimeEvent::UpdatePendingAssistantThinking(thinking) => {
-                    if let Some(idx) = self.pending_assistant_msg_index {
-                        let entry = self.assistant_aux_by_message.entry(idx).or_default();
-                        entry.thinking = if thinking.trim().is_empty() {
-                            None
-                        } else {
-                            Some(thinking)
-                        };
-                        if entry.thinking.is_none() && entry.compaction.is_none() {
-                            self.assistant_aux_by_message.remove(&idx);
-                        }
-                    }
-                }
-                RuntimeEvent::AssistantThinkingSegmentFinalized(thinking) => {
-                    if let Some(idx) = self
-                        .pending_assistant_msg_index
-                        .or(self.last_completed_assistant_msg_index)
-                    {
-                        let entry = self.assistant_aux_by_message.entry(idx).or_default();
-                        entry.thinking = if thinking.trim().is_empty() {
-                            None
-                        } else {
-                            Some(thinking)
-                        };
-                        if entry.thinking.is_none() && entry.compaction.is_none() {
-                            self.assistant_aux_by_message.remove(&idx);
-                        }
-                    }
-                }
-                RuntimeEvent::UpdatePendingAssistantCompaction(compaction) => {
-                    if let Some(idx) = self.pending_assistant_msg_index {
-                        let entry = self.assistant_aux_by_message.entry(idx).or_default();
-                        entry.compaction = if compaction.trim().is_empty() {
-                            None
-                        } else {
-                            Some(compaction)
-                        };
-                        if entry.thinking.is_none() && entry.compaction.is_none() {
-                            self.assistant_aux_by_message.remove(&idx);
-                        }
-                    }
-                }
-                RuntimeEvent::AssistantChunk(chunk) => {
-                    if let Some(idx) = self.pending_assistant_msg_index {
-                        if let Some(msg) = self.messages.get_mut(idx) {
-                            msg.content.push_str(&chunk);
-                        }
-                    }
-                }
-                RuntimeEvent::ReplacePendingAssistant(content) => {
-                    if let Some(idx) = self.pending_assistant_msg_index {
-                        if let Some(msg) = self.messages.get_mut(idx) {
-                            msg.content = content;
-                            msg.tool_block = None;
-                        }
-                    } else {
-                        self.messages
-                            .push(ChatMessage::new(MessageRole::Agent, content));
-                    }
-                }
-                RuntimeEvent::AssistantResponseCompleted => {
-                    self.last_completed_assistant_msg_index = self.pending_assistant_msg_index;
-                    self.pending_assistant_msg_index = None;
-                }
-                RuntimeEvent::RemovePendingAssistant => {
-                    if let Some(idx) = self.pending_assistant_msg_index.take() {
-                        let has_persisted_aux =
-                            self.assistant_aux_by_message.get(&idx).is_some_and(|aux| {
-                                aux.thinking
-                                    .as_ref()
-                                    .is_some_and(|value| !value.trim().is_empty())
-                                    || aux
-                                        .compaction
-                                        .as_ref()
-                                        .is_some_and(|value| !value.trim().is_empty())
-                            });
-                        if !has_persisted_aux && idx < self.messages.len() {
-                            self.adjust_persisted_standalone_pending_aux_anchor_for_removed_message(idx);
-                            self.assistant_aux_by_message.remove(&idx);
-                            self.messages.remove(idx);
-                        }
-                    }
-                }
-            }
-        }
-
-        self.sync_persisted_standalone_pending_aux();
-        self.sync_subagent_approval_input_state();
+        runtime_events::apply_runtime_events(self);
     }
 
     fn sync_persisted_standalone_pending_aux(&mut self) {
