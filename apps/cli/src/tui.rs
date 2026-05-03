@@ -954,6 +954,18 @@ mod tests {
             TuiShell::compare_marketplace_versions("2.0.0", "10.0.0"),
             std::cmp::Ordering::Less
         );
+        assert_eq!(
+            TuiShell::compare_marketplace_versions("1.0.0", "1.0.0-alpha.1"),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            TuiShell::compare_marketplace_versions("1.0.0-alpha.2", "1.0.0-alpha.10"),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            TuiShell::compare_marketplace_versions("1.0.0+build.1", "1.0.0+build.2"),
+            std::cmp::Ordering::Equal
+        );
     }
 }
 

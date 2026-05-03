@@ -1,4 +1,5 @@
 use super::*;
+use semver::Version;
 
 #[derive(Debug, Default)]
 pub(crate) struct MarketplaceState {
@@ -328,15 +329,22 @@ impl TuiShell {
     }
 
     pub(super) fn compare_marketplace_versions(left: &str, right: &str) -> std::cmp::Ordering {
-        fn parse(version: &str) -> Vec<u64> {
+        match (Version::parse(left), Version::parse(right)) {
+            (Ok(left), Ok(right)) => return left.cmp_precedence(&right),
+            (Ok(_), Err(_)) => return std::cmp::Ordering::Greater,
+            (Err(_), Ok(_)) => return std::cmp::Ordering::Less,
+            (Err(_), Err(_)) => {}
+        }
+
+        fn parse_loose(version: &str) -> Vec<u64> {
             version
                 .split(['.', '-', '+'])
                 .map(|part| part.parse::<u64>().unwrap_or(0))
                 .collect()
         }
 
-        let left_parts = parse(left);
-        let right_parts = parse(right);
+        let left_parts = parse_loose(left);
+        let right_parts = parse_loose(right);
         let len = left_parts.len().max(right_parts.len());
         for index in 0..len {
             let left = *left_parts.get(index).unwrap_or(&0);

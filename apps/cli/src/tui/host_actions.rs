@@ -85,10 +85,7 @@ impl TuiShell {
 fn open_path_in_os(path: &Path) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
-            .arg("/C")
-            .arg("start")
-            .arg("")
+        Command::new("explorer.exe")
             .arg(path.as_os_str())
             .spawn()
             .with_context(|| format!("调用系统打开日志失败: {}", path.display()))?;
