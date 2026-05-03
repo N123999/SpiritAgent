@@ -1,3 +1,4 @@
+use super::mcp_actions::{classify_prompt_tail, non_empty_opt, PromptTail};
 use super::*;
 
 impl TuiShell {
