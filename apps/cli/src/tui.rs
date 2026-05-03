@@ -17,7 +17,6 @@ use std::{
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     ask_questions::AskQuestionsResult,
-    conversation_select::{normalize_selection, selection_plain_text, CellPointer},
     host_runtime::{build_tool_result_block, format_tool_ui_message, RuntimeEvent, ToolUiRequest},
     locale, logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -38,20 +37,25 @@ use crate::{
     },
     ui::UiRenderFeedback,
     view::{
-        AssistantAuxData, BottomFormKind, BottomFormView, ChatMessage, CliUiHookSlot,
-        CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant, CliUiHookView,
-        ConversationPanelHit, InputSuggestion, InputSuggestionKind, MainInputMode,
-        MarketplaceCatalogItemView, MarketplaceDetailView, MarketplaceFlowStep,
-        MarketplaceVersionChangelogView, MarketplaceVersionView, MarketplaceViewModel, MessageRole,
-        PendingAssistantAux, PendingSubagentApprovalView, SlashFlowItemView, SlashFlowView,
-        SubagentApprovalInputView, SubagentSessionDetailView, SubagentSessionSummaryView,
-        TuiViewModel,
+        AssistantAuxData, BottomFormKind, ChatMessage, CliUiHookSlot, CliUiHookTokenRole,
+        CliUiHookTokensView, CliUiHookVariant, CliUiHookView, ConversationPanelHit,
+        InputSuggestion, InputSuggestionKind, MainInputMode, MarketplaceCatalogItemView,
+        MarketplaceDetailView, MarketplaceFlowStep, MarketplaceVersionChangelogView,
+        MarketplaceVersionView, MarketplaceViewModel, MessageRole, PendingAssistantAux,
+        PendingSubagentApprovalView, SlashFlowItemView, SlashFlowView, SubagentApprovalInputView,
+        SubagentSessionDetailView, SubagentSessionSummaryView, TuiViewModel,
     },
 };
 
+mod conversation;
+mod forms;
 mod marketplace;
+mod subagent;
 
+use conversation::ConversationUiState;
+use forms::BottomFormUiState;
 use marketplace::MarketplaceState;
+use subagent::SubagentUiState;
 
 const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
 
@@ -79,23 +83,12 @@ pub struct TuiShell {
     chat_picker_active: bool,
     chat_picker_index: usize,
     chat_picker_files: Vec<String>,
-    subagent_picker_active: bool,
-    subagent_picker_index: usize,
-    subagent_view: Option<SubagentSessionDetailView>,
-    subagent_history_offset_from_bottom: usize,
-    subagent_approval_input: String,
-    subagent_approval_input_cursor: usize,
-    subagent_approval_input_active: bool,
+    subagent: SubagentUiState,
     image_picker_active: bool,
     image_picker_index: usize,
     image_picker_files: Vec<String>,
-    bottom_form: Option<BottomFormView>,
-    history_offset_from_bottom: usize,
-    conversation_sel_anchor: Option<(usize, usize)>,
-    conversation_sel_head: Option<(usize, usize)>,
-    conversation_dragging: bool,
-    conversation_panel_hit: Option<ConversationPanelHit>,
-    conversation_plain_rows: Vec<String>,
+    forms: BottomFormUiState,
+    conversation: ConversationUiState,
     should_quit: bool,
     runtime: RuntimeHandle,
     config_store: Box<dyn ConfigStore>,
@@ -178,23 +171,12 @@ impl TuiShell {
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
-            subagent_picker_active: false,
-            subagent_picker_index: 0,
-            subagent_view: None,
-            subagent_history_offset_from_bottom: 0,
-            subagent_approval_input: String::new(),
-            subagent_approval_input_cursor: 0,
-            subagent_approval_input_active: false,
+            subagent: SubagentUiState::default(),
             image_picker_active: false,
             image_picker_index: 0,
             image_picker_files: vec![],
-            bottom_form: None,
-            history_offset_from_bottom: 0,
-            conversation_sel_anchor: None,
-            conversation_sel_head: None,
-            conversation_dragging: false,
-            conversation_panel_hit: None,
-            conversation_plain_rows: Vec::new(),
+            forms: BottomFormUiState::default(),
+            conversation: ConversationUiState::default(),
             should_quit: false,
             runtime,
             config_store,
@@ -930,18 +912,18 @@ impl TuiShell {
             chat_picker_active: self.chat_picker_active,
             chat_picker_index: self.chat_picker_index,
             chat_picker_files: self.chat_picker_files.clone(),
-            subagent_picker_active: self.subagent_picker_active,
-            subagent_picker_index: self.subagent_picker_index,
+            subagent_picker_active: self.subagent.picker_active,
+            subagent_picker_index: self.subagent.picker_index,
             subagent_sessions,
-            subagent_view: self.subagent_view.clone(),
-            subagent_history_offset_from_bottom: self.subagent_history_offset_from_bottom,
+            subagent_view: self.subagent.view.clone(),
+            subagent_history_offset_from_bottom: self.subagent.history_offset_from_bottom,
             pending_subagent_approval: self.runtime.pending_subagent_approval(),
             subagent_approval_input: self.subagent_approval_input_view(),
             image_picker_active: self.image_picker_active,
             image_picker_index: self.image_picker_index,
             image_picker_files: self.image_picker_files.clone(),
-            bottom_form: self.bottom_form.clone(),
-            history_offset_from_bottom: self.history_offset_from_bottom,
+            bottom_form: self.forms.active.clone(),
+            history_offset_from_bottom: self.conversation.history_offset_from_bottom,
             pending_response_active: self.runtime.is_busy(),
             pending_assistant_msg_index: self.pending_assistant_msg_index,
             pending_aux: self.runtime.pending_aux_state(),
@@ -949,8 +931,8 @@ impl TuiShell {
             persisted_standalone_pending_aux_anchor: self.persisted_standalone_pending_aux_anchor,
             cli_ui_hooks: self.cli_ui_hooks.clone(),
             marketplace_view,
-            conversation_sel_anchor: self.conversation_sel_anchor,
-            conversation_sel_head: self.conversation_sel_head,
+            conversation_sel_anchor: self.conversation.sel_anchor,
+            conversation_sel_head: self.conversation.sel_head,
         }
     }
     fn subagent_summary_view(summary: &SubagentSessionSummary) -> SubagentSessionSummaryView {
@@ -1320,15 +1302,12 @@ impl TuiShell {
         }
     }
     pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
-        self.conversation_panel_hit = Some(hit);
-        self.conversation_plain_rows = plain_rows;
-        let max_line = hit.total_lines.saturating_sub(1);
-        self.sync_conversation_selection_to_bounds(max_line);
+        self.conversation.note_panel(hit, plain_rows);
     }
 
     pub fn apply_render_feedback(&mut self, feedback: UiRenderFeedback) {
         if let Some(conversation) = feedback.conversation_panel {
-            self.history_offset_from_bottom = conversation.history_offset_from_bottom;
+            self.conversation.history_offset_from_bottom = conversation.history_offset_from_bottom;
             self.note_conversation_panel(conversation.hit, conversation.plain_rows);
         }
 
@@ -1337,93 +1316,33 @@ impl TuiShell {
         }
 
         if let Some(offset) = feedback.subagent_history_offset_from_bottom {
-            self.subagent_history_offset_from_bottom = offset;
-        }
-    }
-
-    fn sync_conversation_selection_to_bounds(&mut self, max_line: usize) {
-        let clamp = |(l, c): (usize, usize)| (l.min(max_line), c);
-        if let Some(p) = &mut self.conversation_sel_anchor {
-            *p = clamp(*p);
-        }
-        if let Some(p) = &mut self.conversation_sel_head {
-            *p = clamp(*p);
+            self.subagent.history_offset_from_bottom = offset;
         }
     }
 
     pub fn clear_conversation_selection(&mut self) {
-        self.conversation_sel_anchor = None;
-        self.conversation_sel_head = None;
-        self.conversation_dragging = false;
+        self.conversation.clear_selection();
     }
 
     /// `column`, `row`：crossterm 终端坐标（与 ratatui 一致）。
     pub fn conversation_pointer_from_mouse(&self, column: u16, row: u16) -> Option<(usize, usize)> {
-        let hit = self.conversation_panel_hit?;
-        if column < hit.x || column >= hit.x.saturating_add(hit.w) {
-            return None;
-        }
-        if row < hit.y || row >= hit.y.saturating_add(hit.h) {
-            return None;
-        }
-        let col = (column - hit.x) as usize;
-        let vrow = (row - hit.y) as usize;
-        let gline = hit.scroll + vrow;
-        if gline >= hit.total_lines {
-            return None;
-        }
-        Some((gline, col))
+        self.conversation.pointer_from_mouse(column, row)
     }
 
     pub fn conversation_left_down(&mut self, column: u16, row: u16) {
-        let Some((line, col)) = self.conversation_pointer_from_mouse(column, row) else {
-            self.clear_conversation_selection();
-            return;
-        };
-        self.conversation_sel_anchor = Some((line, col));
-        self.conversation_sel_head = Some((line, col));
-        self.conversation_dragging = true;
+        self.conversation.left_down(column, row);
     }
 
     pub fn conversation_left_drag(&mut self, column: u16, row: u16) {
-        if !self.conversation_dragging {
-            return;
-        }
-        let Some((line, col)) = self.conversation_pointer_from_mouse(column, row) else {
-            return;
-        };
-        self.conversation_sel_head = Some((line, col));
+        self.conversation.left_drag(column, row);
     }
 
     pub fn conversation_left_up(&mut self) {
-        self.conversation_dragging = false;
+        self.conversation.left_up();
     }
 
     pub fn copy_conversation_selection(&mut self) -> Result<(), String> {
-        let (Some(a), Some(b)) = (self.conversation_sel_anchor, self.conversation_sel_head) else {
-            return Ok(());
-        };
-        let max_line = self.conversation_plain_rows.len().saturating_sub(1);
-        let clamp = |(l, c): (usize, usize)| (l.min(max_line), c);
-        let a = CellPointer {
-            line: clamp(a).0,
-            col: a.1,
-        };
-        let b = CellPointer {
-            line: clamp(b).0,
-            col: b.1,
-        };
-        let norm = normalize_selection(a, b);
-        let text = selection_plain_text(&self.conversation_plain_rows, norm);
-        if text.is_empty() {
-            return Ok(());
-        }
-        arboard::Clipboard::new()
-            .map_err(|e| e.to_string())?
-            .set_text(text)
-            .map_err(|e| e.to_string())?;
-        self.clear_conversation_selection();
-        Ok(())
+        self.conversation.copy_selection()
     }
 
     pub fn should_quit(&self) -> bool {
@@ -1448,7 +1367,7 @@ impl TuiShell {
         self.persisted_standalone_pending_aux = None;
         self.persisted_standalone_pending_aux_anchor = None;
         self.last_completed_assistant_msg_index = None;
-        self.subagent_picker_active = false;
+        self.subagent.picker_active = false;
         self.close_subagent_view();
         let mcp_status = self.runtime.mcp_status_snapshot();
         self.messages.push(welcome_message(
@@ -1491,11 +1410,11 @@ impl TuiShell {
     }
 
     pub fn is_subagent_picker_active(&self) -> bool {
-        self.subagent_picker_active
+        self.subagent.picker_active
     }
 
     pub fn is_subagent_view_active(&self) -> bool {
-        self.subagent_view.is_some()
+        self.subagent.view.is_some()
     }
 
     pub fn is_marketplace_view_active(&self) -> bool {
@@ -1511,7 +1430,7 @@ impl TuiShell {
     }
 
     pub fn is_subagent_approval_input_active(&self) -> bool {
-        self.subagent_approval_input_active && self.has_active_subagent_viewer_approval()
+        self.subagent.approval_input_active && self.has_active_subagent_viewer_approval()
     }
 
     pub fn begin_subagent_approval_input(&mut self) {
@@ -1519,8 +1438,8 @@ impl TuiShell {
             return;
         }
 
-        self.subagent_approval_input_active = true;
-        self.subagent_approval_input_cursor = self.subagent_approval_input_len_chars();
+        self.subagent.approval_input_active = true;
+        self.subagent.approval_input_cursor = self.subagent_approval_input_len_chars();
     }
 
     pub fn cancel_subagent_approval_input(&mut self) {
@@ -1543,7 +1462,7 @@ impl TuiShell {
             return;
         }
 
-        let message = self.subagent_approval_input.trim().to_string();
+        let message = self.subagent.approval_input.trim().to_string();
         if message.is_empty() {
             return;
         }
@@ -1552,28 +1471,28 @@ impl TuiShell {
     }
 
     pub fn move_subagent_approval_cursor_left(&mut self) {
-        if self.is_subagent_approval_input_active() && self.subagent_approval_input_cursor > 0 {
-            self.subagent_approval_input_cursor -= 1;
+        if self.is_subagent_approval_input_active() && self.subagent.approval_input_cursor > 0 {
+            self.subagent.approval_input_cursor -= 1;
         }
     }
 
     pub fn move_subagent_approval_cursor_right(&mut self) {
         if self.is_subagent_approval_input_active()
-            && self.subagent_approval_input_cursor < self.subagent_approval_input_len_chars()
+            && self.subagent.approval_input_cursor < self.subagent_approval_input_len_chars()
         {
-            self.subagent_approval_input_cursor += 1;
+            self.subagent.approval_input_cursor += 1;
         }
     }
 
     pub fn move_subagent_approval_cursor_home(&mut self) {
         if self.is_subagent_approval_input_active() {
-            self.subagent_approval_input_cursor = 0;
+            self.subagent.approval_input_cursor = 0;
         }
     }
 
     pub fn move_subagent_approval_cursor_end(&mut self) {
         if self.is_subagent_approval_input_active() {
-            self.subagent_approval_input_cursor = self.subagent_approval_input_len_chars();
+            self.subagent.approval_input_cursor = self.subagent_approval_input_len_chars();
         }
     }
 
@@ -1583,29 +1502,29 @@ impl TuiShell {
         }
 
         let idx = self.subagent_approval_cursor_byte_index();
-        self.subagent_approval_input.insert(idx, ch);
-        self.subagent_approval_input_cursor += 1;
+        self.subagent.approval_input.insert(idx, ch);
+        self.subagent.approval_input_cursor += 1;
     }
 
     pub fn backspace_subagent_approval_input(&mut self) {
-        if !self.is_subagent_approval_input_active() || self.subagent_approval_input_cursor == 0 {
+        if !self.is_subagent_approval_input_active() || self.subagent.approval_input_cursor == 0 {
             return;
         }
 
-        self.subagent_approval_input_cursor -= 1;
+        self.subagent.approval_input_cursor -= 1;
         let idx = self.subagent_approval_cursor_byte_index();
-        self.subagent_approval_input.remove(idx);
+        self.subagent.approval_input.remove(idx);
     }
 
     pub fn delete_subagent_approval_input(&mut self) {
         if !self.is_subagent_approval_input_active()
-            || self.subagent_approval_input_cursor >= self.subagent_approval_input_len_chars()
+            || self.subagent.approval_input_cursor >= self.subagent_approval_input_len_chars()
         {
             return;
         }
 
         let idx = self.subagent_approval_cursor_byte_index();
-        self.subagent_approval_input.remove(idx);
+        self.subagent.approval_input.remove(idx);
     }
 
     pub fn paste_subagent_approval_from_clipboard(&mut self) -> Result<(), String> {
@@ -1628,23 +1547,24 @@ impl TuiShell {
     }
 
     pub fn is_bottom_form_active(&self) -> bool {
-        self.bottom_form.is_some()
+        self.forms.active.is_some()
     }
 
     pub fn bottom_form_preserves_newline(&self) -> bool {
-        self.bottom_form
+        self.forms
+            .active
             .as_ref()
             .is_some_and(|form| matches!(form.kind, BottomFormKind::McpPrompt { .. }))
     }
 
     pub fn sync_active_bottom_form_scroll(&mut self, scroll_offset: usize) {
-        if let Some(form) = self.bottom_form.as_mut() {
+        if let Some(form) = self.forms.active.as_mut() {
             form.scroll_offset = scroll_offset;
         }
     }
 
     pub fn scroll_active_bottom_form_up(&mut self, lines: usize) -> bool {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return false;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -1661,7 +1581,7 @@ impl TuiShell {
     }
 
     pub fn scroll_active_bottom_form_down(&mut self, lines: usize) -> bool {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return false;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2003,19 +1923,25 @@ impl TuiShell {
     }
 
     pub fn scroll_history_up(&mut self, lines: usize) {
-        self.history_offset_from_bottom = self.history_offset_from_bottom.saturating_add(lines);
+        self.conversation.history_offset_from_bottom = self
+            .conversation
+            .history_offset_from_bottom
+            .saturating_add(lines);
     }
 
     pub fn scroll_history_down(&mut self, lines: usize) {
-        self.history_offset_from_bottom = self.history_offset_from_bottom.saturating_sub(lines);
+        self.conversation.history_offset_from_bottom = self
+            .conversation
+            .history_offset_from_bottom
+            .saturating_sub(lines);
     }
 
     pub fn scroll_history_to_top(&mut self) {
-        self.history_offset_from_bottom = usize::MAX;
+        self.conversation.history_offset_from_bottom = usize::MAX;
     }
 
     pub fn scroll_history_to_bottom(&mut self) {
-        self.history_offset_from_bottom = 0;
+        self.conversation.history_offset_from_bottom = 0;
     }
 
     pub fn cancel_model_picker(&mut self) {
@@ -2122,12 +2048,12 @@ impl TuiShell {
     }
 
     pub fn open_subagent_picker(&mut self) {
-        self.subagent_picker_active = true;
-        self.subagent_picker_index = 0;
+        self.subagent.picker_active = true;
+        self.subagent.picker_index = 0;
     }
 
     pub fn cancel_subagent_picker(&mut self) {
-        self.subagent_picker_active = false;
+        self.subagent.picker_active = false;
     }
 
     pub fn select_next_subagent(&mut self) {
@@ -2135,7 +2061,7 @@ impl TuiShell {
         if total == 0 {
             return;
         }
-        self.subagent_picker_index = (self.subagent_picker_index + 1) % total;
+        self.subagent.picker_index = (self.subagent.picker_index + 1) % total;
     }
 
     pub fn select_prev_subagent(&mut self) {
@@ -2143,10 +2069,10 @@ impl TuiShell {
         if total == 0 {
             return;
         }
-        if self.subagent_picker_index == 0 {
-            self.subagent_picker_index = total - 1;
+        if self.subagent.picker_index == 0 {
+            self.subagent.picker_index = total - 1;
         } else {
-            self.subagent_picker_index -= 1;
+            self.subagent.picker_index -= 1;
         }
     }
 
@@ -2154,32 +2080,32 @@ impl TuiShell {
         let Some(summary) = self
             .runtime
             .subagent_sessions()
-            .get(self.subagent_picker_index)
+            .get(self.subagent.picker_index)
             .cloned()
         else {
-            self.subagent_picker_active = false;
+            self.subagent.picker_active = false;
             return;
         };
 
-        self.subagent_picker_active = false;
+        self.subagent.picker_active = false;
         self.open_subagent_view(&summary.session_id);
     }
 
     pub fn close_subagent_view(&mut self) {
-        self.subagent_view = None;
-        self.subagent_history_offset_from_bottom = 0;
-        self.clear_subagent_approval_input_state();
+        self.subagent.close_view();
     }
 
     pub fn scroll_subagent_view_up(&mut self, lines: usize) {
-        self.subagent_history_offset_from_bottom = self
-            .subagent_history_offset_from_bottom
+        self.subagent.history_offset_from_bottom = self
+            .subagent
+            .history_offset_from_bottom
             .saturating_add(lines);
     }
 
     pub fn scroll_subagent_view_down(&mut self, lines: usize) {
-        self.subagent_history_offset_from_bottom = self
-            .subagent_history_offset_from_bottom
+        self.subagent.history_offset_from_bottom = self
+            .subagent
+            .history_offset_from_bottom
             .saturating_sub(lines);
     }
 
@@ -2257,11 +2183,11 @@ impl TuiShell {
     }
 
     pub fn cancel_bottom_form(&mut self) {
-        self.bottom_form = None;
+        self.forms.active = None;
     }
 
     pub fn dismiss_bottom_form(&mut self) {
-        let Some(kind) = self.bottom_form.as_ref().map(|form| form.kind.clone()) else {
+        let Some(kind) = self.forms.active.as_ref().map(|form| form.kind.clone()) else {
             return;
         };
 
@@ -2279,7 +2205,7 @@ impl TuiShell {
     }
 
     pub fn select_next_bottom_form_field(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2290,7 +2216,7 @@ impl TuiShell {
     }
 
     pub fn select_prev_bottom_form_field(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2301,7 +2227,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_move_left(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2312,7 +2238,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_move_right(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2323,7 +2249,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_move_home(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2334,7 +2260,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_move_end(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2345,7 +2271,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_insert_char(&mut self, ch: char) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2356,7 +2282,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_insert_text(&mut self, text: &str) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2367,7 +2293,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_backspace(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2378,7 +2304,7 @@ impl TuiShell {
     }
 
     pub fn bottom_form_delete(&mut self) {
-        let Some(form) = self.bottom_form.as_mut() else {
+        let Some(form) = self.forms.active.as_mut() else {
             return;
         };
         if matches!(form.kind, BottomFormKind::AskQuestions { .. }) {
@@ -2398,13 +2324,13 @@ impl TuiShell {
     }
 
     pub fn activate_bottom_form(&mut self) {
-        let Some(kind) = self.bottom_form.as_ref().map(|form| form.kind.clone()) else {
+        let Some(kind) = self.forms.active.as_ref().map(|form| form.kind.clone()) else {
             return;
         };
 
         match kind {
             BottomFormKind::AskQuestions { .. } => {
-                if let Some(form) = self.bottom_form.as_mut() {
+                if let Some(form) = self.forms.active.as_mut() {
                     match ask_questions::activate(form) {
                         Ok(ask_questions::AskQuestionsActivateOutcome::None) => {}
                         Ok(ask_questions::AskQuestionsActivateOutcome::Submit(result)) => {
@@ -2423,17 +2349,17 @@ impl TuiShell {
             BottomFormKind::McpAdd | BottomFormKind::ModelAdd => self.save_bottom_form(),
             BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {
-                if let Some(form) = self.bottom_form.as_mut() {
+                if let Some(form) = self.forms.active.as_mut() {
                     bottom_form::activate(form);
                 }
             }
             BottomFormKind::Skills => {
-                if let Some(form) = self.bottom_form.as_mut() {
+                if let Some(form) = self.forms.active.as_mut() {
                     bottom_form::activate(form);
                 }
             }
             BottomFormKind::Extensions => {
-                if let Some(form) = self.bottom_form.as_mut() {
+                if let Some(form) = self.forms.active.as_mut() {
                     bottom_form::activate(form);
                 }
             }
@@ -2441,7 +2367,7 @@ impl TuiShell {
     }
 
     pub fn save_bottom_form(&mut self) {
-        let Some(form) = self.bottom_form.as_ref() else {
+        let Some(form) = self.forms.active.as_ref() else {
             return;
         };
 
@@ -2457,7 +2383,7 @@ impl TuiShell {
                     return;
                 }
             };
-            self.bottom_form = None;
+            self.forms.active = None;
 
             if parsed.bulk {
                 match openai_models_list::list_openai_compatible_model_ids(
@@ -2531,7 +2457,7 @@ impl TuiShell {
                         .into_owned(),
                         tool_block: None,
                     });
-                    self.bottom_form = None;
+                    self.forms.active = None;
                     self.sync_welcome_mcp_status();
                 }
                 Err(err) => {
@@ -2553,7 +2479,7 @@ impl TuiShell {
     }
 
     fn save_rules_bottom_form(&mut self) {
-        let Some(form) = self.bottom_form.as_ref() else {
+        let Some(form) = self.forms.active.as_ref() else {
             return;
         };
 
@@ -2570,7 +2496,7 @@ impl TuiShell {
                         content: t!("tui.rules.saved", path = path.display()).into_owned(),
                         tool_block: None,
                     });
-                    self.bottom_form = None;
+                    self.forms.active = None;
                 }
                 Err(err) => {
                     self.messages.push(ChatMessage {
@@ -2591,7 +2517,7 @@ impl TuiShell {
     }
 
     fn save_skills_bottom_form(&mut self) {
-        let Some(form) = self.bottom_form.as_ref() else {
+        let Some(form) = self.forms.active.as_ref() else {
             return;
         };
 
@@ -2608,7 +2534,7 @@ impl TuiShell {
                         content: t!("tui.skills.saved", path = path.display()).into_owned(),
                         tool_block: None,
                     });
-                    self.bottom_form = None;
+                    self.forms.active = None;
                 }
                 Err(err) => {
                     self.messages.push(ChatMessage {
@@ -4072,7 +3998,7 @@ impl TuiShell {
         self.language_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
-        self.bottom_form = None;
+        self.forms.active = None;
         self.set_input(String::new());
         self.refresh_suggestions();
     }
@@ -4087,7 +4013,7 @@ impl TuiShell {
         self.model_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
-        self.bottom_form = None;
+        self.forms.active = None;
         self.set_input(String::new());
         self.refresh_suggestions();
     }
@@ -4110,7 +4036,7 @@ impl TuiShell {
                 self.model_picker_active = false;
                 self.language_picker_active = false;
                 self.image_picker_active = false;
-                self.bottom_form = None;
+                self.forms.active = None;
                 self.set_input(String::new());
                 self.refresh_suggestions();
             }
@@ -4143,7 +4069,7 @@ impl TuiShell {
                 self.model_picker_active = false;
                 self.language_picker_active = false;
                 self.chat_picker_active = false;
-                self.bottom_form = None;
+                self.forms.active = None;
                 self.set_input(String::new());
                 self.refresh_suggestions();
             }
@@ -4158,7 +4084,7 @@ impl TuiShell {
     }
 
     fn open_mcp_add_form(&mut self) {
-        self.bottom_form = Some(bottom_form::new_mcp_add_form());
+        self.forms.active = Some(bottom_form::new_mcp_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4168,7 +4094,7 @@ impl TuiShell {
     }
 
     fn open_model_add_form(&mut self) {
-        self.bottom_form = Some(bottom_form::new_model_add_form());
+        self.forms.active = Some(bottom_form::new_model_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4183,7 +4109,7 @@ impl TuiShell {
         tool_name: String,
         questions: crate::ask_questions::AskQuestionsRequest,
     ) {
-        self.bottom_form = Some(ask_questions::new_form(tool_call_id, tool_name, questions));
+        self.forms.active = Some(ask_questions::new_form(tool_call_id, tool_name, questions));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4194,7 +4120,7 @@ impl TuiShell {
     }
 
     fn complete_ask_questions_form(&mut self, result: AskQuestionsResult) {
-        let Some(form) = self.bottom_form.take() else {
+        let Some(form) = self.forms.active.take() else {
             return;
         };
         let BottomFormKind::AskQuestions {
@@ -4204,7 +4130,7 @@ impl TuiShell {
             ..
         } = form.kind
         else {
-            self.bottom_form = Some(form);
+            self.forms.active = Some(form);
             return;
         };
 
@@ -4238,7 +4164,7 @@ impl TuiShell {
         prompt: &McpDiscoveredPrompt,
         initial_user_message: Option<&str>,
     ) {
-        self.bottom_form = Some(bottom_form::new_mcp_prompt_form(
+        self.forms.active = Some(bottom_form::new_mcp_prompt_form(
             server,
             prompt,
             initial_user_message,
@@ -4253,7 +4179,7 @@ impl TuiShell {
 
     pub fn open_rules_form(&mut self) {
         self.close_marketplace_view();
-        self.bottom_form = Some(bottom_form::new_rules_form(&self.rule_entries));
+        self.forms.active = Some(bottom_form::new_rules_form(&self.rule_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4264,7 +4190,7 @@ impl TuiShell {
 
     pub fn open_skills_form(&mut self) {
         self.close_marketplace_view();
-        self.bottom_form = Some(bottom_form::new_skills_form(&self.skill_entries));
+        self.forms.active = Some(bottom_form::new_skills_form(&self.skill_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4275,7 +4201,7 @@ impl TuiShell {
 
     pub fn open_extensions_form(&mut self) {
         self.close_marketplace_view();
-        self.bottom_form = Some(bottom_form::new_extensions_form(&self.extension_entries));
+        self.forms.active = Some(bottom_form::new_extensions_form(&self.extension_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
@@ -4285,11 +4211,11 @@ impl TuiShell {
     }
 
     pub fn open_marketplace_view(&mut self, query: Option<&str>) {
-        self.bottom_form = None;
+        self.forms.active = None;
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;
-        self.subagent_picker_active = false;
+        self.subagent.picker_active = false;
         self.close_subagent_view();
         self.image_picker_active = false;
         self.marketplace.open = true;
@@ -4353,7 +4279,7 @@ impl TuiShell {
     }
 
     fn apply_prompt_bottom_form(&mut self) {
-        let Some(form) = self.bottom_form.as_ref() else {
+        let Some(form) = self.forms.active.as_ref() else {
             return;
         };
         let BottomFormKind::McpPrompt { server, prompt, .. } = &form.kind else {
@@ -4373,7 +4299,7 @@ impl TuiShell {
                     args_json.as_deref(),
                     user_message.as_deref(),
                 ) {
-                    self.bottom_form = None;
+                    self.forms.active = None;
                 }
             }
             (Err(err), _) | (_, Err(err)) => {
@@ -4559,7 +4485,7 @@ impl TuiShell {
     fn load_chat_by_path(&mut self, path: &str) {
         match self.chat_repository.load(path) {
             Ok(archive) => {
-                self.subagent_picker_active = false;
+                self.subagent.picker_active = false;
                 self.close_subagent_view();
                 let mut msgs = Vec::new();
                 for (role, content) in &archive.messages {
@@ -4643,12 +4569,12 @@ impl TuiShell {
                         None
                     }
                 };
-                self.subagent_view = Some(Self::subagent_detail_view(
+                self.subagent.view = Some(Self::subagent_detail_view(
                     &archive,
                     &live_messages,
                     pending_aux,
                 ));
-                self.subagent_history_offset_from_bottom = 0;
+                self.subagent.history_offset_from_bottom = 0;
                 self.sync_subagent_approval_input_state();
             }
             Ok(None) => {
@@ -4670,7 +4596,8 @@ impl TuiShell {
 
     fn refresh_active_subagent_view(&mut self) {
         let Some(session_id) = self
-            .subagent_view
+            .subagent
+            .view
             .as_ref()
             .map(|view| view.summary.session_id.clone())
         else {
@@ -4691,7 +4618,7 @@ impl TuiShell {
                         None
                     }
                 };
-                self.subagent_view = Some(Self::subagent_detail_view(
+                self.subagent.view = Some(Self::subagent_detail_view(
                     &archive,
                     &live_messages,
                     pending_aux,
@@ -4714,7 +4641,7 @@ impl TuiShell {
 
     fn active_view_pending_subagent_approval(&self) -> Option<PendingSubagentApprovalView> {
         let approval = self.runtime.pending_subagent_approval()?;
-        let session_id = self.subagent_view.as_ref()?.summary.session_id.as_str();
+        let session_id = self.subagent.view.as_ref()?.summary.session_id.as_str();
         if approval.session_id == session_id {
             Some(approval)
         } else {
@@ -4728,15 +4655,13 @@ impl TuiShell {
         }
 
         Some(SubagentApprovalInputView {
-            value: self.subagent_approval_input.clone(),
-            cursor: self.subagent_approval_input_cursor,
+            value: self.subagent.approval_input.clone(),
+            cursor: self.subagent.approval_input_cursor,
         })
     }
 
     fn clear_subagent_approval_input_state(&mut self) {
-        self.subagent_approval_input.clear();
-        self.subagent_approval_input_cursor = 0;
-        self.subagent_approval_input_active = false;
+        self.subagent.clear_approval_input();
     }
 
     fn sync_subagent_approval_input_state(&mut self) {
@@ -4745,19 +4670,20 @@ impl TuiShell {
             return;
         }
 
-        self.subagent_approval_input_cursor = self
-            .subagent_approval_input_cursor
+        self.subagent.approval_input_cursor = self
+            .subagent
+            .approval_input_cursor
             .min(self.subagent_approval_input_len_chars());
     }
 
     fn subagent_approval_input_len_chars(&self) -> usize {
-        self.subagent_approval_input.chars().count()
+        self.subagent.approval_input.chars().count()
     }
 
     fn subagent_approval_cursor_byte_index(&self) -> usize {
         cursor_byte_index_for_text(
-            &self.subagent_approval_input,
-            self.subagent_approval_input_cursor,
+            &self.subagent.approval_input,
+            self.subagent.approval_input_cursor,
         )
     }
 
@@ -4767,8 +4693,8 @@ impl TuiShell {
         }
 
         let idx = self.subagent_approval_cursor_byte_index();
-        self.subagent_approval_input.insert_str(idx, text);
-        self.subagent_approval_input_cursor += text.chars().count();
+        self.subagent.approval_input.insert_str(idx, text);
+        self.subagent.approval_input_cursor += text.chars().count();
     }
 
     fn apply_runtime_events(&mut self) {
