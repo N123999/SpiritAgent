@@ -7,7 +7,7 @@ use std::{
     path::Path,
     process::Command,
     sync::{
-        mpsc::{self, Receiver, TryRecvError},
+        mpsc::{self, TryRecvError},
         Arc,
     },
     thread,
@@ -49,24 +49,21 @@ use crate::{
 
 mod conversation;
 mod forms;
+mod input;
 mod marketplace;
+mod projection;
 mod subagent;
 
 use conversation::ConversationUiState;
 use forms::BottomFormUiState;
+use input::InputState;
 use marketplace::MarketplaceState;
 use subagent::SubagentUiState;
 
 const VIEW_MODEL_MESSAGE_LIMIT: usize = 180;
 
 pub struct TuiShell {
-    input: String,
-    input_cursor: usize,
-    input_mode: MainInputMode,
-    shell_mode_active: bool,
-    file_reference_index: Vec<String>,
-    pending_file_reference_index_rx: Option<Receiver<Vec<String>>>,
-    file_reference_indexing: bool,
+    input: InputState,
     messages: Vec<ChatMessage>,
     assistant_aux_by_message: HashMap<usize, AssistantAuxData>,
     persisted_standalone_pending_aux: Option<PendingAssistantAux>,
@@ -148,13 +145,7 @@ impl TuiShell {
         )];
 
         let mut shell = Self {
-            input: String::new(),
-            input_cursor: 0,
-            input_mode: MainInputMode::Agent,
-            shell_mode_active: false,
-            file_reference_index: Vec::new(),
-            pending_file_reference_index_rx: Some(file_index_rx),
-            file_reference_indexing: true,
+            input: InputState::new(file_index_rx),
             messages,
             assistant_aux_by_message: HashMap::new(),
             persisted_standalone_pending_aux: None,
@@ -813,21 +804,21 @@ impl TuiShell {
     }
 
     pub fn refresh_suggestions(&mut self) {
-        if self.shell_mode_active {
+        if self.input.shell_mode_active {
             self.slash.suggestions.clear();
             self.slash.selected_suggestion = 0;
             return;
         }
 
         if let Some(query) = self.current_file_reference_query() {
-            if self.file_reference_indexing {
+            if self.input.file_reference_indexing {
                 self.slash.suggestions.clear();
                 self.slash.selected_suggestion = 0;
                 return;
             }
 
             self.slash.suggestions =
-                file_reference::compute_suggestions(&query.raw, &self.file_reference_index)
+                file_reference::compute_suggestions(&query.raw, &self.input.file_reference_index)
                     .into_iter()
                     .map(InputSuggestion::simple)
                     .collect();
@@ -871,70 +862,6 @@ impl TuiShell {
         self.runtime.tick_thinking_spinner();
     }
 
-    pub fn view_model(&self) -> TuiViewModel {
-        let history_truncated_before = self.messages.len().saturating_sub(VIEW_MODEL_MESSAGE_LIMIT);
-        let visible_messages = self.messages[history_truncated_before..].to_vec();
-        let assistant_aux_by_message = self
-            .assistant_aux_by_message
-            .iter()
-            .filter(|(index, _)| **index >= history_truncated_before)
-            .map(|(index, value)| (*index, value.clone()))
-            .collect();
-        let subagent_sessions = self
-            .runtime
-            .subagent_sessions()
-            .iter()
-            .map(Self::subagent_summary_view)
-            .collect();
-        let marketplace_view = self.build_marketplace_view_model();
-
-        TuiViewModel {
-            input: self.input.clone(),
-            input_cursor: self.input_cursor,
-            input_mode: self.input_mode,
-            shell_mode_active: self.shell_mode_active,
-            pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
-            pending_mcp_resources: self.runtime.session().pending_mcp_resources().to_vec(),
-            history_truncated_before,
-            messages: visible_messages,
-            assistant_aux_by_message,
-            config: self.runtime.config().clone(),
-            show_aux_details: self.show_aux_details,
-            input_suggestion_kind: self.current_input_suggestion_kind(),
-            input_suggestion_loading: self.file_reference_indexing
-                && self.current_file_reference_query().is_some(),
-            slash_suggestions: self.slash.suggestions.clone(),
-            selected_suggestion: self.slash.selected_suggestion,
-            model_picker_active: self.model_picker_active,
-            model_picker_index: self.model_picker_index,
-            language_picker_active: self.language_picker_active,
-            language_picker_index: self.language_picker_index,
-            chat_picker_active: self.chat_picker_active,
-            chat_picker_index: self.chat_picker_index,
-            chat_picker_files: self.chat_picker_files.clone(),
-            subagent_picker_active: self.subagent.picker_active,
-            subagent_picker_index: self.subagent.picker_index,
-            subagent_sessions,
-            subagent_view: self.subagent.view.clone(),
-            subagent_history_offset_from_bottom: self.subagent.history_offset_from_bottom,
-            pending_subagent_approval: self.runtime.pending_subagent_approval(),
-            subagent_approval_input: self.subagent_approval_input_view(),
-            image_picker_active: self.image_picker_active,
-            image_picker_index: self.image_picker_index,
-            image_picker_files: self.image_picker_files.clone(),
-            bottom_form: self.forms.active.clone(),
-            history_offset_from_bottom: self.conversation.history_offset_from_bottom,
-            pending_response_active: self.runtime.is_busy(),
-            pending_assistant_msg_index: self.pending_assistant_msg_index,
-            pending_aux: self.runtime.pending_aux_state(),
-            persisted_standalone_pending_aux: self.persisted_standalone_pending_aux.clone(),
-            persisted_standalone_pending_aux_anchor: self.persisted_standalone_pending_aux_anchor,
-            cli_ui_hooks: self.cli_ui_hooks.clone(),
-            marketplace_view,
-            conversation_sel_anchor: self.conversation.sel_anchor,
-            conversation_sel_head: self.conversation.sel_head,
-        }
-    }
     fn subagent_summary_view(summary: &SubagentSessionSummary) -> SubagentSessionSummaryView {
         SubagentSessionSummaryView {
             session_id: summary.session_id.clone(),
@@ -1610,29 +1537,29 @@ impl TuiShell {
     }
 
     pub fn is_shell_mode_active(&self) -> bool {
-        self.shell_mode_active
+        self.input.shell_mode_active
     }
 
     pub fn input_mode(&self) -> MainInputMode {
-        self.input_mode
+        self.input.mode
     }
 
     pub fn is_plan_mode_active(&self) -> bool {
-        matches!(self.input_mode, MainInputMode::Plan)
+        matches!(self.input.mode, MainInputMode::Plan)
     }
 
     pub fn set_input_mode(&mut self, mode: MainInputMode) {
-        if self.input_mode == mode {
+        if self.input.mode == mode {
             return;
         }
 
-        self.input_mode = mode;
+        self.input.mode = mode;
         self.refresh_suggestions();
         self.push_plan_metadata_snapshot();
     }
 
     pub fn toggle_input_mode(&mut self) {
-        let next = match self.input_mode {
+        let next = match self.input.mode {
             MainInputMode::Agent => MainInputMode::Plan,
             MainInputMode::Plan => MainInputMode::Agent,
         };
@@ -1642,57 +1569,57 @@ impl TuiShell {
     pub fn can_enter_shell_mode(&self) -> bool {
         manual_shell::should_enter_shell_mode(
             '!',
-            &self.input,
-            self.input_cursor,
-            self.shell_mode_active,
+            &self.input.value,
+            self.input.cursor,
+            self.input.shell_mode_active,
         )
     }
 
     pub fn enter_shell_mode(&mut self) {
-        self.shell_mode_active = true;
+        self.input.shell_mode_active = true;
         self.refresh_suggestions();
     }
 
     pub fn should_exit_shell_mode_on_backspace(&self) -> bool {
         manual_shell::should_exit_shell_mode_on_backspace(
-            &self.input,
-            self.input_cursor,
-            self.shell_mode_active,
+            &self.input.value,
+            self.input.cursor,
+            self.input.shell_mode_active,
         )
     }
 
     pub fn exit_shell_mode(&mut self) {
-        self.shell_mode_active = false;
+        self.input.shell_mode_active = false;
         self.set_input(String::new());
         self.refresh_suggestions();
     }
 
     pub fn move_cursor_left(&mut self) {
-        if self.input_cursor > 0 {
-            self.input_cursor -= 1;
+        if self.input.cursor > 0 {
+            self.input.cursor -= 1;
         }
     }
 
     pub fn move_cursor_right(&mut self) {
         let len = self.input_len_chars();
-        if self.input_cursor < len {
-            self.input_cursor += 1;
+        if self.input.cursor < len {
+            self.input.cursor += 1;
         }
     }
 
     pub fn move_cursor_home(&mut self) {
-        self.input_cursor = 0;
+        self.input.cursor = 0;
     }
 
     pub fn move_cursor_end(&mut self) {
-        self.input_cursor = self.input_len_chars();
+        self.input.cursor = self.input_len_chars();
     }
 
     pub fn insert_char_at_cursor(&mut self, ch: char) {
-        let cursor_before = self.input_cursor;
+        let cursor_before = self.input.cursor;
         let idx = self.cursor_byte_index();
-        self.input.insert(idx, ch);
-        self.input_cursor += 1;
+        self.input.value.insert(idx, ch);
+        self.input.cursor += 1;
         if ch == '\n' {
             self.log_input_edit("insert_char", &ch.to_string(), cursor_before);
         }
@@ -1703,10 +1630,10 @@ impl TuiShell {
             return;
         }
 
-        let cursor_before = self.input_cursor;
+        let cursor_before = self.input.cursor;
         let idx = self.cursor_byte_index();
-        self.input.insert_str(idx, text);
-        self.input_cursor += text.chars().count();
+        self.input.value.insert_str(idx, text);
+        self.input.cursor += text.chars().count();
         if should_log_input_edit(text) {
             self.log_input_edit("insert_text", text, cursor_before);
         }
@@ -1729,28 +1656,28 @@ impl TuiShell {
     }
 
     pub fn backspace_at_cursor(&mut self) {
-        if self.input_cursor == 0 {
+        if self.input.cursor == 0 {
             return;
         }
         self.move_cursor_left();
         let idx = self.cursor_byte_index();
-        self.input.remove(idx);
+        self.input.value.remove(idx);
     }
 
     pub fn delete_at_cursor(&mut self) {
-        if self.input_cursor >= self.input_len_chars() {
+        if self.input.cursor >= self.input_len_chars() {
             return;
         }
         let idx = self.cursor_byte_index();
-        self.input.remove(idx);
+        self.input.value.remove(idx);
     }
 
     pub fn clamp_cursor(&mut self) {
-        self.input_cursor = self.input_cursor.min(self.input_len_chars());
+        self.input.cursor = self.input.cursor.min(self.input_len_chars());
     }
 
     pub fn submit_input(&mut self) {
-        let raw_message = self.input.clone();
+        let raw_message = self.input.value.clone();
         let trimmed_message = raw_message.trim();
         if trimmed_message.is_empty() {
             return;
@@ -1775,7 +1702,7 @@ impl TuiShell {
             return;
         }
 
-        if self.shell_mode_active {
+        if self.input.shell_mode_active {
             self.scroll_history_to_bottom();
             if self.runtime.is_busy() {
                 self.messages.push(ChatMessage {
@@ -1852,7 +1779,7 @@ impl TuiShell {
         } else {
             let workspace_root = self.app_paths.workspace_root();
             let runtime_turn =
-                user_turn_text_for_mode(&workspace_root, self.input_mode, &raw_message);
+                user_turn_text_for_mode(&workspace_root, self.input.mode, &raw_message);
             self.submit_runtime_user_turn(runtime_turn, None);
         }
 
@@ -1903,7 +1830,7 @@ impl TuiShell {
         if !self.is_file_reference_mode_active() {
             return;
         }
-        if self.file_reference_indexing {
+        if self.input.file_reference_indexing {
             self.push_agent_message(t!("tui.file_reference.indexing").into_owned());
             return;
         }
@@ -4904,30 +4831,29 @@ impl TuiShell {
     }
 
     fn current_slash_query(&self) -> Option<&str> {
-        if self.shell_mode_active {
+        if self.input.shell_mode_active {
             return None;
         }
-        slash::current_query(&self.input)
+        slash::current_query(&self.input.value)
     }
 
     fn current_file_reference_query(&self) -> Option<file_reference::ActiveReferenceQuery> {
-        if self.shell_mode_active {
+        if self.input.shell_mode_active {
             return None;
         }
-        file_reference::current_query(&self.input, self.input_cursor)
+        file_reference::current_query(&self.input.value, self.input.cursor)
     }
 
     fn input_len_chars(&self) -> usize {
-        self.input.chars().count()
+        self.input.len_chars()
     }
 
     fn cursor_byte_index(&self) -> usize {
-        cursor_byte_index_for_text(&self.input, self.input_cursor)
+        self.input.cursor_byte_index()
     }
 
     fn set_input(&mut self, value: String) {
-        self.input = value;
-        self.input_cursor = self.input_len_chars();
+        self.input.set_value(value);
     }
 
     fn log_input_edit(&self, action: &str, text: &str, cursor_before: usize) {
@@ -4936,7 +4862,7 @@ impl TuiShell {
             action,
             text.chars().count(),
             cursor_before,
-            self.input_cursor,
+            self.input.cursor,
             self.input_len_chars(),
             truncate_input_log_preview(text, 80),
         ));
@@ -4947,9 +4873,9 @@ impl TuiShell {
             return false;
         };
         let (next_input, next_cursor) =
-            file_reference::replace_query(&self.input, &query, selected, finalize);
-        self.input = next_input;
-        self.input_cursor = next_cursor;
+            file_reference::replace_query(&self.input.value, &query, selected, finalize);
+        self.input.value = next_input;
+        self.input.cursor = next_cursor;
         true
     }
 
@@ -4978,21 +4904,21 @@ impl TuiShell {
     }
 
     fn poll_file_reference_index(&mut self) {
-        let Some(result_rx) = self.pending_file_reference_index_rx.take() else {
+        let Some(result_rx) = self.input.pending_file_reference_index_rx.take() else {
             return;
         };
 
         match result_rx.try_recv() {
             Ok(files) => {
-                self.file_reference_index = files;
-                self.file_reference_indexing = false;
+                self.input.file_reference_index = files;
+                self.input.file_reference_indexing = false;
                 self.refresh_suggestions();
             }
             Err(TryRecvError::Empty) => {
-                self.pending_file_reference_index_rx = Some(result_rx);
+                self.input.pending_file_reference_index_rx = Some(result_rx);
             }
             Err(TryRecvError::Disconnected) => {
-                self.file_reference_indexing = false;
+                self.input.file_reference_indexing = false;
                 self.refresh_suggestions();
             }
         }
