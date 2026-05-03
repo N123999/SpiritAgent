@@ -5,6 +5,7 @@ use crate::{
     tui::TuiShell,
     view::{InputSuggestion, MainInputMode},
 };
+use rust_i18n::t;
 
 #[derive(Debug, Default)]
 pub(crate) struct SlashState {
@@ -37,6 +38,7 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/clear",
     "/quit",
     "/exit",
+    "/continue",
     "/start-implementing",
     "/model",
     "/compact",
@@ -58,6 +60,7 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/clear",
     "/quit",
     "/exit",
+    "/continue",
     "/start-implementing",
     "/model",
     "/compact",
@@ -95,7 +98,7 @@ pub(crate) fn compute_suggestions(
 ) -> Vec<InputSuggestion> {
     let mut suggestions = slash_commands
         .iter()
-        .filter(|cmd| command_visible_in_mode(cmd, shell.input_mode()))
+        .filter(|cmd| command_visible(shell, cmd))
         .filter(|cmd| cmd.starts_with(query))
         .map(|cmd| command_suggestion(cmd))
         .collect::<Vec<_>>();
@@ -146,6 +149,10 @@ fn primary_help_suggestion(primary: &str, query: &str) -> InputSuggestion {
 fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggestion> {
     if query == "/model" || query.starts_with("/model ") {
         return vec![primary_help_suggestion("/model", query)];
+    }
+
+    if shell.can_continue_last_turn() && (query == "/continue" || query.starts_with("/continue ")) {
+        return vec![primary_help_suggestion("/continue", query)];
     }
 
     if command_visible_in_mode("/start-implementing", shell.input_mode())
@@ -319,13 +326,24 @@ fn command_visible_in_mode(command: &str, input_mode: MainInputMode) -> bool {
     }
 }
 
-pub(crate) fn help_text(input_mode: MainInputMode) -> String {
+fn command_visible(shell: &TuiShell, command: &str) -> bool {
+    match command {
+        "/continue" => shell.can_continue_last_turn(),
+        _ => command_visible_in_mode(command, shell.input_mode()),
+    }
+}
+
+pub(crate) fn help_text(input_mode: MainInputMode, can_continue_last_turn: bool) -> String {
     let mut lines = vec![
         "可用指令:".to_string(),
         "- /help".to_string(),
         "- /clear".to_string(),
         "- /quit".to_string(),
     ];
+
+    if can_continue_last_turn {
+        lines.push("- /continue".to_string());
+    }
 
     if matches!(input_mode, MainInputMode::Plan) {
         lines.push("- /start-implementing".to_string());
@@ -353,6 +371,13 @@ pub(crate) fn help_text(input_mode: MainInputMode) -> String {
         "- /language [en|zh-CN]".to_string(),
         "".to_string(),
         "说明:".to_string(),
+    ]);
+
+    if can_continue_last_turn {
+        lines.push("- /continue 会继续上一轮被显式中止的 assistant 回复。".to_string());
+    }
+
+    lines.extend([
         "- /sessions 打开已保存会话列表选择器。".to_string(),
         "- /subagents 打开当前会话里的 SubAgent 列表；回车可进入只读子会话视图，Esc 返回主会话。".to_string(),
         "- /image pick 打开当前目录图片选择器。".to_string(),
@@ -395,8 +420,12 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
             shell.push_agent_message("收到，Spirit Agent 即将退出。");
             shell.request_quit();
         }
-        "/help" => shell.push_agent_message(help_text(shell.input_mode())),
+        "/help" => shell.push_agent_message(help_text(
+            shell.input_mode(),
+            shell.can_continue_last_turn(),
+        )),
         "/clear" => shell.clear_chat_for_slash(),
+        "/continue" => shell.handle_continue_slash(),
         "/start-implementing" => shell.handle_start_implementing_slash(),
         "/model" => shell.handle_model_slash(&parts[1..]),
         "/compact" => shell.compact_history_for_slash(),
@@ -413,7 +442,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/language" => shell.handle_language_slash(&parts[1..]),
         _ => {
             if !shell.handle_skill_alias_slash(message) {
-                shell.push_agent_message("未知斜杠命令，输入 /help 查看可用指令。");
+                shell.push_agent_message(t!("tui.slash.unknown_command").into_owned());
             }
         }
     }
@@ -444,7 +473,7 @@ mod tests {
 
     #[test]
     fn help_text_mentions_bottom_form_shortcuts() {
-        let help = help_text(MainInputMode::Agent);
+        let help = help_text(MainInputMode::Agent, false);
 
         assert!(help.contains("/mcp add"));
         assert!(help.contains("/model add"));
@@ -484,8 +513,14 @@ mod tests {
             "/start-implementing",
             MainInputMode::Plan,
         ));
-        assert!(!help_text(MainInputMode::Agent).contains("/start-implementing"));
-        assert!(help_text(MainInputMode::Plan).contains("/start-implementing"));
+        assert!(!help_text(MainInputMode::Agent, false).contains("/start-implementing"));
+        assert!(help_text(MainInputMode::Plan, false).contains("/start-implementing"));
+    }
+
+    #[test]
+    fn continue_command_only_appears_when_available() {
+        assert!(!help_text(MainInputMode::Agent, false).contains("/continue"));
+        assert!(help_text(MainInputMode::Agent, true).contains("/continue"));
     }
 
     #[test]

@@ -235,6 +235,10 @@ impl TuiShell {
             && self.runtime.pending_aux_state().is_some()
     }
 
+    pub fn can_continue_last_turn(&self) -> bool {
+        self.last_turn_can_continue
+    }
+
     pub fn clear_interrupt_escape_arm(&mut self) {
         self.interrupt_escape_armed_at = None;
     }
@@ -247,7 +251,7 @@ impl TuiShell {
 
         match self.interrupt_escape_armed_at {
             Some(armed_at) if now.duration_since(armed_at) <= INTERRUPT_ESCAPE_ARM_WINDOW => {
-                self.abort_current_turn();
+                self.abort_current_turn(true);
             }
             _ => {
                 self.ring_failure_bell();
@@ -257,7 +261,7 @@ impl TuiShell {
         true
     }
 
-    pub fn abort_current_turn(&mut self) {
+    pub fn abort_current_turn(&mut self, show_continue_hint: bool) {
         if !self.can_interrupt_current_turn() {
             self.clear_interrupt_escape_arm();
             return;
@@ -268,6 +272,10 @@ impl TuiShell {
         self.sync_welcome_mcp_status();
         self.scroll_history_to_bottom();
         self.clear_interrupt_escape_arm();
+        self.last_turn_can_continue = true;
+        if show_continue_hint {
+            self.push_agent_message(t!("tui.continue.after_abort_hint").into_owned());
+        }
     }
 
     fn ring_failure_bell(&self) {
@@ -337,7 +345,7 @@ impl TuiShell {
 
         if self.runtime.is_busy() {
             if self.can_interrupt_current_turn() {
-                self.abort_current_turn();
+                self.abort_current_turn(false);
             } else {
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,

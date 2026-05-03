@@ -1074,6 +1074,15 @@ impl TsBridgeRuntime {
         }
     }
 
+    pub fn continue_assistant_completion(&mut self) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已失效，无法继续补全回复"));
+        }
+        self.call_bridge("runtime.continueAssistantCompletionStreaming", None)?;
+        self.sync_after_command()?;
+        Ok(())
+    }
+
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
         self.events.drain(..).collect()
     }

@@ -620,9 +620,7 @@ impl TuiShell {
 
     pub(crate) fn handle_start_implementing_slash(&mut self) {
         if !self.is_plan_mode_active() {
-            self.push_agent_message(
-                "该命令仅在 Plan 模式下可用；按 Tab 切到 Plan 后重试。".to_string(),
-            );
+            self.push_agent_message(t!("tui.plan.start_implementing_only_plan").into_owned());
             return;
         }
 
@@ -638,6 +636,32 @@ impl TuiShell {
         self.set_input_mode(MainInputMode::Agent);
         let user_turn = plan::build_start_implementing_user_turn();
         self.submit_runtime_user_turn(user_turn, None);
+    }
+
+    pub(crate) fn handle_continue_slash(&mut self) {
+        if !self.can_continue_last_turn() {
+            self.push_agent_message(t!("tui.continue.unavailable").into_owned());
+            return;
+        }
+
+        if self.runtime.is_busy() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::Agent,
+                content: t!("tui.busy.pending_reply").into_owned(),
+                tool_block: None,
+            });
+            return;
+        }
+
+        match self.runtime.continue_assistant_completion() {
+            Ok(()) => {
+                self.last_turn_can_continue = false;
+                self.apply_runtime_events();
+            }
+            Err(err) => {
+                self.push_agent_message(t!("tui.continue.failed", err = err).into_owned());
+            }
+        }
     }
 
     pub(crate) fn handle_skill_alias_slash(&mut self, message: &str) -> bool {

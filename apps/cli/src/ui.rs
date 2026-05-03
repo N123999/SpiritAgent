@@ -1837,6 +1837,7 @@ fn suggestion_summary(suggestion: &InputSuggestion) -> String {
         "/help" => t!("ui.suggestion.summary.help").into_owned(),
         "/clear" => t!("ui.suggestion.summary.clear").into_owned(),
         "/quit" | "/exit" => t!("ui.suggestion.summary.quit").into_owned(),
+        "/continue" => t!("ui.suggestion.summary.continue").into_owned(),
         "/model" => t!("ui.suggestion.summary.model").into_owned(),
         "/compact" => t!("ui.suggestion.summary.compact").into_owned(),
         "/sessions" => t!("ui.suggestion.summary.sessions").into_owned(),
@@ -1866,6 +1867,11 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
     }
 
     match suggestion.label.as_str() {
+        "/continue" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /continue".to_string(),
+            t!("ui.suggestion.usage.continue_note").into_owned(),
+        ],
         "/model" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /model list".to_string(),

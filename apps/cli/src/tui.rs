@@ -92,6 +92,7 @@ pub struct TuiShell {
     forms: BottomFormUiState,
     conversation: ConversationUiState,
     interrupt_escape_armed_at: Option<Instant>,
+    last_turn_can_continue: bool,
     should_quit: bool,
     runtime: RuntimeHandle,
     config_store: Box<dyn ConfigStore>,
@@ -175,6 +176,7 @@ impl TuiShell {
             forms: BottomFormUiState::default(),
             conversation: ConversationUiState::default(),
             interrupt_escape_armed_at: None,
+            last_turn_can_continue: false,
             should_quit: false,
             runtime,
             config_store,
@@ -351,6 +353,7 @@ impl TuiShell {
         self.last_mcp_status_revision = mcp_status.revision;
         self.pending_assistant_msg_index = None;
         self.last_completed_assistant_msg_index = None;
+        self.last_turn_can_continue = false;
     }
 
     pub(crate) fn compact_history_for_slash(&mut self) {
@@ -612,6 +615,7 @@ impl TuiShell {
                 self.persisted_standalone_pending_aux_anchor = None;
                 self.pending_assistant_msg_index = None;
                 self.last_completed_assistant_msg_index = None;
+                self.last_turn_can_continue = false;
                 self.runtime.replace_session_from_archive(&archive);
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
@@ -639,6 +643,7 @@ impl TuiShell {
         user_turn: String,
         explicit_images: Option<Vec<String>>,
     ) {
+        self.last_turn_can_continue = false;
         self.runtime.submit_user_turn(user_turn, explicit_images);
         self.apply_runtime_events();
     }

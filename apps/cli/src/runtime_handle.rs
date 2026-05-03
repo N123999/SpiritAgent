@@ -202,6 +202,10 @@ impl RuntimeHandle {
         self.runtime.abort()
     }
 
+    pub fn continue_assistant_completion(&mut self) -> Result<()> {
+        self.runtime.continue_assistant_completion()
+    }
+
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
         self.runtime.drain_events()
     }
