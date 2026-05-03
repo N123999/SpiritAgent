@@ -1,8 +1,3 @@
-use comrak::{
-    Arena, Options,
-    nodes::{AstNode, ListType, NodeValue},
-    parse_document,
-};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -10,11 +5,17 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use rust_i18n::t;
-use std::{cell::RefCell, collections::HashMap, path::Path};
+use std::{cell::RefCell, path::Path};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+mod markdown;
+mod theme;
+
+use markdown::*;
+use theme::*;
+
 use crate::{
-    conversation_select::{CellPointer, NormRange, flatten_wrapped_history, normalize_selection},
+    conversation_select::{flatten_wrapped_history, normalize_selection, CellPointer, NormRange},
     logging,
     ports::SubagentSessionStatus,
     session::PendingMcpResource,
@@ -22,11 +23,10 @@ use crate::{
     view::{
         AskQuestionsOptionView, AskQuestionsQuestionView, AssistantAuxKind,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
-        ChatMessage, CliUiHookSlot, CliUiHookTokenRole, CliUiHookTokensView, CliUiHookVariant,
-        CliUiHookView, ConversationPanelHit, InputSuggestion, InputSuggestionKind, MainInputMode,
-        MarketplaceViewModel, MessageRole, PendingAssistantAux, PendingSubagentApprovalView,
-        SubagentApprovalInputView, SubagentSessionDetailView, ToolUiBlock, ToolUiPhase,
-        TuiViewModel,
+        ChatMessage, CliUiHookSlot, ConversationPanelHit, InputSuggestion, InputSuggestionKind,
+        MainInputMode, MarketplaceViewModel, MessageRole, PendingAssistantAux,
+        PendingSubagentApprovalView, SubagentApprovalInputView, SubagentSessionDetailView,
+        ToolUiBlock, ToolUiPhase, TuiViewModel,
     },
 };
 
@@ -42,10 +42,7 @@ const SPIRIT_LOGO_LINES: [&str; 6] = [
 ];
 
 thread_local! {
-    static MARKDOWN_CACHE: RefCell<HashMap<String, Vec<Vec<Span<'static>>>>> =
-        RefCell::new(HashMap::new());
     static INPUT_CURSOR_DEBUG_SIGNATURE: RefCell<Option<String>> = RefCell::new(None);
-    static ACTIVE_CLI_UI_HOOKS: RefCell<Vec<CliUiHookView>> = RefCell::new(Vec::new());
 }
 
 struct BottomFormRenderResult {
@@ -86,9 +83,7 @@ fn conversation_logo_width(available_width: u16) -> u16 {
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFeedback {
     let mut feedback = UiRenderFeedback::default();
-    ACTIVE_CLI_UI_HOOKS.with(|hooks| {
-        *hooks.borrow_mut() = app.cli_ui_hooks.clone();
-    });
+    set_active_cli_ui_hooks(app.cli_ui_hooks.clone());
     let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
     let show_chat_picker = app.chat_picker_active;
@@ -350,7 +345,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         );
     }
 
-    ACTIVE_CLI_UI_HOOKS.with(|hooks| hooks.borrow_mut().clear());
+    clear_active_cli_ui_hooks();
     feedback
 }
 
@@ -368,150 +363,6 @@ fn conversation_norm_for_paint(app: &TuiViewModel, total_lines: usize) -> Option
         col: b.1,
     };
     Some(normalize_selection(a, b))
-}
-
-fn subtle_aux_text_style() -> Style {
-    Style::default().fg(Color::Rgb(128, 128, 128))
-}
-
-fn conversation_body_text_style() -> Style {
-    Style::default().fg(Color::Rgb(170, 170, 170))
-}
-
-fn active_cli_ui_hook(slot: CliUiHookSlot) -> Option<CliUiHookView> {
-    ACTIVE_CLI_UI_HOOKS.with(|hooks| {
-        hooks
-            .borrow()
-            .iter()
-            .rev()
-            .find(|hook| hook.slot == slot)
-            .cloned()
-    })
-}
-
-fn cli_ui_token_color(role: CliUiHookTokenRole) -> Option<Color> {
-    match role {
-        CliUiHookTokenRole::Default => None,
-        CliUiHookTokenRole::Primary => Some(Color::Cyan),
-        CliUiHookTokenRole::Secondary => Some(Color::Rgb(190, 195, 205)),
-        CliUiHookTokenRole::Muted => Some(Color::DarkGray),
-        CliUiHookTokenRole::Accent => Some(Color::Magenta),
-        CliUiHookTokenRole::Success => Some(Color::Green),
-        CliUiHookTokenRole::Warning => Some(Color::Yellow),
-        CliUiHookTokenRole::Danger => Some(Color::Red),
-    }
-}
-
-fn cli_ui_variant_colors(variant: CliUiHookVariant) -> CliUiHookTokensView {
-    match variant {
-        CliUiHookVariant::Default => CliUiHookTokensView::default(),
-        CliUiHookVariant::Accented => CliUiHookTokensView {
-            border: Some(CliUiHookTokenRole::Accent),
-            accent: Some(CliUiHookTokenRole::Accent),
-            ..CliUiHookTokensView::default()
-        },
-        CliUiHookVariant::Muted => CliUiHookTokensView {
-            foreground: Some(CliUiHookTokenRole::Muted),
-            border: Some(CliUiHookTokenRole::Muted),
-            ..CliUiHookTokensView::default()
-        },
-        CliUiHookVariant::Warning => CliUiHookTokensView {
-            foreground: Some(CliUiHookTokenRole::Warning),
-            border: Some(CliUiHookTokenRole::Warning),
-            accent: Some(CliUiHookTokenRole::Warning),
-        },
-        CliUiHookVariant::Success => CliUiHookTokensView {
-            foreground: Some(CliUiHookTokenRole::Success),
-            border: Some(CliUiHookTokenRole::Success),
-            accent: Some(CliUiHookTokenRole::Success),
-        },
-        CliUiHookVariant::Danger => CliUiHookTokensView {
-            foreground: Some(CliUiHookTokenRole::Danger),
-            border: Some(CliUiHookTokenRole::Danger),
-            accent: Some(CliUiHookTokenRole::Danger),
-        },
-    }
-}
-
-fn cli_ui_token_role(
-    hook: &CliUiHookView,
-    selector: impl Fn(&CliUiHookTokensView) -> Option<CliUiHookTokenRole>,
-) -> Option<CliUiHookTokenRole> {
-    selector(&hook.tokens).or_else(|| {
-        hook.variant
-            .and_then(|variant| selector(&cli_ui_variant_colors(variant)))
-    })
-}
-
-fn cli_ui_foreground_color(slot: CliUiHookSlot) -> Option<Color> {
-    active_cli_ui_hook(slot)
-        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.foreground))
-        .and_then(cli_ui_token_color)
-}
-
-fn cli_ui_border_color(slot: CliUiHookSlot) -> Option<Color> {
-    active_cli_ui_hook(slot)
-        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.border))
-        .and_then(cli_ui_token_color)
-}
-
-fn cli_ui_accent_color(slot: CliUiHookSlot) -> Option<Color> {
-    active_cli_ui_hook(slot)
-        .and_then(|hook| cli_ui_token_role(&hook, |tokens| tokens.accent))
-        .and_then(cli_ui_token_color)
-}
-
-fn cli_ui_prefix(slot: CliUiHookSlot) -> Option<String> {
-    active_cli_ui_hook(slot).and_then(|hook| hook.prefix)
-}
-
-fn cli_ui_suffix(slot: CliUiHookSlot) -> Option<String> {
-    active_cli_ui_hook(slot).and_then(|hook| hook.suffix)
-}
-
-fn patch_style_foreground(style: Style, color: Option<Color>) -> Style {
-    match color {
-        Some(color) => style.fg(color),
-        None => style,
-    }
-}
-
-fn patch_style_border(style: Style, color: Option<Color>) -> Style {
-    match color {
-        Some(color) => style.fg(color),
-        None => style,
-    }
-}
-
-fn patch_lines_foreground(
-    lines: Vec<Vec<Span<'static>>>,
-    color: Option<Color>,
-) -> Vec<Vec<Span<'static>>> {
-    let Some(color) = color else {
-        return lines;
-    };
-
-    lines
-        .into_iter()
-        .map(|line| {
-            line.into_iter()
-                .map(|span| Span::styled(span.content, span.style.fg(color)))
-                .collect()
-        })
-        .collect()
-}
-
-fn patch_line_foreground(line: Line<'static>, color: Option<Color>) -> Line<'static> {
-    let Some(color) = color else {
-        return line;
-    };
-
-    let spans: Vec<Span<'static>> = line
-        .spans
-        .into_iter()
-        .map(|span| Span::styled(span.content, span.style.fg(color)))
-        .collect();
-    Line::from(spans)
 }
 
 fn input_mode_title(input_mode: MainInputMode) -> String {
@@ -1795,239 +1646,6 @@ fn plain_text_lines(text: &str) -> Vec<Vec<Span<'static>>> {
     }
 }
 
-fn markdown_lines(text: &str) -> Vec<Vec<Span<'static>>> {
-    MARKDOWN_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        if let Some(hit) = cache.get(text) {
-            return hit.clone();
-        }
-
-        let arena = Arena::new();
-        let root = parse_document(&arena, text, &markdown_options());
-
-        let mut builder = MdBuilder::new();
-        render_markdown_node(root, &mut builder, conversation_body_text_style(), 0);
-        let parsed = builder.into_lines();
-
-        // Keep cache bounded so long sessions won't grow unbounded memory.
-        if cache.len() > 512 {
-            cache.clear();
-        }
-        cache.insert(text.to_string(), parsed.clone());
-        parsed
-    })
-}
-
-/// 扩展详情 README：复用 Markdown AST，但强制灰阶以匹配终端黑白灰审美。
-fn marketplace_markdown_lines(text: &str) -> Vec<Line<'static>> {
-    markdown_lines(text)
-        .into_iter()
-        .map(|row| {
-            Line::from(
-                row.into_iter()
-                    .map(marketplace_grayscale_span)
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect()
-}
-
-fn marketplace_grayscale_span(span: Span<'static>) -> Span<'static> {
-    let content = span.content;
-    let st = span.style;
-    let m = st.add_modifier;
-    let looks_inline_code = content.starts_with('`') && content.ends_with('`');
-    let fg = if m.contains(Modifier::BOLD) && m.contains(Modifier::UNDERLINED) {
-        Color::Rgb(238, 238, 238)
-    } else if m.contains(Modifier::BOLD) {
-        Color::Rgb(215, 215, 215)
-    } else if looks_inline_code {
-        Color::Rgb(190, 190, 190)
-    } else if m.contains(Modifier::ITALIC) {
-        Color::Rgb(155, 155, 155)
-    } else {
-        Color::Rgb(168, 168, 168)
-    };
-    let mut keep = Modifier::empty();
-    for flag in [
-        Modifier::BOLD,
-        Modifier::ITALIC,
-        Modifier::UNDERLINED,
-        Modifier::CROSSED_OUT,
-    ] {
-        if m.contains(flag) {
-            keep |= flag;
-        }
-    }
-    Span::styled(content, Style::default().fg(fg).add_modifier(keep))
-}
-
-fn markdown_options() -> Options<'static> {
-    let mut opts = Options::default();
-    opts.extension.strikethrough = true;
-    opts.extension.table = true;
-    opts.extension.tasklist = true;
-    opts.extension.autolink = true;
-    opts.extension.superscript = true;
-    opts.render.hardbreaks = true;
-    opts
-}
-
-fn render_markdown_node<'a>(
-    node: &'a AstNode<'a>,
-    builder: &mut MdBuilder,
-    style: Style,
-    list_depth: usize,
-) {
-    match &node.data.borrow().value {
-        NodeValue::Document => {
-            for child in node.children() {
-                render_markdown_node(child, builder, style, list_depth);
-            }
-        }
-        NodeValue::Paragraph => {
-            for child in node.children() {
-                render_markdown_node(child, builder, style, list_depth);
-            }
-            builder.new_line();
-        }
-        NodeValue::Heading(heading) => {
-            let h_style = style
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(if heading.level <= 2 {
-                    Modifier::UNDERLINED
-                } else {
-                    Modifier::empty()
-                });
-            for child in node.children() {
-                render_markdown_node(child, builder, h_style, list_depth);
-            }
-            builder.new_line();
-        }
-        NodeValue::Text(text) => {
-            builder.push_span(Span::styled(text.to_string(), style));
-        }
-        NodeValue::Code(code) => {
-            builder.push_span(Span::styled(
-                format!("`{}`", code.literal),
-                style.fg(Color::Magenta),
-            ));
-        }
-        NodeValue::CodeBlock(code) => {
-            builder.new_line();
-            let code_style = Style::default().fg(Color::Cyan);
-            for line in code.literal.lines() {
-                builder.push_span(Span::styled(format!("  {}", line), code_style));
-                builder.new_line();
-            }
-            builder.new_line();
-        }
-        NodeValue::Strong => {
-            let strong_style = style.add_modifier(Modifier::BOLD);
-            for child in node.children() {
-                render_markdown_node(child, builder, strong_style, list_depth);
-            }
-        }
-        NodeValue::Emph => {
-            let emph_style = style.add_modifier(Modifier::ITALIC);
-            for child in node.children() {
-                render_markdown_node(child, builder, emph_style, list_depth);
-            }
-        }
-        NodeValue::Strikethrough => {
-            let strike_style = style.add_modifier(Modifier::CROSSED_OUT);
-            for child in node.children() {
-                render_markdown_node(child, builder, strike_style, list_depth);
-            }
-        }
-        NodeValue::SoftBreak | NodeValue::LineBreak => {
-            builder.new_line();
-        }
-        NodeValue::ThematicBreak => {
-            builder.push_span(Span::styled(
-                "--------------------------------".to_string(),
-                style.fg(Color::DarkGray),
-            ));
-            builder.new_line();
-        }
-        NodeValue::List(list) => {
-            let mut idx = 0usize;
-            for item in node.children() {
-                idx += 1;
-                let indent = "  ".repeat(list_depth);
-                let marker = match list.list_type {
-                    ListType::Bullet => "- ".to_string(),
-                    ListType::Ordered => format!("{}. ", idx),
-                };
-                builder.push_span(Span::raw(indent));
-                builder.push_span(Span::styled(
-                    marker,
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                render_markdown_node(item, builder, style, list_depth + 1);
-                builder.new_line();
-            }
-        }
-        NodeValue::Item(_) => {
-            for child in node.children() {
-                render_markdown_node(child, builder, style, list_depth);
-            }
-        }
-        NodeValue::Link(_) => {
-            let link_style = style
-                .fg(Color::Blue)
-                .add_modifier(Modifier::UNDERLINED | Modifier::BOLD);
-            for child in node.children() {
-                render_markdown_node(child, builder, link_style, list_depth);
-            }
-        }
-        _ => {
-            for child in node.children() {
-                render_markdown_node(child, builder, style, list_depth);
-            }
-        }
-    }
-}
-
-struct MdBuilder {
-    lines: Vec<Vec<Span<'static>>>,
-}
-
-impl MdBuilder {
-    fn new() -> Self {
-        Self {
-            lines: vec![Vec::new()],
-        }
-    }
-
-    fn push_span(&mut self, span: Span<'static>) {
-        if let Some(last) = self.lines.last_mut() {
-            last.push(span);
-        }
-    }
-
-    fn new_line(&mut self) {
-        if self.lines.last().map(|l| l.is_empty()).unwrap_or(false) {
-            return;
-        }
-        self.lines.push(Vec::new());
-    }
-
-    fn into_lines(mut self) -> Vec<Vec<Span<'static>>> {
-        while self.lines.len() > 1 && self.lines.last().is_some_and(|l| l.is_empty()) {
-            self.lines.pop();
-        }
-        if self.lines.is_empty() {
-            vec![vec![]]
-        } else {
-            self.lines
-        }
-    }
-}
-
 fn visible_messages(app: &TuiViewModel) -> (&[ChatMessage], usize, usize) {
     (
         &app.messages,
@@ -2900,7 +2518,11 @@ fn draw_slash_flow_body(
     let subtle_style = subtle_aux_text_style();
     let title_style = Style::default().fg(Color::Rgb(225, 225, 225));
     let header_height = if flow.show_filter {
-        if error.is_some() { 4 } else { 3 }
+        if error.is_some() {
+            4
+        } else {
+            3
+        }
     } else if error.is_some() {
         1
     } else {
@@ -4813,6 +4435,7 @@ mod tests {
             SubagentSessionSummaryView,
         },
     };
+    use std::collections::HashMap;
 
     fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
         lines
@@ -5119,16 +4742,12 @@ mod tests {
 
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("我已经梳理完主要模块。"))
-        );
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("先看一下项目结构。"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("我已经梳理完主要模块。")));
+        assert!(lines
+            .iter()
+            .all(|line| !line.contains("先看一下项目结构。")));
         assert!(lines.iter().all(|line| !line.contains("<think>")));
     }
 
@@ -5161,11 +4780,9 @@ mod tests {
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
         assert!(lines.iter().any(|line| line.contains("我来处理这个问题。")));
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("先检查当前渲染分支。"))
-        );
+        assert!(lines
+            .iter()
+            .all(|line| !line.contains("先检查当前渲染分支。")));
     }
 
     #[test]
@@ -5182,11 +4799,9 @@ mod tests {
         let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("先检查当前渲染分支。"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("先检查当前渲染分支。")));
     }
 
     #[test]
@@ -5203,16 +4818,12 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("已开始处理。")));
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("官方新闻抓取: 正在执行"))
-        );
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("| 官方新闻抓取: 正在执行"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("官方新闻抓取: 正在执行")));
+        assert!(lines
+            .iter()
+            .all(|line| !line.contains("| 官方新闻抓取: 正在执行")));
     }
 
     #[test]
@@ -5230,11 +4841,9 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("继续等待子会话返回。"))
-        );
+        assert!(lines
+            .iter()
+            .all(|line| !line.contains("继续等待子会话返回。")));
     }
 
     #[test]
@@ -5253,11 +4862,9 @@ mod tests {
         let lines = render_text_lines(build_history_lines(&app, 120));
 
         assert!(lines.iter().any(|line| line.contains("子代理已完成任务。")));
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("官方新闻抓取: 已完成"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("官方新闻抓取: 已完成")));
     }
 
     #[test]
@@ -5400,8 +5007,8 @@ mod tests {
     }
 
     #[test]
-    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message()
-     {
+    fn persisted_subagent_status_renders_as_separate_message_before_parent_reply_after_later_user_message(
+    ) {
         let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "子代理已完成任务。"));
         app.messages.push(ChatMessage::new(
             MessageRole::Agent,
@@ -5445,11 +5052,9 @@ mod tests {
         let lines = render_text_lines(build_subagent_history_lines(&view, false));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("先检查子会话当前进展。"))
-        );
+        assert!(lines
+            .iter()
+            .all(|line| !line.contains("先检查子会话当前进展。")));
     }
 
     #[test]
@@ -5463,11 +5068,9 @@ mod tests {
         let lines = render_text_lines(build_subagent_history_lines(&view, true));
 
         assert!(lines.iter().any(|line| line.contains("Thinking...")));
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("先检查子会话当前进展。"))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("先检查子会话当前进展。")));
     }
 
     #[test]
