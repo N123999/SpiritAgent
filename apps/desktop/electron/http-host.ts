@@ -632,6 +632,11 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/abort') {
+    writeJson(request, response, 200, await runHostCommand('abortConversation'));
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/approval') {
     writeJson(
       request,

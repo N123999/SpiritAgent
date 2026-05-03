@@ -1052,8 +1052,22 @@ export function useDesktopRuntime() {
       return;
     }
 
+    const interruptible =
+      snapshot?.conversation.isBusy === true &&
+      !snapshot.conversation.pendingToolApproval &&
+      !snapshot.conversation.pendingQuestions;
+    if (snapshot?.conversation.isBusy && !interruptible) {
+      setRuntimeError("当前正在等待审批或问卷，无法直接发送新消息。");
+      return;
+    }
+
     setBusyAction("send");
     try {
+      if (interruptible) {
+        const aborted = await api.abortConversation();
+        applySnapshot(aborted);
+      }
+
       const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
       const next = isCreateSkillSlashInput(text)
         ? await api.submitCreateSkillSlash({
@@ -1076,6 +1090,25 @@ export function useDesktopRuntime() {
       setBusyAction("");
     }
   }, [api, applySnapshot, composer, refreshSessions, snapshot]);
+
+  const abortConversation = useCallback(async (): Promise<boolean> => {
+    if (!api) {
+      return false;
+    }
+
+    try {
+      const next = await api.abortConversation();
+      applySnapshot(next);
+      setRuntimeError("");
+      if (!next.conversation.isBusy) {
+        void refreshSessions();
+      }
+      return true;
+    } catch (error) {
+      setRuntimeError(describeError(error));
+      return false;
+    }
+  }, [api, applySnapshot, refreshSessions]);
   
   const rewindAndSubmitMessage = useCallback(
     async (request: RewindAndSubmitMessageRequest): Promise<boolean> => {
@@ -1247,6 +1280,11 @@ export function useDesktopRuntime() {
         !snapshot.conversation.isBusy &&
         !snapshot.conversation.pendingToolApproval &&
         !snapshot.conversation.pendingQuestions,
+      canInterrupt:
+        !!snapshot?.runtimeReady &&
+        !!snapshot.conversation.isBusy &&
+        !snapshot.conversation.pendingToolApproval &&
+        !snapshot.conversation.pendingQuestions,
       hostStatus: hostError
         ? hostError
         : hostReady
@@ -1305,6 +1343,7 @@ export function useDesktopRuntime() {
     deleteMcpServer,
     deleteSkill,
     inspectMcpServer,
+    abortConversation,
     openSession,
     listWorkspaceExplorerChildren,
     readWorkspaceTextFile,

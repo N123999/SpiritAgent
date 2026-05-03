@@ -66,6 +66,7 @@ declare global {
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
     submitUserTurn(text: string): Promise<DesktopSnapshot>;
+    abortConversation(): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;

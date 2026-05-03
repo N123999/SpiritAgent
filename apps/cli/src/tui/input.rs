@@ -1,6 +1,12 @@
-use std::sync::mpsc::Receiver;
+use std::{
+    io::{self, Write},
+    sync::mpsc::Receiver,
+    time::{Duration, Instant},
+};
 
 use crate::view::MainInputMode;
+
+const INTERRUPT_ESCAPE_ARM_WINDOW: Duration = Duration::from_millis(800);
 
 pub(crate) struct InputState {
     pub(crate) value: String,
@@ -223,12 +229,61 @@ impl TuiShell {
         self.input.cursor = self.input.cursor.min(self.input_len_chars());
     }
 
+    pub fn can_interrupt_current_turn(&self) -> bool {
+        self.runtime.is_busy()
+            && !self.runtime.has_pending_tool_approval()
+            && self.runtime.pending_aux_state().is_some()
+    }
+
+    pub fn clear_interrupt_escape_arm(&mut self) {
+        self.interrupt_escape_armed_at = None;
+    }
+
+    pub fn handle_interrupt_escape_key(&mut self, now: Instant) -> bool {
+        if !self.can_interrupt_current_turn() {
+            self.clear_interrupt_escape_arm();
+            return false;
+        }
+
+        match self.interrupt_escape_armed_at {
+            Some(armed_at) if now.duration_since(armed_at) <= INTERRUPT_ESCAPE_ARM_WINDOW => {
+                self.abort_current_turn();
+            }
+            _ => {
+                self.ring_failure_bell();
+                self.interrupt_escape_armed_at = Some(now);
+            }
+        }
+        true
+    }
+
+    pub fn abort_current_turn(&mut self) {
+        if !self.can_interrupt_current_turn() {
+            self.clear_interrupt_escape_arm();
+            return;
+        }
+
+        self.runtime.abort();
+        self.apply_runtime_events();
+        self.sync_welcome_mcp_status();
+        self.scroll_history_to_bottom();
+        self.clear_interrupt_escape_arm();
+    }
+
+    fn ring_failure_bell(&self) {
+        let mut stderr = io::stderr();
+        let _ = stderr.write_all(b"\x07");
+        let _ = stderr.flush();
+    }
+
     pub fn submit_input(&mut self) {
         let raw_message = self.input.value.clone();
         let trimmed_message = raw_message.trim();
         if trimmed_message.is_empty() {
             return;
         }
+
+        self.clear_interrupt_escape_arm();
 
         self.clear_conversation_selection();
 
@@ -281,12 +336,16 @@ impl TuiShell {
         self.scroll_history_to_bottom();
 
         if self.runtime.is_busy() {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: t!("tui.busy.pending_reply").into_owned(),
-                tool_block: None,
-            });
-            return;
+            if self.can_interrupt_current_turn() {
+                self.abort_current_turn();
+            } else {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: t!("tui.busy.pending_reply").into_owned(),
+                    tool_block: None,
+                });
+                return;
+            }
         }
 
         let mut user_content = raw_message.clone();

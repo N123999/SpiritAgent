@@ -198,6 +198,10 @@ impl RuntimeHandle {
         self.runtime.is_busy()
     }
 
+    pub fn abort(&mut self) {
+        self.runtime.abort()
+    }
+
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
         self.runtime.drain_events()
     }

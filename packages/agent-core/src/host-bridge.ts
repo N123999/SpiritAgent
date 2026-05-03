@@ -1584,6 +1584,11 @@ peer.on('runtime.poll', async () => {
   return null;
 });
 
+peer.on('runtime.abort', async () => {
+  requireRuntime().abort();
+  return null;
+});
+
 peer.on('runtime.drainEvents', async () => drainEvents());
 peer.on('runtime.snapshot', async () => buildSnapshot(requireRuntime()));
 

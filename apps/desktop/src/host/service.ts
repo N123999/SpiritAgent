@@ -256,6 +256,7 @@ type CommandPayloads = {
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
   submitSkillSlash: { request: SubmitSkillSlashRequest };
   submitUserTurn: { text: string };
+  abortConversation: undefined;
   poll: undefined;
   listDreamsOverview: undefined;
   replyPendingApproval: { message: string };
@@ -1014,6 +1015,34 @@ class DesktopHostService {
     });
   }
 
+  async abortConversation(): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      const runtime = this.requireRuntime();
+      const interruptible =
+        runtime.isBusy() &&
+        !runtime.currentPendingApproval() &&
+        !runtime.currentPendingQuestions();
+
+      if (!interruptible) {
+        return this.buildSnapshot();
+      }
+
+      runtime.abort();
+      this.currentTurnSkills = [];
+      this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
+      this.runtimeEvents.consumeCompletedTurnResult();
+      this.runtimeEvents.syncPendingToolStates();
+      this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
+      await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
+      if (!runtime.isBusy()) {
+        await this.refreshGitState();
+      }
+      return this.buildSnapshot();
+    });
+  }
+
   async rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
@@ -1499,6 +1528,8 @@ class DesktopHostService {
         const typedPayload = payload as CommandPayloads['submitUserTurn'];
         return this.submitUserTurn(typedPayload.text);
       }
+      case 'abortConversation':
+        return this.abortConversation();
       case 'poll':
         return this.poll();
       case 'listDreamsOverview':

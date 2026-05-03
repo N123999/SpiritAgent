@@ -424,7 +424,16 @@ fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
         MainInputMode::Agent => t!("ui.footer.mode.agent"),
         MainInputMode::Plan => t!("ui.footer.mode.plan"),
     };
-    let left_label = format!("{}  |  {}", t!("ui.footer.preview"), mode_label);
+    let left_label = if app.pending_response_active && app.pending_aux_state().is_some() {
+        format!(
+            "{}  |  {}  |  {}",
+            t!("ui.footer.preview"),
+            mode_label,
+            t!("ui.footer.interrupt_reply_hint")
+        )
+    } else {
+        format!("{}  |  {}", t!("ui.footer.preview"), mode_label)
+    };
     let right_label = app.config.active_model.as_str();
     let side_padding = if width >= 12 {
         2

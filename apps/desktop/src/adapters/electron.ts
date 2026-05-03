@@ -87,6 +87,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     submitUserTurn(text) {
       return bridge.submitUserTurn(text);
     },
+    abortConversation() {
+      return bridge.abortConversation();
+    },
     rewindAndSubmitMessage(request) {
       return bridge.rewindAndSubmitMessage(request);
     },

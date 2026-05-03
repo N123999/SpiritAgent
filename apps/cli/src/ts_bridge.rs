@@ -1061,6 +1061,19 @@ impl TsBridgeRuntime {
         self.is_busy_cache
     }
 
+    pub fn abort(&mut self) {
+        if self.bridge_failed {
+            return;
+        }
+        if let Err(err) = self.call_bridge("runtime.abort", None) {
+            self.handle_bridge_error(err);
+            return;
+        }
+        if let Err(err) = self.sync_after_command() {
+            self.handle_bridge_error(err);
+        }
+    }
+
     pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
         self.events.drain(..).collect()
     }

@@ -36,6 +36,7 @@ export type HostCommandName =
   | 'submitCreateSkillSlash'
   | 'submitSkillSlash'
   | 'submitUserTurn'
+  | 'abortConversation'
   | 'poll'
   | 'listDreamsOverview'
   | 'replyPendingApproval'

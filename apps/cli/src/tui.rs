@@ -11,7 +11,7 @@ use std::{
         Arc,
     },
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
@@ -91,6 +91,7 @@ pub struct TuiShell {
     image_picker_files: Vec<String>,
     forms: BottomFormUiState,
     conversation: ConversationUiState,
+    interrupt_escape_armed_at: Option<Instant>,
     should_quit: bool,
     runtime: RuntimeHandle,
     config_store: Box<dyn ConfigStore>,
@@ -173,6 +174,7 @@ impl TuiShell {
             image_picker_files: vec![],
             forms: BottomFormUiState::default(),
             conversation: ConversationUiState::default(),
+            interrupt_escape_armed_at: None,
             should_quit: false,
             runtime,
             config_store,
@@ -299,12 +301,18 @@ impl TuiShell {
         self.sync_welcome_mcp_status();
         self.refresh_active_subagent_view();
         self.refresh_plan_metadata_from_disk();
+        if !self.can_interrupt_current_turn() {
+            self.clear_interrupt_escape_arm();
+        }
     }
 
     pub fn handle_stream_stall_timeout(&mut self) {
         self.runtime.handle_stream_stall_timeout();
         self.apply_runtime_events();
         self.sync_welcome_mcp_status();
+        if !self.can_interrupt_current_turn() {
+            self.clear_interrupt_escape_arm();
+        }
     }
 
     pub fn tick(&mut self) {

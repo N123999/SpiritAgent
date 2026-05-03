@@ -846,6 +846,13 @@ fn process_key_event(
         matches!(key.code, KeyCode::Enter) && enter_should_insert_newline(key.modifiers);
     maybe_log_key_event(&key, should_insert_newline);
 
+    if matches!(key.code, KeyCode::Esc) && shell.handle_interrupt_escape_key(now) {
+        return;
+    }
+    if !matches!(key.code, KeyCode::Esc) {
+        shell.clear_interrupt_escape_arm();
+    }
+
     match key.code {
         KeyCode::Esc => shell.request_quit(),
         KeyCode::Char(ch)

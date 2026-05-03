@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   submitUserTurn(text: string) {
     return ipcRenderer.invoke('desktop:invoke', 'submitUserTurn', { text });
   },
+  abortConversation() {
+    return ipcRenderer.invoke('desktop:invoke', 'abortConversation');
+  },
   rewindAndSubmitMessage(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'rewindAndSubmitMessage', { request });
   },

@@ -513,6 +513,35 @@ export class AgentRuntime<
     );
   }
 
+  abort(): void {
+    if (!this.isBusy()) {
+      return;
+    }
+
+    const hasPendingAssistantText = this.pendingAssistantTextStore.trim().length > 0;
+
+    if (hasPendingAssistantText) {
+      this.historyStore.push({
+        role: 'assistant',
+        content: this.pendingAssistantTextStore,
+        imagePaths: [],
+      });
+      this.emitEvent({ kind: 'assistant-response-completed' });
+    } else {
+      this.emitEvent({ kind: 'remove-pending-assistant' });
+    }
+
+    this.pendingUserTurnStore = undefined;
+    this.pendingApproval = undefined;
+    this.pendingManualApproval = undefined;
+    this.pendingQuestions = undefined;
+    this.pendingSubagentExecution?.childRuntime.abort();
+    this.pendingSubagentExecution = undefined;
+    this.pendingBackgroundToolStatusStore = undefined;
+    this.clearPendingStreamingState();
+    this.clearPendingNonStreamingState();
+  }
+
   hasPendingManualApproval(): boolean {
     return (
       this.pendingManualApproval !== undefined ||

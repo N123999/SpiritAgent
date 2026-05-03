@@ -124,6 +124,9 @@ export function createWebHostApi(): HostApi {
     submitUserTurn(text: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/submit', { text });
     },
+    abortConversation() {
+      return post<DesktopSnapshot>(baseUrl, '/api/abort');
+    },
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/rewind-submit', request);
     },

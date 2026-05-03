@@ -10,6 +10,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Square,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -296,10 +297,12 @@ type ComposerSurfaceProps = {
   activeModel: string;
   planMode: boolean;
   canSend: boolean;
+  canAbort?: boolean;
   busy: boolean;
   readOnly?: boolean;
   onChange(value: string): void;
   onSubmit(): void;
+  onAbort?(): void;
   onModelSelect(name: string): void;
   onPlanModeChange(planMode: boolean): void;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
@@ -314,10 +317,12 @@ function ComposerSurface({
   activeModel,
   planMode,
   canSend,
+  canAbort = false,
   busy,
   readOnly = false,
   onChange,
   onSubmit,
+  onAbort,
   onModelSelect,
   onPlanModeChange,
   textareaRef,
@@ -362,7 +367,7 @@ function ComposerSurface({
           }
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
-            if (canSend && !busy) {
+            if (canSend) {
               onSubmit();
             }
           }
@@ -463,11 +468,13 @@ function ComposerSurface({
           <Button
             type="button"
             className="size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5"
-            onClick={onSubmit}
-            disabled={!canSend || busy}
-            title="发送（Ctrl+Enter）"
+            onClick={canAbort ? onAbort : onSubmit}
+            disabled={canAbort ? false : !canSend || busy}
+            title={canAbort ? "中止" : "发送（Ctrl+Enter）"}
           >
-            {busy ? (
+            {canAbort ? (
+              <Square className="size-3.5" strokeWidth={2.4} aria-hidden />
+            ) : busy ? (
               <LoaderCircle className="size-3.5 animate-spin" />
             ) : (
               <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
@@ -1082,6 +1089,15 @@ export default function App() {
   const rewindWarnings = snapshot?.conversation.rewindWarnings ?? [];
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
   const pendingQuestions = runtime.pendingQuestions;
+  const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
+  const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
+  const composerCanSend =
+    Boolean(runtime.composer.trim()) &&
+    !activeSessionReadOnly &&
+    runtime.busyAction !== "session" &&
+    !pendingApproval &&
+    !pendingQuestions &&
+    !(runtime.busyAction === "send" && !conversationInterruptible);
   const [rewindDraft, setRewindDraft] = useState<MessageRewindDraftState | null>(null);
 
   const [activeSurface, setActiveSurface] = useState<"conversation" | "settings" | "marketplace">(
@@ -1099,7 +1115,6 @@ export default function App() {
   const [commitMessageDraft, setCommitMessageDraft] = useState("");
   const [commitMode, setCommitMode] = useState<DesktopCommitMode>("commit");
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
-  const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
   const canOpenCommitDialog = snapshot?.git.isRepository === true;
   const commitBusy = runtime.busyAction === "git";
   const commitActionDisabled =
@@ -1592,6 +1607,7 @@ export default function App() {
                     value={runtime.composer}
                     onChange={runtime.setComposer}
                     onSubmit={() => void runtime.sendMessage()}
+                    onAbort={() => void runtime.abortConversation()}
                     placeholder={activeSessionReadOnly ? "调试会话只读，无法发送消息…" : "输入消息…"}
                     models={models}
                     catalogHints={snapshot?.config.modelCatalogHints}
@@ -1603,13 +1619,9 @@ export default function App() {
                     }}
                     textareaRef={composerTextareaRef}
                     onKeyDown={handleComposerSlashKeyDown}
-                    canSend={
-                      runtime.summary.canSend &&
-                      !activeSessionReadOnly &&
-                      runtime.busyAction !== "send" &&
-                      runtime.busyAction !== "session"
-                    }
-                    busy={runtime.busyAction === "send"}
+                    canSend={composerCanSend}
+                    canAbort={conversationInterruptible}
+                    busy={runtime.busyAction === "send" && !conversationInterruptible}
                     readOnly={activeSessionReadOnly}
                   />
                   {snapshot?.conversation.pendingQuestions ? (
