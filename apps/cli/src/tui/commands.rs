@@ -1,3 +1,6 @@
+use super::image_paths::{
+    is_supported_image_path, parse_image_path_and_prompt, trim_wrapped_quotes,
+};
 use super::mcp_actions::{classify_prompt_tail, non_empty_opt, PromptTail};
 use super::*;
 
@@ -1071,4 +1074,60 @@ impl TuiShell {
         }
         true
     }
+}
+
+fn split_first_token(input: &str) -> Option<(&str, &str)> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    for (idx, ch) in trimmed.char_indices() {
+        if ch.is_whitespace() {
+            let first = &trimmed[..idx];
+            let rest = trimmed[idx..].trim();
+            return Some((first, rest));
+        }
+    }
+
+    Some((trimmed, ""))
+}
+
+fn format_extension_list_message(entries: &[CliExtensionEntry]) -> String {
+    if entries.is_empty() {
+        return t!("tui.extensions.list_empty").into_owned();
+    }
+
+    let mut lines = vec!["扩展列表:".to_string()];
+    for entry in entries {
+        lines.push(format!("- {}", entry.display_name));
+        lines.push(format!("  id: {}", entry.id));
+        lines.push(format!("  version: {}", entry.version));
+        if let Some(description) = entry
+            .description
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            lines.push(format!("  description: {}", description));
+        }
+        if let Some(author) = entry
+            .author
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            lines.push(format!("  author: {}", author));
+        }
+        if let Some(main) = entry.main.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("  main: {}", main));
+        }
+        if let Some(file_name) = entry
+            .archive_file_name
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            lines.push(format!("  source: {}", file_name));
+        }
+    }
+
+    lines.join("\n")
 }

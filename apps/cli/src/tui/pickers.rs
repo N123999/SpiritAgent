@@ -1,3 +1,4 @@
+use super::image_paths::list_local_image_files;
 use super::*;
 
 impl TuiShell {

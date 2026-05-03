@@ -1,5 +1,7 @@
+use super::TuiShell;
 use crate::{
     conversation_select::{normalize_selection, selection_plain_text, CellPointer},
+    ui::UiRenderFeedback,
     view::ConversationPanelHit,
 };
 
@@ -103,5 +105,72 @@ impl ConversationUiState {
         if let Some(point) = &mut self.sel_head {
             *point = clamp(*point);
         }
+    }
+}
+impl TuiShell {
+    pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
+        self.conversation.note_panel(hit, plain_rows);
+    }
+
+    pub fn apply_render_feedback(&mut self, feedback: UiRenderFeedback) {
+        if let Some(conversation) = feedback.conversation_panel {
+            self.conversation.history_offset_from_bottom = conversation.history_offset_from_bottom;
+            self.note_conversation_panel(conversation.hit, conversation.plain_rows);
+        }
+
+        if let Some(scroll_offset) = feedback.bottom_form_scroll_offset {
+            self.sync_active_bottom_form_scroll(scroll_offset);
+        }
+
+        if let Some(offset) = feedback.subagent_history_offset_from_bottom {
+            self.subagent.history_offset_from_bottom = offset;
+        }
+    }
+
+    pub fn clear_conversation_selection(&mut self) {
+        self.conversation.clear_selection();
+    }
+
+    /// `column`, `row`：crossterm 终端坐标（与 ratatui 一致）。
+    pub fn conversation_pointer_from_mouse(&self, column: u16, row: u16) -> Option<(usize, usize)> {
+        self.conversation.pointer_from_mouse(column, row)
+    }
+
+    pub fn conversation_left_down(&mut self, column: u16, row: u16) {
+        self.conversation.left_down(column, row);
+    }
+
+    pub fn conversation_left_drag(&mut self, column: u16, row: u16) {
+        self.conversation.left_drag(column, row);
+    }
+
+    pub fn conversation_left_up(&mut self) {
+        self.conversation.left_up();
+    }
+
+    pub fn copy_conversation_selection(&mut self) -> Result<(), String> {
+        self.conversation.copy_selection()
+    }
+
+    pub fn scroll_history_up(&mut self, lines: usize) {
+        self.conversation.history_offset_from_bottom = self
+            .conversation
+            .history_offset_from_bottom
+            .saturating_add(lines);
+    }
+
+    pub fn scroll_history_down(&mut self, lines: usize) {
+        self.conversation.history_offset_from_bottom = self
+            .conversation
+            .history_offset_from_bottom
+            .saturating_sub(lines);
+    }
+
+    pub fn scroll_history_to_top(&mut self) {
+        self.conversation.history_offset_from_bottom = usize::MAX;
+    }
+
+    pub fn scroll_history_to_bottom(&mut self) {
+        self.conversation.history_offset_from_bottom = 0;
     }
 }
