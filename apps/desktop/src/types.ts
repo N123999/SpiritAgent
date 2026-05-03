@@ -575,6 +575,7 @@ export interface ConversationMessageSnapshot {
   aux?: MessageAuxSnapshot;
   pending: boolean;
   canRewind?: boolean;
+  canContinue?: boolean;
 }
 
 export interface MessageRewindDraftState {

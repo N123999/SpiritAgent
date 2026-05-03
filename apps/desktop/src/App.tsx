@@ -569,6 +569,8 @@ function MessageCard({
   message,
   listIndex,
   compactAfterPrevious,
+  canContinue,
+  continueBusy,
   rewindText,
   rewindSelected,
   rewindCanSubmit,
@@ -577,6 +579,7 @@ function MessageCard({
   catalogHints,
   activeModel,
   planMode,
+  onContinue,
   onRewindChange,
   onRewindStart,
   onRewindSubmit,
@@ -586,6 +589,8 @@ function MessageCard({
   message: ConversationMessageSnapshot;
   listIndex: number;
   compactAfterPrevious: boolean;
+  canContinue: boolean;
+  continueBusy: boolean;
   rewindText: string;
   rewindSelected: boolean;
   rewindCanSubmit: boolean;
@@ -594,6 +599,7 @@ function MessageCard({
   catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
   activeModel: string;
   planMode: boolean;
+  onContinue(message: ConversationMessageSnapshot): void;
   onRewindChange(value: string): void;
   onRewindStart(message: ConversationMessageSnapshot): void;
   onRewindSubmit(): void;
@@ -686,6 +692,20 @@ function MessageCard({
             <MarkdownMessage content={message.content} className="font-sans" />
           </div>
         ) : null}
+        {!isUser && canContinue ? (
+          <div className="ml-auto flex max-w-[min(72%,22rem)] justify-end pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-4"
+              onClick={() => onContinue(message)}
+              disabled={continueBusy}
+            >
+              继续
+            </Button>
+          </div>
+        ) : null}
         {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
       </div>
     </div>
@@ -708,11 +728,18 @@ function shouldCompactAfterPreviousMessage(
   previous: ConversationMessageSnapshot | undefined,
   current: ConversationMessageSnapshot,
 ): boolean {
+  const currentHasStandaloneAux = Boolean(
+    current.role === "assistant" &&
+      !current.tool &&
+      (current.aux?.thinking?.trim() || current.aux?.compaction?.trim()),
+  );
+
   return Boolean(
     isStandaloneAssistantAuxMessage(previous) &&
       current.role === "assistant" &&
       !current.tool &&
-      current.content.trim(),
+      current.content.trim() &&
+      !currentHasStandaloneAux,
   );
 }
 
@@ -1091,6 +1118,7 @@ export default function App() {
   const pendingQuestions = runtime.pendingQuestions;
   const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
   const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
+  const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
   const composerCanSend =
     Boolean(runtime.composer.trim()) &&
     !activeSessionReadOnly &&
@@ -1489,6 +1517,12 @@ export default function App() {
                             listIndex={index}
                             message={message}
                             compactAfterPrevious={shouldCompactAfterPreviousMessage(messages[index - 1], message)}
+                            canContinue={
+                              message.canContinue === true &&
+                              !activeSessionReadOnly &&
+                              snapshot?.conversation.isBusy !== true
+                            }
+                            continueBusy={continueBusy}
                             rewindSelected={rewindDraft?.messageId === message.id}
                             rewindText={
                               rewindDraft?.messageId === message.id ? rewindDraft.text : ""
@@ -1504,6 +1538,9 @@ export default function App() {
                             catalogHints={snapshot?.config.modelCatalogHints}
                             activeModel={runtime.settings.activeModel}
                             planMode={runtime.settings.planMode}
+                            onContinue={(targetMessage) => {
+                              void runtime.continueAssistantCompletion(targetMessage.id);
+                            }}
                             onRewindStart={startMessageRewind}
                             onRewindChange={(value) => {
                               setRewindDraft((current) =>

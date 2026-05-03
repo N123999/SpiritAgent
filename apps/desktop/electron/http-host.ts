@@ -637,6 +637,18 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/continue') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('continueAssistantCompletion', {
+        messageId: typeof jsonBody?.messageId === 'number' ? jsonBody.messageId : NaN,
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/approval') {
     writeJson(
       request,

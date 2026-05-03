@@ -747,6 +747,38 @@ export class AgentRuntime<
     );
   }
 
+  async continueAssistantCompletionStreaming(): Promise<void> {
+    if (this.isBusy()) {
+      throw new Error('当前已有响应或审批在处理中，请稍候。');
+    }
+
+    const history = cloneHistory(this.historyStore);
+    const lastHistoryMessage = history.at(-1);
+    if (
+      !lastHistoryMessage ||
+      (lastHistoryMessage.role !== 'assistant' && lastHistoryMessage.role !== 'user') ||
+      !lastHistoryMessage.content.trim()
+    ) {
+      throw new Error('当前没有可继续补全的回复。');
+    }
+
+    this.completedTurnResultStore = undefined;
+    const pendingUserInput =
+      [...history]
+        .reverse()
+        .find((message) => message.role === 'user' && message.content.trim())
+        ?.content ?? '';
+    const state = this.options.createContinuationState
+      ? this.options.createContinuationState(history)
+      : this.options.createToolAgentState(history, '');
+    await this.startStreamingRound(
+      state,
+      pendingUserInput,
+      createTurnContext<ToolRequest>(),
+      true,
+    );
+  }
+
   async poll(): Promise<void> {
     await this.pollPendingStreamingRound();
     await this.pollPendingToolAgentRound();

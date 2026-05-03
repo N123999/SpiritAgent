@@ -9,6 +9,7 @@ import {
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
+  continueOpenAiToolAgentState,
   extractLastOpenAiAssistantText,
   OpenAiTransport,
   buildToolAgentHostPrompt,
@@ -1178,6 +1179,17 @@ async function createRuntime(
     llmTransport,
     toolExecutor,
     createToolAgentState,
+    createContinuationState: (messages) =>
+      continueOpenAiToolAgentState(
+        messages,
+        workspaceRoot,
+        enabledRules,
+        enabledSkillCatalog,
+        activeSkills,
+        config.model,
+        planMetadata,
+        extensionSystemPrompts,
+      ),
     appendToolResultMessage: appendOpenAiToolResultMessage,
     appendUserMessage: appendOpenAiUserMessage,
     extractAssistantText: extractLastOpenAiAssistantText,
@@ -1586,6 +1598,11 @@ peer.on('runtime.poll', async () => {
 
 peer.on('runtime.abort', async () => {
   requireRuntime().abort();
+  return null;
+});
+
+peer.on('runtime.continueAssistantCompletionStreaming', async () => {
+  await requireRuntime().continueAssistantCompletionStreaming();
   return null;
 });
 

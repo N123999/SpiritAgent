@@ -293,6 +293,7 @@ export interface AgentRuntimeOptions<
   llmTransport: LlmTransport<Config, State>;
   toolExecutor: ToolExecutor<ToolRequest, TrustTarget>;
   createToolAgentState: (history: LlmMessage[], userInput: string) => State;
+  createContinuationState?: (history: LlmMessage[]) => State;
   appendToolResultMessage: (state: State, toolCallId: string, content: string) => State;
   appendUserMessage?: (state: State, content: string) => State;
   extractAssistantText: (state: State) => string | undefined;

@@ -68,6 +68,7 @@ export interface HostApi {
   submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
   submitUserTurn(text: string): Promise<DesktopSnapshot>;
   abortConversation(): Promise<DesktopSnapshot>;
+  continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;

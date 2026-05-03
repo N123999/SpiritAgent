@@ -257,6 +257,7 @@ type CommandPayloads = {
   submitSkillSlash: { request: SubmitSkillSlashRequest };
   submitUserTurn: { text: string };
   abortConversation: undefined;
+  continueAssistantCompletion: { messageId: number };
   poll: undefined;
   listDreamsOverview: undefined;
   replyPendingApproval: { message: string };
@@ -1019,6 +1020,9 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
+      const interruptedAssistantText = runtime.pendingAssistantText().trim();
+      const interruptedAssistantAuxText =
+        runtime.thinkingText().trim() || runtime.compactionText().trim();
       const interruptible =
         runtime.isBusy() &&
         !runtime.currentPendingApproval() &&
@@ -1034,7 +1038,48 @@ class DesktopHostService {
       this.runtimeEvents.consumeCompletedTurnResult();
       this.runtimeEvents.syncPendingToolStates();
       this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
+      if (interruptedAssistantText || interruptedAssistantAuxText) {
+        this.markAssistantMessageContinuable(interruptedAssistantText);
+      }
       await this.persistCurrentSessionIfNeeded();
+      await this.flushDeferredRuntimeRefreshIfIdle();
+      if (!runtime.isBusy()) {
+        await this.refreshGitState();
+      }
+      return this.buildSnapshot();
+    });
+  }
+
+  async continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      const runtime = this.requireRuntime();
+      if (runtime.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+      if (!Number.isFinite(messageId)) {
+        throw new Error('消息 id 无效。');
+      }
+
+      const state = this.requireState();
+      if (state.activeSession?.readOnly) {
+        throw new Error('当前调试会话为只读，无法继续补全。');
+      }
+
+      const continuable = this.latestContinuableAssistantMessage();
+      if (!continuable || continuable.id !== messageId) {
+        throw new Error('当前消息已不可继续补全。');
+      }
+
+      this.clearAssistantContinuationMarkers();
+      await this.persistCurrentSessionIfNeeded();
+      await runtime.continueAssistantCompletionStreaming();
+      this.refreshArchiveFromRuntime();
+      await runtime.poll();
+      this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
+      this.runtimeEvents.consumeCompletedTurnResult();
+      this.runtimeEvents.syncPendingToolStates();
+      this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
       await this.flushDeferredRuntimeRefreshIfIdle();
       if (!runtime.isBusy()) {
         await this.refreshGitState();
@@ -1132,6 +1177,7 @@ class DesktopHostService {
     if (!options.preserveRewindWarnings) {
       state.rewindWarnings = [];
     }
+    this.clearAssistantContinuationMarkers();
     this.currentTurnSkills = cloneActiveSkills(options.turnSkills ?? []);
     this.ensureActiveSession(displayText);
     const beforeUserCheckpoint = this.buildRewindCheckpointSnapshot();
@@ -1182,6 +1228,7 @@ class DesktopHostService {
   ): Promise<DesktopSnapshot> {
     const state = this.requireState();
     state.rewindWarnings = [];
+    this.clearAssistantContinuationMarkers();
     this.ensureActiveSession(displayText);
     state.messages.push({
       id: this.allocateMessageId(),
@@ -1530,6 +1577,10 @@ class DesktopHostService {
       }
       case 'abortConversation':
         return this.abortConversation();
+      case 'continueAssistantCompletion': {
+        const typedPayload = payload as CommandPayloads['continueAssistantCompletion'];
+        return this.continueAssistantCompletion(typedPayload.messageId);
+      }
       case 'poll':
         return this.poll();
       case 'listDreamsOverview':
@@ -2213,6 +2264,55 @@ class DesktopHostService {
       };
       return [entry];
     });
+  }
+
+  private clearAssistantContinuationMarkers(): void {
+    const messages = this.requireState().messages;
+    for (const message of messages) {
+      delete message.canContinue;
+    }
+  }
+
+  private markAssistantMessageContinuable(content: string): void {
+    const normalized = content.trim();
+    this.clearAssistantContinuationMarkers();
+
+    const messages = this.requireState().messages;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      const hasRenderableAux = Boolean(
+        message.aux?.thinking?.trim() || message.aux?.compaction?.trim(),
+      );
+      if (
+        message.role !== 'assistant' ||
+        message.tool ||
+        message.pending ||
+        (!message.content.trim() && !hasRenderableAux)
+      ) {
+        continue;
+      }
+      if (normalized && message.content.trim() !== normalized) {
+        continue;
+      }
+      message.canContinue = true;
+      return;
+    }
+  }
+
+  private latestContinuableAssistantMessage(): ConversationMessageSnapshot | undefined {
+    const messages = this.requireState().messages;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      if (
+        message.role === 'assistant' &&
+        !message.tool &&
+        !message.pending &&
+        message.canContinue === true
+      ) {
+        return message;
+      }
+    }
+    return undefined;
   }
 
   private refreshArchiveFromRuntime(): void {

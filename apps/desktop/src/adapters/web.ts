@@ -127,6 +127,9 @@ export function createWebHostApi(): HostApi {
     abortConversation() {
       return post<DesktopSnapshot>(baseUrl, '/api/abort');
     },
+    continueAssistantCompletion(messageId: number) {
+      return post<DesktopSnapshot>(baseUrl, '/api/continue', { messageId });
+    },
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/rewind-submit', request);
     },

@@ -82,6 +82,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   abortConversation() {
     return ipcRenderer.invoke('desktop:invoke', 'abortConversation');
   },
+  continueAssistantCompletion(messageId: number) {
+    return ipcRenderer.invoke('desktop:invoke', 'continueAssistantCompletion', { messageId });
+  },
   rewindAndSubmitMessage(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'rewindAndSubmitMessage', { request });
   },

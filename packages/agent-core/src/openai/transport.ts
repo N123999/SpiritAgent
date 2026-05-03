@@ -202,12 +202,70 @@ export function startOpenAiToolAgentState(
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
 ): OpenAiToolAgentState {
+  const messages = buildOpenAiToolAgentMessages(
+    history,
+    assetRoot,
+    enabledRules,
+    enabledSkillCatalog,
+    activeSkills,
+    model,
+    planMetadata,
+    extensionSystemPrompts,
+  );
+
+  const lastRole = messages.at(-1);
+  const needAppendUser = !isJsonObject(lastRole) || lastRole.role !== 'user';
+  if (needAppendUser) {
+    messages.push({ role: 'user', content: userInput });
+  }
+
+  return {
+    messages,
+    steps: 0,
+  };
+}
+
+export function continueOpenAiToolAgentState(
+  history: LlmMessage[],
+  assetRoot = process.cwd(),
+  enabledRules: OpenAiEnabledRule[] = [],
+  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [],
+  activeSkills: OpenAiActiveSkill[] = [],
+  model: string,
+  planMetadata?: OpenAiPlanMetadata,
+  extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
+): OpenAiToolAgentState {
+  return {
+    messages: buildOpenAiToolAgentMessages(
+      history,
+      assetRoot,
+      enabledRules,
+      enabledSkillCatalog,
+      activeSkills,
+      model,
+      planMetadata,
+      extensionSystemPrompts,
+    ),
+    steps: 0,
+  };
+}
+
+function buildOpenAiToolAgentMessages(
+  history: LlmMessage[],
+  assetRoot: string,
+  enabledRules: OpenAiEnabledRule[],
+  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
+  activeSkills: OpenAiActiveSkill[],
+  model: string,
+  planMetadata: OpenAiPlanMetadata | undefined,
+  extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
+): JsonValue[] {
   const rulesSystemMessage = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
   const planSystemMessage = buildPlanSystemMessage(planMetadata);
   const activeSkillsSystemMessage = buildActiveSkillsSystemMessage(activeSkills);
   const extensionsSystemMessage = buildExtensionsSystemMessage(extensionSystemPrompts);
-  const messages: JsonValue[] = [
+  return [
     {
       role: 'system',
       content: buildPrimarySystemMessage(
@@ -221,17 +279,6 @@ export function startOpenAiToolAgentState(
     },
     ...llmHistoryToOpenAiMessages(history, assetRoot),
   ];
-
-  const lastRole = messages.at(-1);
-  const needAppendUser = !isJsonObject(lastRole) || lastRole.role !== 'user';
-  if (needAppendUser) {
-    messages.push({ role: 'user', content: userInput });
-  }
-
-  return {
-    messages,
-    steps: 0,
-  };
 }
 
 export function appendOpenAiToolResultMessages(

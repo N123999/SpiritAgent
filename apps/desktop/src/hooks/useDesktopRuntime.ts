@@ -43,6 +43,7 @@ type BusyAction =
   | ""
   | "bootstrap"
   | "send"
+  | "continue"
   | "rewind"
   | "approve"
   | "questions"
@@ -1109,6 +1110,31 @@ export function useDesktopRuntime() {
       return false;
     }
   }, [api, applySnapshot, refreshSessions]);
+
+  const continueAssistantCompletion = useCallback(
+    async (messageId: number): Promise<boolean> => {
+      if (!api) {
+        return false;
+      }
+
+      setBusyAction("continue");
+      try {
+        const next = await api.continueAssistantCompletion(messageId);
+        applySnapshot(next);
+        setRuntimeError("");
+        if (!next.conversation.isBusy) {
+          void refreshSessions();
+        }
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot, refreshSessions],
+  );
   
   const rewindAndSubmitMessage = useCallback(
     async (request: RewindAndSubmitMessageRequest): Promise<boolean> => {
@@ -1344,6 +1370,7 @@ export function useDesktopRuntime() {
     deleteSkill,
     inspectMcpServer,
     abortConversation,
+    continueAssistantCompletion,
     openSession,
     listWorkspaceExplorerChildren,
     readWorkspaceTextFile,

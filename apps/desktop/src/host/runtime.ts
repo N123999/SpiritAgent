@@ -2,6 +2,7 @@ import {
   AgentRuntime,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
+  continueOpenAiToolAgentState,
   extractLastOpenAiAssistantText,
   pendingWorkspaceFilesFromInput,
   rebuildOpenAiToolAgentStateAfterCompaction,
@@ -49,6 +50,17 @@ export function createDesktopRuntime(input: {
       startOpenAiToolAgentState(
         messages,
         userInput,
+        input.workspaceRoot,
+        input.enabledRules,
+        input.enabledSkillCatalog,
+        cloneActiveSkills(input.activeSkills),
+        input.transportConfig.model,
+        input.planMetadata,
+        input.extensionSystemPrompts,
+      ),
+    createContinuationState: (messages) =>
+      continueOpenAiToolAgentState(
+        messages,
         input.workspaceRoot,
         input.enabledRules,
         input.enabledSkillCatalog,

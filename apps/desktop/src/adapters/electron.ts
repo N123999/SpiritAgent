@@ -90,6 +90,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     abortConversation() {
       return bridge.abortConversation();
     },
+    continueAssistantCompletion(messageId) {
+      return bridge.continueAssistantCompletion(messageId);
+    },
     rewindAndSubmitMessage(request) {
       return bridge.rewindAndSubmitMessage(request);
     },
