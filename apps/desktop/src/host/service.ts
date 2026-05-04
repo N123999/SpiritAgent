@@ -21,6 +21,7 @@ import {
   createHostExtensionMarketplace,
   createHostExtensionManager,
   createHostDreamStore,
+  DEFAULT_MODEL_REASONING_EFFORT,
   listOpenAiCompatibleModelIds,
   restoreHostFileChanges,
   type HostExtensionMarketplaceManager,
@@ -428,11 +429,19 @@ class DesktopHostService {
 
       const activeModel = request.activeModel.trim();
       const apiBase = request.apiBase.trim();
+      const reasoningEffort = request.reasoningEffort;
       const existing = state.config.models.find((model) => model.name === activeModel);
       if (existing) {
         existing.apiBase = apiBase;
+        if (reasoningEffort !== undefined) {
+          existing.reasoningEffort = reasoningEffort;
+        }
       } else {
-        state.config.models.push({ name: activeModel, apiBase });
+        state.config.models.push({
+          name: activeModel,
+          apiBase,
+          reasoningEffort: reasoningEffort ?? DEFAULT_MODEL_REASONING_EFFORT,
+        });
       }
       state.config.activeModel = activeModel;
       state.config.uiLocale = request.uiLocale?.trim() || undefined;
@@ -548,13 +557,22 @@ class DesktopHostService {
         throw new Error('模型列表为空。');
       }
 
-      type NewProfile = { name: string; apiBase: string; provider?: DesktopModelProvider };
+      type NewProfile = {
+        name: string;
+        apiBase: string;
+        reasoningEffort: typeof DEFAULT_MODEL_REASONING_EFFORT;
+        provider?: DesktopModelProvider;
+      };
       const toAdd: NewProfile[] = [];
       for (const name of uniqueIds) {
         if (state.config.models.some((model) => model.name === name)) {
           continue;
         }
-        const profile: NewProfile = { name, apiBase };
+        const profile: NewProfile = {
+          name,
+          apiBase,
+          reasoningEffort: DEFAULT_MODEL_REASONING_EFFORT,
+        };
         if (provider !== undefined) {
           profile.provider = provider;
         }
@@ -617,9 +635,15 @@ class DesktopHostService {
       }
 
       const provider = parseAddModelProvider(request.provider);
-      const profile: { name: string; apiBase: string; provider?: DesktopModelProvider } = {
+      const profile: {
+        name: string;
+        apiBase: string;
+        reasoningEffort: typeof DEFAULT_MODEL_REASONING_EFFORT;
+        provider?: DesktopModelProvider;
+      } = {
         name,
         apiBase,
+        reasoningEffort: DEFAULT_MODEL_REASONING_EFFORT,
       };
       if (provider !== undefined) {
         profile.provider = provider;
@@ -1774,6 +1798,7 @@ class DesktopHostService {
         baseUrl: currentApiBase(state.config),
         workspaceRoot: state.workspaceRoot,
         ...(llmVendor ? { llmVendor } : {}),
+        reasoningEffort: activeProfile?.reasoningEffort,
       },
       state.archiveHistory,
       state.metadata.rules.enabledRules,

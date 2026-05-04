@@ -61,6 +61,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
       models: input.config.models.map((model) => ({
         name: model.name,
         apiBase: model.apiBase,
+        reasoningEffort: model.reasoningEffort,
         ...(model.provider ? { provider: model.provider } : {}),
         keyConfigured: input.modelKeyPresence[model.name] ?? false,
       })),

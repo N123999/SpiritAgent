@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import {
+  MODEL_REASONING_EFFORT_OPTIONS,
+  modelReasoningEffortLabel,
+  type ModelReasoningEffort,
+} from "@spirit-agent/host-internal/reasoning-effort";
+
+import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
@@ -28,6 +34,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -102,6 +111,10 @@ function conversationMessageDomId(message: ConversationMessageSnapshot, index: n
 
 /** 主会话列最大宽度（居中） */
 const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
+
+function formatModelPickerLabel(name: string, reasoningEffort: ModelReasoningEffort): string {
+  return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
+}
 
 const commitModeOptions: Array<{
   value: DesktopCommitMode;
@@ -304,6 +317,7 @@ type ComposerSurfaceProps = {
   onSubmit(): void;
   onAbort?(): void;
   onModelSelect(name: string): void;
+  onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
   onKeyDown?(event: ReactKeyboardEvent<HTMLTextAreaElement>): void;
@@ -324,26 +338,34 @@ function ComposerSurface({
   onSubmit,
   onAbort,
   onModelSelect,
+  onModelReasoningEffortSelect,
   onPlanModeChange,
   textareaRef,
   onKeyDown,
 }: ComposerSurfaceProps) {
   const [modelFilter, setModelFilter] = useState("");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const activeModelProfile = useMemo(
+    () => models.find((model) => model.name === activeModel),
+    [activeModel, models],
+  );
+  const activeModelSummary = activeModelProfile
+    ? formatModelPickerLabel(activeModelProfile.name, activeModelProfile.reasoningEffort)
+    : activeModel;
   const modelGroups = useMemo(
     () => groupModelsForPicker(models, catalogHints),
     [models, catalogHints],
   );
   const filteredModelGroups = useMemo(() => {
-    const q = modelFilter.trim().toLowerCase();
-    if (!q) {
+    const query = modelFilter.trim().toLowerCase();
+    if (!query) {
       return modelGroups;
     }
+
     return modelGroups
       .map((group) => ({
         ...group,
-        items: group.items.filter(
-          (m) => m.name.toLowerCase().includes(q) || m.apiBase.toLowerCase().includes(q),
-        ),
+        items: group.items.filter((model) => model.name.toLowerCase().includes(query)),
       }))
       .filter((group) => group.items.length > 0);
   }, [modelFilter, modelGroups]);
@@ -406,16 +428,24 @@ function ComposerSurface({
               </DropdownMenuContent>
             </DropdownMenu>
             {models.length > 0 ? (
-              <DropdownMenu onOpenChange={(open) => !open && setModelFilter("")}>
+              <DropdownMenu
+                open={modelMenuOpen}
+                onOpenChange={(open) => {
+                  setModelMenuOpen(open);
+                  if (!open) {
+                    setModelFilter("");
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     aria-label="选择模型"
                     disabled={readOnly}
-                    className="inline-flex h-7 max-w-[10rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="inline-flex h-7 max-w-[12rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    <span className="min-w-0 flex-1 truncate" title={activeModel}>
-                      {activeModel}
+                    <span className="min-w-0 flex-1 truncate" title={activeModelSummary}>
+                      {activeModelSummary}
                     </span>
                     <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
                   </button>
@@ -423,7 +453,7 @@ function ComposerSurface({
                 <DropdownMenuContent
                   align="start"
                   side="top"
-                  className="w-max min-w-[max(9rem,var(--radix-dropdown-menu-trigger-width))] max-w-[min(18rem,calc(100vw-1.25rem))] p-0 text-xs"
+                  className="w-max min-w-[max(11rem,var(--radix-dropdown-menu-trigger-width))] max-w-[min(20rem,calc(100vw-1.25rem))] p-0 text-xs"
                 >
                   <div className="border-b border-border/40 p-1.5">
                     <Input
@@ -435,30 +465,88 @@ function ComposerSurface({
                       autoComplete="off"
                     />
                   </div>
-                  <div className="max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto p-1">
-                    {filteredModelGroups.length === 0 ? (
-                      <p className="px-2 py-4 text-center text-xs text-muted-foreground">无匹配项</p>
-                    ) : (
-                      filteredModelGroups.map((group) => (
-                        <div key={group.provider} className="mb-2 last:mb-0">
-                          <div className="px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground">
-                            {group.label}
+                  <ScrollArea
+                    type="always"
+                    className="[&>[data-radix-scroll-area-viewport]]:max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:overscroll-contain"
+                    onWheel={(event) => {
+                      event.stopPropagation();
+                    }}
+                    onTouchMove={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    <div className="p-1 pr-2">
+                      {filteredModelGroups.length === 0 ? (
+                        <p className="px-2 py-4 text-center text-xs text-muted-foreground">无匹配项</p>
+                      ) : (
+                        filteredModelGroups.map((group) => (
+                          <div key={group.provider} className="mb-2 last:mb-0">
+                            <div className="px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground">
+                              {group.label}
+                            </div>
+                            {group.items.map((model) => {
+                              const modelSummary = formatModelPickerLabel(
+                                model.name,
+                                model.reasoningEffort,
+                              );
+
+                              return (
+                                <DropdownMenuSub key={`${group.provider}:${model.name}`}>
+                                  <DropdownMenuSubTrigger
+                                    className={cn(
+                                      "items-start gap-2 px-2 py-2 pr-2",
+                                      activeModelProfile?.name === model.name && "bg-accent/40",
+                                    )}
+                                    onClick={() => {
+                                      onModelSelect(model.name);
+                                      setModelFilter("");
+                                      setModelMenuOpen(false);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        onModelSelect(model.name);
+                                        setModelFilter("");
+                                        setModelMenuOpen(false);
+                                      }
+                                    }}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate text-sm font-medium text-foreground" title={model.name}>
+                                        {model.name}
+                                      </div>
+                                      <div className="truncate text-[11px] text-muted-foreground" title={modelSummary}>
+                                        {modelReasoningEffortLabel(model.reasoningEffort)}
+                                      </div>
+                                    </div>
+                                  </DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent className="min-w-[10rem] text-xs">
+                                    {MODEL_REASONING_EFFORT_OPTIONS.map((option) => (
+                                      <DropdownMenuItem
+                                        key={option.value}
+                                        onSelect={() => {
+                                          onModelReasoningEffortSelect(model.name, option.value);
+                                          onModelSelect(model.name);
+                                          setModelFilter("");
+                                          setModelMenuOpen(false);
+                                        }}
+                                        className={cn(
+                                          model.reasoningEffort === option.value && "bg-accent/40",
+                                        )}
+                                        title={modelSummary}
+                                      >
+                                        {option.label}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              );
+                            })}
                           </div>
-                          {group.items.map((model) => (
-                            <DropdownMenuItem
-                              key={`${group.provider}:${model.name}`}
-                              onSelect={() => onModelSelect(model.name)}
-                              className={cn(model.name === activeModel && "bg-accent/40")}
-                            >
-                              <span className="block w-full min-w-0 break-all pr-1 text-left" title={model.name}>
-                                {model.name}
-                              </span>
-                            </DropdownMenuItem>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </div>
+                        ))
+                      )}
+                    </div>
+                  </ScrollArea>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
@@ -584,6 +672,7 @@ function MessageCard({
   onRewindStart,
   onRewindSubmit,
   onModelSelect,
+  onModelReasoningEffortSelect,
   onPlanModeChange,
 }: {
   message: ConversationMessageSnapshot;
@@ -604,6 +693,7 @@ function MessageCard({
   onRewindStart(message: ConversationMessageSnapshot): void;
   onRewindSubmit(): void;
   onModelSelect(name: string): void;
+  onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
 }) {
   const isUser = message.role === "user";
@@ -646,6 +736,7 @@ function MessageCard({
             activeModel={activeModel}
             planMode={planMode}
             onModelSelect={onModelSelect}
+            onModelReasoningEffortSelect={onModelReasoningEffortSelect}
             onPlanModeChange={onPlanModeChange}
             canSend={rewindCanSubmit}
             busy={rewindBusy}
@@ -1549,6 +1640,7 @@ export default function App() {
                             }}
                             onRewindSubmit={submitMessageRewind}
                             onModelSelect={runtime.setActiveModel}
+                            onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
                             onPlanModeChange={(planMode) => {
                               void runtime.saveSettingsPatch({ planMode });
                             }}
@@ -1651,6 +1743,7 @@ export default function App() {
                     activeModel={runtime.settings.activeModel}
                     planMode={runtime.settings.planMode}
                     onModelSelect={runtime.setActiveModel}
+                    onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
                     onPlanModeChange={(planMode) => {
                       void runtime.saveSettingsPatch({ planMode });
                     }}

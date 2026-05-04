@@ -23,6 +23,10 @@
       "types": "./dist/openai-models.d.ts",
       "default": "./dist/openai-models.js"
     },
+    "./reasoning-effort": {
+      "types": "./dist/reasoning-effort.d.ts",
+      "default": "./dist/reasoning-effort.js"
+    },
     "./extensions": {
       "types": "./dist/extensions.d.ts",
       "default": "./dist/extensions.js"

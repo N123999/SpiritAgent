@@ -1,4 +1,5 @@
 import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
+import type { ModelReasoningEffort } from '@spirit-agent/host-internal/reasoning-effort';
 
 export interface BootstrapRequest {
   workspaceRoot?: string;
@@ -18,6 +19,7 @@ export interface CommitChangesRequest {
 export interface UpdateConfigRequest {
   activeModel: string;
   apiBase: string;
+  reasoningEffort?: DesktopModelReasoningEffort;
   uiLocale?: string;
   apiKey?: string;
   /** 与 Rust `UpdateConfigRequest.windows_mica` 一致；缺省不修改已保存的 Mica 开关。 */
@@ -46,6 +48,9 @@ export interface DesktopDreamConfigUpdate {
 
 /** 模型提供方（与 `packages/host-internal` 中 `ModelProviderId` 同源）。 */
 export type DesktopModelProvider = ModelProviderId;
+
+/** 模型推理强度（与 `packages/host-internal` 中 `ModelReasoningEffort` 同源）。 */
+export type DesktopModelReasoningEffort = ModelReasoningEffort;
 
 /** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
 export interface PreviewModelsRequest {
@@ -530,6 +535,7 @@ export interface DesktopGitSnapshot {
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;
+  reasoningEffort: DesktopModelReasoningEffort;
   /** 持久化来源；缺省表示历史自定义配置。 */
   provider?: DesktopModelProvider;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */

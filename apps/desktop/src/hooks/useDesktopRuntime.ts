@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { ModelReasoningEffort } from "@spirit-agent/host-internal/reasoning-effort";
+
 import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
 import { isCreateSkillSlashInput, matchSkillSlashInput } from "@/lib/skill-slash";
@@ -1013,6 +1015,44 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const setModelReasoningEffort = useCallback(
+    async (name: string, reasoningEffort: ModelReasoningEffort) => {
+      if (!api || !snapshot) {
+        return;
+      }
+
+      const model = snapshot.config.models.find((item) => item.name === name);
+      if (!model) {
+        return;
+      }
+
+      const next = {
+        ...settingsRef.current,
+        activeModel: model.name,
+        apiBase: model.apiBase,
+      };
+      settingsRef.current = next;
+      setSettings(next);
+
+      try {
+        const res = await api.updateConfig({
+          ...updateConfigFromSettingsForm(next, {
+            enabled: next.webHostEnabled,
+            host: next.webHostHost,
+            port: next.webHostPort,
+          }),
+          reasoningEffort,
+        });
+        applySnapshot(res);
+        setRuntimeError("");
+        setSettings((current) => ({ ...current, apiKey: "" }));
+      } catch (error) {
+        setRuntimeError(describeError(error));
+      }
+    },
+    [api, applySnapshot, snapshot],
+  );
+
   const resetWebHostPairing = useCallback(async () => {
     if (!api) {
       return;
@@ -1340,6 +1380,7 @@ export function useDesktopRuntime() {
     webHostPairingRequired,
     approvalMessage,
     setActiveModel,
+    setModelReasoningEffort,
     setApprovalMessage,
     setComposer,
     setQuestionDrafts,

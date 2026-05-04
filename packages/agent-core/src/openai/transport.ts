@@ -76,11 +76,29 @@ export interface OpenAiTransportConfig {
    */
   llmVendor?: OpenAiLlmVendor;
   /**
+    * 抽象推理强度；`default` 表示不指定，交给上游或模型默认行为。
+    * 非 `default` 时直接走 OpenAI chat.completions 官方字段 `reasoning_effort`。
+   */
+  reasoningEffort?: 'default' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+  /**
    * 仅对 `deepseek` / `kimi`：是否在所有经本 transport 的 chat.completions 请求体中加入
    * `thinking: { type: 'enabled' | 'disabled' }`（含主对话、工具轮与历史压缩）。
    * 缺省为 `true`（enabled）；设为 `false` 时发送 `disabled`。
    */
   vendorExtendedThinking?: boolean;
+}
+
+/**
+ * OpenAI 官方 chat.completions 推理强度字段。
+ */
+function openAiReasoningEffort(
+  config: Pick<OpenAiTransportConfig, 'reasoningEffort'>,
+): Exclude<OpenAI.ReasoningEffort, null> | undefined {
+  if (config.reasoningEffort === undefined || config.reasoningEffort === 'default') {
+    return undefined;
+  }
+
+  return config.reasoningEffort;
 }
 
 /**
@@ -90,12 +108,13 @@ export interface OpenAiTransportConfig {
 function openAiVendorChatCompletionBodyExtras(
   config: Pick<OpenAiTransportConfig, 'llmVendor' | 'vendorExtendedThinking'>,
 ): Record<string, unknown> {
-  const vendor = config.llmVendor;
-  if (vendor !== 'deepseek' && vendor !== 'kimi') {
-    return {};
+  const extras: Record<string, unknown> = {};
+  if (config.llmVendor === 'deepseek' || config.llmVendor === 'kimi') {
+    const enabled = config.vendorExtendedThinking !== false;
+    extras.thinking = { type: enabled ? 'enabled' : 'disabled' };
   }
-  const enabled = config.vendorExtendedThinking !== false;
-  return { thinking: { type: enabled ? 'enabled' : 'disabled' } };
+
+  return extras;
 }
 
 export interface OpenAiEnabledRule {
@@ -174,10 +193,12 @@ export interface OpenAiRequestTrace extends JsonObject {
   stepIndex: number;
   model: string;
   stream: boolean;
+  /** OpenAI 官方 chat.completions 请求字段。 */
+  reasoning_effort?: JsonValue;
   toolChoice?: 'auto';
   messages: JsonValue[];
   tools?: JsonValue[];
-  /** 与 SDK 请求体一并发送的厂商扩展（若有）。 */
+  /** 与 SDK 请求体一并发送的真正厂商扩展（若有），例如 DeepSeek/Kimi 的 `thinking`。 */
   vendorExtras?: JsonValue;
 }
 
@@ -502,11 +523,13 @@ export class OpenAiTransport
       },
     ]);
     const requestTrace = buildRequestTrace(config, 1, messages, []);
+    const reasoningEffort = openAiReasoningEffort(config);
     const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
     const response = await client.chat.completions.create({
       model: config.model,
       messages: messages as unknown as ChatCompletionMessageParam[],
       response_format: buildStructuredOutputResponseFormat(config, request),
+      ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
       ...vendorExtras,
     } as ChatCompletionCreateParamsNonStreaming);
     const content = extractJsonSchemaCompletionContent(response);
@@ -538,10 +561,12 @@ export class OpenAiTransport
       normalizedTools,
     );
 
+    const reasoningEffort = openAiReasoningEffort(config);
     const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
     const payload = {
       model: config.model,
       messages: requestMessages as unknown as ChatCompletionMessageParam[],
+      ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
       ...(normalizedTools.length > 0
         ? {
             tools: normalizedTools,
@@ -623,11 +648,13 @@ export class OpenAiTransport
       normalizedTools,
       true,
     );
+    const reasoningEffort = openAiReasoningEffort(config);
     const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
     const payload = {
       model: config.model,
       messages: requestMessages as unknown as ChatCompletionMessageParam[],
       stream: true,
+      ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
       ...(normalizedTools.length > 0
         ? {
             tools: normalizedTools,
@@ -705,6 +732,7 @@ export class OpenAiTransport
       },
     ];
 
+    const reasoningEffort = openAiReasoningEffort(config);
     const compactionVendorExtras = openAiVendorChatCompletionBodyExtras(config);
     let summary = '';
     if (onProgress) {
@@ -714,6 +742,7 @@ export class OpenAiTransport
           model: config.compactModel ?? config.model,
           stream: true,
           messages: compactionMessages,
+          ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
           ...compactionVendorExtras,
         } as ChatCompletionCreateParamsStreaming);
 
@@ -746,6 +775,7 @@ export class OpenAiTransport
       const response = await client.chat.completions.create({
         model: config.compactModel ?? config.model,
         messages: compactionMessages,
+        ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
         ...compactionVendorExtras,
       } as ChatCompletionCreateParamsNonStreaming);
       summary = response.choices.at(0)?.message?.content ?? '';
@@ -1000,12 +1030,14 @@ function buildRequestTrace(
   tools: ChatCompletionTool[],
   stream = false,
 ): JsonValue[] {
+  const reasoningEffort = openAiReasoningEffort(config);
   const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
   const trace: OpenAiRequestTrace = {
     kind: 'openai_sdk_chat_completions',
     stepIndex,
     model: config.model,
     stream,
+    ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
     messages: messages.map((message) => cloneJsonValue(message)),
     ...(tools.length > 0
       ? {

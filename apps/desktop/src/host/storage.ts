@@ -11,10 +11,12 @@ import path from 'node:path';
 import { Entry } from '@napi-rs/keyring';
 import {
   createFileExtensionStateStore,
+  DEFAULT_MODEL_REASONING_EFFORT,
   type ExtensionManagementContext,
   type ExtensionSettingValue,
   type ExtensionStateStore,
   loadHostInstructionMetadata,
+  resolveModelReasoningEffort,
   resolveInstructionPaths,
   type HostInstructionMetadataSummary,
   type HostRuleDiscoveryResult,
@@ -353,6 +355,7 @@ function defaultConfig(): DesktopConfigFile {
       {
         name: DEFAULT_MODEL,
         apiBase: DEFAULT_API_BASE,
+        reasoningEffort: DEFAULT_MODEL_REASONING_EFFORT,
       },
     ],
     activeModel: DEFAULT_MODEL,
@@ -402,6 +405,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
+            reasoningEffort: resolveModelReasoningEffort(model.reasoningEffort),
             ...(provider ? { provider } : {}),
           };
         })
