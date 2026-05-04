@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import {
-  MODEL_REASONING_EFFORT_OPTIONS,
+  modelReasoningEffortOptions,
   modelReasoningEffortLabel,
   type ModelReasoningEffort,
 } from "@spirit-agent/host-internal/reasoning-effort";
@@ -521,7 +521,10 @@ function ComposerSurface({
                                     </div>
                                   </DropdownMenuSubTrigger>
                                   <DropdownMenuSubContent className="min-w-[10rem] text-xs">
-                                    {MODEL_REASONING_EFFORT_OPTIONS.map((option) => (
+                                    {modelReasoningEffortOptions({
+                                      provider: model.provider,
+                                      model: model.name,
+                                    }).map((option) => (
                                       <DropdownMenuItem
                                         key={option.value}
                                         onSelect={() => {

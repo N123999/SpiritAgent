@@ -79,7 +79,7 @@ export interface OpenAiTransportConfig {
     * 抽象推理强度；`default` 表示不指定，交给上游或模型默认行为。
     * 非 `default` 时直接走 OpenAI chat.completions 官方字段 `reasoning_effort`。
    */
-  reasoningEffort?: 'default' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+  reasoningEffort?: 'default' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /**
    * 仅对 `deepseek` / `kimi`：是否在所有经本 transport 的 chat.completions 请求体中加入
    * `thinking: { type: 'enabled' | 'disabled' }`（含主对话、工具轮与历史压缩）。
@@ -92,13 +92,42 @@ export interface OpenAiTransportConfig {
  * OpenAI 官方 chat.completions 推理强度字段。
  */
 function openAiReasoningEffort(
-  config: Pick<OpenAiTransportConfig, 'reasoningEffort'>,
-): Exclude<OpenAI.ReasoningEffort, null> | undefined {
+  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'reasoningEffort'>,
+): string | undefined {
   if (config.reasoningEffort === undefined || config.reasoningEffort === 'default') {
     return undefined;
   }
 
+  if (isDeepSeekV4ReasoningEffortModel(config)) {
+    switch (config.reasoningEffort) {
+      case 'low':
+      case 'medium':
+      case 'high':
+        return 'high';
+      case 'xhigh':
+      case 'max':
+        return 'max';
+      case 'none':
+        return undefined;
+    }
+  }
+
+  if (config.reasoningEffort === 'max') {
+    return 'xhigh';
+  }
+
   return config.reasoningEffort;
+}
+
+function isDeepSeekV4ReasoningEffortModel(
+  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model'>,
+): boolean {
+  if (config.llmVendor !== 'deepseek') {
+    return false;
+  }
+
+  const normalizedModel = config.model.trim().toLowerCase();
+  return normalizedModel === 'deepseek-v4-pro' || normalizedModel === 'deepseek-v4-flash';
 }
 
 /**

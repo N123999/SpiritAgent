@@ -25,9 +25,11 @@ import {
   createHostExtensionMarketplace,
   createHostExtensionManager,
   createHostDreamStore,
-  DEFAULT_MODEL_REASONING_EFFORT,
+  defaultModelReasoningEffort,
   listOpenAiCompatibleModelIds,
+  resolveModelReasoningEffortForContext,
   restoreHostFileChanges,
+  type ModelReasoningEffort,
   type HostExtensionMarketplaceManager,
   type HostExtensionEvent,
   type HostRecordedFileChange,
@@ -439,13 +441,18 @@ class DesktopHostService {
       if (existing) {
         existing.apiBase = apiBase;
         if (reasoningEffort !== undefined) {
-          existing.reasoningEffort = reasoningEffort;
+          existing.reasoningEffort = resolveModelReasoningEffortForContext(reasoningEffort, {
+            ...(existing.provider ? { provider: existing.provider } : {}),
+            model: existing.name,
+          });
         }
       } else {
         state.config.models.push({
           name: activeModel,
           apiBase,
-          reasoningEffort: reasoningEffort ?? DEFAULT_MODEL_REASONING_EFFORT,
+          reasoningEffort: resolveModelReasoningEffortForContext(reasoningEffort, {
+            model: activeModel,
+          }),
         });
       }
       state.config.activeModel = activeModel;
@@ -565,7 +572,7 @@ class DesktopHostService {
       type NewProfile = {
         name: string;
         apiBase: string;
-        reasoningEffort: typeof DEFAULT_MODEL_REASONING_EFFORT;
+        reasoningEffort: ModelReasoningEffort;
         provider?: DesktopModelProvider;
       };
       const toAdd: NewProfile[] = [];
@@ -576,7 +583,10 @@ class DesktopHostService {
         const profile: NewProfile = {
           name,
           apiBase,
-          reasoningEffort: DEFAULT_MODEL_REASONING_EFFORT,
+          reasoningEffort: defaultModelReasoningEffort({
+            ...(provider !== undefined ? { provider } : {}),
+            model: name,
+          }),
         };
         if (provider !== undefined) {
           profile.provider = provider;
@@ -643,12 +653,15 @@ class DesktopHostService {
       const profile: {
         name: string;
         apiBase: string;
-        reasoningEffort: typeof DEFAULT_MODEL_REASONING_EFFORT;
+        reasoningEffort: ModelReasoningEffort;
         provider?: DesktopModelProvider;
       } = {
         name,
         apiBase,
-        reasoningEffort: DEFAULT_MODEL_REASONING_EFFORT,
+        reasoningEffort: defaultModelReasoningEffort({
+          ...(provider !== undefined ? { provider } : {}),
+          model: name,
+        }),
       };
       if (provider !== undefined) {
         profile.provider = provider;
