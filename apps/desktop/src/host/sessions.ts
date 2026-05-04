@@ -8,6 +8,12 @@ import type {
   SessionListItem,
 } from '../types.js';
 import type { StoredDesktopSession } from './contracts.js';
+import {
+  normalizeMessageAuxSnapshot,
+  normalizeToolBlockSnapshot,
+  shouldDropEmptyAssistantMessage,
+  shouldHideEmptyPendingAssistantSnapshot,
+} from './message-ordering.js';
 import { createDesktopRewindMetadata, type StoredDesktopRewindMetadata } from './rewind.js';
 
 export const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
@@ -135,9 +141,55 @@ export function buildStoredDesktopSession(input: {
     sessionDisplayName: input.sessionDisplayName,
     workspaceRoot: input.workspaceRoot,
     ...(input.gitBranch ? { gitBranch: input.gitBranch } : {}),
-    desktopMessages: cloneConversationMessages(input.desktopMessages),
+    desktopMessages: sanitizeConversationMessagesForPersistence(input.desktopMessages),
     rewind: input.rewind,
   };
+}
+
+export function sanitizeConversationMessagesForPersistence(
+  messages: ConversationMessageSnapshot[],
+): ConversationMessageSnapshot[] {
+  return messages.flatMap((message) => {
+    const tool = normalizeToolBlockSnapshot(message.tool);
+    const aux = normalizeMessageAuxSnapshot(message.aux);
+    const normalized: ConversationMessageSnapshot = {
+      ...message,
+      ...(tool ? { tool } : {}),
+      ...(aux ? { aux } : {}),
+    };
+    if (
+      shouldDropEmptyAssistantMessage(normalized, tool, aux) ||
+      shouldHideEmptyPendingAssistantSnapshot(normalized)
+    ) {
+      return [];
+    }
+    const { canRewind: _canRewind, ...persisted } = normalized;
+    return [persisted];
+  });
+}
+
+export function buildArchiveMessagesFromConversation(
+  messages: ConversationMessageSnapshot[],
+): ChatArchive['messages'] {
+  return archiveProjectableConversationMessages(messages).map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+}
+
+export function buildArchiveAssistantAuxFromConversation(
+  messages: ConversationMessageSnapshot[],
+): ChatArchive['assistantAux'] {
+  return archiveProjectableConversationMessages(messages).flatMap((message, index) => {
+    if (!message.aux) {
+      return [];
+    }
+    return [{
+      messageIndex: index,
+      ...(message.aux.thinking ? { thinking: message.aux.thinking } : {}),
+      ...(message.aux.compaction ? { compaction: message.aux.compaction } : {}),
+    }];
+  });
 }
 
 export function nextMessageIdFromMessages(messages: ConversationMessageSnapshot[]): number {
@@ -163,6 +215,14 @@ function cloneConversationMessages(
   messages: ConversationMessageSnapshot[],
 ): ConversationMessageSnapshot[] {
   return messages.map((message) => ({ ...message }));
+}
+
+function archiveProjectableConversationMessages(
+  messages: ConversationMessageSnapshot[],
+): ConversationMessageSnapshot[] {
+  return sanitizeConversationMessagesForPersistence(messages).filter(
+    (message) => !message.tool || message.content.trim().length > 0,
+  );
 }
 
 function cloneArchiveHistory(history: ChatArchive['llmHistory']): ChatArchive['llmHistory'] {

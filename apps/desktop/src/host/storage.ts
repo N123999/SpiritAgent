@@ -270,6 +270,30 @@ export async function loadHostMetadata(
   });
 }
 
+function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDesktopSession {
+  return {
+    savedAtUnixMs:
+      typeof parsed.savedAtUnixMs === 'number' ? parsed.savedAtUnixMs : Date.now(),
+    messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+    assistantAux: Array.isArray(parsed.assistantAux) ? parsed.assistantAux : [],
+    llmHistory: Array.isArray(parsed.llmHistory) ? parsed.llmHistory : [],
+    subagentSessions: Array.isArray(parsed.subagentSessions)
+      ? parsed.subagentSessions
+      : [],
+    ...(normalizeDisplayName(parsed.sessionDisplayName)
+      ? { sessionDisplayName: normalizeDisplayName(parsed.sessionDisplayName) }
+      : {}),
+    ...(resolveStoredWorkspaceRoot(parsed.workspaceRoot)
+      ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
+      : {}),
+    ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
+    ...(Array.isArray(parsed.desktopMessages)
+      ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
+      : {}),
+    rewind: normalizeDesktopRewindMetadata(parsed.rewind),
+  } satisfies StoredDesktopSession;
+}
+
 export async function listStoredSessions(): Promise<SessionListItem[]> {
   const dirPath = chatsDirPath();
   if (!existsSync(dirPath)) {
@@ -285,7 +309,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
     files.map(async (filePath) => {
       try {
         const raw = await readFile(filePath, 'utf8');
-        const parsed = JSON.parse(raw) as Partial<StoredDesktopSession>;
+        const parsed = normalizeStoredSession(JSON.parse(raw) as Partial<StoredDesktopSession>);
         const info = await stat(filePath);
         const gitBranch = normalizeGitBranch(parsed.gitBranch);
         return {
@@ -315,28 +339,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
 export async function loadStoredSession(filePath: string): Promise<StoredDesktopSession> {
   const resolved = resolveSessionPath(filePath);
   const raw = await readFile(resolved, 'utf8');
-  const parsed = JSON.parse(raw) as Partial<StoredDesktopSession>;
-  return {
-    savedAtUnixMs:
-      typeof parsed.savedAtUnixMs === 'number' ? parsed.savedAtUnixMs : Date.now(),
-    messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-    assistantAux: Array.isArray(parsed.assistantAux) ? parsed.assistantAux : [],
-    llmHistory: Array.isArray(parsed.llmHistory) ? parsed.llmHistory : [],
-    subagentSessions: Array.isArray(parsed.subagentSessions)
-      ? parsed.subagentSessions
-      : [],
-    ...(normalizeDisplayName(parsed.sessionDisplayName)
-      ? { sessionDisplayName: normalizeDisplayName(parsed.sessionDisplayName) }
-      : {}),
-    ...(resolveStoredWorkspaceRoot(parsed.workspaceRoot)
-      ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
-      : {}),
-    ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
-    ...(Array.isArray(parsed.desktopMessages)
-      ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
-      : {}),
-    rewind: normalizeDesktopRewindMetadata(parsed.rewind),
-  } satisfies StoredDesktopSession;
+  return normalizeStoredSession(JSON.parse(raw) as Partial<StoredDesktopSession>);
 }
 
 export async function saveStoredSession(

@@ -82,6 +82,8 @@ import type {
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName } from './contracts.js';
 import {
+  buildArchiveAssistantAuxFromConversation,
+  buildArchiveMessagesFromConversation,
   buildCommitEphemeralSessionRecord,
   buildStoredDesktopSession,
   createEphemeralCommitSessionPath,
@@ -93,6 +95,7 @@ import {
   rememberEphemeralSessionRecord,
   restoreEphemeralSessionState,
   restoreStoredSessionState,
+  sanitizeConversationMessagesForPersistence,
 } from './sessions.js';
 import {
   isModelCatalogCacheFresh,
@@ -2390,25 +2393,11 @@ class DesktopHostService {
   }
 
   private archiveMessages(): Array<{ role: 'user' | 'assistant'; content: string }> {
-    return this.requireState().messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
+    return buildArchiveMessagesFromConversation(this.requireState().messages);
   }
 
   private archiveAssistantAux(): AssistantAuxArchiveEntry[] {
-    return this.requireState().messages.flatMap((message, index) => {
-      if (!message.aux) {
-        return [];
-      }
-
-      const entry: AssistantAuxArchiveEntry = {
-        messageIndex: index,
-        ...(message.aux.thinking ? { thinking: message.aux.thinking } : {}),
-        ...(message.aux.compaction ? { compaction: message.aux.compaction } : {}),
-      };
-      return [entry];
-    });
+    return buildArchiveAssistantAuxFromConversation(this.requireState().messages);
   }
 
   private clearAssistantContinuationMarkers(): void {
@@ -2627,7 +2616,7 @@ class DesktopHostService {
       checkpoint.id,
       {
         archive,
-        desktopMessages: state.messages.map((message) => ({ ...message })),
+        desktopMessages: sanitizeConversationMessagesForPersistence(state.messages),
         ...(beforeUserCheckpoint
           ? {
               beforeArchive: cloneChatArchive(beforeUserCheckpoint.archive),
@@ -2653,7 +2642,7 @@ class DesktopHostService {
         } satisfies ChatArchive;
     return {
       archive,
-      desktopMessages: state.messages.map((message) => ({ ...message })),
+      desktopMessages: sanitizeConversationMessagesForPersistence(state.messages),
     };
   }
 
