@@ -164,8 +164,12 @@ import {
 import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot } from './snapshot.js';
 import {
+  messageOrderDebugLevel,
+  messageIndexIsInCurrentTurn,
   parsePendingSubagentStatusText,
   restoreMessagesFromArchive,
+  summarizeMessagesTailForOrderDebug,
+  truncateOneLineForDebug,
 } from './message-ordering.js';
 import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
 import { DesktopRuntimeEventOrchestrator } from './runtime-event-orchestrator.js';
@@ -1040,6 +1044,8 @@ class DesktopHostService {
       this.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
       if (interruptedAssistantText || interruptedAssistantAuxText) {
         this.markAssistantMessageContinuable(interruptedAssistantText);
+      } else {
+        this.markLatestRenderableAssistantMessageContinuableInCurrentTurn();
       }
       await this.persistCurrentSessionIfNeeded();
       await this.flushDeferredRuntimeRefreshIfIdle();
@@ -1071,9 +1077,21 @@ class DesktopHostService {
         throw new Error('当前消息已不可继续补全。');
       }
 
-      this.clearAssistantContinuationMarkers();
-      await this.persistCurrentSessionIfNeeded();
-      await runtime.continueAssistantCompletionStreaming();
+      const previousContinuationIds = this.requireState().messages
+        .filter((message) => message.canContinue === true)
+        .map((message) => message.id);
+      try {
+        this.clearAssistantContinuationMarkers();
+        await this.persistCurrentSessionIfNeeded();
+        await runtime.continueAssistantCompletionStreaming();
+      } catch (error) {
+        for (const message of this.requireState().messages) {
+          if (previousContinuationIds.includes(message.id)) {
+            message.canContinue = true;
+          }
+        }
+        throw error;
+      }
       this.refreshArchiveFromRuntime();
       await runtime.poll();
       this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
@@ -1972,6 +1990,18 @@ class DesktopHostService {
     }
     this.assistantMessages.pruneEmptyAssistantMessages('buildSnapshot');
 
+    const conversationMessages = this.conversationSnapshotView.buildMessagesWithPendingAssistant({
+      messages: state.messages,
+      livePendingAux: pendingAux,
+      rewind: state.rewind,
+    });
+    this.logContinuationSnapshotState({
+      rawMessages: state.messages,
+      visibleMessages: conversationMessages,
+      isBusy: this.runtime?.isBusy() ?? false,
+      pendingAux,
+    });
+
     return buildDesktopSnapshot({
       workspaceRoot: state.workspaceRoot,
       config: state.config,
@@ -1987,11 +2017,7 @@ class DesktopHostService {
       mcpStatus: this.toolExecutor?.mcpStatusSnapshot() ?? emptyMcpStatusSnapshot(),
       mcpServers: listDesktopMcpServersFromDisk(),
       conversation: {
-        messages: this.conversationSnapshotView.buildMessagesWithPendingAssistant({
-          messages: state.messages,
-          livePendingAux: pendingAux,
-          rewind: state.rewind,
-        }),
+        messages: conversationMessages,
         ...(this.runtime?.pendingUserTurn()
           ? { pendingUserTurn: this.runtime.pendingUserTurn() }
           : {}),
@@ -2283,20 +2309,23 @@ class DesktopHostService {
       const hasRenderableAux = Boolean(
         message.aux?.thinking?.trim() || message.aux?.compaction?.trim(),
       );
+      const hasRenderableTool = Boolean(message.tool);
       if (
         message.role !== 'assistant' ||
-        message.tool ||
         message.pending ||
-        (!message.content.trim() && !hasRenderableAux)
+        (!message.content.trim() && !hasRenderableAux && !hasRenderableTool)
       ) {
         continue;
       }
-      if (normalized && message.content.trim() !== normalized) {
+      if (normalized && !message.tool && message.content.trim() !== normalized) {
         continue;
       }
       message.canContinue = true;
+      this.logContinuationMarker('marked', message, normalized, messages);
       return;
     }
+
+    this.logContinuationMarker('missing', undefined, normalized, messages);
   }
 
   private latestContinuableAssistantMessage(): ConversationMessageSnapshot | undefined {
@@ -2305,7 +2334,6 @@ class DesktopHostService {
       const message = messages[index]!;
       if (
         message.role === 'assistant' &&
-        !message.tool &&
         !message.pending &&
         message.canContinue === true
       ) {
@@ -2313,6 +2341,96 @@ class DesktopHostService {
       }
     }
     return undefined;
+  }
+
+  private markLatestRenderableAssistantMessageContinuableInCurrentTurn(): void {
+    this.clearAssistantContinuationMarkers();
+
+    const messages = this.requireState().messages;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      if (!messageIndexIsInCurrentTurn(messages, index)) {
+        break;
+      }
+
+      const hasRenderableAux = Boolean(
+        message.aux?.thinking?.trim() || message.aux?.compaction?.trim(),
+      );
+      const hasRenderableTool = Boolean(message.tool);
+      if (
+        message.role !== 'assistant' ||
+        message.pending ||
+        (!message.content.trim() && !hasRenderableAux && !hasRenderableTool)
+      ) {
+        continue;
+      }
+
+      message.canContinue = true;
+      this.logContinuationMarker('marked-fallback', message, '', messages);
+      return;
+    }
+
+    this.logContinuationMarker('missing-fallback', undefined, '', messages);
+  }
+
+  private logContinuationMarker(
+    outcome: 'marked' | 'missing' | 'marked-fallback' | 'missing-fallback',
+    message: ConversationMessageSnapshot | undefined,
+    normalized: string,
+    messages: ConversationMessageSnapshot[],
+  ): void {
+    if (messageOrderDebugLevel() !== 'verbose') {
+      return;
+    }
+
+    const target = message
+      ? this.describeContinuationMessage(message)
+      : '∅';
+    const text = normalized ? truncateOneLineForDebug(normalized, 48) : '∅';
+    const tail = summarizeMessagesTailForOrderDebug(messages, 8);
+    console.log(
+      `[desktop-host][continue] mark outcome=${outcome} normalized≈${text}${normalized.length > 48 ? '…' : ''} target=${target} tail=${tail}`,
+    );
+  }
+
+  private logContinuationSnapshotState(input: {
+    rawMessages: ConversationMessageSnapshot[];
+    visibleMessages: ConversationMessageSnapshot[];
+    isBusy: boolean;
+    pendingAux: PendingAssistantAux | undefined;
+  }): void {
+    if (messageOrderDebugLevel() !== 'verbose') {
+      return;
+    }
+
+    const rawMarked = input.rawMessages.filter((message) => message.canContinue === true);
+    const visibleMarked = input.visibleMessages.filter((message) => message.canContinue === true);
+    if (rawMarked.length === 0 && visibleMarked.length === 0) {
+      return;
+    }
+
+    const pendingAux = input.pendingAux
+      ? `${input.pendingAux.kind}:${truncateOneLineForDebug(input.pendingAux.detailText ?? input.pendingAux.statusText, 36)}`
+      : 'none';
+    console.log(
+      `[desktop-host][continue] snapshot busy=${input.isBusy} pendingAux=${pendingAux} raw=${rawMarked.map((message) => this.describeContinuationMessage(message)).join(',') || '∅'} visible=${visibleMarked.map((message) => this.describeContinuationMessage(message)).join(',') || '∅'} rawTail=${summarizeMessagesTailForOrderDebug(input.rawMessages, 8)} visibleTail=${summarizeMessagesTailForOrderDebug(input.visibleMessages, 8)}`,
+    );
+  }
+
+  private describeContinuationMessage(message: ConversationMessageSnapshot): string {
+    const kind = message.tool
+      ? `tool:${message.tool.phase}:${message.tool.toolName}`
+      : message.aux?.thinking?.trim()
+        ? 'thinking'
+        : message.aux?.compaction?.trim()
+          ? 'compaction'
+          : message.content.trim()
+            ? 'content'
+            : 'empty';
+    const text = message.content.trim()
+      ? truncateOneLineForDebug(message.content, 28)
+      : '∅';
+    return `${message.id}:${kind}:${text}`;
   }
 
   private refreshArchiveFromRuntime(): void {

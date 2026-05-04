@@ -753,11 +753,20 @@ export class AgentRuntime<
     }
 
     const history = cloneHistory(this.historyStore);
-    const lastHistoryMessage = history.at(-1);
+    const lastHistoryMessage = [...history].reverse().find((message) => {
+      if (message.role === 'tool') {
+        return true;
+      }
+      if (message.role === 'assistant' || message.role === 'user') {
+        return message.content.trim().length > 0;
+      }
+      return false;
+    });
     if (
       !lastHistoryMessage ||
-      (lastHistoryMessage.role !== 'assistant' && lastHistoryMessage.role !== 'user') ||
-      !lastHistoryMessage.content.trim()
+      (lastHistoryMessage.role !== 'assistant' &&
+        lastHistoryMessage.role !== 'user' &&
+        lastHistoryMessage.role !== 'tool')
     ) {
       throw new Error('当前没有可继续补全的回复。');
     }

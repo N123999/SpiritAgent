@@ -692,6 +692,7 @@ function MessageCard({
             <MarkdownMessage content={message.content} className="font-sans" />
           </div>
         ) : null}
+        {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
         {!isUser && canContinue ? (
           <div className="ml-auto flex max-w-[min(72%,22rem)] justify-end pt-1">
             <Button
@@ -706,7 +707,6 @@ function MessageCard({
             </Button>
           </div>
         ) : null}
-        {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
       </div>
     </div>
   );
