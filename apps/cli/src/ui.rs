@@ -118,7 +118,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(if show_suggestions || show_bottom_form {
+        .constraints(if show_suggestions || show_bottom_form || show_model_picker {
             vec![Constraint::Min(0)]
         } else {
             vec![Constraint::Min(0), Constraint::Length(1)]
@@ -142,7 +142,13 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(if show_picker {
+        .constraints(if show_model_picker {
+            vec![
+                Constraint::Min(5),
+                Constraint::Length(input_height),
+                Constraint::Length(7),
+            ]
+        } else if show_picker {
             vec![
                 Constraint::Min(5),
                 Constraint::Length(input_height),
@@ -268,14 +274,10 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
-        let picker_widget = Paragraph::new(picker_lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(t!("ui.picker.model")),
-            )
-            .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[2]);
+        let picker_area = model_picker_area(chunks[2]);
+        let picker_widget = Paragraph::new(picker_lines).wrap(Wrap { trim: true });
+        frame.render_widget(Clear, chunks[2]);
+        frame.render_widget(picker_widget, picker_area);
     } else if show_language_picker {
         let picker_lines = build_language_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
@@ -343,7 +345,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         frame.render_widget(suggestions_widget, chunks[2]);
     }
 
-    if !show_suggestions && !show_bottom_form && !show_marketplace {
+    if !show_suggestions && !show_bottom_form && !show_marketplace && !show_model_picker {
         let help_idx = if show_picker { 3 } else { 2 };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);
@@ -2032,47 +2034,63 @@ fn build_model_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'s
         .min(app.config.models.len().saturating_sub(1));
     let total = app.config.models.len();
     let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
+    let pivot = window / 2;
+    let max_start = total.saturating_sub(window);
+    let start = selected.saturating_sub(pivot).min(max_start);
     let end = (start + window).min(total);
+    let default_style = subtle_aux_text_style();
+    let selected_style = Style::default().fg(Color::White);
 
     let mut lines = Vec::new();
     for idx in start..end {
         let model = &app.config.models[idx];
         let is_selected = idx == selected;
         let is_active = model.name == app.config.active_model;
-
         let marker = if is_selected { "> " } else { "  " };
+
         let active_suffix = if is_active {
             t!("ui.picker.models.current_suffix").into_owned()
         } else {
             String::new()
         };
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-        } else if is_active {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
+        let row_style = if is_selected {
+            selected_style
         } else {
-            Style::default().fg(Color::White)
+            default_style
+        };
+        let meta_style = if is_selected {
+            selected_style
+        } else {
+            default_style.add_modifier(Modifier::DIM)
         };
 
-        lines.push(Line::from(Span::styled(
-            format!(
-                "{}{} ({}){}",
-                marker, model.name, model.api_base, active_suffix
-            ),
-            style,
-        )));
+        lines.push(Line::from(vec![
+            Span::styled(marker.to_string(), row_style),
+            Span::styled(model.name.to_string(), row_style),
+            Span::styled(format!(" ({})", model.api_base), meta_style),
+            Span::styled(active_suffix, meta_style),
+        ]));
     }
 
     lines
+}
+
+fn model_picker_area(area: Rect) -> Rect {
+    let offset = if area.width >= 12 {
+        2
+    } else if area.width >= 6 {
+        1
+    } else {
+        0
+    }
+    .min(area.width.saturating_sub(1));
+
+    Rect {
+        x: area.x.saturating_add(offset),
+        y: area.y,
+        width: area.width.saturating_sub(offset),
+        height: area.height,
+    }
 }
 
 fn build_chat_picker_lines(app: &TuiViewModel, max_items: usize) -> Vec<Line<'static>> {
