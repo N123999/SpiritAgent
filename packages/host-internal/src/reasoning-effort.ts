@@ -1,6 +1,6 @@
 import type { ModelProviderId } from './model-provider-presets.js';
 
-export type ModelReasoningEffort = 'default' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ModelReasoningEffort = 'default' | 'minimal' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface ModelReasoningEffortContext {
   provider?: ModelProviderId;
@@ -23,6 +23,7 @@ export const MODEL_REASONING_EFFORT_OPTIONS: Array<{
 
 const MODEL_REASONING_EFFORT_LABELS: Record<ModelReasoningEffort, string> = {
   default: 'Default',
+  minimal: 'Minimal',
   none: 'None',
   low: 'Low',
   medium: 'Medium',
@@ -38,6 +39,17 @@ const DEEPSEEK_V4_REASONING_EFFORT_OPTIONS: Array<{
   { value: 'default', label: 'Default' },
   { value: 'high', label: 'High' },
   { value: 'max', label: 'Max' },
+];
+
+const KIMI_REASONING_EFFORT_OPTIONS: Array<{
+  value: ModelReasoningEffort;
+  label: string;
+}> = [
+  { value: 'default', label: 'Default' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
 ];
 
 const DEEPSEEK_V4_REASONING_MODEL_IDS = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
@@ -66,7 +78,15 @@ export function resolveModelReasoningEffort(value: unknown): ModelReasoningEffor
 export function defaultModelReasoningEffort(
   context?: ModelReasoningEffortContext,
 ): ModelReasoningEffort {
-  return isDeepSeekV4ReasoningEffortModel(context) ? 'default' : DEFAULT_MODEL_REASONING_EFFORT;
+  if (isDeepSeekV4ReasoningEffortModel(context)) {
+    return 'default';
+  }
+
+  if (isKimiReasoningEffortModel(context)) {
+    return 'default';
+  }
+
+  return DEFAULT_MODEL_REASONING_EFFORT;
 }
 
 export function modelReasoningEffortOptions(
@@ -74,6 +94,8 @@ export function modelReasoningEffortOptions(
 ): Array<{ value: ModelReasoningEffort; label: string }> {
   return isDeepSeekV4ReasoningEffortModel(context)
     ? DEEPSEEK_V4_REASONING_EFFORT_OPTIONS
+    : isKimiReasoningEffortModel(context)
+      ? KIMI_REASONING_EFFORT_OPTIONS
     : MODEL_REASONING_EFFORT_OPTIONS;
 }
 
@@ -93,6 +115,12 @@ export function isDeepSeekV4ReasoningEffortModel(
 ): boolean {
   return context?.provider === 'deepseek' &&
     DEEPSEEK_V4_REASONING_MODEL_IDS.has(normalizeModelId(context.model));
+}
+
+export function isKimiReasoningEffortModel(
+  context?: ModelReasoningEffortContext,
+): boolean {
+  return context?.provider === 'kimi';
 }
 
 function normalizeModelId(value: unknown): string {
@@ -118,6 +146,17 @@ function resolveCompatibleModelReasoningEffort(
         return 'default';
       case 'default':
         return 'default';
+    }
+  }
+
+  if (isKimiReasoningEffortModel(context)) {
+    switch (normalized) {
+      case 'none':
+        return 'default';
+      case 'xhigh':
+        return 'high';
+      default:
+        return normalized;
     }
   }
 

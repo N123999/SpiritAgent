@@ -79,7 +79,7 @@ export interface OpenAiTransportConfig {
     * 抽象推理强度；`default` 表示不指定，交给上游或模型默认行为。
     * 非 `default` 时直接走 OpenAI chat.completions 官方字段 `reasoning_effort`。
    */
-  reasoningEffort?: 'default' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  reasoningEffort?: 'default' | 'minimal' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /**
    * 仅对 `deepseek` / `kimi`：是否在所有经本 transport 的 chat.completions 请求体中加入
    * `thinking: { type: 'enabled' | 'disabled' }`（含主对话、工具轮与历史压缩）。
@@ -112,6 +112,19 @@ function openAiReasoningEffort(
     }
   }
 
+  if (isKimiReasoningEffortModel(config)) {
+    switch (config.reasoningEffort) {
+      case 'minimal':
+        return 'minimal';
+      case 'none':
+        return undefined;
+      case 'xhigh':
+        return 'high';
+      default:
+        return config.reasoningEffort;
+    }
+  }
+
   if (config.reasoningEffort === 'max') {
     return 'xhigh';
   }
@@ -128,6 +141,12 @@ function isDeepSeekV4ReasoningEffortModel(
 
   const normalizedModel = config.model.trim().toLowerCase();
   return normalizedModel === 'deepseek-v4-pro' || normalizedModel === 'deepseek-v4-flash';
+}
+
+function isKimiReasoningEffortModel(
+  config: Pick<OpenAiTransportConfig, 'llmVendor'>,
+): boolean {
+  return config.llmVendor === 'kimi';
 }
 
 /**
