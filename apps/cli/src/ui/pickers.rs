@@ -63,6 +63,10 @@ pub(in crate::ui) fn draw_inline_picker(
     frame.render_widget(picker_widget, inline_picker_area(area));
 }
 
+pub(in crate::ui) fn suggestions_use_inline_picker(app: &TuiViewModel) -> bool {
+    matches!(app.input_suggestion_kind, Some(InputSuggestionKind::Slash))
+}
+
 pub(in crate::ui) fn build_suggestion_lines(
     app: &TuiViewModel,
     max_items: usize,
@@ -113,17 +117,15 @@ pub(in crate::ui) fn build_suggestion_lines(
 
     let selected = app.selected_suggestion;
     let total = app.slash_suggestions.len();
-    let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
-    let end = (start + window).min(total);
+    let (start, end) = inline_picker_bounds(total, selected, max_items);
     let visible_commands = &app.slash_suggestions[start..end];
     let command_column_width = visible_commands
         .iter()
-        .map(|suggestion| UnicodeWidthStr::width(format!("  {}", suggestion.label).as_str()))
+        .map(|suggestion| {
+            UnicodeWidthStr::width(
+                format!("{}{}", inline_picker_marker(false), suggestion.label).as_str(),
+            )
+        })
         .max()
         .unwrap_or(0);
     let description_gap = if max_width >= 40 {
@@ -138,12 +140,9 @@ pub(in crate::ui) fn build_suggestion_lines(
     for idx in start..end {
         let suggestion = &app.slash_suggestions[idx];
         let is_selected = idx == selected;
-        let command_style = if is_selected {
-            selected_style
-        } else {
-            default_style
-        };
-        let command_text = format!("  {}", suggestion.label);
+        let command_style = inline_picker_text_style(is_selected);
+        let summary_style = inline_picker_meta_style(is_selected);
+        let command_text = format!("{}{}", inline_picker_marker(is_selected), suggestion.label);
         let summary = suggestion_summary(suggestion);
 
         if summary.is_empty() || max_width == 0 {
@@ -165,8 +164,8 @@ pub(in crate::ui) fn build_suggestion_lines(
 
         lines.push(Line::from(vec![
             Span::styled(command_text, command_style),
-            Span::styled(" ".repeat(spacing), default_style),
-            Span::styled(summary_text, default_style),
+            Span::styled(" ".repeat(spacing), summary_style),
+            Span::styled(summary_text, summary_style),
         ]));
     }
 

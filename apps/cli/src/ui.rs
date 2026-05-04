@@ -287,29 +287,39 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
             .wrap(Wrap { trim: true });
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_suggestions {
+        let use_inline_suggestions = suggestions_use_inline_picker(&app);
+        let suggestion_content_width = if use_inline_suggestions {
+            inline_picker_area(chunks[2]).width as usize
+        } else {
+            chunks[2].width.saturating_sub(2) as usize
+        };
         let suggestions = build_suggestion_lines(
             &app,
             SLASH_SUGGESTION_VISIBLE_ITEMS,
-            chunks[2].width.saturating_sub(2) as usize,
+            suggestion_content_width,
         );
-        let suggestion_frame_style = patch_style_border(
-            conversation_body_text_style(),
-            cli_ui_border_color(CliUiHookSlot::SlashSuggestions)
-                .or(cli_ui_accent_color(CliUiHookSlot::SlashSuggestions)),
-        );
-        let suggestion_title = input_suggestion_title(&app);
-        let suggestions_widget = Paragraph::new(suggestions)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(suggestion_frame_style)
-                    .title(Line::from(Span::styled(
-                        suggestion_title,
-                        suggestion_frame_style,
-                    ))),
-            )
-            .wrap(Wrap { trim: true });
-        frame.render_widget(suggestions_widget, chunks[2]);
+        if use_inline_suggestions {
+            draw_inline_picker(frame, chunks[2], suggestions);
+        } else {
+            let suggestion_frame_style = patch_style_border(
+                conversation_body_text_style(),
+                cli_ui_border_color(CliUiHookSlot::SlashSuggestions)
+                    .or(cli_ui_accent_color(CliUiHookSlot::SlashSuggestions)),
+            );
+            let suggestion_title = input_suggestion_title(&app);
+            let suggestions_widget = Paragraph::new(suggestions)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(suggestion_frame_style)
+                        .title(Line::from(Span::styled(
+                            suggestion_title,
+                            suggestion_frame_style,
+                        ))),
+                )
+                .wrap(Wrap { trim: true });
+            frame.render_widget(suggestions_widget, chunks[2]);
+        }
     }
 
     if !show_suggestions && !show_bottom_form && !show_marketplace && !show_inline_picker {

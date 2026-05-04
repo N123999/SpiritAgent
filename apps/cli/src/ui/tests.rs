@@ -298,6 +298,66 @@ fn sessions_picker_uses_inline_layout_without_footer_or_title() {
 }
 
 #[test]
+fn slash_suggestions_reuse_inline_picker_styles_and_scroll_window() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/"));
+    app.input_suggestion_kind = Some(InputSuggestionKind::Slash);
+    app.slash_suggestions = (0..7)
+        .map(|idx| InputSuggestion {
+            label: format!("/cmd-{idx}"),
+            replacement: format!("/cmd-{idx}"),
+            summary: format!("summary-{idx}"),
+            details: Vec::new(),
+        })
+        .collect();
+    app.selected_suggestion = 3;
+
+    let lines = build_suggestion_lines(&app, 5, 48);
+    let text = render_text_lines(lines.clone());
+
+    assert!(suggestions_use_inline_picker(&app));
+    assert!(text[0].starts_with("  /cmd-1"));
+    assert!(text[2].starts_with("> /cmd-3"));
+    assert_eq!(lines[0].spans[0].style.fg, subtle_aux_text_style().fg);
+    assert_eq!(lines[2].spans[0].style.fg, Some(Color::White));
+}
+
+#[test]
+fn slash_suggestions_use_inline_layout_without_footer_or_title() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/"));
+    app.input_suggestion_kind = Some(InputSuggestionKind::Slash);
+    app.slash_suggestions = vec![
+        InputSuggestion::simple("/help"),
+        InputSuggestion::simple("/model"),
+        InputSuggestion::simple("/sessions"),
+    ];
+    app.selected_suggestion = 1;
+
+    let lines = render_ui_lines(&app, 80, 20);
+
+    assert!(lines.iter().any(|line| line.contains("> /model")));
+    assert!(!lines
+        .iter()
+        .any(|line| line.contains(t!("ui.suggestion.title.slash").as_ref())));
+    assert!(!lines
+        .iter()
+        .any(|line| line.contains(t!("ui.footer.preview").as_ref())));
+}
+
+#[test]
+fn file_reference_suggestions_keep_panel_title() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "@src/"));
+    app.input_suggestion_kind = Some(InputSuggestionKind::FileReference);
+    app.slash_suggestions = vec![InputSuggestion::simple("src/ui.rs")];
+
+    let lines = render_ui_lines(&app, 80, 20);
+
+    assert!(!suggestions_use_inline_picker(&app));
+    assert!(lines
+        .iter()
+        .any(|line| line.contains(t!("ui.suggestion.title.file_reference").as_ref())));
+}
+
+#[test]
 fn bottom_form_wrap_preserves_zero_width_combining_marks() {
     let lines = bottom_form_wrap_logical_line("e\u{301}", 1);
 
