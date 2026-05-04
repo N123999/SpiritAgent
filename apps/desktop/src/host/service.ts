@@ -1,11 +1,15 @@
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
+  buildActiveSkillsSystemMessage,
   buildDreamCollectorSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
+  buildToolAgentHostPrompt,
   type OpenAiActiveSkill,
   type OpenAiExtensionSystemPrompt,
   OpenAiTransport,
@@ -260,6 +264,7 @@ type CommandPayloads = {
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
   submitSkillSlash: { request: SubmitSkillSlashRequest };
+  exportSessionLog: undefined;
   submitUserTurn: { text: string };
   abortConversation: undefined;
   continueAssistantCompletion: { messageId: number };
@@ -1037,6 +1042,68 @@ class DesktopHostService {
     });
   }
 
+  async exportSessionLog(): Promise<{ snapshot: DesktopSnapshot; path: string }> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+
+      const state = this.requireState();
+      const runtime = this.requireRuntime();
+      const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
+      const rulesSystemPrompt = buildRulesSystemMessage(state.metadata.rules.enabledRules);
+      const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(
+        state.metadata.skills.enabledSkillCatalog,
+      );
+      const planSystemPrompt = buildPlanSystemMessage(state.metadata.planMetadata);
+      const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(this.currentTurnSkills);
+      const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
+      const exportedAtUnixSecs = Math.floor(Date.now() / 1000);
+      const filePath = path.join(
+        tmpdir(),
+        `spirit-agent-llm-export-${exportedAtUnixSecs}-${process.pid}.json`,
+      );
+      const exportPayload = {
+        export_version: 2,
+        exported_at_unix_secs: exportedAtUnixSecs,
+        active_model: state.config.activeModel,
+        api_base: currentApiBase(state.config),
+        working_directory: state.workspaceRoot,
+        system_prompts: {
+          ...(this.transport.llmSystemPromptsForExport() as Record<string, unknown>),
+          tool_agent: buildToolAgentHostPrompt(state.config.activeModel),
+          ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
+          ...(skillsCatalogSystemPrompt === undefined
+            ? {}
+            : { skillsCatalog: skillsCatalogSystemPrompt }),
+          ...(planSystemPrompt === undefined ? {} : { plan: planSystemPrompt }),
+          ...(activeSkillsSystemPrompt === undefined
+            ? {}
+            : { activeSkills: activeSkillsSystemPrompt }),
+          ...(extensionsSystemPrompt === undefined ? {} : { extensions: extensionsSystemPrompt }),
+        },
+        note: 'messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。system_prompts 为 transport 导出的 system 文案（如 tool_agent），供调试与导出。',
+        message_count: runtime.history().length,
+        messages: this.transport.llmHistoryAsApiMessages([...runtime.history()]),
+        api_request_trace_count: runtime.requestTrace().length,
+        api_request_trace: [...runtime.requestTrace()],
+      };
+
+      await writeFile(filePath, `${JSON.stringify(exportPayload, null, 2)}\n`, 'utf8');
+
+      const snapshot = await this.appendInlineAssistantReply(
+        '/log-session',
+        [
+          '已导出：llm_history、完整 API 请求轨迹（含 tools 与 system）、system 全文：',
+          filePath,
+        ].join('\n'),
+      );
+
+      return {
+        snapshot,
+        path: filePath,
+      };
+    });
+  }
+
   async submitUserTurn(text: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
@@ -1613,6 +1680,8 @@ class DesktopHostService {
         const typedPayload = payload as CommandPayloads['submitSkillSlash'];
         return this.submitSkillSlash(typedPayload.request);
       }
+      case 'exportSessionLog':
+        return this.exportSessionLog();
       case 'submitUserTurn': {
         const typedPayload = payload as CommandPayloads['submitUserTurn'];
         return this.submitUserTurn(typedPayload.text);

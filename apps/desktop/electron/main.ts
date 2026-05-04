@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net } from 'electron';
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, shell } from 'electron';
 
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
@@ -464,6 +464,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
     invokeMainDesktopHostCommand(command, payload),
   );
+
+  ipcMain.handle('desktop:export-session-log', async () => {
+    const result = await invokeMainDesktopHostCommand('exportSessionLog') as {
+      snapshot: DesktopSnapshot;
+      path: string;
+    };
+    const openError = await shell.openPath(result.path);
+    if (openError) {
+      throw new Error(`自动打开导出文件失败: ${openError}`);
+    }
+    return result.snapshot;
+  });
 
   ipcMain.handle('desktop:pick-workspace-directory', async (event) => {
     const targetWindow = BrowserWindow.fromWebContents(event.sender);

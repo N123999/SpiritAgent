@@ -84,6 +84,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     submitSkillSlash(request) {
       return bridge.submitSkillSlash(request);
     },
+    exportSessionLog() {
+      return bridge.exportSessionLog();
+    },
     submitUserTurn(text) {
       return bridge.submitUserTurn(text);
     },

@@ -65,6 +65,7 @@ declare global {
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
+    exportSessionLog(): Promise<DesktopSnapshot>;
     submitUserTurn(text: string): Promise<DesktopSnapshot>;
     abortConversation(): Promise<DesktopSnapshot>;
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;

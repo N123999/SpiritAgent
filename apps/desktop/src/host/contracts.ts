@@ -35,6 +35,7 @@ export type HostCommandName =
   | 'deleteSkill'
   | 'submitCreateSkillSlash'
   | 'submitSkillSlash'
+  | 'exportSessionLog'
   | 'submitUserTurn'
   | 'abortConversation'
   | 'continueAssistantCompletion'

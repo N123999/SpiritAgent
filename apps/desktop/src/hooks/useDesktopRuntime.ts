@@ -4,7 +4,11 @@ import type { ModelReasoningEffort } from "@spirit-agent/host-internal/reasoning
 
 import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
-import { isCreateSkillSlashInput, matchSkillSlashInput } from "@/lib/skill-slash";
+import {
+  isCreateSkillSlashInput,
+  isLogSessionSlashInput,
+  matchSkillSlashInput,
+} from "@/lib/skill-slash";
 import type {
   AddModelRequest,
   AddMcpServerRequest,
@@ -1086,6 +1090,26 @@ export function useDesktopRuntime() {
 
     const text = composer.trim();
     if (!text) {
+      return;
+    }
+    if (isLogSessionSlashInput(text)) {
+      if (!api.exportSessionLog) {
+        setRuntimeError("当前宿主不支持 /log-session。");
+        return;
+      }
+
+      setBusyAction("send");
+      try {
+        const next = await api.exportSessionLog();
+        applySnapshot(next);
+        setComposer("");
+        setRuntimeError("");
+        void refreshSessions();
+      } catch (error) {
+        setRuntimeError(describeError(error));
+      } finally {
+        setBusyAction("");
+      }
       return;
     }
     if (snapshot?.activeSession?.readOnly) {
