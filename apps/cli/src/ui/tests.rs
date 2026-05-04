@@ -7,6 +7,7 @@ use crate::{
         SubagentSessionSummaryView,
     },
 };
+use rust_i18n::t;
 use std::collections::HashMap;
 
 fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
@@ -198,7 +199,7 @@ fn plan_mode_input_uses_yellow_border_and_text_and_plan_title() {
     let border = input_block_border_style(false, MainInputMode::Plan, false);
     let text = input_text_style(false, MainInputMode::Plan, false);
 
-    assert_eq!(title, "Plan");
+    assert_eq!(title, t!("ui.input.title_plan").into_owned());
     assert_eq!(border.fg, Some(Color::Yellow));
     assert_eq!(text.fg, Some(Color::Yellow));
 }
@@ -225,8 +226,27 @@ fn footer_shows_mode_without_tab_toggle_hint() {
 
     assert!(!agent_footer[0].contains("Tab"));
     assert!(!plan_footer[0].contains("Tab"));
-    assert!(agent_footer[0].contains(" |  Agent"));
-    assert!(plan_footer[0].contains(" |  Plan"));
+    assert!(agent_footer[0].contains(format!(" |  {}", t!("ui.footer.mode.agent")).as_str()));
+    assert!(plan_footer[0].contains(format!(" |  {}", t!("ui.footer.mode.plan")).as_str()));
+}
+
+#[test]
+fn bottom_form_wrap_preserves_zero_width_combining_marks() {
+    let lines = bottom_form_wrap_logical_line("e\u{301}", 1);
+
+    assert_eq!(lines, vec!["e\u{301}".to_string(), String::new()]);
+}
+
+#[test]
+fn bottom_form_wrap_skips_glyphs_wider_than_available_width() {
+    let lines = bottom_form_wrap_logical_line("你A", 1);
+
+    assert_eq!(lines, vec!["A".to_string(), String::new()]);
+}
+
+#[test]
+fn truncate_from_left_keeps_combining_marks_on_tail() {
+    assert_eq!(truncate_from_left_to_width("abce\u{301}", 3), "…ce\u{301}");
 }
 
 #[test]

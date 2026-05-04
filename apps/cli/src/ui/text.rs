@@ -133,9 +133,6 @@ pub(in crate::ui) fn truncate_from_left_to_width(text: &str, max_width: usize) -
     let mut used_width = 1;
     for ch in text.chars().rev() {
         let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if ch_width == 0 {
-            continue;
-        }
         if used_width + ch_width > max_width {
             break;
         }

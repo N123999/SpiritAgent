@@ -825,25 +825,28 @@ pub(in crate::ui) fn bottom_form_wrap_logical_line(line: &str, max_width: usize)
 
     for ch in line.chars() {
         let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if ch_width == 0 {
+        if ch_width > width {
             continue;
         }
-        if col > 0 && col + ch_width > width {
+
+        if ch_width > 0 && col > 0 && col + ch_width > width {
             out.push(String::new());
             col = 0;
         }
+
         out.last_mut()
             .expect("bottom_form_wrap_logical_line")
             .push(ch);
-        col += ch_width;
-        if col >= width {
-            let extra = col / width;
-            for _ in 0..extra {
-                out.push(String::new());
-            }
-            col %= width;
+
+        if ch_width > 0 {
+            col += ch_width;
         }
     }
+
+    if !line.is_empty() && col == width {
+        out.push(String::new());
+    }
+
     out
 }
 
