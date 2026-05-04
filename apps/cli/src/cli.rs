@@ -148,6 +148,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     name: name.clone(),
                     api_base: api_base.clone(),
                     provider: None,
+                    extra: Default::default(),
                 });
                 cfg.active_model = name.clone();
                 secret_store.save_model_api_key(&name, &key_value)?;

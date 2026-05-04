@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -27,6 +28,8 @@ pub struct ModelProfile {
     pub api_base: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ModelProvider>,
+    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+    pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +44,8 @@ pub struct AppConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub ui_locale: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+    pub extra: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,9 +62,11 @@ impl Default for AppConfig {
                 name: "gpt-4o-mini".to_string(),
                 api_base: DEFAULT_API_BASE.to_string(),
                 provider: None,
+                extra: Map::new(),
             }],
             active_model: "gpt-4o-mini".to_string(),
             ui_locale: None,
+            extra: Map::new(),
         }
     }
 }
@@ -109,12 +116,16 @@ pub fn load_config() -> Result<AppConfig> {
     let content =
         fs::read_to_string(&path).with_context(|| format!("读取配置失败: {}", path.display()))?;
 
-    if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
+    deserialize_config(&content, &path)
+}
+
+fn deserialize_config(content: &str, path: &Path) -> Result<AppConfig> {
+    if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(content) {
         normalize_config(&mut cfg);
         return Ok(cfg);
     }
 
-    let legacy: LegacyAppConfig = serde_json::from_str(&content)
+    let legacy: LegacyAppConfig = serde_json::from_str(content)
         .with_context(|| format!("解析配置失败: {}", path.display()))?;
     let mut migrated = AppConfig {
         models: legacy
@@ -124,10 +135,12 @@ pub fn load_config() -> Result<AppConfig> {
                 name,
                 api_base: legacy.api_base.clone(),
                 provider: None,
+                extra: Map::new(),
             })
             .collect(),
         active_model: legacy.active_model,
         ui_locale: None,
+        extra: Map::new(),
     };
     normalize_config(&mut migrated);
     save_config(&migrated)?;
@@ -141,15 +154,18 @@ pub fn save_config(cfg: &AppConfig) -> Result<()> {
             .with_context(|| format!("创建配置目录失败: {}", parent.display()))?;
     }
 
-    let content = serde_json::to_string_pretty(cfg)?;
+    let content = serialize_config(cfg)?;
     fs::write(&path, content).with_context(|| format!("写入配置失败: {}", path.display()))?;
     Ok(())
 }
 
+fn serialize_config(cfg: &AppConfig) -> Result<String> {
+    Ok(serde_json::to_string_pretty(cfg)?)
+}
+
 fn normalize_config(cfg: &mut AppConfig) {
     if cfg.models.is_empty() {
-        *cfg = AppConfig::default();
-        return;
+        cfg.models = AppConfig::default().models;
     }
 
     if !cfg.models.iter().any(|m| m.name == cfg.active_model) {
@@ -160,6 +176,96 @@ fn normalize_config(cfg: &mut AppConfig) {
         if model.api_base.trim().is_empty() {
             model.api_base = DEFAULT_API_BASE.to_string();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{deserialize_config, serialize_config};
+    use serde_json::Value;
+    use std::path::Path;
+
+    #[test]
+    fn preserves_unknown_top_level_and_model_fields() {
+        let config = r#"
+{
+  "models": [
+    {
+      "name": "kimi-k2",
+      "apiBase": "https://api.moonshot.cn/v1",
+      "provider": "kimi",
+      "reasoningEffort": "minimal"
+    }
+  ],
+  "activeModel": "kimi-k2",
+  "uiLocale": "zh-CN",
+  "windowsMica": true,
+  "recentWorkspaces": ["D:/SpiritAgent", "D:/Other"],
+  "dreams": {
+    "enabled": true,
+    "collectorModel": "gpt-4.1-mini",
+    "debugMode": true
+  }
+}
+"#;
+
+        let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+        let serialized = serialize_config(&parsed).expect("serialize config");
+        let json: Value = serde_json::from_str(&serialized).expect("json value");
+
+        assert_eq!(json.get("windowsMica").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            json.get("recentWorkspaces")
+                .and_then(Value::as_array)
+                .map(|items| items.len()),
+            Some(2)
+        );
+        assert_eq!(
+            json.get("dreams")
+                .and_then(|dreams| dreams.get("collectorModel"))
+                .and_then(Value::as_str),
+            Some("gpt-4.1-mini")
+        );
+        assert_eq!(
+            json.get("models")
+                .and_then(Value::as_array)
+                .and_then(|models| models.first())
+                .and_then(|model| model.get("reasoningEffort"))
+                .and_then(Value::as_str),
+            Some("minimal")
+        );
+    }
+
+    #[test]
+    fn normalizing_empty_models_keeps_unknown_desktop_fields() {
+        let config = r#"
+{
+  "models": [],
+  "activeModel": "",
+  "windowsMica": false,
+  "dreams": {
+    "enabled": true,
+    "debugMode": false
+  }
+}
+"#;
+
+        let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+        let serialized = serialize_config(&parsed).expect("serialize config");
+        let json: Value = serde_json::from_str(&serialized).expect("json value");
+
+        assert_eq!(json.get("windowsMica").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            json.get("dreams")
+                .and_then(|dreams| dreams.get("enabled"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(
+            json.get("models")
+                .and_then(Value::as_array)
+                .is_some_and(|models| !models.is_empty())
+        );
     }
 }
 

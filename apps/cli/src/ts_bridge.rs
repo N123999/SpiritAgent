@@ -2418,15 +2418,18 @@ mod tests {
                     name: "gpt-4o-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
+                    extra: Default::default(),
                 },
                 ModelProfile {
                     name: "gpt-4.1-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
+                    extra: Default::default(),
                 },
             ],
             active_model: "gpt-4o-mini".to_string(),
             ui_locale: None,
+            extra: Default::default(),
         };
 
         TsBridgeRuntime::new(config, Arc::new(StubSecretStore), workspace_root).ok()
@@ -2529,6 +2532,7 @@ mod tests {
             name: "gpt-4.1".to_string(),
             api_base: DEFAULT_API_BASE.to_string(),
             provider: None,
+            extra: Default::default(),
         });
 
         assert!(runtime.validate_config_change(&next).is_ok());

@@ -411,6 +411,7 @@ impl TuiShell {
             name: name.to_string(),
             api_base: api_base.to_string(),
             provider,
+            extra: Default::default(),
         });
         config.active_model = name.to_string();
 
