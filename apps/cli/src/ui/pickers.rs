@@ -31,15 +31,15 @@ pub(in crate::ui) fn inline_picker_meta_style(is_selected: bool) -> Style {
     }
 }
 
-pub(in crate::ui) fn inline_picker_marker(is_selected: bool) -> &'static str {
+pub(in crate::ui) fn picker_selection_prefix(is_selected: bool) -> &'static str {
     if is_selected { "> " } else { "  " }
 }
 
 pub(in crate::ui) fn inline_picker_area(area: Rect) -> Rect {
     let offset = if area.width >= 12 {
-        2
-    } else if area.width >= 6 {
         1
+    } else if area.width >= 6 {
+        0
     } else {
         0
     }
@@ -58,13 +58,17 @@ pub(in crate::ui) fn draw_inline_picker(
     area: Rect,
     lines: Vec<Line<'static>>,
 ) {
-    let picker_widget = Paragraph::new(lines).wrap(Wrap { trim: true });
+    let picker_widget = Paragraph::new(lines).wrap(Wrap { trim: false });
     frame.render_widget(Clear, area);
     frame.render_widget(picker_widget, inline_picker_area(area));
 }
 
 pub(in crate::ui) fn suggestions_use_inline_picker(app: &TuiViewModel) -> bool {
     matches!(app.input_suggestion_kind, Some(InputSuggestionKind::Slash))
+}
+
+fn inline_suggestion_detail_line(detail: String) -> String {
+    detail.trim_start().to_string()
 }
 
 pub(in crate::ui) fn build_suggestion_lines(
@@ -123,7 +127,7 @@ pub(in crate::ui) fn build_suggestion_lines(
         .iter()
         .map(|suggestion| {
             UnicodeWidthStr::width(
-                format!("{}{}", inline_picker_marker(false), suggestion.label).as_str(),
+                format!("{}{}", picker_selection_prefix(true), suggestion.label).as_str(),
             )
         })
         .max()
@@ -142,7 +146,7 @@ pub(in crate::ui) fn build_suggestion_lines(
         let is_selected = idx == selected;
         let command_style = inline_picker_text_style(is_selected);
         let summary_style = inline_picker_meta_style(is_selected);
-        let command_text = format!("{}{}", inline_picker_marker(is_selected), suggestion.label);
+        let command_text = format!("{}{}", picker_selection_prefix(is_selected), suggestion.label);
         let summary = suggestion_summary(suggestion);
 
         if summary.is_empty() || max_width == 0 {
@@ -174,7 +178,10 @@ pub(in crate::ui) fn build_suggestion_lines(
         if !details.is_empty() {
             lines.push(Line::from(Span::styled("", default_style)));
             for detail in details {
-                lines.push(Line::from(Span::styled(detail, default_style)));
+                lines.push(Line::from(Span::styled(
+                    inline_suggestion_detail_line(detail),
+                    default_style,
+                )));
             }
         }
     }
@@ -207,7 +214,7 @@ pub(in crate::ui) fn build_file_reference_suggestion_lines(
         } else {
             default_style
         };
-        let prefix = if is_selected { "> " } else { "  " };
+        let prefix = picker_selection_prefix(is_selected);
         lines.push(Line::from(Span::styled(
             format!("{}{}", prefix, path.label),
             style,
@@ -378,7 +385,7 @@ pub(in crate::ui) fn build_model_picker_lines(
         let meta_style = inline_picker_meta_style(is_selected);
 
         lines.push(Line::from(vec![
-            Span::styled(inline_picker_marker(is_selected), row_style),
+            Span::styled(picker_selection_prefix(is_selected), row_style),
             Span::styled(model.name.to_string(), row_style),
             Span::styled(format!(" ({})", model.api_base), meta_style),
             Span::styled(active_suffix, meta_style),
@@ -408,7 +415,7 @@ pub(in crate::ui) fn build_chat_picker_lines(
         let is_selected = idx == selected;
         let style = inline_picker_text_style(is_selected);
         lines.push(Line::from(Span::styled(
-            format!("{}{}", inline_picker_marker(is_selected), name),
+            format!("{}{}", picker_selection_prefix(is_selected), name),
             style,
         )));
     }
@@ -441,7 +448,6 @@ pub(in crate::ui) fn build_subagent_picker_lines(
     for idx in start..end {
         let item = &app.subagent_sessions[idx];
         let is_selected = idx == selected;
-        let marker = if is_selected { "> " } else { "  " };
         let (status_label, status_style) = subagent_status_badge(item.status, is_selected);
         let title_style = if is_selected {
             Style::default()
@@ -453,7 +459,7 @@ pub(in crate::ui) fn build_subagent_picker_lines(
 
         let title = truncate_to_width(&item.title, max_width.saturating_sub(12).max(8));
         lines.push(Line::from(vec![
-            Span::styled(marker, title_style),
+            Span::styled(picker_selection_prefix(is_selected), title_style),
             Span::styled(format!("[{}] ", status_label), status_style),
             Span::styled(title, title_style),
         ]));
@@ -494,7 +500,6 @@ pub(in crate::ui) fn build_language_picker_lines(
     for (idx, locale_code) in locales.iter().enumerate().take(end).skip(start) {
         let is_selected = idx == selected;
         let is_active = *locale_code == current_locale.as_str();
-        let marker = if is_selected { "> " } else { "  " };
         let active_suffix = if is_active {
             t!("ui.picker.languages.current_suffix").into_owned()
         } else {
@@ -514,7 +519,7 @@ pub(in crate::ui) fn build_language_picker_lines(
         lines.push(Line::from(Span::styled(
             format!(
                 "{}{} ({}){}",
-                marker,
+                picker_selection_prefix(is_selected),
                 crate::locale::language_display_name(locale_code),
                 locale_code,
                 active_suffix
@@ -550,7 +555,6 @@ pub(in crate::ui) fn build_image_picker_lines(
     for idx in start..end {
         let name = &app.image_picker_files[idx];
         let is_selected = idx == selected;
-        let marker = if is_selected { "> " } else { "  " };
         let style = if is_selected {
             Style::default()
                 .fg(Color::Cyan)
@@ -559,7 +563,7 @@ pub(in crate::ui) fn build_image_picker_lines(
             Style::default().fg(Color::White)
         };
         lines.push(Line::from(Span::styled(
-            format!("{}{}", marker, name),
+            format!("{}{}", picker_selection_prefix(is_selected), name),
             style,
         )));
     }

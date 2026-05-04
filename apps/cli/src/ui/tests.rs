@@ -344,6 +344,22 @@ fn slash_suggestions_use_inline_layout_without_footer_or_title() {
 }
 
 #[test]
+fn single_slash_suggestion_details_align_with_usage_heading() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/model"));
+    app.input_suggestion_kind = Some(InputSuggestionKind::Slash);
+    app.slash_suggestions = vec![InputSuggestion::simple("/model")];
+
+    let lines = render_text_lines(build_suggestion_lines(&app, 5, 64));
+    let usage_idx = lines
+        .iter()
+        .position(|line| line == t!("ui.suggestion.usage.heading").as_ref())
+        .expect("usage heading exists");
+
+    assert_eq!(lines[usage_idx + 1], "/model list");
+    assert_eq!(lines[usage_idx + 2], "/model use <name>");
+}
+
+#[test]
 fn file_reference_suggestions_keep_panel_title() {
     let mut app = build_view_model(ChatMessage::new(MessageRole::User, "@src/"));
     app.input_suggestion_kind = Some(InputSuggestionKind::FileReference);
