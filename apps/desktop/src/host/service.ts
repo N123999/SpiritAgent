@@ -1804,6 +1804,7 @@ class DesktopHostService {
       this.resetStreamingPlacementState(true);
       this.messageIdCounter = 1;
       this.lastRuntimeError = '';
+      this.toolExecutor = undefined;
     }
 
     this.state = {
@@ -1840,25 +1841,7 @@ class DesktopHostService {
       state.workspaceRoot,
       state.config.planMode === true,
     );
-    const extensions = await this.extensionManager().list();
-    this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
-      extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
-      fileChangeObserver: {
-        recordFileChange: (change) => this.recordHostFileChange(change),
-      },
-      extensions: {
-        manager: this.extensionManager(),
-        getHost: () => {
-          const adapter = desktopExtensionHostAdapter;
-          if (!adapter) {
-            throw new Error('当前桌面宿主尚未连接扩展 host adapter。');
-          }
-          return adapter;
-        },
-        logger: console,
-      },
-    });
-    this.toolExecutor.startMcpBackgroundRefresh();
+    await this.ensureToolExecutor();
     this.currentTurnSkills = [];
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
@@ -1899,6 +1882,35 @@ class DesktopHostService {
     this.runtime = runtime;
     this.lastRuntimeError = '';
     await this.refreshModelKeyPresence();
+  }
+
+  private async ensureToolExecutor(): Promise<DesktopToolExecutor> {
+    if (!this.toolExecutor) {
+      const state = this.requireState();
+      const extensions = await this.extensionManager().list();
+      this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
+        extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
+        fileChangeObserver: {
+          recordFileChange: (change) => this.recordHostFileChange(change),
+        },
+        extensions: {
+          manager: this.extensionManager(),
+          getHost: () => {
+            const adapter = desktopExtensionHostAdapter;
+            if (!adapter) {
+              throw new Error('当前桌面宿主尚未连接扩展 host adapter。');
+            }
+            return adapter;
+          },
+          logger: console,
+        },
+      });
+      this.toolExecutor.startMcpBackgroundRefresh();
+      return this.toolExecutor;
+    }
+
+    await this.refreshExtensionToolDefinitions();
+    return this.toolExecutor;
   }
 
   private async refreshGitState(): Promise<void> {
