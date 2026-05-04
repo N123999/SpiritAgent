@@ -1,5 +1,19 @@
 use super::*;
 
+const SPIRIT_LOGO_LINES: [&str; 6] = [
+    " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
+    " ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝",
+    " ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ",
+    " ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ",
+    " ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ",
+    " ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ",
+];
+
+pub(in crate::ui) struct HistoryRenderResult {
+    pub(in crate::ui) lines: Vec<Line<'static>>,
+    pub(in crate::ui) message_ranges: Vec<ConversationMessageRenderRange>,
+}
+
 pub(in crate::ui) fn conversation_logo_width(available_width: u16) -> u16 {
     let logo_text_width = SPIRIT_LOGO_LINES
         .iter()

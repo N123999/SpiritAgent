@@ -45,20 +45,6 @@ use crate::{
 
 const SLASH_SUGGESTION_VISIBLE_ITEMS: usize = 10;
 const SLASH_SUGGESTION_BLOCK_HEIGHT: u16 = 12;
-const SPIRIT_LOGO_LINES: [&str; 6] = [
-    " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
-    " ██╔════╝██╔══██╗██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝",
-    " ███████╗██████╔╝██║██████╔╝██║   ██║   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ",
-    " ╚════██║██╔═══╝ ██║██╔══██╗██║   ██║   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ",
-    " ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ",
-    " ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ",
-];
-
-struct BottomFormRenderResult {
-    cursor: Option<(u16, u16)>,
-    scroll_offset: Option<usize>,
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct UiRenderFeedback {
     pub conversation_panel: Option<ConversationPanelRenderFeedback>,
@@ -79,17 +65,6 @@ pub struct ConversationPanelRenderFeedback {
     pub plain_rows: Vec<String>,
     pub message_ranges: Vec<ConversationMessageRenderRange>,
     pub history_offset_from_bottom: usize,
-}
-
-struct HistoryRenderResult {
-    lines: Vec<Line<'static>>,
-    message_ranges: Vec<ConversationMessageRenderRange>,
-}
-
-struct RulesBottomFormLayout {
-    content_lines: Vec<Line<'static>>,
-    field_ranges: Vec<Option<(usize, usize)>>,
-    footer_lines: Vec<Line<'static>>,
 }
 
 pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFeedback {

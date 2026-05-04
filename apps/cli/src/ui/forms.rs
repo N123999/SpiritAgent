@@ -1,6 +1,17 @@
 use super::*;
 use rust_i18n::t;
 
+pub(in crate::ui) struct BottomFormRenderResult {
+    pub(in crate::ui) cursor: Option<(u16, u16)>,
+    pub(in crate::ui) scroll_offset: Option<usize>,
+}
+
+struct RulesBottomFormLayout {
+    content_lines: Vec<Line<'static>>,
+    field_ranges: Vec<Option<(usize, usize)>>,
+    footer_lines: Vec<Line<'static>>,
+}
+
 pub(in crate::ui) fn bottom_form_content_width(panel_width: u16) -> usize {
     panel_width.saturating_sub(2).saturating_sub(4).max(1) as usize
 }
@@ -1116,7 +1127,7 @@ pub(in crate::ui) fn draw_rules_bottom_form(
     }
 }
 
-pub(in crate::ui) fn build_rules_bottom_form_layout(
+fn build_rules_bottom_form_layout(
     form: &BottomFormView,
     max_width: usize,
 ) -> RulesBottomFormLayout {
