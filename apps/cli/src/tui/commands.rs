@@ -173,19 +173,163 @@ impl TuiShell {
             self.load_chat_by_path(path.trim());
             return;
         }
+        if tail == "rewind" {
+            self.discard_last_matching_user_command(message);
+            self.open_rewind_picker();
+            return;
+        }
+        if let Some(rest) = tail.strip_prefix("rewind ") {
+            self.discard_last_matching_user_command(message);
+            self.handle_sessions_rewind(rest);
+            return;
+        }
         if tail == "load" {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
-                content: "用法: /sessions load <file>".to_string(),
+                content: t!("tui.session.load_usage").into_owned(),
                 tool_block: None,
             });
             return;
         }
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,
-            content: "用法: /sessions [save [path]|load <file>]".to_string(),
+            content: t!("tui.session.usage").into_owned(),
             tool_block: None,
         });
+    }
+
+    fn handle_sessions_rewind(&mut self, rest: &str) {
+        let Some((index_text, replacement_text)) = split_first_token(rest) else {
+            self.push_agent_message(t!("tui.session.rewind.usage").into_owned());
+            return;
+        };
+
+        let Ok(target_ordinal) = index_text.parse::<usize>() else {
+            self.push_agent_message(
+                t!("tui.session.rewind.invalid_ordinal", value = index_text).into_owned(),
+            );
+            return;
+        };
+        if target_ordinal == 0 {
+            self.push_agent_message(t!("tui.session.rewind.ordinal_from_one").into_owned());
+            return;
+        }
+
+        let targets = self.rewind_targets();
+        let Some((message_id, _preview)) = targets.get(target_ordinal - 1).map(|(_, message_id, preview)| (*message_id, preview.clone())) else {
+            self.push_agent_message(
+                t!("tui.session.rewind.not_found", ordinal = target_ordinal).into_owned(),
+            );
+            return;
+        };
+
+        let result = if replacement_text.trim().is_empty() {
+            self.rewind_to_message(message_id)
+        } else {
+            self.rewind_message_and_submit(message_id, replacement_text)
+        };
+        if let Err(err) = result {
+            self.push_agent_message(t!("tui.session.rewind.failed", err = err).into_owned());
+        }
+    }
+
+    pub fn open_rewind_picker(&mut self) {
+        if self.runtime.is_busy() {
+            self.push_agent_message(t!("tui.busy.pending_reply").into_owned());
+            return;
+        }
+        let targets = self.rewind_targets();
+        if targets.is_empty() {
+            self.push_agent_message(t!("tui.session.rewind.empty").into_owned());
+            return;
+        }
+        self.reset_primary_picker_overlay();
+        self.clear_conversation_selection();
+        self.rewind_picker_index = targets.len().saturating_sub(1);
+        self.enter_rewind_picker_mode();
+        self.scroll_history_to_bottom();
+    }
+
+    pub fn cancel_rewind_picker(&mut self) {
+        self.exit_rewind_picker_mode();
+        self.scroll_history_to_bottom();
+    }
+
+    pub fn select_next_rewind_target(&mut self) {
+        let targets = self.rewind_targets();
+        let total = targets.len();
+        if total == 0 {
+            return;
+        }
+        let current_message_id = targets[self.rewind_picker_index.min(total.saturating_sub(1))].1;
+        self.rewind_picker_index = (self.rewind_picker_index + 1) % total;
+        let next_message_id = targets[self.rewind_picker_index].1;
+        self.conversation
+            .anchor_rewind_message_to_current_row(current_message_id, next_message_id);
+    }
+
+    pub fn select_prev_rewind_target(&mut self) {
+        let targets = self.rewind_targets();
+        let total = targets.len();
+        if total == 0 {
+            return;
+        }
+        let current_message_id = targets[self.rewind_picker_index.min(total.saturating_sub(1))].1;
+        if self.rewind_picker_index == 0 {
+            self.rewind_picker_index = total - 1;
+        } else {
+            self.rewind_picker_index -= 1;
+        }
+        let next_message_id = targets[self.rewind_picker_index].1;
+        self.conversation
+            .anchor_rewind_message_to_current_row(current_message_id, next_message_id);
+    }
+
+    pub fn confirm_rewind_picker(&mut self) {
+        let Some((message_id, _preview)) = self
+            .rewind_targets()
+            .get(self.rewind_picker_index)
+            .map(|(_, message_id, preview)| (*message_id, preview.clone()))
+        else {
+            self.cancel_rewind_picker();
+            return;
+        };
+
+        self.cancel_rewind_picker();
+        if let Err(err) = self.rewind_to_message(message_id) {
+            self.push_agent_message(t!("tui.session.rewind.failed", err = err).into_owned());
+        }
+    }
+
+    pub fn is_rewind_picker_active(&self) -> bool {
+        self.rewind_picker_active
+    }
+
+    pub(super) fn rewind_targets(&self) -> Vec<(usize, usize, String)> {
+        let mut targets = Vec::new();
+        for (index, message) in self.messages.iter().enumerate() {
+            let message_id = index + 1;
+            if message.role != MessageRole::User || !self.runtime.can_rewind_message(message_id) {
+                continue;
+            }
+            targets.push((
+                targets.len() + 1,
+                message_id,
+                truncate_rewind_preview(&message.content),
+            ));
+        }
+        targets
+    }
+
+    fn discard_last_matching_user_command(&mut self, command: &str) {
+        let should_pop = self.messages.last().is_some_and(|message| {
+            message.role == MessageRole::User
+                && message.tool_block.is_none()
+                && message.content.trim() == command.trim()
+        });
+        if should_pop {
+            self.messages.pop();
+        }
     }
 
     pub(crate) fn handle_subagents_slash(&mut self, message: &str) {
@@ -286,7 +430,10 @@ impl TuiShell {
                     .into_owned(),
                 tool_block: None,
             });
-            self.submit_runtime_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
+            let _ = self.submit_runtime_user_turn(
+                prompt.to_string(),
+                Some(vec![raw_path.to_string()]),
+            );
             return;
         }
 
@@ -588,7 +735,7 @@ impl TuiShell {
             }
         }
         let generation_prompt = rules::build_create_rule_user_turn(&workspace_root, &request);
-        self.submit_runtime_user_turn(generation_prompt, None);
+        let _ = self.submit_runtime_user_turn(generation_prompt, None);
     }
 
     pub(crate) fn handle_create_skill_slash(&mut self, message: &str) {
@@ -615,7 +762,7 @@ impl TuiShell {
 
         let workspace_root = self.app_paths.workspace_root();
         let generation_prompt = skills::build_create_skill_user_turn(&workspace_root, &request);
-        self.submit_runtime_user_turn(generation_prompt, None);
+        let _ = self.submit_runtime_user_turn(generation_prompt, None);
     }
 
     pub(crate) fn handle_start_implementing_slash(&mut self) {
@@ -635,7 +782,7 @@ impl TuiShell {
 
         self.set_input_mode(MainInputMode::Agent);
         let user_turn = plan::build_start_implementing_user_turn();
-        self.submit_runtime_user_turn(user_turn, None);
+        let _ = self.submit_runtime_user_turn(user_turn, None);
     }
 
     pub(crate) fn handle_continue_slash(&mut self) {
@@ -706,7 +853,7 @@ impl TuiShell {
         }
 
         let user_turn = skills::build_activate_skill_user_turn(skill_name, user_message);
-        self.submit_runtime_user_turn(user_turn, None);
+        let _ = self.submit_runtime_user_turn(user_turn, None);
     }
 
     pub(crate) fn handle_mcp_slash(&mut self, message: &str) {
@@ -1115,6 +1262,18 @@ fn split_first_token(input: &str) -> Option<(&str, &str)> {
     }
 
     Some((trimmed, ""))
+}
+
+fn truncate_rewind_preview(input: &str) -> String {
+    let single_line = input.lines().next().unwrap_or("").trim();
+    let chars = single_line.chars().collect::<Vec<_>>();
+    if chars.len() <= 48 {
+        return single_line.to_string();
+    }
+
+    let mut out = chars.into_iter().take(48).collect::<String>();
+    out.push_str("...");
+    out
 }
 
 fn format_extension_list_message(entries: &[CliExtensionEntry]) -> String {

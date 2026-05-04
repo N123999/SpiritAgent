@@ -57,11 +57,24 @@ pub struct UiRenderFeedback {
     pub subagent_history_offset_from_bottom: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConversationMessageRenderRange {
+    pub message_id: usize,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConversationPanelRenderFeedback {
     pub hit: ConversationPanelHit,
     pub plain_rows: Vec<String>,
+    pub message_ranges: Vec<ConversationMessageRenderRange>,
     pub history_offset_from_bottom: usize,
+}
+
+struct HistoryRenderResult {
+    lines: Vec<Line<'static>>,
+    message_ranges: Vec<ConversationMessageRenderRange>,
 }
 
 struct RulesBottomFormLayout {
@@ -89,6 +102,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
     let show_chat_picker = app.chat_picker_active;
     let show_subagent_picker = app.subagent_picker_active;
     let show_image_picker = app.image_picker_active;
+    let show_rewind_picker = app.rewind_picker.is_some();
     let show_bottom_form = app.bottom_form.is_some();
     let show_marketplace = app.marketplace_view.is_some();
     let show_picker = show_model_picker
@@ -98,6 +112,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         || show_image_picker;
     let show_suggestions = app.input_suggestion_kind.is_some()
         && !show_picker
+        && !show_rewind_picker
         && !show_bottom_form
         && !show_marketplace;
 
@@ -161,7 +176,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         })
         .split(content_area);
 
-    let history_lines = build_history_lines(&app, chunks[0].width.saturating_sub(1) as usize);
+    let history_render = build_history_render_result(&app, chunks[0].width.saturating_sub(1) as usize);
+    let history_lines = history_render.lines;
     // 对话区无边框，内容与命中区域占满 chunks[0]。
     let inner_x = chunks[0].x;
     let inner_y = chunks[0].y;
@@ -195,6 +211,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
             total_lines: total_visual_lines,
         },
         plain_rows: plain,
+        message_ranges: history_render.message_ranges,
         history_offset_from_bottom: offset_bottom,
     });
 
@@ -424,7 +441,14 @@ fn build_footer_line(app: &TuiViewModel, width: usize) -> Line<'static> {
         MainInputMode::Agent => t!("ui.footer.mode.agent"),
         MainInputMode::Plan => t!("ui.footer.mode.plan"),
     };
-    let left_label = if app.pending_response_active && app.pending_aux_state().is_some() {
+    let left_label = if app.rewind_picker.is_some() {
+        format!(
+            "{}  |  {}  |  {}",
+            t!("ui.footer.preview"),
+            mode_label,
+            t!("ui.footer.rewind_hint")
+        )
+    } else if app.pending_response_active && app.pending_aux_state().is_some() {
         format!(
             "{}  |  {}  |  {}",
             t!("ui.footer.preview"),
@@ -900,7 +924,12 @@ fn build_history_logo_lines(max_width: usize) -> Vec<Line<'static>> {
     lines
 }
 
+#[cfg(test)]
 fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static>> {
+    build_history_render_result(app, max_width).lines
+}
+
+fn build_history_render_result(app: &TuiViewModel, max_width: usize) -> HistoryRenderResult {
     let mut lines = build_history_logo_lines(max_width);
     let (visible_messages, skipped, start_index) = visible_messages(app);
     let effective_standalone_pending_aux = effective_standalone_pending_aux(app);
@@ -919,7 +948,7 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
     } else {
         None
     };
-    let mut rendered_blocks: Vec<Vec<Line<'static>>> = Vec::new();
+    let mut rendered_blocks: Vec<(Option<usize>, Vec<Line<'static>>)> = Vec::new();
     let mut inserted_standalone_block = false;
 
     if !lines.is_empty() && (!visible_messages.is_empty() || has_pending_aux) {
@@ -947,30 +976,45 @@ fn build_history_lines(app: &TuiViewModel, max_width: usize) -> Vec<Line<'static
             && standalone_insert_before == Some(global_idx)
             && standalone_block.is_some()
         {
-            rendered_blocks.push(standalone_block.clone().unwrap_or_default());
+            rendered_blocks.push((None, standalone_block.clone().unwrap_or_default()));
             inserted_standalone_block = true;
         }
         let rendered = render_message_lines(app, msg, global_idx);
         if !rendered.is_empty() {
-            rendered_blocks.push(rendered);
+            rendered_blocks.push((Some(global_idx + 1), rendered));
         }
     }
 
     if !inserted_standalone_block {
         if let Some(standalone_block) = standalone_block {
-            rendered_blocks.push(standalone_block);
+            rendered_blocks.push((None, standalone_block));
         }
     }
 
+    let mut message_ranges = Vec::new();
     let rendered_count = rendered_blocks.len();
-    for (idx, block_lines) in rendered_blocks.into_iter().enumerate() {
+    for (idx, (message_id, block_lines)) in rendered_blocks.into_iter().enumerate() {
+        let start_line = lines.len();
         lines.extend(block_lines);
+        let end_line = lines.len().saturating_sub(1);
+        if let Some(message_id) = message_id {
+            if start_line <= end_line {
+                message_ranges.push(ConversationMessageRenderRange {
+                    message_id,
+                    start_line,
+                    end_line,
+                });
+            }
+        }
         if idx + 1 < rendered_count {
             lines.push(Line::from(""));
         }
     }
 
-    lines
+    HistoryRenderResult {
+        lines,
+        message_ranges,
+    }
 }
 
 fn should_prefer_persisted_subagent_status(app: &TuiViewModel) -> bool {
@@ -1221,11 +1265,16 @@ fn render_message_lines(
     msg: &ChatMessage,
     message_index: usize,
 ) -> Vec<Line<'static>> {
+    let message_id = message_index + 1;
+    let selected_rewind_user_message =
+        msg.role == MessageRole::User && app.is_rewind_selected_message(message_id);
+    let rewind_deemphasized_message = should_rewind_deemphasize_message(app, message_id);
     let message_slot = match msg.role {
         MessageRole::User => CliUiHookSlot::MessageUser,
         MessageRole::Agent => CliUiHookSlot::MessageAssistant,
     };
     let prefix_style = match msg.role {
+        MessageRole::User if selected_rewind_user_message => Style::default().fg(Color::White),
         MessageRole::User => patch_style_foreground(
             conversation_body_text_style(),
             cli_ui_accent_color(CliUiHookSlot::MessageUser),
@@ -1234,7 +1283,10 @@ fn render_message_lines(
     };
 
     if let Some(ref tool) = msg.tool_block {
-        return render_tool_card_lines(prefix_style, tool, app.show_aux_details);
+        return maybe_rewind_deemphasize_lines(
+            render_tool_card_lines(prefix_style, tool, app.show_aux_details),
+            rewind_deemphasized_message,
+        );
     }
 
     let is_pending_assistant =
@@ -1268,6 +1320,9 @@ fn render_message_lines(
     let has_message_body = !effective_message_body.trim().is_empty();
     let content_lines = if has_message_body {
         match msg.role {
+            MessageRole::User if selected_rewind_user_message => {
+                patch_lines_foreground(plain_text_lines(&effective_message_body), Some(Color::White))
+            }
             MessageRole::User => patch_lines_foreground(
                 plain_text_lines(&effective_message_body),
                 cli_ui_foreground_color(CliUiHookSlot::MessageUser),
@@ -1404,7 +1459,24 @@ fn render_message_lines(
         }
     }
 
-    out
+    maybe_rewind_deemphasize_lines(out, rewind_deemphasized_message)
+}
+
+fn should_rewind_deemphasize_message(app: &TuiViewModel, message_id: usize) -> bool {
+    app.rewind_picker.is_some()
+        && !app.is_rewind_selected_message(message_id)
+        && !app.is_rewind_selectable_message(message_id)
+}
+
+fn maybe_rewind_deemphasize_lines(
+    lines: Vec<Line<'static>>,
+    enabled: bool,
+) -> Vec<Line<'static>> {
+    if !enabled {
+        return lines;
+    }
+
+    patch_lines_style(lines, |style| style.add_modifier(Modifier::DIM))
 }
 
 fn parse_pending_subagent_status_text(text: &str) -> Option<String> {
@@ -1885,6 +1957,9 @@ fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec<String> {
             "    /sessions".to_string(),
             "    /sessions save [path]".to_string(),
             "    /sessions load <file>".to_string(),
+            "    /sessions rewind".to_string(),
+            "    /sessions rewind <index> [new_message]".to_string(),
+            t!("ui.suggestion.usage.sessions.rewind_note").into_owned(),
         ],
         "/image" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -4446,7 +4521,7 @@ mod tests {
         model_registry::AppConfig,
         view::{
             AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
-            MainInputMode, PendingAssistantAux, SubagentSessionDetailView,
+            MainInputMode, PendingAssistantAux, RewindPickerView, SubagentSessionDetailView,
             SubagentSessionSummaryView,
         },
     };
@@ -4481,6 +4556,7 @@ mod tests {
             input_suggestion_loading: false,
             slash_suggestions: vec![],
             selected_suggestion: 0,
+            rewind_picker: None,
             model_picker_active: false,
             model_picker_index: 0,
             language_picker_active: false,
@@ -4669,6 +4745,94 @@ mod tests {
         assert!(!plan_footer[0].contains("Tab"));
         assert!(agent_footer[0].contains(" |  Agent"));
         assert!(plan_footer[0].contains(" |  Plan"));
+    }
+
+    #[test]
+    fn rewind_picker_renders_selected_message_in_history_panel() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::User, "先确认需求"));
+        app.messages.push(ChatMessage::new(MessageRole::Agent, "我先看一下上下文。"));
+        app.messages
+            .push(ChatMessage::new(MessageRole::User, "再整理一下实现方案"));
+        app.rewind_picker = Some(RewindPickerView {
+            selected_message_id: 3,
+            selectable_message_ids: vec![1, 3],
+        });
+
+        let history_lines = render_text_lines(build_history_lines(&app, 120));
+        let selected_lines = render_message_lines(&app, &app.messages[2], 2);
+
+        assert!(history_lines.iter().any(|line| line.contains("我先看一下上下文。")));
+        assert!(history_lines.iter().any(|line| line.contains("再整理一下实现方案")));
+        assert!(history_lines
+            .iter()
+            .all(|line| !line.contains("消息回溯") && !line.contains("Message Rewind")));
+        assert_eq!(selected_lines[0].spans[0].style.fg, Some(Color::White));
+        assert!(selected_lines[0]
+            .spans
+            .iter()
+            .skip(1)
+            .any(|span| span.style.fg == Some(Color::White)));
+    }
+
+    #[test]
+    fn rewind_picker_deemphasizes_assistant_messages() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "我先看一下上下文。"));
+        app.rewind_picker = Some(RewindPickerView {
+            selected_message_id: 2,
+            selectable_message_ids: vec![2],
+        });
+
+        let lines = render_message_lines(&app, &app.messages[0], 0);
+
+        assert!(lines[0]
+            .spans
+            .iter()
+            .all(|span| span.style.add_modifier.contains(Modifier::DIM)));
+    }
+
+    #[test]
+    fn rewind_picker_deemphasizes_tool_messages() {
+        let mut app = build_view_model(ChatMessage::with_tool_block(
+            MessageRole::Agent,
+            "",
+            ToolUiBlock {
+                tool_call_id: Some("tool-1".to_string()),
+                tool_name: "read_file".to_string(),
+                phase: ToolUiPhase::Succeeded,
+                headline: "读取了一个文件".to_string(),
+                detail_lines: vec!["/tmp/demo.txt".to_string()],
+                args_excerpt: None,
+                output_excerpt: None,
+            },
+        ));
+        app.rewind_picker = Some(RewindPickerView {
+            selected_message_id: 2,
+            selectable_message_ids: vec![2],
+        });
+
+        let lines = render_message_lines(&app, &app.messages[0], 0);
+
+        assert!(lines.iter().all(|line| line
+            .spans
+            .iter()
+            .all(|span| span.style.add_modifier.contains(Modifier::DIM))));
+    }
+
+    #[test]
+    fn rewind_picker_deemphasizes_non_selectable_user_messages() {
+        let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/sessions"));
+        app.messages.push(ChatMessage::new(MessageRole::User, "真正发给模型的消息"));
+        app.rewind_picker = Some(RewindPickerView {
+            selected_message_id: 2,
+            selectable_message_ids: vec![2],
+        });
+
+        let lines = render_message_lines(&app, &app.messages[0], 0);
+
+        assert!(lines[0]
+            .spans
+            .iter()
+            .all(|span| span.style.add_modifier.contains(Modifier::DIM)));
     }
 
     #[test]

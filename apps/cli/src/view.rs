@@ -263,6 +263,12 @@ pub struct SubagentApprovalInputView {
     pub cursor: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct RewindPickerView {
+    pub selected_message_id: usize,
+    pub selectable_message_ids: Vec<usize>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageRole {
     User,
@@ -338,6 +344,7 @@ pub struct TuiViewModel {
     pub input_suggestion_loading: bool,
     pub slash_suggestions: Vec<InputSuggestion>,
     pub selected_suggestion: usize,
+    pub rewind_picker: Option<RewindPickerView>,
     pub model_picker_active: bool,
     pub model_picker_index: usize,
     pub language_picker_active: bool,
@@ -372,6 +379,20 @@ pub struct TuiViewModel {
 impl TuiViewModel {
     pub fn assistant_aux_for_message(&self, message_index: usize) -> Option<&AssistantAuxData> {
         self.assistant_aux_by_message.get(&message_index)
+    }
+
+    pub fn is_rewind_selectable_message(&self, message_id: usize) -> bool {
+        self.rewind_picker.as_ref().is_some_and(|rewind_picker| {
+            rewind_picker
+                .selectable_message_ids
+                .contains(&message_id)
+        })
+    }
+
+    pub fn is_rewind_selected_message(&self, message_id: usize) -> bool {
+        self.rewind_picker
+            .as_ref()
+            .is_some_and(|rewind_picker| rewind_picker.selected_message_id == message_id)
     }
 
     pub fn is_pending_assistant_message(&self, message_index: usize) -> bool {

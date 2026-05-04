@@ -222,7 +222,8 @@ impl TuiShell {
         });
     }
 
-    fn reset_primary_picker_overlay(&mut self) {
+    pub(super) fn reset_primary_picker_overlay(&mut self) {
+        self.exit_rewind_picker_mode();
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.chat_picker_active = false;

@@ -487,6 +487,7 @@ fn process_event_batch(
                 if shell.is_model_list_overlay_active()
                     || shell.is_language_picker_active()
                     || shell.is_chat_picker_active()
+                    || shell.is_rewind_picker_active()
                     || shell.is_subagent_picker_active()
                     || shell.is_subagent_view_active()
                     || shell.is_image_picker_active()
@@ -519,6 +520,7 @@ fn process_event_batch(
                 if !shell.is_model_list_overlay_active()
                     && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
+                    && !shell.is_rewind_picker_active()
                     && !shell.is_subagent_picker_active()
                     && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
@@ -537,6 +539,7 @@ fn process_event_batch(
                 if !shell.is_model_list_overlay_active()
                     && !shell.is_language_picker_active()
                     && !shell.is_chat_picker_active()
+                    && !shell.is_rewind_picker_active()
                     && !shell.is_subagent_picker_active()
                     && !shell.is_subagent_view_active()
                     && !shell.is_image_picker_active()
@@ -628,6 +631,20 @@ fn process_key_event(
             KeyCode::Up => shell.select_prev_chat(),
             KeyCode::Down => shell.select_next_chat(),
             KeyCode::Enter => shell.confirm_chat_picker(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                shell.request_quit();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if shell.is_rewind_picker_active() {
+        match key.code {
+            KeyCode::Esc => shell.cancel_rewind_picker(),
+            KeyCode::Up => shell.select_prev_rewind_target(),
+            KeyCode::Down => shell.select_next_rewind_target(),
+            KeyCode::Enter => shell.confirm_rewind_picker(),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 shell.request_quit();
             }
@@ -1178,6 +1195,7 @@ fn paste_target(shell: &TuiShell) -> Option<PasteTarget> {
     if shell.is_model_list_overlay_active()
         || shell.is_language_picker_active()
         || shell.is_chat_picker_active()
+        || shell.is_rewind_picker_active()
         || shell.is_image_picker_active()
     {
         None

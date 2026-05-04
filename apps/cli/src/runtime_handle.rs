@@ -16,6 +16,7 @@ use crate::{
         AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
         SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
+    rewind::{DesktopRewindCheckpointSnapshot, RewindRestoreOutcome},
     session::SessionModel,
     skills::ActiveSkillPayload,
     ts_bridge::{
@@ -226,7 +227,29 @@ impl RuntimeHandle {
         self.runtime.handle_stream_stall_timeout()
     }
 
-    pub fn submit_user_turn(&mut self, text: String, explicit_images: Option<Vec<String>>) {
+    pub fn can_rewind_message(&self, message_id: usize) -> bool {
+        self.runtime.can_rewind_message(message_id)
+    }
+
+    pub fn record_rewind_checkpoint(
+        &mut self,
+        message_id: usize,
+        message_index: usize,
+        snapshot: DesktopRewindCheckpointSnapshot,
+    ) -> Result<()> {
+        self.runtime
+            .record_rewind_checkpoint(message_id, message_index, snapshot)
+    }
+
+    pub fn rewind_message(&mut self, message_id: usize) -> Result<RewindRestoreOutcome> {
+        self.runtime.rewind_message(message_id)
+    }
+
+    pub fn submit_user_turn(
+        &mut self,
+        text: String,
+        explicit_images: Option<Vec<String>>,
+    ) -> Result<()> {
         self.runtime.submit_user_turn(text, explicit_images)
     }
 

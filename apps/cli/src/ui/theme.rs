@@ -168,3 +168,25 @@ pub(in crate::ui) fn patch_line_foreground(
         .collect();
     Line::from(spans)
 }
+
+pub(in crate::ui) fn patch_line_style(
+    line: Line<'static>,
+    map: impl Fn(Style) -> Style + Copy,
+) -> Line<'static> {
+    let spans: Vec<Span<'static>> = line
+        .spans
+        .into_iter()
+        .map(|span| Span::styled(span.content, map(span.style)))
+        .collect();
+    Line::from(spans)
+}
+
+pub(in crate::ui) fn patch_lines_style(
+    lines: Vec<Line<'static>>,
+    map: impl Fn(Style) -> Style + Copy,
+) -> Vec<Line<'static>> {
+    lines
+        .into_iter()
+        .map(|line| patch_line_style(line, map))
+        .collect()
+}

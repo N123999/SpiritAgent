@@ -555,6 +555,11 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
     ...(typeof module.createNoopMcpAdapter === 'function'
       ? { mcp: module.createNoopMcpAdapter() }
       : {}),
+    fileChangeObserver: {
+      async recordFileChange(change: unknown): Promise<void> {
+        await peer.call('host.recordFileChange', change);
+      },
+    },
     ...(extensionManager
       ? {
           extensions: {

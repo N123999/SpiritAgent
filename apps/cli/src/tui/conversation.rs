@@ -1,7 +1,7 @@
 use super::TuiShell;
 use crate::{
     conversation_select::{normalize_selection, selection_plain_text, CellPointer},
-    ui::UiRenderFeedback,
+    ui::{ConversationMessageRenderRange, UiRenderFeedback},
     view::ConversationPanelHit,
 };
 
@@ -13,14 +13,46 @@ pub(crate) struct ConversationUiState {
     dragging: bool,
     panel_hit: Option<ConversationPanelHit>,
     plain_rows: Vec<String>,
+    message_ranges: Vec<ConversationMessageRenderRange>,
 }
 
 impl ConversationUiState {
-    pub(crate) fn note_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
+    pub(crate) fn note_panel(
+        &mut self,
+        hit: ConversationPanelHit,
+        plain_rows: Vec<String>,
+        message_ranges: Vec<ConversationMessageRenderRange>,
+    ) {
         self.panel_hit = Some(hit);
         self.plain_rows = plain_rows;
+        self.message_ranges = message_ranges;
         let max_line = hit.total_lines.saturating_sub(1);
         self.sync_selection_to_bounds(max_line);
+    }
+
+    pub(crate) fn anchor_rewind_message_to_current_row(
+        &mut self,
+        current_message_id: usize,
+        next_message_id: usize,
+    ) {
+        let Some(hit) = self.panel_hit else {
+            return;
+        };
+
+        let view_height = hit.h.max(1) as usize;
+        let max_scroll = hit.total_lines.saturating_sub(view_height);
+        let current_offset = self.history_offset_from_bottom.min(max_scroll);
+        let current_top_line = max_scroll.saturating_sub(current_offset);
+        let anchor_row = self
+            .message_start_line(current_message_id)
+            .map(|line| line.saturating_sub(current_top_line))
+            .filter(|row| *row < view_height)
+            .unwrap_or_else(|| view_height.saturating_sub(1));
+        let Some(next_start_line) = self.message_start_line(next_message_id) else {
+            return;
+        };
+        let next_top_line = next_start_line.saturating_sub(anchor_row).min(max_scroll);
+        self.history_offset_from_bottom = max_scroll.saturating_sub(next_top_line);
     }
 
     pub(crate) fn clear_selection(&mut self) {
@@ -106,16 +138,32 @@ impl ConversationUiState {
             *point = clamp(*point);
         }
     }
+
+    fn message_start_line(&self, message_id: usize) -> Option<usize> {
+        self.message_ranges
+            .iter()
+            .find(|range| range.message_id == message_id)
+            .map(|range| range.start_line)
+    }
 }
 impl TuiShell {
-    pub fn note_conversation_panel(&mut self, hit: ConversationPanelHit, plain_rows: Vec<String>) {
-        self.conversation.note_panel(hit, plain_rows);
+    pub fn note_conversation_panel(
+        &mut self,
+        hit: ConversationPanelHit,
+        plain_rows: Vec<String>,
+        message_ranges: Vec<ConversationMessageRenderRange>,
+    ) {
+        self.conversation.note_panel(hit, plain_rows, message_ranges);
     }
 
     pub fn apply_render_feedback(&mut self, feedback: UiRenderFeedback) {
         if let Some(conversation) = feedback.conversation_panel {
             self.conversation.history_offset_from_bottom = conversation.history_offset_from_bottom;
-            self.note_conversation_panel(conversation.hit, conversation.plain_rows);
+            self.note_conversation_panel(
+                conversation.hit,
+                conversation.plain_rows,
+                conversation.message_ranges,
+            );
         }
 
         if let Some(scroll_offset) = feedback.bottom_form_scroll_offset {
@@ -172,5 +220,53 @@ impl TuiShell {
 
     pub fn scroll_history_to_bottom(&mut self) {
         self.conversation.history_offset_from_bottom = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConversationUiState;
+    use crate::{
+        ui::ConversationMessageRenderRange,
+        view::ConversationPanelHit,
+    };
+
+    #[test]
+    fn rewind_anchor_preserves_selected_row_across_large_message_gaps() {
+        let mut state = ConversationUiState {
+            history_offset_from_bottom: 60,
+            ..ConversationUiState::default()
+        };
+        state.note_panel(
+            ConversationPanelHit {
+                x: 0,
+                y: 0,
+                w: 80,
+                h: 20,
+                scroll: 20,
+                total_lines: 100,
+            },
+            Vec::new(),
+            vec![
+                ConversationMessageRenderRange {
+                    message_id: 2,
+                    start_line: 25,
+                    end_line: 25,
+                },
+                ConversationMessageRenderRange {
+                    message_id: 4,
+                    start_line: 60,
+                    end_line: 60,
+                },
+            ],
+        );
+
+        state.anchor_rewind_message_to_current_row(2, 4);
+
+        let max_scroll = 100usize.saturating_sub(20);
+        let next_top_line = max_scroll.saturating_sub(state.history_offset_from_bottom);
+
+        assert_eq!(next_top_line, 55);
+        assert_eq!(60usize.saturating_sub(next_top_line), 5);
     }
 }

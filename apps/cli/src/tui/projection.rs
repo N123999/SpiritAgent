@@ -1,8 +1,13 @@
 use super::*;
+use crate::view::RewindPickerView;
 
 impl TuiShell {
     pub fn view_model(&self) -> TuiViewModel {
-        let history_truncated_before = self.messages.len().saturating_sub(VIEW_MODEL_MESSAGE_LIMIT);
+        let history_truncated_before = if self.rewind_picker_active {
+            0
+        } else {
+            self.messages.len().saturating_sub(VIEW_MODEL_MESSAGE_LIMIT)
+        };
         let visible_messages = self.messages[history_truncated_before..].to_vec();
         let assistant_aux_by_message = self
             .assistant_aux_by_message
@@ -17,6 +22,7 @@ impl TuiShell {
             .map(Self::subagent_summary_view)
             .collect();
         let marketplace_view = self.build_marketplace_view_model();
+        let rewind_picker = self.rewind_picker_view();
 
         TuiViewModel {
             input: self.input.value.clone(),
@@ -35,6 +41,7 @@ impl TuiShell {
                 && self.current_file_reference_query().is_some(),
             slash_suggestions: self.slash.suggestions.clone(),
             selected_suggestion: self.slash.selected_suggestion,
+            rewind_picker,
             model_picker_active: self.model_picker_active,
             model_picker_index: self.model_picker_index,
             language_picker_active: self.language_picker_active,
@@ -64,5 +71,26 @@ impl TuiShell {
             conversation_sel_anchor: self.conversation.sel_anchor,
             conversation_sel_head: self.conversation.sel_head,
         }
+    }
+
+    fn rewind_picker_view(&self) -> Option<RewindPickerView> {
+        if !self.rewind_picker_active {
+            return None;
+        }
+
+        let selectable_message_ids = self
+            .rewind_targets()
+            .into_iter()
+            .map(|(_, message_id, _)| message_id)
+            .collect::<Vec<_>>();
+        if selectable_message_ids.is_empty() {
+            return None;
+        }
+
+        Some(RewindPickerView {
+            selected_message_id: selectable_message_ids
+                [self.rewind_picker_index.min(selectable_message_ids.len().saturating_sub(1))],
+            selectable_message_ids,
+        })
     }
 }

@@ -27,6 +27,7 @@ use crate::{
         AppPaths, AssistantAuxArchiveEntry, ChatRepository, ConfigStore, McpStatusSnapshot,
         McpStatusState, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
+    rewind::{self, ConversationMessageSnapshot, DesktopRewindCheckpointSnapshot},
     rules::{self, RuleEntry, RuleScope},
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
@@ -78,6 +79,9 @@ pub struct TuiShell {
     last_completed_assistant_msg_index: Option<usize>,
     last_mcp_status_revision: u64,
     slash: slash::SlashState,
+    rewind_picker_active: bool,
+    rewind_picker_index: usize,
+    rewind_aux_details_before_picker: Option<bool>,
     model_picker_active: bool,
     model_picker_index: usize,
     language_picker_active: bool,
@@ -162,6 +166,9 @@ impl TuiShell {
             last_completed_assistant_msg_index: None,
             last_mcp_status_revision: initial_mcp_status.revision,
             slash: slash::SlashState::new(),
+            rewind_picker_active: false,
+            rewind_picker_index: 0,
+            rewind_aux_details_before_picker: None,
             model_picker_active: false,
             model_picker_index: 0,
             language_picker_active: false,
@@ -342,6 +349,7 @@ impl TuiShell {
         self.assistant_aux_by_message.clear();
         self.persisted_standalone_pending_aux = None;
         self.persisted_standalone_pending_aux_anchor = None;
+        self.exit_rewind_picker_mode();
         self.last_completed_assistant_msg_index = None;
         self.subagent.picker_active = false;
         self.close_subagent_view();
@@ -367,6 +375,30 @@ impl TuiShell {
 
     pub fn toggle_aux_details(&mut self) {
         self.show_aux_details = !self.show_aux_details;
+    }
+
+    pub(super) fn enter_rewind_picker_mode(&mut self) {
+        if self.rewind_picker_active {
+            return;
+        }
+
+        self.rewind_aux_details_before_picker = Some(self.show_aux_details);
+        if should_toggle_aux_details_on_enter_rewind_picker(self.show_aux_details) {
+            self.toggle_aux_details();
+        }
+        self.rewind_picker_active = true;
+    }
+
+    pub(super) fn exit_rewind_picker_mode(&mut self) {
+        self.rewind_picker_active = false;
+        self.rewind_picker_index = 0;
+        let previous_show_aux_details = self.rewind_aux_details_before_picker.take();
+        if should_toggle_aux_details_on_exit_rewind_picker(
+            self.show_aux_details,
+            previous_show_aux_details,
+        ) {
+            self.toggle_aux_details();
+        }
     }
 
     pub fn is_model_picker_active(&self) -> bool {
@@ -498,43 +530,8 @@ impl TuiShell {
     }
 
     fn save_current_chat(&mut self, path: Option<&str>) {
-        let messages = self
-            .messages
-            .iter()
-            .map(|m| {
-                (
-                    match m.role {
-                        MessageRole::User => "user".to_string(),
-                        MessageRole::Agent => "assistant".to_string(),
-                    },
-                    m.content.clone(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut assistant_aux = self
-            .assistant_aux_by_message
-            .iter()
-            .filter_map(|(idx, aux)| {
-                let thinking = aux
-                    .thinking
-                    .clone()
-                    .filter(|value| !value.trim().is_empty());
-                let compaction = aux
-                    .compaction
-                    .clone()
-                    .filter(|value| !value.trim().is_empty());
-                if thinking.is_none() && compaction.is_none() {
-                    None
-                } else {
-                    Some(AssistantAuxArchiveEntry {
-                        message_index: *idx,
-                        thinking,
-                        compaction,
-                    })
-                }
-            })
-            .collect::<Vec<_>>();
-        assistant_aux.sort_by_key(|entry| entry.message_index);
+        let messages = self.archive_messages_for_message_count(self.messages.len());
+        let assistant_aux = self.assistant_aux_for_message_count(self.messages.len());
         match self.runtime.export_chat_archive(&messages, &assistant_aux) {
             Ok(archive) => match self.chat_repository.save(path, &archive) {
                 Ok(saved_path) => {
@@ -565,6 +562,7 @@ impl TuiShell {
     fn load_chat_by_path(&mut self, path: &str) {
         match self.chat_repository.load(path) {
             Ok(archive) => {
+                self.exit_rewind_picker_mode();
                 self.subagent.picker_active = false;
                 self.close_subagent_view();
                 let mut msgs = Vec::new();
@@ -643,10 +641,163 @@ impl TuiShell {
         &mut self,
         user_turn: String,
         explicit_images: Option<Vec<String>>,
-    ) {
+    ) -> Result<()> {
         self.last_turn_can_continue = false;
-        self.runtime.submit_user_turn(user_turn, explicit_images);
+        let user_message_count = self.messages.len();
+        let Some(user_message_index) = user_message_count.checked_sub(1) else {
+            return Ok(());
+        };
+        let before_archive = self.export_chat_archive_for_message_count(user_message_index);
+        let before_messages = self.conversation_snapshots_for_message_count(user_message_index);
+        let submit_result = self.runtime.submit_user_turn(user_turn, explicit_images);
+        if submit_result.is_err() {
+            self.messages.pop();
+        } else {
+            let current_archive = self.export_chat_archive_for_message_count(user_message_count);
+            match (before_archive, current_archive) {
+                (Ok(before_archive), Ok(archive)) => {
+                    let snapshot = DesktopRewindCheckpointSnapshot {
+                        archive,
+                        desktop_messages: self.conversation_snapshots_for_message_count(
+                            user_message_count,
+                        ),
+                        before_archive: Some(before_archive),
+                        before_desktop_messages: Some(before_messages),
+                    };
+                    if let Err(err) = self.runtime.record_rewind_checkpoint(
+                        user_message_index + 1,
+                        user_message_index,
+                        snapshot,
+                    ) {
+                        logging::log_event(&format!(
+                            "[tui-rewind] record checkpoint failed message_id={} index={} err={:#}",
+                            user_message_index + 1,
+                            user_message_index,
+                            err
+                        ));
+                    }
+                }
+                (Err(err), _) | (_, Err(err)) => {
+                    logging::log_event(&format!(
+                        "[tui-rewind] export archive for checkpoint failed message_id={} index={} err={:#}",
+                        user_message_index + 1,
+                        user_message_index,
+                        err
+                    ));
+                }
+            }
+        }
         self.apply_runtime_events();
+        submit_result
+    }
+
+    fn archive_messages_for_message_count(&self, message_count: usize) -> Vec<(String, String)> {
+        self.messages
+            .iter()
+            .take(message_count)
+            .map(|message| {
+                (
+                    match message.role {
+                        MessageRole::User => "user".to_string(),
+                        MessageRole::Agent => "assistant".to_string(),
+                    },
+                    message.content.clone(),
+                )
+            })
+            .collect()
+    }
+
+    fn assistant_aux_for_message_count(
+        &self,
+        message_count: usize,
+    ) -> Vec<AssistantAuxArchiveEntry> {
+        rewind::assistant_aux_entries(&self.assistant_aux_by_message, message_count)
+    }
+
+    fn export_chat_archive_for_message_count(
+        &mut self,
+        message_count: usize,
+    ) -> Result<crate::ports::ChatArchive> {
+        let messages = self.archive_messages_for_message_count(message_count);
+        let assistant_aux = self.assistant_aux_for_message_count(message_count);
+        self.runtime.export_chat_archive(&messages, &assistant_aux)
+    }
+
+    fn conversation_snapshots_for_message_count(
+        &self,
+        message_count: usize,
+    ) -> Vec<ConversationMessageSnapshot> {
+        rewind::conversation_snapshots(
+            &self.messages[..message_count],
+            &self.assistant_aux_by_message,
+            self.pending_assistant_msg_index
+                .filter(|index| *index < message_count),
+        )
+    }
+
+    fn restore_conversation_from_snapshots(
+        &mut self,
+        snapshots: &[ConversationMessageSnapshot],
+    ) {
+        let (messages, assistant_aux_by_message) = rewind::restore_conversation(snapshots);
+        self.messages = messages;
+        self.assistant_aux_by_message = assistant_aux_by_message;
+        self.persisted_standalone_pending_aux = None;
+        self.persisted_standalone_pending_aux_anchor = None;
+        self.pending_assistant_msg_index = None;
+        self.last_completed_assistant_msg_index = None;
+        self.last_turn_can_continue = false;
+        self.exit_rewind_picker_mode();
+        self.subagent.picker_active = false;
+        self.close_subagent_view();
+    }
+
+    fn rewind_to_message(&mut self, message_id: usize) -> Result<()> {
+        if self.runtime.is_busy() {
+            return Err(anyhow!(t!("tui.busy.pending_reply").into_owned()));
+        }
+
+        let outcome = self.runtime.rewind_message(message_id)?;
+        self.apply_rewind_restore_outcome(outcome);
+        Ok(())
+    }
+
+    fn rewind_message_and_submit(&mut self, message_id: usize, replacement_text: &str) -> Result<()> {
+        let trimmed = replacement_text.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!(t!("tui.session.rewind.replacement_empty").into_owned()));
+        }
+        self.rewind_to_message(message_id)?;
+
+        let workspace_root = self.app_paths.workspace_root();
+        let runtime_turn = user_turn_text_for_mode(&workspace_root, self.input.mode, trimmed);
+        self.messages.push(ChatMessage {
+            role: MessageRole::User,
+            content: trimmed.to_string(),
+            tool_block: None,
+        });
+        self.submit_runtime_user_turn(runtime_turn, None)
+    }
+
+    fn apply_rewind_restore_outcome(&mut self, outcome: rewind::RewindRestoreOutcome) {
+        if !outcome.warnings.is_empty() {
+            logging::log_event(&format!(
+                "[tui-rewind] restore warnings restored={} skipped={} warnings={}",
+                outcome.restored,
+                outcome.skipped,
+                outcome
+                    .warnings
+                    .iter()
+                    .map(|warning| format!(
+                        "path={} action={:?} message={}",
+                        warning.path, warning.action, warning.message
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            ));
+        }
+        self.restore_conversation_from_snapshots(&outcome.before_messages);
+        self.scroll_history_to_bottom();
     }
 
     fn refresh_plan_metadata_from_disk(&mut self) {
@@ -792,11 +943,24 @@ fn should_reanchor_persisted_subagent_status_on_begin_assistant_response(
         && persisted_standalone_pending_aux.is_some_and(is_standalone_subagent_status_aux)
 }
 
+fn should_toggle_aux_details_on_enter_rewind_picker(show_aux_details: bool) -> bool {
+    show_aux_details
+}
+
+fn should_toggle_aux_details_on_exit_rewind_picker(
+    show_aux_details: bool,
+    previous_show_aux_details: Option<bool>,
+) -> bool {
+    previous_show_aux_details.is_some_and(|previous| previous != show_aux_details)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         is_standalone_subagent_status_aux, manual_shell_tool_command,
         next_persisted_standalone_pending_aux, next_persisted_standalone_pending_aux_anchor,
+        should_toggle_aux_details_on_enter_rewind_picker,
+        should_toggle_aux_details_on_exit_rewind_picker,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
         user_turn_text_for_mode, TuiShell,
     };
@@ -980,6 +1144,21 @@ mod tests {
             TuiShell::compare_marketplace_versions("1.0.0+build.1", "1.0.0+build.2"),
             std::cmp::Ordering::Equal
         );
+    }
+
+    #[test]
+    fn rewind_picker_enter_toggles_aux_details_only_when_currently_visible() {
+        assert!(should_toggle_aux_details_on_enter_rewind_picker(true));
+        assert!(!should_toggle_aux_details_on_enter_rewind_picker(false));
+    }
+
+    #[test]
+    fn rewind_picker_exit_restores_previous_aux_details_mode() {
+        assert!(should_toggle_aux_details_on_exit_rewind_picker(false, Some(true)));
+        assert!(should_toggle_aux_details_on_exit_rewind_picker(true, Some(false)));
+        assert!(!should_toggle_aux_details_on_exit_rewind_picker(false, Some(false)));
+        assert!(!should_toggle_aux_details_on_exit_rewind_picker(true, Some(true)));
+        assert!(!should_toggle_aux_details_on_exit_rewind_picker(true, None));
     }
 }
 

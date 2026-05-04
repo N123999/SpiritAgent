@@ -394,7 +394,7 @@ impl TuiShell {
             let workspace_root = self.app_paths.workspace_root();
             let runtime_turn =
                 user_turn_text_for_mode(&workspace_root, self.input.mode, &raw_message);
-            self.submit_runtime_user_turn(runtime_turn, None);
+            let _ = self.submit_runtime_user_turn(runtime_turn, None);
         }
 
         self.set_input(String::new());

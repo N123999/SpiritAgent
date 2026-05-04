@@ -16,6 +16,7 @@ pub mod model_provider_presets;
 pub mod openai_models_list;
 pub mod plan;
 pub mod ports;
+pub mod rewind;
 pub mod rules;
 pub mod runtime_handle;
 pub mod session;
