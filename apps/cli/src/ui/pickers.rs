@@ -2,6 +2,67 @@ use super::subagent::subagent_status_badge;
 use super::*;
 use rust_i18n::t;
 
+pub(in crate::ui) fn inline_picker_bounds(
+    total: usize,
+    selected: usize,
+    max_items: usize,
+) -> (usize, usize) {
+    let window = max_items.max(1);
+    let pivot = window / 2;
+    let max_start = total.saturating_sub(window);
+    let start = selected.saturating_sub(pivot).min(max_start);
+    let end = (start + window).min(total);
+    (start, end)
+}
+
+pub(in crate::ui) fn inline_picker_text_style(is_selected: bool) -> Style {
+    if is_selected {
+        Style::default().fg(Color::White)
+    } else {
+        subtle_aux_text_style()
+    }
+}
+
+pub(in crate::ui) fn inline_picker_meta_style(is_selected: bool) -> Style {
+    if is_selected {
+        inline_picker_text_style(true)
+    } else {
+        subtle_aux_text_style().add_modifier(Modifier::DIM)
+    }
+}
+
+pub(in crate::ui) fn inline_picker_marker(is_selected: bool) -> &'static str {
+    if is_selected { "> " } else { "  " }
+}
+
+pub(in crate::ui) fn inline_picker_area(area: Rect) -> Rect {
+    let offset = if area.width >= 12 {
+        2
+    } else if area.width >= 6 {
+        1
+    } else {
+        0
+    }
+    .min(area.width.saturating_sub(1));
+
+    Rect {
+        x: area.x.saturating_add(offset),
+        y: area.y,
+        width: area.width.saturating_sub(offset),
+        height: area.height,
+    }
+}
+
+pub(in crate::ui) fn draw_inline_picker(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    lines: Vec<Line<'static>>,
+) {
+    let picker_widget = Paragraph::new(lines).wrap(Wrap { trim: true });
+    frame.render_widget(Clear, area);
+    frame.render_widget(picker_widget, inline_picker_area(area));
+}
+
 pub(in crate::ui) fn build_suggestion_lines(
     app: &TuiViewModel,
     max_items: usize,
@@ -301,39 +362,24 @@ pub(in crate::ui) fn build_model_picker_lines(
         .model_picker_index
         .min(app.config.models.len().saturating_sub(1));
     let total = app.config.models.len();
-    let window = max_items.max(1);
-    let pivot = window / 2;
-    let max_start = total.saturating_sub(window);
-    let start = selected.saturating_sub(pivot).min(max_start);
-    let end = (start + window).min(total);
-    let default_style = subtle_aux_text_style();
-    let selected_style = Style::default().fg(Color::White);
+    let (start, end) = inline_picker_bounds(total, selected, max_items);
 
     let mut lines = Vec::new();
     for idx in start..end {
         let model = &app.config.models[idx];
         let is_selected = idx == selected;
         let is_active = model.name == app.config.active_model;
-        let marker = if is_selected { "> " } else { "  " };
 
         let active_suffix = if is_active {
             t!("ui.picker.models.current_suffix").into_owned()
         } else {
             String::new()
         };
-        let row_style = if is_selected {
-            selected_style
-        } else {
-            default_style
-        };
-        let meta_style = if is_selected {
-            selected_style
-        } else {
-            default_style.add_modifier(Modifier::DIM)
-        };
+        let row_style = inline_picker_text_style(is_selected);
+        let meta_style = inline_picker_meta_style(is_selected);
 
         lines.push(Line::from(vec![
-            Span::styled(marker.to_string(), row_style),
+            Span::styled(inline_picker_marker(is_selected), row_style),
             Span::styled(model.name.to_string(), row_style),
             Span::styled(format!(" ({})", model.api_base), meta_style),
             Span::styled(active_suffix, meta_style),
@@ -341,24 +387,6 @@ pub(in crate::ui) fn build_model_picker_lines(
     }
 
     lines
-}
-
-pub(in crate::ui) fn model_picker_area(area: Rect) -> Rect {
-    let offset = if area.width >= 12 {
-        2
-    } else if area.width >= 6 {
-        1
-    } else {
-        0
-    }
-    .min(area.width.saturating_sub(1));
-
-    Rect {
-        x: area.x.saturating_add(offset),
-        y: area.y,
-        width: area.width.saturating_sub(offset),
-        height: area.height,
-    }
 }
 
 pub(in crate::ui) fn build_chat_picker_lines(
@@ -373,28 +401,15 @@ pub(in crate::ui) fn build_chat_picker_lines(
         .chat_picker_index
         .min(app.chat_picker_files.len().saturating_sub(1));
     let total = app.chat_picker_files.len();
-    let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
-    let end = (start + window).min(total);
+    let (start, end) = inline_picker_bounds(total, selected, max_items);
 
     let mut lines = Vec::new();
     for idx in start..end {
         let name = &app.chat_picker_files[idx];
         let is_selected = idx == selected;
-        let marker = if is_selected { "> " } else { "  " };
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-        } else {
-            Style::default().fg(Color::White)
-        };
+        let style = inline_picker_text_style(is_selected);
         lines.push(Line::from(Span::styled(
-            format!("{}{}", marker, name),
+            format!("{}{}", inline_picker_marker(is_selected), name),
             style,
         )));
     }

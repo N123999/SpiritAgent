@@ -78,6 +78,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
     let show_rewind_picker = app.rewind_picker.is_some();
     let show_bottom_form = app.bottom_form.is_some();
     let show_marketplace = app.marketplace_view.is_some();
+    let show_inline_picker = show_model_picker || show_chat_picker;
     let show_picker = show_model_picker
         || show_language_picker
         || show_chat_picker
@@ -92,7 +93,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
     let root_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
-            if show_suggestions || show_bottom_form || show_model_picker {
+            if show_suggestions || show_bottom_form || show_inline_picker {
                 vec![Constraint::Min(0)]
             } else {
                 vec![Constraint::Min(0), Constraint::Length(1)]
@@ -117,7 +118,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(if show_model_picker {
+        .constraints(if show_inline_picker {
             vec![
                 Constraint::Min(5),
                 Constraint::Length(input_height),
@@ -250,10 +251,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
-        let picker_area = model_picker_area(chunks[2]);
-        let picker_widget = Paragraph::new(picker_lines).wrap(Wrap { trim: true });
-        frame.render_widget(Clear, chunks[2]);
-        frame.render_widget(picker_widget, picker_area);
+        draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_language_picker {
         let picker_lines = build_language_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
@@ -266,14 +264,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         frame.render_widget(picker_widget, chunks[2]);
     } else if show_chat_picker {
         let picker_lines = build_chat_picker_lines(&app, 5);
-        let picker_widget = Paragraph::new(picker_lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(t!("ui.picker.sessions")),
-            )
-            .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[2]);
+        draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_subagent_picker {
         let picker_lines =
             build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
@@ -321,7 +312,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         frame.render_widget(suggestions_widget, chunks[2]);
     }
 
-    if !show_suggestions && !show_bottom_form && !show_marketplace && !show_model_picker {
+    if !show_suggestions && !show_bottom_form && !show_marketplace && !show_inline_picker {
         let help_idx = if show_picker { 3 } else { 2 };
         let footer = Paragraph::new(build_footer_line(&app, chunks[help_idx].width as usize));
         frame.render_widget(footer, chunks[help_idx]);

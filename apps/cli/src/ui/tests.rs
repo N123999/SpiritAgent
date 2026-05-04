@@ -7,6 +7,7 @@ use crate::{
         SubagentSessionSummaryView,
     },
 };
+use ratatui::{Terminal, backend::TestBackend};
 use rust_i18n::t;
 use std::collections::HashMap;
 
@@ -18,6 +19,27 @@ fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
                 .into_iter()
                 .map(|span| span.content.into_owned().replace('\u{00a0}', " "))
                 .collect::<String>()
+        })
+        .collect()
+}
+
+fn render_ui_lines(app: &TuiViewModel, width: u16, height: u16) -> Vec<String> {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).expect("test terminal initializes");
+    terminal
+        .draw(|frame| {
+            draw_ui(frame, app);
+        })
+        .expect("ui renders");
+
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            let mut line = String::new();
+            for x in 0..width {
+                line.push_str(buffer[(x, y)].symbol());
+            }
+            line
         })
         .collect()
 }
@@ -228,6 +250,51 @@ fn footer_shows_mode_without_tab_toggle_hint() {
     assert!(!plan_footer[0].contains("Tab"));
     assert!(agent_footer[0].contains(format!(" |  {}", t!("ui.footer.mode.agent")).as_str()));
     assert!(plan_footer[0].contains(format!(" |  {}", t!("ui.footer.mode.plan")).as_str()));
+}
+
+#[test]
+fn inline_picker_window_keeps_selection_near_middle() {
+    assert_eq!(inline_picker_bounds(8, 0, 5), (0, 5));
+    assert_eq!(inline_picker_bounds(8, 2, 5), (0, 5));
+    assert_eq!(inline_picker_bounds(8, 3, 5), (1, 6));
+    assert_eq!(inline_picker_bounds(8, 7, 5), (3, 8));
+}
+
+#[test]
+fn sessions_picker_reuses_inline_picker_styles_and_scroll_window() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/sessions"));
+    app.chat_picker_files = (0..7).map(|idx| format!("session-{idx}.json")).collect();
+    app.chat_picker_index = 3;
+
+    let lines = build_chat_picker_lines(&app, 5);
+    let text = render_text_lines(lines.clone());
+
+    assert_eq!(text[0], "  session-1.json");
+    assert_eq!(text[2], "> session-3.json");
+    assert_eq!(lines[0].spans[0].style.fg, subtle_aux_text_style().fg);
+    assert_eq!(lines[2].spans[0].style.fg, Some(Color::White));
+}
+
+#[test]
+fn sessions_picker_uses_inline_layout_without_footer_or_title() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/sessions"));
+    app.chat_picker_active = true;
+    app.chat_picker_files = vec![
+        "session-0.json".to_string(),
+        "session-1.json".to_string(),
+        "session-2.json".to_string(),
+    ];
+    app.chat_picker_index = 1;
+
+    let lines = render_ui_lines(&app, 80, 20);
+
+    assert!(lines.iter().any(|line| line.contains("> session-1.json")));
+    assert!(!lines
+        .iter()
+        .any(|line| line.contains(t!("ui.picker.sessions").as_ref())));
+    assert!(!lines
+        .iter()
+        .any(|line| line.contains(t!("ui.footer.preview").as_ref())));
 }
 
 #[test]
