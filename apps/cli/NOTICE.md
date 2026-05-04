@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Apache License 2.0 (`Apache-2.0`): 267 crate(s)
+- Apache License 2.0 (`Apache-2.0`): 269 crate(s)
 - MIT License (`MIT`): 89 crate(s)
 - Unicode License v3 (`Unicode-3.0`): 19 crate(s)
 - BSD 3-Clause "New" or "Revised" License (`BSD-3-Clause`): 3 crate(s)
@@ -518,6 +518,8 @@
   - https://github.com/kornelski/rust-security-framework
 - **security-framework-sys** 2.17.0 — MIT OR Apache-2.0
   - https://github.com/kornelski/rust-security-framework
+- **semver** 1.0.28 — MIT OR Apache-2.0
+  - https://github.com/dtolnay/semver
 - **serde** 1.0.228 — MIT OR Apache-2.0
   - https://github.com/serde-rs/serde
 - **serde_core** 1.0.228 — MIT OR Apache-2.0
@@ -674,6 +676,8 @@
   - https://github.com/hsivonen/utf8_iter
 - **utf8parse** 0.2.2 — Apache-2.0 OR MIT
   - https://github.com/alacritty/vte
+- **uuid** 1.23.1 — Apache-2.0 OR MIT
+  - https://github.com/uuid-rs/uuid
 - **version_check** 0.9.5 — MIT OR Apache-2.0
   - https://github.com/SergioBenitez/version_check
 - **waker-fn** 1.2.0 — Apache-2.0 OR MIT
@@ -5568,6 +5572,7 @@ limitations under the License.
 - unicode-width 0.1.14
 - unicode-width 0.2.0
 - url 2.5.8
+- uuid 1.23.1
 - version_check 0.9.5
 - waker-fn 1.2.0
 - xdg 2.5.2
@@ -7714,6 +7719,7 @@ limitations under the License.
 - rtoolbox 0.0.3
 - rustversion 1.0.22
 - ryu 1.0.23
+- semver 1.0.28
 - serde 1.0.228
 - serde_core 1.0.228
 - serde_derive 1.0.228
