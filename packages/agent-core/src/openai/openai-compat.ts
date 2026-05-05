@@ -38,7 +38,7 @@ export interface OpenAiTransportConfig {
 }
 
 export interface OpenAiRequestTrace extends JsonObject {
-  kind: 'openai_sdk_chat_completions';
+  kind: 'openai_sdk_chat_completions' | 'deepseek_sdk_chat_completions';
   stepIndex: number;
   model: string;
   stream: boolean;

@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import { extname, isAbsolute, resolve } from 'node:path';
 
 import {
+  createDeepSeek,
+  type DeepSeekLanguageModelOptions,
+} from '@ai-sdk/deepseek';
+import {
   createOpenAI,
   type OpenAILanguageModelChatOptions,
 } from '@ai-sdk/openai';
@@ -79,7 +83,7 @@ export class AiSdkOpenAiTransport
 
     const requestMessages = normalizeMessagesForRequest(nextState.messages);
     const normalizedTools = normalizeToolDefinitions(tools);
-    const requestTrace = buildOpenAiRequestTrace(
+    const tracedRequest = buildAiSdkRequestTrace(
       config,
       nextState.steps,
       requestMessages,
@@ -88,7 +92,7 @@ export class AiSdkOpenAiTransport
 
     try {
       const result: any = await generateText({
-        model: createAiSdkOpenAiProvider(config).chat(config.model),
+        model: createAiSdkLanguageModel(config),
         messages: openAiMessagesToAiSdkMessages(requestMessages) as any,
         allowSystemInMessages: true,
         ...(normalizedTools.length === 0
@@ -97,7 +101,7 @@ export class AiSdkOpenAiTransport
               tools: buildAiSdkTools(normalizedTools) as any,
               toolChoice: 'auto' as const,
             }),
-        providerOptions: buildAiSdkOpenAiProviderOptions(config),
+        providerOptions: buildAiSdkProviderOptions(config),
         maxRetries: 0,
       });
 
@@ -118,7 +122,7 @@ export class AiSdkOpenAiTransport
               kind: 'tool-calls',
               calls,
             },
-            requestTrace,
+            requestTrace: tracedRequest,
           },
         };
       }
@@ -130,14 +134,14 @@ export class AiSdkOpenAiTransport
           step: {
             kind: 'final-response-ready',
           },
-          requestTrace,
+          requestTrace: tracedRequest,
         },
       };
     } catch (error) {
       return {
         kind: 'failure',
         error: renderAiSdkOpenAiError(error),
-        requestTrace,
+        requestTrace: tracedRequest,
       };
     }
   }
@@ -154,7 +158,7 @@ export class AiSdkOpenAiTransport
 
     const requestMessages = normalizeMessagesForRequest(nextState.messages);
     const normalizedTools = normalizeToolDefinitions(tools);
-    const requestTrace = buildOpenAiRequestTrace(
+    const requestTrace = buildAiSdkRequestTrace(
       config,
       nextState.steps,
       requestMessages,
@@ -166,7 +170,7 @@ export class AiSdkOpenAiTransport
 
     try {
       const result: any = streamText({
-        model: createAiSdkOpenAiProvider(config).chat(config.model),
+        model: createAiSdkLanguageModel(config),
         messages: openAiMessagesToAiSdkMessages(requestMessages) as any,
         allowSystemInMessages: true,
         ...(normalizedTools.length === 0
@@ -175,7 +179,7 @@ export class AiSdkOpenAiTransport
               tools: buildAiSdkTools(normalizedTools) as any,
               toolChoice: 'auto' as const,
             }),
-        providerOptions: buildAiSdkOpenAiProviderOptions(config),
+        providerOptions: buildAiSdkProviderOptions(config),
         includeRawChunks: true,
         maxRetries: 0,
         abortSignal: abortController.signal,
@@ -188,6 +192,7 @@ export class AiSdkOpenAiTransport
           nextState,
           requestTrace,
           completion,
+          isDeepSeekOfficialAiSdkProvider(config),
         ),
         completion: completion.promise,
         cancel: () => abortController.abort(),
@@ -240,16 +245,20 @@ export class AiSdkOpenAiTransport
           .join('\n\n'),
       },
     ]);
+    const compactConfig: OpenAiTransportConfig = {
+      ...config,
+      model: config.compactModel ?? config.model,
+    };
 
     let summary = '';
     if (onProgress) {
       let emittedProgress = false;
       try {
         const streamed = streamText({
-          model: createAiSdkOpenAiProvider(config).chat(config.compactModel ?? config.model),
+          model: createAiSdkLanguageModel(compactConfig),
           messages: promptMessages as any,
           allowSystemInMessages: true,
-          providerOptions: buildAiSdkOpenAiProviderOptions(config),
+          providerOptions: buildAiSdkProviderOptions(compactConfig),
           maxRetries: 0,
         });
 
@@ -276,10 +285,10 @@ export class AiSdkOpenAiTransport
 
     if (!summary.trim()) {
       const result = await generateText({
-        model: createAiSdkOpenAiProvider(config).chat(config.compactModel ?? config.model),
+        model: createAiSdkLanguageModel(compactConfig),
         messages: promptMessages as any,
         allowSystemInMessages: true,
-        providerOptions: buildAiSdkOpenAiProviderOptions(config),
+        providerOptions: buildAiSdkProviderOptions(compactConfig),
         maxRetries: 0,
       });
       summary = result.text;
@@ -331,6 +340,38 @@ export class AiSdkOpenAiTransport
   }
 }
 
+function buildAiSdkRequestTrace(
+  config: OpenAiTransportConfig,
+  stepIndex: number,
+  messages: readonly JsonValue[],
+  tools: readonly unknown[],
+  stream = false,
+): JsonValue[] {
+  const requestTrace = buildOpenAiRequestTrace(config, stepIndex, messages, tools, stream);
+  if (!isDeepSeekOfficialAiSdkProvider(config)) {
+    return requestTrace;
+  }
+
+  const firstTrace = requestTrace[0];
+  if (!isJsonObject(firstTrace)) {
+    return requestTrace;
+  }
+
+  return [
+    {
+      ...firstTrace,
+      kind: 'deepseek_sdk_chat_completions',
+    },
+    ...requestTrace.slice(1),
+  ];
+}
+
+function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
+  return isDeepSeekOfficialAiSdkProvider(config)
+    ? createAiSdkDeepSeekProvider(config).chat(config.model)
+    : createAiSdkOpenAiProvider(config).chat(config.model);
+}
+
 function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
   const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
   const fetchWrapper =
@@ -361,9 +402,48 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
   });
 }
 
-function buildAiSdkOpenAiProviderOptions(
+function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
+  const reasoningEffort = openAiReasoningEffort(config);
+  const fetchWrapper =
+    reasoningEffort === undefined
+      ? undefined
+      : async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = tryParseRequestBody(init?.body);
+          if (!isJsonObject(body)) {
+            return fetch(input, init);
+          }
+
+          return fetch(input, {
+            ...init,
+            body: JSON.stringify({
+              ...body,
+              reasoning_effort: reasoningEffort,
+            }),
+          });
+        };
+
+  return createDeepSeek({
+    apiKey: config.apiKey,
+    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+    ...(fetchWrapper ? { fetch: fetchWrapper } : {}),
+  });
+}
+
+function buildAiSdkProviderOptions(
   config: OpenAiTransportConfig,
-): { openai: OpenAILanguageModelChatOptions } {
+): Record<string, JsonObject> {
+  if (isDeepSeekOfficialAiSdkProvider(config)) {
+    const deepseekOptions = {
+      thinking: {
+        type: config.vendorExtendedThinking === false ? 'disabled' : 'enabled',
+      },
+    } satisfies DeepSeekLanguageModelOptions;
+
+    return {
+      deepseek: deepseekOptions as JsonObject,
+    };
+  }
+
   const reasoningEffort = openAiReasoningEffort(config) as
     | OpenAILanguageModelChatOptions['reasoningEffort']
     | undefined;
@@ -372,7 +452,7 @@ function buildAiSdkOpenAiProviderOptions(
     openai: {
       systemMessageMode: 'system',
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-    },
+    } as JsonObject,
   };
 }
 
@@ -656,6 +736,7 @@ async function* aiSdkEventStreamToRuntimeEvents(
   nextState: ToolAgentState,
   requestTrace: JsonValue[],
   completion: Deferred<ToolAgentRoundCompletion<ToolAgentState>>,
+  useStructuredReasoningEvents: boolean,
 ): AsyncGenerator<LlmStreamEvent, void, undefined> {
   const toolCalls = new Map<number, AggregatedStreamingToolCall>();
   let assistantContent = '';
@@ -689,10 +770,12 @@ async function* aiSdkEventStreamToRuntimeEvents(
           throw part.error;
         }
         case 'raw': {
-          const thinkingText = extractStreamingThinkingTextFromRawChunk(part.rawValue);
-          if (thinkingText) {
-            reasoningContent += thinkingText;
-            yield { kind: 'thinking-chunk', text: thinkingText };
+          if (!useStructuredReasoningEvents) {
+            const thinkingText = extractStreamingThinkingTextFromRawChunk(part.rawValue);
+            if (thinkingText) {
+              reasoningContent += thinkingText;
+              yield { kind: 'thinking-chunk', text: thinkingText };
+            }
           }
 
           const rawToolUpdates = accumulateStreamingToolCallProgressFromRawChunk(
@@ -1091,6 +1174,10 @@ function guessImageMimeFromPath(path: string): string {
 
 function normalizeMessagesForRequest(messages: JsonValue[]): JsonValue[] {
   return messages.map((message) => cloneJsonValue(message));
+}
+
+function isDeepSeekOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
+  return config.llmVendor === 'deepseek';
 }
 
 function renderAiSdkOpenAiError(error: unknown): string {
