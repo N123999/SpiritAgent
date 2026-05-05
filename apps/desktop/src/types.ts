@@ -1,6 +1,5 @@
 import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
 import type { ModelReasoningEffort } from '@spirit-agent/host-internal/reasoning-effort';
-import type { OpenAiTransportImplementation } from '@spirit-agent/agent-core';
 
 export interface BootstrapRequest {
   workspaceRoot?: string;
@@ -52,9 +51,6 @@ export type DesktopModelProvider = ModelProviderId;
 
 /** 模型推理强度（与 `packages/host-internal` 中 `ModelReasoningEffort` 同源）。 */
 export type DesktopModelReasoningEffort = ModelReasoningEffort;
-
-/** 渐进迁移期的 runtime transport 实现选择；缺省保持 legacy openai-node。 */
-export type DesktopOpenAiTransportImplementation = OpenAiTransportImplementation;
 
 /** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
 export interface PreviewModelsRequest {
@@ -542,8 +538,6 @@ export interface ModelProfileSnapshot {
   reasoningEffort: DesktopModelReasoningEffort;
   /** 持久化来源；缺省表示历史自定义配置。 */
   provider?: DesktopModelProvider;
-  /** 可选：该模型的 runtime transport 实现。缺省为 `openai-node`。 */
-  transportImplementation?: DesktopOpenAiTransportImplementation;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
   keyConfigured?: boolean;
 }

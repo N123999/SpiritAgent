@@ -396,15 +396,6 @@ function parsePersistedModelProvider(value: unknown): DesktopModelProvider | und
   return undefined;
 }
 
-function parsePersistedTransportImplementation(
-  value: unknown,
-): ModelProfileSnapshot['transportImplementation'] | undefined {
-  if (value === 'openai-node' || value === 'ai-sdk') {
-    return value;
-  }
-  return undefined;
-}
-
 function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
   const models = Array.isArray(raw.models)
     ? raw.models
@@ -414,9 +405,6 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
         )
         .map((model) => {
           const provider = parsePersistedModelProvider(model.provider);
-          const transportImplementation = parsePersistedTransportImplementation(
-            model.transportImplementation,
-          );
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
@@ -425,7 +413,6 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
               model: model.name,
             }),
             ...(provider ? { provider } : {}),
-            ...(transportImplementation ? { transportImplementation } : {}),
           };
         })
     : [];

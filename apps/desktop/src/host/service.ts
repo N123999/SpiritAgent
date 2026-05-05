@@ -1853,12 +1853,8 @@ class DesktopHostService {
     this.activeApiKeyConfigured = Boolean(apiKey);
     const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
     const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
-    this.runtimeTransport = createOpenAiCompatibleTransport({
-      transportImplementation: activeProfile?.transportImplementation,
-    });
-    this.jsonSchemaTransport = createOpenAiJsonSchemaTransport({
-      transportImplementation: activeProfile?.transportImplementation,
-    });
+    this.runtimeTransport = createOpenAiCompatibleTransport();
+    this.jsonSchemaTransport = createOpenAiJsonSchemaTransport();
     if (!apiKey) {
       this.runtime = undefined;
       this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
@@ -1872,9 +1868,6 @@ class DesktopHostService {
       model: state.config.activeModel,
       baseUrl: currentApiBase(state.config),
       workspaceRoot: state.workspaceRoot,
-      ...(activeProfile?.transportImplementation
-        ? { transportImplementation: activeProfile.transportImplementation }
-        : {}),
       ...(llmVendor ? { llmVendor } : {}),
       reasoningEffort: activeProfile?.reasoningEffort,
     };

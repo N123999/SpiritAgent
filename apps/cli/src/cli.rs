@@ -21,7 +21,6 @@ pub enum ModelCommand {
         name: String,
         api_base: Option<String>,
         provider: Option<String>,
-        transport_implementation: Option<String>,
         reasoning_effort: Option<String>,
         key: Option<String>,
     },
@@ -122,14 +121,10 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             for model in &cfg.models {
                 let key_saved = secret_store.has_model_api_key(&model.name).unwrap_or(false);
                 println!(
-                    "  - {}\n    api_base: {}\n    provider: {}\n    transport_implementation: {}\n    reasoning_effort: {}\n    key: {}",
+                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    key: {}",
                     model.name,
                     model.api_base,
                     format_model_provider(model.provider),
-                    model
-                        .transport_implementation
-                        .as_deref()
-                        .unwrap_or("未设置"),
                     model.reasoning_effort.as_deref().unwrap_or("未设置"),
                     if key_saved { "已保存" } else { "未保存" }
                 );
@@ -139,7 +134,6 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             name,
             api_base,
             provider,
-            transport_implementation,
             reasoning_effort,
             key,
         } => {
@@ -148,7 +142,6 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             } else {
                 let api_base = api_base.unwrap_or_else(|| DEFAULT_API_BASE.to_string());
                 let provider = parse_model_provider(provider)?;
-                let transport_implementation = normalize_choice_arg(transport_implementation);
                 let reasoning_effort = normalize_choice_arg(reasoning_effort);
                 let key_value = match key {
                     Some(v) => v,
@@ -163,7 +156,6 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     name: name.clone(),
                     api_base: api_base.clone(),
                     provider,
-                    transport_implementation: transport_implementation.clone(),
                     reasoning_effort: reasoning_effort.clone(),
                     extra: Default::default(),
                 });
@@ -173,10 +165,6 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 println!("已添加模型: {}，并已设为当前模型", name);
                 println!("api_base: {}", api_base);
                 println!("provider: {}", format_model_provider(provider));
-                println!(
-                    "transport_implementation: {}",
-                    transport_implementation.as_deref().unwrap_or("未设置")
-                );
                 println!(
                     "reasoning_effort: {}",
                     reasoning_effort.as_deref().unwrap_or("未设置")
@@ -227,14 +215,10 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
             for model in &cfg.models {
                 let key_saved = secret_store.has_model_api_key(&model.name).unwrap_or(false);
                 println!(
-                    "  - {}\n    api_base: {}\n    provider: {}\n    transport_implementation: {}\n    reasoning_effort: {}\n    key: {}",
+                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    key: {}",
                     model.name,
                     model.api_base,
                     format_model_provider(model.provider),
-                    model
-                        .transport_implementation
-                        .as_deref()
-                        .unwrap_or("未设置"),
                     model.reasoning_effort.as_deref().unwrap_or("未设置"),
                     if key_saved { "已保存" } else { "未保存" }
                 );

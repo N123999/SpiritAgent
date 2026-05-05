@@ -3,14 +3,14 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
-import { AiSdkOpenAiTransport } from '../openai/ai-sdk-transport.js';
+import { AiSdkOpenAiCompatibleTransport } from '../openai/ai-sdk-transport.js';
 import {
   appendOpenAiToolResultMessage,
   extractLastOpenAiAssistantText,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
-import { demoLookupToolDefinition, printSmokeSection } from './openai-shared.js';
+import { demoLookupToolDefinition, printSmokeSection } from './ai-sdk-openai-shared.js';
 
 async function main(): Promise<void> {
   let requestCount = 0;
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     throw new Error('无法获取本地 smoke server 端口。');
   }
 
-  const transport = new AiSdkOpenAiTransport();
+  const transport = new AiSdkOpenAiCompatibleTransport();
   const config = {
     apiKey: 'test-key',
     model: 'test-openai-compatible',
@@ -116,15 +116,15 @@ async function main(): Promise<void> {
   );
 
   const firstRound = await transport.startToolAgentRound(config, initialState, tools);
-  printSmokeSection('ai-sdk smoke step 1', firstRound);
+  printSmokeSection('ai-sdk openai smoke step 1', firstRound);
 
   if (firstRound.kind !== 'success' || firstRound.result.step.kind !== 'tool-calls') {
-    throw new Error('ai-sdk smoke step 1 未进入 tool-calls。');
+    throw new Error('ai-sdk openai smoke step 1 未进入 tool-calls。');
   }
 
   const firstCall = firstRound.result.step.calls.at(0);
   if (!firstCall) {
-    throw new Error('ai-sdk smoke step 1 没有任何 tool call。');
+    throw new Error('ai-sdk openai smoke step 1 没有任何 tool call。');
   }
 
   const resumedState = appendOpenAiToolResultMessage(
@@ -134,21 +134,21 @@ async function main(): Promise<void> {
   );
 
   const secondRound = await transport.startToolAgentRound(config, resumedState, tools);
-  printSmokeSection('ai-sdk smoke step 2', secondRound);
+  printSmokeSection('ai-sdk openai smoke step 2', secondRound);
   server.close();
 
   if (secondRound.kind !== 'success' || secondRound.result.step.kind !== 'final-response-ready') {
-    throw new Error('ai-sdk smoke step 2 未进入 final-response-ready。');
+    throw new Error('ai-sdk openai smoke step 2 未进入 final-response-ready。');
   }
 
   const assistantText = extractLastOpenAiAssistantText(secondRound.result.state)?.trim();
   if (assistantText !== 'AI_SDK_OK') {
-    throw new Error(`ai-sdk smoke step 2 未拿到预期最终 assistant 文本。实际: ${assistantText ?? '<empty>'}`);
+    throw new Error(`ai-sdk openai smoke step 2 未拿到预期最终 assistant 文本。实际: ${assistantText ?? '<empty>'}`);
   }
 
   const tracedAssistantMessage = findLastAssistantWithToolCalls(secondRound.result.requestTrace);
   if (!isJsonObject(tracedAssistantMessage) || tracedAssistantMessage.reasoning_content !== '') {
-    throw new Error('ai-sdk smoke 未在 request trace 的 assistant tool_call message 上保留空 reasoning_content。');
+    throw new Error('ai-sdk openai smoke 未在 request trace 的 assistant tool_call message 上保留空 reasoning_content。');
   }
 }
 
@@ -169,6 +169,6 @@ function isJsonObject(value: JsonValue | undefined): value is Record<string, Jso
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`openai ai-sdk smoke failed: ${message}`);
+  console.error(`ai-sdk openai smoke failed: ${message}`);
   process.exitCode = 1;
 });

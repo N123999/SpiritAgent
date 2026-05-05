@@ -1,5 +1,5 @@
-export * from './transport.js';
+export * from './tool-agent-helpers.js';
 export * from './json-schema.js';
 export * from './ai-sdk-transport.js';
 export * from './transport-factory.js';
-export type { OpenAiTransportImplementation } from './openai-compat.js';
+export type { OpenAiLlmVendor, OpenAiRequestTrace, OpenAiTransportConfig } from './openai-compat.js';

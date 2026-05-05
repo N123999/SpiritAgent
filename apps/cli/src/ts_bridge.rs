@@ -1581,14 +1581,6 @@ impl TsBridgeRuntime {
                 obj.insert("llmVendor".to_string(), json!(vendor));
             }
         }
-        if let Some(transport_implementation) = active.transport_implementation.as_deref() {
-            if let Some(obj) = transport.as_object_mut() {
-                obj.insert(
-                    "transportImplementation".to_string(),
-                    json!(transport_implementation),
-                );
-            }
-        }
         if let Some(reasoning_effort) = active.reasoning_effort.as_deref() {
             if let Some(obj) = transport.as_object_mut() {
                 obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
@@ -1609,17 +1601,6 @@ impl TsBridgeRuntime {
             != config
                 .active_model_profile()
                 .map(|profile| profile.api_base.as_str())
-        {
-            return true;
-        }
-
-        if self
-            .config
-            .active_model_profile()
-            .and_then(|profile| profile.transport_implementation.as_deref())
-            != config
-                .active_model_profile()
-                .and_then(|profile| profile.transport_implementation.as_deref())
         {
             return true;
         }
@@ -2568,7 +2549,6 @@ mod tests {
                     name: "gpt-4o-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
-                    transport_implementation: None,
                     reasoning_effort: None,
                     extra: Default::default(),
                 },
@@ -2576,7 +2556,6 @@ mod tests {
                     name: "gpt-4.1-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
-                    transport_implementation: None,
                     reasoning_effort: None,
                     extra: Default::default(),
                 },
@@ -2686,7 +2665,6 @@ mod tests {
             name: "gpt-4.1".to_string(),
             api_base: DEFAULT_API_BASE.to_string(),
             provider: None,
-            transport_implementation: None,
             reasoning_effort: None,
             extra: Default::default(),
         });
@@ -2695,7 +2673,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_transport_config_json_includes_transport_knobs() {
+    fn resolve_transport_config_json_includes_model_knobs() {
         let Some(runtime) = make_test_runtime() else {
             return;
         };
@@ -2704,8 +2682,7 @@ mod tests {
         let active = next
             .active_model_profile_mut()
             .expect("active model should exist");
-        active.provider = Some(ModelProvider::Deepseek);
-        active.transport_implementation = Some("ai-sdk".to_string());
+        active.provider = Some(ModelProvider::Custom);
         active.reasoning_effort = Some("minimal".to_string());
 
         let transport = runtime
@@ -2714,14 +2691,9 @@ mod tests {
 
         assert_eq!(
             transport.get("llmVendor").and_then(Value::as_str),
-            Some("deepseek")
+            Some("custom")
         );
-        assert_eq!(
-            transport
-                .get("transportImplementation")
-                .and_then(Value::as_str),
-            Some("ai-sdk")
-        );
+        assert!(transport.get("transportImplementation").is_none());
         assert_eq!(
             transport.get("reasoningEffort").and_then(Value::as_str),
             Some("minimal")
@@ -2729,7 +2701,7 @@ mod tests {
     }
 
     #[test]
-    fn transport_config_change_detects_transport_knobs() {
+    fn transport_config_change_detects_model_knobs() {
         let Some(runtime) = make_test_runtime() else {
             return;
         };
@@ -2737,7 +2709,7 @@ mod tests {
         let mut next = runtime.config().clone();
         next.active_model_profile_mut()
             .expect("active model should exist")
-            .transport_implementation = Some("ai-sdk".to_string());
+            .provider = Some(ModelProvider::Custom);
         assert!(runtime.transport_config_will_change(&next));
 
         let mut next = runtime.config().clone();

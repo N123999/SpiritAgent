@@ -76,7 +76,7 @@ interface Deferred<T> {
   reject(error: unknown): void;
 }
 
-export class AiSdkOpenAiTransport
+export class AiSdkOpenAiCompatibleTransport
   implements LlmTransport<OpenAiTransportConfig, ToolAgentState>, OpenAiJsonSchemaTransport
 {
   async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(

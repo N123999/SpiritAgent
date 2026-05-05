@@ -2,6 +2,11 @@ import { stdin, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 import {
+  createOpenAiCompatibleTransport,
+  type OpenAiCompatibleTransport,
+  type OpenAiTransportConfig,
+} from './openai/index.js';
+import {
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   buildActiveSkillsSystemMessage,
@@ -9,10 +14,9 @@ import {
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
-  continueOpenAiToolAgentState,
-  createOpenAiCompatibleTransport,
-  extractLastOpenAiAssistantText,
   buildToolAgentHostPrompt,
+  continueOpenAiToolAgentState,
+  extractLastOpenAiAssistantText,
   rebuildOpenAiToolAgentStateAfterCompaction,
   startOpenAiToolAgentState,
   truncateOpenAiHistoryForCompaction,
@@ -22,10 +26,8 @@ import {
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiExtensionSystemPrompt,
   type OpenAiPlanMetadata,
-  type OpenAiCompatibleTransport,
   type OpenAiToolAgentState,
-  type OpenAiTransportConfig,
-} from './openai/index.js';
+} from './openai/tool-agent-helpers.js';
 import { buildContributedHostToolDefinitions } from './host-tools.js';
 import type {
   JsonObject,

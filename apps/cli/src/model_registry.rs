@@ -55,13 +55,6 @@ pub struct ModelProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ModelProvider>,
     #[serde(
-        rename = "transportImplementation",
-        alias = "transport_implementation",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub transport_implementation: Option<String>,
-    #[serde(
         rename = "reasoningEffort",
         alias = "reasoning_effort",
         default,
@@ -102,7 +95,6 @@ impl Default for AppConfig {
                 name: "gpt-4o-mini".to_string(),
                 api_base: DEFAULT_API_BASE.to_string(),
                 provider: None,
-                transport_implementation: None,
                 reasoning_effort: None,
                 extra: Map::new(),
             }],
@@ -177,7 +169,6 @@ fn deserialize_config(content: &str, path: &Path) -> Result<AppConfig> {
                 name,
                 api_base: legacy.api_base.clone(),
                 provider: None,
-                transport_implementation: None,
                 reasoning_effort: None,
                 extra: Map::new(),
             })
@@ -220,9 +211,9 @@ fn normalize_config(cfg: &mut AppConfig) {
         if model.api_base.trim().is_empty() {
             model.api_base = DEFAULT_API_BASE.to_string();
         }
-        model.transport_implementation =
-            normalize_optional_string(model.transport_implementation.take());
         model.reasoning_effort = normalize_optional_string(model.reasoning_effort.take());
+        model.extra.remove("transportImplementation");
+        model.extra.remove("transport_implementation");
     }
 }
 
@@ -247,20 +238,20 @@ mod tests {
 {
   "models": [
     {
-      "name": "kimi-k2",
-      "apiBase": "https://api.moonshot.cn/v1",
-      "provider": "kimi",
+            "name": "agent-test-model",
+            "apiBase": "https://example.invalid/v1",
+            "provider": "custom",
             "transportImplementation": "ai-sdk",
       "reasoningEffort": "minimal"
     }
   ],
-  "activeModel": "kimi-k2",
+    "activeModel": "agent-test-model",
   "uiLocale": "zh-CN",
   "windowsMica": true,
   "recentWorkspaces": ["D:/SpiritAgent", "D:/Other"],
   "dreams": {
     "enabled": true,
-    "collectorModel": "gpt-4.1-mini",
+        "collectorModel": "collector-test-model",
     "debugMode": true
   }
 }
@@ -281,7 +272,7 @@ mod tests {
             json.get("dreams")
                 .and_then(|dreams| dreams.get("collectorModel"))
                 .and_then(Value::as_str),
-            Some("gpt-4.1-mini")
+            Some("collector-test-model")
         );
         assert_eq!(
             json.get("models")
@@ -289,7 +280,7 @@ mod tests {
                 .and_then(|models| models.first())
                 .and_then(|model| model.get("transportImplementation"))
                 .and_then(Value::as_str),
-            Some("ai-sdk")
+            None
         );
         assert_eq!(
             json.get("models")

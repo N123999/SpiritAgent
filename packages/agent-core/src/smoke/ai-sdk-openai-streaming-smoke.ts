@@ -3,10 +3,10 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
-import { AiSdkOpenAiTransport } from '../openai/ai-sdk-transport.js';
-import { startOpenAiToolAgentState } from '../openai/transport.js';
+import { AiSdkOpenAiCompatibleTransport } from '../openai/ai-sdk-transport.js';
+import { startOpenAiToolAgentState } from '../openai/tool-agent-helpers.js';
 
-import { demoLookupToolDefinition, printSmokeSection } from './openai-shared.js';
+import { demoLookupToolDefinition, printSmokeSection } from './ai-sdk-openai-shared.js';
 
 async function main(): Promise<void> {
   const server = createServer((request, response) => {
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
     throw new Error('无法获取本地 smoke server 端口。');
   }
 
-  const transport = new AiSdkOpenAiTransport();
+  const transport = new AiSdkOpenAiCompatibleTransport();
   const state = startOpenAiToolAgentState(
     [],
     'Call demo_lookup exactly once.',
@@ -125,30 +125,30 @@ async function main(): Promise<void> {
   const completion = await started.completion;
   server.close();
 
-  printSmokeSection('ai-sdk streaming smoke events', events);
-  printSmokeSection('ai-sdk streaming smoke completion', completion);
+  printSmokeSection('ai-sdk openai streaming smoke events', events);
+  printSmokeSection('ai-sdk openai streaming smoke completion', completion);
 
   if (!events.some((event) => isJsonObject(event) && event.kind === 'streaming-tool-preview')) {
-    throw new Error('ai-sdk streaming smoke 未收到 streaming-tool-preview 事件。');
+    throw new Error('ai-sdk openai streaming smoke 未收到 streaming-tool-preview 事件。');
   }
 
   if (events.some((event) => isJsonObject(event) && event.kind === 'error')) {
-    throw new Error('ai-sdk streaming smoke 不应收到 error 事件。');
+    throw new Error('ai-sdk openai streaming smoke 不应收到 error 事件。');
   }
 
   if (completion.kind !== 'success' || completion.result.step.kind !== 'tool-calls') {
-    throw new Error('ai-sdk streaming smoke 未进入预期的 tool-calls。');
+    throw new Error('ai-sdk openai streaming smoke 未进入预期的 tool-calls。');
   }
 
   const assistantMessage = completion.result.state.messages.at(-1);
   if (!isJsonObject(assistantMessage) || assistantMessage.reasoning_content !== '') {
-    throw new Error('ai-sdk streaming smoke 未在 assistant tool_call message 上保留空 reasoning_content。');
+    throw new Error('ai-sdk openai streaming smoke 未在 assistant tool_call message 上保留空 reasoning_content。');
   }
 
   const streamedToolCalls = Array.isArray(assistantMessage.tool_calls) ? assistantMessage.tool_calls : [];
   const firstToolCall = streamedToolCalls[0];
   if (!isJsonObject(firstToolCall) || firstToolCall.index !== 0) {
-    throw new Error('ai-sdk streaming smoke 未在流式 tool_call 上保留 index 字段。');
+    throw new Error('ai-sdk openai streaming smoke 未在流式 tool_call 上保留 index 字段。');
   }
 }
 
@@ -166,6 +166,6 @@ function isJsonObject(value: JsonValue | undefined): value is Record<string, Jso
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`openai ai-sdk streaming smoke failed: ${message}`);
+  console.error(`ai-sdk openai streaming smoke failed: ${message}`);
   process.exitCode = 1;
 });

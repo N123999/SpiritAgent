@@ -3,14 +3,14 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
-import { AiSdkOpenAiTransport } from '../openai/ai-sdk-transport.js';
+import { AiSdkOpenAiCompatibleTransport } from '../openai/ai-sdk-transport.js';
 import {
   appendOpenAiToolResultMessage,
   extractLastOpenAiAssistantText,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
-import { demoLookupToolDefinition, printSmokeSection } from './openai-shared.js';
+import { demoLookupToolDefinition, printSmokeSection } from './ai-sdk-openai-shared.js';
 
 async function main(): Promise<void> {
   let requestCount = 0;
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
   }
 
   const baseUrl = `http://127.0.0.1:${(address as AddressInfo).port}/v1`;
-  const transport = new AiSdkOpenAiTransport();
+  const transport = new AiSdkOpenAiCompatibleTransport();
   const state = startOpenAiToolAgentState(
     [],
     'Call demo_lookup exactly once.',
@@ -276,6 +276,6 @@ function findLastAssistantWithToolCalls(requestBody: JsonValue | undefined): Jso
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`openai ai-sdk deepseek streaming smoke failed: ${message}`);
+  console.error(`ai-sdk deepseek streaming smoke failed: ${message}`);
   process.exitCode = 1;
 });

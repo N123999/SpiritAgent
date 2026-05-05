@@ -3,10 +3,10 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
-import { AiSdkOpenAiTransport } from '../openai/ai-sdk-transport.js';
+import { AiSdkOpenAiCompatibleTransport } from '../openai/ai-sdk-transport.js';
 import type { OpenAiJsonSchemaCompletionRequest } from '../openai/json-schema.js';
 
-import { printSmokeSection } from './openai-shared.js';
+import { printSmokeSection } from './ai-sdk-openai-shared.js';
 
 async function main(): Promise<void> {
   const requestBodies: JsonValue[] = [];
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   }
 
   const baseUrl = `http://127.0.0.1:${(address as AddressInfo).port}/v1`;
-  const transport = new AiSdkOpenAiTransport();
+  const transport = new AiSdkOpenAiCompatibleTransport();
   const request: OpenAiJsonSchemaCompletionRequest = {
     userPrompt: 'Return a JSON object with a commit message.',
     schemaName: 'structured_message',
@@ -97,14 +97,14 @@ async function main(): Promise<void> {
   );
   server.close();
 
-  printSmokeSection('ai-sdk json schema smoke openai', openAiResult);
-  printSmokeSection('ai-sdk json schema smoke deepseek', deepseekResult);
+  printSmokeSection('ai-sdk openai json-schema smoke', openAiResult);
+  printSmokeSection('ai-sdk deepseek json-schema smoke', deepseekResult);
 
   if (openAiResult.output.message !== 'AI_SDK_JSON_SCHEMA_OK') {
-    throw new Error('ai-sdk json schema smoke 未拿到预期的 OpenAI-compatible 结构化输出。');
+    throw new Error('ai-sdk openai json-schema smoke 未拿到预期的 OpenAI-compatible 结构化输出。');
   }
   if (deepseekResult.output.message !== 'AI_SDK_DEEPSEEK_JSON_OK') {
-    throw new Error('ai-sdk json schema smoke 未拿到预期的 DeepSeek 结构化输出。');
+    throw new Error('ai-sdk deepseek json-schema smoke 未拿到预期的 DeepSeek 结构化输出。');
   }
 
   const openAiRequest = requestBodies[0];
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     !isJsonObject(openAiRequest.response_format) ||
     openAiRequest.response_format.type !== 'json_schema'
   ) {
-    throw new Error('ai-sdk json schema smoke 未在 OpenAI-compatible 请求上发送 json_schema response_format。');
+    throw new Error('ai-sdk openai json-schema smoke 未在 OpenAI-compatible 请求上发送 json_schema response_format。');
   }
 
   const deepseekRequest = requestBodies[1];
@@ -122,23 +122,23 @@ async function main(): Promise<void> {
     !isJsonObject(deepseekRequest.response_format) ||
     deepseekRequest.response_format.type !== 'json_object'
   ) {
-    throw new Error('ai-sdk json schema smoke 未在 DeepSeek 请求上发送 json_object response_format。');
+    throw new Error('ai-sdk deepseek json-schema smoke 未在 DeepSeek 请求上发送 json_object response_format。');
   }
   if (!isJsonObject(deepseekRequest.thinking) || deepseekRequest.thinking.type !== 'enabled') {
-    throw new Error('ai-sdk json schema smoke 未在 DeepSeek 请求上发送 thinking=enabled。');
+    throw new Error('ai-sdk deepseek json-schema smoke 未在 DeepSeek 请求上发送 thinking=enabled。');
   }
 
   const openAiTrace = openAiResult.requestTrace[0];
   if (!isJsonObject(openAiTrace) || openAiTrace.kind !== 'openai_sdk_chat_completions') {
-    throw new Error('ai-sdk json schema smoke 未写入 OpenAI-compatible request trace。');
+    throw new Error('ai-sdk openai json-schema smoke 未写入 OpenAI-compatible request trace。');
   }
   const deepseekTrace = deepseekResult.requestTrace[0];
   if (!isJsonObject(deepseekTrace) || deepseekTrace.kind !== 'deepseek_sdk_chat_completions') {
-    throw new Error('ai-sdk json schema smoke 未写入 DeepSeek request trace。');
+    throw new Error('ai-sdk deepseek json-schema smoke 未写入 DeepSeek request trace。');
   }
   const deepseekSystemMessage = extractFirstSystemMessage(deepseekTrace);
   if (!deepseekSystemMessage.includes('[JSON_SCHEMA]')) {
-    throw new Error('ai-sdk json schema smoke 未在 DeepSeek request trace 上保留额外 JSON schema system guidance。');
+    throw new Error('ai-sdk deepseek json-schema smoke 未在 request trace 上保留额外 JSON schema system guidance。');
   }
 }
 
@@ -168,6 +168,6 @@ function isJsonObject(value: JsonValue | undefined): value is Record<string, Jso
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`openai ai-sdk json schema smoke failed: ${message}`);
+  console.error(`ai-sdk openai json-schema smoke failed: ${message}`);
   process.exitCode = 1;
 });

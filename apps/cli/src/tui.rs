@@ -443,7 +443,6 @@ impl TuiShell {
             name: name.to_string(),
             api_base: api_base.to_string(),
             provider,
-            transport_implementation: None,
             reasoning_effort: None,
             extra: Default::default(),
         });

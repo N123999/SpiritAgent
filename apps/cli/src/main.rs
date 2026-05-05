@@ -98,8 +98,6 @@ enum ModelAction {
         api_base: Option<String>,
         #[arg(long, value_parser = ["deepseek", "kimi", "minimax", "custom"])]
         provider: Option<String>,
-        #[arg(long, value_parser = ["openai-node", "ai-sdk"])]
-        transport_implementation: Option<String>,
         #[arg(
             long,
             value_parser = ["default", "minimal", "none", "low", "medium", "high", "xhigh", "max"]
@@ -261,14 +259,12 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             name,
             api_base,
             provider,
-            transport_implementation,
             reasoning_effort,
             key,
         } => ModelCommand::Add {
             name,
             api_base,
             provider,
-            transport_implementation,
             reasoning_effort,
             key,
         },

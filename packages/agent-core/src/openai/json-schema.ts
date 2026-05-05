@@ -1,5 +1,3 @@
-import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
-
 import type { JsonObject, JsonValue } from '../ports.js';
 import {
   buildToolAgentSystemMessage,
@@ -29,6 +27,17 @@ export interface OpenAiJsonSchemaTransport {
   ): Promise<OpenAiJsonSchemaCompletionResult<T>>;
 }
 
+export type StructuredOutputResponseFormat =
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema';
+      json_schema: {
+        name: string;
+        strict: true;
+        schema: JsonObject;
+      };
+    };
+
 export function buildJsonSchemaCompletionMessages(
   config: Pick<OpenAiTransportConfig, 'model' | 'llmVendor'>,
   request: OpenAiJsonSchemaCompletionRequest,
@@ -55,7 +64,7 @@ export function extractJsonSchemaCompletionContent(response: {
 }): string {
   const content = response.choices?.at(0)?.message?.content?.trim() ?? '';
   if (!content) {
-    throw new Error('OpenAI SDK 结构化输出返回为空。');
+    throw new Error('结构化输出返回为空。');
   }
 
   return content;
@@ -71,7 +80,7 @@ export function parseJsonSchemaCompletionOutput<T extends JsonValue = JsonValue>
     }
   }
 
-  throw new Error('OpenAI SDK 结构化输出不是合法 JSON。');
+  throw new Error('结构化输出不是合法 JSON。');
 }
 
 export function stringifyJsonSchemaCompletionOutput(output: JsonValue): string {
@@ -81,7 +90,7 @@ export function stringifyJsonSchemaCompletionOutput(output: JsonValue): string {
 export function buildStructuredOutputResponseFormat(
   config: Pick<OpenAiTransportConfig, 'llmVendor'>,
   request: OpenAiJsonSchemaCompletionRequest,
-): ChatCompletionCreateParamsNonStreaming['response_format'] {
+): StructuredOutputResponseFormat {
   if (config.llmVendor === 'deepseek') {
     return { type: 'json_object' };
   }

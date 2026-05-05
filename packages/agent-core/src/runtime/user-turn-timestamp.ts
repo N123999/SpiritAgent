@@ -3,6 +3,19 @@ export function formatUserMessageContentForLlm(body: string): string {
   return `[用户消息时间 ${formatLocalIsoWithOffset(new Date())}]\n${body}`;
 }
 
+export function userMessageContentMatchesInput(content: string, input: string): boolean {
+  if (content === input) {
+    return true;
+  }
+
+  const firstLineEnd = content.indexOf('\n');
+  if (firstLineEnd < 0) {
+    return false;
+  }
+
+  return content.startsWith('[用户消息时间 ') && content.slice(firstLineEnd + 1) === input;
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }

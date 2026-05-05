@@ -12,15 +12,16 @@ import type {
   ToolAgentRoundCompletion,
   ToolExecutor,
 } from '../../../ports.js';
-import { isOpenAiVisionUnsupportedError } from '../../../openai/transport.js';
+import { isOpenAiVisionUnsupportedError } from '../../../openai/tool-agent-helpers.js';
 import {
   AgentRuntime,
   pendingWorkspaceFilesFromInput,
   type RuntimeEvent,
   type RuntimeTurnResult,
 } from '../../../runtime.js';
+import { userMessageContentMatchesInput } from '../../../runtime/user-turn-timestamp.js';
 
-import { printSmokeSection } from '../../openai-shared.js';
+import { printSmokeSection } from '../../ai-sdk-openai-shared.js';
 
 interface ScriptedState {
   messages: JsonValue[];
@@ -2517,7 +2518,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     throw new Error('vision fallback smoke 未记录正确的降级事件。');
   }
   const visionUserHistory = visionRuntime.history().find(
-    (message) => message.role === 'user' && message.content === '请描述这张图。',
+    (message) => message.role === 'user' && userMessageContentMatchesInput(message.content, '请描述这张图。'),
   );
   if (!visionUserHistory || (visionUserHistory.imagePaths?.length ?? 0) !== 0) {
     throw new Error('vision fallback smoke 未清空 user imagePaths。');
@@ -2739,7 +2740,14 @@ export async function runRuntimeParitySmoke(): Promise<void> {
       if (!state.messages.some((message) => isJsonObject(message) && message.content === 'prompt-user-message')) {
         throw new Error('prompt user message 未注入 state。');
       }
-      if (!state.messages.some((message) => isJsonObject(message) && message.content === '补充说明')) {
+      if (
+        !state.messages.some(
+          (message) =>
+            isJsonObject(message) &&
+            typeof message.content === 'string' &&
+            userMessageContentMatchesInput(message.content, '补充说明'),
+        )
+      ) {
         throw new Error('prompt extra user message 未注入 state。');
       }
     }),
@@ -2801,7 +2809,10 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   if (
     !streamingPromptRuntime
       .history()
-      .some((message) => message.role === 'user' && message.content === '帮我看看这个工具有什么用')
+      .some(
+        (message) =>
+          message.role === 'user' && userMessageContentMatchesInput(message.content, '帮我看看这个工具有什么用'),
+      )
   ) {
     throw new Error('streaming prompt smoke 未保留附加用户消息。');
   }
@@ -3455,7 +3466,12 @@ function rebuildScriptedStateAfterCompaction(
 
   for (let index = retryState.messages.length - 1; index >= 0; index -= 1) {
     const message = retryState.messages[index];
-    if (isJsonObject(message) && message.role === 'user' && message.content === userInput) {
+    if (
+      isJsonObject(message) &&
+      message.role === 'user' &&
+      typeof message.content === 'string' &&
+      userMessageContentMatchesInput(message.content, userInput)
+    ) {
       rebuilt.messages.push(...retryState.messages.slice(index + 1).map((item) => cloneJsonValue(item)));
       return rebuilt;
     }

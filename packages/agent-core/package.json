@@ -21,23 +21,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke:openai": "npm run build && node dist/smoke/openai-smoke.js",
-    "smoke:openai:roundtrip": "npm run build && node dist/smoke/openai-roundtrip-smoke.js",
-    "smoke:openai:compact": "npm run build && node dist/smoke/openai-compact-smoke.js",
-    "smoke:openai:stream-empty": "npm run build && node dist/smoke/openai-stream-empty-smoke.js",
-    "smoke:openai:stream-reasoning-only": "npm run build && node dist/smoke/openai-stream-reasoning-only-smoke.js",
-    "smoke:openai:streaming": "npm run build && node dist/smoke/openai-streaming-smoke.js",
-    "smoke:openai:runtime": "npm run build && node dist/smoke/openai-runtime-smoke.js",
-    "smoke:openai:transport-factory": "npm run build && node dist/smoke/openai-transport-factory-smoke.js",
-    "smoke:ai-sdk:openai": "npm run build && node dist/smoke/openai-ai-sdk-smoke.js",
-    "smoke:ai-sdk:json-schema": "npm run build && node dist/smoke/openai-ai-sdk-json-schema-smoke.js",
-    "smoke:ai-sdk:openai:streaming": "npm run build && node dist/smoke/openai-ai-sdk-streaming-smoke.js",
-    "smoke:ai-sdk:openai:stream-reasoning-only": "npm run build && node dist/smoke/openai-ai-sdk-stream-reasoning-only-smoke.js",
-    "smoke:ai-sdk:deepseek:streaming": "npm run build && node dist/smoke/openai-ai-sdk-deepseek-streaming-smoke.js",
+    "smoke:ai-sdk:openai:runtime": "npm run build && node dist/smoke/ai-sdk-openai-runtime-smoke.js",
+    "smoke:ai-sdk:openai": "npm run build && node dist/smoke/ai-sdk-openai-smoke.js",
+    "smoke:ai-sdk:openai:json-schema": "npm run build && node dist/smoke/ai-sdk-openai-json-schema-smoke.js",
+    "smoke:ai-sdk:openai:streaming": "npm run build && node dist/smoke/ai-sdk-openai-streaming-smoke.js",
+    "smoke:ai-sdk:openai:stream-reasoning-only": "npm run build && node dist/smoke/ai-sdk-openai-stream-reasoning-only-smoke.js",
+    "smoke:ai-sdk:deepseek:streaming": "npm run build && node dist/smoke/ai-sdk-deepseek-streaming-smoke.js",
     "smoke:ai-sdk:openai:all": "npm run smoke:ai-sdk:openai && npm run smoke:ai-sdk:openai:streaming && npm run smoke:ai-sdk:openai:stream-reasoning-only",
     "smoke:runtime:parity": "npm run build && node dist/smoke/runtime-parity-smoke.js",
     "smoke:mcp:missing-env": "npm run build && node dist/smoke/mcp-missing-env-smoke.js",
-    "smoke:openai:all": "npm run smoke:openai && npm run smoke:openai:roundtrip && npm run smoke:openai:compact && npm run smoke:openai:stream-empty && npm run smoke:openai:stream-reasoning-only && npm run smoke:openai:streaming && npm run smoke:openai:runtime",
     "notice": "node scripts/gen-notice.mjs",
     "notice:production": "node scripts/gen-notice.mjs --production"
   },
@@ -50,7 +42,6 @@
     "@ai-sdk/deepseek": "^2.0.32",
     "@ai-sdk/openai": "^3.0.60",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "ai": "^6.0.175",
-    "openai": "^6.34.0"
+    "ai": "^6.0.175"
   }
 }
