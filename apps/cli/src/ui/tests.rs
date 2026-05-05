@@ -740,7 +740,7 @@ fn persisted_subagent_status_wins_over_generic_pending_thinking() {
     });
     app.persisted_standalone_pending_aux = Some(PendingAssistantAux {
         kind: AssistantAuxKind::Thinking,
-        status_text: "| 查看 OpenAI GPT-5.4 的新闻: 成功".to_string(),
+        status_text: "| 整理当前会话结果: 成功".to_string(),
         detail_text: None,
     });
     app.persisted_standalone_pending_aux_anchor = Some(1);
@@ -748,7 +748,7 @@ fn persisted_subagent_status_wins_over_generic_pending_thinking() {
     let lines = render_text_lines(build_history_lines(&app, 120));
     let status_idx = lines
         .iter()
-        .position(|line| line.contains("查看 OpenAI GPT-5.4 的新闻: 成功"))
+        .position(|line| line.contains("整理当前会话结果: 成功"))
         .expect("status line exists");
     let thinking_idx = lines
         .iter()
