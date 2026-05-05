@@ -96,6 +96,13 @@ enum ModelAction {
         name: String,
         #[arg(long)]
         api_base: Option<String>,
+        #[arg(long, value_parser = ["deepseek", "kimi", "minimax", "custom"])]
+        provider: Option<String>,
+        #[arg(
+            long,
+            value_parser = ["default", "minimal", "none", "low", "medium", "high", "xhigh", "max"]
+        )]
+        reasoning_effort: Option<String>,
         #[arg(long)]
         key: Option<String>,
     },
@@ -251,10 +258,14 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
         ModelAction::Add {
             name,
             api_base,
+            provider,
+            reasoning_effort,
             key,
         } => ModelCommand::Add {
             name,
             api_base,
+            provider,
+            reasoning_effort,
             key,
         },
         ModelAction::Remove { name } => ModelCommand::Remove { name },

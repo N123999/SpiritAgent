@@ -153,6 +153,7 @@ export class DesktopRuntimeEventOrchestrator {
         continue;
       }
       if (event.kind === 'approval-resolved') {
+        this.integrateApprovalResolution(event, batchId);
         this.options.dispatchExtensionEvent({
           type: 'onApprovalResolved',
           detail: {
@@ -397,6 +398,29 @@ export class DesktopRuntimeEventOrchestrator {
       }, this.lastApplyEventBatchId);
       this.options.bindFileChangesToToolMessage(execution, message.id);
     }
+  }
+
+  private integrateApprovalResolution(
+    event: Extract<RuntimeEvent<DesktopToolRequest>, { kind: 'approval-resolved' }>,
+    batchId: number,
+  ): void {
+    const denied = event.decisionKind === 'deny' || event.decisionKind === 'guidance';
+    this.options.assistantMessages.upsertToolMessage(event.toolCallId, {
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      phase: denied ? 'failed' : 'running',
+      headline: denied
+        ? `已拒绝: ${event.toolName}`
+        : `调用中: ${event.toolName}`,
+      detailLines: denied
+        ? [
+            event.decisionKind === 'guidance'
+              ? '用户拒绝了该工具调用，并提供了后续指示。'
+              : '用户拒绝了该工具调用。',
+          ]
+        : [],
+      argsExcerpt: truncateJson(event.request),
+    }, batchId);
   }
 
   private insertAssistantPrefix(insertAt: number, prefix: string, logLabel: string): void {

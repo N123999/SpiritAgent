@@ -12,15 +12,16 @@ import type {
   ToolAgentRoundCompletion,
   ToolExecutor,
 } from '../../../ports.js';
-import { isOpenAiVisionUnsupportedError } from '../../../openai/transport.js';
+import { isOpenAiVisionUnsupportedError } from '../../../openai/tool-agent-helpers.js';
 import {
   AgentRuntime,
   pendingWorkspaceFilesFromInput,
   type RuntimeEvent,
   type RuntimeTurnResult,
 } from '../../../runtime.js';
+import { userMessageContentMatchesInput } from '../../../runtime/user-turn-timestamp.js';
 
-import { printSmokeSection } from '../../openai-shared.js';
+import { printSmokeSection } from '../../ai-sdk-openai-shared.js';
 
 interface ScriptedState {
   messages: JsonValue[];
@@ -146,6 +147,14 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
                       arguments: '{"path":"demo.txt","content":"x"}',
                     },
                   },
+                  {
+                    id: 'call-search',
+                    type: 'function',
+                    function: {
+                      name: 'search_files',
+                      arguments: '{"query":"should-not-run"}',
+                    },
+                  },
                 ],
               },
             ],
@@ -173,17 +182,29 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
 
     const hasGuidance = state.messages.some(
       (message) =>
-        isJsonObject(message) && message.role === 'user' && message.content === '不要写文件，直接总结',
+        isJsonObject(message) &&
+        message.role === 'user' &&
+        typeof message.content === 'string' &&
+        message.content.includes('不要写文件，直接总结'),
     );
     const hasDeniedTool = state.messages.some(
       (message) =>
         isJsonObject(message) &&
         message.role === 'tool' &&
+        message.tool_call_id === 'call-write' &&
         typeof message.content === 'string' &&
         message.content.includes('rejected by user guidance'),
     );
+    const hasQueuedToolResult = state.messages.some(
+      (message) =>
+        isJsonObject(message) &&
+        message.role === 'tool' &&
+        message.tool_call_id === 'call-search' &&
+        typeof message.content === 'string' &&
+        message.content === 'unexpected execution',
+    );
 
-    if (!hasGuidance || !hasDeniedTool) {
+    if (!hasGuidance || !hasDeniedTool || !hasQueuedToolResult) {
       return {
         kind: 'failure',
         error: 'approval guidance 状态未正确写回。',
@@ -1784,6 +1805,174 @@ class StreamingApprovalTransport implements LlmTransport<undefined, ScriptedStat
   }
 }
 
+
+class StreamingApprovalGuidanceTransport implements LlmTransport<undefined, ScriptedState> {
+  rounds = 0;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'STREAM_GUIDANCE_SYNC_FALLBACK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'streaming-guidance-sync-fallback' }],
+      },
+    };
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      return {
+        eventStream: streamFromEvents([]),
+        completion: Promise.resolve({
+          kind: 'success',
+          result: {
+            state: {
+              messages: [
+                ...state.messages,
+                {
+                  role: 'assistant',
+                  content: '先申请写文件权限。',
+                  tool_calls: [
+                    {
+                      id: 'call-stream-guidance-write',
+                      type: 'function',
+                      function: {
+                        name: 'create_file',
+                        arguments: '{"path":"demo.txt","content":"x"}',
+                      },
+                    },
+                    {
+                      id: 'call-stream-guidance-search',
+                      type: 'function',
+                      function: {
+                        name: 'search_files',
+                        arguments: '{"query":"should-not-run"}',
+                      },
+                    },
+                  ],
+                },
+              ],
+              steps: state.steps + 1,
+            },
+            step: {
+              kind: 'tool-calls',
+              calls: [
+                {
+                  id: 'call-stream-guidance-write',
+                  name: 'create_file',
+                  argumentsJson: '{"path":"demo.txt","content":"x"}',
+                },
+                {
+                  id: 'call-stream-guidance-search',
+                  name: 'search_files',
+                  argumentsJson: '{"query":"should-not-run"}',
+                },
+              ],
+            },
+            requestTrace: [{ mode: 'streaming-guidance-round-1' }],
+          },
+        }),
+      };
+    }
+
+    const hasGuidance = state.messages.some(
+      (message) =>
+        isJsonObject(message) &&
+        message.role === 'user' &&
+        typeof message.content === 'string' &&
+        message.content.includes('不要写文件，直接总结'),
+    );
+    const hasDeniedToolResult = state.messages.some(
+      (message) =>
+        isJsonObject(message) &&
+        message.role === 'tool' &&
+        message.tool_call_id === 'call-stream-guidance-write' &&
+        typeof message.content === 'string' &&
+        message.content.includes('rejected by user guidance'),
+    );
+    const hasQueuedToolResult = state.messages.some(
+      (message) =>
+        isJsonObject(message) &&
+        message.role === 'tool' &&
+        message.tool_call_id === 'call-stream-guidance-search' &&
+        typeof message.content === 'string' &&
+        message.content === 'approved output for search_files',
+    );
+
+    if (!hasGuidance || !hasDeniedToolResult || !hasQueuedToolResult) {
+      return {
+        eventStream: streamFromEvents([]),
+        completion: Promise.resolve({
+          kind: 'failure',
+          error: 'streaming guidance resume 未正确继续后续排队工具。',
+          requestTrace: [{ mode: 'streaming-guidance-round-2-missing-tool-results' }],
+        }),
+      };
+    }
+
+    return {
+      eventStream: streamFromEvents([
+        { kind: 'assistant-chunk', text: 'STREAM_GUIDANCE_' },
+        { kind: 'assistant-chunk', text: 'OK' },
+        { kind: 'done' },
+      ]),
+      completion: Promise.resolve({
+        kind: 'success',
+        result: {
+          state: {
+            messages: [...state.messages, { role: 'assistant', content: 'STREAM_GUIDANCE_OK' }],
+            steps: state.steps + 1,
+          },
+          step: { kind: 'final-response-ready' },
+          requestTrace: [{ mode: 'streaming-guidance-round-2' }],
+        },
+      }),
+      cancel: () => {},
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context overflow');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return history.map((message) => ({ role: message.role, content: message.content }));
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
 class StreamingCompactionTransport implements LlmTransport<undefined, ScriptedState> {
   rounds = 0;
   private resolveCompaction: (() => void) | undefined;
@@ -2065,6 +2254,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   const streamingBackgroundEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingCompactionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingApprovalEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingGuidanceEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const timeoutEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingFailureEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
@@ -2093,8 +2283,8 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     throw new Error('approval guidance smoke 未完成闭环。');
   }
 
-  if (approvalExecutor.executedCalls !== 0) {
-    throw new Error('approval guidance smoke 中不应执行任何工具。');
+  if (approvalExecutor.executedCalls !== 1) {
+    throw new Error('approval guidance smoke 应继续执行后续排队工具。');
   }
 
   const compactRuntime = new AgentRuntime({
@@ -2328,7 +2518,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     throw new Error('vision fallback smoke 未记录正确的降级事件。');
   }
   const visionUserHistory = visionRuntime.history().find(
-    (message) => message.role === 'user' && message.content === '请描述这张图。',
+    (message) => message.role === 'user' && userMessageContentMatchesInput(message.content, '请描述这张图。'),
   );
   if (!visionUserHistory || (visionUserHistory.imagePaths?.length ?? 0) !== 0) {
     throw new Error('vision fallback smoke 未清空 user imagePaths。');
@@ -2550,7 +2740,14 @@ export async function runRuntimeParitySmoke(): Promise<void> {
       if (!state.messages.some((message) => isJsonObject(message) && message.content === 'prompt-user-message')) {
         throw new Error('prompt user message 未注入 state。');
       }
-      if (!state.messages.some((message) => isJsonObject(message) && message.content === '补充说明')) {
+      if (
+        !state.messages.some(
+          (message) =>
+            isJsonObject(message) &&
+            typeof message.content === 'string' &&
+            userMessageContentMatchesInput(message.content, '补充说明'),
+        )
+      ) {
         throw new Error('prompt extra user message 未注入 state。');
       }
     }),
@@ -2612,7 +2809,10 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   if (
     !streamingPromptRuntime
       .history()
-      .some((message) => message.role === 'user' && message.content === '帮我看看这个工具有什么用')
+      .some(
+        (message) =>
+          message.role === 'user' && userMessageContentMatchesInput(message.content, '帮我看看这个工具有什么用'),
+      )
   ) {
     throw new Error('streaming prompt smoke 未保留附加用户消息。');
   }
@@ -2907,6 +3107,76 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     throw new Error('streaming approval smoke 错误退回到了非流式 round。');
   }
 
+  const streamingGuidanceExecutor = new StreamingApprovalExecutor();
+  const streamingGuidanceRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new StreamingApprovalGuidanceTransport(),
+    toolExecutor: streamingGuidanceExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => streamingGuidanceEvents.push(event),
+  });
+
+  await streamingGuidanceRuntime.startUserTurnStreaming('请流式审批后改成总结');
+  await flushMicrotasks(4);
+  await streamingGuidanceRuntime.poll();
+  if (!streamingGuidanceRuntime.hasPendingApproval()) {
+    throw new Error('streaming guidance smoke 未进入待审批状态。');
+  }
+
+  await streamingGuidanceRuntime.continuePendingApproval({
+    kind: 'guidance',
+    userMessage: '不要写文件，直接总结',
+  });
+  for (let index = 0; index < 12 && streamingGuidanceRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await streamingGuidanceRuntime.poll();
+  }
+  if (streamingGuidanceRuntime.isBusy()) {
+    throw new Error('streaming guidance smoke 未在预期轮次内完成。');
+  }
+
+  const drainedStreamingGuidanceEvents = streamingGuidanceRuntime.drainEvents();
+  if (
+    drainedStreamingGuidanceEvents.filter((event) => event.kind === 'begin-assistant-response').length < 2
+  ) {
+    throw new Error('streaming guidance smoke 应包含审批前后两次 begin event。');
+  }
+  if (
+    !drainedStreamingGuidanceEvents.some(
+      (event) => event.kind === 'approval-requested' && event.approval.toolName === 'create_file',
+    )
+  ) {
+    throw new Error('streaming guidance smoke 缺少 approval-requested 事件。');
+  }
+  if (
+    !drainedStreamingGuidanceEvents.some(
+      (event) => event.kind === 'assistant-chunk' && event.text === 'STREAM_GUIDANCE_',
+    )
+  ) {
+    throw new Error('streaming guidance smoke 缺少审批恢复后的流式 chunk。');
+  }
+  if (streamingGuidanceExecutor.executedCalls !== 1) {
+    throw new Error('streaming guidance smoke 应继续执行后续排队工具。');
+  }
+  const streamingGuidanceTrace = streamingGuidanceRuntime.requestTrace();
+  if (
+    !streamingGuidanceTrace.some(
+      (trace) => isJsonObject(trace) && trace.mode === 'streaming-guidance-round-2',
+    )
+  ) {
+    throw new Error('streaming guidance smoke 缺少审批恢复后的 streaming trace。');
+  }
+  if (
+    streamingGuidanceTrace.some(
+      (trace) => isJsonObject(trace) && trace.mode === 'streaming-guidance-sync-fallback',
+    )
+  ) {
+    throw new Error('streaming guidance smoke 错误退回到了非流式 round。');
+  }
+
   const streamingBackgroundExecutor = new PollingBackgroundExecutor();
   const streamingBackgroundRuntime = new AgentRuntime({
     config: undefined,
@@ -3067,6 +3337,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   printSmokeSection('stream timeout smoke events', drainedTimeoutEvents);
   printSmokeSection('streaming failure smoke events', drainedStreamingFailureEvents);
   printSmokeSection('streaming approval smoke events', drainedStreamingApprovalEvents);
+  printSmokeSection('streaming guidance smoke events', drainedStreamingGuidanceEvents);
   printSmokeSection('manual compaction smoke events', drainedManualCompactionEvents);
   printSmokeSection('streaming background smoke events', drainedStreamingBackgroundEvents);
   printSmokeSection('streaming compaction smoke events', drainedStreamingCompactionEvents);
@@ -3195,7 +3466,12 @@ function rebuildScriptedStateAfterCompaction(
 
   for (let index = retryState.messages.length - 1; index >= 0; index -= 1) {
     const message = retryState.messages[index];
-    if (isJsonObject(message) && message.role === 'user' && message.content === userInput) {
+    if (
+      isJsonObject(message) &&
+      message.role === 'user' &&
+      typeof message.content === 'string' &&
+      userMessageContentMatchesInput(message.content, userInput)
+    ) {
       rebuilt.messages.push(...retryState.messages.slice(index + 1).map((item) => cloneJsonValue(item)));
       return rebuilt;
     }

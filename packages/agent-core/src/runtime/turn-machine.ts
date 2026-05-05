@@ -9,8 +9,12 @@ import type {
   ToolCallRequest,
 } from '../ports.js';
 
-import { isCompatibleContinuedToolRequest, renderError } from './helpers.js';
-import { formatUserMessageContentForLlm } from './user-turn-timestamp.js';
+import {
+  applyDeferredUserGuidance,
+  enqueueDeferredUserGuidance,
+  isCompatibleContinuedToolRequest,
+  renderError,
+} from './helpers.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type {
   AgentRuntimeOptions,
@@ -166,18 +170,18 @@ export async function resumePendingApproval<
       return runTurnLoop(runtime, resumedState, pending.pendingUserInput, pending.turn);
     }
 
-    const guidanceForLlm = formatUserMessageContentForLlm(guidanceMessage);
-    runtime.historyStore.push({
-      role: 'user',
-      content: guidanceForLlm,
-      imagePaths: [],
-    });
-    runtime.pendingUserTurnStore = guidanceMessage;
-    resumedState = runtime.options.appendUserMessage
-      ? runtime.options.appendUserMessage(resumedState, guidanceForLlm)
-      : runtime.options.createToolAgentState(runtime.historyStore, guidanceMessage);
+    enqueueDeferredUserGuidance(pending.turn, guidanceMessage);
+    if (pending.remainingCalls.length > 0) {
+      return processToolCalls(
+        runtime,
+        resumedState,
+        pending.pendingUserInput,
+        pending.remainingCalls,
+        pending.turn,
+      );
+    }
 
-    return runTurnLoop(runtime, resumedState, guidanceMessage, pending.turn);
+    return runTurnLoop(runtime, resumedState, pending.pendingUserInput, pending.turn);
   }
 
   const deniedText = decision.resultText?.trim()
@@ -338,7 +342,14 @@ export async function runTurnLoop<
   pendingUserInput: string,
   turn: RuntimeTurnContext<ToolRequest>,
 ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+  let currentPendingUserInput = pendingUserInput;
   let currentState = state;
+  ({ state: currentState, pendingUserInput: currentPendingUserInput } = applyDeferredUserGuidance(
+    runtime,
+    currentState,
+    currentPendingUserInput,
+    turn,
+  ));
   let emptyAssistantRetries = 0;
 
   while (true) {
@@ -353,7 +364,7 @@ export async function runTurnLoop<
 
       const textOnlyRetryState = runtime.tryFallbackToTextOnlyAndBuildRetryState(
         completion.error,
-        pendingUserInput,
+        currentPendingUserInput,
       );
       if (textOnlyRetryState !== undefined) {
         currentState = textOnlyRetryState;
@@ -390,10 +401,10 @@ export async function runTurnLoop<
               : runtime.options.rebuildRetryStateAfterCompaction
                 ? runtime.options.rebuildRetryStateAfterCompaction(
                     runtime.historyStore,
-                    pendingUserInput,
+                    currentPendingUserInput,
                     preparedRetry.state,
                   )
-                : runtime.options.createToolAgentState(runtime.historyStore, pendingUserInput);
+                : runtime.options.createToolAgentState(runtime.historyStore, currentPendingUserInput);
           continue;
         } catch (error) {
           return {
@@ -422,7 +433,7 @@ export async function runTurnLoop<
     currentState = round.state;
 
     if (round.step.kind === 'tool-calls') {
-      return processToolCalls(runtime, currentState, pendingUserInput, round.step.calls, turn);
+      return processToolCalls(runtime, currentState, currentPendingUserInput, round.step.calls, turn);
     }
 
     const assistantText = runtime.options.extractAssistantText(currentState)?.trim();
@@ -686,6 +697,12 @@ export function startToolAgentRoundAsync<
   turn: RuntimeTurnContext<ToolRequest>,
   emptyAssistantRetries = 0,
 ): void {
+  ({ state, pendingUserInput } = applyDeferredUserGuidance(
+    runtime,
+    state,
+    pendingUserInput,
+    turn,
+  ));
   runtime.clearStreamingUiState();
 
   const pending: PendingToolAgentRound<State, ToolRequest> = {

@@ -17,8 +17,8 @@ import type {
   OpenAiEnabledRule,
   OpenAiEnabledSkillCatalogEntry,
   OpenAiPlanMetadata,
-  OpenAiTransportConfig,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
+import type { OpenAiTransportConfig } from '../openai/openai-compat.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';

@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 pub const DEFAULT_API_BASE: &str = "https://api.openai.com/v1";
@@ -21,6 +22,31 @@ pub enum ModelProvider {
     Custom,
 }
 
+impl ModelProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Deepseek => "deepseek",
+            Self::Kimi => "kimi",
+            Self::Minimax => "minimax",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+impl FromStr for ModelProvider {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "deepseek" => Ok(Self::Deepseek),
+            "kimi" => Ok(Self::Kimi),
+            "minimax" => Ok(Self::Minimax),
+            "custom" => Ok(Self::Custom),
+            other => Err(format!("不支持的 provider: {other}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelProfile {
     pub name: String,
@@ -28,6 +54,13 @@ pub struct ModelProfile {
     pub api_base: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ModelProvider>,
+    #[serde(
+        rename = "reasoningEffort",
+        alias = "reasoning_effort",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub reasoning_effort: Option<String>,
     #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
     pub extra: Map<String, Value>,
 }
@@ -62,6 +95,7 @@ impl Default for AppConfig {
                 name: "gpt-4o-mini".to_string(),
                 api_base: DEFAULT_API_BASE.to_string(),
                 provider: None,
+                reasoning_effort: None,
                 extra: Map::new(),
             }],
             active_model: "gpt-4o-mini".to_string(),
@@ -135,6 +169,7 @@ fn deserialize_config(content: &str, path: &Path) -> Result<AppConfig> {
                 name,
                 api_base: legacy.api_base.clone(),
                 provider: None,
+                reasoning_effort: None,
                 extra: Map::new(),
             })
             .collect(),
@@ -176,6 +211,18 @@ fn normalize_config(cfg: &mut AppConfig) {
         if model.api_base.trim().is_empty() {
             model.api_base = DEFAULT_API_BASE.to_string();
         }
+        model.reasoning_effort = normalize_optional_string(model.reasoning_effort.take());
+        model.extra.remove("transportImplementation");
+        model.extra.remove("transport_implementation");
+    }
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    let trimmed = value?.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
     }
 }
 
@@ -191,19 +238,20 @@ mod tests {
 {
   "models": [
     {
-      "name": "kimi-k2",
-      "apiBase": "https://api.moonshot.cn/v1",
-      "provider": "kimi",
+            "name": "agent-test-model",
+            "apiBase": "https://example.invalid/v1",
+            "provider": "custom",
+            "transportImplementation": "ai-sdk",
       "reasoningEffort": "minimal"
     }
   ],
-  "activeModel": "kimi-k2",
+    "activeModel": "agent-test-model",
   "uiLocale": "zh-CN",
   "windowsMica": true,
   "recentWorkspaces": ["D:/SpiritAgent", "D:/Other"],
   "dreams": {
     "enabled": true,
-    "collectorModel": "gpt-4.1-mini",
+        "collectorModel": "collector-test-model",
     "debugMode": true
   }
 }
@@ -224,7 +272,15 @@ mod tests {
             json.get("dreams")
                 .and_then(|dreams| dreams.get("collectorModel"))
                 .and_then(Value::as_str),
-            Some("gpt-4.1-mini")
+            Some("collector-test-model")
+        );
+        assert_eq!(
+            json.get("models")
+                .and_then(Value::as_array)
+                .and_then(|models| models.first())
+                .and_then(|model| model.get("transportImplementation"))
+                .and_then(Value::as_str),
+            None
         );
         assert_eq!(
             json.get("models")

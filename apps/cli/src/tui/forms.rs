@@ -451,6 +451,7 @@ impl TuiShell {
                 name: id.clone(),
                 api_base: parsed.api_base.clone(),
                 provider: Some(parsed.provider),
+                reasoning_effort: None,
                 extra: Default::default(),
             });
             if let Err(err) = self

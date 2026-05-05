@@ -22,6 +22,7 @@ import {
   cloneHistory,
   createTurnContext,
   defaultToolMemoryFormatter,
+  enqueueDeferredUserGuidance,
   formatPendingMcpResourceContext,
   formatPendingWorkspaceFileContext,
   pendingMcpResourceFromReadResult,
@@ -948,28 +949,31 @@ export class AgentRuntime<
         return;
       }
 
-      const guidanceForLlm = formatUserMessageContentForLlm(guidanceMessage);
-      this.historyStore.push({
-        role: 'user',
-        content: guidanceForLlm,
-        imagePaths: [],
-      });
-      this.pendingUserTurnStore = guidanceMessage;
-      resumedState = this.options.appendUserMessage
-        ? this.options.appendUserMessage(resumedState, guidanceForLlm)
-        : this.options.createToolAgentState(this.historyStore, guidanceMessage);
+      enqueueDeferredUserGuidance(pending.turn, guidanceMessage);
+
+      if (pending.remainingCalls.length > 0) {
+        await this.processToolCallsAsync(
+          resumedState,
+          pending.pendingUserInput,
+          pending.remainingCalls,
+          pending.turn,
+          pending.resumeAsStreaming,
+          pending.streamingEmitBeginResponse,
+        );
+        return;
+      }
 
       if (pending.resumeAsStreaming) {
         await this.startStreamingRound(
           resumedState,
-          guidanceMessage,
+          pending.pendingUserInput,
           pending.turn,
           true,
         );
         return;
       }
 
-      this.startToolAgentRoundAsync(resumedState, guidanceMessage, pending.turn);
+      this.startToolAgentRoundAsync(resumedState, pending.pendingUserInput, pending.turn);
       return;
     }
 

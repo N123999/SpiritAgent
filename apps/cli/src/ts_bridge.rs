@@ -1581,6 +1581,11 @@ impl TsBridgeRuntime {
                 obj.insert("llmVendor".to_string(), json!(vendor));
             }
         }
+        if let Some(reasoning_effort) = active.reasoning_effort.as_deref() {
+            if let Some(obj) = transport.as_object_mut() {
+                obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
+            }
+        }
         Ok(transport)
     }
 
@@ -1589,7 +1594,10 @@ impl TsBridgeRuntime {
             return true;
         }
 
-        if self.config.active_model_profile().map(|profile| profile.api_base.as_str())
+        if self
+            .config
+            .active_model_profile()
+            .map(|profile| profile.api_base.as_str())
             != config
                 .active_model_profile()
                 .map(|profile| profile.api_base.as_str())
@@ -1597,8 +1605,23 @@ impl TsBridgeRuntime {
             return true;
         }
 
-        self.config.active_model_profile().map(|profile| profile.provider)
-            != config.active_model_profile().map(|profile| profile.provider)
+        if self
+            .config
+            .active_model_profile()
+            .and_then(|profile| profile.reasoning_effort.as_deref())
+            != config
+                .active_model_profile()
+                .and_then(|profile| profile.reasoning_effort.as_deref())
+        {
+            return true;
+        }
+
+        self.config
+            .active_model_profile()
+            .map(|profile| profile.provider)
+            != config
+                .active_model_profile()
+                .map(|profile| profile.provider)
     }
 
     fn resolve_key_from_store(&self, model_name: &str) -> Result<String> {
@@ -2465,7 +2488,7 @@ mod tests {
     };
     use crate::{
         host_runtime::RuntimeEvent,
-        model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
+        model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider},
         ports::SecretStore,
     };
     use anyhow::{Result, anyhow};
@@ -2526,12 +2549,14 @@ mod tests {
                     name: "gpt-4o-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
+                    reasoning_effort: None,
                     extra: Default::default(),
                 },
                 ModelProfile {
                     name: "gpt-4.1-mini".to_string(),
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
+                    reasoning_effort: None,
                     extra: Default::default(),
                 },
             ],
@@ -2640,10 +2665,58 @@ mod tests {
             name: "gpt-4.1".to_string(),
             api_base: DEFAULT_API_BASE.to_string(),
             provider: None,
+            reasoning_effort: None,
             extra: Default::default(),
         });
 
         assert!(runtime.validate_config_change(&next).is_ok());
+    }
+
+    #[test]
+    fn resolve_transport_config_json_includes_model_knobs() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let mut next = runtime.config().clone();
+        let active = next
+            .active_model_profile_mut()
+            .expect("active model should exist");
+        active.provider = Some(ModelProvider::Custom);
+        active.reasoning_effort = Some("minimal".to_string());
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport.get("llmVendor").and_then(Value::as_str),
+            Some("custom")
+        );
+        assert!(transport.get("transportImplementation").is_none());
+        assert_eq!(
+            transport.get("reasoningEffort").and_then(Value::as_str),
+            Some("minimal")
+        );
+    }
+
+    #[test]
+    fn transport_config_change_detects_model_knobs() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let mut next = runtime.config().clone();
+        next.active_model_profile_mut()
+            .expect("active model should exist")
+            .provider = Some(ModelProvider::Custom);
+        assert!(runtime.transport_config_will_change(&next));
+
+        let mut next = runtime.config().clone();
+        next.active_model_profile_mut()
+            .expect("active model should exist")
+            .reasoning_effort = Some("low".to_string());
+        assert!(runtime.transport_config_will_change(&next));
     }
 
     #[test]

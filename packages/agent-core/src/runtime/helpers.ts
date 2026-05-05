@@ -8,7 +8,9 @@ import {
   TOOL_MEMORY_PREFIX,
   TOOL_MEMORY_RESULT_MAX_CHARS,
 } from './constants.js';
+import { formatUserMessageContentForLlm } from './user-turn-timestamp.js';
 import type {
+  AgentRuntimeOptions,
   PendingMcpResource,
   PendingWorkspaceFile,
   RuntimeTurnContext,
@@ -20,6 +22,69 @@ export function createTurnContext<ToolRequest>(): RuntimeTurnContext<ToolRequest
     toolExecutions: [],
     compactions: [],
     autoCompactAttempts: 0,
+    deferredUserGuidances: [],
+  };
+}
+
+interface DeferredUserGuidanceRuntime<State, ToolRequest, TrustTarget = string> {
+  options: Pick<
+    AgentRuntimeOptions<unknown, State, ToolRequest, TrustTarget>,
+    'appendUserMessage' | 'createToolAgentState'
+  >;
+  historyStore: LlmMessage[];
+  pendingUserTurnStore: string | undefined;
+}
+
+export function enqueueDeferredUserGuidance<ToolRequest>(
+  turn: RuntimeTurnContext<ToolRequest>,
+  userMessage: string,
+): void {
+  const trimmed = userMessage.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  turn.deferredUserGuidances.push({
+    userMessage: trimmed,
+    contentForLlm: formatUserMessageContentForLlm(trimmed),
+  });
+}
+
+export function applyDeferredUserGuidance<State, ToolRequest, TrustTarget = string>(
+  runtime: DeferredUserGuidanceRuntime<State, ToolRequest, TrustTarget>,
+  state: State,
+  pendingUserInput: string,
+  turn: RuntimeTurnContext<ToolRequest>,
+): { state: State; pendingUserInput: string } {
+  if (turn.deferredUserGuidances.length === 0) {
+    return { state, pendingUserInput };
+  }
+
+  const deferred = [...turn.deferredUserGuidances];
+  turn.deferredUserGuidances = [];
+
+  let nextState = state;
+  let nextPendingUserInput = pendingUserInput;
+  for (const item of deferred) {
+    runtime.historyStore.push({
+      role: 'user',
+      content: item.contentForLlm,
+      imagePaths: [],
+    });
+    nextPendingUserInput = item.userMessage;
+    if (runtime.options.appendUserMessage) {
+      nextState = runtime.options.appendUserMessage(nextState, item.contentForLlm);
+    }
+  }
+
+  runtime.pendingUserTurnStore = nextPendingUserInput;
+  if (!runtime.options.appendUserMessage) {
+    nextState = runtime.options.createToolAgentState(runtime.historyStore, nextPendingUserInput);
+  }
+
+  return {
+    state: nextState,
+    pendingUserInput: nextPendingUserInput,
   };
 }
 

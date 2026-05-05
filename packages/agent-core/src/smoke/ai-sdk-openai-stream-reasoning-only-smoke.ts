@@ -3,13 +3,13 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
+import { AiSdkOpenAiCompatibleTransport } from '../openai/ai-sdk-transport.js';
 import {
   extractLastOpenAiAssistantText,
-  OpenAiTransport,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
-import { printSmokeSection } from './openai-shared.js';
+import { printSmokeSection } from './ai-sdk-openai-shared.js';
 
 async function main(): Promise<void> {
   const server = createServer((request, response) => {
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
     const chunks = [
       {
-        id: 'chatcmpl-test-reasoning-only-stream',
+        id: 'chatcmpl-ai-sdk-reasoning-only',
         object: 'chat.completion.chunk',
         created: 0,
         model: 'test-openai-compatible',
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
         ],
       },
       {
-        id: 'chatcmpl-test-reasoning-only-stream',
+        id: 'chatcmpl-ai-sdk-reasoning-only',
         object: 'chat.completion.chunk',
         created: 0,
         model: 'test-openai-compatible',
@@ -74,8 +74,16 @@ async function main(): Promise<void> {
     throw new Error('无法获取本地 smoke server 端口。');
   }
 
-  const transport = new OpenAiTransport();
-  const state = startOpenAiToolAgentState([], '请测试 reasoning-only 流式输出。', process.cwd(), [], [], [], 'test-openai-compatible');
+  const transport = new AiSdkOpenAiCompatibleTransport();
+  const state = startOpenAiToolAgentState(
+    [],
+    '请测试 reasoning-only 流式输出。',
+    process.cwd(),
+    [],
+    [],
+    [],
+    'test-openai-compatible',
+  );
   const started = await transport.startToolAgentRoundStreaming(
     {
       apiKey: 'test-key',
@@ -90,24 +98,24 @@ async function main(): Promise<void> {
   const completion = await started.completion;
   server.close();
 
-  printSmokeSection('stream-reasoning-only smoke events', events);
-  printSmokeSection('stream-reasoning-only smoke completion', completion);
+  printSmokeSection('ai-sdk openai stream-reasoning-only smoke events', events);
+  printSmokeSection('ai-sdk openai stream-reasoning-only smoke completion', completion);
 
   if (!events.some((event) => isJsonObject(event) && event.kind === 'thinking-chunk')) {
-    throw new Error('stream-reasoning-only smoke 未收到 thinking-chunk。');
+    throw new Error('ai-sdk openai stream-reasoning-only smoke 未收到 thinking-chunk。');
   }
 
   if (events.some((event) => isJsonObject(event) && event.kind === 'error')) {
-    throw new Error('stream-reasoning-only smoke 不应收到 error 事件。');
+    throw new Error('ai-sdk openai stream-reasoning-only smoke 不应收到 error 事件。');
   }
 
   if (completion.kind !== 'success' || completion.result.step.kind !== 'final-response-ready') {
-    throw new Error('stream-reasoning-only smoke 未进入预期的 final-response-ready。');
+    throw new Error('ai-sdk openai stream-reasoning-only smoke 未进入预期的 final-response-ready。');
   }
 
   const assistantText = extractLastOpenAiAssistantText(completion.result.state)?.trim();
   if (assistantText !== '先想一下，最后直接把这段当结果返回。') {
-    throw new Error(`stream-reasoning-only smoke 未拿到 reasoning-only assistant 文本。实际: ${assistantText ?? '<empty>'}`);
+    throw new Error(`ai-sdk openai stream-reasoning-only smoke 未拿到 reasoning-only assistant 文本。实际: ${assistantText ?? '<empty>'}`);
   }
 }
 
@@ -125,6 +133,6 @@ function isJsonObject(value: JsonValue | undefined): value is Record<string, Jso
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`openai stream-reasoning-only smoke failed: ${message}`);
+  console.error(`ai-sdk openai stream-reasoning-only smoke failed: ${message}`);
   process.exitCode = 1;
 });

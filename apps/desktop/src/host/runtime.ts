@@ -1,5 +1,6 @@
 import {
   AgentRuntime,
+  type OpenAiCompatibleTransport,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   continueOpenAiToolAgentState,
@@ -16,7 +17,6 @@ import {
   type OpenAiExtensionSystemPrompt,
   type OpenAiPlanMetadata,
   type OpenAiToolAgentState,
-  type OpenAiTransport,
   type OpenAiTransportConfig,
 } from '@spirit-agent/agent-core';
 
@@ -38,7 +38,7 @@ export function createDesktopRuntime(input: {
   planMetadata: OpenAiPlanMetadata;
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[];
   toolExecutor: DesktopToolExecutor;
-  llmTransport: OpenAiTransport;
+  llmTransport: OpenAiCompatibleTransport;
   activeSkills: OpenAiActiveSkill[];
   workspaceRoot: string;
 }): DesktopRuntime {

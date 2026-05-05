@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path,
     },
-    model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile},
+    model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider},
     ports::{AppPaths, ConfigStore, SecretStore},
     ts_bridge::TsBridgeRuntime,
 };
@@ -20,6 +20,8 @@ pub enum ModelCommand {
     Add {
         name: String,
         api_base: Option<String>,
+        provider: Option<String>,
+        reasoning_effort: Option<String>,
         key: Option<String>,
     },
     Remove {
@@ -119,9 +121,11 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             for model in &cfg.models {
                 let key_saved = secret_store.has_model_api_key(&model.name).unwrap_or(false);
                 println!(
-                    "  - {}\n    api_base: {}\n    key: {}",
+                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    key: {}",
                     model.name,
                     model.api_base,
+                    format_model_provider(model.provider),
+                    model.reasoning_effort.as_deref().unwrap_or("未设置"),
                     if key_saved { "已保存" } else { "未保存" }
                 );
             }
@@ -129,12 +133,16 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
         ModelCommand::Add {
             name,
             api_base,
+            provider,
+            reasoning_effort,
             key,
         } => {
             if cfg.has_model(&name) {
                 println!("模型已存在: {}", name);
             } else {
                 let api_base = api_base.unwrap_or_else(|| DEFAULT_API_BASE.to_string());
+                let provider = parse_model_provider(provider)?;
+                let reasoning_effort = normalize_choice_arg(reasoning_effort);
                 let key_value = match key {
                     Some(v) => v,
                     None => rpassword::prompt_password("请输入该模型 API Key: ")
@@ -147,7 +155,8 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 cfg.add_model(ModelProfile {
                     name: name.clone(),
                     api_base: api_base.clone(),
-                    provider: None,
+                    provider,
+                    reasoning_effort: reasoning_effort.clone(),
                     extra: Default::default(),
                 });
                 cfg.active_model = name.clone();
@@ -155,6 +164,11 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 config_store.save(&cfg)?;
                 println!("已添加模型: {}，并已设为当前模型", name);
                 println!("api_base: {}", api_base);
+                println!("provider: {}", format_model_provider(provider));
+                println!(
+                    "reasoning_effort: {}",
+                    reasoning_effort.as_deref().unwrap_or("未设置")
+                );
             }
         }
         ModelCommand::Remove { name } => {
@@ -201,9 +215,11 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
             for model in &cfg.models {
                 let key_saved = secret_store.has_model_api_key(&model.name).unwrap_or(false);
                 println!(
-                    "  - {} (api_base: {}, key: {})",
+                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    key: {}",
                     model.name,
                     model.api_base,
+                    format_model_provider(model.provider),
+                    model.reasoning_effort.as_deref().unwrap_or("未设置"),
                     if key_saved { "已保存" } else { "未保存" }
                 );
             }
@@ -244,6 +260,29 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn parse_model_provider(value: Option<String>) -> Result<Option<ModelProvider>> {
+    match normalize_choice_arg(value) {
+        Some(provider) => provider
+            .parse()
+            .map(Some)
+            .map_err(|err: String| anyhow!(err)),
+        None => Ok(None),
+    }
+}
+
+fn normalize_choice_arg(value: Option<String>) -> Option<String> {
+    let trimmed = value?.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn format_model_provider(provider: Option<ModelProvider>) -> &'static str {
+    provider.map(ModelProvider::as_str).unwrap_or("未设置")
 }
 
 pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {

@@ -10,9 +10,12 @@ import {
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
   buildToolAgentHostPrompt,
+  createOpenAiCompatibleTransport,
+  createOpenAiJsonSchemaTransport,
   type OpenAiActiveSkill,
+  type OpenAiCompatibleTransport,
   type OpenAiExtensionSystemPrompt,
-  OpenAiTransport,
+  type OpenAiJsonSchemaTransport,
   type AssistantAuxArchiveEntry,
   type ChatArchive,
   type OpenAiEnabledRule,
@@ -179,6 +182,7 @@ import {
   parsePendingSubagentStatusText,
   restoreMessagesFromArchive,
   summarizeMessagesTailForOrderDebug,
+  toolMessageKey,
   truncateOneLineForDebug,
 } from './message-ordering.js';
 import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
@@ -303,7 +307,8 @@ interface HostState {
 }
 
 class DesktopHostService {
-  private readonly transport = new OpenAiTransport();
+  private runtimeTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport();
+  private jsonSchemaTransport: OpenAiJsonSchemaTransport = createOpenAiJsonSchemaTransport();
   private readonly extensionStateStore = createDesktopExtensionStateStore({
     spiritDataDir: spiritAgentDataDir(),
     hostKind: 'desktop',
@@ -1084,7 +1089,7 @@ class DesktopHostService {
         api_base: currentApiBase(state.config),
         working_directory: state.workspaceRoot,
         system_prompts: {
-          ...(this.transport.llmSystemPromptsForExport() as Record<string, unknown>),
+          ...(this.runtimeTransport.llmSystemPromptsForExport() as Record<string, unknown>),
           tool_agent: buildToolAgentHostPrompt(state.config.activeModel),
           ...(rulesSystemPrompt === undefined ? {} : { rules: rulesSystemPrompt }),
           ...(skillsCatalogSystemPrompt === undefined
@@ -1098,7 +1103,7 @@ class DesktopHostService {
         },
         note: 'messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。system_prompts 为 transport 导出的 system 文案（如 tool_agent），供调试与导出。',
         message_count: runtime.history().length,
-        messages: this.transport.llmHistoryAsApiMessages([...runtime.history()]),
+        messages: this.runtimeTransport.llmHistoryAsApiMessages([...runtime.history()]),
         api_request_trace_count: runtime.requestTrace().length,
         api_request_trace: [...runtime.requestTrace()],
       };
@@ -1393,15 +1398,13 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
+      const pendingApproval = runtime.currentPendingApproval();
       const decision = parseApprovalDecision(message);
-      const state = this.requireState();
       if (decision.kind === 'guidance' && decision.userMessage.trim()) {
-        state.messages.push({
-          id: this.allocateMessageId(),
-          role: 'user',
-          content: decision.userMessage.trim(),
-          pending: false,
-        });
+        this.insertUserApprovalReplyMessage(
+          decision.userMessage.trim(),
+          pendingApproval ? toolMessageKey(pendingApproval) : undefined,
+        );
         this.resetStreamingPlacementState(false);
       }
       await runtime.continuePendingApproval(decision);
@@ -1849,6 +1852,9 @@ class DesktopHostService {
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
     const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
+    const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
+    this.runtimeTransport = createOpenAiCompatibleTransport();
+    this.jsonSchemaTransport = createOpenAiJsonSchemaTransport();
     if (!apiKey) {
       this.runtime = undefined;
       this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
@@ -1856,23 +1862,27 @@ class DesktopHostService {
       return;
     }
 
-    const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
     const llmVendor = activeProfile?.provider;
+    const runtimeTransportConfig: OpenAiTransportConfig = {
+      apiKey,
+      model: state.config.activeModel,
+      baseUrl: currentApiBase(state.config),
+      workspaceRoot: state.workspaceRoot,
+      ...(llmVendor ? { llmVendor } : {}),
+      reasoningEffort: activeProfile?.reasoningEffort,
+    };
+    this.runtimeTransport = createOpenAiCompatibleTransport(runtimeTransportConfig);
+    this.jsonSchemaTransport = createOpenAiJsonSchemaTransport(runtimeTransportConfig);
 
     const runtime = this.createRuntime(
-      {
-        apiKey,
-        model: state.config.activeModel,
-        baseUrl: currentApiBase(state.config),
-        workspaceRoot: state.workspaceRoot,
-        ...(llmVendor ? { llmVendor } : {}),
-        reasoningEffort: activeProfile?.reasoningEffort,
-      },
+      runtimeTransportConfig,
       state.archiveHistory,
       state.metadata.rules.enabledRules,
       state.metadata.skills.enabledSkillCatalog,
       state.metadata.planMetadata,
       extensionSystemPrompts,
+      undefined,
+      this.runtimeTransport,
     );
     if (state.archiveSubagentSessions.length > 0 || state.archiveHistory.length > 0) {
       runtime.replaceFromArchive({
@@ -2077,6 +2087,7 @@ class DesktopHostService {
     planMetadata: OpenAiPlanMetadata,
     extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
     toolExecutor: DesktopToolExecutor = this.requireToolExecutor(),
+    llmTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport(transportConfig),
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
     return createDesktopRuntime({
@@ -2087,7 +2098,7 @@ class DesktopHostService {
       planMetadata,
       extensionSystemPrompts,
       toolExecutor,
-      llmTransport: this.transport,
+      llmTransport,
       activeSkills: this.currentTurnSkills,
       workspaceRoot,
     });
@@ -2223,7 +2234,7 @@ class DesktopHostService {
     ];
 
     try {
-      const result = await this.transport.createJsonSchemaCompletion<{
+      const result = await this.jsonSchemaTransport.createJsonSchemaCompletion<{
         message?: string;
       }>(
         {
@@ -2722,6 +2733,38 @@ class DesktopHostService {
     const next = this.messageIdCounter;
     this.messageIdCounter += 1;
     return next;
+  }
+
+  private insertUserApprovalReplyMessage(content: string, pendingToolCallId?: string): void {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const state = this.requireState();
+    const nextMessage: ConversationMessageSnapshot = {
+      id: this.allocateMessageId(),
+      role: 'user',
+      content: trimmed,
+      pending: false,
+    };
+
+    if (!pendingToolCallId) {
+      state.messages.push(nextMessage);
+      return;
+    }
+
+    const toolIndex = state.messages.findIndex(
+      (message) => message.role === 'assistant' && message.tool?.toolCallId === pendingToolCallId,
+    );
+    if (toolIndex < 0) {
+      state.messages.push(nextMessage);
+      return;
+    }
+
+    const insertAt = toolIndex + 1;
+    this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
+    state.messages.splice(insertAt, 0, nextMessage);
   }
 
   /**

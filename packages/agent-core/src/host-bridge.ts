@@ -2,6 +2,11 @@ import { stdin, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 import {
+  createOpenAiCompatibleTransport,
+  type OpenAiCompatibleTransport,
+  type OpenAiTransportConfig,
+} from './openai/index.js';
+import {
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
   buildActiveSkillsSystemMessage,
@@ -9,10 +14,9 @@ import {
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
+  buildToolAgentHostPrompt,
   continueOpenAiToolAgentState,
   extractLastOpenAiAssistantText,
-  OpenAiTransport,
-  buildToolAgentHostPrompt,
   rebuildOpenAiToolAgentStateAfterCompaction,
   startOpenAiToolAgentState,
   truncateOpenAiHistoryForCompaction,
@@ -23,8 +27,7 @@ import {
   type OpenAiExtensionSystemPrompt,
   type OpenAiPlanMetadata,
   type OpenAiToolAgentState,
-  type OpenAiTransportConfig,
-} from './openai/transport.js';
+} from './openai/tool-agent-helpers.js';
 import { buildContributedHostToolDefinitions } from './host-tools.js';
 import type {
   JsonObject,
@@ -84,7 +87,6 @@ let enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [];
 let activeSkills: OpenAiActiveSkill[] = [];
 let planMetadata: OpenAiPlanMetadata | undefined;
 let extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [];
-const llmTransport = new OpenAiTransport();
 
 interface CliHostInternalModule {
   NodeHostToolService: new (
@@ -1178,6 +1180,7 @@ async function createRuntime(
       planMetadata,
       extensionSystemPrompts,
     );
+  const llmTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport(config);
 
   return new AgentRuntime({
     config,
@@ -1762,7 +1765,8 @@ peer.on('runtime.exportState', async () => {
     throw new Error('transportConfig 尚未初始化。');
   }
 
-  const baseSystemPrompts = llmTransport.llmSystemPromptsForExport() as Record<string, JsonValue>;
+  const exportTransport = createOpenAiCompatibleTransport(config);
+  const baseSystemPrompts = exportTransport.llmSystemPromptsForExport() as Record<string, JsonValue>;
   const rulesSystemPrompt = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
   const planSystemPrompt = buildPlanSystemMessage(planMetadata);
@@ -1770,7 +1774,7 @@ peer.on('runtime.exportState', async () => {
   const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
 
   return {
-    apiMessages: llmTransport.llmHistoryAsApiMessages([...target.history()]),
+    apiMessages: exportTransport.llmHistoryAsApiMessages([...target.history()]),
     requestTrace: [...target.requestTrace()],
     systemPrompts: {
       ...baseSystemPrompts,

@@ -26,6 +26,11 @@ export interface RuntimeCompactionRecord {
   summary?: string;
 }
 
+export interface DeferredUserGuidance {
+  userMessage: string;
+  contentForLlm: string;
+}
+
 export interface RuntimeStatePreparationResult<State> {
   state: State;
   changed: boolean;
@@ -321,6 +326,7 @@ export interface RuntimeTurnContext<ToolRequest> {
   toolExecutions: RuntimeToolExecution<ToolRequest>[];
   compactions: RuntimeCompactionRecord[];
   autoCompactAttempts: number;
+  deferredUserGuidances: DeferredUserGuidance[];
 }
 
 export interface PendingApprovalState<State, ToolRequest, TrustTarget> {

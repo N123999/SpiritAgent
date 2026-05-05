@@ -1,7 +1,7 @@
 import type { LlmMessage, LlmStreamEvent, ToolAgentRoundCompletion } from '../ports.js';
 
 import { STREAM_EVENT_BUDGET_PER_POLL, STREAM_STALL_TIMEOUT_MS } from './constants.js';
-import { cloneHistory, renderError } from './helpers.js';
+import { applyDeferredUserGuidance, cloneHistory, renderError } from './helpers.js';
 import type {
   AgentRuntimeOptions,
   AssistantAuxKind,
@@ -114,6 +114,12 @@ export async function startStreamingRound<
   turn: RuntimeTurnContext<ToolRequest>,
   emitBeginResponse: boolean,
 ): Promise<void> {
+  ({ state, pendingUserInput } = applyDeferredUserGuidance(
+    runtime,
+    state,
+    pendingUserInput,
+    turn,
+  ));
   clearPendingStreamingState(runtime);
   runtime.pendingStartedAtStore = Date.now();
   runtime.pendingLastEventAtStore = runtime.pendingStartedAtStore;
