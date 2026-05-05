@@ -5,7 +5,7 @@ import {
   appendOpenAiToolResultMessage,
   extractLastOpenAiAssistantText,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 import type {
   AuthorizationDecision,
   JsonValue,

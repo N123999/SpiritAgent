@@ -8,7 +8,7 @@ import {
   appendOpenAiToolResultMessage,
   extractLastOpenAiAssistantText,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
 import { demoLookupToolDefinition, printSmokeSection } from './openai-shared.js';
 

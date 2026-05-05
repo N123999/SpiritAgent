@@ -12,7 +12,7 @@ import type {
   ToolAgentRoundCompletion,
   ToolExecutor,
 } from '../../../ports.js';
-import { isOpenAiVisionUnsupportedError } from '../../../openai/transport.js';
+import { isOpenAiVisionUnsupportedError } from '../../../openai/tool-agent-helpers.js';
 import {
   AgentRuntime,
   pendingWorkspaceFilesFromInput,

@@ -1,7 +1,7 @@
 import {
   appendOpenAiToolResultMessage,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
 import {
   createOpenAiSmokeConfig,

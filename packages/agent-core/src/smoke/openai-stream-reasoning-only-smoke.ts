@@ -3,11 +3,11 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
+import { OpenAiTransport } from '../openai/transport.js';
 import {
   extractLastOpenAiAssistantText,
-  OpenAiTransport,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
 import { printSmokeSection } from './openai-shared.js';
 

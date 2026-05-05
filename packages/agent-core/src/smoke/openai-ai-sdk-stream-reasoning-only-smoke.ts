@@ -7,7 +7,7 @@ import { AiSdkOpenAiTransport } from '../openai/ai-sdk-transport.js';
 import {
   extractLastOpenAiAssistantText,
   startOpenAiToolAgentState,
-} from '../openai/transport.js';
+} from '../openai/tool-agent-helpers.js';
 
 import { printSmokeSection } from './openai-shared.js';
 

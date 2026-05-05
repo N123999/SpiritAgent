@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 
 import type { JsonValue } from '../ports.js';
 import { AiSdkOpenAiTransport } from '../openai/ai-sdk-transport.js';
-import { startOpenAiToolAgentState } from '../openai/transport.js';
+import { startOpenAiToolAgentState } from '../openai/tool-agent-helpers.js';
 
 import { demoLookupToolDefinition, printSmokeSection } from './openai-shared.js';
 
