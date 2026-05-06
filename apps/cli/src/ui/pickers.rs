@@ -64,7 +64,10 @@ pub(in crate::ui) fn draw_inline_picker(
 }
 
 pub(in crate::ui) fn suggestions_use_inline_picker(app: &TuiViewModel) -> bool {
-    matches!(app.input_suggestion_kind, Some(InputSuggestionKind::Slash))
+    matches!(
+        app.input_suggestion_kind,
+        Some(InputSuggestionKind::Slash | InputSuggestionKind::FileReference)
+    )
 }
 
 fn inline_suggestion_detail_line(detail: String) -> String {
@@ -201,13 +204,7 @@ pub(in crate::ui) fn build_file_reference_suggestion_lines(
 ) -> Vec<Line<'static>> {
     let selected = app.selected_suggestion;
     let total = app.slash_suggestions.len();
-    let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
-    let end = (start + window).min(total);
+    let (start, end) = inline_picker_bounds(total, selected, max_items);
 
     let mut lines = Vec::new();
     for idx in start..end {

@@ -426,18 +426,49 @@ fn single_slash_suggestion_details_align_with_usage_heading() {
 }
 
 #[test]
-fn file_reference_suggestions_keep_panel_title() {
+fn file_reference_suggestions_reuse_inline_picker_styles_and_scroll_window() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "@src/"));
+    app.input_suggestion_kind = Some(InputSuggestionKind::FileReference);
+    app.slash_suggestions = (0..7)
+        .map(|idx| InputSuggestion {
+            label: format!("src/file-{idx}.rs"),
+            replacement: format!("src/file-{idx}.rs"),
+            summary: String::new(),
+            details: Vec::new(),
+        })
+        .collect();
+    app.selected_suggestion = 3;
+
+    let lines = build_suggestion_lines(&app, 5, 48);
+    let text = render_text_lines(lines.clone());
+
+    assert!(suggestions_use_inline_picker(&app));
+    assert!(text[0].starts_with("  src/file-1.rs"));
+    assert!(text[2].starts_with("> src/file-3.rs"));
+    assert_eq!(lines[0].spans[0].style.fg, subtle_aux_text_style().fg);
+    assert_eq!(lines[2].spans[0].style.fg, Some(Color::White));
+}
+
+#[test]
+fn file_reference_suggestions_use_inline_layout_without_footer_or_title() {
     let mut app = build_view_model(ChatMessage::new(MessageRole::User, "@src/"));
     app.input_suggestion_kind = Some(InputSuggestionKind::FileReference);
     app.slash_suggestions = vec![InputSuggestion::simple("src/ui.rs")];
 
     let lines = render_ui_lines(&app, 80, 20);
 
-    assert!(!suggestions_use_inline_picker(&app));
     assert!(
-        lines
+        lines.iter().any(|line| line.contains("> src/ui.rs"))
+    );
+    assert!(
+        !lines
             .iter()
             .any(|line| line.contains(t!("ui.suggestion.title.file_reference").as_ref()))
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains(t!("ui.footer.preview").as_ref()))
     );
 }
 
