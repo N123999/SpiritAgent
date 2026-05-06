@@ -5,12 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::{
     llm_types::LlmMessage,
     ports::{AssistantAuxArchiveEntry, ChatArchive},
-    tool_runtime::ToolRequest,
 };
-
-const TOOL_MEMORY_PREFIX: &str = "[TOOL_MEMORY]";
-const TOOL_MEMORY_MAX_ENTRIES: usize = 24;
-const TOOL_MEMORY_SNIPPET_CHARS: usize = 1200;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,84 +187,6 @@ impl SessionModel {
         });
     }
 
-    pub fn persist_tool_memory(&mut self, request: &ToolRequest, output: &str) {
-        let request_desc = match request {
-            ToolRequest::McpTool {
-                server,
-                tool_name,
-                arguments,
-                ..
-            } => format!(
-                "mcp_tool server={} tool={} args={}",
-                server,
-                tool_name,
-                truncate_for_preview(&arguments.to_string(), 600)
-            ),
-            ToolRequest::WebFetch { url } => format!("web_fetch url={}", url),
-            ToolRequest::ListDirectory { path } => {
-                format!("list_directory_files path={}", path)
-            }
-            ToolRequest::ReadFile {
-                path,
-                start_line,
-                end_line,
-            } => format!(
-                "read_file path={} start={} end={}",
-                path,
-                start_line
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "1".to_string()),
-                end_line
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "default".to_string())
-            ),
-            ToolRequest::Search { query } => format!("search_files query={}", query),
-            ToolRequest::RunSubagent { request } => format!(
-                "run_subagent task={} files_to_inspect={}",
-                truncate_for_preview(&request.task, 240),
-                request.files_to_inspect.len()
-            ),
-            ToolRequest::AskQuestions { questions } => format!(
-                "ask_questions title={} count={}",
-                questions.title.as_deref().unwrap_or(""),
-                questions.questions.len()
-            ),
-            ToolRequest::Shell { command } => format!("run_shell_command command={}", command),
-            ToolRequest::CreateFile { path, content } => {
-                format!(
-                    "create_file path={} chars={}",
-                    path,
-                    content.chars().count()
-                )
-            }
-            ToolRequest::EditFile {
-                path,
-                old_text,
-                new_text,
-            } => format!(
-                "edit_file path={} old_chars={} new_chars={}",
-                path,
-                old_text.chars().count(),
-                new_text.chars().count()
-            ),
-            ToolRequest::DeleteFile { path } => format!("delete_file path={}", path),
-        };
-
-        let entry = format!(
-            "{}\nrequest: {}\nresult_snippet:\n{}",
-            TOOL_MEMORY_PREFIX,
-            request_desc,
-            truncate_for_preview(output, TOOL_MEMORY_SNIPPET_CHARS)
-        );
-
-        self.llm_history.push(LlmMessage {
-            role: "system",
-            content: entry,
-            image_paths: vec![],
-        });
-        self.prune_tool_memories();
-    }
-
     pub fn replace_from_archive(&mut self, archive: &ChatArchive) {
         self.llm_history = archive
             .llm_history
@@ -310,29 +227,4 @@ impl SessionModel {
         }
     }
 
-    fn prune_tool_memories(&mut self) {
-        let mut seen = 0usize;
-        let total_tool_memories = self
-            .llm_history
-            .iter()
-            .filter(|m| m.role == "system" && m.content.starts_with(TOOL_MEMORY_PREFIX))
-            .count();
-
-        if total_tool_memories <= TOOL_MEMORY_MAX_ENTRIES {
-            return;
-        }
-
-        let remove_count = total_tool_memories - TOOL_MEMORY_MAX_ENTRIES;
-        self.llm_history.retain(|m| {
-            if m.role == "system" && m.content.starts_with(TOOL_MEMORY_PREFIX) {
-                seen += 1;
-                return seen > remove_count;
-            }
-            true
-        });
-    }
-}
-
-fn truncate_for_preview(text: &str, max_chars: usize) -> String {
-    text.chars().take(max_chars).collect()
 }

@@ -295,7 +295,7 @@ mod tests {
         let files = vec![
             "src/view/host_runtime.rs".to_string(),
             "src/host_runtime.rs".to_string(),
-            "src/tool_runtime.rs".to_string(),
+            "src/ts_bridge.rs".to_string(),
             "README.md".to_string(),
         ];
 

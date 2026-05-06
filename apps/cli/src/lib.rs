@@ -25,7 +25,6 @@ pub mod shell;
 pub mod skills;
 #[cfg(test)]
 pub(crate) mod test_support;
-pub mod tool_runtime;
 pub mod ts_bridge;
 #[cfg(feature = "tui")]
 pub mod tui;
