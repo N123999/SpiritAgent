@@ -655,7 +655,7 @@ async function handleApiRequest({
       response,
       200,
       await runHostCommand('replyPendingApproval', {
-        message: typeof jsonBody?.message === 'string' ? jsonBody.message : '',
+        decision: normalizeApprovalDecisionPayload(jsonBody?.decision),
       }),
     );
     return;
@@ -889,6 +889,32 @@ function contentTypeForPath(filePath: string): string {
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeApprovalDecisionPayload(value: unknown): unknown {
+  if (!isJsonObject(value)) {
+    return undefined;
+  }
+  switch (value.kind) {
+    case 'allow':
+      return {
+        kind: 'allow',
+        ...(value.persistTrust === true ? { persistTrust: true } : {}),
+      };
+    case 'deny':
+      return {
+        kind: 'deny',
+        ...(typeof value.resultText === 'string' ? { resultText: value.resultText } : {}),
+      };
+    case 'guidance':
+      return {
+        kind: 'guidance',
+        userMessage: typeof value.userMessage === 'string' ? value.userMessage : '',
+        ...(typeof value.resultText === 'string' ? { resultText: value.resultText } : {}),
+      };
+    default:
+      return undefined;
+  }
 }
 
 function parseSkillRootKind(value: unknown): 'user' | 'workspaceSpirit' | 'workspaceAgents' {

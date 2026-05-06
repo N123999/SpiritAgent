@@ -10,6 +10,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopApprovalDecision,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
@@ -73,7 +74,7 @@ declare global {
     poll(): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
     dreamSubscribe(callback: (snapshot: DesktopSnapshot) => void): () => void;
-    replyPendingApproval(message: string): Promise<DesktopSnapshot>;
+    replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot>;
     replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
     resetSession(): Promise<DesktopSnapshot>;
     listSessions(): Promise<SessionListItem[]>;

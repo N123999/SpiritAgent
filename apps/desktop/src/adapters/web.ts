@@ -139,8 +139,8 @@ export function createWebHostApi(): HostApi {
     listDreamsOverview() {
       return get<DesktopDreamOverviewItem[]>(baseUrl, '/api/dreams');
     },
-    replyPendingApproval(message: string) {
-      return post<DesktopSnapshot>(baseUrl, '/api/approval', { message });
+    replyPendingApproval(decision) {
+      return post<DesktopSnapshot>(baseUrl, '/api/approval', { decision });
     },
     replyPendingQuestions(result: AskQuestionsResult) {
       return post<DesktopSnapshot>(baseUrl, '/api/questions', { result });

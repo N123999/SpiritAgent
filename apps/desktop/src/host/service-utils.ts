@@ -1,7 +1,6 @@
 import type {
   AskQuestionsResult as RuntimeAskQuestionsResult,
   ChatArchive,
-  RuntimeApprovalDecision,
   RuntimePendingQuestions,
 } from '@spirit-agent/agent-core';
 
@@ -158,23 +157,6 @@ function findLastIndex<T>(items: readonly T[], predicate: (item: T) => boolean):
     }
   }
   return -1;
-}
-
-export function parseApprovalDecision(message: string): RuntimeApprovalDecision {
-  const trimmed = message.trim().toLowerCase();
-  if (!trimmed || trimmed === 'y' || trimmed === 'yes' || trimmed === 'approve') {
-    return { kind: 'allow' };
-  }
-  if (trimmed === 't' || trimmed === 'trust') {
-    return { kind: 'allow', persistTrust: true };
-  }
-  if (trimmed === 'n' || trimmed === 'no' || trimmed === 'deny') {
-    return { kind: 'deny' };
-  }
-  return {
-    kind: 'guidance',
-    userMessage: message,
-  };
 }
 
 export function toRuntimeAskQuestionsResult(

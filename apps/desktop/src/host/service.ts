@@ -21,6 +21,7 @@ import {
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiPlanMetadata,
+  type RuntimeApprovalDecision,
   type OpenAiTransportConfig,
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
@@ -53,6 +54,7 @@ import type {
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DesktopDreamOverviewItem,
+  DesktopApprovalDecision,
   DesktopMcpServerInspection,
   DesktopExtensionListItem,
   DesktopExtensionCssLayer,
@@ -169,7 +171,6 @@ import {
   mapPendingQuestions,
   normalizeGeneratedCommitMessage,
   parseAddModelProvider,
-  parseApprovalDecision,
   sameDreamCollectorSnapshot,
   sameWorkspaceRoot,
   toRuntimeAskQuestionsResult,
@@ -279,7 +280,7 @@ type CommandPayloads = {
   continueAssistantCompletion: { messageId: number };
   poll: undefined;
   listDreamsOverview: undefined;
-  replyPendingApproval: { message: string };
+  replyPendingApproval: { decision: DesktopApprovalDecision };
   replyPendingQuestions: { result: AskQuestionsResult };
   resetSession: undefined;
   listSessions: undefined;
@@ -1394,20 +1395,20 @@ class DesktopHostService {
     });
   }
 
-  async replyPendingApproval(message: string): Promise<DesktopSnapshot> {
+  async replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       const pendingApproval = runtime.currentPendingApproval();
-      const decision = parseApprovalDecision(message);
-      if (decision.kind === 'guidance' && decision.userMessage.trim()) {
+      const runtimeDecision = normalizeApprovalDecision(decision);
+      if (runtimeDecision.kind === 'guidance' && runtimeDecision.userMessage.trim()) {
         this.insertUserApprovalReplyMessage(
-          decision.userMessage.trim(),
+          runtimeDecision.userMessage.trim(),
           pendingApproval ? toolMessageKey(pendingApproval) : undefined,
         );
         this.resetStreamingPlacementState(false);
       }
-      await runtime.continuePendingApproval(decision);
+      await runtime.continuePendingApproval(runtimeDecision);
       await runtime.poll();
       this.runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
       this.runtimeEvents.consumeCompletedTurnResult();
@@ -1717,7 +1718,7 @@ class DesktopHostService {
         return this.listDreamsOverview();
       case 'replyPendingApproval': {
         const typedPayload = payload as CommandPayloads['replyPendingApproval'];
-        return this.replyPendingApproval(typedPayload.message);
+        return this.replyPendingApproval(typedPayload.decision);
       }
       case 'replyPendingQuestions': {
         const typedPayload = payload as CommandPayloads['replyPendingQuestions'];
@@ -2177,6 +2178,9 @@ class DesktopHostService {
               pendingToolApproval: {
                 toolName: pendingApproval.toolName,
                 prompt: pendingApproval.prompt,
+                ...(typeof pendingApproval.trustTarget === 'string'
+                  ? { trustTarget: pendingApproval.trustTarget }
+                  : {}),
               },
             }
           : {}),
@@ -2838,5 +2842,35 @@ export function subscribeDesktopDreamUpdates(
   listener: (snapshot: DesktopSnapshot) => void,
 ): () => void {
   return desktopHostService.subscribeDreamUpdates(listener);
+}
+
+function normalizeApprovalDecision(
+  decision: DesktopApprovalDecision | undefined,
+): RuntimeApprovalDecision {
+  switch (decision?.kind) {
+    case 'allow':
+      return {
+        kind: 'allow',
+        ...(decision.persistTrust ? { persistTrust: true } : {}),
+      };
+    case 'deny':
+      return {
+        kind: 'deny',
+        ...(decision.resultText?.trim() ? { resultText: decision.resultText.trim() } : {}),
+      };
+    case 'guidance': {
+      const userMessage = decision.userMessage.trim();
+      if (!userMessage) {
+        throw new Error('请输入要发给模型的说明。');
+      }
+      return {
+        kind: 'guidance',
+        userMessage,
+        ...(decision.resultText?.trim() ? { resultText: decision.resultText.trim() } : {}),
+      };
+    }
+    default:
+      throw new Error('审批结果无效。');
+  }
 }
 

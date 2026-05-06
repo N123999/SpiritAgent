@@ -8,6 +8,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DesktopApprovalDecision,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
@@ -74,7 +75,7 @@ export interface HostApi {
   poll(): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
   subscribeDreamUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
-  replyPendingApproval(message: string): Promise<DesktopSnapshot>;
+  replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot>;
   replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
   resetSession(): Promise<DesktopSnapshot>;
   listSessions(): Promise<SessionListItem[]>;

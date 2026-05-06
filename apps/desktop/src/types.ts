@@ -625,7 +625,13 @@ export interface MessageAuxSnapshot {
 export interface PendingToolApprovalSnapshot {
   toolName: string;
   prompt: string;
+  trustTarget?: string;
 }
+
+export type DesktopApprovalDecision =
+  | { kind: 'allow'; persistTrust?: boolean }
+  | { kind: 'deny'; resultText?: string }
+  | { kind: 'guidance'; userMessage: string; resultText?: string };
 
 export interface PendingQuestionsSnapshot {
   toolCallId: string;

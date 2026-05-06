@@ -106,8 +106,8 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       ipcRenderer.removeListener('desktop:dream-updated', onDreamUpdate);
     };
   },
-  replyPendingApproval(message: string) {
-    return ipcRenderer.invoke('desktop:invoke', 'replyPendingApproval', { message });
+  replyPendingApproval(decision: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'replyPendingApproval', { decision });
   },
   replyPendingQuestions(result: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'replyPendingQuestions', { result });

@@ -8,15 +8,19 @@ import {
 
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   ChevronRight,
   FolderPlus,
   LoaderCircle,
+  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  ShieldCheck,
   Square,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -1717,27 +1721,83 @@ export default function App() {
 
                 {pendingApproval ? (
                   <Card className="border-border/50 bg-background/55 text-sm shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
-                    <CardHeader className="space-y-1 px-3 py-2">
-                      <CardTitle className="text-base leading-tight">{pendingApproval.toolName}</CardTitle>
+                    <CardHeader className="space-y-1.5 px-3 py-2.5">
+                      <CardTitle className="min-w-0 truncate text-sm leading-tight">
+                        {pendingApproval.toolName}
+                      </CardTitle>
                       <CardDescription className="text-xs leading-relaxed">
-                        {pendingApproval.prompt}
+                        <ScrollArea
+                          type="always"
+                          className="pr-3 [&>[data-radix-scroll-area-viewport]]:max-h-24 [&>[data-radix-scroll-area-viewport]]:overscroll-contain"
+                        >
+                          <div className="whitespace-pre-wrap">
+                            {pendingApproval.prompt}
+                          </div>
+                        </ScrollArea>
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-2 px-3 pb-3 pt-0 sm:flex-row sm:items-center">
-                      <Input
-                        value={runtime.approvalMessage}
-                        onChange={(event) => runtime.setApprovalMessage(event.target.value)}
-                        placeholder="输入审批回复（如 y / n / t）"
-                        className="h-8 text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        className="h-8 shrink-0 text-sm"
-                        onClick={() => void runtime.submitApproval()}
-                        disabled={runtime.busyAction === "approve"}
-                      >
-                        提交审批
-                      </Button>
+                    <CardContent className="grid gap-2 px-3 pb-3 pt-0">
+                      <div className="grid gap-1.5">
+                        <Button
+                          size="sm"
+                          className="h-8 w-full justify-start px-2.5"
+                          onClick={() => void runtime.submitApproval({ kind: "allow" })}
+                          disabled={runtime.busyAction === "approve"}
+                        >
+                          <Check data-icon="inline-start" />
+                          允许
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-full justify-start px-2.5"
+                          onClick={() =>
+                            void runtime.submitApproval({ kind: "allow", persistTrust: true })
+                          }
+                          disabled={
+                            runtime.busyAction === "approve" || !pendingApproval.trustTarget
+                          }
+                        >
+                          <ShieldCheck data-icon="inline-start" />
+                          始终信任
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-full justify-start px-2.5"
+                          onClick={() => void runtime.submitApproval({ kind: "deny" })}
+                          disabled={runtime.busyAction === "approve"}
+                        >
+                          <X data-icon="inline-start" />
+                          拒绝
+                        </Button>
+                      </div>
+                      <div className="flex min-h-9 items-stretch overflow-hidden rounded-md border border-input bg-transparent focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20">
+                        <Textarea
+                          value={runtime.approvalGuidance}
+                          onChange={(event) => runtime.setApprovalGuidance(event.target.value)}
+                          placeholder="需要调整时，写给模型的说明"
+                          className="min-h-9 flex-1 resize-none rounded-none border-0 bg-transparent px-2.5 py-2 text-sm shadow-none focus-visible:ring-0"
+                        />
+                        <Button
+                          size="icon-sm"
+                          variant="outline"
+                          className="h-auto w-9 self-stretch rounded-none border-0 border-l border-border/60 bg-transparent text-muted-foreground shadow-none hover:bg-muted/35 hover:text-foreground disabled:bg-transparent"
+                          onClick={() =>
+                            void runtime.submitApproval({
+                              kind: "guidance",
+                              userMessage: runtime.approvalGuidance,
+                            })
+                          }
+                          disabled={
+                            runtime.busyAction === "approve" ||
+                            runtime.approvalGuidance.trim().length === 0
+                          }
+                        >
+                          <MessageSquareText />
+                          <span className="sr-only">发送说明</span>
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ) : null}

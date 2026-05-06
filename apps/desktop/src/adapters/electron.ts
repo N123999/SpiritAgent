@@ -108,8 +108,8 @@ export async function createElectronHostApi(): Promise<HostApi> {
     subscribeDreamUpdates(callback) {
       return bridge.dreamSubscribe(callback);
     },
-    replyPendingApproval(message) {
-      return bridge.replyPendingApproval(message);
+    replyPendingApproval(decision) {
+      return bridge.replyPendingApproval(decision);
     },
     replyPendingQuestions(result) {
       return bridge.replyPendingQuestions(result);

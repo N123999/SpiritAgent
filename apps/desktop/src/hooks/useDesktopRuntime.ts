@@ -23,6 +23,7 @@ import type {
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
   DeleteSkillRequest,
+  DesktopApprovalDecision,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
@@ -200,7 +201,7 @@ export function useDesktopRuntime() {
   const [runtimeError, setRuntimeError] = useState("");
   const [webHostPairingRequired, setWebHostPairingRequired] = useState(false);
   const [composer, setComposer] = useState("");
-  const [approvalMessage, setApprovalMessage] = useState("approve");
+  const [approvalGuidance, setApprovalGuidance] = useState("");
   const [questionError, setQuestionError] = useState("");
   const [settings, setSettings] = useState({
     activeModel: "",
@@ -1225,27 +1226,28 @@ export function useDesktopRuntime() {
     [api, applySnapshot, refreshSessions],
   );
 
-  const submitApproval = useCallback(async () => {
+  const submitApproval = useCallback(async (decision: DesktopApprovalDecision) => {
     if (!api) {
       return;
     }
 
-    const message = approvalMessage.trim();
-    if (!message) {
+    if (decision.kind === "guidance" && !decision.userMessage.trim()) {
+      setRuntimeError("请输入要发给模型的说明。");
       return;
     }
 
     setBusyAction("approve");
     try {
-      const next = await api.replyPendingApproval(message);
+      const next = await api.replyPendingApproval(decision);
       applySnapshot(next);
+      setApprovalGuidance("");
       setRuntimeError("");
     } catch (error) {
       setRuntimeError(describeError(error));
     } finally {
       setBusyAction("");
     }
-  }, [api, applySnapshot, approvalMessage]);
+  }, [api, applySnapshot]);
 
   const submitQuestions = useCallback(async () => {
     if (!api || !pendingQuestions) {
@@ -1402,10 +1404,10 @@ export function useDesktopRuntime() {
     snapshot,
     summary,
     webHostPairingRequired,
-    approvalMessage,
+    approvalGuidance,
     setActiveModel,
     setModelReasoningEffort,
-    setApprovalMessage,
+    setApprovalGuidance,
     setComposer,
     setQuestionDrafts,
     setSettings,
