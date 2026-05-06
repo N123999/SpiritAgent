@@ -121,6 +121,11 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openSession(path: string) {
     return ipcRenderer.invoke('desktop:invoke', 'openSession', { path });
   },
+  listWorkspaceFileReferenceSuggestions(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'listWorkspaceFileReferenceSuggestions', {
+      request,
+    });
+  },
   listWorkspaceExplorerChildren(relativePath: string) {
     return ipcRenderer.invoke('desktop:invoke', 'listWorkspaceExplorerChildren', {
       relativePath,

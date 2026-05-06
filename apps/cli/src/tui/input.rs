@@ -1,6 +1,5 @@
 use std::{
     io::{self, Write},
-    sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
 
@@ -16,13 +15,10 @@ pub(crate) struct InputState {
     history: Vec<String>,
     history_index: Option<usize>,
     history_draft: Option<String>,
-    pub(crate) file_reference_index: Vec<String>,
-    pub(crate) pending_file_reference_index_rx: Option<Receiver<Vec<String>>>,
-    pub(crate) file_reference_indexing: bool,
 }
 
 impl InputState {
-    pub(crate) fn new(file_reference_index_rx: Receiver<Vec<String>>) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             value: String::new(),
             cursor: 0,
@@ -31,9 +27,6 @@ impl InputState {
             history: Vec::new(),
             history_index: None,
             history_draft: None,
-            file_reference_index: Vec::new(),
-            pending_file_reference_index_rx: Some(file_reference_index_rx),
-            file_reference_indexing: true,
         }
     }
 
@@ -130,12 +123,10 @@ impl InputState {
 #[cfg(test)]
 mod tests {
     use super::InputState;
-    use std::sync::mpsc;
 
     #[test]
     fn cursor_byte_index_handles_multibyte_input() {
-        let (_tx, rx) = mpsc::channel();
-        let mut input = InputState::new(rx);
+        let mut input = InputState::new();
         input.value = "a你b".to_string();
         input.cursor = 2;
 
@@ -144,8 +135,7 @@ mod tests {
 
     #[test]
     fn set_value_moves_cursor_to_end() {
-        let (_tx, rx) = mpsc::channel();
-        let mut input = InputState::new(rx);
+        let mut input = InputState::new();
 
         input.set_value("计划".to_string());
 
@@ -154,8 +144,7 @@ mod tests {
 
     #[test]
     fn recall_previous_history_walks_backward_and_restores_draft() {
-        let (_tx, rx) = mpsc::channel();
-        let mut input = InputState::new(rx);
+        let mut input = InputState::new();
         input.push_history_entry("这是什么".to_string());
         input.push_history_entry("再解释一下".to_string());
         input.set_value("临时草稿".to_string());
@@ -177,8 +166,7 @@ mod tests {
 
     #[test]
     fn manual_edit_cancels_history_navigation() {
-        let (_tx, rx) = mpsc::channel();
-        let mut input = InputState::new(rx);
+        let mut input = InputState::new();
         input.push_history_entry("第一条".to_string());
         input.push_history_entry("第二条".to_string());
 
@@ -195,8 +183,7 @@ mod tests {
 
     #[test]
     fn clear_history_resets_entries_and_navigation() {
-        let (_tx, rx) = mpsc::channel();
-        let mut input = InputState::new(rx);
+        let mut input = InputState::new();
         input.push_history_entry("之前的问题".to_string());
         input.set_value("草稿".to_string());
         assert!(input.recall_previous_history());
@@ -608,10 +595,6 @@ impl TuiShell {
 
     pub fn confirm_selected_file_reference(&mut self) {
         if !self.is_file_reference_mode_active() {
-            return;
-        }
-        if self.input.file_reference_indexing {
-            self.push_agent_message(t!("tui.file_reference.indexing").into_owned());
             return;
         }
 

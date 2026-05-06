@@ -5,7 +5,6 @@ import {
   appendOpenAiUserMessage,
   continueOpenAiToolAgentState,
   extractLastOpenAiAssistantText,
-  pendingWorkspaceFilesFromInput,
   rebuildOpenAiToolAgentStateAfterCompaction,
   startOpenAiToolAgentState,
   truncateOpenAiHistoryForCompaction,
@@ -19,6 +18,7 @@ import {
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
 } from '@spirit-agent/agent-core';
+import { resolveWorkspaceFileReferenceAttachmentsFromInput } from '@spirit-agent/host-internal';
 
 import type { DesktopToolRequest } from './contracts.js';
 import type { DesktopToolExecutor } from './tool-executor.js';
@@ -88,7 +88,7 @@ export function createDesktopRuntime(input: {
         input.extensionSystemPrompts,
       ),
     resolveWorkspaceFilesFromInput: (userInput) =>
-      pendingWorkspaceFilesFromInput(input.workspaceRoot, userInput),
+      resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),
   }, input.history.map((message) => ({
     role: message.role,
     content: message.content,

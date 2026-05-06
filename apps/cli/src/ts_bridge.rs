@@ -227,6 +227,21 @@ struct BridgePendingQuestions {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BridgeWorkspaceFileReferenceQuery {
+    start: usize,
+    end: usize,
+    raw: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeWorkspaceFileReferenceSuggestions {
+    query: BridgeWorkspaceFileReferenceQuery,
+    suggestions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BridgeToolExecution {
     tool_call_id: String,
     tool_name: String,
@@ -773,6 +788,27 @@ impl TsBridgeRuntime {
             })),
         )?;
         Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn list_workspace_file_reference_suggestions(
+        &mut self,
+        input: &str,
+        cursor_chars: usize,
+    ) -> Result<Vec<String>> {
+        let value = self.call_bridge(
+            "hostInternal.listWorkspaceFileReferenceSuggestions",
+            Some(json!({
+                "input": input,
+                "cursorChars": cursor_chars,
+            })),
+        )?;
+
+        if value.is_null() {
+            return Ok(Vec::new());
+        }
+
+        let suggestions: BridgeWorkspaceFileReferenceSuggestions = serde_json::from_value(value)?;
+        Ok(suggestions.suggestions)
     }
 
     pub fn write_rule_state(

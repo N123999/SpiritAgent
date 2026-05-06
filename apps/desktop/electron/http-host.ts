@@ -700,6 +700,21 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/file-reference-suggestions') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('listWorkspaceFileReferenceSuggestions', {
+        request: {
+          input: typeof jsonBody?.input === 'string' ? jsonBody.input : '',
+          cursorChars: typeof jsonBody?.cursorChars === 'number' ? jsonBody.cursorChars : 0,
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/workspace/file') {
     writeJson(
       request,

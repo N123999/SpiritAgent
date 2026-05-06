@@ -9,3 +9,5 @@ export * from './reasoning-effort.js';
 export * from './runtime.js';
 export * from './storage.js';
 export * from './tools.js';
+export * from './workspace-file-reference-query.js';
+export * from './workspace-file-references.js';

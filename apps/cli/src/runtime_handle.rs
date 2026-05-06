@@ -76,6 +76,15 @@ impl RuntimeHandle {
         self.runtime.load_plan_metadata(plan_mode)
     }
 
+    pub fn list_workspace_file_reference_suggestions(
+        &mut self,
+        input: &str,
+        cursor_chars: usize,
+    ) -> Result<Vec<String>> {
+        self.runtime
+            .list_workspace_file_reference_suggestions(input, cursor_chars)
+    }
+
     pub fn write_rule_state(
         &mut self,
         enabled_overrides: std::collections::BTreeMap<String, bool>,

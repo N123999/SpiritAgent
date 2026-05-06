@@ -1,5 +1,6 @@
 import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
 import type { ModelReasoningEffort } from '@spirit-agent/host-internal/reasoning-effort';
+import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult } from '@spirit-agent/host-internal';
 
 export interface BootstrapRequest {
   workspaceRoot?: string;
@@ -435,6 +436,14 @@ export interface WorkspaceExplorerEntry {
 export interface WorkspaceExplorerListResult {
   entries: WorkspaceExplorerEntry[];
 }
+
+export interface QueryWorkspaceFileReferenceSuggestionsRequest {
+  input: string;
+  cursorChars: number;
+}
+
+export type WorkspaceFileReferenceSuggestionsResult = HostWorkspaceFileReferenceSuggestionsResult;
+export type WorkspaceFileReferenceSuggestionsResponse = WorkspaceFileReferenceSuggestionsResult | null;
 
 /** 宿主按 UTF-8 读取的工作区文本文件内容（侧栏编辑器等）。 */
 export interface WorkspaceReadTextFileResult {

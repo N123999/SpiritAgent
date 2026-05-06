@@ -46,6 +46,14 @@
     "./tools": {
       "types": "./dist/tools.d.ts",
       "default": "./dist/tools.js"
+    },
+    "./workspace-file-reference-query": {
+      "types": "./dist/workspace-file-reference-query.d.ts",
+      "default": "./dist/workspace-file-reference-query.js"
+    },
+    "./workspace-file-references": {
+      "types": "./dist/workspace-file-references.d.ts",
+      "default": "./dist/workspace-file-references.js"
     }
   },
   "files": [
@@ -56,6 +64,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test:workspace-file-references": "npm run build && node --test dist/workspace-file-references.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke:openai-models-parse": "npm run build && node dist/smoke/openai-models-parse-smoke.js",
     "notice": "node scripts/gen-notice.mjs",
@@ -68,6 +77,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.2",
+    "ignore": "^5.3.2",
     "spirit-agent-repo": "file:../..",
     "tar": "^7.5.13"
   }

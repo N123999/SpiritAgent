@@ -6,11 +6,7 @@ use std::{
     fs::OpenOptions,
     path::Path,
     process::Command,
-    sync::{
-        Arc,
-        mpsc::{self, TryRecvError},
-    },
-    thread,
+    sync::Arc,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -144,11 +140,6 @@ impl TuiShell {
         });
         let cli_ui_hooks = compile_cli_ui_hooks(&extension_entries);
         let initial_mcp_status = runtime.mcp_status_snapshot();
-        let (file_index_tx, file_index_rx) = mpsc::channel::<Vec<String>>();
-        thread::spawn(move || {
-            let files = file_reference::collect_workspace_files(&workspace_root);
-            let _ = file_index_tx.send(files);
-        });
 
         let messages = vec![welcome_message(
             &config.active_model,
@@ -156,7 +147,7 @@ impl TuiShell {
         )];
 
         let mut shell = Self {
-            input: InputState::new(file_index_rx),
+            input: InputState::new(),
             messages,
             assistant_aux_by_message: HashMap::new(),
             persisted_standalone_pending_aux: None,
@@ -270,18 +261,17 @@ impl TuiShell {
             return;
         }
 
-        if let Some(query) = self.current_file_reference_query() {
-            if self.input.file_reference_indexing {
-                self.slash.suggestions.clear();
-                self.slash.selected_suggestion = 0;
-                return;
-            }
-
-            self.slash.suggestions =
-                file_reference::compute_suggestions(&query.raw, &self.input.file_reference_index)
-                    .into_iter()
-                    .map(InputSuggestion::simple)
-                    .collect();
+        if self.current_file_reference_query().is_some() {
+            self.slash.suggestions = match self
+                .runtime
+                .list_workspace_file_reference_suggestions(&self.input.value, self.input.cursor)
+            {
+                Ok(suggestions) => suggestions.into_iter().map(InputSuggestion::simple).collect(),
+                Err(err) => {
+                    logging::log_event(&format!("[file-reference] 查询候选失败: {err:#}"));
+                    Vec::new()
+                }
+            };
 
             if self.slash.selected_suggestion >= self.slash.suggestions.len() {
                 self.slash.selected_suggestion = 0;
@@ -306,7 +296,6 @@ impl TuiShell {
     pub fn poll_runtime(&mut self) {
         self.runtime.poll();
         self.apply_runtime_events();
-        self.poll_file_reference_index();
         self.sync_welcome_mcp_status();
         self.refresh_active_subagent_view();
         self.refresh_plan_metadata_from_disk();
@@ -829,27 +818,6 @@ impl TuiShell {
 
         self.plan_metadata = next.clone();
         self.runtime.replace_plan_metadata(next);
-    }
-
-    fn poll_file_reference_index(&mut self) {
-        let Some(result_rx) = self.input.pending_file_reference_index_rx.take() else {
-            return;
-        };
-
-        match result_rx.try_recv() {
-            Ok(files) => {
-                self.input.file_reference_index = files;
-                self.input.file_reference_indexing = false;
-                self.refresh_suggestions();
-            }
-            Err(TryRecvError::Empty) => {
-                self.input.pending_file_reference_index_rx = Some(result_rx);
-            }
-            Err(TryRecvError::Disconnected) => {
-                self.input.file_reference_indexing = false;
-                self.refresh_suggestions();
-            }
-        }
     }
 
     fn start_manual_shell_execution(&mut self, command: String) {

@@ -26,6 +26,7 @@ import type {
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  QueryWorkspaceFileReferenceSuggestionsRequest,
   RememberWorkspaceRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
@@ -33,6 +34,7 @@ import type {
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
+  WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
 } from './types';
@@ -79,6 +81,9 @@ declare global {
     resetSession(): Promise<DesktopSnapshot>;
     listSessions(): Promise<SessionListItem[]>;
     openSession(path: string): Promise<DesktopSnapshot>;
+    listWorkspaceFileReferenceSuggestions(
+      request: QueryWorkspaceFileReferenceSuggestionsRequest,
+    ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
     readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;

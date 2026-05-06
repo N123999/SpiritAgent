@@ -115,6 +115,29 @@ interface CliHostInternalModule {
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
   ) => OpenAiPlanMetadata;
+  listWorkspaceFileReferenceSuggestions?: (
+    workspaceRoot: string,
+    input: string,
+    cursorChars: number,
+  ) => Promise<
+    | {
+        query: { start: number; end: number; raw: string };
+        suggestions: string[];
+      }
+    | undefined
+  >;
+  resolveWorkspaceFileReferenceAttachmentsFromInput?: (
+    workspaceRoot: string,
+    text: string,
+  ) => Promise<
+    Array<{
+      path: string;
+      totalChars: number;
+      truncated: boolean;
+      attachedAtUnixMs: number;
+      content: string;
+    }>
+  >;
   collectHostExtensionContributedTools?: (
     extensions: Array<{
       id: string;
@@ -1216,7 +1239,13 @@ async function createRuntime(
         planMetadata,
         extensionSystemPrompts,
       ),
-    resolveWorkspaceFilesFromInput: (text) => pendingWorkspaceFilesFromInput(workspaceRoot, text),
+    resolveWorkspaceFilesFromInput: (text) => {
+      const resolveFromHostInternal = cliHostInternal?.module.resolveWorkspaceFileReferenceAttachmentsFromInput;
+      if (resolveFromHostInternal) {
+        return resolveFromHostInternal(workspaceRoot, text);
+      }
+      return pendingWorkspaceFilesFromInput(workspaceRoot, text);
+    },
   }, history);
 }
 
@@ -1358,6 +1387,25 @@ peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
       spiritDataDir: hostInternal.spiritDataDir,
     },
     params.planMode === true,
+  );
+});
+
+peer.on('hostInternal.listWorkspaceFileReferenceSuggestions', async (rawParams) => {
+  const params = (rawParams ?? {}) as {
+    input?: string;
+    cursorChars?: number;
+  };
+  const hostInternal = await requireCliHostInternal();
+  if (!hostInternal.module.listWorkspaceFileReferenceSuggestions) {
+    return null;
+  }
+
+  return (
+    (await hostInternal.module.listWorkspaceFileReferenceSuggestions(
+      hostInternal.workspaceRoot,
+      typeof params.input === 'string' ? params.input : '',
+      typeof params.cursorChars === 'number' ? params.cursorChars : 0,
+    )) ?? null
   );
 });
 

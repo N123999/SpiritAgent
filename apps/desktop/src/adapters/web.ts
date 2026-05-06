@@ -24,9 +24,11 @@ import type {
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  QueryWorkspaceFileReferenceSuggestionsRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
+  WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
   SubmitCreateSkillSlashRequest,
@@ -153,6 +155,13 @@ export function createWebHostApi(): HostApi {
     },
     openSession(path: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/sessions/open', { path });
+    },
+    listWorkspaceFileReferenceSuggestions(request: QueryWorkspaceFileReferenceSuggestionsRequest) {
+      return post<WorkspaceFileReferenceSuggestionsResponse>(
+        baseUrl,
+        '/api/workspace/file-reference-suggestions',
+        request,
+      );
     },
     listWorkspaceExplorerChildren(relativePath: string) {
       return post<WorkspaceExplorerListResult>(baseUrl, '/api/workspace/explorer', {

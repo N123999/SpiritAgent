@@ -46,6 +46,7 @@ export type HostCommandName =
   | 'resetSession'
   | 'listSessions'
   | 'openSession'
+  | 'listWorkspaceFileReferenceSuggestions'
   | 'listWorkspaceExplorerChildren'
   | 'readWorkspaceTextFile'
   | 'writeWorkspaceTextFile'

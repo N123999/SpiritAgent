@@ -30,6 +30,7 @@ import {
   createHostExtensionManager,
   createHostDreamStore,
   defaultModelReasoningEffort,
+  listWorkspaceFileReferenceSuggestions as listWorkspaceFileReferenceSuggestionsFromHostInternal,
   listOpenAiCompatibleModelIds,
   resolveModelReasoningEffortForContext,
   restoreHostFileChanges,
@@ -74,6 +75,7 @@ import type {
   RewindAndSubmitMessageRequest,
   RememberWorkspaceRequest,
   RemoveModelRequest,
+  QueryWorkspaceFileReferenceSuggestionsRequest,
   SessionListItem,
   ImportExtensionRequest,
   InstallMarketplaceExtensionRequest,
@@ -82,6 +84,7 @@ import type {
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
+  WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
 } from '../types.js';
@@ -287,6 +290,7 @@ type CommandPayloads = {
   resetSession: undefined;
   listSessions: undefined;
   openSession: { path: string };
+  listWorkspaceFileReferenceSuggestions: { request: QueryWorkspaceFileReferenceSuggestionsRequest };
   listWorkspaceExplorerChildren: { relativePath: string };
   readWorkspaceTextFile: { relativePath: string };
   writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };
@@ -1523,6 +1527,22 @@ class DesktopHostService {
     });
   }
 
+  async listWorkspaceFileReferenceSuggestions(
+    request: QueryWorkspaceFileReferenceSuggestionsRequest,
+  ): Promise<WorkspaceFileReferenceSuggestionsResponse> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized();
+      const state = this.requireState();
+      return (
+        (await listWorkspaceFileReferenceSuggestionsFromHostInternal(
+          state.workspaceRoot,
+          request.input,
+          request.cursorChars,
+        )) ?? null
+      );
+    });
+  }
+
   async readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
@@ -1733,6 +1753,10 @@ class DesktopHostService {
       case 'openSession': {
         const typedPayload = payload as CommandPayloads['openSession'];
         return this.openSession(typedPayload.path);
+      }
+      case 'listWorkspaceFileReferenceSuggestions': {
+        const typedPayload = payload as CommandPayloads['listWorkspaceFileReferenceSuggestions'];
+        return this.listWorkspaceFileReferenceSuggestions(typedPayload.request);
       }
       case 'listWorkspaceExplorerChildren': {
         const typedPayload = payload as CommandPayloads['listWorkspaceExplorerChildren'];

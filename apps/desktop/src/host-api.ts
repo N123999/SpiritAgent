@@ -24,10 +24,12 @@ import type {
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  QueryWorkspaceFileReferenceSuggestionsRequest,
   RememberWorkspaceRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
+  WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
   SubmitCreateSkillSlashRequest,
@@ -80,6 +82,9 @@ export interface HostApi {
   resetSession(): Promise<DesktopSnapshot>;
   listSessions(): Promise<SessionListItem[]>;
   openSession(path: string): Promise<DesktopSnapshot>;
+  listWorkspaceFileReferenceSuggestions(
+    request: QueryWorkspaceFileReferenceSuggestionsRequest,
+  ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;

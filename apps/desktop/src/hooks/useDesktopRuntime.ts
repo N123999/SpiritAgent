@@ -38,10 +38,12 @@ import type {
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  QueryWorkspaceFileReferenceSuggestionsRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
+  WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
 } from "@/types";
@@ -1315,6 +1317,18 @@ export function useDesktopRuntime() {
     [api, applySnapshot, refreshSessions],
   );
 
+  const listWorkspaceFileReferenceSuggestions = useCallback(
+    async (
+      request: QueryWorkspaceFileReferenceSuggestionsRequest,
+    ): Promise<WorkspaceFileReferenceSuggestionsResponse> => {
+      if (!api) {
+        return null;
+      }
+      return api.listWorkspaceFileReferenceSuggestions(request);
+    },
+    [api],
+  );
+
   const listWorkspaceExplorerChildren = useCallback(
     async (relativePath: string): Promise<WorkspaceExplorerListResult> => {
       if (!api) {
@@ -1439,6 +1453,7 @@ export function useDesktopRuntime() {
     abortConversation,
     continueAssistantCompletion,
     openSession,
+    listWorkspaceFileReferenceSuggestions,
     listWorkspaceExplorerChildren,
     readWorkspaceTextFile,
     writeWorkspaceTextFile,
