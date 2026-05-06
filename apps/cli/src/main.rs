@@ -907,6 +907,12 @@ fn process_key_event(
         }
         KeyCode::Up if suggestion_mode => shell.select_prev_suggestion(),
         KeyCode::Down if suggestion_mode => shell.select_next_suggestion(),
+        KeyCode::Up => {
+            shell.recall_previous_input();
+        }
+        KeyCode::Down => {
+            shell.recall_next_input();
+        }
         KeyCode::Tab if suggestion_mode => shell.apply_selected_suggestion(),
         KeyCode::Tab if !shell.is_shell_mode_active() => shell.toggle_input_mode(),
         KeyCode::PageUp => shell.scroll_history_up(8),

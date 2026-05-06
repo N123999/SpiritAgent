@@ -13,6 +13,9 @@ pub(crate) struct InputState {
     pub(crate) cursor: usize,
     pub(crate) mode: MainInputMode,
     pub(crate) shell_mode_active: bool,
+    history: Vec<String>,
+    history_index: Option<usize>,
+    history_draft: Option<String>,
     pub(crate) file_reference_index: Vec<String>,
     pub(crate) pending_file_reference_index_rx: Option<Receiver<Vec<String>>>,
     pub(crate) file_reference_indexing: bool,
@@ -25,6 +28,9 @@ impl InputState {
             cursor: 0,
             mode: MainInputMode::Agent,
             shell_mode_active: false,
+            history: Vec::new(),
+            history_index: None,
+            history_draft: None,
             file_reference_index: Vec::new(),
             pending_file_reference_index_rx: Some(file_reference_index_rx),
             file_reference_indexing: true,
@@ -46,6 +52,78 @@ impl InputState {
     pub(crate) fn set_value(&mut self, value: String) {
         self.value = value;
         self.cursor = self.len_chars();
+    }
+
+    pub(crate) fn set_value_with_edit_reset(&mut self, value: String) {
+        self.cancel_history_navigation();
+        self.set_value(value);
+    }
+
+    pub(crate) fn prepare_for_user_edit(&mut self) {
+        self.cancel_history_navigation();
+    }
+
+    pub(crate) fn push_history_entry(&mut self, entry: String) {
+        if entry.trim().is_empty() {
+            self.cancel_history_navigation();
+            return;
+        }
+
+        self.history.push(entry);
+        self.cancel_history_navigation();
+    }
+
+    pub(crate) fn recall_previous_history(&mut self) -> bool {
+        if self.history.is_empty() {
+            return false;
+        }
+
+        match self.history_index {
+            Some(0) => {}
+            Some(index) => self.history_index = Some(index - 1),
+            None => {
+                self.history_draft = Some(self.value.clone());
+                self.history_index = Some(self.history.len() - 1);
+            }
+        }
+
+        self.apply_history_selection();
+        true
+    }
+
+    pub(crate) fn recall_next_history(&mut self) -> bool {
+        let Some(index) = self.history_index else {
+            return false;
+        };
+
+        if index + 1 < self.history.len() {
+            self.history_index = Some(index + 1);
+            self.apply_history_selection();
+            return true;
+        }
+
+        let draft = self.history_draft.take().unwrap_or_default();
+        self.history_index = None;
+        self.set_value(draft);
+        true
+    }
+
+    pub(crate) fn clear_history(&mut self) {
+        self.history.clear();
+        self.cancel_history_navigation();
+    }
+
+    fn cancel_history_navigation(&mut self) {
+        self.history_index = None;
+        self.history_draft = None;
+    }
+
+    fn apply_history_selection(&mut self) {
+        let Some(index) = self.history_index else {
+            return;
+        };
+        let value = self.history[index].clone();
+        self.set_value(value);
     }
 }
 
@@ -72,6 +150,62 @@ mod tests {
         input.set_value("计划".to_string());
 
         assert_eq!(input.cursor, 2);
+    }
+
+    #[test]
+    fn recall_previous_history_walks_backward_and_restores_draft() {
+        let (_tx, rx) = mpsc::channel();
+        let mut input = InputState::new(rx);
+        input.push_history_entry("这是什么".to_string());
+        input.push_history_entry("再解释一下".to_string());
+        input.set_value("临时草稿".to_string());
+
+        assert!(input.recall_previous_history());
+        assert_eq!(input.value, "再解释一下");
+
+        assert!(input.recall_previous_history());
+        assert_eq!(input.value, "这是什么");
+
+        assert!(input.recall_next_history());
+        assert_eq!(input.value, "再解释一下");
+
+        assert!(input.recall_next_history());
+        assert_eq!(input.value, "临时草稿");
+
+        assert!(!input.recall_next_history());
+    }
+
+    #[test]
+    fn manual_edit_cancels_history_navigation() {
+        let (_tx, rx) = mpsc::channel();
+        let mut input = InputState::new(rx);
+        input.push_history_entry("第一条".to_string());
+        input.push_history_entry("第二条".to_string());
+
+        assert!(input.recall_previous_history());
+        assert_eq!(input.value, "第二条");
+
+        input.prepare_for_user_edit();
+        input.value.push('!');
+        input.cursor = input.len_chars();
+
+        assert!(!input.recall_next_history());
+        assert_eq!(input.value, "第二条!");
+    }
+
+    #[test]
+    fn clear_history_resets_entries_and_navigation() {
+        let (_tx, rx) = mpsc::channel();
+        let mut input = InputState::new(rx);
+        input.push_history_entry("之前的问题".to_string());
+        input.set_value("草稿".to_string());
+        assert!(input.recall_previous_history());
+
+        input.clear_history();
+
+        assert_eq!(input.value, "之前的问题");
+        assert!(!input.recall_previous_history());
+        assert!(!input.recall_next_history());
     }
 }
 use super::*;
@@ -169,6 +303,7 @@ impl TuiShell {
     }
 
     pub fn insert_char_at_cursor(&mut self, ch: char) {
+        self.input.prepare_for_user_edit();
         let cursor_before = self.input.cursor;
         let idx = self.cursor_byte_index();
         self.input.value.insert(idx, ch);
@@ -183,6 +318,7 @@ impl TuiShell {
             return;
         }
 
+        self.input.prepare_for_user_edit();
         let cursor_before = self.input.cursor;
         let idx = self.cursor_byte_index();
         self.input.value.insert_str(idx, text);
@@ -212,6 +348,7 @@ impl TuiShell {
         if self.input.cursor == 0 {
             return;
         }
+        self.input.prepare_for_user_edit();
         self.move_cursor_left();
         let idx = self.cursor_byte_index();
         self.input.value.remove(idx);
@@ -221,8 +358,35 @@ impl TuiShell {
         if self.input.cursor >= self.input_len_chars() {
             return;
         }
+        self.input.prepare_for_user_edit();
         let idx = self.cursor_byte_index();
         self.input.value.remove(idx);
+    }
+
+    pub fn recall_previous_input(&mut self) -> bool {
+        if self.input.shell_mode_active {
+            return false;
+        }
+        let changed = self.input.recall_previous_history();
+        if changed {
+            self.refresh_suggestions();
+        }
+        changed
+    }
+
+    pub fn recall_next_input(&mut self) -> bool {
+        if self.input.shell_mode_active {
+            return false;
+        }
+        let changed = self.input.recall_next_history();
+        if changed {
+            self.refresh_suggestions();
+        }
+        changed
+    }
+
+    pub(crate) fn clear_input_history(&mut self) {
+        self.input.clear_history();
     }
 
     pub fn clamp_cursor(&mut self) {
@@ -388,6 +552,8 @@ impl TuiShell {
             tool_block: None,
         });
 
+        self.input.push_history_entry(raw_message.clone());
+
         if trimmed_message.starts_with('/') {
             self.handle_slash_command(trimmed_message);
         } else {
@@ -498,7 +664,7 @@ impl TuiShell {
     }
 
     pub(super) fn set_input(&mut self, value: String) {
-        self.input.set_value(value);
+        self.input.set_value_with_edit_reset(value);
     }
 
     fn log_input_edit(&self, action: &str, text: &str, cursor_before: usize) {
@@ -517,6 +683,7 @@ impl TuiShell {
         let Some(query) = self.current_file_reference_query() else {
             return false;
         };
+        self.input.prepare_for_user_edit();
         let (next_input, next_cursor) =
             file_reference::replace_query(&self.input.value, &query, selected, finalize);
         self.input.value = next_input;

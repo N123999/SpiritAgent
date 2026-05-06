@@ -347,6 +347,7 @@ impl TuiShell {
     pub(crate) fn clear_chat_for_slash(&mut self) {
         self.messages.clear();
         self.assistant_aux_by_message.clear();
+        self.clear_input_history();
         self.persisted_standalone_pending_aux = None;
         self.persisted_standalone_pending_aux_anchor = None;
         self.exit_rewind_picker_mode();
@@ -616,6 +617,7 @@ impl TuiShell {
                 self.pending_assistant_msg_index = None;
                 self.last_completed_assistant_msg_index = None;
                 self.last_turn_can_continue = false;
+                self.clear_input_history();
                 self.runtime.replace_session_from_archive(&archive);
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
@@ -744,6 +746,7 @@ impl TuiShell {
         self.pending_assistant_msg_index = None;
         self.last_completed_assistant_msg_index = None;
         self.last_turn_can_continue = false;
+        self.clear_input_history();
         self.exit_rewind_picker_mode();
         self.subagent.picker_active = false;
         self.close_subagent_view();
@@ -779,6 +782,7 @@ impl TuiShell {
             content: trimmed.to_string(),
             tool_block: None,
         });
+        self.input.push_history_entry(trimmed.to_string());
         self.submit_runtime_user_turn(runtime_turn, None)
     }
 
