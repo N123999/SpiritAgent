@@ -9,7 +9,7 @@ use crate::{
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     mcp_types::McpDiscoveredPrompt,
     model_provider_presets::model_add_preset_api_base_by_choice_index,
-    model_registry::{ModelProvider, DEFAULT_API_BASE},
+    model_registry::{DEFAULT_API_BASE, ModelProvider},
     rules::{RuleEntry, RuleScope},
     skills::{SkillEntry, SkillScope},
     ts_bridge::CliExtensionEntry,
@@ -271,9 +271,7 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
     };
 
     form.fields = new_fields;
-    form.selected_field = form
-        .selected_field
-        .min(form.fields.len().saturating_sub(1));
+    form.selected_field = form.selected_field.min(form.fields.len().saturating_sub(1));
     ensure_selectable_field(form);
 }
 
@@ -590,7 +588,9 @@ pub(crate) fn activate(form: &mut BottomFormView) {
 }
 
 pub(crate) fn move_home(form: &mut BottomFormView) {
-    let Some(BottomFormFieldEditorView::Text { cursor, disabled, .. }) = selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text {
+        cursor, disabled, ..
+    }) = selected_editor_mut(form)
     else {
         return;
     };
@@ -601,8 +601,12 @@ pub(crate) fn move_home(form: &mut BottomFormView) {
 }
 
 pub(crate) fn move_end(form: &mut BottomFormView) {
-    let Some(BottomFormFieldEditorView::Text { value, cursor, disabled, .. }) =
-        selected_editor_mut(form)
+    let Some(BottomFormFieldEditorView::Text {
+        value,
+        cursor,
+        disabled,
+        ..
+    }) = selected_editor_mut(form)
     else {
         return;
     };
@@ -1071,9 +1075,8 @@ fn is_field_selectable(field: &BottomFormFieldView) -> bool {
         BottomFormFieldEditorView::Section { .. } => false,
         BottomFormFieldEditorView::Checkbox { disabled, .. } => !*disabled,
         BottomFormFieldEditorView::Text { disabled, .. } => !*disabled,
-        BottomFormFieldEditorView::Choice { .. } | BottomFormFieldEditorView::AskQuestion { .. } => {
-            true
-        }
+        BottomFormFieldEditorView::Choice { .. }
+        | BottomFormFieldEditorView::AskQuestion { .. } => true,
     }
 }
 
@@ -1539,10 +1542,12 @@ mod tests {
         form.selected_field = 1;
         move_right(&mut form);
         assert_eq!(form.fields.len(), 4);
-        assert!(!form
-            .fields
-            .iter()
-            .any(|f| f.label == t!("form.model.field.model_name.label").into_owned()));
+        assert!(
+            !form
+                .fields
+                .iter()
+                .any(|f| f.label == t!("form.model.field.model_name.label").into_owned())
+        );
         form.selected_field = 2;
         insert_text(&mut form, "https://bulk.example/v1");
         form.selected_field = 3;

@@ -32,7 +32,8 @@ pub(super) fn apply_runtime_events(shell: &mut TuiShell) {
                             "[tui-subagent-anchor] begin-response-reanchor prev_anchor={:?} next_anchor={:?} status={}",
                             previous_anchor,
                             Some(idx),
-                            shell.persisted_standalone_pending_aux
+                            shell
+                                .persisted_standalone_pending_aux
                                 .as_ref()
                                 .map(|aux| aux.status_text.as_str())
                                 .unwrap_or("<none>"),

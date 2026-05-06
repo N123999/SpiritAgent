@@ -33,7 +33,10 @@ pub fn parse_openai_models_payload(json: &Value) -> Vec<String> {
 }
 
 /// `GET {apiBase}/models` with Bearer auth; returns sorted unique ids.
-pub fn list_openai_compatible_model_ids(api_base: &str, api_key: &str) -> Result<Vec<String>, String> {
+pub fn list_openai_compatible_model_ids(
+    api_base: &str,
+    api_key: &str,
+) -> Result<Vec<String>, String> {
     let key = api_key.trim();
     if key.is_empty() {
         return Err("API Key 不能为空。".to_string());
@@ -107,9 +110,6 @@ mod tests {
 
     #[test]
     fn normalize_openai_api_base_trims_slashes() {
-        assert_eq!(
-            normalize_openai_api_base(" https://x/v1/ "),
-            "https://x/v1"
-        );
+        assert_eq!(normalize_openai_api_base(" https://x/v1/ "), "https://x/v1");
     }
 }

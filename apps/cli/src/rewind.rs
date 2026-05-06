@@ -353,7 +353,10 @@ pub fn save_rewind_checkpoint_snapshot(
     checkpoint_id: &str,
     snapshot: &DesktopRewindCheckpointSnapshot,
 ) -> Result<()> {
-    write_sidecar_json(&checkpoint_path(spirit_data_dir, session_id, checkpoint_id), snapshot)
+    write_sidecar_json(
+        &checkpoint_path(spirit_data_dir, session_id, checkpoint_id),
+        snapshot,
+    )
 }
 
 pub fn load_rewind_checkpoint_snapshot(
@@ -369,7 +372,10 @@ pub fn save_rewind_file_change(
     session_id: &str,
     change: &DesktopStoredFileChange,
 ) -> Result<()> {
-    write_sidecar_json(&file_change_path(spirit_data_dir, session_id, &change.id), change)
+    write_sidecar_json(
+        &file_change_path(spirit_data_dir, session_id, &change.id),
+        change,
+    )
 }
 
 pub fn load_rewind_file_change(
@@ -386,7 +392,9 @@ pub fn archive_before_last_user(archive: &ChatArchive) -> ChatArchive {
     let history_index = find_last_index(&cloned.llm_history, |(role, _, _)| role == "user");
     if let Some(index) = message_index {
         cloned.messages.truncate(index);
-        cloned.assistant_aux.retain(|entry| entry.message_index < index);
+        cloned
+            .assistant_aux
+            .retain(|entry| entry.message_index < index);
     }
     if let Some(index) = history_index {
         cloned.llm_history.truncate(index);
@@ -466,7 +474,11 @@ pub fn restore_conversation(
             content: snapshot.content.clone(),
             tool_block,
         });
-        if let Some(aux) = snapshot.aux.as_ref().and_then(assistant_aux_data_from_snapshot) {
+        if let Some(aux) = snapshot
+            .aux
+            .as_ref()
+            .and_then(assistant_aux_data_from_snapshot)
+        {
             assistant_aux_by_message.insert(index, aux);
         }
     }
@@ -548,7 +560,9 @@ pub fn read_host_file_snapshot(resolved_path: &Path) -> Result<HostFileSnapshot>
     })
 }
 
-pub fn restore_host_file_changes(changes: &[DesktopStoredFileChange]) -> Result<HostFileRewindResult> {
+pub fn restore_host_file_changes(
+    changes: &[DesktopStoredFileChange],
+) -> Result<HostFileRewindResult> {
     let mut warnings = Vec::new();
     let mut restored = 0usize;
     let mut skipped = 0usize;
@@ -597,8 +611,7 @@ fn restore_create_file_change(
         )));
     }
     if current.content == change.after.content {
-        fs::remove_file(&target)
-            .with_context(|| format!("删除文件失败: {}", target.display()))?;
+        fs::remove_file(&target).with_context(|| format!("删除文件失败: {}", target.display()))?;
         return Ok(Ok(()));
     }
     Ok(Err(skipped_warning(
@@ -611,16 +624,28 @@ fn restore_edit_file_change(
     change: &DesktopStoredFileChange,
 ) -> Result<std::result::Result<(), HostFileRewindWarning>> {
     let Some(before_content) = change.before.content.as_deref() else {
-        return Ok(Err(skipped_warning(change, "缺少编辑前文件快照，无法回溯。")));
+        return Ok(Err(skipped_warning(
+            change,
+            "缺少编辑前文件快照，无法回溯。",
+        )));
     };
     if !change.before.file {
-        return Ok(Err(skipped_warning(change, "缺少编辑前文件快照，无法回溯。")));
+        return Ok(Err(skipped_warning(
+            change,
+            "缺少编辑前文件快照，无法回溯。",
+        )));
     }
     let Some(after_content) = change.after.content.as_deref() else {
-        return Ok(Err(skipped_warning(change, "缺少编辑后文件快照，无法回溯。")));
+        return Ok(Err(skipped_warning(
+            change,
+            "缺少编辑后文件快照，无法回溯。",
+        )));
     };
     if !change.after.file {
-        return Ok(Err(skipped_warning(change, "缺少编辑后文件快照，无法回溯。")));
+        return Ok(Err(skipped_warning(
+            change,
+            "缺少编辑后文件快照，无法回溯。",
+        )));
     }
 
     let target = PathBuf::from(&change.resolved_path);
@@ -668,8 +693,11 @@ fn restore_edit_file_change(
         )));
     }
 
-    fs::write(&target, current_content.replacen(&hunk.after_text, &hunk.before_text, 1))
-        .with_context(|| format!("写入文件失败: {}", target.display()))?;
+    fs::write(
+        &target,
+        current_content.replacen(&hunk.after_text, &hunk.before_text, 1),
+    )
+    .with_context(|| format!("写入文件失败: {}", target.display()))?;
     Ok(Ok(()))
 }
 
@@ -677,10 +705,16 @@ fn restore_delete_file_change(
     change: &DesktopStoredFileChange,
 ) -> Result<std::result::Result<(), HostFileRewindWarning>> {
     let Some(before_content) = change.before.content.as_deref() else {
-        return Ok(Err(skipped_warning(change, "缺少删除前文件快照，无法重建文件。")));
+        return Ok(Err(skipped_warning(
+            change,
+            "缺少删除前文件快照，无法重建文件。",
+        )));
     };
     if !change.before.file {
-        return Ok(Err(skipped_warning(change, "缺少删除前文件快照，无法重建文件。")));
+        return Ok(Err(skipped_warning(
+            change,
+            "缺少删除前文件快照，无法重建文件。",
+        )));
     }
 
     let target = PathBuf::from(&change.resolved_path);
@@ -701,7 +735,10 @@ fn restore_delete_file_change(
     Ok(Ok(()))
 }
 
-fn skipped_warning(change: &DesktopStoredFileChange, message: impl Into<String>) -> HostFileRewindWarning {
+fn skipped_warning(
+    change: &DesktopStoredFileChange,
+    message: impl Into<String>,
+) -> HostFileRewindWarning {
     HostFileRewindWarning {
         change_id: Some(change.id.clone()),
         path: change.resolved_path.clone(),
@@ -795,7 +832,9 @@ fn file_change_path(spirit_data_dir: &Path, session_id: &str, change_id: &str) -
 }
 
 fn session_rewind_dir(spirit_data_dir: &Path, session_id: &str) -> PathBuf {
-    spirit_data_dir.join(REWIND_DIR_NAME).join(safe_name(session_id))
+    spirit_data_dir
+        .join(REWIND_DIR_NAME)
+        .join(safe_name(session_id))
 }
 
 fn write_sidecar_json(path: &Path, value: &impl Serialize) -> Result<()> {
@@ -888,7 +927,9 @@ fn safe_name(value: &str) -> String {
 }
 
 fn find_last_index<T>(items: &[T], predicate: impl Fn(&T) -> bool) -> Option<usize> {
-    (0..items.len()).rev().find(|index| predicate(&items[*index]))
+    (0..items.len())
+        .rev()
+        .find(|index| predicate(&items[*index]))
 }
 
 #[derive(Clone, Debug)]

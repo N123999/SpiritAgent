@@ -310,7 +310,10 @@ mod tests {
         let serialized = serialize_config(&parsed).expect("serialize config");
         let json: Value = serde_json::from_str(&serialized).expect("json value");
 
-        assert_eq!(json.get("windowsMica").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            json.get("windowsMica").and_then(Value::as_bool),
+            Some(false)
+        );
         assert_eq!(
             json.get("dreams")
                 .and_then(|dreams| dreams.get("enabled"))

@@ -1,6 +1,7 @@
 use comrak::{
+    Arena, Options,
     nodes::{AstNode, ListType, NodeValue},
-    parse_document, Arena, Options,
+    parse_document,
 };
 use ratatui::{
     style::{Color, Modifier, Style},

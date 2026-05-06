@@ -1,6 +1,6 @@
 use super::TuiShell;
 use crate::{
-    conversation_select::{normalize_selection, selection_plain_text, CellPointer},
+    conversation_select::{CellPointer, normalize_selection, selection_plain_text},
     ui::{ConversationMessageRenderRange, UiRenderFeedback},
     view::ConversationPanelHit,
 };
@@ -153,7 +153,8 @@ impl TuiShell {
         plain_rows: Vec<String>,
         message_ranges: Vec<ConversationMessageRenderRange>,
     ) {
-        self.conversation.note_panel(hit, plain_rows, message_ranges);
+        self.conversation
+            .note_panel(hit, plain_rows, message_ranges);
     }
 
     pub fn apply_render_feedback(&mut self, feedback: UiRenderFeedback) {
@@ -226,10 +227,7 @@ impl TuiShell {
 #[cfg(test)]
 mod tests {
     use super::ConversationUiState;
-    use crate::{
-        ui::ConversationMessageRenderRange,
-        view::ConversationPanelHit,
-    };
+    use crate::{ui::ConversationMessageRenderRange, view::ConversationPanelHit};
 
     #[test]
     fn rewind_anchor_preserves_selected_row_across_large_message_gaps() {

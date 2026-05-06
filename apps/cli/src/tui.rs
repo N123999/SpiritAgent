@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -7,8 +7,8 @@ use std::{
     path::Path,
     process::Command,
     sync::{
-        mpsc::{self, TryRecvError},
         Arc,
+        mpsc::{self, TryRecvError},
     },
     thread,
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -17,10 +17,10 @@ use std::{
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     ask_questions::AskQuestionsResult,
-    host_runtime::{build_tool_result_block, format_tool_ui_message, RuntimeEvent, ToolUiRequest},
+    host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
     locale, logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
-    model_registry::{AppConfig, ModelProfile, ModelProvider, DEFAULT_API_BASE},
+    model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider},
     openai_models_list,
     plan::{self, PlanMetadata},
     ports::{
@@ -659,9 +659,8 @@ impl TuiShell {
                 (Ok(before_archive), Ok(archive)) => {
                     let snapshot = DesktopRewindCheckpointSnapshot {
                         archive,
-                        desktop_messages: self.conversation_snapshots_for_message_count(
-                            user_message_count,
-                        ),
+                        desktop_messages: self
+                            .conversation_snapshots_for_message_count(user_message_count),
                         before_archive: Some(before_archive),
                         before_desktop_messages: Some(before_messages),
                     };
@@ -736,10 +735,7 @@ impl TuiShell {
         )
     }
 
-    fn restore_conversation_from_snapshots(
-        &mut self,
-        snapshots: &[ConversationMessageSnapshot],
-    ) {
+    fn restore_conversation_from_snapshots(&mut self, snapshots: &[ConversationMessageSnapshot]) {
         let (messages, assistant_aux_by_message) = rewind::restore_conversation(snapshots);
         self.messages = messages;
         self.assistant_aux_by_message = assistant_aux_by_message;
@@ -763,10 +759,16 @@ impl TuiShell {
         Ok(())
     }
 
-    fn rewind_message_and_submit(&mut self, message_id: usize, replacement_text: &str) -> Result<()> {
+    fn rewind_message_and_submit(
+        &mut self,
+        message_id: usize,
+        replacement_text: &str,
+    ) -> Result<()> {
         let trimmed = replacement_text.trim();
         if trimmed.is_empty() {
-            return Err(anyhow!(t!("tui.session.rewind.replacement_empty").into_owned()));
+            return Err(anyhow!(
+                t!("tui.session.rewind.replacement_empty").into_owned()
+            ));
         }
         self.rewind_to_message(message_id)?;
 
@@ -958,12 +960,11 @@ fn should_toggle_aux_details_on_exit_rewind_picker(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_standalone_subagent_status_aux, manual_shell_tool_command,
+        TuiShell, is_standalone_subagent_status_aux, manual_shell_tool_command,
         next_persisted_standalone_pending_aux, next_persisted_standalone_pending_aux_anchor,
-        should_toggle_aux_details_on_enter_rewind_picker,
-        should_toggle_aux_details_on_exit_rewind_picker,
         should_reanchor_persisted_subagent_status_on_begin_assistant_response,
-        user_turn_text_for_mode, TuiShell,
+        should_toggle_aux_details_on_enter_rewind_picker,
+        should_toggle_aux_details_on_exit_rewind_picker, user_turn_text_for_mode,
     };
     use crate::view::{
         AssistantAuxKind, ChatMessage, MainInputMode, MessageRole, PendingAssistantAux,
@@ -1155,10 +1156,22 @@ mod tests {
 
     #[test]
     fn rewind_picker_exit_restores_previous_aux_details_mode() {
-        assert!(should_toggle_aux_details_on_exit_rewind_picker(false, Some(true)));
-        assert!(should_toggle_aux_details_on_exit_rewind_picker(true, Some(false)));
-        assert!(!should_toggle_aux_details_on_exit_rewind_picker(false, Some(false)));
-        assert!(!should_toggle_aux_details_on_exit_rewind_picker(true, Some(true)));
+        assert!(should_toggle_aux_details_on_exit_rewind_picker(
+            false,
+            Some(true)
+        ));
+        assert!(should_toggle_aux_details_on_exit_rewind_picker(
+            true,
+            Some(false)
+        ));
+        assert!(!should_toggle_aux_details_on_exit_rewind_picker(
+            false,
+            Some(false)
+        ));
+        assert!(!should_toggle_aux_details_on_exit_rewind_picker(
+            true,
+            Some(true)
+        ));
         assert!(!should_toggle_aux_details_on_exit_rewind_picker(true, None));
     }
 }

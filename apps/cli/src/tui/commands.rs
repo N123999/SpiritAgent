@@ -1,7 +1,7 @@
 use super::image_paths::{
     is_supported_image_path, parse_image_path_and_prompt, trim_wrapped_quotes,
 };
-use super::mcp_actions::{classify_prompt_tail, non_empty_opt, PromptTail};
+use super::mcp_actions::{PromptTail, classify_prompt_tail, non_empty_opt};
 use super::*;
 
 impl TuiShell {
@@ -216,7 +216,10 @@ impl TuiShell {
         }
 
         let targets = self.rewind_targets();
-        let Some((message_id, _preview)) = targets.get(target_ordinal - 1).map(|(_, message_id, preview)| (*message_id, preview.clone())) else {
+        let Some((message_id, _preview)) = targets
+            .get(target_ordinal - 1)
+            .map(|(_, message_id, preview)| (*message_id, preview.clone()))
+        else {
             self.push_agent_message(
                 t!("tui.session.rewind.not_found", ordinal = target_ordinal).into_owned(),
             );
@@ -430,10 +433,8 @@ impl TuiShell {
                     .into_owned(),
                 tool_block: None,
             });
-            let _ = self.submit_runtime_user_turn(
-                prompt.to_string(),
-                Some(vec![raw_path.to_string()]),
-            );
+            let _ =
+                self.submit_runtime_user_turn(prompt.to_string(), Some(vec![raw_path.to_string()]));
             return;
         }
 

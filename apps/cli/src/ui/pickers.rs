@@ -146,7 +146,11 @@ pub(in crate::ui) fn build_suggestion_lines(
         let is_selected = idx == selected;
         let command_style = inline_picker_text_style(is_selected);
         let summary_style = inline_picker_meta_style(is_selected);
-        let command_text = format!("{}{}", picker_selection_prefix(is_selected), suggestion.label);
+        let command_text = format!(
+            "{}{}",
+            picker_selection_prefix(is_selected),
+            suggestion.label
+        );
         let summary = suggestion_summary(suggestion);
 
         if summary.is_empty() || max_width == 0 {

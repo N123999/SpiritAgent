@@ -88,8 +88,9 @@ impl TuiShell {
         }
 
         Some(RewindPickerView {
-            selected_message_id: selectable_message_ids
-                [self.rewind_picker_index.min(selectable_message_ids.len().saturating_sub(1))],
+            selected_message_id: selectable_message_ids[self
+                .rewind_picker_index
+                .min(selectable_message_ids.len().saturating_sub(1))],
             selectable_message_ids,
         })
     }

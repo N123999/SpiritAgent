@@ -205,7 +205,9 @@ pub fn save_chat(
             .collect(),
         rewind: rewind.cloned(),
         session_display_name: derive_session_display_name(&sanitized.desktop_messages),
-        workspace_root: workspace_root.as_ref().map(|path| path.to_string_lossy().to_string()),
+        workspace_root: workspace_root
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
         git_branch: workspace_root
             .as_ref()
             .and_then(|path| detect_git_branch(path)),
@@ -541,13 +543,20 @@ mod tests {
         assert_eq!(loaded.messages.len(), 3);
         assert_eq!(loaded.assistant_aux.len(), 1);
         assert_eq!(loaded.assistant_aux[0].message_index, 1);
-        assert_eq!(loaded.assistant_aux[0].thinking.as_deref(), Some("reasoning"));
+        assert_eq!(
+            loaded.assistant_aux[0].thinking.as_deref(),
+            Some("reasoning")
+        );
 
         let _ = fs::remove_file(saved);
     }
 
     fn test_file_path(label: &str) -> PathBuf {
-        let file_name = format!("spirit-agent-chat-store-{}-{}.json", label, current_unix_millis());
+        let file_name = format!(
+            "spirit-agent-chat-store-{}-{}.json",
+            label,
+            current_unix_millis()
+        );
         env::temp_dir().join(file_name)
     }
 }

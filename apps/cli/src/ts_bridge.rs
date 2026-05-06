@@ -1800,7 +1800,9 @@ impl TsBridgeRuntime {
         let spirit_data_dir = spirit_agent_data_dir();
         let stored = rewind::to_desktop_file_change(change, self.rewind.next_sequence());
         rewind::save_rewind_file_change(&spirit_data_dir, &self.rewind.session_id, &stored)?;
-        self.rewind.file_changes.push(rewind::file_change_metadata(&stored));
+        self.rewind
+            .file_changes
+            .push(rewind::file_change_metadata(&stored));
         self.rewind.file_changes.sort_by_key(|entry| entry.sequence);
         Ok(())
     }
