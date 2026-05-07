@@ -6,9 +6,9 @@ import {
   type DeepSeekLanguageModelOptions,
 } from '@ai-sdk/deepseek';
 import {
-  createOpenAI,
-  type OpenAILanguageModelChatOptions,
-} from '@ai-sdk/openai';
+  createOpenAICompatible,
+  type OpenAICompatibleLanguageModelChatOptions,
+} from '@ai-sdk/openai-compatible';
 import {
   generateObject,
   generateText,
@@ -48,6 +48,8 @@ import {
   type OpenAiJsonSchemaCompletionResult,
   type OpenAiJsonSchemaTransport,
 } from './json-schema.js';
+
+const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = 'https://api.openai.com/v1';
 
 type AiSdkToolCall = {
   toolCallId: string;
@@ -407,10 +409,10 @@ function buildAiSdkRequestTrace(
 function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
   return isDeepSeekOfficialAiSdkProvider(config)
     ? createAiSdkDeepSeekProvider(config).chat(config.model)
-    : createAiSdkOpenAiProvider(config).chat(config.model);
+    : createAiSdkOpenAiCompatibleProvider(config).chatModel(config.model);
 }
 
-function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
+function createAiSdkOpenAiCompatibleProvider(config: OpenAiTransportConfig) {
   const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
   const fetchWrapper =
     Object.keys(vendorExtras).length === 0
@@ -430,12 +432,17 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
           });
         };
 
-  return createOpenAI({
+  const headers = {
+    ...(config.organization ? { 'OpenAI-Organization': config.organization } : {}),
+    ...(config.project ? { 'OpenAI-Project': config.project } : {}),
+  };
+
+  return createOpenAICompatible({
     apiKey: config.apiKey,
-    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
-    ...(config.organization ? { organization: config.organization } : {}),
-    ...(config.project ? { project: config.project } : {}),
     name: 'openai',
+    baseURL: config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
+    supportsStructuredOutputs: true,
+    ...(Object.keys(headers).length === 0 ? {} : { headers }),
     ...(fetchWrapper ? { fetch: fetchWrapper } : {}),
   });
 }
@@ -483,13 +490,16 @@ function buildAiSdkProviderOptions(
   }
 
   const reasoningEffort = openAiReasoningEffort(config) as
-    | OpenAILanguageModelChatOptions['reasoningEffort']
+    | OpenAICompatibleLanguageModelChatOptions['reasoningEffort']
     | undefined;
+
+  if (reasoningEffort === undefined) {
+    return {};
+  }
 
   return {
     openai: {
-      systemMessageMode: 'system',
-      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      reasoningEffort,
     } as JsonObject,
   };
 }
@@ -809,7 +819,7 @@ async function* aiSdkEventStreamToRuntimeEvents(
         }
         case 'raw': {
           if (!useStructuredReasoningEvents) {
-            const thinkingText = extractStreamingThinkingTextFromRawChunk(part.rawValue);
+            const thinkingText = extractFallbackStreamingThinkingTextFromRawChunk(part.rawValue);
             if (thinkingText) {
               reasoningContent += thinkingText;
               yield { kind: 'thinking-chunk', text: thinkingText };
@@ -865,7 +875,7 @@ async function* aiSdkEventStreamToRuntimeEvents(
   }
 }
 
-function extractStreamingThinkingTextFromRawChunk(rawValue: unknown): string | undefined {
+function extractFallbackStreamingThinkingTextFromRawChunk(rawValue: unknown): string | undefined {
   if (!isJsonObjectUnknown(rawValue) || !Array.isArray(rawValue.choices)) {
     return undefined;
   }
@@ -875,8 +885,6 @@ function extractStreamingThinkingTextFromRawChunk(rawValue: unknown): string | u
     .map((choice) => choice.delta)
     .filter(isJsonObject)
     .flatMap((delta) => [
-      delta.reasoning,
-      delta.reasoning_content,
       delta.reasoningText,
       delta.reasoning_text,
       delta.thinking,

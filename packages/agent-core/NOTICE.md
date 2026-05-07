@@ -14,7 +14,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 - **@ai-sdk/deepseek** 2.0.32 — Apache-2.0
   - https://github.com/vercel/ai
-- **@ai-sdk/openai** 3.0.60 — Apache-2.0
+- **@ai-sdk/openai-compatible** 2.0.46 — Apache-2.0
   - https://github.com/vercel/ai
 - **@modelcontextprotocol/sdk** 1.29.0 — MIT
   - https://github.com/modelcontextprotocol/typescript-sdk
@@ -33,7 +33,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 **Used by:**
 - @ai-sdk/deepseek 2.0.32
-- @ai-sdk/openai 3.0.60
+- @ai-sdk/openai-compatible 2.0.46
 - ai 6.0.175
 
 ```
