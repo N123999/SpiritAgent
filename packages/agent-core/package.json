@@ -39,6 +39,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@ai-sdk/alibaba": "^1.0.22",
     "@ai-sdk/deepseek": "^2.0.32",
     "@ai-sdk/openai-compatible": "^2.0.46",
     "@modelcontextprotocol/sdk": "^1.29.0",

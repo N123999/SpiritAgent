@@ -1679,6 +1679,7 @@ impl TsBridgeRuntime {
                 ModelProvider::Deepseek => "deepseek",
                 ModelProvider::Kimi => "kimi",
                 ModelProvider::Minimax => "minimax",
+                ModelProvider::Alibaba => "alibaba",
                 ModelProvider::Custom => "custom",
             };
             if let Some(obj) = transport.as_object_mut() {

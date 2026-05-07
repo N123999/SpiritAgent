@@ -91,6 +91,7 @@ fn model_add_provider_choice_labels() -> Vec<String> {
         t!("form.model.provider.deepseek").into_owned(),
         t!("form.model.provider.kimi").into_owned(),
         t!("form.model.provider.minimax").into_owned(),
+        t!("form.model.provider.alibaba").into_owned(),
         t!("form.model.provider.custom").into_owned(),
     ]
 }
@@ -105,7 +106,7 @@ fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
 }
 
 fn model_add_mode_bulk(form: &BottomFormView, provider_idx: usize) -> bool {
-    if provider_idx < 3 {
+    if provider_idx < 4 {
         return true;
     }
     match form.fields.get(1).map(|f| &f.editor) {
@@ -127,7 +128,7 @@ fn model_add_provider_field(selected: usize) -> BottomFormFieldView {
         help: String::new(),
         editor: BottomFormFieldEditorView::Choice {
             options: model_add_provider_choice_labels(),
-            selected: selected.min(3),
+            selected: selected.min(4),
         },
     }
 }
@@ -210,7 +211,8 @@ fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
         0 => Some(ModelProvider::Deepseek),
         1 => Some(ModelProvider::Kimi),
         2 => Some(ModelProvider::Minimax),
-        3 => Some(ModelProvider::Custom),
+        3 => Some(ModelProvider::Alibaba),
+        4 => Some(ModelProvider::Custom),
         _ => None,
     }
 }
@@ -245,9 +247,9 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         ""
     };
 
-    let bulk_custom = provider_idx >= 3 && mode_custom == 1;
+    let bulk_custom = provider_idx >= 4 && mode_custom == 1;
 
-    let new_fields: Vec<BottomFormFieldView> = if provider_idx < 3 {
+    let new_fields: Vec<BottomFormFieldView> = if provider_idx < 4 {
         vec![
             model_add_provider_field(provider_idx),
             model_add_mode_field_preset(),
@@ -1511,7 +1513,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 3;
+                *selected = 4;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -1534,7 +1536,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 3;
+                *selected = 4;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -1558,6 +1560,27 @@ mod tests {
         assert!(parsed.model_name.is_none());
         assert_eq!(parsed.api_base, "https://bulk.example/v1");
         assert_eq!(parsed.api_key, "sk-bulk");
+    }
+
+    #[test]
+    fn model_add_form_parses_alibaba_preset_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 3;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        assert_eq!(form.fields.len(), 3);
+        form.selected_field = 2;
+        insert_text(&mut form, "sk-ali");
+
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::Alibaba);
+        assert!(parsed.bulk);
+        assert!(parsed.model_name.is_none());
+        assert_eq!(parsed.api_base, "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        assert_eq!(parsed.api_key, "sk-ali");
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

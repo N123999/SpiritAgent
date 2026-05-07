@@ -390,7 +390,7 @@ export function defaultDreamConfig(): DesktopDreamConfigFile {
 }
 
 function parsePersistedModelProvider(value: unknown): DesktopModelProvider | undefined {
-  if (value === 'deepseek' || value === 'kimi' || value === 'minimax' || value === 'custom') {
+  if (value === 'deepseek' || value === 'kimi' || value === 'minimax' || value === 'alibaba' || value === 'custom') {
     return value;
   }
   return undefined;

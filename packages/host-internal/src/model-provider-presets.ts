@@ -1,12 +1,13 @@
 import rawImport from './model-provider-presets.json' with { type: 'json' };
 
 /** 与 `config.json` / CLI `ModelProvider` 小写字符串对齐（须与 `pickerOrder` 一致）。 */
-export type ModelProviderId = 'deepseek' | 'kimi' | 'minimax' | 'custom';
+export type ModelProviderId = 'deepseek' | 'kimi' | 'minimax' | 'alibaba' | 'custom';
 
 const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'deepseek',
   'kimi',
   'minimax',
+  'alibaba',
   'custom',
 ];
 
@@ -20,14 +21,14 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["deepseek","kimi","minimax","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["deepseek","kimi","minimax","alibaba","custom"]',
     );
   }
 }
 
 interface ParsedModelProviderPresets {
   defaultCustomApiBase: string;
-  presetApiBaseByProvider: Record<'deepseek' | 'kimi' | 'minimax', string>;
+  presetApiBaseByProvider: Record<'deepseek' | 'kimi' | 'minimax' | 'alibaba', string>;
   pickerOrder: readonly ModelProviderId[];
   pickerLabels: Record<string, string>;
 }
@@ -63,6 +64,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     deepseek: requireStringField(presetRaw, 'deepseek'),
     kimi: requireStringField(presetRaw, 'kimi'),
     minimax: requireStringField(presetRaw, 'minimax'),
+    alibaba: requireStringField(presetRaw, 'alibaba'),
   };
 
   const labelsRaw = data.pickerLabels;
@@ -95,11 +97,13 @@ export const DEFAULT_CUSTOM_API_BASE: string = raw.defaultCustomApiBase;
 const deepseekBase = raw.presetApiBaseByProvider.deepseek;
 const kimiBase = raw.presetApiBaseByProvider.kimi;
 const minimaxBase = raw.presetApiBaseByProvider.minimax;
+const alibabaBase = raw.presetApiBaseByProvider.alibaba;
 
 export const PROVIDER_PRESET_API_BASE = {
   deepseek: deepseekBase,
   kimi: kimiBase,
   minimax: minimaxBase,
+  alibaba: alibabaBase,
 } as const satisfies Record<Exclude<ModelProviderId, 'custom'>, string>;
 
 const pickerLabels = raw.pickerLabels;
@@ -123,6 +127,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE.kimi;
     case 'minimax':
       return PROVIDER_PRESET_API_BASE.minimax;
+    case 'alibaba':
+      return PROVIDER_PRESET_API_BASE.alibaba;
     case 'custom': {
       const trimmed = customApiBaseTrimmed.trim();
       return trimmed.length > 0 ? trimmed : DEFAULT_CUSTOM_API_BASE;

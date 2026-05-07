@@ -1681,6 +1681,10 @@ function ModelsSettingsPanel({
   const filteredProviders = PROVIDER_PICKER_ROWS.filter((row) =>
     row.label.toLowerCase().includes(providerQuery.trim().toLowerCase()),
   );
+  const selectedProviderLabel =
+    selectedProvider === null
+      ? "连接提供商"
+      : PROVIDER_PICKER_ROWS.find((row) => row.id === selectedProvider)?.label ?? "连接提供商";
 
   const effectiveApiBase =
     selectedProvider === null
@@ -1914,15 +1918,7 @@ function ModelsSettingsPanel({
         >
           <DialogHeader>
             <DialogTitle>
-              {selectedProvider === "custom"
-                ? "自定义连接"
-                : selectedProvider === "deepseek"
-                  ? "DeepSeek"
-                  : selectedProvider === "kimi"
-                    ? "Kimi"
-                    : selectedProvider === "minimax"
-                      ? "MiniMax"
-                      : "连接提供商"}
+              {selectedProvider === "custom" ? "自定义连接" : selectedProviderLabel}
             </DialogTitle>
             <DialogDescription>
               {selectedProvider === "custom"

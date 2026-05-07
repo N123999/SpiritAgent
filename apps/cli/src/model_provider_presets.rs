@@ -52,6 +52,10 @@ mod tests {
             model_add_preset_api_base_by_choice_index(2).as_deref(),
             Some("https://api.minimaxi.com/v1")
         );
-        assert!(model_add_preset_api_base_by_choice_index(3).is_none());
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(3).as_deref(),
+            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+        );
+        assert!(model_add_preset_api_base_by_choice_index(4).is_none());
     }
 }

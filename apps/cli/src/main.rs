@@ -96,7 +96,7 @@ enum ModelAction {
         name: String,
         #[arg(long)]
         api_base: Option<String>,
-        #[arg(long, value_parser = ["deepseek", "kimi", "minimax", "custom"])]
+        #[arg(long, value_parser = ["deepseek", "kimi", "minimax", "alibaba", "custom"])]
         provider: Option<String>,
         #[arg(
             long,

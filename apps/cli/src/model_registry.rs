@@ -19,6 +19,7 @@ pub enum ModelProvider {
     Deepseek,
     Kimi,
     Minimax,
+    Alibaba,
     Custom,
 }
 
@@ -28,6 +29,7 @@ impl ModelProvider {
             Self::Deepseek => "deepseek",
             Self::Kimi => "kimi",
             Self::Minimax => "minimax",
+            Self::Alibaba => "alibaba",
             Self::Custom => "custom",
         }
     }
@@ -41,6 +43,7 @@ impl FromStr for ModelProvider {
             "deepseek" => Ok(Self::Deepseek),
             "kimi" => Ok(Self::Kimi),
             "minimax" => Ok(Self::Minimax),
+            "alibaba" => Ok(Self::Alibaba),
             "custom" => Ok(Self::Custom),
             other => Err(format!("不支持的 provider: {other}")),
         }
@@ -326,6 +329,29 @@ mod tests {
                 .is_some_and(|models| !models.is_empty())
         );
     }
+
+        #[test]
+        fn deserializes_alibaba_provider_from_desktop_config() {
+                let config = r#"
+{
+    "models": [
+        {
+            "name": "qwen3.6-plus",
+            "apiBase": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "provider": "alibaba",
+            "reasoningEffort": "medium"
+        }
+    ],
+    "activeModel": "qwen3.6-plus"
+}
+"#;
+
+                let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+                let active = parsed.active_model_profile().expect("active model");
+
+                assert_eq!(active.provider, Some(super::ModelProvider::Alibaba));
+                assert_eq!(active.reasoning_effort.as_deref(), Some("medium"));
+        }
 }
 
 pub fn keyring_entry() -> Result<keyring::Entry> {

@@ -6,12 +6,14 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- Apache-2.0: 4 package(s)
+- Apache-2.0: 5 package(s)
 - MIT: 2 package(s)
 - BSD-3-Clause: 1 package(s)
 
 ## Components
 
+- **@ai-sdk/alibaba** 1.0.22 — Apache-2.0
+  - https://github.com/vercel/ai
 - **@ai-sdk/deepseek** 2.0.32 — Apache-2.0
   - https://github.com/vercel/ai
 - **@ai-sdk/openai-compatible** 2.0.46 — Apache-2.0
@@ -32,6 +34,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 ### Apache-2.0
 
 **Used by:**
+- @ai-sdk/alibaba 1.0.22
 - @ai-sdk/deepseek 2.0.32
 - @ai-sdk/openai-compatible 2.0.46
 - ai 6.0.175
