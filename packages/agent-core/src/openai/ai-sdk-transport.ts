@@ -656,7 +656,7 @@ function openAiToolMessageToAiSdkMessage(
   message: JsonObject,
   toolCallNames: Map<string, string>,
 ): Record<string, unknown> | undefined {
-  const toolCallId = typeof message.tool_call_id === 'string' ? message.tool_call_id : undefined;
+  const toolCallId = nonEmptyToolCallIdOrUndefined(message.tool_call_id);
   if (!toolCallId) {
     return undefined;
   }
@@ -700,7 +700,7 @@ function buildToolCallNameIndex(messages: JsonValue[]): Map<string, string> {
         continue;
       }
 
-      if (typeof toolCall.id !== 'string' || typeof toolCall.function.name !== 'string') {
+      if (!hasNonEmptyToolCallId(toolCall.id) || typeof toolCall.function.name !== 'string') {
         continue;
       }
 
@@ -721,7 +721,7 @@ function extractAssistantToolCallParts(message: JsonObject): Array<Record<string
       return [];
     }
 
-    if (typeof toolCall.id !== 'string' || typeof toolCall.function.name !== 'string') {
+    if (!hasNonEmptyToolCallId(toolCall.id) || typeof toolCall.function.name !== 'string') {
       return [];
     }
 
@@ -935,15 +935,17 @@ function accumulateStreamingToolCallProgressFromRawChunk(
       const existing = toolCalls.get(delta.index);
       const current: AggregatedStreamingToolCall = existing ?? {
         index: delta.index,
-        id: typeof delta.id === 'string' ? delta.id : `stream-tool-call-${delta.index}`,
+        id: nonEmptyToolCallIdOrUndefined(delta.id) ?? `stream-tool-call-${delta.index}`,
         type: 'function',
         functionName: '',
         functionArguments: '',
         readyPreviewEmitted: false,
       };
 
-      if (typeof delta.id === 'string') {
-        current.id = delta.id;
+      // Alibaba/Qwen 的流式 tool_call delta 可能先给合法 id，随后又回传空字符串；这里只接受非空更新，避免把已存在的稳定 id 覆盖掉。
+      const nextToolCallId = nonEmptyToolCallIdOrUndefined(delta.id);
+      if (nextToolCallId) {
+        current.id = nextToolCallId;
       }
 
       if (isJsonObject(delta.function) && typeof delta.function.name === 'string') {
@@ -1295,6 +1297,14 @@ function truncateChars(text: string, maxChars: number): string {
   }
 
   return `${chars.slice(0, maxChars).join('')}...`;
+}
+
+function hasNonEmptyToolCallId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function nonEmptyToolCallIdOrUndefined(value: unknown): string | undefined {
+  return hasNonEmptyToolCallId(value) ? value : undefined;
 }
 
 function saturatingSub(value: number, delta: number): number {

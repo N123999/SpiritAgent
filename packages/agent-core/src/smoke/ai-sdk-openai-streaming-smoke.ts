@@ -60,8 +60,34 @@ async function main(): Promise<void> {
               tool_calls: [
                 {
                   index: 0,
+                  id: '',
+                  type: 'function',
                   function: {
-                    arguments: ':"Spirit Agent streaming"}',
+                    arguments: ':"Spirit Agent ',
+                  },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: 'chatcmpl-ai-sdk-stream',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'test-openai-compatible',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: '',
+                  type: 'function',
+                  function: {
+                    arguments: 'streaming"}',
                   },
                 },
               ],
@@ -132,6 +158,11 @@ async function main(): Promise<void> {
     throw new Error('ai-sdk openai streaming smoke 未收到 streaming-tool-preview 事件。');
   }
 
+  const previewEvent = events.find((event) => isJsonObject(event) && event.kind === 'streaming-tool-preview');
+  if (!isJsonObject(previewEvent) || previewEvent.toolCallId !== 'call_ai_sdk_stream_1') {
+    throw new Error('ai-sdk openai streaming smoke 未在 preview 事件上保留首个非空 toolCallId。');
+  }
+
   if (events.some((event) => isJsonObject(event) && event.kind === 'error')) {
     throw new Error('ai-sdk openai streaming smoke 不应收到 error 事件。');
   }
@@ -149,6 +180,14 @@ async function main(): Promise<void> {
   const firstToolCall = streamedToolCalls[0];
   if (!isJsonObject(firstToolCall) || firstToolCall.index !== 0) {
     throw new Error('ai-sdk openai streaming smoke 未在流式 tool_call 上保留 index 字段。');
+  }
+
+  if (firstToolCall.id !== 'call_ai_sdk_stream_1') {
+    throw new Error('ai-sdk openai streaming smoke 未保留首个非空 toolCallId。');
+  }
+
+  if (completion.result.step.calls[0]?.id !== 'call_ai_sdk_stream_1') {
+    throw new Error('ai-sdk openai streaming smoke 在 tool-calls 结果中丢失了首个非空 toolCallId。');
   }
 }
 
