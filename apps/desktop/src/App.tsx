@@ -64,6 +64,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownMessage } from "@/components/markdown-message";
 import { MarketplaceView } from "@/components/marketplace-view";
+import {
+  ComposerLocalFileStrip,
+  type ComposerLocalFileAttachmentView,
+} from "@/components/composer-local-file-strip";
 import { ComposerInsertMenu } from "@/components/composer-insert-menu";
 import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
@@ -164,16 +168,14 @@ function normalizeSlashPath(value: string): string {
   return value.replace(/\\/g, "/").replace(/\/+$/g, "");
 }
 
-function relativePathFromWorkspaceRoot(workspaceRoot: string, filePath: string): string | null {
-  const normalizedRoot = normalizeSlashPath(workspaceRoot);
-  const normalizedFile = normalizeSlashPath(filePath);
-  const lowerRoot = normalizedRoot.toLowerCase();
-  const lowerFile = normalizedFile.toLowerCase();
-  const prefix = `${lowerRoot}/`;
-  if (!lowerFile.startsWith(prefix)) {
-    return null;
-  }
-  return normalizedFile.slice(normalizedRoot.length + 1);
+function basenameFromPath(value: string): string {
+  const normalized = normalizeSlashPath(value);
+  const lastSlash = normalized.lastIndexOf("/");
+  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
+}
+
+function isPreviewableImagePath(value: string): boolean {
+  return /\.(?:bmp|gif|jpe?g|png|webp)$/iu.test(value);
 }
 
 type EmptyStateWorkspaceSelectorProps = {
@@ -333,6 +335,7 @@ function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
 
 type ComposerSurfaceProps = {
   value: string;
+  localFileAttachments: readonly ComposerLocalFileAttachmentView[];
   placeholder: string;
   models: DesktopSnapshot["config"]["models"];
   catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
@@ -356,10 +359,12 @@ type ComposerSurfaceProps = {
   onInsertWorkspaceFileReferenceTrigger?(): void;
   onPickLocalFile?(): void | Promise<void>;
   onInsertSkillTrigger?(): void;
+  onRemoveLocalFileAttachment?(path: string): void;
 };
 
 function ComposerSurface({
   value,
+  localFileAttachments,
   placeholder,
   models,
   catalogHints,
@@ -383,6 +388,7 @@ function ComposerSurface({
   onInsertWorkspaceFileReferenceTrigger,
   onPickLocalFile,
   onInsertSkillTrigger,
+  onRemoveLocalFileAttachment,
 }: ComposerSurfaceProps) {
   const [modelFilter, setModelFilter] = useState("");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -416,6 +422,10 @@ function ComposerSurface({
       data-spirit-surface="composer-surface"
       className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
     >
+      <ComposerLocalFileStrip
+        attachments={localFileAttachments}
+        onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
+      />
       <Textarea
         ref={textareaRef}
         value={value}
@@ -428,7 +438,7 @@ function ComposerSurface({
         }}
         disabled={readOnly}
         placeholder={placeholder}
-        className="spirit-scroll block max-h-[12rem] min-h-[3rem] w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-3 pb-1.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none dark:bg-transparent dark:disabled:bg-transparent md:min-h-[3.5rem]"
+        className="spirit-scroll block max-h-[12rem] min-h-[3rem] w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-2.5 pb-1.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none dark:bg-transparent dark:disabled:bg-transparent md:min-h-[3.5rem]"
         onKeyDown={(event) => {
           onKeyDown?.(event);
           if (event.defaultPrevented) {
@@ -787,6 +797,7 @@ function MessageCard({
         {rewindSelected ? (
           <ComposerSurface
             value={rewindText}
+            localFileAttachments={[]}
             onChange={onRewindChange}
             onSubmit={onRewindSubmit}
             placeholder="输入消息…"
@@ -1266,11 +1277,12 @@ export default function App() {
   const rewindWarnings = snapshot?.conversation.rewindWarnings ?? [];
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
   const pendingQuestions = runtime.pendingQuestions;
+  const [localFileAttachments, setLocalFileAttachments] = useState<ComposerLocalFileAttachmentView[]>([]);
   const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
   const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
   const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
   const composerCanSend =
-    Boolean(runtime.composer.trim()) &&
+    (Boolean(runtime.composer.trim()) || localFileAttachments.length > 0) &&
     !activeSessionReadOnly &&
     runtime.busyAction !== "session" &&
     !pendingApproval &&
@@ -1423,6 +1435,10 @@ export default function App() {
     }
   }, [messages, rewindDraft]);
 
+  useEffect(() => {
+    setLocalFileAttachments([]);
+  }, [snapshot?.workspaceRoot, snapshot?.activeSession?.filePath]);
+
   const startMessageRewind = (message: ConversationMessageSnapshot) => {
     if (!runtime.summary.canSend || runtime.busyAction || message.canRewind !== true) {
       return;
@@ -1500,20 +1516,68 @@ export default function App() {
     insertComposerText("/");
   };
 
+  const removeLocalFileAttachment = (path: string) => {
+    setLocalFileAttachments((current) =>
+      current.filter((item) => normalizeSlashPath(item.path) !== normalizeSlashPath(path)),
+    );
+  };
+
   const pickLocalFileFromPalette = () => {
     void runtime.pickLocalFile().then((filePath) => {
       if (!filePath) {
         return;
       }
-      const relativePath = snapshot?.workspaceRoot
-        ? relativePathFromWorkspaceRoot(snapshot.workspaceRoot, filePath)
-        : null;
-      if (relativePath) {
-        insertComposerText(`@${relativePath} `);
-        return;
+      const normalizedPath = normalizeSlashPath(filePath);
+      setLocalFileAttachments((current) => {
+        if (current.some((item) => normalizeSlashPath(item.path) === normalizedPath)) {
+          return current;
+        }
+
+        return [
+          ...current,
+          {
+            id: normalizedPath,
+            path: normalizedPath,
+            name: basenameFromPath(normalizedPath),
+            isImage: isPreviewableImagePath(normalizedPath),
+            previewDataUrl: null,
+          },
+        ];
+      });
+      if (isPreviewableImagePath(normalizedPath)) {
+        void runtime.readLocalImagePreviewDataUrl(normalizedPath).then((previewDataUrl) => {
+          if (!previewDataUrl) {
+            return;
+          }
+
+          setLocalFileAttachments((current) =>
+            current.map((item) =>
+              normalizeSlashPath(item.path) === normalizedPath
+                ? { ...item, previewDataUrl }
+                : item,
+            ),
+          );
+        });
       }
-      insertComposerText(`"${normalizeSlashPath(filePath)}" `);
+      queueMicrotask(() => {
+        composerTextareaRef.current?.focus();
+      });
     });
+  };
+
+  const submitComposerMessage = () => {
+    void runtime
+      .sendMessage({
+        text: runtime.composer,
+        ...(localFileAttachments.length > 0
+          ? { localFilePaths: localFileAttachments.map((item) => item.path) }
+          : {}),
+      })
+      .then((ok) => {
+        if (ok) {
+          setLocalFileAttachments([]);
+        }
+      });
   };
 
   const handleComposerSuggestionKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -2066,9 +2130,10 @@ export default function App() {
                   <ComposerSurface
                     value={runtime.composer}
                     onChange={runtime.setComposer}
-                    onSubmit={() => void runtime.sendMessage()}
+                    onSubmit={submitComposerMessage}
                     onAbort={() => void runtime.abortConversation()}
                     placeholder={activeSessionReadOnly ? "调试会话只读，无法发送消息…" : "输入消息…"}
+                    localFileAttachments={localFileAttachments}
                     models={models}
                     catalogHints={snapshot?.config.modelCatalogHints}
                     activeModel={runtime.settings.activeModel}
@@ -2094,6 +2159,7 @@ export default function App() {
                     onInsertWorkspaceFileReferenceTrigger={insertFileReferenceTrigger}
                     onPickLocalFile={pickLocalFileFromPalette}
                     onInsertSkillTrigger={insertSkillTriggerFromPalette}
+                    onRemoveLocalFileAttachment={removeLocalFileAttachment}
                   />
                   {snapshot?.conversation.pendingQuestions ? (
                     <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">

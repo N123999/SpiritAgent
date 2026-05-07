@@ -176,9 +176,25 @@ export async function workspaceFileReferenceAttachmentFromPath(
   options: ResolveWorkspaceFileReferenceAttachmentsOptions = {},
 ): Promise<WorkspaceFileReferenceAttachment> {
   const { absolutePath, relativePath } = await resolveWorkspaceFileReferencePath(workspaceRoot, referencePath);
+  return localFileAttachmentFromAbsolutePath(absolutePath, relativePath, options);
+}
+
+export async function localFileAttachmentFromPath(
+  absolutePath: string,
+  options: ResolveWorkspaceFileReferenceAttachmentsOptions = {},
+): Promise<WorkspaceFileReferenceAttachment> {
+  const normalizedPath = absolutePath.replace(/\\/gu, '/');
+  return localFileAttachmentFromAbsolutePath(absolutePath, normalizedPath, options);
+}
+
+async function localFileAttachmentFromAbsolutePath(
+  absolutePath: string,
+  attachmentPath: string,
+  options: ResolveWorkspaceFileReferenceAttachmentsOptions = {},
+): Promise<WorkspaceFileReferenceAttachment> {
   const metadata = await stat(absolutePath);
   if (!metadata.isFile()) {
-    throw new Error(`不是可引用的文件: ${referencePath}`);
+    throw new Error(`不是可引用的文件: ${attachmentPath}`);
   }
 
   const bytes = await readFile(absolutePath);
@@ -186,17 +202,17 @@ export async function workspaceFileReferenceAttachmentFromPath(
   if (image) {
     return {
       kind: 'image',
-      path: relativePath,
+      path: attachmentPath,
       attachedAtUnixMs: Date.now(),
     };
   }
 
   if (hasSupportedImageExtension(absolutePath)) {
-    throw new Error(`图片文件校验失败: ${referencePath}`);
+    throw new Error(`图片文件校验失败: ${attachmentPath}`);
   }
 
   if (bytes.includes(0)) {
-    throw new Error(`暂不支持引用二进制文件: ${referencePath}`);
+    throw new Error(`暂不支持引用二进制文件: ${attachmentPath}`);
   }
 
   const text = bytes.toString('utf8');
@@ -209,7 +225,7 @@ export async function workspaceFileReferenceAttachmentFromPath(
 
   return {
     kind: 'text',
-    path: relativePath,
+    path: attachmentPath,
     totalChars: chars.length,
     truncated,
     attachedAtUnixMs: Date.now(),

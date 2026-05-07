@@ -396,6 +396,11 @@ export interface RewindAndSubmitMessageRequest {
   text: string;
 }
 
+export interface SubmitUserTurnRequest {
+  text: string;
+  localFilePaths?: string[];
+}
+
 export interface DesktopSkillListItem {
   id: string;
   name: string;

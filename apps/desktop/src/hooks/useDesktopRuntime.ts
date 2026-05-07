@@ -41,6 +41,7 @@ import type {
   QueryWorkspaceFileReferenceSuggestionsRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
+  SubmitUserTurnRequest,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -373,6 +374,21 @@ export function useDesktopRuntime() {
       return null;
     }
   }, [api]);
+
+  const readLocalImagePreviewDataUrl = useCallback(
+    async (filePath: string): Promise<string | null> => {
+      if (!api?.readLocalImagePreviewDataUrl) {
+        return null;
+      }
+
+      try {
+        return await api.readLocalImagePreviewDataUrl(filePath);
+      } catch {
+        return null;
+      }
+    },
+    [api],
+  );
 
   const commitChanges = useCallback(
     async (request: CommitChangesRequest): Promise<boolean> => {
@@ -1123,19 +1139,25 @@ export function useDesktopRuntime() {
     }
   }, [api, applySnapshot]);
 
-  const sendMessage = useCallback(async () => {
+  const sendMessage = useCallback(async (request: SubmitUserTurnRequest = { text: composer }) => {
     if (!api) {
-      return;
+      return false;
     }
 
-    const text = composer.trim();
-    if (!text) {
-      return;
+    const localFilePaths = request.localFilePaths ?? [];
+    const hasLocalFiles = localFilePaths.length > 0;
+    const text = request.text.trim();
+    if (!text && !hasLocalFiles) {
+      return false;
     }
     if (isLogSessionSlashInput(text)) {
+      if (hasLocalFiles) {
+        setRuntimeError("附加文件暂不支持与 Slash 指令一起发送。");
+        return false;
+      }
       if (!api.exportSessionLog) {
         setRuntimeError("当前宿主不支持 /log-session。");
-        return;
+        return false;
       }
 
       setBusyAction("send");
@@ -1145,16 +1167,17 @@ export function useDesktopRuntime() {
         setComposer("");
         setRuntimeError("");
         void refreshSessions();
+        return true;
       } catch (error) {
         setRuntimeError(describeError(error));
+        return false;
       } finally {
         setBusyAction("");
       }
-      return;
     }
     if (snapshot?.activeSession?.readOnly) {
       setRuntimeError("当前调试会话为只读，无法发送消息。");
-      return;
+      return false;
     }
 
     const interruptible =
@@ -1163,7 +1186,7 @@ export function useDesktopRuntime() {
       !snapshot.conversation.pendingQuestions;
     if (snapshot?.conversation.isBusy && !interruptible) {
       setRuntimeError("当前正在等待审批或问卷，无法直接发送新消息。");
-      return;
+      return false;
     }
 
     setBusyAction("send");
@@ -1174,6 +1197,10 @@ export function useDesktopRuntime() {
       }
 
       const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
+      if (hasLocalFiles && (isCreateSkillSlashInput(text) || skillSlash)) {
+        setRuntimeError("附加文件暂不支持与 Slash 指令一起发送。");
+        return false;
+      }
       const next = isCreateSkillSlashInput(text)
         ? await api.submitCreateSkillSlash({
             rawText: text,
@@ -1184,13 +1211,18 @@ export function useDesktopRuntime() {
             rawText: text,
             ...(skillSlash.extraNote ? { extraNote: skillSlash.extraNote } : {}),
           })
-        : await api.submitUserTurn(text);
+        : await api.submitUserTurn({
+            text: request.text,
+            ...(hasLocalFiles ? { localFilePaths } : {}),
+          });
       applySnapshot(next);
       setComposer("");
       setRuntimeError("");
       void refreshSessions();
+      return true;
     } catch (error) {
       setRuntimeError(describeError(error));
+      return false;
     } finally {
       setBusyAction("");
     }
@@ -1468,6 +1500,7 @@ export function useDesktopRuntime() {
     rememberWorkspaceRoot,
     pickWorkspaceDirectory,
     pickLocalFile,
+    readLocalImagePreviewDataUrl,
     commitChanges,
     addModel,
     addProviderModels,

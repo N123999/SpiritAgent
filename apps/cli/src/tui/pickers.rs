@@ -209,10 +209,6 @@ impl TuiShell {
         };
 
         self.image_picker_active = false;
-        if !self.active_model_supports_vision_input() {
-            self.push_image_command_blocked_message();
-            return;
-        }
         self.runtime.add_pending_image(selected.clone());
         self.messages.push(ChatMessage {
             role: MessageRole::Agent,

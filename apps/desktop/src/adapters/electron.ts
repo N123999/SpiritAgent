@@ -90,8 +90,8 @@ export async function createElectronHostApi(): Promise<HostApi> {
     exportSessionLog() {
       return bridge.exportSessionLog();
     },
-    submitUserTurn(text) {
-      return bridge.submitUserTurn(text);
+    submitUserTurn(request) {
+      return bridge.submitUserTurn(request);
     },
     abortConversation() {
       return bridge.abortConversation();
@@ -143,6 +143,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     },
     pickLocalFile() {
       return bridge.pickLocalFile();
+    },
+    readLocalImagePreviewDataUrl(filePath) {
+      return bridge.readLocalImagePreviewDataUrl(filePath);
     },
   };
 }

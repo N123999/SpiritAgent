@@ -23,6 +23,7 @@ import {
   type OpenAiPlanMetadata,
   type RuntimeApprovalDecision,
   type OpenAiTransportConfig,
+  type PendingWorkspaceFile,
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
 import {
@@ -30,6 +31,7 @@ import {
   createHostExtensionManager,
   createHostDreamStore,
   defaultModelReasoningEffort,
+  localFileAttachmentFromPath,
   listWorkspaceFileReferenceSuggestions as listWorkspaceFileReferenceSuggestionsFromHostInternal,
   listOpenAiCompatibleModelIds,
   parseModelProviderId,
@@ -84,6 +86,7 @@ import type {
   ImportExtensionRequest,
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
+  SubmitUserTurnRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -286,7 +289,7 @@ type CommandPayloads = {
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
   submitSkillSlash: { request: SubmitSkillSlashRequest };
   exportSessionLog: undefined;
-  submitUserTurn: { text: string };
+  submitUserTurn: SubmitUserTurnRequest;
   abortConversation: undefined;
   continueAssistantCompletion: { messageId: number };
   poll: undefined;
@@ -317,6 +320,22 @@ interface HostState {
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
   rewind: StoredDesktopRewindMetadata;
   rewindWarnings: FileRewindWarning[];
+}
+
+function defaultDisplayTextForUserTurn(
+  text: string,
+  explicitWorkspaceFiles: readonly PendingWorkspaceFile[],
+): string {
+  const trimmed = text.trim();
+  if (trimmed) {
+    return trimmed;
+  }
+
+  if (explicitWorkspaceFiles.length === 0) {
+    return '';
+  }
+
+  return `已附加文件: ${explicitWorkspaceFiles.map((file) => path.basename(file.path)).join(', ')}`;
 }
 
 class DesktopHostService {
@@ -1174,10 +1193,12 @@ class DesktopHostService {
     });
   }
 
-  async submitUserTurn(text: string): Promise<DesktopSnapshot> {
+  async submitUserTurn(request: SubmitUserTurnRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
-      return this.submitUserTurnAfterInitialized(text);
+      return this.submitUserTurnAfterInitialized(request.text, {
+        explicitWorkspaceFiles: await this.resolveExplicitLocalFileAttachments(request.localFilePaths),
+      });
     });
   }
 
@@ -1337,12 +1358,14 @@ class DesktopHostService {
       preserveRewindWarnings?: boolean;
       displayText?: string;
       turnSkills?: OpenAiActiveSkill[];
+      explicitWorkspaceFiles?: PendingWorkspaceFile[];
     } = {},
   ): Promise<DesktopSnapshot> {
     const runtime = this.requireRuntime();
     const trimmed = text.trim();
-    const displayText = (options.displayText ?? text).trim();
-    if (!trimmed) {
+    const explicitWorkspaceFiles = options.explicitWorkspaceFiles ?? [];
+    const displayText = (options.displayText ?? defaultDisplayTextForUserTurn(text, explicitWorkspaceFiles)).trim();
+    if (!trimmed && explicitWorkspaceFiles.length === 0) {
       throw new Error('消息不能为空。');
     }
     if (!displayText) {
@@ -1379,7 +1402,7 @@ class DesktopHostService {
     });
 
     try {
-      await runtime.startUserTurnStreaming(trimmed);
+      await runtime.startUserTurnStreaming(trimmed, [], explicitWorkspaceFiles);
       this.refreshArchiveFromRuntime();
       await this.recordRewindCheckpoint(userMessage.id, beforeUserCheckpoint);
       await runtime.poll();
@@ -1399,6 +1422,24 @@ class DesktopHostService {
       await this.refreshGitState();
     }
     return this.buildSnapshot();
+  }
+
+  private async resolveExplicitLocalFileAttachments(
+    localFilePaths: readonly string[] | undefined,
+  ): Promise<PendingWorkspaceFile[]> {
+    if (!Array.isArray(localFilePaths) || localFilePaths.length === 0) {
+      return [];
+    }
+
+    const attachments: PendingWorkspaceFile[] = [];
+    for (const localFilePath of localFilePaths) {
+      try {
+        attachments.push(await localFileAttachmentFromPath(localFilePath));
+      } catch {
+        // 与 @ 文件引用保持一致：不存在、不可读或不支持的文件静默忽略。
+      }
+    }
+    return attachments;
   }
 
   private async appendInlineAssistantReply(
@@ -1772,7 +1813,7 @@ class DesktopHostService {
         return this.exportSessionLog();
       case 'submitUserTurn': {
         const typedPayload = payload as CommandPayloads['submitUserTurn'];
-        return this.submitUserTurn(typedPayload.text);
+        return this.submitUserTurn(typedPayload);
       }
       case 'abortConversation':
         return this.abortConversation();

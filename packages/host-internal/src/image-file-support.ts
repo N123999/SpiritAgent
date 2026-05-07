@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-type SupportedImageExtension = '.gif' | '.jpeg' | '.jpg' | '.png' | '.webp';
+type SupportedImageExtension = '.bmp' | '.gif' | '.jpeg' | '.jpg' | '.png' | '.webp';
 
 export interface SupportedImageFile {
   extension: SupportedImageExtension;
@@ -8,6 +8,7 @@ export interface SupportedImageFile {
 }
 
 const SUPPORTED_IMAGE_MIME_TYPES: Record<SupportedImageExtension, string> = {
+  '.bmp': 'image/bmp',
   '.gif': 'image/gif',
   '.jpeg': 'image/jpeg',
   '.jpg': 'image/jpeg',
@@ -41,6 +42,7 @@ export function detectSupportedImageFile(
 function supportedImageExtension(filePath: string): SupportedImageExtension | undefined {
   const extension = path.extname(filePath).toLowerCase();
   switch (extension) {
+    case '.bmp':
     case '.gif':
     case '.jpeg':
     case '.jpg':
@@ -54,6 +56,8 @@ function supportedImageExtension(filePath: string): SupportedImageExtension | un
 
 function matchesImageSignature(extension: SupportedImageExtension, bytes: Uint8Array): boolean {
   switch (extension) {
+    case '.bmp':
+      return hasAsciiPrefix(bytes, 'BM');
     case '.png':
       return hasPrefix(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     case '.jpg':

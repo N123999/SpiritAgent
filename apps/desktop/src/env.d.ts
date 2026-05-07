@@ -30,6 +30,7 @@ import type {
   QueryWorkspaceFileReferenceSuggestionsRequest,
   RememberWorkspaceRequest,
   RewindAndSubmitMessageRequest,
+  SubmitUserTurnRequest,
   SessionListItem,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
@@ -71,7 +72,7 @@ declare global {
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
     exportSessionLog(): Promise<DesktopSnapshot>;
-    submitUserTurn(text: string): Promise<DesktopSnapshot>;
+    submitUserTurn(request: SubmitUserTurnRequest): Promise<DesktopSnapshot>;
     abortConversation(): Promise<DesktopSnapshot>;
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
@@ -91,6 +92,7 @@ declare global {
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     pickWorkspaceDirectory(): Promise<string | null>;
     pickLocalFile(): Promise<string | null>;
+    readLocalImagePreviewDataUrl(filePath: string): Promise<string | null>;
     syncWindowFrame(request: {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';

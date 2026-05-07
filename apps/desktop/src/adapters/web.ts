@@ -127,8 +127,8 @@ export function createWebHostApi(): HostApi {
     submitSkillSlash(request: SubmitSkillSlashRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills/submit', request);
     },
-    submitUserTurn(text: string) {
-      return post<DesktopSnapshot>(baseUrl, '/api/submit', { text });
+    submitUserTurn(request) {
+      return post<DesktopSnapshot>(baseUrl, '/api/submit', request);
     },
     abortConversation() {
       return post<DesktopSnapshot>(baseUrl, '/api/abort');
@@ -179,6 +179,9 @@ export function createWebHostApi(): HostApi {
     },
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest) {
       return post<void>(baseUrl, '/api/workspace/file/write', request);
+    },
+    async readLocalImagePreviewDataUrl() {
+      return null;
     },
     async pairWebHost(code: string) {
       const result = await post<WebHostPairingResponse>(baseUrl, '/api/pairing', { code }, {

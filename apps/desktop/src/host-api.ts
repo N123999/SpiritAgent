@@ -28,6 +28,7 @@ import type {
   QueryWorkspaceFileReferenceSuggestionsRequest,
   RememberWorkspaceRequest,
   RewindAndSubmitMessageRequest,
+  SubmitUserTurnRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -72,7 +73,7 @@ export interface HostApi {
   submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
   submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
   exportSessionLog?(): Promise<DesktopSnapshot>;
-  submitUserTurn(text: string): Promise<DesktopSnapshot>;
+  submitUserTurn(request: SubmitUserTurnRequest): Promise<DesktopSnapshot>;
   abortConversation(): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
@@ -92,6 +93,7 @@ export interface HostApi {
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
   pickWorkspaceDirectory?(): Promise<string | null>;
   pickLocalFile?(): Promise<string | null>;
+  readLocalImagePreviewDataUrl?(filePath: string): Promise<string | null>;
   pairWebHost?(code: string): Promise<void>;
 }
 

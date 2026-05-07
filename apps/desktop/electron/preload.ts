@@ -82,8 +82,8 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   exportSessionLog() {
     return ipcRenderer.invoke('desktop:export-session-log');
   },
-  submitUserTurn(text: string) {
-    return ipcRenderer.invoke('desktop:invoke', 'submitUserTurn', { text });
+  submitUserTurn(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'submitUserTurn', request);
   },
   abortConversation() {
     return ipcRenderer.invoke('desktop:invoke', 'abortConversation');
@@ -145,6 +145,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   },
   pickLocalFile() {
     return ipcRenderer.invoke('desktop:pick-local-file');
+  },
+  readLocalImagePreviewDataUrl(filePath: string) {
+    return ipcRenderer.invoke('desktop:read-local-image-preview', { filePath });
   },
   syncWindowFrame(request: {
     dark: boolean;

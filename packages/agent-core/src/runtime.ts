@@ -107,6 +107,7 @@ import type {
   PendingManualBackgroundToolExecution,
   PendingManualHistoryCompaction,
   PendingMcpResource,
+  PendingWorkspaceFile,
   PendingManualApprovalState,
   PendingStreamingRound,
   PendingToolCallBackgroundToolExecution,
@@ -709,34 +710,37 @@ export class AgentRuntime<
   async submitUserTurn(
     userInput: string,
     explicitImages: string[] = [],
+    explicitWorkspaceFiles: PendingWorkspaceFile[] = [],
   ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
-    await this.startUserTurn(userInput, explicitImages);
+    await this.startUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
     return this.waitForCompletedTurnResult();
   }
 
   async startUserTurn(
     userInput: string,
     explicitImages: string[] = [],
+    explicitWorkspaceFiles: PendingWorkspaceFile[] = [],
   ): Promise<void> {
     if (this.isBusy()) {
       throw new Error('当前已有响应或审批在处理中，请稍候。');
     }
 
     this.completedTurnResultStore = undefined;
-    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages);
+    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
     this.startToolAgentRoundAsync(state, userInput, createTurnContext<ToolRequest>());
   }
 
   async startUserTurnStreaming(
     userInput: string,
     explicitImages: string[] = [],
+    explicitWorkspaceFiles: PendingWorkspaceFile[] = [],
   ): Promise<void> {
     if (this.isBusy()) {
       throw new Error('当前已有响应或审批在处理中，请稍候。');
     }
 
     this.completedTurnResultStore = undefined;
-    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages);
+    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
     await this.startStreamingRound(
       state,
       userInput,
@@ -1652,11 +1656,13 @@ export class AgentRuntime<
   private async prepareSubmittedUserTurn(
     userInput: string,
     explicitImages: string[],
+    explicitWorkspaceFiles: PendingWorkspaceFile[] = [],
   ): Promise<State> {
     return prepareSubmittedUserTurnInternal(
       this as unknown as ContextRuntime<Config, State, ToolRequest, TrustTarget>,
       userInput,
       explicitImages,
+      explicitWorkspaceFiles,
     );
   }
 

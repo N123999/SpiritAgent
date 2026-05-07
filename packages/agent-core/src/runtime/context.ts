@@ -36,11 +36,15 @@ export async function prepareSubmittedUserTurn<
   runtime: ContextRuntime<Config, State, ToolRequest, TrustTarget>,
   userInput: string,
   explicitImages: string[],
+  explicitWorkspaceFiles: PendingWorkspaceFile[] = [],
 ): Promise<State> {
   const images = explicitImages.length > 0 ? [...explicitImages] : runtime.takePendingImages();
-  const workspaceFiles: PendingWorkspaceFile[] = runtime.options.resolveWorkspaceFilesFromInput
-    ? await runtime.options.resolveWorkspaceFilesFromInput(userInput)
-    : [];
+  const workspaceFiles: PendingWorkspaceFile[] = [
+    ...explicitWorkspaceFiles,
+    ...(runtime.options.resolveWorkspaceFilesFromInput
+      ? await runtime.options.resolveWorkspaceFilesFromInput(userInput)
+      : []),
+  ];
   const resources = runtime.takePendingMcpResources();
   const imagePaths = new Set(images);
 

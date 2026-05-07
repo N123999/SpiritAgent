@@ -507,6 +507,26 @@ app.whenReady().then(async () => {
     return result.filePaths[0] ?? null;
   });
 
+  ipcMain.handle('desktop:read-local-image-preview', async (_event, payload: { filePath?: string }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : '';
+    if (!filePath) {
+      return null;
+    }
+
+    const extension = path.extname(filePath).toLowerCase();
+    const mimeType = imagePreviewMimeType(extension);
+    if (!mimeType) {
+      return null;
+    }
+
+    try {
+      const bytes = readFileSync(filePath);
+      return `data:${mimeType};base64,${bytes.toString('base64')}`;
+    } catch {
+      return null;
+    }
+  });
+
   ipcMain.handle(
     'desktop:application-menu-popup',
     (
@@ -517,6 +537,7 @@ app.whenReady().then(async () => {
       if (!win) {
         return;
       }
+
       popupApplicationMenuSection(win, payload.section, payload.clientX, payload.clientY);
     },
   );
@@ -583,6 +604,24 @@ app.on('before-quit', (event) => {
     app.quit();
   });
 });
+
+function imagePreviewMimeType(extension: string): string | undefined {
+  switch (extension) {
+    case '.bmp':
+      return 'image/bmp';
+    case '.gif':
+      return 'image/gif';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.png':
+      return 'image/png';
+    case '.webp':
+      return 'image/webp';
+    default:
+      return undefined;
+  }
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
