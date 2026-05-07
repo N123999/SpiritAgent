@@ -1,7 +1,9 @@
 import type {
+  LlmMessageContent,
   RuntimePendingApproval,
   RuntimePendingQuestions,
 } from '@spirit-agent/agent-core';
+import { llmMessageTextContent } from '@spirit-agent/agent-core';
 
 import type {
   ConversationMessageSnapshot,
@@ -125,12 +127,13 @@ export function headlineForToolPhase(
 
 /** 自 history 尾部向前找**最后一条**非空 `assistant` 正文（OpenAI 路径下 `historyStore` 常无 `role: tool`，需用此作待审批时的兜底）。 */
 export function lastAssistantPlainTextInHistory(
-  hist: ReadonlyArray<{ role: string; content: string }>,
+  hist: ReadonlyArray<{ role: string; content: string | LlmMessageContent }>,
 ): string | undefined {
   for (let i = hist.length - 1; i >= 0; i -= 1) {
     const m = hist[i];
-    if (m?.role === 'assistant' && m.content.trim()) {
-      return m.content.trim();
+    const text = m ? historyMessageText(m.content).trim() : '';
+    if (m?.role === 'assistant' && text) {
+      return text;
     }
   }
   return undefined;
@@ -142,7 +145,7 @@ export function lastAssistantPlainTextInHistory(
  * 会误取工具执行后的终稿，从而覆盖/错配流式阶段已显示的前缀（如「好的，我来查看…」）。
  */
 export function assistantPrefixBeforeFirstToolInCurrentTurn(
-  hist: ReadonlyArray<{ role: string; content: string }>,
+  hist: ReadonlyArray<{ role: string; content: string | LlmMessageContent }>,
 ): string | undefined {
   let lastUserIdx = -1;
   for (let i = hist.length - 1; i >= 0; i -= 1) {
@@ -166,8 +169,9 @@ export function assistantPrefixBeforeFirstToolInCurrentTurn(
     if (!m) {
       continue;
     }
-    if (m.role === 'assistant' && m.content.trim()) {
-      return m.content.trim();
+    const text = historyMessageText(m.content).trim();
+    if (m.role === 'assistant' && text) {
+      return text;
     }
   }
 
@@ -175,7 +179,7 @@ export function assistantPrefixBeforeFirstToolInCurrentTurn(
 }
 
 export function latestUnsyncedAssistantTextInCurrentTurn(
-  hist: ReadonlyArray<{ role: string; content: string }>,
+  hist: ReadonlyArray<{ role: string; content: string | LlmMessageContent }>,
   messages: ReadonlyArray<ConversationMessageSnapshot>,
 ): string | undefined {
   const historyTexts = assistantPlainTextsInCurrentTurnHistory(hist);
@@ -195,7 +199,7 @@ export function latestUnsyncedAssistantTextInCurrentTurn(
 }
 
 function assistantPlainTextsInCurrentTurnHistory(
-  hist: ReadonlyArray<{ role: string; content: string }>,
+  hist: ReadonlyArray<{ role: string; content: string | LlmMessageContent }>,
 ): string[] {
   let lastUserIdx = -1;
   for (let i = hist.length - 1; i >= 0; i -= 1) {
@@ -211,12 +215,16 @@ function assistantPlainTextsInCurrentTurnHistory(
     if (!item || item.role !== 'assistant') {
       continue;
     }
-    const text = item.content.trim();
+    const text = historyMessageText(item.content).trim();
     if (text) {
       texts.push(text);
     }
   }
   return texts;
+}
+
+function historyMessageText(content: string | LlmMessageContent): string {
+  return typeof content === 'string' ? content : llmMessageTextContent(content);
 }
 
 function assistantPlainTextsInCurrentTurnMessages(

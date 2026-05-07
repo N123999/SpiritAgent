@@ -1,5 +1,6 @@
 import {
   AgentRuntime,
+  normalizeStoredLlmMessage,
   type OpenAiCompatibleTransport,
   appendOpenAiToolResultMessage,
   appendOpenAiUserMessage,
@@ -89,11 +90,7 @@ export function createDesktopRuntime(input: {
       ),
     resolveWorkspaceFilesFromInput: (userInput) =>
       resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),
-  }, input.history.map((message) => ({
-    role: message.role,
-    content: message.content,
-    imagePaths: [...message.imagePaths],
-  })));
+  }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 
 export function cloneActiveSkills(skills: OpenAiActiveSkill[]): OpenAiActiveSkill[] {

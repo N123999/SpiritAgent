@@ -172,6 +172,8 @@ import {
 } from './mcp-config.js';
 import {
   archiveBeforeLastUser,
+  cloneArchiveHistory,
+  cloneArchiveSubagentSessions,
   cloneChatArchive,
   cloneDesktopConfig,
   currentApiBase,
@@ -2746,19 +2748,8 @@ class DesktopHostService {
     const desktopMessages = snapshot.beforeDesktopMessages ?? snapshot.desktopMessages.slice(0, -1);
 
     state.messages = desktopMessages.map((message) => ({ ...message }));
-    state.archiveHistory = archive.llmHistory.map((message) => ({
-      role: message.role,
-      content: message.content,
-      imagePaths: [...message.imagePaths],
-    }));
-    state.archiveSubagentSessions = (archive.subagentSessions ?? []).map((entry) => ({
-      summary: { ...entry.summary },
-      llmHistory: entry.llmHistory.map((message) => ({
-        role: message.role,
-        content: message.content,
-        imagePaths: [...message.imagePaths],
-      })),
-    }));
+    state.archiveHistory = cloneArchiveHistory(archive.llmHistory);
+    state.archiveSubagentSessions = cloneArchiveSubagentSessions(archive.subagentSessions ?? []);
     pruneRewindMetadataAfterCheckpoint(state.rewind, checkpointSequence);
     this.pendingUnboundFileChangeIds = [];
     this.messageIdCounter = nextMessageIdFromMessages(state.messages);

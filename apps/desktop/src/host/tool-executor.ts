@@ -3,10 +3,12 @@ import {
   buildBuiltinHostToolDefinitions,
   buildDreamHostToolDefinitions,
   AuthorizationDecision,
+  createToolExecutionTextOutput,
   JsonValue,
   McpService,
   McpStatusSnapshot,
   type McpToolRequest,
+  type ToolExecutionOutput,
   ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '@spirit-agent/agent-core';
@@ -98,11 +100,14 @@ export class DesktopToolExecutor
     await this.tools.trust(target);
   }
 
-  async execute(request: DesktopToolRequest): Promise<string> {
+  async execute(request: DesktopToolRequest): Promise<ToolExecutionOutput> {
     if (this.mcp.isToolRequest(request as JsonValue)) {
-      return this.mcp.executeToolRequest(request as unknown as McpToolRequest);
+      return createToolExecutionTextOutput(
+        await this.mcp.executeToolRequest(request as unknown as McpToolRequest),
+      );
     }
-    return this.tools.execute(request);
+
+    return createToolExecutionTextOutput(await this.tools.execute(request));
   }
 
   attachRequestMetadata(

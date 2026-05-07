@@ -14,6 +14,7 @@ import {
   shouldDropEmptyAssistantMessage,
   shouldHideEmptyPendingAssistantSnapshot,
 } from './message-ordering.js';
+import { cloneArchiveHistory, cloneArchiveSubagentSessions } from './service-utils.js';
 import { createDesktopRewindMetadata, type StoredDesktopRewindMetadata } from './rewind.js';
 
 export const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
@@ -225,19 +226,8 @@ function archiveProjectableConversationMessages(
   );
 }
 
-function cloneArchiveHistory(history: ChatArchive['llmHistory']): ChatArchive['llmHistory'] {
-  return history.map((message) => ({
-    role: message.role,
-    content: message.content,
-    imagePaths: [...message.imagePaths],
-  }));
-}
-
 function cloneSubagentSessions(
   sessions: NonNullable<ChatArchive['subagentSessions']>,
 ): NonNullable<ChatArchive['subagentSessions']> {
-  return sessions.map((entry) => ({
-    summary: { ...entry.summary },
-    llmHistory: cloneArchiveHistory(entry.llmHistory),
-  }));
+  return cloneArchiveSubagentSessions(sessions);
 }

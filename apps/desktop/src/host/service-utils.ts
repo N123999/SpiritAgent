@@ -3,6 +3,7 @@ import type {
   ChatArchive,
   RuntimePendingQuestions,
 } from '@spirit-agent/agent-core';
+import { cloneLlmMessageContent } from '@spirit-agent/agent-core';
 
 import type {
   AskQuestionsResult,
@@ -118,20 +119,35 @@ export function cloneChatArchive(archive: ChatArchive): ChatArchive {
   return {
     messages: archive.messages.map((message) => ({ ...message })),
     assistantAux: archive.assistantAux.map((entry) => ({ ...entry })),
-    llmHistory: archive.llmHistory.map((message) => ({
+    llmHistory: cloneArchiveHistory(archive.llmHistory),
+    subagentSessions: cloneArchiveSubagentSessions(archive.subagentSessions ?? []),
+  };
+}
+
+export function cloneArchiveHistory(history: ChatArchive['llmHistory']): ChatArchive['llmHistory'] {
+  return history.map((message) => {
+    if (Array.isArray(message.content)) {
+      return {
+        role: message.role,
+        content: cloneLlmMessageContent(message.content),
+      };
+    }
+
+    return {
       role: message.role,
       content: message.content,
-      imagePaths: [...message.imagePaths],
-    })),
-    subagentSessions: (archive.subagentSessions ?? []).map((entry) => ({
-      summary: { ...entry.summary },
-      llmHistory: entry.llmHistory.map((message) => ({
-        role: message.role,
-        content: message.content,
-        imagePaths: [...message.imagePaths],
-      })),
-    })),
-  };
+      imagePaths: [...(('imagePaths' in message ? message.imagePaths : []) ?? [])],
+    };
+  });
+}
+
+export function cloneArchiveSubagentSessions(
+  sessions: NonNullable<ChatArchive['subagentSessions']>,
+): NonNullable<ChatArchive['subagentSessions']> {
+  return sessions.map((entry) => ({
+    summary: { ...entry.summary },
+    llmHistory: cloneArchiveHistory(entry.llmHistory),
+  }));
 }
 
 export function archiveBeforeLastUser(archive: ChatArchive): ChatArchive {
