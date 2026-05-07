@@ -200,7 +200,7 @@ export async function startManualToolRequest<
     kind: 'completed',
     request,
     toolName,
-    output: execution.output,
+    output: execution.output.summaryText,
     failed: execution.failed,
     backgroundExecution: execution.backgroundExecution,
   };

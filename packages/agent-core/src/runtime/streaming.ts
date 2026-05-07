@@ -1,4 +1,9 @@
-import type { LlmMessage, LlmStreamEvent, ToolAgentRoundCompletion } from '../ports.js';
+import {
+  createLlmMessageContentFromText,
+  type LlmMessage,
+  type LlmStreamEvent,
+  type ToolAgentRoundCompletion,
+} from '../ports.js';
 
 import { STREAM_EVENT_BUDGET_PER_POLL, STREAM_STALL_TIMEOUT_MS } from './constants.js';
 import { applyDeferredUserGuidance, cloneHistory, renderError } from './helpers.js';
@@ -421,8 +426,7 @@ export async function handlePendingStreamEvent<
     } else {
       runtime.historyStore.push({
         role: 'assistant',
-        content: runtime.pendingAssistantTextStore,
-        imagePaths: [],
+        content: createLlmMessageContentFromText(runtime.pendingAssistantTextStore),
       });
       runtime.pendingUserTurnStore = undefined;
       runtime.emitEvent({ kind: 'assistant-response-completed' });
@@ -610,8 +614,7 @@ export async function handlePendingStreamingCompletion<
       // 否则 `clearPendingStreamingState` 会丢弃例如「OK」等前缀。
       runtime.historyStore.push({
         role: 'assistant',
-        content: runtime.pendingAssistantTextStore,
-        imagePaths: [],
+        content: createLlmMessageContentFromText(runtime.pendingAssistantTextStore),
       });
       runtime.pendingUserTurnStore = undefined;
       runtime.emitEvent({ kind: 'assistant-response-completed' });
@@ -648,8 +651,7 @@ export async function handlePendingStreamingCompletion<
     runtime.emitEvent({ kind: 'assistant-chunk', text: assistantText });
     runtime.historyStore.push({
       role: 'assistant',
-      content: assistantText,
-      imagePaths: [],
+      content: createLlmMessageContentFromText(assistantText),
     });
     runtime.pendingUserTurnStore = undefined;
     clearPendingStreamingState(runtime);

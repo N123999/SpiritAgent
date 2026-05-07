@@ -7,10 +7,129 @@ export interface JsonObject {
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
+export interface LlmTextContentPart extends JsonObject {
+  type: 'text';
+  text: string;
+}
+
+export interface LlmImageContentPart extends JsonObject {
+  type: 'image';
+  path: string;
+}
+
+export type LlmContentPart = LlmTextContentPart | LlmImageContentPart;
+export type LlmMessageContent = LlmContentPart[];
+
 export interface LlmMessage {
+  role: ChatRole;
+  content: LlmMessageContent;
+}
+
+export interface LegacyLlmMessageArchiveEntry {
   role: ChatRole;
   content: string;
   imagePaths?: string[];
+}
+
+export interface StoredLlmMessageArchiveEntry {
+  role: ChatRole;
+  content: LlmMessageContent;
+}
+
+export interface ToolExecutionOutput {
+  content: LlmMessageContent;
+  summaryText: string;
+}
+
+export function createToolExecutionTextOutput(text: string): ToolExecutionOutput {
+  return {
+    content: createLlmMessageContentFromText(text),
+    summaryText: text,
+  };
+}
+
+export function createLlmTextContentPart(text: string): LlmTextContentPart {
+  return { type: 'text', text };
+}
+
+export function createLlmImageContentPart(path: string): LlmImageContentPart {
+  return { type: 'image', path };
+}
+
+export function createLlmMessageContentFromText(text: string): LlmMessageContent {
+  return text.length > 0 ? [createLlmTextContentPart(text)] : [];
+}
+
+export function createLlmMessageContentFromTextAndImages(
+  text: string,
+  imagePaths: readonly string[] = [],
+): LlmMessageContent {
+  const content: LlmMessageContent = [];
+  if (text.length > 0) {
+    content.push(createLlmTextContentPart(text));
+  }
+  for (const imagePath of imagePaths) {
+    content.push(createLlmImageContentPart(imagePath));
+  }
+  return content;
+}
+
+export function cloneLlmMessageContent(content: readonly LlmContentPart[]): LlmMessageContent {
+  return content.map((part) => {
+    if (part.type === 'text') {
+      return { type: 'text', text: part.text };
+    }
+
+    return { type: 'image', path: part.path };
+  });
+}
+
+export function llmMessageTextContent(content: readonly LlmContentPart[]): string {
+  return content
+    .filter((part): part is LlmTextContentPart => part.type === 'text')
+    .map((part) => part.text)
+    .join('');
+}
+
+export function llmMessageImagePaths(content: readonly LlmContentPart[]): string[] {
+  return content
+    .filter((part): part is LlmImageContentPart => part.type === 'image')
+    .map((part) => part.path);
+}
+
+export function llmMessageHasImages(content: readonly LlmContentPart[]): boolean {
+  return content.some((part) => part.type === 'image');
+}
+
+export function llmMessageHasText(content: readonly LlmContentPart[]): boolean {
+  return content.some((part) => part.type === 'text' && part.text.trim().length > 0);
+}
+
+export function llmMessageContentWithoutImages(
+  content: readonly LlmContentPart[],
+): LlmMessageContent {
+  return content
+    .filter((part): part is LlmTextContentPart => part.type === 'text')
+    .map((part) => ({ type: 'text', text: part.text }));
+}
+
+export function normalizeStoredLlmMessage(
+  message: StoredLlmMessageArchiveEntry | LegacyLlmMessageArchiveEntry,
+): LlmMessage {
+  if (Array.isArray(message.content)) {
+    return {
+      role: message.role,
+      content: cloneLlmMessageContent(message.content),
+    };
+  }
+
+  return {
+    role: message.role,
+    content: createLlmMessageContentFromTextAndImages(
+      message.content,
+      'imagePaths' in message ? message.imagePaths ?? [] : [],
+    ),
+  };
 }
 
 export interface AssistantAuxArchiveEntry {
@@ -36,7 +155,7 @@ export interface SubagentSessionSummary {
 
 export interface SubagentSessionArchiveEntry {
   summary: SubagentSessionSummary;
-  llmHistory: Array<{ role: ChatRole; content: string; imagePaths: string[] }>;
+  llmHistory: Array<StoredLlmMessageArchiveEntry | LegacyLlmMessageArchiveEntry>;
 }
 
 export interface DreamScope {
@@ -119,7 +238,7 @@ export interface DreamSettings {
 export interface ChatArchive {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   assistantAux: AssistantAuxArchiveEntry[];
-  llmHistory: Array<{ role: ChatRole; content: string; imagePaths: string[] }>;
+  llmHistory: Array<StoredLlmMessageArchiveEntry | LegacyLlmMessageArchiveEntry>;
   subagentSessions?: SubagentSessionArchiveEntry[];
 }
 
@@ -286,7 +405,7 @@ export interface ToolExecutor<
   requestFromFunctionCall(name: string, argumentsJson: string): Promise<ToolRequest>;
   authorize(request: ToolRequest): Promise<AuthorizationDecision<TrustTarget>>;
   trust(target: TrustTarget): Promise<void>;
-  execute(request: ToolRequest): Promise<string>;
+  execute(request: ToolRequest): Promise<ToolExecutionOutput>;
   attachRequestMetadata?(request: ToolRequest, metadata: ToolRequestExecutionMetadata): ToolRequest;
   continueAfterQuestions?(request: ToolRequest, result: AskQuestionsResult): Promise<ToolRequest | undefined>;
   shouldExecuteInBackground?(request: ToolRequest): boolean;

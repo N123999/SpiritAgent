@@ -1,4 +1,5 @@
 import type { ToolCallRequest } from '../ports.js';
+import { createToolExecutionTextOutput } from '../ports.js';
 
 import { renderError } from './helpers.js';
 import type {
@@ -97,13 +98,13 @@ export function startBackgroundToolExecutionAsync<
     .execute(request)
     .then((output) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = output;
+        pending.output = output.summaryText;
         pending.failed = false;
       }
     })
     .catch((error: unknown) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = `[tool error] ${renderError(error)}`;
+        pending.output = createToolExecutionTextOutput(`[tool error] ${renderError(error)}`).summaryText;
         pending.failed = true;
       }
     });
@@ -143,13 +144,13 @@ export function startManualBackgroundToolExecution<
     .execute(request)
     .then((output) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = output;
+        pending.output = output.summaryText;
         pending.failed = false;
       }
     })
     .catch((error: unknown) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = `[tool error] ${renderError(error)}`;
+        pending.output = createToolExecutionTextOutput(`[tool error] ${renderError(error)}`).summaryText;
         pending.failed = true;
       }
     });

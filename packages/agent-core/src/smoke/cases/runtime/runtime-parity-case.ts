@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import type {
   AuthorizationDecision,
+  ToolExecutionOutput,
   JsonValue,
   LlmMessage,
   LlmStreamEvent,
@@ -11,6 +12,13 @@ import type {
   StartedToolAgentRound,
   ToolAgentRoundCompletion,
   ToolExecutor,
+} from '../../../ports.js';
+import {
+  cloneLlmMessageContent,
+  createLlmMessageContentFromText,
+  createToolExecutionTextOutput,
+  llmMessageHasImages,
+  llmMessageTextContent,
 } from '../../../ports.js';
 import { isOpenAiVisionUnsupportedError } from '../../../openai/tool-agent-helpers.js';
 import {
@@ -31,6 +39,20 @@ interface ScriptedState {
 interface ScriptedToolRequest {
   name: string;
   argumentsJson: string;
+}
+
+function historyAsPlainApiMessages(history: LlmMessage[]): JsonValue[] {
+  return history.map((message) => ({
+    role: message.role,
+    content: llmMessageTextContent(message.content),
+  }));
+}
+
+function compactSummaryFromHistory(history: LlmMessage[]): string | undefined {
+  const summary = history.find((message) =>
+    llmMessageTextContent(message.content).startsWith('[SPIRIT_COMPACT_SUMMARY]'),
+  );
+  return summary ? llmMessageTextContent(summary.content) : undefined;
 }
 
 class ApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
@@ -64,9 +86,9 @@ class ApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async trust(_target: string): Promise<void> {}
 
-  async execute(_request: ScriptedToolRequest): Promise<string> {
+  async execute(_request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     this.executedCalls += 1;
-    return 'unexpected execution';
+    return createToolExecutionTextOutput('unexpected execution');
   }
 
   startMcpBackgroundRefresh(): void {}
@@ -245,10 +267,7 @@ class ApprovalTransport implements LlmTransport<undefined, ScriptedState> {
   }
 
   llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
-    return history.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
+    return historyAsPlainApiMessages(history);
   }
 
   llmSystemPromptsForExport(): JsonValue {
@@ -278,8 +297,8 @@ class CompactExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async trust(_target: string): Promise<void> {}
 
-  async execute(request: ScriptedToolRequest): Promise<string> {
-    return `search result for ${request.argumentsJson}`;
+  async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
+    return createToolExecutionTextOutput(`search result for ${request.argumentsJson}`);
   }
 
   startMcpBackgroundRefresh(): void {}
@@ -438,8 +457,7 @@ class CompactTransport implements LlmTransport<undefined, ScriptedState> {
       history.length,
       {
         role: 'system',
-        content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
-        imagePaths: [],
+        content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
       },
       ...(lastUser ? [lastUser] : []),
     );
@@ -452,7 +470,7 @@ class CompactTransport implements LlmTransport<undefined, ScriptedState> {
   }
 
   compactSummaryText(history: LlmMessage[]): string | undefined {
-    return history.find((message) => message.content.startsWith('[SPIRIT_COMPACT_SUMMARY]'))?.content;
+    return compactSummaryFromHistory(history);
   }
 
   isContextOverflowError(error: string): boolean {
@@ -460,10 +478,7 @@ class CompactTransport implements LlmTransport<undefined, ScriptedState> {
   }
 
   llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
-    return history.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
+    return historyAsPlainApiMessages(history);
   }
 
   llmSystemPromptsForExport(): JsonValue {
@@ -488,8 +503,7 @@ class PollingCompactTransport extends CompactTransport {
           history.length,
           {
             role: 'system',
-            content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
-            imagePaths: [],
+            content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
           },
           ...(lastUser ? [lastUser] : []),
         );
@@ -529,8 +543,7 @@ class ProgressManualCompactionTransport extends CompactTransport {
           history.length,
           {
             role: 'system',
-            content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
-            imagePaths: [],
+            content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
           },
           ...(lastUser ? [lastUser] : []),
         );
@@ -549,7 +562,7 @@ class ProgressManualCompactionTransport extends CompactTransport {
   }
 
   compactSummaryText(history: LlmMessage[]): string | undefined {
-    return history.find((message) => message.content.startsWith('[SPIRIT_COMPACT_SUMMARY]'))?.content;
+    return compactSummaryFromHistory(history);
   }
 
   isContextOverflowError(error: string): boolean {
@@ -587,9 +600,9 @@ class BackgroundExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async trust(_target: string): Promise<void> {}
 
-  async execute(request: ScriptedToolRequest): Promise<string> {
+  async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     await Promise.resolve();
-    return `background result for ${request.argumentsJson}`;
+    return createToolExecutionTextOutput(`background result for ${request.argumentsJson}`);
   }
 
   shouldExecuteInBackground(request: ScriptedToolRequest): boolean {
@@ -650,14 +663,14 @@ class BackgroundExecutor implements ToolExecutor<ScriptedToolRequest> {
 }
 
 class PollingBackgroundExecutor extends BackgroundExecutor {
-  private readonly deferred = createDeferred<string>();
+  private readonly deferred = createDeferred<ToolExecutionOutput>();
 
-  async execute(_request: ScriptedToolRequest): Promise<string> {
+  async execute(_request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     return this.deferred.promise;
   }
 
   finish(output: string): void {
-    this.deferred.resolve(output);
+    this.deferred.resolve(createToolExecutionTextOutput(output));
   }
 }
 
@@ -784,8 +797,8 @@ class VisionExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async trust(_target: string): Promise<void> {}
 
-  async execute(_request: ScriptedToolRequest): Promise<string> {
-    return 'unused';
+  async execute(_request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
+    return createToolExecutionTextOutput('unused');
   }
 
   startMcpBackgroundRefresh(): void {}
@@ -1614,9 +1627,9 @@ class StreamingApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async trust(_target: string): Promise<void> {}
 
-  async execute(request: ScriptedToolRequest): Promise<string> {
+  async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     this.executedCalls += 1;
-    return `approved output for ${request.name}`;
+    return createToolExecutionTextOutput(`approved output for ${request.name}`);
   }
 
   startMcpBackgroundRefresh(): void {}
@@ -2050,8 +2063,7 @@ class StreamingCompactionTransport implements LlmTransport<undefined, ScriptedSt
           history.length,
           {
             role: 'system',
-            content: '[SPIRIT_COMPACT_SUMMARY] compacted history',
-            imagePaths: [],
+            content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
           },
           ...(lastUser ? [lastUser] : []),
         );
@@ -2070,7 +2082,7 @@ class StreamingCompactionTransport implements LlmTransport<undefined, ScriptedSt
   }
 
   compactSummaryText(history: LlmMessage[]): string | undefined {
-    return history.find((message) => message.content.startsWith('[SPIRIT_COMPACT_SUMMARY]'))?.content;
+    return compactSummaryFromHistory(history);
   }
 
   isContextOverflowError(error: string): boolean {
@@ -2127,8 +2139,8 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
 
   async trust(_target: string): Promise<void> {}
 
-  async execute(request: ScriptedToolRequest): Promise<string> {
-    return `manual output for ${request.name}`;
+  async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
+    return createToolExecutionTextOutput(`manual output for ${request.name}`);
   }
 
   shouldExecuteInBackground(request: ScriptedToolRequest): boolean {
@@ -2217,7 +2229,7 @@ class HostExecutor implements ToolExecutor<ScriptedToolRequest> {
 class SubagentExecutor extends HostExecutor {
   executedSubagentCalls = 0;
 
-  override async execute(request: ScriptedToolRequest): Promise<string> {
+  override async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     if (request.name === 'run_subagent') {
       this.executedSubagentCalls += 1;
       throw new Error('run_subagent 不应落到宿主 execute');
@@ -2228,9 +2240,9 @@ class SubagentExecutor extends HostExecutor {
 }
 
 class PollingManualBackgroundExecutor extends HostExecutor {
-  private readonly deferred = createDeferred<string>();
+  private readonly deferred = createDeferred<ToolExecutionOutput>();
 
-  async execute(request: ScriptedToolRequest): Promise<string> {
+  async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     if (request.name === 'search_files') {
       return this.deferred.promise;
     }
@@ -2239,7 +2251,7 @@ class PollingManualBackgroundExecutor extends HostExecutor {
   }
 
   finish(output: string): void {
-    this.deferred.resolve(output);
+    this.deferred.resolve(createToolExecutionTextOutput(output));
   }
 }
 
@@ -2301,13 +2313,11 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   }, [
     {
       role: 'system',
-      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
-      imagePaths: [],
+      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',
-      content: '旧回答。',
-      imagePaths: [],
+      content: createLlmMessageContentFromText('旧回答。'),
     },
   ]);
 
@@ -2443,13 +2453,11 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   }, [
     {
       role: 'system',
-      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
-      imagePaths: [],
+      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',
-      content: '旧回答。',
-      imagePaths: [],
+      content: createLlmMessageContentFromText('旧回答。'),
     },
   ]);
 
@@ -2518,9 +2526,11 @@ export async function runRuntimeParitySmoke(): Promise<void> {
     throw new Error('vision fallback smoke 未记录正确的降级事件。');
   }
   const visionUserHistory = visionRuntime.history().find(
-    (message) => message.role === 'user' && userMessageContentMatchesInput(message.content, '请描述这张图。'),
+    (message) =>
+      message.role === 'user' &&
+      userMessageContentMatchesInput(llmMessageTextContent(message.content), '请描述这张图。'),
   );
-  if (!visionUserHistory || (visionUserHistory.imagePaths?.length ?? 0) !== 0) {
+  if (!visionUserHistory || llmMessageHasImages(visionUserHistory.content)) {
     throw new Error('vision fallback smoke 未清空 user imagePaths。');
   }
 
@@ -2663,18 +2673,15 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   }, [
     {
       role: 'system',
-      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
-      imagePaths: [],
+      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',
-      content: '旧回答。',
-      imagePaths: [],
+      content: createLlmMessageContentFromText('旧回答。'),
     },
     {
       role: 'user',
-      content: '请帮我压缩上下文。',
-      imagePaths: [],
+      content: createLlmMessageContentFromText('请帮我压缩上下文。'),
     },
   ]);
 
@@ -2811,7 +2818,8 @@ export async function runRuntimeParitySmoke(): Promise<void> {
       .history()
       .some(
         (message) =>
-          message.role === 'user' && userMessageContentMatchesInput(message.content, '帮我看看这个工具有什么用'),
+          message.role === 'user' &&
+          userMessageContentMatchesInput(llmMessageTextContent(message.content), '帮我看看这个工具有什么用'),
       )
   ) {
     throw new Error('streaming prompt smoke 未保留附加用户消息。');
@@ -2913,7 +2921,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
 
     const injectedContexts = workspaceRuntime.history().filter(
       (message) =>
-        message.role === 'system' && message.content.startsWith('[WORKSPACE_FILE]'),
+        message.role === 'system' && llmMessageTextContent(message.content).startsWith('[WORKSPACE_FILE]'),
     );
     if (injectedContexts.length !== 2) {
       throw new Error('workspace file context smoke 注入的 system context 数量不正确。');
@@ -3250,13 +3258,11 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   }, [
     {
       role: 'system',
-      content: '[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000),
-      imagePaths: [],
+      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',
-      content: '旧回答。',
-      imagePaths: [],
+      content: createLlmMessageContentFromText('旧回答。'),
     },
   ]);
 
@@ -3348,9 +3354,13 @@ function createScriptedState(history: LlmMessage[], userInput: string): Scripted
     { role: 'system', content: 'scripted-runtime' },
     ...history.map((message) => ({
       role: message.role,
-      content: message.content,
-      ...((message.role === 'user' && (message.imagePaths?.length ?? 0) > 0)
-        ? { image_paths: [...(message.imagePaths ?? [])] }
+      content: llmMessageTextContent(message.content),
+      ...((message.role === 'user' && llmMessageHasImages(message.content))
+        ? {
+            image_paths: message.content
+              .filter((part): part is { type: 'image'; path: string } => part.type === 'image')
+              .map((part) => part.path),
+          }
         : {}),
     })),
   ];
@@ -3426,27 +3436,27 @@ function truncateScriptedHistoryForCompaction(
 ): { history: LlmMessage[]; changed: boolean } {
   let changed = false;
   const nextHistory = history.map((message) => {
-    if (message.role !== 'system' || !message.content.startsWith('[TOOL_MEMORY]')) {
+    const text = llmMessageTextContent(message.content);
+    if (message.role !== 'system' || !text.startsWith('[TOOL_MEMORY]')) {
       return {
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       };
     }
 
-    if (message.content.length <= 200) {
+    if (text.length <= 200) {
       return {
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       };
     }
 
     changed = true;
     return {
       role: message.role,
-      content: `${message.content.slice(0, 120)}...[tool memory truncated for context retry]`,
-      imagePaths: [...(message.imagePaths ?? [])],
+      content: createLlmMessageContentFromText(
+        `${text.slice(0, 120)}...[tool memory truncated for context retry]`,
+      ),
     };
   });
 

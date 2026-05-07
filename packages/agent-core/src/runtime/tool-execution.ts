@@ -1,11 +1,15 @@
-import type { LlmMessage } from '../ports.js';
+import {
+  createLlmMessageContentFromText,
+  type LlmMessage,
+  type ToolExecutionOutput,
+} from '../ports.js';
 
 import { TOOL_MEMORY_MAX_ENTRIES } from './constants.js';
 import { defaultToolMemoryFormatter, pruneToolMemories, renderError } from './helpers.js';
 import type { AgentRuntimeOptions, RuntimeEvent } from './types.js';
 
 export interface ToolExecutionResult {
-  output: string;
+  output: ToolExecutionOutput;
   failed: boolean;
   backgroundExecution: boolean;
 }
@@ -32,7 +36,7 @@ export async function performToolExecution<
   request: ToolRequest,
   toolName: string,
 ): Promise<ToolExecutionResult> {
-  let output: string;
+  let output: ToolExecutionOutput;
   let failed = false;
   const backgroundExecution = runtime.options.toolExecutor.shouldExecuteInBackground?.(request) ?? false;
   const backgroundStatusText = backgroundExecution
@@ -54,7 +58,11 @@ export async function performToolExecution<
     output = await runtime.options.toolExecutor.execute(request);
   } catch (error) {
     failed = true;
-    output = `[tool error] ${renderError(error)}`;
+    const summaryText = `[tool error] ${renderError(error)}`;
+    output = {
+      content: createLlmMessageContentFromText(summaryText),
+      summaryText,
+    };
   } finally {
     if (backgroundExecution) {
       runtime.pendingBackgroundToolStatusStore = undefined;
@@ -69,7 +77,7 @@ export async function performToolExecution<
     }
   }
 
-  persistToolExecutionMemory(runtime, request, output);
+  persistToolExecutionMemory(runtime, request, output.summaryText);
   return {
     output,
     failed,
@@ -94,8 +102,7 @@ export function persistToolExecutionMemory<
   if (toolMemory?.trim()) {
     runtime.historyStore.push({
       role: 'system',
-      content: toolMemory,
-      imagePaths: [],
+      content: createLlmMessageContentFromText(toolMemory),
     });
     pruneToolMemories(
       runtime.historyStore,

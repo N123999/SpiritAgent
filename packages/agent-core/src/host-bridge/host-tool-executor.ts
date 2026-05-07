@@ -3,9 +3,11 @@ import type {
   AuthorizationDecision,
   JsonValue,
   McpStatusSnapshot,
+  ToolExecutionOutput,
   ToolRequestExecutionMetadata,
   ToolExecutor,
 } from '../ports.js';
+import { createToolExecutionTextOutput } from '../ports.js';
 import {
   buildBuiltinHostToolDefinitions,
   type BuiltinHostToolDefinitionEnvironment,
@@ -29,7 +31,7 @@ export interface LocalHostToolService {
   requestFromFunctionCall(name: string, argumentsJson: string): Promise<JsonValue>;
   authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>>;
   trust(target: string): Promise<void>;
-  execute(request: JsonValue): Promise<string>;
+  execute(request: JsonValue): Promise<ToolExecutionOutput | string>;
   attachRequestMetadata?(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue;
 }
 
@@ -125,16 +127,20 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     await this.peer.call('host.trust', { target });
   }
 
-  async execute(request: JsonValue): Promise<string> {
+  async execute(request: JsonValue): Promise<ToolExecutionOutput> {
     if (this.mcp.isToolRequest(request)) {
       return this.executeLocalMcpTool(request);
     }
 
     if (this.localHostService) {
-      return this.localHostService.execute(request);
+      return normalizeToolExecutionOutput(await this.localHostService.execute(request));
     }
 
-    return this.peer.call<string>('host.execute', { request: this.serializeRequest(request) });
+    return normalizeToolExecutionOutput(
+      await this.peer.call<ToolExecutionOutput | string>('host.execute', {
+        request: this.serializeRequest(request),
+      }),
+    );
   }
 
   attachRequestMetadata(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue {
@@ -322,7 +328,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     return this.requestMetadata.get(request);
   }
 
-  private async executeLocalMcpTool(request: McpToolRequest): Promise<string> {
+  private async executeLocalMcpTool(request: McpToolRequest): Promise<ToolExecutionOutput> {
     const metadata = this.resolveRequestMetadata(request);
 
     try {
@@ -339,7 +345,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
           ? {}
           : { subagentTitle: metadata.subagentTitle }),
       });
-      return output;
+      return createToolExecutionTextOutput(output);
     } catch (error) {
       const message = renderError(error);
       this.peer.notify('host.localToolFailed', {
@@ -365,6 +371,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       this.mcp.toolDefinitionsJson(),
     );
   }
+}
+
+function normalizeToolExecutionOutput(output: ToolExecutionOutput | string): ToolExecutionOutput {
+  return typeof output === 'string' ? createToolExecutionTextOutput(output) : output;
 }
 
 function hostToolRequestMetadata(request: JsonValue): HostToolRequestMetadata | undefined {

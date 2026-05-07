@@ -1,4 +1,4 @@
-import type { LlmMessage } from '../ports.js';
+import { createLlmMessageContentFromTextAndImages, type LlmMessage } from '../ports.js';
 
 import {
   formatPendingMcpResourceContext,
@@ -53,8 +53,7 @@ export async function prepareSubmittedUserTurn<
   const contentForLlm = formatUserMessageContentForLlm(userInput);
   runtime.historyStore.push({
     role: 'user',
-    content: contentForLlm,
-    imagePaths: images,
+    content: createLlmMessageContentFromTextAndImages(contentForLlm, images),
   });
   runtime.pendingUserTurnStore = userInput;
   return runtime.options.createToolAgentState(runtime.historyStore, userInput);

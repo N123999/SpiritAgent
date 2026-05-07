@@ -1,4 +1,11 @@
-import type { JsonObject, JsonValue, LlmMessage } from './ports.js';
+import {
+  cloneLlmMessageContent,
+  createLlmMessageContentFromText,
+  llmMessageTextContent,
+  type JsonObject,
+  type JsonValue,
+  type LlmMessage,
+} from './ports.js';
 
 const TOOL_OUTPUT_RETRY_MAX_CHARS = 12_000;
 const TOOL_MEMORY_RETRY_MAX_CHARS = 4_000;
@@ -256,32 +263,30 @@ export function truncateHistoryForCompaction(
 ): { history: LlmMessage[]; changed: boolean } {
   let changed = false;
   const nextHistory = history.map((message) => {
-    if (message.role !== 'system' || !message.content.startsWith(TOOL_MEMORY_PREFIX)) {
+    const contentText = llmMessageTextContent(message.content);
+    if (message.role !== 'system' || !contentText.startsWith(TOOL_MEMORY_PREFIX)) {
       return {
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       };
     }
 
     const replacement = buildContextRetryExcerpt(
-      message.content,
+      contentText,
       TOOL_MEMORY_RETRY_MAX_CHARS,
       '[tool memory truncated for context retry]',
     );
     if (replacement === undefined) {
       return {
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       };
     }
 
     changed = true;
     return {
       role: message.role,
-      content: replacement,
-      imagePaths: [...(message.imagePaths ?? [])],
+      content: createLlmMessageContentFromText(replacement),
     };
   });
 

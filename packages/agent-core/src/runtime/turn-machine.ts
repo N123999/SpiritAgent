@@ -8,7 +8,7 @@ import type {
   ToolAgentRoundCompletion,
   ToolCallRequest,
 } from '../ports.js';
-
+import { createLlmMessageContentFromText } from '../ports.js';
 import {
   applyDeferredUserGuidance,
   enqueueDeferredUserGuidance,
@@ -454,8 +454,7 @@ export async function runTurnLoop<
 
     runtime.historyStore.push({
       role: 'assistant',
-      content: assistantText,
-      imagePaths: [],
+      content: createLlmMessageContentFromText(assistantText),
     });
     runtime.pendingUserTurnStore = undefined;
 
@@ -642,13 +641,17 @@ export async function executeAuthorizedToolCall<
     toolCallId,
     toolName,
     request,
-    output: execution.output,
+      output: execution.output.summaryText,
     failed: execution.failed,
   };
   turn.toolExecutions.push(finished);
   runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
 
-  const resumedState = runtime.options.appendToolResultMessage(state, toolCallId, execution.output);
+  const resumedState = runtime.options.appendToolResultMessage(
+    state,
+    toolCallId,
+    execution.output.summaryText,
+  );
   if (remainingCalls.length > 0) {
     return processToolCalls(runtime, resumedState, pendingUserInput, remainingCalls, turn);
   }
@@ -846,8 +849,7 @@ export async function handlePendingToolAgentRoundCompletion<
 
   runtime.historyStore.push({
     role: 'assistant',
-    content: assistantText,
-    imagePaths: [],
+      content: createLlmMessageContentFromText(assistantText),
   });
   runtime.pendingUserTurnStore = undefined;
   runtime.completeTurn({
@@ -1028,12 +1030,16 @@ export async function processToolCallsAsync<
       toolCallId: call.id,
       toolName: call.name,
       request,
-      output: execution.output,
+      output: execution.output.summaryText,
       failed: execution.failed,
     };
     turn.toolExecutions.push(finished);
     runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
-    currentState = runtime.options.appendToolResultMessage(currentState, call.id, execution.output);
+    currentState = runtime.options.appendToolResultMessage(
+      currentState,
+      call.id,
+      execution.output.summaryText,
+    );
   }
 
   if (resumeAsStreaming) {

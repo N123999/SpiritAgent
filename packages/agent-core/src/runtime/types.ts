@@ -147,6 +147,7 @@ export interface RuntimeSubagentSessionSummary {
 
 export interface RuntimeSubagentSessionArchiveEntry extends SubagentSessionArchiveEntry {
   summary: RuntimeSubagentSessionSummary;
+  llmHistory: LlmMessage[];
 }
 
 export interface RuntimePendingQuestions<ToolRequest> {

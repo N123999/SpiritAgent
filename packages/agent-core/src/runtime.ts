@@ -9,9 +9,19 @@ import type {
   JsonValue,
   LlmMessage,
   LlmStreamEvent,
+  ToolExecutionOutput,
   ToolRequestExecutionMetadata,
   ToolAgentRoundCompletion,
   ToolCallRequest,
+} from './ports.js';
+import {
+  cloneLlmMessageContent,
+  createLlmMessageContentFromText,
+  llmMessageContentWithoutImages,
+  llmMessageHasImages,
+  llmMessageImagePaths,
+  llmMessageTextContent,
+  normalizeStoredLlmMessage,
 } from './ports.js';
 import {
   STREAM_EVENT_BUDGET_PER_POLL,
@@ -259,8 +269,7 @@ export class AgentRuntime<
       summary: { ...entry.summary },
       llmHistory: entry.llmHistory.map((message) => ({
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       })),
     }));
   }
@@ -275,8 +284,7 @@ export class AgentRuntime<
       summary: { ...entry.summary },
       llmHistory: entry.llmHistory.map((message) => ({
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       })),
     };
   }
@@ -524,8 +532,7 @@ export class AgentRuntime<
     if (hasPendingAssistantText) {
       this.historyStore.push({
         role: 'assistant',
-        content: this.pendingAssistantTextStore,
-        imagePaths: [],
+        content: createLlmMessageContentFromText(this.pendingAssistantTextStore),
       });
       this.emitEvent({ kind: 'assistant-response-completed' });
     } else {
@@ -565,11 +572,7 @@ export class AgentRuntime<
   }
 
   replaceFromArchive(archive: ChatArchive): void {
-    this.historyStore = archive.llmHistory.map((message) => ({
-      role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
-      content: message.content,
-      imagePaths: [...message.imagePaths],
-    }));
+    this.historyStore = archive.llmHistory.map((message) => normalizeStoredLlmMessage(message));
     this.requestTraceStore = [];
     this.clearPendingStreamingState();
     this.clearPendingNonStreamingState();
@@ -582,11 +585,7 @@ export class AgentRuntime<
     this.pendingSubagentExecution = undefined;
     this.childSessionsStore = (archive.subagentSessions ?? []).map((entry) => ({
       summary: { ...entry.summary },
-      llmHistory: entry.llmHistory.map((message) => ({
-        role: message.role,
-        content: message.content,
-        imagePaths: [...message.imagePaths],
-      })),
+      llmHistory: entry.llmHistory.map((message) => normalizeStoredLlmMessage(message)),
     }));
   }
 
@@ -599,15 +598,13 @@ export class AgentRuntime<
       assistantAux,
       llmHistory: this.historyStore.map((message) => ({
         role: message.role,
-        content: message.content,
-        imagePaths: [...(message.imagePaths ?? [])],
+        content: cloneLlmMessageContent(message.content),
       })),
       subagentSessions: this.childSessionsStore.map((entry) => ({
         summary: { ...entry.summary },
         llmHistory: entry.llmHistory.map((message) => ({
           role: message.role,
-          content: message.content,
-          imagePaths: [...message.imagePaths],
+          content: cloneLlmMessageContent(message.content),
         })),
       })),
     };
@@ -639,8 +636,7 @@ export class AgentRuntime<
   recordContextMessage(role: 'system' | 'user' | 'assistant', content: string): void {
     this.historyStore.push({
       role,
-      content,
-      imagePaths: [],
+      content: createLlmMessageContentFromText(content),
     });
   }
 
@@ -759,7 +755,7 @@ export class AgentRuntime<
         return true;
       }
       if (message.role === 'assistant' || message.role === 'user') {
-        return message.content.trim().length > 0;
+        return llmMessageTextContent(message.content).trim().length > 0;
       }
       return false;
     });
@@ -776,14 +772,15 @@ export class AgentRuntime<
     const pendingUserInput =
       [...history]
         .reverse()
-        .find((message) => message.role === 'user' && message.content.trim())
-        ?.content ?? '';
+        .find((message) => message.role === 'user' && llmMessageTextContent(message.content).trim())
+        ?.content;
+    const pendingUserText = pendingUserInput ? llmMessageTextContent(pendingUserInput) : '';
     const state = this.options.createContinuationState
       ? this.options.createContinuationState(history)
       : this.options.createToolAgentState(history, '');
     await this.startStreamingRound(
       state,
-      pendingUserInput,
+      pendingUserText,
       createTurnContext<ToolRequest>(),
       true,
     );
@@ -873,7 +870,7 @@ export class AgentRuntime<
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: pending.request,
-        output: execution.output,
+        output: execution.output.summaryText,
         failed: execution.failed,
       };
       pending.turn.toolExecutions.push(finished);
@@ -882,7 +879,7 @@ export class AgentRuntime<
       const resumedState = this.options.appendToolResultMessage(
         pending.state,
         pending.toolCallId,
-        execution.output,
+        execution.output.summaryText,
       );
 
       if (pending.remainingCalls.length > 0) {
@@ -1153,7 +1150,7 @@ export class AgentRuntime<
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: continuedRequest,
-        output: execution.output,
+        output: execution.output.summaryText,
         failed: execution.failed,
       };
       pending.turn.toolExecutions.push(finished);
@@ -1162,7 +1159,7 @@ export class AgentRuntime<
       const resumedStateWithToolOutput = this.options.appendToolResultMessage(
         resumedState,
         pending.toolCallId,
-        execution.output,
+        execution.output.summaryText,
       );
 
       if (pending.remainingCalls.length > 0) {
@@ -1693,11 +1690,12 @@ export class AgentRuntime<
       userTurn = trimmedUserMessage;
       state = await this.prepareSubmittedUserTurn(userTurn, []);
     } else {
-      userTurn =
-        [...promptMessages]
-          .reverse()
-          .find((message) => message.role === 'user' && message.content.trim())?.content ??
-        `请根据已应用的 MCP prompt ${prompt} 继续。`;
+      const promptUserMessage = [...promptMessages]
+        .reverse()
+        .find((message) => message.role === 'user' && llmMessageTextContent(message.content).trim());
+      userTurn = promptUserMessage
+        ? llmMessageTextContent(promptUserMessage.content)
+        : `请根据已应用的 MCP prompt ${prompt} 继续。`;
       this.pendingUserTurnStore = userTurn;
       state = this.options.createToolAgentState(this.historyStore, userTurn);
     }
@@ -1821,15 +1819,15 @@ export class AgentRuntime<
         continue;
       }
 
-      if (message.role !== 'user' || (message.imagePaths?.length ?? 0) === 0) {
+      if (message.role !== 'user' || !llmMessageHasImages(message.content)) {
         continue;
       }
 
-      droppedImages = message.imagePaths?.length ?? 0;
+      droppedImages = llmMessageImagePaths(message.content).length;
       if (!userTurn.trim()) {
-        userTurn = message.content;
+        userTurn = llmMessageTextContent(message.content);
       }
-      message.imagePaths = [];
+      message.content = llmMessageContentWithoutImages(message.content);
       break;
     }
 
@@ -1993,7 +1991,7 @@ export class AgentRuntime<
     request: ToolRequest,
     toolName: string,
   ): Promise<{
-    output: string;
+    output: ToolExecutionOutput;
     failed: boolean;
     backgroundExecution: boolean;
   }> {
@@ -2093,8 +2091,7 @@ export class AgentRuntime<
     const childUserTurn = buildRunSubagentUserTurn(request);
     record.llmHistory = [{
       role: 'user',
-      content: childUserTurn,
-      imagePaths: [],
+      content: createLlmMessageContentFromText(childUserTurn),
     }];
     record.summary.latestMessage = truncateTextForSubagentSummary(request.task.trim(), 180);
 
@@ -2211,15 +2208,13 @@ export class AgentRuntime<
   ): void {
     record.llmHistory = childRuntime.history().map((message) => ({
       role: message.role,
-      content: message.content,
-      imagePaths: [...(message.imagePaths ?? [])],
+      content: cloneLlmMessageContent(message.content),
     }));
     const pendingAssistant = childRuntime.pendingAssistantText().trim();
     if (pendingAssistant.length > 0) {
       record.llmHistory.push({
         role: 'assistant',
-        content: pendingAssistant,
-        imagePaths: [],
+        content: createLlmMessageContentFromText(pendingAssistant),
       });
     }
     record.summary.updatedAtUnixMs = Date.now();
@@ -2611,8 +2606,9 @@ function filterSubagentToolDefinitions(value: JsonValue): JsonValue {
 function latestAssistantMessage(history: LlmMessage[]): string | undefined {
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const message = history[index];
-    if (message?.role === 'assistant' && message.content.trim().length > 0) {
-      return truncateTextForSubagentSummary(message.content.trim(), 180);
+    const text = message ? llmMessageTextContent(message.content).trim() : '';
+    if (message?.role === 'assistant' && text.length > 0) {
+      return truncateTextForSubagentSummary(text, 180);
     }
   }
 

@@ -1,7 +1,14 @@
 import { readFile, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
-import type { JsonValue, LlmMessage } from '../ports.js';
+import {
+  cloneLlmMessageContent,
+  createLlmMessageContentFromText,
+  llmMessageTextContent,
+  normalizeStoredLlmMessage,
+  type JsonValue,
+  type LlmMessage,
+} from '../ports.js';
 
 import {
   PENDING_WORKSPACE_FILE_MAX_CHARS,
@@ -68,8 +75,7 @@ export function applyDeferredUserGuidance<State, ToolRequest, TrustTarget = stri
   for (const item of deferred) {
     runtime.historyStore.push({
       role: 'user',
-      content: item.contentForLlm,
-      imagePaths: [],
+      content: createLlmMessageContentFromText(item.contentForLlm),
     });
     nextPendingUserInput = item.userMessage;
     if (runtime.options.appendUserMessage) {
@@ -91,15 +97,15 @@ export function applyDeferredUserGuidance<State, ToolRequest, TrustTarget = stri
 export function cloneHistory(history: LlmMessage[]): LlmMessage[] {
   return history.map((message) => ({
     role: message.role,
-    content: message.content,
-    imagePaths: [...(message.imagePaths ?? [])],
+    content: cloneLlmMessageContent(message.content),
   }));
 }
 
 export function pruneToolMemories(history: LlmMessage[], maxEntries: number): void {
   let seen = 0;
   const total = history.filter(
-    (message) => message.role === 'system' && message.content.startsWith(TOOL_MEMORY_PREFIX),
+    (message) =>
+      message.role === 'system' && llmMessageTextContent(message.content).startsWith(TOOL_MEMORY_PREFIX),
   ).length;
 
   if (total <= maxEntries) {
@@ -108,7 +114,10 @@ export function pruneToolMemories(history: LlmMessage[], maxEntries: number): vo
 
   const removeCount = total - maxEntries;
   const pruned = history.filter((message) => {
-    if (message.role === 'system' && message.content.startsWith(TOOL_MEMORY_PREFIX)) {
+    if (
+      message.role === 'system' &&
+      llmMessageTextContent(message.content).startsWith(TOOL_MEMORY_PREFIX)
+    ) {
       seen += 1;
       return seen > removeCount;
     }
@@ -268,11 +277,10 @@ export function promptMessagesFromValue(value: JsonValue): LlmMessage[] {
       throw new Error('MCP prompt message 格式异常');
     }
 
-    return {
+    return normalizeStoredLlmMessage({
       role: normalizePromptRole(typeof message.role === 'string' ? message.role : 'user'),
       content: promptContentToText(message.content),
-      imagePaths: [],
-    };
+    });
   });
 }
 
