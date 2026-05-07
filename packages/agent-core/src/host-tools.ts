@@ -72,7 +72,7 @@ export function buildBuiltinHostToolDefinitions(
     ),
     functionTool(
       'read_file',
-      'Read file contents. Files inside workspace are allowed directly, outside files may require user approval. Prefer reading larger chunks around 200 lines per call by default unless the user asked for a narrow range or you already know the exact lines you need. When the target is a supported image file, the host may return an image reference plus a short text summary instead of numbered text lines.',
+      'Read file contents. Workspace files are direct; external files may need approval. Default to ~200-line chunks unless specified. For supported images, returns the actual image content.',
       {
         type: 'object',
         properties: {
