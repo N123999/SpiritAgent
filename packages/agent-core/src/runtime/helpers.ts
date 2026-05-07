@@ -459,6 +459,7 @@ async function pendingWorkspaceFileFromPath(
 function hasPendingWorkspaceImageExtension(filePath: string): boolean {
   const extension = filePath.toLowerCase();
   return (
+    extension.endsWith('.bmp') ||
     extension.endsWith('.png') ||
     extension.endsWith('.jpg') ||
     extension.endsWith('.jpeg') ||
@@ -473,6 +474,9 @@ function detectPendingWorkspaceImageFile(filePath: string, bytes: Uint8Array): b
   }
 
   const lower = filePath.toLowerCase();
+  if (lower.endsWith('.bmp')) {
+    return hasAsciiBytePrefix(bytes, 'BM');
+  }
   if (lower.endsWith('.png')) {
     return hasBytePrefix(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   }

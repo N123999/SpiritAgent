@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,6 +33,7 @@ import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 
 /** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
 const TITLE_BAR_OVERLAY_HEIGHT = 32;
+const LOCAL_IMAGE_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -520,7 +522,12 @@ app.whenReady().then(async () => {
     }
 
     try {
-      const bytes = readFileSync(filePath);
+      const metadata = await stat(filePath);
+      if (!metadata.isFile() || metadata.size > LOCAL_IMAGE_PREVIEW_MAX_BYTES) {
+        return null;
+      }
+
+      const bytes = await readFile(filePath);
       return `data:${mimeType};base64,${bytes.toString('base64')}`;
     } catch {
       return null;

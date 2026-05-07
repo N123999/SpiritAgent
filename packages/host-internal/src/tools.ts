@@ -43,6 +43,8 @@ const MAX_DIRECTORY_LIST_RESULTS = 4000;
 const MAX_WEB_FETCH_OUTPUT_CHARS = 24_000;
 const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
+const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
+const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
 const MAX_COMMAND_OUTPUT_CHARS = 16_000;
 const MAX_SEARCH_RESULTS = 80;
 const MAX_SEARCH_MATCHES_PER_FILE = 3;
@@ -1236,7 +1238,46 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
     const filePath = path.join(cacheDir, `${Date.now()}-${randomUUID()}${extension}`);
     await writeFile(filePath, bytes);
+    await this.prunePersistedWebFetchedImages(cacheDir);
     return filePath;
+  }
+
+  private async prunePersistedWebFetchedImages(cacheDir: string): Promise<void> {
+    try {
+      const entries = await readdir(cacheDir);
+      const now = Date.now();
+      const retained: Array<{ path: string; mtimeMs: number }> = [];
+
+      for (const entry of entries) {
+        const filePath = path.join(cacheDir, entry);
+        try {
+          const metadata = await lstat(filePath);
+          if (!metadata.isFile()) {
+            continue;
+          }
+
+          if (now - metadata.mtimeMs > WEB_FETCH_IMAGE_RETENTION_MS) {
+            await unlink(filePath);
+            continue;
+          }
+
+          retained.push({ path: filePath, mtimeMs: metadata.mtimeMs });
+        } catch {
+          // 清理失败不应影响本次工具结果。
+        }
+      }
+
+      retained.sort((left, right) => right.mtimeMs - left.mtimeMs);
+      for (const stale of retained.slice(WEB_FETCH_IMAGE_CACHE_MAX_FILES)) {
+        try {
+          await unlink(stale.path);
+        } catch {
+          // 清理失败不应影响本次工具结果。
+        }
+      }
+    } catch {
+      // 清理失败不应影响本次工具结果。
+    }
   }
 
   private async executeWebFetch(url: string): Promise<HostToolExecutionOutput> {

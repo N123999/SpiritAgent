@@ -1,31 +1,31 @@
-import { useState } from 'react'
+import { useState } from "react";
 
-import { File, X } from 'lucide-react'
+import { File, X } from "lucide-react";
 
-const ATTACHMENT_VISUAL_CLASS = 'size-[18px]'
+const ATTACHMENT_VISUAL_CLASS = "size-[18px]";
 
 export interface ComposerLocalFileAttachmentView {
-  id: string
-  path: string
-  name: string
-  isImage: boolean
-  previewDataUrl?: string | null
+  id: string;
+  path: string;
+  name: string;
+  isImage: boolean;
+  previewDataUrl?: string | null;
 }
 
 type ComposerLocalFileStripProps = {
-  attachments: readonly ComposerLocalFileAttachmentView[]
-  onRemove(path: string): void
-}
+  attachments: readonly ComposerLocalFileAttachmentView[];
+  onRemove(path: string): void;
+};
 
 function ComposerLocalFileCard({
   attachment,
   onRemove,
 }: {
-  attachment: ComposerLocalFileAttachmentView
-  onRemove(path: string): void
+  attachment: ComposerLocalFileAttachmentView;
+  onRemove(path: string): void;
 }) {
-  const [imageLoadFailed, setImageLoadFailed] = useState(false)
-  const showImage = attachment.isImage && !imageLoadFailed && Boolean(attachment.previewDataUrl)
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const showImage = attachment.isImage && !imageLoadFailed && Boolean(attachment.previewDataUrl);
 
   return (
     <div className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border/30 bg-input/40 pl-1 pr-1.5 py-0.75 dark:border-white/[0.07] dark:bg-white/[0.03]">
@@ -55,7 +55,7 @@ function ComposerLocalFileCard({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function ComposerLocalFileStrip({
@@ -63,7 +63,7 @@ export function ComposerLocalFileStrip({
   onRemove,
 }: ComposerLocalFileStripProps) {
   if (attachments.length === 0) {
-    return null
+    return null;
   }
 
   return (
@@ -76,5 +76,5 @@ export function ComposerLocalFileStrip({
         />
       ))}
     </div>
-  )
+  );
 }
