@@ -113,7 +113,13 @@ impl TuiShell {
         let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
         let config_store: Box<dyn ConfigStore> = Box::new(JsonConfigStore);
         let chat_repository: Box<dyn ChatRepository> = Box::new(JsonChatRepository);
-        let config = config_store.load().context("读取 CLI 配置失败")?;
+        let config_path = app_paths.config_file();
+        let config = config_store.load().with_context(|| {
+            format!(
+                "读取 CLI 配置失败: {}。请检查 JSON 是否损坏；若需重置，可先备份后删除该文件再重试",
+                config_path.display()
+            )
+        })?;
         locale::apply_ui_locale(&config);
         let workspace_root = app_paths.workspace_root();
         let mut runtime = RuntimeHandle::new(
