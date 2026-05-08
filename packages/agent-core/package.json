@@ -25,6 +25,8 @@
     "smoke:runtime": "npm run build && node dist/smoke/runtime/ai-sdk-openai-runtime-smoke.js && node dist/smoke/runtime/runtime-parity-smoke.js",
     "smoke:host-config": "npm run build && node dist/smoke/host-config/mcp-missing-env-smoke.js",
     "smoke:offline": "npm run smoke:contract && npm run smoke:runtime && npm run smoke:host-config",
+    "smoke:live": "npm run smoke:live:openai-compatible",
+    "smoke:live:openai-compatible": "npm run build && node dist/smoke/live/ai-sdk-openai-compatible-live-smoke.js",
     "smoke:ai-sdk:openai:runtime": "npm run build && node dist/smoke/runtime/ai-sdk-openai-runtime-smoke.js",
     "smoke:ai-sdk:openai": "npm run build && node dist/smoke/contract/ai-sdk-openai-smoke.js",
     "smoke:ai-sdk:openai:json-schema": "npm run build && node dist/smoke/contract/ai-sdk-openai-json-schema-smoke.js",

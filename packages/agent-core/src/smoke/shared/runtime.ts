@@ -10,7 +10,6 @@ import type { LlmMessage } from '../../ports.js';
 import { createLlmMessageContentFromText } from '../../ports.js';
 import { AgentRuntime, type RuntimeEvent } from '../../runtime.js';
 
-import { createAiSdkOpenAiSmokeConfig } from './env.js';
 import { DemoToolExecutor, type DemoToolRequest } from './demo-tool.js';
 
 export function createAiSdkOpenAiSmokeTransport(): AiSdkOpenAiCompatibleTransport {
@@ -18,14 +17,14 @@ export function createAiSdkOpenAiSmokeTransport(): AiSdkOpenAiCompatibleTranspor
 }
 
 export function createAiSdkOpenAiDemoRuntime(options: {
-  config?: {
+  config: {
     apiKey: string;
     model: string;
     baseUrl?: string;
   };
   onEvent?: (event: RuntimeEvent<DemoToolRequest>) => void;
-} = {}) {
-  const smokeConfig = options.config ?? createAiSdkOpenAiSmokeConfig();
+}) {
+  const smokeConfig = options.config;
   return new AgentRuntime({
     config: smokeConfig,
     llmTransport: createAiSdkOpenAiSmokeTransport(),
