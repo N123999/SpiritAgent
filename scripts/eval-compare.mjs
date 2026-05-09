@@ -1,14 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile as execFileCallback } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 
 import { evalScenarios } from '../packages/agent-core/dist/eval/scenarios.js';
 import { validateEvalRunArtifact } from '../packages/agent-core/dist/eval/artifacts.js';
@@ -30,6 +27,8 @@ async function main() {
     return;
   }
 
+  assertRequiredOptions(options);
+
   const scenario = resolveScenario(options);
   const modelConfig = resolveModelConfig(options);
   const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -42,12 +41,12 @@ async function main() {
 
   const stagedDiffFingerprint = sha256(stagedPatch);
   const runId = `eval-${new Date().toISOString().replace(/[.:]/gu, '-')}-${randomUUID().slice(0, 8)}`;
-  const tempRoot = await mkdtemp(path.join(tmpdir(), 'spirit-eval-compare-'));
-  const artifactsDir = path.join(tempRoot, 'artifacts');
-  const baselineRuntimeSource = path.join(tempRoot, 'baseline-runtime-source');
-  const candidateRuntimeSource = path.join(tempRoot, 'candidate-runtime-source');
-  const baselineWorkspace = path.join(tempRoot, 'baseline-workspace');
-  const candidateWorkspace = path.join(tempRoot, 'candidate-workspace');
+  const outputDir = await prepareOutputDirectory(options.outputDir);
+  const artifactsDir = path.join(outputDir, 'artifacts');
+  const baselineRuntimeSource = path.join(outputDir, 'baseline-runtime-source');
+  const candidateRuntimeSource = path.join(outputDir, 'candidate-runtime-source');
+  const baselineWorkspace = path.join(outputDir, 'baseline-workspace');
+  const candidateWorkspace = path.join(outputDir, 'candidate-workspace');
 
   await mkdir(artifactsDir, { recursive: true });
 
@@ -116,23 +115,16 @@ async function main() {
     console.log('Compare 运行完成。');
     console.log(`运行 ID: ${runId}`);
     console.log(`场景: ${scenario.id} | ${scenario.title}`);
+    console.log(`输出目录: ${outputDir}`);
     console.log(`工作区来源: ${options.workspaceSource ?? 'empty'}`);
     console.log(`修改前工作区: ${baselineWorkspace}`);
     console.log(`修改后工作区: ${candidateWorkspace}`);
     console.log(`评审产物: ${artifactPath}`);
     console.log(`暂存区指纹: ${stagedDiffFingerprint}`);
-
-    await maybePromptCleanup({
-      tempRoot,
-      baselineWorkspace,
-      candidateWorkspace,
-      keepWorkspaces: options.keepWorkspaces,
-      skipPrompt: options.noCleanupPrompt,
-    });
   } catch (error) {
     console.error('Compare 运行失败。');
     console.error(renderError(error));
-    console.error(`临时目录已保留，便于人工检查: ${tempRoot}`);
+    console.error(`输出目录已保留，便于人工检查: ${outputDir}`);
     process.exitCode = 1;
   }
 }
@@ -150,10 +142,9 @@ function parseArgs(argv) {
     model: undefined,
     llmVendor: undefined,
     reasoningEffort: undefined,
+    outputDir: undefined,
     workspaceSource: undefined,
     autoApprove: false,
-    keepWorkspaces: false,
-    noCleanupPrompt: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -193,17 +184,14 @@ function parseArgs(argv) {
       case '--reasoning-effort':
         options.reasoningEffort = requiredArgValue(argv, ++index, '--reasoning-effort');
         break;
+      case '--output-dir':
+        options.outputDir = path.resolve(requiredArgValue(argv, ++index, '--output-dir'));
+        break;
       case '--workspace-source':
         options.workspaceSource = path.resolve(requiredArgValue(argv, ++index, '--workspace-source'));
         break;
       case '--auto-approve':
         options.autoApprove = true;
-        break;
-      case '--keep-workspaces':
-        options.keepWorkspaces = true;
-        break;
-      case '--no-cleanup-prompt':
-        options.noCleanupPrompt = true;
         break;
       case '--require-approvals':
         options.autoApprove = false;
@@ -214,6 +202,21 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function assertRequiredOptions(options) {
+  if (!options.outputDir) {
+    throw new Error('缺少输出目录。请通过 --output-dir 指定本次 compare 的产物目录，例如 d:\\eval-runs\\spirit-eval-compare-001。');
+  }
+}
+
+async function prepareOutputDirectory(outputDir) {
+  if (existsSync(outputDir)) {
+    throw new Error(`--output-dir 指向的目录已存在，请提供一个新的空路径: ${outputDir}`);
+  }
+
+  await mkdir(outputDir, { recursive: true });
+  return outputDir;
 }
 
 async function validateWorkspaceSource(sourcePath) {
@@ -794,29 +797,6 @@ function shouldSkipWorkspaceCopyPath(source, root) {
   return segments.some((segment) => segment === '.git' || segment === 'node_modules');
 }
 
-async function maybePromptCleanup(params) {
-  if (params.keepWorkspaces || params.noCleanupPrompt || !process.stdin.isTTY || !process.stdout.isTTY) {
-    if (params.keepWorkspaces || params.noCleanupPrompt) {
-      console.log(`已保留临时目录: ${params.tempRoot}`);
-    }
-    return;
-  }
-
-  const rl = readline.createInterface({ input, output });
-  try {
-    const answer = (await rl.question('是否删除本次 compare 产生的临时工作区与评审产物？输入 y 删除，其他任意输入保留: ')).trim().toLowerCase();
-    if (answer !== 'y' && answer !== 'yes') {
-      console.log(`已保留临时目录: ${params.tempRoot}`);
-      return;
-    }
-  } finally {
-    rl.close();
-  }
-
-  await rm(params.tempRoot, { recursive: true, force: true });
-  console.log('临时工作区与评审产物已删除。');
-}
-
 async function createRuntimeSourceSnapshot(repoRoot, workspacePath, ref) {
   await createIsolatedWorkspaceSnapshot(repoRoot, workspacePath, ref);
 }
@@ -1067,10 +1047,9 @@ function printHelp() {
   console.log('  --model <id>             覆盖 OPENAI_MODEL；未传时直接读取环境变量');
   console.log('  --llm-vendor <vendor>    例如 deepseek / kimi / custom');
   console.log('  --reasoning-effort <v>   例如 low / medium / high');
-  console.log('  --workspace-source <dir> 复制指定工作区目录到临时目录；默认使用空工作区');
+  console.log('  --output-dir <dir>       必填；本次 compare 的输出根目录，必须是一个不存在的新路径');
+  console.log('  --workspace-source <dir> 复制指定工作区目录到输出目录；默认使用空工作区');
   console.log('  --auto-approve           显式自动放行高风险工具审批；默认阻塞并将结果记入 artifact');
-  console.log('  --keep-workspaces        运行后直接保留临时工作区，不询问删除');
-  console.log('  --no-cleanup-prompt      运行后不弹删除确认，直接保留');
 }
 
 void main();
