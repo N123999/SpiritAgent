@@ -98,6 +98,7 @@ function updateConfigFromSettingsForm(
 ): UpdateConfigRequest {
   return {
     activeModel: s.activeModel,
+    imageGenerationModel: s.imageGenerationModel,
     apiBase: s.apiBase,
     windowsMica: s.windowsMica,
     planMode: s.planMode,
@@ -209,6 +210,7 @@ export function useDesktopRuntime() {
   const [questionError, setQuestionError] = useState("");
   const [settings, setSettings] = useState({
     activeModel: "",
+    imageGenerationModel: "",
     apiBase: "",
     uiLocale: "",
     apiKey: "",
@@ -245,6 +247,7 @@ export function useDesktopRuntime() {
 
       return {
         activeModel: next.config.activeModel,
+        imageGenerationModel: next.config.imageGenerationModel ?? "",
         apiBase: activeModelProfile?.apiBase ?? current.apiBase,
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,

@@ -278,7 +278,28 @@ function EmptyStateWorkspaceSelector({
   );
 }
 
-function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
+type ReadLocalImagePreview = (filePath: string) => Promise<string | null>;
+
+function ToolCallCollapsible({
+  tool,
+  readLocalImagePreviewDataUrl,
+}: {
+  tool: ToolBlockSnapshot;
+  readLocalImagePreviewDataUrl: ReadLocalImagePreview;
+}) {
+  if (tool.toolName === "generate_image") {
+    return (
+      <ImageGenerationToolCard
+        tool={tool}
+        readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
+      />
+    );
+  }
+
+  return <GenericToolCallCollapsible tool={tool} />;
+}
+
+function GenericToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
   const hasExpandableContent =
     tool.detailLines.length > 0 ||
     Boolean(tool.argsExcerpt?.trim()) ||
@@ -330,6 +351,80 @@ function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
         ) : null}
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function ImageGenerationToolCard({
+  tool,
+  readLocalImagePreviewDataUrl,
+}: {
+  tool: ToolBlockSnapshot;
+  readLocalImagePreviewDataUrl: ReadLocalImagePreview;
+}) {
+  const imagePath = tool.imagePaths?.find(isPreviewableImagePath) ?? "";
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewDataUrl(null);
+    if (!imagePath) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void readLocalImagePreviewDataUrl(imagePath).then((dataUrl) => {
+      if (!cancelled) {
+        setPreviewDataUrl(dataUrl);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imagePath, readLocalImagePreviewDataUrl]);
+
+  const loading = tool.phase === "running" || (!previewDataUrl && tool.phase !== "failed");
+
+  return (
+    <div className="w-full max-w-[min(28rem,100%)] py-1">
+      <div
+        className={cn(
+          "relative aspect-square overflow-hidden rounded-md border border-border/45 bg-muted/20",
+          tool.phase === "failed" && "border-destructive/45 bg-destructive/5",
+        )}
+      >
+        {previewDataUrl ? (
+          <img
+            src={previewDataUrl}
+            alt=""
+            className="size-full object-contain"
+            draggable={false}
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center px-4 text-center">
+            <span
+              className={cn(
+                "text-sm font-medium",
+                loading ? "spirit-thinking-shimmer-text" : "text-muted-foreground",
+              )}
+            >
+              Loading
+            </span>
+          </div>
+        )}
+      </div>
+      {!previewDataUrl && imagePath ? (
+        <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground" title={imagePath}>
+          {imagePath}
+        </p>
+      ) : null}
+      {tool.phase === "failed" && tool.outputExcerpt ? (
+        <pre className="mt-2 whitespace-pre-wrap rounded-md border border-destructive/20 bg-destructive/5 p-2 font-mono text-xs leading-relaxed text-destructive">
+          {tool.outputExcerpt}
+        </pre>
+      ) : null}
+    </div>
   );
 }
 
@@ -743,6 +838,7 @@ function MessageCard({
   onModelSelect,
   onModelReasoningEffortSelect,
   onPlanModeChange,
+  readLocalImagePreviewDataUrl,
 }: {
   message: ConversationMessageSnapshot;
   listIndex: number;
@@ -764,6 +860,7 @@ function MessageCard({
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
+  readLocalImagePreviewDataUrl: ReadLocalImagePreview;
 }) {
   const isUser = message.role === "user";
   const canStartRewind = isUser && message.canRewind === true && !message.pending;
@@ -853,7 +950,12 @@ function MessageCard({
             <MarkdownMessage content={message.content} className="font-sans" />
           </div>
         ) : null}
-        {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
+        {!isUser && message.tool ? (
+          <ToolCallCollapsible
+            tool={message.tool}
+            readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
+          />
+        ) : null}
         {!isUser && canContinue ? (
           <div className="ml-auto flex max-w-[min(72%,22rem)] justify-end pt-1">
             <Button
@@ -1971,6 +2073,7 @@ export default function App() {
                             onPlanModeChange={(planMode) => {
                               void runtime.saveSettingsPatch({ planMode });
                             }}
+                            readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
                           />
                         ))}
                       </div>

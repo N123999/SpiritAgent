@@ -63,6 +63,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 export type SettingsFormState = {
   activeModel: string;
+  imageGenerationModel: string;
   apiBase: string;
   uiLocale: string;
   apiKey: string;
@@ -1757,9 +1758,11 @@ function McpsSettingsPanel({
 }
 
 function ModelsSettingsPanel({
+  settings,
   snapshot,
   modelsBusy,
   modelsPreviewBusy,
+  onSavePatch,
   onAddModel,
   onAddProviderModels,
   onPreviewModels,
@@ -1767,9 +1770,11 @@ function ModelsSettingsPanel({
   onRemoveProviderModels,
 }: Pick<
   SettingsViewProps,
+  | "settings"
   | "snapshot"
   | "modelsBusy"
   | "modelsPreviewBusy"
+  | "onSavePatch"
   | "onAddModel"
   | "onAddProviderModels"
   | "onPreviewModels"
@@ -1794,6 +1799,9 @@ function ModelsSettingsPanel({
 
   const models = snapshot?.config.models ?? [];
   const activeModel = snapshot?.config.activeModel ?? "";
+  const imageGenerationModels = models.filter((model) =>
+    model.capabilities?.includes("imageGeneration"),
+  );
 
   const providerGroups = new Map<DesktopModelProvider, typeof models>();
   const standaloneModels: typeof models = [];
@@ -1912,6 +1920,33 @@ function ModelsSettingsPanel({
         >
           连接提供商
         </Button>
+      </div>
+
+      <div className="rounded-lg border border-border/40 bg-background/80 px-4 py-4 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Label htmlFor="settings-image-generation-model" className="text-sm font-medium text-foreground">
+            图片生成模型
+          </Label>
+          <Select
+            value={settings.imageGenerationModel.trim() || "__none"}
+            disabled={modelsBusy || modelsPreviewBusy || imageGenerationModels.length === 0}
+            onValueChange={(value) =>
+              void onSavePatch({ imageGenerationModel: value === "__none" ? "" : value })
+            }
+          >
+            <SelectTrigger id="settings-image-generation-model" className="w-full sm:min-w-[18rem]">
+              <SelectValue placeholder="未选择" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">未选择</SelectItem>
+              {imageGenerationModels.map((model) => (
+                <SelectItem key={model.name} value={model.name}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -2664,9 +2699,11 @@ export function SettingsView({
               />
             ) : tab === "models" ? (
               <ModelsSettingsPanel
+                settings={settings}
                 snapshot={snapshot}
                 modelsBusy={modelsBusy}
                 modelsPreviewBusy={modelsPreviewBusy}
+                onSavePatch={onSavePatch}
                 onAddModel={onAddModel}
                 onAddProviderModels={onAddProviderModels}
                 onPreviewModels={onPreviewModels}

@@ -409,6 +409,7 @@ export function normalizeToolBlockSnapshot(
   const detailLines = tool.detailLines.filter((line) => line.trim().length > 0);
   const argsExcerpt = tool.argsExcerpt?.trim() ? tool.argsExcerpt : undefined;
   const outputExcerpt = tool.outputExcerpt?.trim() ? tool.outputExcerpt : undefined;
+  const imagePaths = tool.imagePaths?.map((entry) => entry.trim()).filter(Boolean);
 
   return {
     ...tool,
@@ -417,6 +418,7 @@ export function normalizeToolBlockSnapshot(
     detailLines,
     ...(argsExcerpt ? { argsExcerpt } : {}),
     ...(outputExcerpt ? { outputExcerpt } : {}),
+    ...(imagePaths && imagePaths.length > 0 ? { imagePaths } : {}),
   };
 }
 

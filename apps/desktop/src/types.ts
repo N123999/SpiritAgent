@@ -639,6 +639,7 @@ export interface ToolBlockSnapshot {
   detailLines: string[];
   argsExcerpt?: string;
   outputExcerpt?: string;
+  imagePaths?: string[];
 }
 
 export interface MessageAuxSnapshot {

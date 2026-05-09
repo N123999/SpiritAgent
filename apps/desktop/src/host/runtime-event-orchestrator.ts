@@ -144,6 +144,16 @@ export class DesktopRuntimeEventOrchestrator {
         continue;
       }
       if (event.kind === 'tool-call-started') {
+        if (event.toolName === 'generate_image') {
+          this.options.assistantMessages.upsertToolMessage(event.toolCallId, {
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            phase: 'running',
+            headline: '生成图片',
+            detailLines: [],
+            argsExcerpt: truncateJson(event.request),
+          }, batchId);
+        }
         this.options.dispatchExtensionEvent({
           type: 'onToolCall',
           detail: {
@@ -394,18 +404,24 @@ export class DesktopRuntimeEventOrchestrator {
 
   private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
     for (const execution of executions) {
+      const imagePaths = imagePathsFromExecution(execution);
       const message = this.options.assistantMessages.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
         toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
         toolName: execution.toolName,
         phase: execution.failed ? 'failed' : 'succeeded',
-        headline: headlineForToolPhase(
-          execution.failed ? 'failed' : 'succeeded',
-          execution.toolName,
-          execution.request,
-        ),
+        headline: execution.toolName === 'generate_image'
+          ? (execution.failed ? '图片生成失败' : '图片生成完成')
+          : headlineForToolPhase(
+              execution.failed ? 'failed' : 'succeeded',
+              execution.toolName,
+              execution.request,
+            ),
         detailLines: [],
         argsExcerpt: truncateJson(execution.request),
         outputExcerpt: truncateText(execution.output, 4_000),
+        ...(imagePaths.length > 0
+          ? { imagePaths }
+          : {}),
       }, this.lastApplyEventBatchId);
       this.options.bindFileChangesToToolMessage(execution, message.id);
     }
@@ -513,6 +529,12 @@ export class DesktopRuntimeEventOrchestrator {
     const tail = summarizeMessagesTailForOrderDebug(messages, 10);
     console.log(`[desktop-host][msg-order] prefix-sync ${how} len=${messages.length} tail=${tail}`);
   }
+}
+
+function imagePathsFromExecution(execution: RuntimeToolExecution<DesktopToolRequest>): string[] {
+  return (execution.artifacts ?? [])
+    .filter((artifact) => artifact.kind === 'image' && artifact.path.trim().length > 0)
+    .map((artifact) => artifact.path.trim());
 }
 
 function truncateJson(value: unknown): string {
