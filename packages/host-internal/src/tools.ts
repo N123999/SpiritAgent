@@ -43,6 +43,7 @@ const MAX_DIRECTORY_LIST_RESULTS = 4000;
 const MAX_WEB_FETCH_OUTPUT_CHARS = 24_000;
 const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
+const GENERATED_IMAGES_DIR = 'generated-images';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
 const MAX_COMMAND_OUTPUT_CHARS = 16_000;
@@ -106,6 +107,18 @@ export interface HostToolExecutionOutput {
   summaryText: string;
 }
 
+export interface HostGeneratedImageSaveRequest {
+  data: Uint8Array;
+  mediaType: string;
+  prompt: string;
+  model: string;
+}
+
+export interface HostGeneratedImageFile {
+  path: string;
+  mimeType: string;
+}
+
 export interface HostBuiltinToolDefinitionEnvironment {
   shellDisplayName: string;
   shellCommandParameterDescription: string;
@@ -158,6 +171,12 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       context_summary?: string;
       files_to_inspect: string[];
       expected_output?: string;
+    }
+  | {
+      name: 'generate_image';
+      prompt: string;
+      size?: string;
+      aspectRatio?: string;
     }
   | {
       name: 'ask_questions';
@@ -501,6 +520,18 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           ...(expectedOutput ? { expected_output: expectedOutput } : {}),
         };
         }
+      case 'generate_image':
+        {
+          const size = optionalStringStrict(parsed, 'size');
+          const aspectRatio = optionalStringStrict(parsed, 'aspectRatio')
+            ?? optionalStringStrict(parsed, 'aspect_ratio');
+        return {
+          name,
+          prompt: requiredString(parsed, 'prompt'),
+          ...(size ? { size } : {}),
+          ...(aspectRatio ? { aspectRatio } : {}),
+        };
+        }
       case 'ask_questions':
         return parseAskQuestionsRequest(parsed) as HostToolRequest<QuestionSpec>;
       case 'create_file':
@@ -581,6 +612,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     switch (request.name) {
       case 'search_files':
       case 'run_subagent':
+      case 'generate_image':
         return { kind: 'allowed' };
       case 'ask_questions':
         return {
@@ -702,6 +734,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         return this.executeSearchFiles(request.query);
       case 'run_subagent':
         throw new Error('run_subagent 应由 Agent runtime 接管，不应落到 host-internal 工具执行器');
+      case 'generate_image':
+        throw new Error('generate_image 应由 Agent runtime 接管，不应落到 host-internal 工具执行器');
       case 'ask_questions':
         throw new Error('ask_questions 应由运行时挂起并等待用户填写，不应直接执行');
       case 'extension_tool':
@@ -769,6 +803,19 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           dream: await this.requireDreamStore().delete(request.id, request.reason),
         });
     }
+  }
+
+  async saveGeneratedImage(request: HostGeneratedImageSaveRequest): Promise<HostGeneratedImageFile> {
+    const imageType = detectGeneratedImageType(request.mediaType, request.data);
+    const outputDir = path.join(this.spiritDataDir, GENERATED_IMAGES_DIR);
+    await mkdir(outputDir, { recursive: true });
+
+    const filePath = path.join(outputDir, `${Date.now()}-${randomUUID()}${imageType.extension}`);
+    await writeFile(filePath, request.data);
+    return {
+      path: filePath,
+      mimeType: imageType.mimeType,
+    };
   }
 
   attachRequestMetadata(
@@ -1979,6 +2026,49 @@ function truncateChars(value: string, maxChars: number): string {
     return value;
   }
   return chars.slice(0, maxChars).join('');
+}
+
+function detectGeneratedImageType(mediaType: string, bytes: Uint8Array): { extension: string; mimeType: string } {
+  const normalizedMediaType = mediaType.toLowerCase().split(';', 1)[0]?.trim() ?? '';
+  const preferredExtension = imageExtensionForMediaType(normalizedMediaType);
+  if (preferredExtension && detectSupportedImageFile(`generated${preferredExtension}`, bytes)) {
+    return {
+      extension: preferredExtension,
+      mimeType: normalizedMediaType,
+    };
+  }
+
+  for (const extension of ['.png', '.jpg', '.webp', '.gif', '.bmp'] as const) {
+    const detected = detectSupportedImageFile(`generated${extension}`, bytes);
+    if (detected) {
+      return {
+        extension: detected.extension,
+        mimeType: detected.mimeType,
+      };
+    }
+  }
+
+  return {
+    extension: preferredExtension ?? '.png',
+    mimeType: normalizedMediaType || 'image/png',
+  };
+}
+
+function imageExtensionForMediaType(mediaType: string): string | undefined {
+  switch (mediaType) {
+    case 'image/bmp':
+      return '.bmp';
+    case 'image/gif':
+      return '.gif';
+    case 'image/jpeg':
+      return '.jpg';
+    case 'image/png':
+      return '.png';
+    case 'image/webp':
+      return '.webp';
+    default:
+      return undefined;
+  }
 }
 
 function isJsonObject(value: HostJsonValue): value is HostJsonObject {

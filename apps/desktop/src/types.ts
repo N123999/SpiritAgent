@@ -19,6 +19,7 @@ export interface CommitChangesRequest {
 
 export interface UpdateConfigRequest {
   activeModel: string;
+  imageGenerationModel?: string;
   apiBase: string;
   reasoningEffort?: DesktopModelReasoningEffort;
   uiLocale?: string;
@@ -502,6 +503,7 @@ export interface DesktopExtensionCssLayer {
 export interface DesktopConfigSnapshot {
   models: ModelProfileSnapshot[];
   activeModel: string;
+  imageGenerationModel?: string;
   uiLocale?: string;
   activeApiKeyConfigured: boolean;
   /** 桌面宿主在 Windows 上是否使用 Mica 风格；无字段时按 true 处理。 */

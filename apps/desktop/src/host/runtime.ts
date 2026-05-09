@@ -92,6 +92,12 @@ export function createDesktopRuntime(input: {
       ),
     resolveWorkspaceFilesFromInput: (userInput) =>
       resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),
+    generateImage: (request) =>
+      input.llmTransport.generateImage(
+        input.transportConfig,
+        request,
+        (saveRequest) => input.toolExecutor.saveGeneratedImage(saveRequest),
+      ),
   }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 

@@ -470,6 +470,7 @@ class DesktopHostService {
       const state = this.requireState();
       const wasBusy = this.runtime?.isBusy() === true;
       const prevActiveModel = state.config.activeModel;
+      const prevImageGenerationModel = state.config.imageGenerationModel;
       const prevApiBase = currentApiBase(state.config);
       const prevPlanMode = state.config.planMode === true;
 
@@ -500,6 +501,21 @@ class DesktopHostService {
       }
       state.config.activeModel = activeModel;
       state.config.uiLocale = request.uiLocale?.trim() || undefined;
+      if (request.imageGenerationModel !== undefined) {
+        const imageGenerationModel = request.imageGenerationModel.trim();
+        if (!imageGenerationModel) {
+          delete state.config.imageGenerationModel;
+        } else {
+          const imageProfile = state.config.models.find((model) => model.name === imageGenerationModel);
+          if (!imageProfile) {
+            throw new Error(`图片生成模型不存在: ${imageGenerationModel}`);
+          }
+          if (!supportsImageGeneration(imageProfile)) {
+            throw new Error(`模型未声明图片生成能力: ${imageGenerationModel}`);
+          }
+          state.config.imageGenerationModel = imageProfile.name;
+        }
+      }
       state.config.windowsMica = request.windowsMica !== false;
       if (request.planMode !== undefined) {
         state.config.planMode = request.planMode;
@@ -533,13 +549,14 @@ class DesktopHostService {
       const modelOrEndpointChanged =
         state.config.activeModel !== prevActiveModel ||
         currentApiBase(state.config) !== prevApiBase;
+      const imageGenerationModelChanged = state.config.imageGenerationModel !== prevImageGenerationModel;
 
       if (planModeNow !== prevPlanMode) {
         state.metadata = await loadHostMetadata(state.workspaceRoot, planModeNow);
       }
 
       const transportOrPlanChanged =
-        planModeNow !== prevPlanMode || modelOrEndpointChanged;
+        planModeNow !== prevPlanMode || modelOrEndpointChanged || imageGenerationModelChanged;
       const deferRuntimeRefresh =
         wasBusy &&
         transportOrPlanChanged &&
@@ -718,6 +735,9 @@ class DesktopHostService {
       }
       state.config.models.push(profile);
       state.config.activeModel = name;
+      if (!state.config.imageGenerationModel && supportsImageGeneration(profile)) {
+        state.config.imageGenerationModel = name;
+      }
       await saveConfig(state.config);
       await saveApiKeyForModel(name, apiKey);
 
@@ -782,6 +802,9 @@ class DesktopHostService {
     state: HostState,
     namesToRemove: readonly string[],
   ): Promise<DesktopSnapshot> {
+    if (state.config.imageGenerationModel && namesToRemove.includes(state.config.imageGenerationModel)) {
+      delete state.config.imageGenerationModel;
+    }
     await saveConfig(state.config);
     for (const name of namesToRemove) {
       await removeModelApiKey(name);
@@ -1977,6 +2000,12 @@ class DesktopHostService {
     this.activeApiKeyConfigured = Boolean(apiKey);
     const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
     const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
+    const imageGenerationProfile = state.config.imageGenerationModel
+      ? state.config.models.find((model) => model.name === state.config.imageGenerationModel)
+      : undefined;
+    const imageGenerationApiKey = imageGenerationProfile
+      ? await resolveApiKeyForModel(imageGenerationProfile.name)
+      : undefined;
     this.runtimeTransport = createOpenAiCompatibleTransport();
     this.jsonSchemaTransport = createOpenAiJsonSchemaTransport();
     if (!apiKey) {
@@ -1995,6 +2024,19 @@ class DesktopHostService {
       ...(llmVendor ? { llmVendor } : {}),
       ...(activeProfile?.capabilities
         ? { modelCapabilities: modelCapabilitiesFromConfig(activeProfile.capabilities) }
+        : {}),
+      ...(imageGenerationProfile && imageGenerationApiKey && supportsImageGeneration(imageGenerationProfile)
+        ? {
+            imageGeneration: {
+              apiKey: imageGenerationApiKey,
+              model: imageGenerationProfile.name,
+              baseUrl: imageGenerationProfile.apiBase || DEFAULT_API_BASE,
+              ...(imageGenerationProfile.provider ? { llmVendor: imageGenerationProfile.provider } : {}),
+              ...(imageGenerationProfile.capabilities
+                ? { modelCapabilities: modelCapabilitiesFromConfig(imageGenerationProfile.capabilities) }
+                : {}),
+            },
+          }
         : {}),
       reasoningEffort: activeProfile?.reasoningEffort,
     };
@@ -3004,5 +3046,9 @@ function modelCapabilitiesFromConfig(
     ...(capabilities.includes('vision') ? { vision: true } : {}),
     ...(capabilities.includes('imageGeneration') ? { imageGeneration: true } : {}),
   };
+}
+
+function supportsImageGeneration(model: { capabilities?: readonly DesktopModelCapability[] }): boolean {
+  return model.capabilities?.includes('imageGeneration') === true;
 }
 

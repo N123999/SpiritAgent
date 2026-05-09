@@ -67,6 +67,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
         keyConfigured: input.modelKeyPresence[model.name] ?? false,
       })),
       activeModel: input.config.activeModel,
+      ...(input.config.imageGenerationModel ? { imageGenerationModel: input.config.imageGenerationModel } : {}),
       ...(input.config.uiLocale ? { uiLocale: input.config.uiLocale } : {}),
       activeApiKeyConfigured: input.activeApiKeyConfigured,
       windowsMica: input.config.windowsMica !== false,
