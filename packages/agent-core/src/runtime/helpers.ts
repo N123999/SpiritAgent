@@ -26,6 +26,7 @@ import type {
   PendingMcpResource,
   PendingWorkspaceFile,
   PendingWorkspaceTextFile,
+  RuntimeToolArtifact,
   RuntimeTurnContext,
 } from './types.js';
 
@@ -81,6 +82,17 @@ export function enqueueDeferredToolOutputGuidance<ToolRequest>(
     guidanceMessage,
     createLlmMessageContentFromTextAndImages(formatUserMessageContentForLlm(guidanceMessage), imagePaths),
   );
+}
+
+export function toolArtifactsFromOutput(output: ToolExecutionOutput): RuntimeToolArtifact[] | undefined {
+  const artifacts = output.content
+    .filter((part) => part.type === 'image')
+    .map((part) => ({
+      kind: 'image' as const,
+      path: part.path,
+    }));
+
+  return artifacts.length > 0 ? artifacts : undefined;
 }
 
 export function applyDeferredUserGuidance<State, ToolRequest, TrustTarget = string>(

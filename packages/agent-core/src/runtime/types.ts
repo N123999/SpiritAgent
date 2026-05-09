@@ -1,5 +1,6 @@
 import type {
   AskQuestionsRequest,
+  ImageGenerationRequest,
   JsonValue,
   LlmMessage,
   LlmMessageContent,
@@ -9,8 +10,15 @@ import type {
   SubagentSessionStatus,
   ToolAgentRoundCompletion,
   ToolCallRequest,
+  ToolExecutionOutput,
   ToolExecutor,
 } from '../ports.js';
+
+export interface RuntimeToolArtifact {
+  kind: 'image';
+  path: string;
+  mimeType?: string;
+}
 
 export interface RuntimeToolExecution<ToolRequest> {
   toolCallId: string;
@@ -18,6 +26,7 @@ export interface RuntimeToolExecution<ToolRequest> {
   request: ToolRequest;
   output: string;
   failed: boolean;
+  artifacts?: RuntimeToolArtifact[];
 }
 
 export interface RuntimeCompactionRecord {
@@ -317,6 +326,7 @@ export interface AgentRuntimeOptions<
   extractAssistantText: (state: State) => string | undefined;
   formatToolMemory?: (request: ToolRequest, output: string) => string | undefined;
   isVisionUnsupportedError?: (error: string) => boolean;
+  generateImage?: (request: ImageGenerationRequest) => Promise<ToolExecutionOutput>;
   truncateStateForContextRetry?: (state: State) => RuntimeStatePreparationResult<State>;
   truncateHistoryForCompaction?: (
     history: LlmMessage[],

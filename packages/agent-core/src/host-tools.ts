@@ -129,6 +129,34 @@ export function buildBuiltinHostToolDefinitions(
       },
     ),
     functionTool(
+      'generate_image',
+      'Generate one image with the configured image generation model. Use this only when the user explicitly wants an image. First gather enough context and rewrite the final image prompt yourself, then call this tool as the user-visible final result for the turn; do not expect to add a normal assistant message after it completes.',
+      {
+        type: 'object',
+        properties: {
+          prompt: {
+            type: 'string',
+            description:
+              'Detailed final prompt for the image generation model. Include subject, composition, style, lighting, colors, constraints, and any user-requested details.',
+          },
+          size: {
+            type: 'string',
+            pattern: '^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$',
+            description:
+              'Optional pixel size in WIDTHxHEIGHT format, such as 1024x1024. If omitted, the image model default is used; prefer square output unless the user asked otherwise.',
+          },
+          aspectRatio: {
+            type: 'string',
+            pattern: '^[1-9][0-9]{0,3}:[1-9][0-9]{0,3}$',
+            description:
+              'Optional aspect ratio in WIDTH:HEIGHT format, such as 1:1, 16:9, or 3:4. Use either size or aspectRatio, not both.',
+          },
+        },
+        required: ['prompt'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
       'ask_questions',
       'Ask the user a structured follow-up questionnaire when their request is underspecified. The host UI will present the questionnaire, collect answers, and return a JSON tool result. Use this only when targeted structured questions are needed to continue.',
       {

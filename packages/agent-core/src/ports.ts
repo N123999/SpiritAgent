@@ -41,6 +41,24 @@ export interface ToolExecutionOutput {
   summaryText: string;
 }
 
+export interface ImageGenerationRequest {
+  prompt: string;
+  size?: string;
+  aspectRatio?: string;
+}
+
+export interface GeneratedImageSaveRequest {
+  data: Uint8Array;
+  mediaType: string;
+  prompt: string;
+  model: string;
+}
+
+export interface GeneratedImageFile {
+  path: string;
+  mimeType: string;
+}
+
 export function createToolExecutionTextOutput(text: string): ToolExecutionOutput {
   return {
     content: createLlmMessageContentFromText(text),

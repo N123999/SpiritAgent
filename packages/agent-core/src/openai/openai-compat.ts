@@ -28,6 +28,16 @@ export interface OpenAiModelCompatibilityProfile {
   capabilities: OpenAiModelCapabilities;
 }
 
+export interface OpenAiImageGenerationConfig {
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+  organization?: string;
+  project?: string;
+  llmVendor?: OpenAiLlmVendor;
+  modelCapabilities?: OpenAiModelCapabilities;
+}
+
 export interface OpenAiTransportConfig {
   apiKey: string;
   model: string;
@@ -45,6 +55,10 @@ export interface OpenAiTransportConfig {
    * provider/model inference for compatibility decisions such as vision input.
    */
   modelCapabilities?: OpenAiModelCapabilities;
+  /**
+   * Optional dedicated model role used by the `generate_image` tool.
+   */
+  imageGeneration?: OpenAiImageGenerationConfig;
   /**
    * 抽象推理强度；`default` 表示不指定，交给上游或模型默认行为。
    * 非 `default` 时直接走 OpenAI chat.completions 官方字段 `reasoning_effort`。

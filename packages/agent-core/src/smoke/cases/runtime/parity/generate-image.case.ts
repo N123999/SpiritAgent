@@ -1,0 +1,259 @@
+import type {
+  JsonValue,
+  LlmMessage,
+  LlmTransport,
+  StartedToolAgentRound,
+  ToolAgentRoundCompletion,
+  ToolExecutionOutput,
+} from '../../../../ports.js';
+import { createLlmMessageContentFromTextAndImages } from '../../../../ports.js';
+import {
+  AgentRuntime,
+  HostExecutor,
+  appendScriptedToolResult,
+  createScriptedState,
+  extractScriptedAssistantText,
+  flushMicrotasks,
+  historyAsPlainApiMessages,
+  streamFromEvents,
+  type RuntimeEvent,
+  type RuntimeParityCaseResult,
+  type ScriptedState,
+  type ScriptedToolRequest,
+} from './harness.js';
+
+export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
+  const nonStreamingTransport = new GenerateImageTerminalTransport('non-streaming');
+  const nonStreamingExecutor = new CountingHostExecutor();
+  const nonStreamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const nonStreamingRuntime = createGenerateImageRuntime(
+    nonStreamingTransport,
+    nonStreamingExecutor,
+    nonStreamingEvents,
+  );
+
+  const nonStreamingResult = await nonStreamingRuntime.submitUserTurn('画一张正方形海报');
+  if (nonStreamingResult.kind !== 'completed' || nonStreamingResult.assistantText !== '') {
+    throw new Error('generate_image 非流式 smoke 未以空 assistant 正文完成。');
+  }
+  assertTerminalGenerateImageResult(
+    nonStreamingResult.toolExecutions,
+    nonStreamingTransport.rounds,
+    nonStreamingExecutor.executedCalls,
+    'generate_image 非流式 smoke',
+  );
+
+  const streamingTransport = new GenerateImageTerminalTransport('streaming');
+  const streamingExecutor = new CountingHostExecutor();
+  const streamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const streamingRuntime = createGenerateImageRuntime(
+    streamingTransport,
+    streamingExecutor,
+    streamingEvents,
+  );
+
+  await streamingRuntime.startUserTurnStreaming('画一张正方形海报');
+  for (let index = 0; index < 24 && streamingRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(8);
+    await streamingRuntime.poll();
+  }
+  if (streamingRuntime.isBusy()) {
+    throw new Error('generate_image 流式 smoke 未在预期轮次内完成。');
+  }
+
+  const streamingResult = streamingRuntime.takeCompletedTurnResult();
+  if (!streamingResult || streamingResult.kind !== 'completed' || streamingResult.assistantText !== '') {
+    throw new Error('generate_image 流式 smoke 未以空 assistant 正文完成。');
+  }
+  assertTerminalGenerateImageResult(
+    streamingResult.toolExecutions,
+    streamingTransport.rounds,
+    streamingExecutor.executedCalls,
+    'generate_image 流式 smoke',
+  );
+  if (streamingEvents.some((event) => event.kind === 'assistant-chunk' && event.text.trim().length > 0)) {
+    throw new Error('generate_image 流式 smoke 不应产生最终 assistant 文本。');
+  }
+
+  return {
+    generateImageNonStreamingResult: nonStreamingResult,
+    generateImageStreamingEvents: streamingEvents,
+  };
+}
+
+function createGenerateImageRuntime(
+  transport: GenerateImageTerminalTransport,
+  executor: CountingHostExecutor,
+  events: RuntimeEvent<ScriptedToolRequest>[],
+): AgentRuntime<undefined, ScriptedState, ScriptedToolRequest> {
+  return new AgentRuntime({
+    config: undefined,
+    llmTransport: transport,
+    toolExecutor: executor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    extractAssistantText: extractScriptedAssistantText,
+    generateImage: async (request): Promise<ToolExecutionOutput> => {
+      if (!request.prompt.includes('square poster')) {
+        throw new Error('generate_image smoke 未收到模型重写后的最终 prompt。');
+      }
+
+      return {
+        content: createLlmMessageContentFromTextAndImages(
+          'path: generated/square-poster.png',
+          ['generated/square-poster.png'],
+        ),
+        summaryText: 'path: generated/square-poster.png',
+      };
+    },
+    onEvent: (event) => events.push(event),
+  });
+}
+
+function assertTerminalGenerateImageResult(
+  toolExecutions: { toolName: string; failed: boolean; output: string; artifacts?: { path: string }[] }[],
+  rounds: number,
+  executedCalls: number,
+  label: string,
+): void {
+  if (rounds !== 1) {
+    throw new Error(`${label} 不应在 generate_image 完成后继续发起模型轮次。`);
+  }
+  if (executedCalls !== 0) {
+    throw new Error(`${label} 不应落到宿主 execute。`);
+  }
+
+  const execution = toolExecutions.find((item) => item.toolName === 'generate_image');
+  if (!execution || execution.failed || !execution.output.includes('generated/square-poster.png')) {
+    throw new Error(`${label} 未记录正确的 generate_image 工具结果。`);
+  }
+  if (!execution.artifacts?.some((artifact) => artifact.path === 'generated/square-poster.png')) {
+    throw new Error(`${label} 未把生成图片路径放入 structured artifacts。`);
+  }
+}
+
+class GenerateImageTerminalTransport implements LlmTransport<undefined, ScriptedState> {
+  rounds = 0;
+
+  constructor(private readonly mode: 'non-streaming' | 'streaming') {}
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    if (this.mode !== 'non-streaming') {
+      throw new Error('generate_image streaming smoke 应走 streaming transport。');
+    }
+
+    return this.nextToolCallRound(state);
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    if (this.mode !== 'streaming') {
+      throw new Error('generate_image non-streaming smoke 不应走 streaming transport。');
+    }
+
+    const completion = this.nextToolCallRound(state);
+    return {
+      eventStream: streamFromEvents([
+        {
+          kind: 'streaming-tool-preview',
+          toolCallId: 'call-generate-image',
+          toolName: 'generate_image',
+          argumentsJson: '{"prompt":"square poster of a quiet moonlit courtyard","size":"1024x1024"}',
+          previewLine: 'generate_image square poster',
+        },
+      ]),
+      completion,
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return historyAsPlainApiMessages(history);
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+
+  private async nextToolCallRound(state: ScriptedState): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    this.rounds += 1;
+    if (this.rounds > 1) {
+      return {
+        kind: 'failure',
+        error: 'generate_image completed but runtime continued into another model round.',
+        requestTrace: [{ mode: 'generate-image-terminal-extra-round' }],
+      };
+    }
+
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [
+            ...state.messages,
+            {
+              role: 'assistant',
+              content: '准备生成图片。',
+              tool_calls: [
+                {
+                  id: 'call-generate-image',
+                  type: 'function',
+                  function: {
+                    name: 'generate_image',
+                    arguments: '{"prompt":"square poster of a quiet moonlit courtyard","size":"1024x1024"}',
+                  },
+                },
+              ],
+            },
+          ],
+          steps: state.steps + 1,
+        },
+        step: {
+          kind: 'tool-calls',
+          calls: [
+            {
+              id: 'call-generate-image',
+              name: 'generate_image',
+              argumentsJson: '{"prompt":"square poster of a quiet moonlit courtyard","size":"1024x1024"}',
+            },
+          ],
+        },
+        requestTrace: [{ mode: 'generate-image-terminal-round' }],
+      },
+    };
+  }
+}
+
+class CountingHostExecutor extends HostExecutor {
+  executedCalls = 0;
+
+  override async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
+    this.executedCalls += 1;
+    return super.execute(request);
+  }
+}

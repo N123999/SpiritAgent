@@ -13,6 +13,7 @@ import {
   type OpenAICompatibleLanguageModelChatOptions,
 } from '@ai-sdk/openai-compatible';
 import {
+  generateImage as generateAiImage,
   generateObject,
   generateText,
   jsonSchema,
@@ -22,10 +23,14 @@ import {
 } from 'ai';
 
 import {
+  createLlmMessageContentFromTextAndImages,
   llmMessageHasImages,
   llmMessageTextContent,
 } from '../ports.js';
 import type {
+  GeneratedImageFile,
+  GeneratedImageSaveRequest,
+  ImageGenerationRequest,
   JsonObject,
   JsonValue,
   LlmMessage,
@@ -34,6 +39,7 @@ import type {
   StartedToolAgentRound,
   ToolAgentRoundCompletion,
   ToolCallRequest,
+  ToolExecutionOutput,
 } from '../ports.js';
 import {
   COMPACT_SUMMARY_PREFIX,
@@ -47,6 +53,7 @@ import {
   openAiReasoningEffort,
   openAiVendorChatCompletionBodyExtras,
   resolveOpenAiModelCompatibilityProfile,
+  type OpenAiImageGenerationConfig,
   type OpenAiTransportConfig,
 } from './openai-compat.js';
 import {
@@ -88,6 +95,45 @@ interface Deferred<T> {
 export class AiSdkOpenAiCompatibleTransport
   implements LlmTransport<OpenAiTransportConfig, ToolAgentState>, OpenAiJsonSchemaTransport
 {
+  async generateImage(
+    config: OpenAiTransportConfig,
+    request: ImageGenerationRequest,
+    saveGeneratedImage: (request: GeneratedImageSaveRequest) => Promise<GeneratedImageFile>,
+  ): Promise<ToolExecutionOutput> {
+    const imageConfig = config.imageGeneration;
+    if (!imageConfig) {
+      throw new Error('No image generation model is configured.');
+    }
+
+    const result = await generateAiImage({
+      model: createAiSdkImageModel(imageConfig),
+      prompt: request.prompt,
+      ...(request.size ? { size: request.size as `${number}x${number}` } : {}),
+      ...(request.aspectRatio ? { aspectRatio: request.aspectRatio as `${number}:${number}` } : {}),
+      maxRetries: 0,
+    });
+
+    const image = result.image;
+    const saved = await saveGeneratedImage({
+      data: image.uint8Array,
+      mediaType: image.mediaType,
+      prompt: request.prompt,
+      model: imageConfig.model,
+    });
+
+    const summaryText = [
+      '[generated image]',
+      `path: ${saved.path}`,
+      `mime_type: ${saved.mimeType}`,
+      `model: ${imageConfig.model}`,
+    ].join('\n');
+
+    return {
+      content: createLlmMessageContentFromTextAndImages(summaryText, [saved.path]),
+      summaryText,
+    };
+  }
+
   async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(
     config: OpenAiTransportConfig,
     request: OpenAiJsonSchemaCompletionRequest,
@@ -439,8 +485,17 @@ function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
   return createAiSdkOpenAiCompatibleProvider(config).chatModel(config.model);
 }
 
-function createAiSdkOpenAiCompatibleProvider(config: OpenAiTransportConfig) {
-  const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
+function createAiSdkImageModel(config: OpenAiImageGenerationConfig): any {
+  return createAiSdkOpenAiCompatibleProvider(config, { includeChatVendorExtras: false }).imageModel(config.model);
+}
+
+function createAiSdkOpenAiCompatibleProvider(
+  config: OpenAiTransportConfig | OpenAiImageGenerationConfig,
+  options: { includeChatVendorExtras?: boolean } = {},
+) {
+  const vendorExtras = options.includeChatVendorExtras === false
+    ? {}
+    : openAiVendorChatCompletionBodyExtras(config as OpenAiTransportConfig);
   const fetchWrapper =
     Object.keys(vendorExtras).length === 0
       ? undefined
