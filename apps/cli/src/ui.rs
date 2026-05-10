@@ -324,7 +324,6 @@ pub fn draw_ui(
     let history_image_blocks = history_render.image_blocks.clone();
     let history_message_ranges = history_render.message_ranges.clone();
     let history_lines = history_render.lines;
-    let history_lines_for_images = history_lines.clone();
     // 对话区无边框，内容与命中区域占满 chunks[0]。
     let inner_x = chunks[0].x;
     let inner_y = chunks[0].y;
@@ -332,6 +331,8 @@ pub fn draw_ui(
     let inner_h = chunks[0].height.max(1);
     let history_view_height = inner_h as usize;
     let w = inner_w.max(1) as u16;
+    let history_lines_for_images = history_lines.clone();
+    let logical_line_visual_offsets = build_visual_row_offsets(&history_lines_for_images, w);
     // 以 WordWrapper 折行为准，避免 Paragraph::line_count 与自定义折行在少数宽度/CJK 下不一致导致滚动错位。
     let (flat_measure, _) = flatten_wrapped_history(history_lines.clone(), w, None);
     let total_visual_lines = flat_measure.len();
@@ -351,11 +352,10 @@ pub fn draw_ui(
     render_history_tool_images(
         frame,
         chunks[0],
-        &history_lines_for_images,
-        w,
         history_scroll,
         history_view_height,
         &history_image_blocks,
+        &logical_line_visual_offsets,
         runtime,
     );
     feedback.conversation_panel = Some(ConversationPanelRenderFeedback {
@@ -522,15 +522,17 @@ pub fn draw_ui(
 fn render_history_tool_images(
     frame: &mut ratatui::Frame<'_>,
     history_area: Rect,
-    history_lines: &[Line<'static>],
-    wrap_width: u16,
     history_scroll: usize,
     history_view_height: usize,
     image_blocks: &[HistoryImageRenderBlock],
+    logical_line_visual_offsets: &[usize],
     runtime: &mut UiRuntimeState,
 ) {
     for block in image_blocks {
-        let visual_top = visual_row_index_for_logical_line(history_lines, wrap_width, block.logical_top_line);
+        let visual_top = logical_line_visual_offsets
+            .get(block.logical_top_line)
+            .copied()
+            .unwrap_or_else(|| logical_line_visual_offsets.last().copied().unwrap_or(0));
         let visual_bottom = visual_top.saturating_add(block.reserved_rows as usize);
         let view_bottom = history_scroll.saturating_add(history_view_height);
         if visual_top < history_scroll || visual_bottom > view_bottom {
@@ -556,21 +558,20 @@ fn render_history_tool_images(
     }
 }
 
-fn visual_row_index_for_logical_line(
+fn build_visual_row_offsets(
     logical_lines: &[Line<'static>],
     wrap_width: u16,
-    logical_line: usize,
-) -> usize {
-    if logical_line == 0 {
-        return 0;
+) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(logical_lines.len() + 1);
+    let mut total = 0usize;
+
+    for line in logical_lines {
+        offsets.push(total);
+        total = total.saturating_add(flatten_wrapped_history(vec![line.clone()], wrap_width, None).0.len());
     }
 
-    let prefix = logical_lines
-        .iter()
-        .take(logical_line)
-        .cloned()
-        .collect::<Vec<_>>();
-    flatten_wrapped_history(prefix, wrap_width, None).0.len()
+    offsets.push(total);
+    offsets
 }
 
 #[cfg(test)]

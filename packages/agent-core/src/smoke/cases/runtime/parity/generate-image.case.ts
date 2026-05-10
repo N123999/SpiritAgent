@@ -51,6 +51,10 @@ export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
     nonStreamingExecutor.executedCalls,
     'generate_image 非流式 smoke',
   );
+  assertToolResultMessagePersisted(
+    nonStreamingResult.state,
+    'generate_image 非流式 smoke',
+  );
 
   const streamingTransport = new GenerateImageTerminalTransport(
     'streaming',
@@ -84,6 +88,10 @@ export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
     streamingResult.toolExecutions,
     streamingTransport.rounds,
     streamingExecutor.executedCalls,
+    'generate_image 流式 smoke',
+  );
+  assertToolResultMessagePersisted(
+    streamingResult.state,
     'generate_image 流式 smoke',
   );
   if (streamingEvents.some((event) => event.kind === 'assistant-chunk' && event.text.trim().length > 0)) {
@@ -149,6 +157,23 @@ function assertTerminalGenerateImageResult(
   }
   if (!execution.artifacts?.some((artifact) => artifact.path === 'generated/square-poster.png')) {
     throw new Error(`${label} 未把生成图片路径放入 structured artifacts。`);
+  }
+}
+
+function assertToolResultMessagePersisted(
+  state: ScriptedState,
+  label: string,
+): void {
+  const toolMessage = state.messages.find((message) => {
+    if (typeof message !== 'object' || message === null || Array.isArray(message)) {
+      return false;
+    }
+
+    return message.role === 'tool' && message.tool_call_id === 'call-generate-image';
+  }) as { content?: unknown } | undefined;
+
+  if (typeof toolMessage?.content !== 'string' || !toolMessage.content.includes('generated/square-poster.png')) {
+    throw new Error(`${label} 未把 generate_image 结果写回 runtime state messages。`);
   }
 }
 

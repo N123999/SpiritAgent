@@ -2112,6 +2112,11 @@ export class AgentRuntime<
       }
 
       const output = await this.options.generateImage(imageRequest);
+      const resumedState = this.options.appendToolResultMessage(
+        state,
+        toolCallId,
+        output.summaryText,
+      );
       this.finishGenerateImageToolCall(
         request,
         toolCallId,
@@ -2126,7 +2131,7 @@ export class AgentRuntime<
       return {
         kind: 'completed',
         assistantText: '',
-        state,
+        state: resumedState,
         requestTrace: [...turn.requestTrace],
         toolExecutions: [...turn.toolExecutions],
         compactions: [...turn.compactions],

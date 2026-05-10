@@ -370,8 +370,10 @@ function ImageGenerationToolCard({
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
   saveLocalImageAs: SaveLocalImageAs;
 }) {
-  const imagePath = tool.imagePaths?.find(isPreviewableImagePath) ?? "";
+  const previewableImagePath = tool.imagePaths?.find(isPreviewableImagePath) ?? "";
+  const imagePath = tool.imagePaths?.find((path) => path.trim().length > 0) ?? "";
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [previewAspectRatio, setPreviewAspectRatio] = useState<number | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -379,22 +381,32 @@ function ImageGenerationToolCard({
   useEffect(() => {
     let cancelled = false;
     setPreviewDataUrl(null);
-    if (!imagePath) {
+    if (!previewableImagePath) {
+      setPreviewState("unavailable");
       return () => {
         cancelled = true;
       };
     }
 
-    void readLocalImagePreviewDataUrl(imagePath).then((dataUrl) => {
-      if (!cancelled) {
+    setPreviewState("loading");
+    void readLocalImagePreviewDataUrl(previewableImagePath)
+      .then((dataUrl) => {
+        if (cancelled) {
+          return;
+        }
         setPreviewDataUrl(dataUrl);
-      }
-    });
+        setPreviewState(dataUrl ? "ready" : "unavailable");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewState("unavailable");
+        }
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [imagePath, readLocalImagePreviewDataUrl]);
+  }, [previewableImagePath, readLocalImagePreviewDataUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -425,8 +437,8 @@ function ImageGenerationToolCard({
     };
   }, [previewDataUrl]);
 
-  const loading = tool.phase === "running" || (!previewDataUrl && tool.phase !== "failed");
-  const canInteract = Boolean(previewDataUrl && imagePath);
+  const loading = tool.phase === "running" || previewState === "loading";
+  const canInteract = Boolean(previewDataUrl && previewableImagePath);
   const floatingActionButtonClass =
     "size-8 rounded-full border border-border/50 bg-background/55 text-foreground shadow-sm backdrop-blur-xl transition-[background-color,border-color,box-shadow,transform] hover:border-border/60 hover:bg-background/72 dark:border-white/12 dark:bg-input/30 dark:hover:bg-input/40 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
   const viewerFrameStyle = previewAspectRatio
@@ -486,7 +498,7 @@ function ImageGenerationToolCard({
                 loading ? "spirit-thinking-shimmer-text" : "text-muted-foreground",
               )}
             >
-              Loading
+              {loading ? "Loading" : "预览不可用"}
             </span>
           </div>
         )}

@@ -176,7 +176,6 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       name: 'generate_image';
       prompt: string;
       size?: string;
-      aspectRatio?: string;
     }
   | {
       name: 'ask_questions';
@@ -523,13 +522,10 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       case 'generate_image':
         {
           const size = optionalStringStrict(parsed, 'size');
-          const aspectRatio = optionalStringStrict(parsed, 'aspectRatio')
-            ?? optionalStringStrict(parsed, 'aspect_ratio');
         return {
           name,
           prompt: requiredString(parsed, 'prompt'),
           ...(size ? { size } : {}),
-          ...(aspectRatio ? { aspectRatio } : {}),
         };
         }
       case 'ask_questions':
@@ -2034,7 +2030,7 @@ function detectGeneratedImageType(mediaType: string, bytes: Uint8Array): { exten
   if (preferredExtension && detectSupportedImageFile(`generated${preferredExtension}`, bytes)) {
     return {
       extension: preferredExtension,
-      mimeType: normalizedMediaType,
+      mimeType: mimeTypeForImageExtension(preferredExtension) ?? 'image/png',
     };
   }
 
@@ -2048,9 +2044,10 @@ function detectGeneratedImageType(mediaType: string, bytes: Uint8Array): { exten
     }
   }
 
+  const fallbackExtension = preferredExtension ?? '.png';
   return {
-    extension: preferredExtension ?? '.png',
-    mimeType: normalizedMediaType || 'image/png',
+    extension: fallbackExtension,
+    mimeType: mimeTypeForImageExtension(fallbackExtension) ?? 'image/png',
   };
 }
 
@@ -2066,6 +2063,23 @@ function imageExtensionForMediaType(mediaType: string): string | undefined {
       return '.png';
     case 'image/webp':
       return '.webp';
+    default:
+      return undefined;
+  }
+}
+
+function mimeTypeForImageExtension(extension: string): string | undefined {
+  switch (extension) {
+    case '.bmp':
+      return 'image/bmp';
+    case '.gif':
+      return 'image/gif';
+    case '.jpg':
+      return 'image/jpeg';
+    case '.png':
+      return 'image/png';
+    case '.webp':
+      return 'image/webp';
     default:
       return undefined;
   }
