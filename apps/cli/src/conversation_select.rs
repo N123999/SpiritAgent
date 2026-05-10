@@ -59,11 +59,28 @@ impl NormRange {
 
 fn grapheme_line_to_owned(
     line: &[StyledGrapheme<'_>],
+    prefix: Option<&HangingIndent>,
     row: usize,
     sel: Option<NormRange>,
-) -> Line<'static> {
+) -> (Line<'static>, String) {
     let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut plain = String::new();
     let mut col = 0usize;
+
+    if let Some(prefix) = prefix {
+        for segment in &prefix.segments {
+            let rev = sel.is_some_and(|s| s.covers_grapheme(row, col, segment.width));
+            let st = if rev {
+                segment.style.add_modifier(Modifier::REVERSED)
+            } else {
+                segment.style
+            };
+            spans.push(Span::styled(segment.text.clone(), st));
+            plain.push_str(&segment.plain);
+            col += segment.width;
+        }
+    }
+
     for g in line {
         let w = g.symbol.width();
         let rev = sel.is_some_and(|s| s.covers_grapheme(row, col, w));
@@ -73,27 +90,28 @@ fn grapheme_line_to_owned(
             g.style
         };
         spans.push(Span::styled(g.symbol.to_string(), st));
+        if g.symbol == "\u{00a0}" {
+            plain.push(' ');
+        } else {
+            plain.push_str(g.symbol);
+        }
         col += w;
     }
-    Line::from(spans)
+
+    (Line::from(spans), plain)
 }
 
-fn graphemes_to_plain(line: &[StyledGrapheme<'_>]) -> String {
-    line.iter()
-        .map(|g| {
-            if g.symbol == "\u{00a0}" {
-                " "
-            } else {
-                g.symbol
-            }
-        })
-        .collect()
+#[derive(Clone, Debug)]
+struct HangingIndentSegment {
+    text: String,
+    plain: String,
+    style: Style,
+    width: usize,
 }
 
 #[derive(Clone, Debug, Default)]
 struct HangingIndent {
-    spans: Vec<Span<'static>>,
-    plain: String,
+    segments: Vec<HangingIndentSegment>,
 }
 
 fn display_space_for_width(width: usize) -> String {
@@ -106,8 +124,12 @@ fn is_display_space(symbol: &str) -> bool {
 
 fn push_indent_space(indent: &mut HangingIndent, grapheme: &StyledGrapheme<'_>) {
     let space = display_space_for_width(grapheme.symbol.width());
-    indent.plain.push_str(&space);
-    indent.spans.push(Span::styled(space, grapheme.style));
+    indent.segments.push(HangingIndentSegment {
+        text: space.clone(),
+        plain: space,
+        style: grapheme.style,
+        width: grapheme.symbol.width(),
+    });
 }
 
 fn push_indent_symbol(indent: &mut HangingIndent, grapheme: &StyledGrapheme<'_>) {
@@ -116,8 +138,12 @@ fn push_indent_symbol(indent: &mut HangingIndent, grapheme: &StyledGrapheme<'_>)
     } else {
         grapheme.symbol.to_string()
     };
-    indent.plain.push_str(&symbol);
-    indent.spans.push(Span::styled(symbol, grapheme.style));
+    indent.segments.push(HangingIndentSegment {
+        plain: symbol.clone(),
+        text: symbol,
+        style: grapheme.style,
+        width: grapheme.symbol.width(),
+    });
 }
 
 fn build_hanging_indent(line: &[StyledGrapheme<'_>]) -> HangingIndent {
@@ -152,20 +178,6 @@ fn build_hanging_indent(line: &[StyledGrapheme<'_>]) -> HangingIndent {
     indent
 }
 
-fn prepend_hanging_indent(
-    line: Line<'static>,
-    plain: String,
-    indent: &HangingIndent,
-) -> (Line<'static>, String) {
-    if indent.spans.is_empty() {
-        return (line, plain);
-    }
-
-    let mut spans = indent.spans.clone();
-    spans.extend(line.spans);
-    (Line::from(spans), format!("{}{}", indent.plain, plain))
-}
-
 /// 与 `Paragraph::wrap(Wrap { trim: false })` 相同管线：按宽度折成若干视口行。
 pub fn flatten_wrapped_history(
     logical_lines: Vec<Line<'static>>,
@@ -188,12 +200,10 @@ pub fn flatten_wrapped_history(
         let mut visual_index = 0usize;
 
         while let Some(wl) = composer.next_line() {
-            let line_plain = graphemes_to_plain(wl.line);
-            let display_line = grapheme_line_to_owned(wl.line, row, sel);
             let (display_line, line_plain) = if visual_index == 0 {
-                (display_line, line_plain)
+                grapheme_line_to_owned(wl.line, None, row, sel)
             } else {
-                prepend_hanging_indent(display_line, line_plain, &indent)
+                grapheme_line_to_owned(wl.line, Some(&indent), row, sel)
             };
 
             plain_rows.push(line_plain);

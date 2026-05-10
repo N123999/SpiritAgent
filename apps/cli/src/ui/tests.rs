@@ -11,6 +11,7 @@ use crate::{
 use ratatui::{Terminal, backend::TestBackend};
 use rust_i18n::t;
 use std::{collections::HashMap, env, fs};
+use unicode_width::UnicodeWidthStr;
 
 fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
     lines
@@ -1198,6 +1199,71 @@ fn generate_image_tool_card_keeps_rail_on_wrapped_path_lines() {
             .is_some_and(|line| line.starts_with("  ▌ ")),
         "wrapped path continuation should keep tool rail: {lines:#?}"
     );
+}
+
+#[test]
+fn generate_image_tool_card_selection_highlights_wrapped_rail_consistently() {
+    let mut app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-select-wrap".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: vec![
+                "路径: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/this-is-a-very-long-image-name-that-must-wrap/example-output.png"
+                    .to_string(),
+            ],
+            image_paths: Vec::new(),
+            args_excerpt: None,
+            output_excerpt: None,
+        },
+    ));
+    app.show_aux_details = false;
+
+    let message_lines = render_message_lines(&app, &app.messages[0], 0);
+    let (flat, _) = crate::conversation_select::flatten_wrapped_history(message_lines.clone(), 28, None);
+    let plain_lines = render_text_lines(flat);
+    let continuation_index = plain_lines
+        .iter()
+        .position(|line| line.starts_with("  ▌ "))
+        .expect("wrapped continuation line exists");
+
+    let selection = crate::conversation_select::normalize_selection(
+        crate::conversation_select::CellPointer {
+            line: continuation_index,
+            col: 0,
+        },
+        crate::conversation_select::CellPointer {
+            line: continuation_index,
+            col: 3,
+        },
+    );
+    let (selected_flat, _) =
+        crate::conversation_select::flatten_wrapped_history(message_lines, 28, Some(selection));
+    let selected_line = &selected_flat[continuation_index];
+
+    let mut covered_width = 0usize;
+    let mut covered_spans = 0usize;
+    for span in &selected_line.spans {
+        let width = UnicodeWidthStr::width(span.content.as_ref());
+        if width == 0 {
+            continue;
+        }
+        covered_width += width;
+        covered_spans += 1;
+        assert!(
+            span.style.add_modifier.contains(Modifier::REVERSED),
+            "wrapped continuation prefix should be selection-highlighted: {selected_line:#?}"
+        );
+        if covered_width >= 4 {
+            break;
+        }
+    }
+
+    assert!(covered_spans > 0);
+    assert!(covered_width >= 4);
 }
 
 #[test]
