@@ -98,8 +98,24 @@ export function buildBuiltinHostToolDefinitions(
       },
     ),
     functionTool(
+      'glob',
+      'Match workspace file paths with a glob pattern such as src/**/*.ts or **/*.{json,md}. Returns matching relative file paths only. Use grep to search file contents and list_directory_files for a single directory inventory.',
+      {
+        type: 'object',
+        properties: {
+          pattern: {
+            type: 'string',
+            description:
+              'Workspace-relative glob pattern used to match file paths. Examples: src/**/*.ts, **/*.{ts,tsx}, .github/**/*.md.',
+          },
+        },
+        required: ['pattern'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
       'grep',
-      'Search text in files under the workspace directory only. By default query is matched as case-insensitive literal text; set is_regexp to true to interpret query as a regular expression. Use list_directory_files when you need a directory inventory instead of shell ls or dir.',
+      'Search text within workspace file contents only. By default query is matched as case-insensitive literal text; set is_regexp to true to interpret query as a regular expression. Use glob to search file paths and list_directory_files when you need a single directory inventory instead of shell ls or dir.',
       {
         type: 'object',
         properties: {

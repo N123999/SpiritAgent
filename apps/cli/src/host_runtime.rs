@@ -224,6 +224,19 @@ pub(crate) fn build_tool_result_block(
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
+        "glob" => ToolUiBlock {
+            tool_call_id: tool_call_id.map(String::from),
+            tool_name: tool_name.to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "文件匹配完成".to_string(),
+            detail_lines: vec![format!(
+                "模式: {}",
+                string_arg(request, "pattern").unwrap_or("<unknown>")
+            )],
+            image_paths: Vec::new(),
+            args_excerpt: Some(args_excerpt),
+            output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+        },
         "read_file" => {
             let start = u64_arg(request, "start_line").unwrap_or(1);
             let end = u64_arg(request, "end_line")
@@ -384,6 +397,7 @@ pub(crate) fn format_tool_ui_message(
             "[tool] 已列出目录下文件 {}",
             string_arg(request, "path").unwrap_or("<unknown>")
         ),
+        "glob" => output.to_string(),
         "read_file" => {
             let start = u64_arg(request, "start_line").unwrap_or(1);
             let end = u64_arg(request, "end_line")
@@ -566,5 +580,26 @@ mod tests {
             vec!["路径: src/main.rs".to_string(), "行范围: 3 - 9".to_string()]
         );
         assert!(block.output_excerpt.is_none());
+    }
+
+    #[test]
+    fn glob_tool_block_shows_pattern_detail_and_output_excerpt() {
+        let output = "[glob]\npattern: src/**/*.ts\nmatches: 2\ntruncated: false\n\nsrc/app.ts\nsrc/lib/util.ts\n";
+        let block = build_tool_result_block(
+            &ToolUiRequest::new("glob", json!({ "pattern": "src/**/*.ts" })),
+            "glob",
+            Some("call_02_glob"),
+            output,
+        );
+
+        assert_eq!(block.tool_call_id.as_deref(), Some("call_02_glob"));
+        assert_eq!(block.headline, "文件匹配完成");
+        assert_eq!(block.detail_lines, vec!["模式: src/**/*.ts".to_string()]);
+        assert!(
+            block
+                .output_excerpt
+                .as_deref()
+                .is_some_and(|text| text.contains("src/app.ts"))
+        );
     }
 }

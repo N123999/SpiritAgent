@@ -1201,6 +1201,8 @@ function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): 
       return nonEmpty('path');
     case 'read_file':
       return nonEmpty('path');
+    case 'glob':
+      return nonEmpty('pattern');
     case 'grep':
       return nonEmpty('query');
     case 'run_subagent':

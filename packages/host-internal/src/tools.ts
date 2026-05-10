@@ -13,6 +13,8 @@ import {
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { glob as globPaths } from 'glob';
+
 import {
   readHostFileSnapshot,
   type HostFileChangeKind,
@@ -47,6 +49,7 @@ const GENERATED_IMAGES_DIR = 'generated-images';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
 const MAX_COMMAND_OUTPUT_CHARS = 16_000;
+const MAX_GLOB_RESULTS = 1000;
 const MAX_SEARCH_RESULTS = 80;
 const MAX_SEARCH_MATCHES_PER_FILE = 3;
 const MAX_SEARCH_FILE_BYTES = 1_000_000;
@@ -157,6 +160,7 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { name: 'run_shell_command'; command: string; reason: string }
   | { name: 'web_fetch'; url: string }
   | { name: 'list_directory_files'; path: string }
+  | { name: 'glob'; pattern: string }
   | {
       name: 'read_file';
       path: string;
@@ -409,7 +413,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const raw = message.startsWith('/tool') ? message.slice('/tool'.length).trim() : '';
     if (!raw) {
       throw new Error(
-        '用法:\n/tool shell <command>\n/tool web <url>\n/tool list <absolute-dir>\n/tool read <path> [start] [end]\n/tool search <query>',
+        '用法:\n/tool shell <command>\n/tool web <url>\n/tool list <absolute-dir>\n/tool glob <pattern>\n/tool read <path> [start] [end]\n/tool search <query>',
       );
     }
 
@@ -441,6 +445,13 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           throw new Error('用法: /tool list <absolute-dir>');
         }
         return { name: 'list_directory_files', path: tokens[1]! };
+      case 'glob': {
+        const pattern = raw.slice('glob'.length).trim();
+        if (!pattern) {
+          throw new Error('用法: /tool glob <pattern>');
+        }
+        return { name: 'glob', pattern };
+      }
       case 'read': {
         if (tokens.length < 2) {
           throw new Error('用法: /tool read <path> [start] [end]');
@@ -470,7 +481,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         };
       }
       default:
-        throw new Error(`未知 /tool 子命令: ${subcommand}\n可用: shell | web | list | read | search`);
+        throw new Error(`未知 /tool 子命令: ${subcommand}\n可用: shell | web | list | glob | read | search`);
     }
   }
 
@@ -496,6 +507,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         return {
           name,
           path: requiredString(parsed, 'path'),
+        };
+      case 'glob':
+        return {
+          name,
+          pattern: requiredString(parsed, 'pattern'),
         };
       case 'read_file':
         {
@@ -618,6 +634,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     request: HostToolRequest<QuestionSpec>,
   ): Promise<HostAuthorizationDecision<QuestionSpec>> {
     switch (request.name) {
+      case 'glob':
       case 'grep':
       case 'run_subagent':
       case 'generate_image':
@@ -736,6 +753,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         return this.executeWebFetch(request.url);
       case 'list_directory_files':
         return this.executeListDirectory(request.path);
+      case 'glob':
+        return this.executeGlob(request.pattern);
       case 'read_file':
         return this.executeReadFile(request.path, request.start_line, request.end_line);
       case 'grep':
@@ -1118,6 +1137,38 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       out += `${String(index).padStart(6, ' ')} | ${line}\n`;
     }
     return createHostToolTextOutput(out);
+  }
+
+  private async executeGlob(inputPattern: string): Promise<string> {
+    const pattern = normalizeWorkspaceGlobPattern(inputPattern);
+    const matches = (await globPaths(pattern, {
+      cwd: this.workspaceRoot,
+      absolute: false,
+      nodir: true,
+      dot: true,
+      windowsPathsNoEscape: true,
+      ignore: [...SEARCH_IGNORE_DIR_NAMES].map((name) => `**/${name}/**`),
+    }))
+      .map((value) => value.replace(/\\/gu, '/'))
+      .sort((left, right) => left.localeCompare(right));
+
+    const truncated = matches.length > MAX_GLOB_RESULTS;
+    const shown = truncated ? matches.slice(0, MAX_GLOB_RESULTS) : matches;
+
+    let out = `[glob]\npattern: ${pattern}\nmatches: ${matches.length}\ntruncated: ${truncated ? 'true' : 'false'}\n\n`;
+    if (shown.length === 0) {
+      out += '未搜索到文件';
+      return out;
+    }
+
+    for (const file of shown) {
+      out += `${file}\n`;
+    }
+
+    if (truncated) {
+      out += `\n...<结果已截断，最多列出 ${MAX_GLOB_RESULTS} 个文件>`;
+    }
+    return out;
   }
 
   private async executeSearchFiles(query: string, isRegexp = false): Promise<string> {
@@ -1622,6 +1673,25 @@ function optionalPositiveInt(obj: HostJsonObject, key: string): number | undefin
 function optionalBoolean(obj: HostJsonObject, key: string): boolean | undefined {
   const value = obj[key];
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function normalizeWorkspaceGlobPattern(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error('pattern 不能为空');
+  }
+
+  const normalized = trimmed.replace(/\\/gu, '/').replace(/^(?:\.\/)+/u, '');
+  if (!normalized) {
+    throw new Error('pattern 不能为空');
+  }
+  if (path.win32.isAbsolute(trimmed) || path.posix.isAbsolute(normalized)) {
+    throw new Error(`glob 仅接受 workspace-relative pattern: ${trimmed}`);
+  }
+  if (normalized.split('/').some((segment) => segment === '..')) {
+    throw new Error(`glob pattern 不能跳出 workspace: ${trimmed}`);
+  }
+  return normalized;
 }
 
 function createSearchLineMatcher(query: string, isRegexp: boolean): (line: string) => boolean {

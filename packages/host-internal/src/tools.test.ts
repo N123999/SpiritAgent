@@ -171,7 +171,7 @@ test('grep supports case-insensitive regular expression queries', async () => {
       is_regexp: true,
     });
 
-    assertSearchToolText(output);
+    assertTextToolOutput(output);
     assert.match(output, /\[tool\] 搜索\(正则\): runtime\\s\+parity/u);
     assert.match(output, /alpha\.txt:1 \| Runtime    parity/u);
     assert.doesNotMatch(output, /beta\.txt/u);
@@ -197,6 +197,76 @@ test('grep rejects invalid regular expressions with a clear error', async () => 
         }),
       /无效正则/u,
     );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('glob returns matching workspace files for a glob pattern', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-glob-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(join(workspaceRoot, 'src', 'nested'), { recursive: true });
+    await mkdir(spiritDataDir, { recursive: true });
+    await writeFile(join(workspaceRoot, 'src', 'app.ts'), 'export const app = 1;\n');
+    await writeFile(join(workspaceRoot, 'src', 'nested', 'util.ts'), 'export const util = 1;\n');
+    await writeFile(join(workspaceRoot, 'src', 'nested', 'note.md'), '# note\n');
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const output = await service.execute({
+      name: 'glob',
+      pattern: 'src/**/*.ts',
+    });
+
+    assertTextToolOutput(output);
+    assert.match(output, /^\[glob\]\npattern: src\/\*\*\/\*\.ts\nmatches: 2\ntruncated: false/um);
+    assert.match(output, /\nsrc\/app\.ts\n/u);
+    assert.match(output, /\nsrc\/nested\/util\.ts\n/u);
+    assert.doesNotMatch(output, /note\.md/u);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('glob rejects patterns that escape the workspace', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-glob-escape-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    await assert.rejects(
+      () =>
+        service.execute({
+          name: 'glob',
+          pattern: '../**/*.ts',
+        }),
+      /glob pattern 不能跳出 workspace/u,
+    );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('requestFromFunctionCall parses glob pattern', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-glob-parse-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const request = await service.requestFromFunctionCall(
+      'glob',
+      '{"pattern":"src/**/*.ts"}',
+    );
+
+    assert.deepEqual(request, {
+      name: 'glob',
+      pattern: 'src/**/*.ts',
+    });
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
@@ -231,6 +301,6 @@ function assertHostToolExecutionOutput(
   assert.notEqual(typeof output, 'string');
 }
 
-function assertSearchToolText(output: HostToolExecutionOutput | string): asserts output is string {
+function assertTextToolOutput(output: HostToolExecutionOutput | string): asserts output is string {
   assert.equal(typeof output, 'string');
 }

@@ -77,6 +77,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.2",
+    "glob": "^13.0.6",
     "ignore": "^5.3.2",
     "spirit-agent-repo": "file:../..",
     "tar": "^7.5.13"
