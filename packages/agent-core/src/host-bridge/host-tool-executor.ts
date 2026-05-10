@@ -29,6 +29,7 @@ interface HostToolRequestMetadata {
 
 export interface LocalHostToolService {
   toolDefinitionEnvironment(): BuiltinHostToolDefinitionEnvironment;
+  operatingSystemInfo?(): { name: string; version: string };
   parseCommand(message: string): Promise<JsonValue>;
   requestFromFunctionCall(name: string, argumentsJson: string): Promise<JsonValue>;
   authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>>;

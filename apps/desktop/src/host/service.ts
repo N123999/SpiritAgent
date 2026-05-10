@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import {
   buildActiveSkillsSystemMessage,
+  buildBasicInfoSystemMessage,
   buildDreamCollectorSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
@@ -21,6 +22,7 @@ import {
   type OpenAiEnabledRule,
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiPlanMetadata,
+  type OpenAiToolAgentBasicInfo,
   type RuntimeApprovalDecision,
   type OpenAiTransportConfig,
   type PendingWorkspaceFile,
@@ -1178,6 +1180,9 @@ class DesktopHostService {
       const planSystemPrompt = buildPlanSystemMessage(state.metadata.planMetadata);
       const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(this.currentTurnSkills);
       const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
+      const basicInfoSystemPrompt = buildBasicInfoSystemMessage(
+        this.buildRuntimeBasicInfo(state.workspaceRoot, this.requireToolExecutor()),
+      );
       const exportedAtUnixSecs = Math.floor(Date.now() / 1000);
       const filePath = path.join(
         tmpdir(),
@@ -1201,6 +1206,7 @@ class DesktopHostService {
             ? {}
             : { activeSkills: activeSkillsSystemPrompt }),
           ...(extensionsSystemPrompt === undefined ? {} : { extensions: extensionsSystemPrompt }),
+          ...(basicInfoSystemPrompt === undefined ? {} : { basicInfo: basicInfoSystemPrompt }),
         },
         note: 'messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。system_prompts 为 transport 导出的 system 文案（如 tool_agent），供调试与导出。',
         message_count: runtime.history().length,
@@ -2271,7 +2277,20 @@ class DesktopHostService {
       llmTransport,
       activeSkills: this.currentTurnSkills,
       workspaceRoot,
+      basicInfo: this.buildRuntimeBasicInfo(workspaceRoot, toolExecutor),
     });
+  }
+
+  private buildRuntimeBasicInfo(
+    workspaceRoot: string,
+    toolExecutor: DesktopToolExecutor,
+  ): OpenAiToolAgentBasicInfo {
+    const shell = toolExecutor.toolDefinitionEnvironment();
+    return {
+      workspaceRoot,
+      terminal: shell.shellDisplayName,
+      system: toolExecutor.operatingSystemInfo(),
+    };
   }
 
   private buildSnapshot(): DesktopSnapshot {

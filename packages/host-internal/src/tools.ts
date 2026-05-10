@@ -10,6 +10,7 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
+import { release as osRelease } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -127,6 +128,11 @@ export interface HostBuiltinToolDefinitionEnvironment {
   shellCommandParameterDescription: string;
 }
 
+export interface HostOperatingSystemInfo {
+  name: string;
+  version: string;
+}
+
 export interface HostAskQuestionsOptionSpec {
   label: string;
   summary?: string;
@@ -239,6 +245,7 @@ function createHostToolOutput(
 
 export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionSpec> {
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment;
+  operatingSystemInfo(): HostOperatingSystemInfo;
   parseCommand(message: string): Promise<HostToolRequest<QuestionSpec>>;
   requestFromFunctionCall(name: string, argumentsJson: string): Promise<HostToolRequest<QuestionSpec>>;
   authorize(request: HostToolRequest<QuestionSpec>): Promise<HostAuthorizationDecision<QuestionSpec>>;
@@ -370,6 +377,20 @@ export function detectShellForTools(): HostBuiltinToolDefinitionEnvironment {
   };
 }
 
+export function detectOperatingSystemInfo(): HostOperatingSystemInfo {
+  const name = process.platform === 'win32'
+    ? 'Windows'
+    : process.platform === 'darwin'
+      ? 'macOS'
+      : process.platform === 'linux'
+        ? 'Linux'
+        : process.platform;
+  return {
+    name,
+    version: osRelease(),
+  };
+}
+
 export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   implements HostBuiltinToolService<QuestionSpec>
 {
@@ -407,6 +428,10 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
     return detectShellForTools();
+  }
+
+  operatingSystemInfo(): HostOperatingSystemInfo {
+    return detectOperatingSystemInfo();
   }
 
   async parseCommand(message: string): Promise<HostToolRequest<QuestionSpec>> {

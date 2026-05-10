@@ -17,6 +17,7 @@ import {
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiExtensionSystemPrompt,
   type OpenAiPlanMetadata,
+  type OpenAiToolAgentBasicInfo,
   type OpenAiToolAgentState,
   type OpenAiTransportConfig,
 } from '@spirit-agent/agent-core';
@@ -43,6 +44,7 @@ export function createDesktopRuntime(input: {
   llmTransport: OpenAiCompatibleTransport;
   activeSkills: OpenAiActiveSkill[];
   workspaceRoot: string;
+  basicInfo: OpenAiToolAgentBasicInfo;
 }): DesktopRuntime {
   return new AgentRuntime({
     config: input.transportConfig,
@@ -59,6 +61,7 @@ export function createDesktopRuntime(input: {
         input.transportConfig.model,
         input.planMetadata,
         input.extensionSystemPrompts,
+        input.basicInfo,
       ),
     createContinuationState: (messages) =>
       continueOpenAiToolAgentState(
@@ -70,6 +73,7 @@ export function createDesktopRuntime(input: {
         input.transportConfig.model,
         input.planMetadata,
         input.extensionSystemPrompts,
+        input.basicInfo,
       ),
     appendToolResultMessage: appendOpenAiToolResultMessage,
     appendUserMessage: appendOpenAiUserMessage,
@@ -89,6 +93,7 @@ export function createDesktopRuntime(input: {
         input.transportConfig.model,
         input.planMetadata,
         input.extensionSystemPrompts,
+        input.basicInfo,
       ),
     resolveWorkspaceFilesFromInput: (userInput) =>
       resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),

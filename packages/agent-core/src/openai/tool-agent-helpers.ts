@@ -13,6 +13,7 @@ import {
   appendToolResultMessage,
   appendToolResultMessages,
   appendUserMessage,
+  buildBasicInfoSystemMessage,
   buildToolAgentMessages,
   buildToolAgentSystemMessage,
   cloneJsonValue,
@@ -20,6 +21,7 @@ import {
   extractLastAssistantText,
   findLastMatchingIndex,
   findSpiritSystemMessageContent,
+  hasBasicInfoSystemMessage,
   isJsonObject,
   startToolAgentState,
   truncateHistoryForCompaction,
@@ -28,6 +30,7 @@ import {
   type ToolAgentEnabledRule,
   type ToolAgentEnabledSkillCatalogEntry,
   type ToolAgentExtensionSystemPrompt,
+  type ToolAgentBasicInfo,
   type ToolAgentPlanMetadata,
   type ToolAgentState,
   type ToolAgentToolResult,
@@ -36,6 +39,7 @@ import { userMessageContentMatchesInput } from '../runtime/user-turn-timestamp.j
 
 export {
   buildActiveSkillsSystemMessage,
+  buildBasicInfoSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
@@ -49,6 +53,7 @@ export type OpenAiActiveSkillResourceEntry = ToolAgentActiveSkill['resources'][n
 export type OpenAiActiveSkill = ToolAgentActiveSkill;
 export type OpenAiPlanMetadata = ToolAgentPlanMetadata;
 export type OpenAiExtensionSystemPrompt = ToolAgentExtensionSystemPrompt;
+export type OpenAiToolAgentBasicInfo = ToolAgentBasicInfo;
 export type OpenAiToolAgentState = ToolAgentState;
 export type OpenAiToolResult = ToolAgentToolResult;
 
@@ -62,6 +67,7 @@ export function startOpenAiToolAgentState(
   model: string,
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
+  basicInfo?: OpenAiToolAgentBasicInfo,
 ): OpenAiToolAgentState {
   return startToolAgentState(
     buildOpenAiToolAgentMessages(
@@ -73,6 +79,7 @@ export function startOpenAiToolAgentState(
       model,
       planMetadata,
       extensionSystemPrompts,
+      basicInfo,
     ),
     userInput,
   );
@@ -87,6 +94,7 @@ export function continueOpenAiToolAgentState(
   model: string,
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
+  basicInfo?: OpenAiToolAgentBasicInfo,
 ): OpenAiToolAgentState {
   return continueToolAgentState(
     buildOpenAiToolAgentMessages(
@@ -98,6 +106,7 @@ export function continueOpenAiToolAgentState(
       model,
       planMetadata,
       extensionSystemPrompts,
+      basicInfo,
     ),
   );
 }
@@ -111,6 +120,7 @@ function buildOpenAiToolAgentMessages(
   model: string,
   planMetadata: OpenAiPlanMetadata | undefined,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
+  basicInfo: OpenAiToolAgentBasicInfo | undefined,
 ): JsonValue[] {
   return buildToolAgentMessages({
     historyMessages: llmHistoryToOpenAiMessages(history, assetRoot),
@@ -120,6 +130,7 @@ function buildOpenAiToolAgentMessages(
     model,
     ...(planMetadata === undefined ? {} : { planMetadata }),
     extensionSystemPrompts,
+    ...(basicInfo === undefined ? {} : { basicInfo }),
   });
 }
 
@@ -192,6 +203,7 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   model: string,
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
+  basicInfo?: OpenAiToolAgentBasicInfo,
 ): OpenAiToolAgentState {
   const preservedSpiritSystemMessage = findSpiritSystemMessageContent(retryState.messages);
   const rebuilt = startOpenAiToolAgentState(
@@ -204,11 +216,17 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
     model,
     preservedSpiritSystemMessage === undefined ? planMetadata : undefined,
     preservedSpiritSystemMessage === undefined ? extensionSystemPrompts : [],
+    basicInfo,
   );
   if (preservedSpiritSystemMessage !== undefined) {
+    const preservedBasicInfo = hasBasicInfoSystemMessage(preservedSpiritSystemMessage);
     rebuilt.messages[0] = {
       role: 'system',
-      content: buildToolAgentSystemMessage(model, preservedSpiritSystemMessage),
+      content: buildToolAgentSystemMessage(
+        model,
+        preservedSpiritSystemMessage,
+        preservedBasicInfo ? undefined : buildBasicInfoSystemMessage(basicInfo),
+      ),
     };
   }
   rebuilt.steps = retryState.steps;

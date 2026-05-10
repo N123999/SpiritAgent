@@ -1,4 +1,5 @@
 import { stdin, stdout } from 'node:process';
+import { release as osRelease } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
 import {
@@ -13,6 +14,7 @@ import {
   appendOpenAiUserMessage,
   appendOpenAiUserLlmMessage,
   buildActiveSkillsSystemMessage,
+  buildBasicInfoSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
@@ -29,6 +31,7 @@ import {
   type OpenAiEnabledSkillCatalogEntry,
   type OpenAiExtensionSystemPrompt,
   type OpenAiPlanMetadata,
+  type OpenAiToolAgentBasicInfo,
   type OpenAiToolAgentState,
 } from './openai/tool-agent-helpers.js';
 import { buildContributedHostToolDefinitions } from './host-tools.js';
@@ -574,6 +577,32 @@ function requireRuntime(): HostRuntime {
 
 function currentWorkspaceRoot(): string {
   return transportConfig?.workspaceRoot ?? process.cwd();
+}
+
+function currentOperatingSystemInfo(): { name: string; version: string } {
+  const name = process.platform === 'win32'
+    ? 'Windows'
+    : process.platform === 'darwin'
+      ? 'macOS'
+      : process.platform === 'linux'
+        ? 'Linux'
+        : process.platform;
+  return {
+    name,
+    version: osRelease(),
+  };
+}
+
+function buildRuntimeBasicInfo(
+  workspaceRoot: string,
+  service: LocalHostToolService | undefined,
+): OpenAiToolAgentBasicInfo {
+  const shell = service?.toolDefinitionEnvironment();
+  return {
+    workspaceRoot,
+    ...(shell?.shellDisplayName ? { terminal: shell.shellDisplayName } : {}),
+    system: service?.operatingSystemInfo?.() ?? currentOperatingSystemInfo(),
+  };
 }
 
 async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInternalState | undefined> {
@@ -1211,6 +1240,8 @@ async function createRuntime(
 ): Promise<HostRuntime> {
   currentHostToolModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config);
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
+  const hostInternal = await ensureCliHostInternal(workspaceRoot);
+  const basicInfo = buildRuntimeBasicInfo(workspaceRoot, hostInternal?.service);
   toolExecutor.setImageGenerationAvailable(config.imageGeneration !== undefined);
   await toolExecutor.refreshCaches();
   logBridge('createRuntime', {
@@ -1231,6 +1262,7 @@ async function createRuntime(
       config.model,
       planMetadata,
       extensionSystemPrompts,
+      basicInfo,
     );
   const llmTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport(config);
 
@@ -1249,6 +1281,7 @@ async function createRuntime(
         config.model,
         planMetadata,
         extensionSystemPrompts,
+        basicInfo,
       ),
     appendToolResultMessage: appendOpenAiToolResultMessage,
     appendUserMessage: appendOpenAiUserMessage,
@@ -1268,6 +1301,7 @@ async function createRuntime(
         config.model,
         planMetadata,
         extensionSystemPrompts,
+        basicInfo,
       ),
     generateImage: (request) =>
       llmTransport.generateImage(config, request, async (saveRequest) => {
@@ -1873,6 +1907,10 @@ peer.on('runtime.exportState', async () => {
   const planSystemPrompt = buildPlanSystemMessage(planMetadata);
   const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(activeSkills);
   const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
+  const workspaceRoot = config.workspaceRoot ?? currentWorkspaceRoot();
+  const basicInfoSystemPrompt = buildBasicInfoSystemMessage(
+    buildRuntimeBasicInfo(workspaceRoot, cliHostInternal?.service),
+  );
 
   return {
     apiMessages: exportTransport.llmHistoryAsApiMessages([...target.history()]),
@@ -1889,6 +1927,7 @@ peer.on('runtime.exportState', async () => {
         ? {}
         : { activeSkills: activeSkillsSystemPrompt }),
       ...(extensionsSystemPrompt === undefined ? {} : { extensions: extensionsSystemPrompt }),
+      ...(basicInfoSystemPrompt === undefined ? {} : { basicInfo: basicInfoSystemPrompt }),
     },
   };
 });

@@ -16,6 +16,7 @@ const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
 const PLAN_SECTION_PREFIX = '[SPIRIT_PLAN]';
 const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
 const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
+const BASIC_INFO_SECTION_PREFIX = '[SPIRIT_BASIC_INFO]';
 const TOOL_MEMORY_PREFIX = '[TOOL_MEMORY]';
 
 export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
@@ -64,6 +65,17 @@ export interface ToolAgentExtensionSystemPrompt {
   extensionId: string;
   extensionName: string;
   content: string;
+}
+
+export interface ToolAgentSystemInfo {
+  name: string;
+  version: string;
+}
+
+export interface ToolAgentBasicInfo {
+  workspaceRoot?: string;
+  terminal?: string;
+  system?: ToolAgentSystemInfo;
 }
 
 export interface ToolAgentState {
@@ -118,12 +130,14 @@ export function buildToolAgentMessages(input: {
   model: string;
   planMetadata?: ToolAgentPlanMetadata;
   extensionSystemPrompts?: ToolAgentExtensionSystemPrompt[];
+  basicInfo?: ToolAgentBasicInfo;
 }): JsonValue[] {
   const rulesSystemMessage = buildRulesSystemMessage(input.enabledRules ?? []);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(input.enabledSkillCatalog ?? []);
   const planSystemMessage = buildPlanSystemMessage(input.planMetadata);
   const activeSkillsSystemMessage = buildActiveSkillsSystemMessage(input.activeSkills ?? []);
   const extensionsSystemMessage = buildExtensionsSystemMessage(input.extensionSystemPrompts ?? []);
+  const basicInfoSystemMessage = buildBasicInfoSystemMessage(input.basicInfo);
 
   return [
     {
@@ -135,6 +149,7 @@ export function buildToolAgentMessages(input: {
         planSystemMessage,
         activeSkillsSystemMessage,
         extensionsSystemMessage,
+        basicInfoSystemMessage,
       ),
     },
     ...input.historyMessages.map((message) => cloneJsonValue(message)),
@@ -454,6 +469,43 @@ export function buildExtensionsSystemMessage(
   ].join('\n');
 }
 
+export function buildBasicInfoSystemMessage(
+  basicInfo?: ToolAgentBasicInfo,
+): string | undefined {
+  const workspaceRoot = basicInfo?.workspaceRoot?.trim();
+  const terminal = basicInfo?.terminal?.trim();
+  const systemName = basicInfo?.system?.name.trim();
+  const systemVersion = basicInfo?.system?.version.trim();
+  const hasSystem = Boolean(systemName || systemVersion);
+
+  if (!workspaceRoot && !terminal && !hasSystem) {
+    return undefined;
+  }
+
+  const lines = [BASIC_INFO_SECTION_PREFIX, 'Basic information', ''];
+  if (workspaceRoot) {
+    lines.push('Current workspace:', `- ${workspaceRoot}`, '');
+  }
+  if (terminal) {
+    lines.push('Current terminal:', `- ${terminal}`, '');
+  }
+  if (hasSystem) {
+    lines.push('Operating system:');
+    if (systemName) {
+      lines.push(`- Name: ${systemName}`);
+    }
+    if (systemVersion) {
+      lines.push(`- Version: ${systemVersion}`);
+    }
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
+export function hasBasicInfoSystemMessage(content: string): boolean {
+  return content.includes(BASIC_INFO_SECTION_PREFIX);
+}
+
 export function findSpiritSystemMessageContent(messages: JsonValue[]): string | undefined {
   for (const message of messages) {
     if (!isJsonObject(message) || message.role !== 'system') {
@@ -464,7 +516,10 @@ export function findSpiritSystemMessageContent(messages: JsonValue[]): string | 
       const sectionStart = [
         RULES_SECTION_PREFIX,
         SKILLS_CATALOG_SECTION_PREFIX,
+        PLAN_SECTION_PREFIX,
         ACTIVE_SKILLS_SECTION_PREFIX,
+        EXTENSIONS_SECTION_PREFIX,
+        BASIC_INFO_SECTION_PREFIX,
       ]
         .map((prefix) => content.indexOf(prefix))
         .filter((index) => index >= 0)

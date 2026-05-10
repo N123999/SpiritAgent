@@ -24,6 +24,8 @@ import {
   type HostFileChangeObserver,
   type HostGeneratedImageFile,
   type HostGeneratedImageSaveRequest,
+  type HostBuiltinToolDefinitionEnvironment,
+  type HostOperatingSystemInfo,
   NodeHostToolService,
   createNoopMcpAdapter,
 } from '@spirit-agent/host-internal';
@@ -73,6 +75,14 @@ export class DesktopToolExecutor
   ): void {
     this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config);
     this.imageGenerationAvailable = config.imageGeneration !== undefined;
+  }
+
+  toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
+    return this.tools.toolDefinitionEnvironment();
+  }
+
+  operatingSystemInfo(): HostOperatingSystemInfo {
+    return this.tools.operatingSystemInfo();
   }
 
   toolDefinitionsJson(): JsonValue {
