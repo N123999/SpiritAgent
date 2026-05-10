@@ -427,7 +427,7 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         shell.tick();
         terminal.draw(|frame| {
             let app = shell.view_model();
-            let feedback = ui::draw_ui(frame, &app);
+            let feedback = ui::draw_ui(frame, &app, shell.ui_runtime_state_mut());
             shell.apply_render_feedback(feedback);
         })?;
 

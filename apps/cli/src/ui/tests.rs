@@ -27,9 +27,10 @@ fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
 fn render_ui_lines(app: &TuiViewModel, width: u16, height: u16) -> Vec<String> {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal initializes");
+    let mut runtime = UiRuntimeState::default();
     terminal
         .draw(|frame| {
-            draw_ui(frame, app);
+            draw_ui(frame, app, &mut runtime);
         })
         .expect("ui renders");
 

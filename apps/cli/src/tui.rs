@@ -32,6 +32,7 @@ use crate::{
         CliExtensionCliUiHookEntry, CliExtensionEntry, CliMarketplaceCatalogItem,
         CliMarketplaceDetail, CliMarketplaceDetailVersion, CliMarketplacePreparedInstall,
     },
+    ui::UiRuntimeState,
     view::{
         AssistantAuxData, BottomFormKind, ChatMessage, CliUiHookSlot, CliUiHookTokenRole,
         CliUiHookTokensView, CliUiHookVariant, CliUiHookView, InputSuggestion, InputSuggestionKind,
@@ -105,6 +106,7 @@ pub struct TuiShell {
     extension_entries: Vec<CliExtensionEntry>,
     marketplace: MarketplaceState,
     cli_ui_hooks: Vec<CliUiHookView>,
+    ui_runtime_state: UiRuntimeState,
 }
 
 impl TuiShell {
@@ -187,10 +189,15 @@ impl TuiShell {
             extension_entries,
             marketplace: MarketplaceState::default(),
             cli_ui_hooks,
+            ui_runtime_state: UiRuntimeState::from_terminal_query(),
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
         Ok(shell)
+    }
+
+    pub fn ui_runtime_state_mut(&mut self) -> &mut UiRuntimeState {
+        &mut self.ui_runtime_state
     }
 
     pub fn rule_entries(&self) -> &[RuleEntry] {

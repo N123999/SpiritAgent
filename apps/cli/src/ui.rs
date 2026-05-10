@@ -4,6 +4,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
+use ratatui_image::picker::{Picker, ProtocolType};
 use rust_i18n::t;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -67,7 +68,91 @@ pub struct ConversationPanelRenderFeedback {
     pub history_offset_from_bottom: usize,
 }
 
-pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFeedback {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageRenderBackend {
+    QueriedProtocol,
+    HalfblocksFallback,
+}
+
+pub struct ImageRenderState {
+    picker: Picker,
+    backend: ImageRenderBackend,
+}
+
+impl ImageRenderState {
+    pub fn from_terminal_query() -> Self {
+        match Picker::from_query_stdio() {
+            Ok(picker) => {
+                logging::log_event("[ui:image] initialized ratatui-image picker from terminal query");
+                Self {
+                    picker,
+                    backend: ImageRenderBackend::QueriedProtocol,
+                }
+            }
+            Err(err) => {
+                logging::log_event(&format!(
+                    "[ui:image] terminal query failed, falling back to halfblocks: {err:#}"
+                ));
+                Self::halfblocks()
+            }
+        }
+    }
+
+    pub fn halfblocks() -> Self {
+        let mut picker = Picker::from_fontsize((10, 20));
+        picker.set_protocol_type(ProtocolType::Halfblocks);
+        Self {
+            picker,
+            backend: ImageRenderBackend::HalfblocksFallback,
+        }
+    }
+
+    pub fn backend(&self) -> ImageRenderBackend {
+        self.backend
+    }
+
+    pub fn picker(&self) -> &Picker {
+        &self.picker
+    }
+
+    pub fn picker_mut(&mut self) -> &mut Picker {
+        &mut self.picker
+    }
+}
+
+pub struct UiRuntimeState {
+    image_render: ImageRenderState,
+}
+
+impl Default for UiRuntimeState {
+    fn default() -> Self {
+        Self {
+            image_render: ImageRenderState::halfblocks(),
+        }
+    }
+}
+
+impl UiRuntimeState {
+    pub fn from_terminal_query() -> Self {
+        Self {
+            image_render: ImageRenderState::from_terminal_query(),
+        }
+    }
+
+    pub fn image_render(&self) -> &ImageRenderState {
+        &self.image_render
+    }
+
+    pub fn image_render_mut(&mut self) -> &mut ImageRenderState {
+        &mut self.image_render
+    }
+}
+
+pub fn draw_ui(
+    frame: &mut ratatui::Frame<'_>,
+    app: &TuiViewModel,
+    _runtime: &mut UiRuntimeState,
+) -> UiRenderFeedback {
     let mut feedback = UiRenderFeedback::default();
     set_active_cli_ui_hooks(app.cli_ui_hooks.clone());
     let show_model_picker = app.model_picker_active;
