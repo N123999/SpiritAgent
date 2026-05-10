@@ -104,35 +104,49 @@ fn is_display_space(symbol: &str) -> bool {
     symbol == "\u{00a0}" || symbol.chars().all(char::is_whitespace)
 }
 
+fn push_indent_space(indent: &mut HangingIndent, grapheme: &StyledGrapheme<'_>) {
+    let space = display_space_for_width(grapheme.symbol.width());
+    indent.plain.push_str(&space);
+    indent.spans.push(Span::styled(space, grapheme.style));
+}
+
+fn push_indent_symbol(indent: &mut HangingIndent, grapheme: &StyledGrapheme<'_>) {
+    let symbol = if grapheme.symbol == "\u{00a0}" {
+        " ".to_string()
+    } else {
+        grapheme.symbol.to_string()
+    };
+    indent.plain.push_str(&symbol);
+    indent.spans.push(Span::styled(symbol, grapheme.style));
+}
+
 fn build_hanging_indent(line: &[StyledGrapheme<'_>]) -> HangingIndent {
     let mut indent = HangingIndent::default();
 
-    if let Some(first) = line.first().filter(|g| g.symbol == ">") {
-        let space = display_space_for_width(first.symbol.width());
-        indent.plain.push_str(&space);
-        indent.spans.push(Span::styled(space, first.style));
-
-        for grapheme in line.iter().skip(1) {
-            if !is_display_space(grapheme.symbol) {
-                break;
-            }
-
-            let space = display_space_for_width(grapheme.symbol.width());
-            indent.plain.push_str(&space);
-            indent.spans.push(Span::styled(space, grapheme.style));
-        }
-
-        return indent;
+    let mut iter = line.iter().peekable();
+    while let Some(grapheme) = iter.next_if(|g| is_display_space(g.symbol)) {
+        push_indent_space(&mut indent, grapheme);
     }
 
-    for grapheme in line {
-        if !is_display_space(grapheme.symbol) {
-            break;
+    if let Some(marker) = iter.peek() {
+        if marker.symbol == ">" {
+            if let Some(marker) = iter.next() {
+                push_indent_space(&mut indent, marker);
+            }
+            while let Some(grapheme) = iter.next_if(|g| is_display_space(g.symbol)) {
+                push_indent_space(&mut indent, grapheme);
+            }
+            return indent;
         }
 
-        let space = display_space_for_width(grapheme.symbol.width());
-        indent.plain.push_str(&space);
-        indent.spans.push(Span::styled(space, grapheme.style));
+        if marker.symbol == "▌" {
+            if let Some(marker) = iter.next() {
+                push_indent_symbol(&mut indent, marker);
+            }
+            while let Some(grapheme) = iter.next_if(|g| is_display_space(g.symbol)) {
+                push_indent_space(&mut indent, grapheme);
+            }
+        }
     }
 
     indent

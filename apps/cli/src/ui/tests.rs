@@ -1161,6 +1161,46 @@ fn generate_image_tool_card_shows_structured_path_when_aux_details_collapsed() {
 }
 
 #[test]
+fn generate_image_tool_card_keeps_rail_on_wrapped_path_lines() {
+    let mut app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-wrap".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: vec![
+                "路径: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/this-is-a-very-long-image-name-that-must-wrap/example-output.png"
+                    .to_string(),
+            ],
+            image_paths: Vec::new(),
+            args_excerpt: None,
+            output_excerpt: None,
+        },
+    ));
+    app.show_aux_details = false;
+
+    let (flat, _) = crate::conversation_select::flatten_wrapped_history(
+        render_message_lines(&app, &app.messages[0], 0),
+        28,
+        None,
+    );
+    let lines = render_text_lines(flat);
+    let path_line_index = lines
+        .iter()
+        .position(|line| line.contains("路径:"))
+        .expect("path line exists");
+
+    assert!(
+        lines
+            .get(path_line_index + 1)
+            .is_some_and(|line| line.starts_with("  ▌ ")),
+        "wrapped path continuation should keep tool rail: {lines:#?}"
+    );
+}
+
+#[test]
 fn generate_image_history_render_reserves_image_block() {
     let app = build_view_model(ChatMessage::with_tool_block(
         MessageRole::Agent,
