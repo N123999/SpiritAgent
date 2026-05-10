@@ -5,7 +5,7 @@ import type {
 } from '@spirit-agent/agent-core';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 
-import type { ConversationMessageSnapshot } from '../types.js';
+import type { ConversationMessageSnapshot, ToolBlockSnapshot } from '../types.js';
 import type { DesktopToolRequest } from './contracts.js';
 import type { DesktopRuntime } from './runtime.js';
 import type { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
@@ -42,12 +42,14 @@ export interface DesktopRuntimeEventOrchestratorOptions {
 export class DesktopRuntimeEventOrchestrator {
   private lastApplyEventBatchId = 0;
   private messageOrderDebugLastVerboseLogMs = 0;
+  private activeGenerateImageTools = new Map<string, ToolBlockSnapshot>();
 
   constructor(private readonly options: DesktopRuntimeEventOrchestratorOptions) {}
 
   reset(): void {
     this.lastApplyEventBatchId = 0;
     this.messageOrderDebugLastVerboseLogMs = 0;
+    this.activeGenerateImageTools.clear();
   }
 
   consumeCompletedTurnResult(): void {
@@ -145,14 +147,16 @@ export class DesktopRuntimeEventOrchestrator {
       }
       if (event.kind === 'tool-call-started') {
         if (event.toolName === 'generate_image') {
-          this.options.assistantMessages.upsertToolMessage(event.toolCallId, {
+          const runningTool: ToolBlockSnapshot = {
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             phase: 'running',
             headline: '生成图片',
             detailLines: [],
             argsExcerpt: truncateJson(event.request),
-          }, batchId);
+          };
+          this.activeGenerateImageTools.set(event.toolCallId, runningTool);
+          this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
         }
         this.options.dispatchExtensionEvent({
           type: 'onToolCall',
@@ -178,6 +182,9 @@ export class DesktopRuntimeEventOrchestrator {
         continue;
       }
       if (event.kind === 'tool-execution-finished') {
+        if (event.execution.toolName === 'generate_image' && event.execution.toolCallId) {
+          this.activeGenerateImageTools.delete(event.execution.toolCallId);
+        }
         this.integrateToolExecutions([event.execution]);
         this.options.dispatchExtensionEvent({
           type: 'onToolResult',
@@ -400,10 +407,24 @@ export class DesktopRuntimeEventOrchestrator {
         argsExcerpt: truncateJson(questions.questions),
       }, this.lastApplyEventBatchId);
     }
+
+    for (const [toolCallId, tool] of this.activeGenerateImageTools) {
+      this.options.assistantMessages.upsertToolMessage(
+        toolCallId,
+        {
+          ...tool,
+          phase: 'running',
+        },
+        this.lastApplyEventBatchId,
+      );
+    }
   }
 
   private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
     for (const execution of executions) {
+      if (execution.toolName === 'generate_image' && execution.toolCallId) {
+        this.activeGenerateImageTools.delete(execution.toolCallId);
+      }
       const imagePaths = imagePathsFromExecution(execution);
       const message = this.options.assistantMessages.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
         toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
