@@ -15,6 +15,7 @@ import {
   enqueueDeferredUserGuidance,
   isCompatibleContinuedToolRequest,
   renderError,
+  toolArtifactsFromOutput,
 } from './helpers.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type {
@@ -637,13 +638,15 @@ export async function executeAuthorizedToolCall<
   }
 
   const execution = await runtime.performToolExecution(request, toolName);
+  const artifacts = toolArtifactsFromOutput(execution.output);
 
   const finished: RuntimeToolExecution<ToolRequest> = {
     toolCallId,
     toolName,
     request,
-      output: execution.output.summaryText,
+    output: execution.output.summaryText,
     failed: execution.failed,
+    ...(artifacts ? { artifacts } : {}),
   };
   turn.toolExecutions.push(finished);
   runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
@@ -1028,12 +1031,14 @@ export async function processToolCallsAsync<
     }
 
     const execution = await runtime.performToolExecution(request, call.name);
+    const artifacts = toolArtifactsFromOutput(execution.output);
     const finished: RuntimeToolExecution<ToolRequest> = {
       toolCallId: call.id,
       toolName: call.name,
       request,
       output: execution.output.summaryText,
       failed: execution.failed,
+      ...(artifacts ? { artifacts } : {}),
     };
     turn.toolExecutions.push(finished);
     runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });

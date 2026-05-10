@@ -140,6 +140,7 @@ impl ChatRepository for JsonChatRepository {
             &archive.llm_history,
             &archive.subagent_sessions,
             archive.rewind.as_ref(),
+            archive.desktop_messages.as_deref(),
         )
     }
 
@@ -150,6 +151,7 @@ impl ChatRepository for JsonChatRepository {
             assistant_aux: loaded.assistant_aux,
             llm_history: loaded.llm_history,
             subagent_sessions: loaded.subagent_sessions,
+            desktop_messages: loaded.desktop_messages,
             rewind: loaded.rewind,
         })
     }

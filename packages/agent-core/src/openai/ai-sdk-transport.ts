@@ -13,6 +13,7 @@ import {
   type OpenAICompatibleLanguageModelChatOptions,
 } from '@ai-sdk/openai-compatible';
 import {
+  generateImage as generateAiImage,
   generateObject,
   generateText,
   jsonSchema,
@@ -22,10 +23,15 @@ import {
 } from 'ai';
 
 import {
+  DEFAULT_IMAGE_GENERATION_SIZE,
+  createLlmMessageContentFromTextAndImages,
   llmMessageHasImages,
   llmMessageTextContent,
 } from '../ports.js';
 import type {
+  GeneratedImageFile,
+  GeneratedImageSaveRequest,
+  ImageGenerationRequest,
   JsonObject,
   JsonValue,
   LlmMessage,
@@ -34,6 +40,7 @@ import type {
   StartedToolAgentRound,
   ToolAgentRoundCompletion,
   ToolCallRequest,
+  ToolExecutionOutput,
 } from '../ports.js';
 import {
   COMPACT_SUMMARY_PREFIX,
@@ -47,6 +54,7 @@ import {
   openAiReasoningEffort,
   openAiVendorChatCompletionBodyExtras,
   resolveOpenAiModelCompatibilityProfile,
+  type OpenAiImageGenerationConfig,
   type OpenAiTransportConfig,
 } from './openai-compat.js';
 import {
@@ -88,6 +96,58 @@ interface Deferred<T> {
 export class AiSdkOpenAiCompatibleTransport
   implements LlmTransport<OpenAiTransportConfig, ToolAgentState>, OpenAiJsonSchemaTransport
 {
+  async generateImage(
+    config: OpenAiTransportConfig,
+    request: ImageGenerationRequest,
+    saveGeneratedImage: (request: GeneratedImageSaveRequest) => Promise<GeneratedImageFile>,
+  ): Promise<ToolExecutionOutput> {
+    const imageConfig = config.imageGeneration;
+    if (!imageConfig) {
+      throw new Error('No image generation model is configured.');
+    }
+
+    const requestUrl = buildAiSdkImageGenerationUrl(imageConfig);
+    logAiSdkImageGenerationStart(imageConfig, request, requestUrl);
+
+    let result: Awaited<ReturnType<typeof generateAiImage>>;
+    try {
+      // TODO: If we later add image models that do not use OpenAI Images-compatible
+      // endpoints, do not blindly forward WIDTHxHEIGHT. Translate this shared size
+      // field per selected provider/model instead.
+      result = await generateAiImage({
+        model: createAiSdkImageModel(imageConfig),
+        prompt: request.prompt,
+        size: request.size as `${number}x${number}`,
+        maxRetries: 0,
+      });
+    } catch (error) {
+      logAiSdkImageGenerationFailure(imageConfig, request, requestUrl, error);
+      throw error;
+    }
+
+    const image = result.image;
+    const saved = await saveGeneratedImage({
+      data: image.uint8Array,
+      mediaType: image.mediaType,
+      prompt: request.prompt,
+      model: imageConfig.model,
+    });
+
+    logAiSdkImageGenerationSuccess(imageConfig, requestUrl, saved);
+
+    const summaryText = [
+      '[generated image]',
+      `path: ${saved.path}`,
+      `mime_type: ${saved.mimeType}`,
+      `model: ${imageConfig.model}`,
+    ].join('\n');
+
+    return {
+      content: createLlmMessageContentFromTextAndImages(summaryText, [saved.path]),
+      summaryText,
+    };
+  }
+
   async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(
     config: OpenAiTransportConfig,
     request: OpenAiJsonSchemaCompletionRequest,
@@ -439,8 +499,17 @@ function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
   return createAiSdkOpenAiCompatibleProvider(config).chatModel(config.model);
 }
 
-function createAiSdkOpenAiCompatibleProvider(config: OpenAiTransportConfig) {
-  const vendorExtras = openAiVendorChatCompletionBodyExtras(config);
+function createAiSdkImageModel(config: OpenAiImageGenerationConfig): any {
+  return createAiSdkOpenAiCompatibleProvider(config, { includeChatVendorExtras: false }).imageModel(config.model);
+}
+
+function createAiSdkOpenAiCompatibleProvider(
+  config: OpenAiTransportConfig | OpenAiImageGenerationConfig,
+  options: { includeChatVendorExtras?: boolean } = {},
+) {
+  const vendorExtras = options.includeChatVendorExtras === false
+    ? {}
+    : openAiVendorChatCompletionBodyExtras(config as OpenAiTransportConfig);
   const fetchWrapper =
     Object.keys(vendorExtras).length === 0
       ? undefined
@@ -1296,6 +1365,135 @@ function isDeepSeekOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean
 
 function isAlibabaOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'alibaba';
+}
+
+function buildAiSdkImageGenerationUrl(config: OpenAiImageGenerationConfig): string {
+  const baseUrl = (config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL).replace(/\/$/, '');
+  return `${baseUrl}/images/generations`;
+}
+
+function logAiSdkImageGenerationStart(
+  config: OpenAiImageGenerationConfig,
+  request: ImageGenerationRequest,
+  requestUrl: string,
+): void {
+  console.error('[agent-core][generate-image] request.start', {
+    adapter: 'openai-compatible-image',
+    vendor: config.llmVendor ?? 'custom',
+    model: config.model,
+    baseUrl: config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
+    requestUrl,
+    size: request.size,
+    usedDefaultSize: request.size === DEFAULT_IMAGE_GENERATION_SIZE,
+    promptPreview: truncateChars(singleLine(request.prompt), 160),
+  });
+}
+
+function logAiSdkImageGenerationSuccess(
+  config: OpenAiImageGenerationConfig,
+  requestUrl: string,
+  saved: GeneratedImageFile,
+): void {
+  console.error('[agent-core][generate-image] request.success', {
+    adapter: 'openai-compatible-image',
+    vendor: config.llmVendor ?? 'custom',
+    model: config.model,
+    requestUrl,
+    savedPath: saved.path,
+    mimeType: saved.mimeType,
+  });
+}
+
+function logAiSdkImageGenerationFailure(
+  config: OpenAiImageGenerationConfig,
+  request: ImageGenerationRequest,
+  requestUrl: string,
+  error: unknown,
+): void {
+  console.error('[agent-core][generate-image] request.failed', {
+    adapter: 'openai-compatible-image',
+    vendor: config.llmVendor ?? 'custom',
+    model: config.model,
+    baseUrl: config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
+    requestUrl,
+    size: request.size,
+    usedDefaultSize: request.size === DEFAULT_IMAGE_GENERATION_SIZE,
+    promptPreview: truncateChars(singleLine(request.prompt), 160),
+    ...describeAiSdkErrorForDebug(error),
+  });
+}
+
+function describeAiSdkErrorForDebug(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return {
+      errorType: typeof error,
+      errorMessage: String(error),
+    };
+  }
+
+  const candidate = error as Error & {
+    url?: unknown;
+    statusCode?: unknown;
+    responseBody?: unknown;
+    responseHeaders?: unknown;
+    data?: unknown;
+    cause?: unknown;
+  };
+
+  return {
+    errorName: error.name,
+    errorMessage: error.message,
+    ...(typeof candidate.url === 'string' ? { errorUrl: candidate.url } : {}),
+    ...(typeof candidate.statusCode === 'number' ? { statusCode: candidate.statusCode } : {}),
+    ...(candidate.responseBody !== undefined
+      ? { responseBodyPreview: truncateChars(stringifyDebugValue(candidate.responseBody), 4000) }
+      : {}),
+    ...(candidate.responseHeaders !== undefined
+      ? { responseHeaders: normalizeDebugValue(candidate.responseHeaders) }
+      : {}),
+    ...(candidate.data !== undefined ? { errorData: normalizeDebugValue(candidate.data) } : {}),
+    ...(candidate.cause !== undefined
+      ? { errorCause: truncateChars(stringifyDebugValue(candidate.cause), 1000) }
+      : {}),
+    ...(error.stack ? { stackPreview: truncateChars(error.stack, 2000) } : {}),
+  };
+}
+
+function normalizeDebugValue(value: unknown): unknown {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)) as unknown;
+  } catch {
+    return stringifyDebugValue(value);
+  }
+}
+
+function stringifyDebugValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return value.stack ?? `${value.name}: ${value.message}`;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function singleLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function renderAiSdkOpenAiError(error: unknown): string {

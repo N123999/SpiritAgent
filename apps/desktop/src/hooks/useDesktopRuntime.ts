@@ -98,6 +98,7 @@ function updateConfigFromSettingsForm(
 ): UpdateConfigRequest {
   return {
     activeModel: s.activeModel,
+    imageGenerationModel: s.imageGenerationModel,
     apiBase: s.apiBase,
     windowsMica: s.windowsMica,
     planMode: s.planMode,
@@ -209,6 +210,7 @@ export function useDesktopRuntime() {
   const [questionError, setQuestionError] = useState("");
   const [settings, setSettings] = useState({
     activeModel: "",
+    imageGenerationModel: "",
     apiBase: "",
     uiLocale: "",
     apiKey: "",
@@ -245,6 +247,7 @@ export function useDesktopRuntime() {
 
       return {
         activeModel: next.config.activeModel,
+        imageGenerationModel: next.config.imageGenerationModel ?? "",
         apiBase: activeModelProfile?.apiBase ?? current.apiBase,
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
@@ -385,6 +388,23 @@ export function useDesktopRuntime() {
         return await api.readLocalImagePreviewDataUrl(filePath);
       } catch {
         return null;
+      }
+    },
+    [api],
+  );
+
+  const saveLocalImageAs = useCallback(
+    async (filePath: string): Promise<boolean> => {
+      if (!api?.saveLocalImageAs) {
+        setRuntimeError("当前宿主不支持另存图片。");
+        return false;
+      }
+
+      try {
+        return await api.saveLocalImageAs(filePath);
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
       }
     },
     [api],
@@ -1048,7 +1068,19 @@ export function useDesktopRuntime() {
       }
 
       const prev = settingsRef.current;
-      const s = { ...prev, ...patch };
+      const nextActiveModel = patch.activeModel ?? prev.activeModel;
+      const resolvedApiBase =
+        patch.apiBase ??
+        (patch.activeModel !== undefined
+          ? snapshotRef.current?.config.models.find((model) => model.name === nextActiveModel)?.apiBase ??
+            prev.apiBase
+          : prev.apiBase);
+      const s = {
+        ...prev,
+        ...patch,
+        activeModel: nextActiveModel,
+        apiBase: resolvedApiBase,
+      };
       const webHostEndpointChanged =
         s.webHostHost !== prev.webHostHost || s.webHostPort !== prev.webHostPort;
       settingsRef.current = s;
@@ -1501,6 +1533,7 @@ export function useDesktopRuntime() {
     pickWorkspaceDirectory,
     pickLocalFile,
     readLocalImagePreviewDataUrl,
+    saveLocalImageAs,
     commitChanges,
     addModel,
     addProviderModels,

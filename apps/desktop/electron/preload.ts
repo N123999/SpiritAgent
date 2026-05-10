@@ -149,6 +149,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   readLocalImagePreviewDataUrl(filePath: string) {
     return ipcRenderer.invoke('desktop:read-local-image-preview', { filePath });
   },
+  saveLocalImageAs(filePath: string) {
+    return ipcRenderer.invoke('desktop:save-local-image-as', { filePath });
+  },
   syncWindowFrame(request: {
     dark: boolean;
     nativeTheme: 'system' | 'light' | 'dark';

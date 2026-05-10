@@ -95,7 +95,10 @@ fn strip_shell_reason_from_prompt(prompt: &str) -> (Option<String>, Vec<String>)
     let detail_lines = if reason.is_some() {
         lines.map(|line| line.to_string()).collect::<Vec<_>>()
     } else {
-        prompt.lines().map(|line| line.to_string()).collect::<Vec<_>>()
+        prompt
+            .lines()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
     };
     (reason, detail_lines)
 }
@@ -143,6 +146,7 @@ pub(crate) fn tool_approval_block(
         phase: ToolUiPhase::PendingApproval,
         headline: shell_reason.unwrap_or_else(|| "待确认".to_string()),
         detail_lines,
+        image_paths: Vec::new(),
         args_excerpt: None,
         output_excerpt: None,
     }
@@ -160,6 +164,7 @@ pub(crate) fn tool_failed_block(
         phase: ToolUiPhase::Failed,
         headline: summary.to_string(),
         detail_lines: Vec::new(),
+        image_paths: Vec::new(),
         args_excerpt: None,
         output_excerpt: Some(truncate_output_for_tool_ui(err, 2000)),
     }
@@ -189,6 +194,7 @@ pub(crate) fn build_tool_result_block(
                     string_arg(request, "tool_name").unwrap_or("<unknown>")
                 ),
             ],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -201,6 +207,7 @@ pub(crate) fn build_tool_result_block(
                 "URL: {}",
                 string_arg(request, "url").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -213,6 +220,7 @@ pub(crate) fn build_tool_result_block(
                 "路径: {}",
                 string_arg(request, "path").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -233,6 +241,7 @@ pub(crate) fn build_tool_result_block(
                     ),
                     format!("行范围: {} - {}", start, end),
                 ],
+                image_paths: Vec::new(),
                 args_excerpt: Some(args_excerpt),
                 output_excerpt: None,
             }
@@ -246,6 +255,7 @@ pub(crate) fn build_tool_result_block(
                 "查询: {}",
                 string_arg(request, "query").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -258,6 +268,7 @@ pub(crate) fn build_tool_result_block(
                 "任务: {}",
                 string_arg(request, "task").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -267,9 +278,26 @@ pub(crate) fn build_tool_result_block(
             phase: ToolUiPhase::Succeeded,
             headline: "问卷答案已返回".to_string(),
             detail_lines: vec![format!("问题数: {}", question_count(request))],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
+        "generate_image" => {
+            let image_paths = generated_image_paths_from_output(output);
+            ToolUiBlock {
+                tool_call_id: tool_call_id.map(String::from),
+                tool_name: tool_name.to_string(),
+                phase: ToolUiPhase::Succeeded,
+                headline: "图片生成完成".to_string(),
+                detail_lines: image_paths
+                    .iter()
+                    .map(|path| format!("路径: {}", path))
+                    .collect(),
+                image_paths,
+                args_excerpt: Some(args_excerpt),
+                output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
+            }
+        }
         "create_file" => ToolUiBlock {
             tool_call_id: tool_call_id.map(String::from),
             tool_name: tool_name.to_string(),
@@ -279,6 +307,7 @@ pub(crate) fn build_tool_result_block(
                 "路径: {}",
                 string_arg(request, "path").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
@@ -291,6 +320,7 @@ pub(crate) fn build_tool_result_block(
                 "路径: {}",
                 string_arg(request, "path").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
@@ -303,6 +333,7 @@ pub(crate) fn build_tool_result_block(
                 "路径: {}",
                 string_arg(request, "path").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: None,
         },
@@ -315,6 +346,7 @@ pub(crate) fn build_tool_result_block(
                 "命令: {}",
                 string_arg(request, "command").unwrap_or("<unknown>")
             )],
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -324,6 +356,7 @@ pub(crate) fn build_tool_result_block(
             phase: ToolUiPhase::Succeeded,
             headline: "工具执行完成".to_string(),
             detail_lines: Vec::new(),
+            image_paths: Vec::new(),
             args_excerpt: Some(args_excerpt),
             output_excerpt: Some(truncate_output_for_tool_ui(output, 3600)),
         },
@@ -374,6 +407,10 @@ pub(crate) fn format_tool_ui_message(
             tool_name,
             truncate_for_preview(output, 1200)
         ),
+        "generate_image" => format!(
+            "[tool] 图片生成完成。\n{}",
+            truncate_for_preview(output, 1200)
+        ),
         "create_file" => format!(
             "[tool] 已创建文件 {}",
             string_arg(request, "path").unwrap_or("<unknown>")
@@ -399,9 +436,29 @@ pub(crate) fn format_tool_ui_message(
     }
 }
 
+fn generated_image_paths_from_output(output: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in output.lines() {
+        let Some(path) = line
+            .trim()
+            .strip_prefix("path:")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if !paths.iter().any(|existing| existing == path) {
+            paths.push(path.to_string());
+        }
+    }
+    paths
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ToolUiRequest, build_tool_result_block, tool_approval_block, tool_request_args_excerpt};
+    use super::{
+        ToolUiRequest, build_tool_result_block, tool_approval_block, tool_request_args_excerpt,
+    };
     use serde_json::{Value, json};
 
     #[test]
@@ -411,7 +468,10 @@ mod tests {
             json!({ "command": "echo 牛逼", "reason": "确认终端输出" }),
         ));
         let parsed: Value = serde_json::from_str(&excerpt).expect("args excerpt json");
-        assert_eq!(parsed, json!({ "command": "echo 牛逼", "reason": "确认终端输出" }));
+        assert_eq!(
+            parsed,
+            json!({ "command": "echo 牛逼", "reason": "确认终端输出" })
+        );
     }
 
     #[test]
@@ -432,6 +492,33 @@ mod tests {
         assert_eq!(
             block.args_excerpt.as_deref(),
             Some("{\n  \"command\": \"echo 牛逼\",\n  \"reason\": \"确认终端输出\"\n}")
+        );
+    }
+
+    #[test]
+    fn generate_image_result_block_shows_generated_path() {
+        let output = "[generated image]\npath: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/example.png\nmime_type: image/png\nmodel: image-model";
+        let block = build_tool_result_block(
+            &ToolUiRequest::new("generate_image", json!({ "prompt": "画一张图" })),
+            "generate_image",
+            Some("tool-call-image"),
+            output,
+        );
+
+        assert_eq!(block.headline, "图片生成完成");
+        assert_eq!(
+            block.detail_lines,
+            vec!["路径: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/example.png"]
+        );
+        assert_eq!(
+            block.image_paths,
+            vec!["C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/example.png"]
+        );
+        assert!(
+            block
+                .output_excerpt
+                .as_deref()
+                .is_some_and(|text| text.contains("path:"))
         );
     }
 

@@ -22,6 +22,7 @@ pub enum ModelCommand {
         api_base: Option<String>,
         provider: Option<String>,
         reasoning_effort: Option<String>,
+        capabilities: Vec<String>,
         key: Option<String>,
     },
     Remove {
@@ -36,6 +37,8 @@ pub enum ModelCommand {
 pub enum ConfigCommand {
     Show,
     SetBase { url: String },
+    SetImageModel { name: String },
+    ClearImageModel,
     Key { action: KeyCommand },
 }
 
@@ -121,11 +124,12 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             for model in &cfg.models {
                 let key_saved = secret_store.has_model_api_key(&model.name).unwrap_or(false);
                 println!(
-                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    key: {}",
+                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    capabilities: {}\n    key: {}",
                     model.name,
                     model.api_base,
                     format_model_provider(model.provider),
                     model.reasoning_effort.as_deref().unwrap_or("未设置"),
+                    format_model_capabilities(model),
                     if key_saved { "已保存" } else { "未保存" }
                 );
             }
@@ -135,6 +139,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             api_base,
             provider,
             reasoning_effort,
+            capabilities,
             key,
         } => {
             if cfg.has_model(&name) {
@@ -143,6 +148,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 let api_base = api_base.unwrap_or_else(|| DEFAULT_API_BASE.to_string());
                 let provider = parse_model_provider(provider)?;
                 let reasoning_effort = normalize_choice_arg(reasoning_effort);
+                let capabilities = normalize_model_capabilities(capabilities);
                 let key_value = match key {
                     Some(v) => v,
                     None => rpassword::prompt_password("请输入该模型 API Key: ")
@@ -152,13 +158,27 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     return Err(anyhow!("API Key 不能为空"));
                 }
 
+                let mut extra = serde_json::Map::new();
+                if !capabilities.is_empty() {
+                    extra.insert("capabilities".to_string(), serde_json::json!(capabilities));
+                }
+
                 cfg.add_model(ModelProfile {
                     name: name.clone(),
                     api_base: api_base.clone(),
                     provider,
                     reasoning_effort: reasoning_effort.clone(),
-                    extra: Default::default(),
+                    extra,
                 });
+                if cfg.image_generation_model.is_none()
+                    && cfg
+                        .models
+                        .iter()
+                        .find(|model| model.name == name)
+                        .is_some_and(ModelProfile::supports_image_generation)
+                {
+                    cfg.image_generation_model = Some(name.clone());
+                }
                 cfg.active_model = name.clone();
                 secret_store.save_model_api_key(&name, &key_value)?;
                 config_store.save(&cfg)?;
@@ -168,6 +188,14 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 println!(
                     "reasoning_effort: {}",
                     reasoning_effort.as_deref().unwrap_or("未设置")
+                );
+                println!(
+                    "capabilities: {}",
+                    cfg.models
+                        .iter()
+                        .find(|model| model.name == name)
+                        .map(format_model_capabilities)
+                        .unwrap_or_else(|| "未设置".to_string())
                 );
             }
         }
@@ -180,6 +208,9 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             if cfg.models.len() == before {
                 println!("模型不存在: {}", name);
             } else {
+                if cfg.image_generation_model.as_deref() == Some(name.as_str()) {
+                    cfg.image_generation_model = None;
+                }
                 config_store.save(&cfg)?;
                 let _ = secret_store.remove_model_api_key(&name);
                 println!("已删除模型: {}", name);
@@ -211,15 +242,20 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
         ConfigCommand::Show => {
             println!("配置文件: {}", app_paths.config_file().display());
             println!("active_model: {}", cfg.active_model);
+            println!(
+                "image_generation_model: {}",
+                cfg.image_generation_model.as_deref().unwrap_or("未设置")
+            );
             println!("models:");
             for model in &cfg.models {
                 let key_saved = secret_store.has_model_api_key(&model.name).unwrap_or(false);
                 println!(
-                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    key: {}",
+                    "  - {}\n    api_base: {}\n    provider: {}\n    reasoning_effort: {}\n    capabilities: {}\n    key: {}",
                     model.name,
                     model.api_base,
                     format_model_provider(model.provider),
                     model.reasoning_effort.as_deref().unwrap_or("未设置"),
+                    format_model_capabilities(model),
                     if key_saved { "已保存" } else { "未保存" }
                 );
             }
@@ -256,6 +292,27 @@ pub fn handle_config_cli(action: ConfigCommand) -> Result<()> {
             config_store.save(&cfg)?;
             println!("已更新当前模型 API Base: {}", url);
         }
+        ConfigCommand::SetImageModel { name } => {
+            let profile = cfg
+                .models
+                .iter()
+                .find(|model| model.name == name)
+                .ok_or_else(|| anyhow!("模型不存在，请先添加: {}", name))?;
+            if !profile.supports_image_generation() {
+                return Err(anyhow!(
+                    "模型 {} 未声明 imageGeneration capability，不能作为图片生成模型",
+                    name
+                ));
+            }
+            cfg.image_generation_model = Some(name.clone());
+            config_store.save(&cfg)?;
+            println!("已设置图片生成模型: {}", name);
+        }
+        ConfigCommand::ClearImageModel => {
+            cfg.image_generation_model = None;
+            config_store.save(&cfg)?;
+            println!("已清除图片生成模型。CLI 当前仅在配置图片模型后暴露 generate_image 工具。");
+        }
         ConfigCommand::Key { action } => handle_key_cli(action, &secret_store)?,
     }
 
@@ -283,6 +340,25 @@ fn normalize_choice_arg(value: Option<String>) -> Option<String> {
 
 fn format_model_provider(provider: Option<ModelProvider>) -> &'static str {
     provider.map(ModelProvider::as_str).unwrap_or("未设置")
+}
+
+fn normalize_model_capabilities(capabilities: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for capability in capabilities {
+        let trimmed = capability.trim();
+        if !trimmed.is_empty() && !normalized.iter().any(|value| value == trimmed) {
+            normalized.push(trimmed.to_string());
+        }
+    }
+    normalized
+}
+
+fn format_model_capabilities(model: &ModelProfile) -> String {
+    model
+        .explicit_capabilities()
+        .filter(|capabilities| !capabilities.is_empty())
+        .map(|capabilities| capabilities.join(", "))
+        .unwrap_or_else(|| "未设置".to_string())
 }
 
 pub fn handle_mcp_cli(action: McpCommand) -> Result<()> {

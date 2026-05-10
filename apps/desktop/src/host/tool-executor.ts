@@ -22,6 +22,8 @@ import {
   type HostDreamSourceSessionRef,
   type HostExtensionRuntimeBinding,
   type HostFileChangeObserver,
+  type HostGeneratedImageFile,
+  type HostGeneratedImageSaveRequest,
   NodeHostToolService,
   createNoopMcpAdapter,
 } from '@spirit-agent/host-internal';
@@ -38,6 +40,7 @@ export class DesktopToolExecutor
   private readonly dreamToolDefinitions: JsonValue[];
   private extensionToolDefinitions: JsonValue[];
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
+  private imageGenerationAvailable = false;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -66,14 +69,20 @@ export class DesktopToolExecutor
   }
 
   setActiveTransportConfig(
-    config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'modelCapabilities'>,
+    config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'modelCapabilities' | 'imageGeneration'>,
   ): void {
     this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config);
+    this.imageGenerationAvailable = config.imageGeneration !== undefined;
   }
 
   toolDefinitionsJson(): JsonValue {
+    const builtinDefinitions = this.imageGenerationAvailable
+      ? buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
+      : buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
+          .filter((definition) => toolDefinitionName(definition) !== 'generate_image');
+
     return mergeToolDefinitions(
-      ...buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment()),
+      ...builtinDefinitions,
       ...this.dreamToolDefinitions,
       ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
@@ -133,6 +142,10 @@ export class DesktopToolExecutor
           : createLlmImageContentPart(part.path),
       ),
     };
+  }
+
+  async saveGeneratedImage(request: HostGeneratedImageSaveRequest): Promise<HostGeneratedImageFile> {
+    return this.tools.saveGeneratedImage(request);
   }
 
   attachRequestMetadata(

@@ -1,6 +1,8 @@
 import type {
   AskQuestionsResult,
   AuthorizationDecision,
+  GeneratedImageFile,
+  GeneratedImageSaveRequest,
   JsonValue,
   McpStatusSnapshot,
   ToolExecutionOutput,
@@ -32,6 +34,7 @@ export interface LocalHostToolService {
   authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>>;
   trust(target: string): Promise<void>;
   execute(request: JsonValue): Promise<ToolExecutionOutput | string>;
+  saveGeneratedImage?(request: GeneratedImageSaveRequest): Promise<GeneratedImageFile>;
   attachRequestMetadata?(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue;
 }
 
@@ -43,6 +46,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly mcp = new McpService();
   private localHostService: LocalHostToolService | undefined;
+  private imageGenerationAvailable = false;
 
   constructor(protected readonly peer: JsonRpcPeer) {}
 
@@ -50,6 +54,11 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     this.localHostService = service;
     this.hostToolDefinitionsLoaded = false;
     this.hostToolDefinitionsCache = [];
+    this.refreshMergedToolDefinitions();
+  }
+
+  setImageGenerationAvailable(available: boolean): void {
+    this.imageGenerationAvailable = available;
     this.refreshMergedToolDefinitions();
   }
 
@@ -365,8 +374,11 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   private refreshMergedToolDefinitions(): void {
+    const hostDefinitions = this.imageGenerationAvailable
+      ? this.hostToolDefinitionsCache
+      : filterToolDefinitionByName(this.hostToolDefinitionsCache, 'generate_image');
     this.toolDefinitionsCache = mergeToolDefinitions(
-      this.hostToolDefinitionsCache,
+      hostDefinitions,
       this.extensionToolDefinitionsCache,
       this.mcp.toolDefinitionsJson(),
     );
@@ -432,6 +444,13 @@ function mergeToolDefinitions(
     seenNames.add(name);
     return true;
   });
+}
+
+function filterToolDefinitionByName(definitions: JsonValue, excludedName: string): JsonValue {
+  if (!Array.isArray(definitions)) {
+    return definitions;
+  }
+  return definitions.filter((definition) => toolDefinitionName(definition) !== excludedName);
 }
 
 function toolDefinitionName(value: JsonValue): string | undefined {

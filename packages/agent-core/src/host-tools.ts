@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from './ports.js';
+import { DEFAULT_IMAGE_GENERATION_SIZE, type JsonObject, type JsonValue } from './ports.js';
 
 export interface BuiltinHostToolDefinitionEnvironment {
   shellDisplayName: string;
@@ -125,6 +125,28 @@ export function buildBuiltinHostToolDefinitions(
           expected_output: { type: 'string' },
         },
         required: ['task'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'generate_image',
+      'Generate one image with the configured image generation model. Use this only when the user explicitly wants an image. First gather enough context and rewrite the final image prompt yourself, then call this tool as the user-visible final result for the turn; do not expect to add a normal assistant message after it completes.',
+      {
+        type: 'object',
+        properties: {
+          prompt: {
+            type: 'string',
+            description:
+              'Detailed final prompt for the image generation model. Include subject, composition, style, lighting, colors, constraints, and any user-requested details.',
+          },
+          size: {
+            type: 'string',
+            pattern: '^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$',
+            description:
+              `Optional pixel size in WIDTHxHEIGHT format, such as 1024x1024 or 1536x1024. If omitted, default to ${DEFAULT_IMAGE_GENERATION_SIZE} so the image matches the square card unless the user asked otherwise.`,
+          },
+        },
+        required: ['prompt'],
         additionalProperties: false,
       },
     ),

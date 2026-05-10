@@ -546,6 +546,7 @@ type CliHostExtensionMarketplace = ReturnType<
 
 interface CliHostInternalState {
   module: CliHostInternalModule;
+  service: LocalHostToolService;
   workspaceRoot: string;
   spiritDataDir: string;
   extensionManager?: CliHostExtensionManager;
@@ -627,6 +628,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   toolExecutor.setLocalHostService(service);
   cliHostInternal = {
     module,
+    service,
     workspaceRoot,
     spiritDataDir,
     ...(extensionManager ? { extensionManager } : {}),
@@ -1209,6 +1211,7 @@ async function createRuntime(
 ): Promise<HostRuntime> {
   currentHostToolModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config);
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
+  toolExecutor.setImageGenerationAvailable(config.imageGeneration !== undefined);
   await toolExecutor.refreshCaches();
   logBridge('createRuntime', {
     workspaceRoot,
@@ -1266,6 +1269,15 @@ async function createRuntime(
         planMetadata,
         extensionSystemPrompts,
       ),
+    generateImage: (request) =>
+      llmTransport.generateImage(config, request, async (saveRequest) => {
+        const hostInternal = await ensureCliHostInternal(workspaceRoot);
+        const saveGeneratedImage = hostInternal?.service.saveGeneratedImage;
+        if (!saveGeneratedImage) {
+          throw new Error('CLI host-internal 当前不支持保存生成图片');
+        }
+        return saveGeneratedImage.call(hostInternal.service, saveRequest);
+      }),
     resolveWorkspaceFilesFromInput: (text) => {
       const resolveFromHostInternal = cliHostInternal?.module.resolveWorkspaceFileReferenceAttachmentsFromInput;
       if (resolveFromHostInternal) {

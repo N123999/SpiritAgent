@@ -229,6 +229,7 @@ impl SessionModel {
                 })
                 .collect(),
             subagent_sessions: Vec::new(),
+            desktop_messages: None,
             rewind: None,
         }
     }

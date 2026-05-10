@@ -8,10 +8,31 @@ const SPIRIT_LOGO_LINES: [&str; 6] = [
     " ███████║██║     ██║██║  ██║██║   ██║   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ",
     " ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ",
 ];
+const TOOL_CARD_RAIL_SYMBOL: &str = "▌ ";
+const TOOL_IMAGE_MAX_ROWS: u16 = 12;
+const TOOL_IMAGE_MEDIUM_ROWS: u16 = 8;
+const TOOL_IMAGE_MIN_ROWS: u16 = 6;
 
 pub(in crate::ui) struct HistoryRenderResult {
     pub(in crate::ui) lines: Vec<Line<'static>>,
     pub(in crate::ui) message_ranges: Vec<ConversationMessageRenderRange>,
+    pub(in crate::ui) image_blocks: Vec<HistoryImageRenderBlock>,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::ui) struct HistoryImageRenderBlock {
+    pub(in crate::ui) path: String,
+    pub(in crate::ui) logical_top_line: usize,
+    pub(in crate::ui) reserved_rows: u16,
+    pub(in crate::ui) x_offset: u16,
+}
+
+#[derive(Clone, Debug)]
+struct PendingHistoryImageRenderBlock {
+    path: String,
+    line_offset_in_block: usize,
+    reserved_rows: u16,
+    x_offset: u16,
 }
 
 pub(in crate::ui) fn conversation_logo_width(available_width: u16) -> u16 {
@@ -109,7 +130,11 @@ pub(in crate::ui) fn build_history_render_result(
     } else {
         None
     };
-    let mut rendered_blocks: Vec<(Option<usize>, Vec<Line<'static>>)> = Vec::new();
+    let mut rendered_blocks: Vec<(
+        Option<usize>,
+        Vec<Line<'static>>,
+        Option<PendingHistoryImageRenderBlock>,
+    )> = Vec::new();
     let mut inserted_standalone_block = false;
 
     if !lines.is_empty() && (!visible_messages.is_empty() || has_pending_aux) {
@@ -137,25 +162,40 @@ pub(in crate::ui) fn build_history_render_result(
             && standalone_insert_before == Some(global_idx)
             && standalone_block.is_some()
         {
-            rendered_blocks.push((None, standalone_block.clone().unwrap_or_default()));
+            rendered_blocks.push((None, standalone_block.clone().unwrap_or_default(), None));
             inserted_standalone_block = true;
         }
-        let rendered = render_message_lines(app, msg, global_idx);
+        let mut rendered = render_message_lines(app, msg, global_idx);
+        let pending_image_block = msg.tool_block.as_ref().and_then(|tool| {
+            let mut image_block = pending_image_block_for_tool(tool, max_width)?;
+            image_block.line_offset_in_block = rendered.len();
+            rendered.extend(render_tool_image_placeholder_lines(image_block.reserved_rows));
+            Some(image_block)
+        });
         if !rendered.is_empty() {
-            rendered_blocks.push((Some(global_idx + 1), rendered));
+            rendered_blocks.push((Some(global_idx + 1), rendered, pending_image_block));
         }
     }
 
     if !inserted_standalone_block {
         if let Some(standalone_block) = standalone_block {
-            rendered_blocks.push((None, standalone_block));
+            rendered_blocks.push((None, standalone_block, None));
         }
     }
 
     let mut message_ranges = Vec::new();
+    let mut image_blocks = Vec::new();
     let rendered_count = rendered_blocks.len();
-    for (idx, (message_id, block_lines)) in rendered_blocks.into_iter().enumerate() {
+    for (idx, (message_id, block_lines, pending_image_block)) in rendered_blocks.into_iter().enumerate() {
         let start_line = lines.len();
+        if let Some(image_block) = pending_image_block {
+            image_blocks.push(HistoryImageRenderBlock {
+                path: image_block.path,
+                logical_top_line: start_line + image_block.line_offset_in_block,
+                reserved_rows: image_block.reserved_rows,
+                x_offset: image_block.x_offset,
+            });
+        }
         lines.extend(block_lines);
         let end_line = lines.len().saturating_sub(1);
         if let Some(message_id) = message_id {
@@ -175,7 +215,67 @@ pub(in crate::ui) fn build_history_render_result(
     HistoryRenderResult {
         lines,
         message_ranges,
+        image_blocks,
     }
+}
+
+fn pending_image_block_for_tool(
+    tool: &ToolUiBlock,
+    max_width: usize,
+) -> Option<PendingHistoryImageRenderBlock> {
+    if tool.phase != ToolUiPhase::Succeeded {
+        return None;
+    }
+
+    let path = tool
+        .image_paths
+        .iter()
+        .find(|path| !path.trim().is_empty())?
+        .clone();
+    let reserved_rows = tool_image_reserved_rows(max_width)?;
+
+    Some(PendingHistoryImageRenderBlock {
+        path,
+        line_offset_in_block: 0,
+        reserved_rows,
+        x_offset: tool_image_x_offset(),
+    })
+}
+
+fn tool_image_reserved_rows(max_width: usize) -> Option<u16> {
+    let available_width = max_width.saturating_sub(tool_image_x_offset() as usize);
+    if available_width < 16 {
+        None
+    } else if available_width < 24 {
+        Some(TOOL_IMAGE_MIN_ROWS)
+    } else if available_width < 40 {
+        Some(TOOL_IMAGE_MEDIUM_ROWS)
+    } else {
+        Some(TOOL_IMAGE_MAX_ROWS)
+    }
+}
+
+fn tool_image_x_offset() -> u16 {
+    UnicodeWidthStr::width(format!("{}{}", message_gutter_padding(), TOOL_CARD_RAIL_SYMBOL).as_str())
+        as u16
+}
+
+fn render_tool_image_placeholder_lines(rows: u16) -> Vec<Line<'static>> {
+    let rail = patch_style_foreground(
+        Style::default().fg(Color::Rgb(96, 110, 130)),
+        cli_ui_border_color(CliUiHookSlot::MessageTool)
+            .or(cli_ui_accent_color(CliUiHookSlot::MessageTool)),
+    );
+    let indent = message_gutter_padding();
+
+    (0..rows)
+        .map(|_| {
+            Line::from(vec![
+                Span::raw(indent),
+                Span::styled(TOOL_CARD_RAIL_SYMBOL, rail),
+            ])
+        })
+        .collect()
 }
 
 pub(in crate::ui) fn should_prefer_persisted_subagent_status(app: &TuiViewModel) -> bool {
@@ -830,6 +930,32 @@ pub(in crate::ui) fn render_tool_card_lines(
             Span::styled(rail_sym, rail),
             Span::styled(
                 line.clone(),
+                patch_style_foreground(
+                    Style::default().fg(Color::Rgb(190, 195, 205)),
+                    cli_ui_foreground_color(CliUiHookSlot::MessageTool),
+                ),
+            ),
+        ]));
+    }
+
+    for path in tool
+        .image_paths
+        .iter()
+        .filter(|value| !value.trim().is_empty())
+    {
+        let prefixed = format!("路径: {}", path);
+        if tool
+            .detail_lines
+            .iter()
+            .any(|line| line.trim() == prefixed)
+        {
+            continue;
+        }
+        out.push(Line::from(vec![
+            Span::raw(indent),
+            Span::styled(rail_sym, rail),
+            Span::styled(
+                prefixed,
                 patch_style_foreground(
                     Style::default().fg(Color::Rgb(190, 195, 205)),
                     cli_ui_foreground_color(CliUiHookSlot::MessageTool),

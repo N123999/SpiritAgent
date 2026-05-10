@@ -84,7 +84,15 @@ impl ModelProfile {
         }
     }
 
-    fn explicit_capabilities(&self) -> Option<Vec<String>> {
+    pub fn supports_image_generation(&self) -> bool {
+        self.explicit_capabilities().is_some_and(|capabilities| {
+            capabilities
+                .iter()
+                .any(|capability| capability == "imageGeneration")
+        })
+    }
+
+    pub fn explicit_capabilities(&self) -> Option<Vec<String>> {
         let raw = self.extra.get("capabilities")?.as_array()?;
         let capabilities = raw
             .iter()
@@ -106,6 +114,13 @@ pub struct AppConfig {
     pub models: Vec<ModelProfile>,
     #[serde(rename = "activeModel", alias = "active_model")]
     pub active_model: String,
+    #[serde(
+        rename = "imageGenerationModel",
+        alias = "image_generation_model",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub image_generation_model: Option<String>,
     #[serde(
         rename = "uiLocale",
         alias = "ui_locale",
@@ -135,6 +150,7 @@ impl Default for AppConfig {
                 extra: Map::new(),
             }],
             active_model: "gpt-4o-mini".to_string(),
+            image_generation_model: None,
             ui_locale: None,
             extra: Map::new(),
         }
@@ -148,6 +164,11 @@ impl AppConfig {
 
     pub fn active_model_profile_mut(&mut self) -> Option<&mut ModelProfile> {
         self.models.iter_mut().find(|m| m.name == self.active_model)
+    }
+
+    pub fn image_generation_model_profile(&self) -> Option<&ModelProfile> {
+        let name = self.image_generation_model.as_deref()?;
+        self.models.iter().find(|m| m.name == name)
     }
 
     pub fn has_model(&self, name: &str) -> bool {
@@ -210,6 +231,7 @@ fn deserialize_config(content: &str, path: &Path) -> Result<AppConfig> {
             })
             .collect(),
         active_model: legacy.active_model,
+        image_generation_model: None,
         ui_locale: None,
         extra: Map::new(),
     };
@@ -243,6 +265,9 @@ fn normalize_config(cfg: &mut AppConfig) {
         cfg.active_model = cfg.models[0].name.clone();
     }
 
+    cfg.image_generation_model =
+        normalize_image_generation_model(cfg.image_generation_model.take(), cfg.models.as_slice());
+
     for model in &mut cfg.models {
         if model.api_base.trim().is_empty() {
             model.api_base = DEFAULT_API_BASE.to_string();
@@ -250,6 +275,19 @@ fn normalize_config(cfg: &mut AppConfig) {
         model.reasoning_effort = normalize_optional_string(model.reasoning_effort.take());
         model.extra.remove("transportImplementation");
         model.extra.remove("transport_implementation");
+    }
+}
+
+fn normalize_image_generation_model(
+    value: Option<String>,
+    models: &[ModelProfile],
+) -> Option<String> {
+    let name = normalize_optional_string(value)?;
+    let profile = models.iter().find(|model| model.name == name)?;
+    if profile.supports_image_generation() {
+        Some(name)
+    } else {
+        None
     }
 }
 
@@ -290,6 +328,7 @@ mod tests {
     }
   ],
     "activeModel": "agent-test-model",
+    "imageGenerationModel": "agent-test-model",
   "uiLocale": "zh-CN",
   "windowsMica": true,
   "recentWorkspaces": ["D:/SpiritAgent", "D:/Other"],
@@ -333,6 +372,10 @@ mod tests {
                 .and_then(|model| model.get("reasoningEffort"))
                 .and_then(Value::as_str),
             Some("minimal")
+        );
+        assert_eq!(
+            json.get("imageGenerationModel").and_then(Value::as_str),
+            None
         );
     }
 
@@ -429,10 +472,44 @@ mod tests {
             reasoning_effort: None,
             extra: serde_json::Map::new(),
         };
-        custom.extra.insert("capabilities".to_string(), serde_json::json!(["chat"]));
+        custom
+            .extra
+            .insert("capabilities".to_string(), serde_json::json!(["chat"]));
 
         assert!(deepseek.supports_vision_input());
         assert!(!custom.supports_vision_input());
+    }
+
+    #[test]
+    fn image_generation_model_requires_explicit_capability() {
+        let config = r#"
+{
+    "models": [
+        {
+            "name": "chat-model",
+            "apiBase": "https://example.invalid/v1",
+            "capabilities": ["chat"]
+        },
+        {
+            "name": "image-model",
+            "apiBase": "https://example.invalid/v1",
+            "capabilities": ["imageGeneration"]
+        }
+    ],
+    "activeModel": "chat-model",
+    "imageGenerationModel": "image-model"
+}
+"#;
+
+        let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+        assert_eq!(
+            parsed.image_generation_model.as_deref(),
+            Some("image-model")
+        );
+
+        let invalid = config.replace("image-model\"", "chat-model\"");
+        let parsed = deserialize_config(&invalid, Path::new("config.json")).expect("parse config");
+        assert_eq!(parsed.image_generation_model, None);
     }
 
     #[test]
@@ -451,11 +528,11 @@ mod tests {
 }
 "#;
 
-    let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
-    let active = parsed.active_model_profile().expect("active model");
+        let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+        let active = parsed.active_model_profile().expect("active model");
 
-    assert_eq!(active.provider, Some(super::ModelProvider::Alibaba));
-    assert_eq!(active.reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(active.provider, Some(super::ModelProvider::Alibaba));
+        assert_eq!(active.reasoning_effort.as_deref(), Some("medium"));
     }
 }
 

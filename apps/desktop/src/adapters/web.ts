@@ -183,6 +183,9 @@ export function createWebHostApi(): HostApi {
     async readLocalImagePreviewDataUrl() {
       return null;
     },
+    async saveLocalImageAs() {
+      return false;
+    },
     async pairWebHost(code: string) {
       const result = await post<WebHostPairingResponse>(baseUrl, '/api/pairing', { code }, {
         auth: false,

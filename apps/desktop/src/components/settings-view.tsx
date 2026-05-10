@@ -63,6 +63,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 export type SettingsFormState = {
   activeModel: string;
+  imageGenerationModel: string;
   apiBase: string;
   uiLocale: string;
   apiKey: string;
@@ -161,6 +162,15 @@ const defaultMcpCapabilities: DesktopMcpCapabilityToggles = {
 
 const defaultCustomModelCapabilities: DesktopModelCapability[] = ["chat", "vision"];
 
+type SettingsModelProfile = DesktopSnapshot["config"]["models"][number];
+
+type ModelDefaultAssignments = {
+  activeModel: boolean;
+  imageGenerationModel: boolean;
+};
+
+type ModelDefaultRole = keyof ModelDefaultAssignments;
+
 const modelCapabilityOptions: Array<{
   value: DesktopModelCapability;
   label: string;
@@ -189,6 +199,50 @@ function normalizeModelCapabilitySelection(
     normalized.push(value);
   }
   return normalized.length > 0 ? normalized : [...defaultCustomModelCapabilities];
+}
+
+function canAssignAsActiveModel(
+  model: SettingsModelProfile,
+  isCurrentActiveModel: boolean,
+): boolean {
+  return isCurrentActiveModel || model.capabilities === undefined || model.capabilities.includes("chat");
+}
+
+function canAssignAsImageGenerationModel(
+  model: SettingsModelProfile,
+  isCurrentImageGenerationModel: boolean,
+): boolean {
+  return isCurrentImageGenerationModel || model.capabilities?.includes("imageGeneration") === true;
+}
+
+function getSupportedModelDefaultRoles(
+  model: SettingsModelProfile,
+  activeModel: string,
+  imageGenerationModel: string,
+): ModelDefaultRole[] {
+  const roles: ModelDefaultRole[] = [];
+
+  if (canAssignAsActiveModel(model, model.name === activeModel)) {
+    roles.push("activeModel");
+  }
+
+  if (canAssignAsImageGenerationModel(model, model.name === imageGenerationModel)) {
+    roles.push("imageGenerationModel");
+  }
+
+  return roles;
+}
+
+function modelDefaultActionLabel(roles: readonly ModelDefaultRole[]): string {
+  if (roles.length === 0) {
+    return "该模型当前没有可设置的默认角色";
+  }
+
+  if (roles.length === 1) {
+    return roles[0] === "activeModel" ? "设为当前推理模型" : "设为默认图片生成模型";
+  }
+
+  return "选择默认角色";
 }
 
 function ModelCapabilitiesCombobox({
@@ -1757,9 +1811,11 @@ function McpsSettingsPanel({
 }
 
 function ModelsSettingsPanel({
+  settings,
   snapshot,
   modelsBusy,
   modelsPreviewBusy,
+  onSavePatch,
   onAddModel,
   onAddProviderModels,
   onPreviewModels,
@@ -1767,9 +1823,11 @@ function ModelsSettingsPanel({
   onRemoveProviderModels,
 }: Pick<
   SettingsViewProps,
+  | "settings"
   | "snapshot"
   | "modelsBusy"
   | "modelsPreviewBusy"
+  | "onSavePatch"
   | "onAddModel"
   | "onAddProviderModels"
   | "onPreviewModels"
@@ -1789,11 +1847,37 @@ function ModelsSettingsPanel({
   const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
     "single",
   );
+  const [modelDefaultsDialogTarget, setModelDefaultsDialogTarget] = useState<string | null>(null);
+  const [modelDefaultAssignments, setModelDefaultAssignments] = useState<ModelDefaultAssignments>({
+    activeModel: false,
+    imageGenerationModel: false,
+  });
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<DesktopModelProvider | null>(null);
 
   const models = snapshot?.config.models ?? [];
-  const activeModel = snapshot?.config.activeModel ?? "";
+  const activeModel = settings.activeModel.trim() || (snapshot?.config.activeModel ?? "");
+  const imageGenerationModel =
+    settings.imageGenerationModel.trim() || (snapshot?.config.imageGenerationModel ?? "");
+  const modelDefaultsDialogModel =
+    modelDefaultsDialogTarget === null
+      ? null
+      : models.find((model) => model.name === modelDefaultsDialogTarget) ?? null;
+  const canAssignActiveRole =
+    modelDefaultsDialogModel !== null &&
+    canAssignAsActiveModel(modelDefaultsDialogModel, modelDefaultsDialogModel.name === activeModel);
+  const canAssignImageGenerationRole =
+    modelDefaultsDialogModel !== null &&
+    canAssignAsImageGenerationModel(
+      modelDefaultsDialogModel,
+      modelDefaultsDialogModel.name === imageGenerationModel,
+    );
+  const isModelDefaultsDialogModelActive = modelDefaultsDialogModel?.name === activeModel;
+  const hasModelDefaultAssignmentChanges =
+    modelDefaultsDialogModel !== null &&
+    (modelDefaultAssignments.activeModel !== isModelDefaultsDialogModelActive ||
+      modelDefaultAssignments.imageGenerationModel !==
+        (modelDefaultsDialogModel.name === imageGenerationModel));
 
   const providerGroups = new Map<DesktopModelProvider, typeof models>();
   const standaloneModels: typeof models = [];
@@ -1843,6 +1927,99 @@ function ModelsSettingsPanel({
     selectedProvider === null
       ? "连接提供商"
       : PROVIDER_PICKER_ROWS.find((row) => row.id === selectedProvider)?.label ?? "连接提供商";
+
+  const openModelDefaultsDialog = (model: SettingsModelProfile) => {
+    setModelDefaultsDialogTarget(model.name);
+    setModelDefaultAssignments({
+      activeModel: model.name === activeModel,
+      imageGenerationModel: model.name === imageGenerationModel,
+    });
+  };
+
+  const closeModelDefaultsDialog = () => {
+    setModelDefaultsDialogTarget(null);
+    setModelDefaultAssignments({
+      activeModel: false,
+      imageGenerationModel: false,
+    });
+  };
+
+  const saveModelDefaultAssignments = async () => {
+    if (!modelDefaultsDialogModel) {
+      return;
+    }
+
+    const patch: Partial<SettingsFormState> = {};
+
+    if (modelDefaultAssignments.activeModel && modelDefaultsDialogModel.name !== activeModel) {
+      patch.activeModel = modelDefaultsDialogModel.name;
+    }
+
+    if (canAssignImageGenerationRole) {
+      if (
+        modelDefaultAssignments.imageGenerationModel &&
+        modelDefaultsDialogModel.name !== imageGenerationModel
+      ) {
+        patch.imageGenerationModel = modelDefaultsDialogModel.name;
+      } else if (
+        !modelDefaultAssignments.imageGenerationModel &&
+        modelDefaultsDialogModel.name === imageGenerationModel
+      ) {
+        patch.imageGenerationModel = "";
+      }
+    }
+
+    if (Object.keys(patch).length === 0) {
+      closeModelDefaultsDialog();
+      return;
+    }
+
+    await onSavePatch(patch);
+    closeModelDefaultsDialog();
+  };
+
+  const saveSingleModelDefaultRole = async (
+    model: SettingsModelProfile,
+    role: ModelDefaultRole,
+  ) => {
+    const patch: Partial<SettingsFormState> = {};
+
+    if (role === "activeModel") {
+      if (model.name !== activeModel) {
+        patch.activeModel = model.name;
+      }
+    } else if (model.name !== imageGenerationModel) {
+      patch.imageGenerationModel = model.name;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
+
+    await onSavePatch(patch);
+  };
+
+  const handleModelDefaultAction = (model: SettingsModelProfile) => {
+    const supportedRoles = getSupportedModelDefaultRoles(model, activeModel, imageGenerationModel);
+
+    if (supportedRoles.length === 0) {
+      openModelDefaultsDialog(model);
+      return;
+    }
+
+    if (supportedRoles.length === 1) {
+      void (async () => {
+        try {
+          await saveSingleModelDefaultRole(model, supportedRoles[0]);
+        } catch {
+          /* runtimeError */
+        }
+      })();
+      return;
+    }
+
+    openModelDefaultsDialog(model);
+  };
 
   const effectiveApiBase =
     selectedProvider === null
@@ -1927,7 +2104,7 @@ function ModelsSettingsPanel({
               return (
                 <div
                   key={provider}
-                  className="rounded-lg border border-border/40 bg-background/80"
+                  className="overflow-hidden rounded-lg border border-border/40 bg-background/80"
                 >
                   <div className="flex items-center justify-between gap-3 border-b border-border/35 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-2">
@@ -1960,23 +2137,46 @@ function ModelsSettingsPanel({
                   <div className="divide-y divide-border/35">
                     {groupModels.map((model) => {
                       const isActive = model.name === activeModel;
+                      const isImageDefault = model.name === imageGenerationModel;
+                      const supportedDefaultRoles = getSupportedModelDefaultRoles(
+                        model,
+                        activeModel,
+                        imageGenerationModel,
+                      );
+                      const defaultActionLabel = modelDefaultActionLabel(supportedDefaultRoles);
                       return (
-                        <div
+                        <button
                           key={model.name}
-                          className="flex items-center gap-2 px-4 py-2.5"
+                          type="button"
+                          className="flex w-full appearance-none flex-col gap-3 bg-transparent px-4 py-3 text-left transition-colors outline-none enabled:cursor-pointer enabled:hover:bg-foreground/[0.06] dark:enabled:hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring/50 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                          disabled={modelsBusy || modelsPreviewBusy}
+                          title={defaultActionLabel}
+                          aria-label={`${defaultActionLabel}：${model.name}`}
+                          onClick={() => handleModelDefaultAction(model)}
                         >
-                          <span className="text-sm text-foreground">{model.name}</span>
-                          {isActive ? (
-                            <Badge variant="secondary" className="text-muted-foreground">
-                              当前
-                            </Badge>
-                          ) : null}
-                          {model.capabilities?.map((capability) => (
-                            <Badge key={capability} variant="outline" className="text-muted-foreground">
-                              {modelCapabilityLabel(capability)}
-                            </Badge>
-                          ))}
-                        </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-foreground">
+                                {model.name}
+                              </span>
+                              {isActive ? (
+                                <Badge variant="secondary" className="text-muted-foreground">
+                                  当前推理
+                                </Badge>
+                              ) : null}
+                              {isImageDefault ? (
+                                <Badge variant="secondary" className="text-muted-foreground">
+                                  当前图片生成
+                                </Badge>
+                              ) : null}
+                              {model.capabilities?.map((capability) => (
+                                <Badge key={capability} variant="outline" className="text-muted-foreground">
+                                  {modelCapabilityLabel(capability)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -1984,13 +2184,47 @@ function ModelsSettingsPanel({
               );
             })}
             {standaloneModels.length > 0 && (
-              <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+              <div className="overflow-hidden divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
                 {standaloneModels.map((model) => {
                   const isActive = model.name === activeModel;
+                  const isImageDefault = model.name === imageGenerationModel;
+                  const supportedDefaultRoles = getSupportedModelDefaultRoles(
+                    model,
+                    activeModel,
+                    imageGenerationModel,
+                  );
+                  const defaultActionLabel = modelDefaultActionLabel(supportedDefaultRoles);
+                  const isStandaloneModelDisabled = modelsBusy || modelsPreviewBusy;
                   return (
                     <div
                       key={model.name}
-                      className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                      role="button"
+                      tabIndex={isStandaloneModelDisabled ? -1 : 0}
+                      aria-disabled={isStandaloneModelDisabled}
+                      title={defaultActionLabel}
+                      aria-label={`${defaultActionLabel}：${model.name}`}
+                      className={cn(
+                        "flex flex-col gap-3 px-4 py-4 transition-colors outline-none sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+                        !isStandaloneModelDisabled &&
+                          "cursor-pointer hover:bg-foreground/[0.06] dark:hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring/50",
+                      )}
+                      onClick={() => {
+                        if (isStandaloneModelDisabled) {
+                          return;
+                        }
+                        handleModelDefaultAction(model);
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          isStandaloneModelDisabled ||
+                          event.target !== event.currentTarget ||
+                          (event.key !== "Enter" && event.key !== " ")
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        handleModelDefaultAction(model);
+                      }}
                     >
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1999,7 +2233,12 @@ function ModelsSettingsPanel({
                           </span>
                           {isActive ? (
                             <Badge variant="secondary" className="text-muted-foreground">
-                              当前
+                              当前推理
+                            </Badge>
+                          ) : null}
+                          {isImageDefault ? (
+                            <Badge variant="secondary" className="text-muted-foreground">
+                              当前图片生成
                             </Badge>
                           ) : null}
                           {model.keyConfigured ? (
@@ -2020,17 +2259,22 @@ function ModelsSettingsPanel({
                           {model.apiBase}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        className="shrink-0 self-start sm:self-center"
-                        disabled={modelsBusy || modelsPreviewBusy || isActive}
-                        title={isActive ? "不能删除当前模型" : undefined}
-                        onClick={() => setDeleteTarget(model.name)}
-                      >
-                        删除
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="shrink-0"
+                          disabled={modelsBusy || modelsPreviewBusy || isActive}
+                          title={isActive ? "不能删除当前模型" : undefined}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteTarget(model.name);
+                          }}
+                        >
+                          删除
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -2039,6 +2283,116 @@ function ModelsSettingsPanel({
           </>
         )}
       </div>
+
+      <Dialog
+        open={modelDefaultsDialogTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeModelDefaultsDialog();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>设为默认</DialogTitle>
+            <DialogDescription>
+              为模型「{modelDefaultsDialogModel?.name ?? ""}」选择要承担的默认角色。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-1">
+            {canAssignActiveRole ? (
+              <div
+                className="group/field flex items-start gap-3 rounded-lg border border-dialog-panel-border px-3 py-3 transition-colors data-[disabled=true]:opacity-70"
+                data-disabled={modelsBusy || modelsPreviewBusy || isModelDefaultsDialogModelActive || undefined}
+              >
+                <Checkbox
+                  id="model-default-active"
+                  checked={modelDefaultAssignments.activeModel}
+                  disabled={modelsBusy || modelsPreviewBusy || isModelDefaultsDialogModelActive}
+                  onCheckedChange={(checked) =>
+                    setModelDefaultAssignments((current) => ({
+                      ...current,
+                      activeModel: checked === true || isModelDefaultsDialogModelActive,
+                    }))
+                  }
+                />
+                <div className="grid gap-1.5">
+                  <Label htmlFor="model-default-active" className="text-sm font-medium text-foreground">
+                    当前推理模型
+                  </Label>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {isModelDefaultsDialogModelActive
+                      ? "当前必须保留一个推理模型；如需切换，请到目标模型上设置。"
+                      : "用于对话、规划与工具编排。"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {canAssignImageGenerationRole ? (
+              <div
+                className="group/field flex items-start gap-3 rounded-lg border border-dialog-panel-border px-3 py-3 transition-colors data-[disabled=true]:opacity-70"
+                data-disabled={modelsBusy || modelsPreviewBusy || undefined}
+              >
+                <Checkbox
+                  id="model-default-image-generation"
+                  checked={modelDefaultAssignments.imageGenerationModel}
+                  disabled={modelsBusy || modelsPreviewBusy}
+                  onCheckedChange={(checked) =>
+                    setModelDefaultAssignments((current) => ({
+                      ...current,
+                      imageGenerationModel: checked === true,
+                    }))
+                  }
+                />
+                <div className="grid gap-1.5">
+                  <Label
+                    htmlFor="model-default-image-generation"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    默认图片生成模型
+                  </Label>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    用于 generate_image 等图片输出；取消后将不再指定默认图片模型。
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {!canAssignActiveRole && !canAssignImageGenerationRole ? (
+              <div className="rounded-lg border border-dashed border-dialog-panel-border px-3 py-4 text-sm text-muted-foreground">
+                这个模型当前没有可设置的默认角色。
+              </div>
+            ) : null}
+          </div>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={closeModelDefaultsDialog}
+              disabled={modelsBusy || modelsPreviewBusy}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={modelsBusy || modelsPreviewBusy || !hasModelDefaultAssignmentChanges}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await saveModelDefaultAssignments();
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              保存
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={deleteTarget !== null}
@@ -2171,7 +2525,7 @@ function ModelsSettingsPanel({
               placeholder="搜索"
               autoComplete="off"
             />
-            <ScrollArea className="h-56 rounded-md border border-border/40">
+            <ScrollArea className="h-56 rounded-md border border-dialog-panel-border">
               <div className="p-1">
                 {filteredProviders.length === 0 ? (
                   <p className="px-2 py-6 text-center text-sm text-muted-foreground">无匹配项</p>
@@ -2664,9 +3018,11 @@ export function SettingsView({
               />
             ) : tab === "models" ? (
               <ModelsSettingsPanel
+                settings={settings}
                 snapshot={snapshot}
                 modelsBusy={modelsBusy}
                 modelsPreviewBusy={modelsPreviewBusy}
+                onSavePatch={onSavePatch}
                 onAddModel={onAddModel}
                 onAddProviderModels={onAddProviderModels}
                 onPreviewModels={onPreviewModels}

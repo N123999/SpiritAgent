@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, VecDeque},
     env,
@@ -276,9 +276,7 @@ enum BridgeManualToolCommandStartResult {
         user_message: String,
     },
     #[serde(rename = "requires-approval")]
-    RequiresApproval {
-        approval: BridgePendingApproval,
-    },
+    RequiresApproval { approval: BridgePendingApproval },
     #[serde(rename = "denied")]
     Denied {
         request: Value,
@@ -1016,6 +1014,7 @@ impl TsBridgeRuntime {
                     llm_history: entry.llm_history,
                 })
                 .collect(),
+            desktop_messages: None,
             rewind: Some(self.rewind.as_json()),
         })
     }
@@ -1647,20 +1646,50 @@ impl TsBridgeRuntime {
             "workspaceRoot": self.workspace_root,
         });
         if let Some(provider) = active.provider {
-            let vendor = match provider {
-                ModelProvider::Deepseek => "deepseek",
-                ModelProvider::Kimi => "kimi",
-                ModelProvider::Minimax => "minimax",
-                ModelProvider::Alibaba => "alibaba",
-                ModelProvider::Custom => "custom",
-            };
             if let Some(obj) = transport.as_object_mut() {
-                obj.insert("llmVendor".to_string(), json!(vendor));
+                obj.insert(
+                    "llmVendor".to_string(),
+                    json!(model_provider_vendor(provider)),
+                );
+            }
+        }
+        if let Some(model_capabilities) = model_capabilities_json(active) {
+            if let Some(obj) = transport.as_object_mut() {
+                obj.insert("modelCapabilities".to_string(), model_capabilities);
             }
         }
         if let Some(reasoning_effort) = active.reasoning_effort.as_deref() {
             if let Some(obj) = transport.as_object_mut() {
                 obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
+            }
+        }
+        if let Some(image_profile) = config.image_generation_model_profile() {
+            if image_profile.supports_image_generation() {
+                if let Some(image_api_key) =
+                    self.resolve_optional_key_from_store(&image_profile.name)?
+                {
+                    let mut image_generation = serde_json::json!({
+                        "apiKey": image_api_key,
+                        "model": image_profile.name,
+                        "baseUrl": image_profile.api_base,
+                    });
+                    if let Some(provider) = image_profile.provider {
+                        if let Some(obj) = image_generation.as_object_mut() {
+                            obj.insert(
+                                "llmVendor".to_string(),
+                                json!(model_provider_vendor(provider)),
+                            );
+                        }
+                    }
+                    if let Some(model_capabilities) = model_capabilities_json(image_profile) {
+                        if let Some(obj) = image_generation.as_object_mut() {
+                            obj.insert("modelCapabilities".to_string(), model_capabilities);
+                        }
+                    }
+                    if let Some(obj) = transport.as_object_mut() {
+                        obj.insert("imageGeneration".to_string(), image_generation);
+                    }
+                }
             }
         }
         Ok(transport)
@@ -1693,6 +1722,26 @@ impl TsBridgeRuntime {
             return true;
         }
 
+        if self.config.image_generation_model != config.image_generation_model {
+            return true;
+        }
+
+        if self.config.image_generation_model_profile().map(|profile| {
+            (
+                profile.api_base.as_str(),
+                profile.provider,
+                profile.supports_image_generation(),
+            )
+        }) != config.image_generation_model_profile().map(|profile| {
+            (
+                profile.api_base.as_str(),
+                profile.provider,
+                profile.supports_image_generation(),
+            )
+        }) {
+            return true;
+        }
+
         self.config
             .active_model_profile()
             .map(|profile| profile.provider)
@@ -1715,6 +1764,19 @@ impl TsBridgeRuntime {
             model_name,
             ENV_API_KEY
         ))
+    }
+
+    fn resolve_optional_key_from_store(&self, model_name: &str) -> Result<Option<String>> {
+        if let Ok(value) = env::var(ENV_API_KEY) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Ok(Some(trimmed.to_string()));
+            }
+        }
+        if let Some(value) = self.secret_store.load_model_api_key(model_name)? {
+            return Ok(Some(value));
+        }
+        self.secret_store.load_global_api_key()
     }
 
     fn call_bridge(&mut self, method: &str, params: Option<Value>) -> Result<Value> {
@@ -2263,8 +2325,8 @@ impl TsBridgeRuntime {
     ) {
         match tool_request_from_host_value(request) {
             Ok(request) => {
-                self.events.push_back(RuntimeEvent::PushMessage(
-                    ChatMessage::with_tool_block(
+                self.events
+                    .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
                         MessageRole::Agent,
                         if failed {
                             format!("工具执行失败: {}", output)
@@ -2276,18 +2338,18 @@ impl TsBridgeRuntime {
                         } else {
                             build_tool_result_block(&request, tool_name, None, output)
                         },
-                    ),
-                ));
+                    )));
             }
             Err(err) => {
-                self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                    MessageRole::Agent,
-                    if failed {
-                        format!("工具执行失败（请求解析失败）: {}", output)
-                    } else {
-                        format!("工具执行完成（请求解析失败）: {}\n{}", err, output)
-                    },
-                )));
+                self.events
+                    .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
+                        MessageRole::Agent,
+                        if failed {
+                            format!("工具执行失败（请求解析失败）: {}", output)
+                        } else {
+                            format!("工具执行完成（请求解析失败）: {}\n{}", err, output)
+                        },
+                    )));
             }
         }
     }
@@ -2296,13 +2358,12 @@ impl TsBridgeRuntime {
         if let Some(request) = request
             && let Ok(request) = tool_request_from_host_value(request)
         {
-            self.events.push_back(RuntimeEvent::PushMessage(
-                ChatMessage::with_tool_block(
+            self.events
+                .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
                     MessageRole::Agent,
                     format!("工具执行失败: {}", error),
                     tool_failed_block(&request.name, None, "工具执行失败", error),
-                ),
-            ));
+                )));
             return;
         }
 
@@ -2620,11 +2681,13 @@ fn read_framed_message(reader: &mut dyn BufRead) -> Result<Vec<u8>> {
 fn llm_history_to_json(history: &[LlmMessage]) -> Vec<Value> {
     history
         .iter()
-        .map(|message| archived_llm_message_to_json(&ArchivedLlmMessage::from_text_and_images(
-            message.role.to_string(),
-            message.content.clone(),
-            message.image_paths.clone(),
-        )))
+        .map(|message| {
+            archived_llm_message_to_json(&ArchivedLlmMessage::from_text_and_images(
+                message.role.to_string(),
+                message.content.clone(),
+                message.image_paths.clone(),
+            ))
+        })
         .collect()
 }
 
@@ -2665,6 +2728,34 @@ fn approval_decision_from_input(message: &str) -> Value {
     }
 }
 
+fn model_provider_vendor(provider: ModelProvider) -> &'static str {
+    match provider {
+        ModelProvider::Deepseek => "deepseek",
+        ModelProvider::Kimi => "kimi",
+        ModelProvider::Minimax => "minimax",
+        ModelProvider::Alibaba => "alibaba",
+        ModelProvider::Custom => "custom",
+    }
+}
+
+fn model_capabilities_json(profile: &crate::model_registry::ModelProfile) -> Option<Value> {
+    let capabilities = profile.explicit_capabilities()?;
+    let mut object = Map::new();
+    for capability in capabilities {
+        match capability.as_str() {
+            "chat" | "vision" | "audioInput" | "videoInput" | "imageGeneration" => {
+                object.insert(capability, Value::Bool(true));
+            }
+            _ => {}
+        }
+    }
+    if object.is_empty() {
+        None
+    } else {
+        Some(Value::Object(object))
+    }
+}
+
 fn build_mcp_only_transport_config(workspace_root: &Path) -> Value {
     json!({
         "apiKey": "mcp-only",
@@ -2678,8 +2769,7 @@ fn build_mcp_only_transport_config(workspace_root: &Path) -> Value {
 mod tests {
     use super::{
         BridgeManualToolCommandStartResult, BridgeRuntimeEvent, BridgeRuntimeSnapshot,
-        BridgeToolExecution,
-        ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime, resolve_bridge_script,
+        BridgeToolExecution, ENV_RUNTIME_BACKEND_NODE_PATH, TsBridgeRuntime, resolve_bridge_script,
     };
     use crate::{
         host_runtime::RuntimeEvent,
@@ -2756,6 +2846,7 @@ mod tests {
                 },
             ],
             active_model: "gpt-4o-mini".to_string(),
+            image_generation_model: None,
             ui_locale: None,
             extra: Default::default(),
         };
@@ -2896,6 +2987,64 @@ mod tests {
     }
 
     #[test]
+    fn resolve_transport_config_json_includes_image_generation_model() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let mut next = runtime.config().clone();
+        next.active_model_profile_mut()
+            .expect("active model should exist")
+            .extra
+            .insert("capabilities".to_string(), json!(["chat"]));
+        next.models.push(ModelProfile {
+            name: "image-model".to_string(),
+            api_base: "https://images.example.invalid/v1".to_string(),
+            provider: Some(ModelProvider::Custom),
+            reasoning_effort: None,
+            extra: serde_json::Map::from_iter([(
+                "capabilities".to_string(),
+                json!(["imageGeneration"]),
+            )]),
+        });
+        next.image_generation_model = Some("image-model".to_string());
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport
+                .get("modelCapabilities")
+                .and_then(|capabilities| capabilities.get("chat"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        let image_generation = transport
+            .get("imageGeneration")
+            .expect("image generation config");
+        assert_eq!(
+            image_generation.get("model").and_then(Value::as_str),
+            Some("image-model")
+        );
+        assert_eq!(
+            image_generation.get("baseUrl").and_then(Value::as_str),
+            Some("https://images.example.invalid/v1")
+        );
+        assert_eq!(
+            image_generation.get("llmVendor").and_then(Value::as_str),
+            Some("custom")
+        );
+        assert_eq!(
+            image_generation
+                .get("modelCapabilities")
+                .and_then(|capabilities| capabilities.get("imageGeneration"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn transport_config_change_detects_model_knobs() {
         let Some(runtime) = make_test_runtime() else {
             return;
@@ -2911,6 +3060,20 @@ mod tests {
         next.active_model_profile_mut()
             .expect("active model should exist")
             .reasoning_effort = Some("low".to_string());
+        assert!(runtime.transport_config_will_change(&next));
+
+        let mut next = runtime.config().clone();
+        next.models.push(ModelProfile {
+            name: "image-model".to_string(),
+            api_base: DEFAULT_API_BASE.to_string(),
+            provider: None,
+            reasoning_effort: None,
+            extra: serde_json::Map::from_iter([(
+                "capabilities".to_string(),
+                json!(["imageGeneration"]),
+            )]),
+        });
+        next.image_generation_model = Some("image-model".to_string());
         assert!(runtime.transport_config_will_change(&next));
     }
 

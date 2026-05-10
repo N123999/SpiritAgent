@@ -103,6 +103,8 @@ enum ModelAction {
             value_parser = ["default", "minimal", "none", "low", "medium", "high", "xhigh", "max"]
         )]
         reasoning_effort: Option<String>,
+        #[arg(long = "capability", value_parser = ["chat", "vision", "imageGeneration"])]
+        capabilities: Vec<String>,
         #[arg(long)]
         key: Option<String>,
     },
@@ -121,6 +123,10 @@ enum ConfigAction {
     SetBase {
         url: String,
     },
+    SetImageModel {
+        name: String,
+    },
+    ClearImageModel,
     Key {
         #[command(subcommand)]
         action: KeyAction,
@@ -260,12 +266,14 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             api_base,
             provider,
             reasoning_effort,
+            capabilities,
             key,
         } => ModelCommand::Add {
             name,
             api_base,
             provider,
             reasoning_effort,
+            capabilities,
             key,
         },
         ModelAction::Remove { name } => ModelCommand::Remove { name },
@@ -278,6 +286,8 @@ fn into_config_command(action: ConfigAction) -> ConfigCommand {
     match action {
         ConfigAction::Show => ConfigCommand::Show,
         ConfigAction::SetBase { url } => ConfigCommand::SetBase { url },
+        ConfigAction::SetImageModel { name } => ConfigCommand::SetImageModel { name },
+        ConfigAction::ClearImageModel => ConfigCommand::ClearImageModel,
         ConfigAction::Key { action } => ConfigCommand::Key {
             action: into_key_command(action),
         },
@@ -417,7 +427,7 @@ fn run_app<B: Backend + io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         shell.tick();
         terminal.draw(|frame| {
             let app = shell.view_model();
-            let feedback = ui::draw_ui(frame, &app);
+            let feedback = ui::draw_ui(frame, &app, shell.ui_runtime_state_mut());
             shell.apply_render_feedback(feedback);
         })?;
 

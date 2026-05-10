@@ -4,6 +4,7 @@ import { runApprovalCase } from './parity/approval.case.js';
 import { runBackgroundCase } from './parity/background.case.js';
 import { runCompactionCase } from './parity/compaction.case.js';
 import { runContextProjectionCase } from './parity/context-projection.case.js';
+import { runGenerateImageCase } from './parity/generate-image.case.js';
 import { runManualToolsCase } from './parity/manual-tools.case.js';
 import { runMcpCase } from './parity/mcp.case.js';
 import { runStreamingCase } from './parity/streaming.case.js';
@@ -16,6 +17,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   const background = await runBackgroundCase();
   const vision = await runVisionCase();
   const subagent = await runSubagentCase();
+  const generateImage = await runGenerateImageCase();
   const manualTools = await runManualToolsCase();
   const mcp = await runMcpCase();
   const contextProjection = await runContextProjectionCase();
@@ -28,6 +30,8 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   printSmokeSection('polling compact smoke', compaction.pollingCompactResult);
   printSmokeSection('vision fallback smoke', vision.visionResult);
   printSmokeSection('manual command smoke', manualTools.manualGuidance);
+  printSmokeSection('generate image terminal smoke', generateImage.generateImageNonStreamingResult);
+  printSmokeSection('generate image streaming terminal smoke events', generateImage.generateImageStreamingEvents);
   printSmokeSection('manual background smoke', manualTools.manualBackgroundCompleted);
   printSmokeSection('manual compaction smoke', manualTools.manualCompactionCompleted);
   printSmokeSection('mcp prompt smoke', mcp.promptApplied);

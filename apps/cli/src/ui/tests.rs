@@ -10,7 +10,8 @@ use crate::{
 };
 use ratatui::{Terminal, backend::TestBackend};
 use rust_i18n::t;
-use std::collections::HashMap;
+use std::{collections::HashMap, env, fs};
+use unicode_width::UnicodeWidthStr;
 
 fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
     lines
@@ -25,16 +26,25 @@ fn render_text_lines(lines: Vec<Line<'static>>) -> Vec<String> {
 }
 
 fn render_ui_lines(app: &TuiViewModel, width: u16, height: u16) -> Vec<String> {
+    render_ui_snapshot(app, width, height).0
+}
+
+fn render_ui_snapshot(
+    app: &TuiViewModel,
+    width: u16,
+    height: u16,
+) -> (Vec<String>, ratatui::buffer::Buffer) {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal initializes");
+    let mut runtime = UiRuntimeState::default();
     terminal
         .draw(|frame| {
-            draw_ui(frame, app);
+            draw_ui(frame, app, &mut runtime);
         })
         .expect("ui renders");
 
-    let buffer = terminal.backend().buffer();
-    (0..height)
+    let buffer = terminal.backend().buffer().clone();
+    let lines = (0..height)
         .map(|y| {
             let mut line = String::new();
             for x in 0..width {
@@ -42,7 +52,19 @@ fn render_ui_lines(app: &TuiViewModel, width: u16, height: u16) -> Vec<String> {
             }
             line
         })
-        .collect()
+        .collect();
+
+    (lines, buffer)
+}
+
+fn test_image_path(label: &str) -> std::path::PathBuf {
+    let unique = uuid::Uuid::new_v4().simple().to_string();
+    let short = &unique[..8];
+    env::current_dir()
+        .expect("workspace cwd")
+        .join("target")
+        .join("ui-tests")
+        .join(format!("{}-{}.png", label, short))
 }
 
 fn build_view_model(message: ChatMessage) -> TuiViewModel {
@@ -560,6 +582,7 @@ fn rewind_picker_deemphasizes_tool_messages() {
             phase: ToolUiPhase::Succeeded,
             headline: "读取了一个文件".to_string(),
             detail_lines: vec!["/tmp/demo.txt".to_string()],
+            image_paths: Vec::new(),
             args_excerpt: None,
             output_excerpt: None,
         },
@@ -1042,6 +1065,7 @@ fn subagent_tool_card_hides_output_when_aux_details_collapsed() {
         phase: ToolUiPhase::Succeeded,
         headline: "搜索完成".to_string(),
         detail_lines: vec!["查询: 最近变更".to_string()],
+        image_paths: Vec::new(),
         args_excerpt: Some("{\n  \"limit\": 3\n}".to_string()),
         output_excerpt: Some("命中 3 个结果。".to_string()),
     };
@@ -1062,6 +1086,7 @@ fn subagent_tool_card_shows_output_when_aux_details_expanded() {
         phase: ToolUiPhase::Succeeded,
         headline: "搜索完成".to_string(),
         detail_lines: vec!["查询: 最近变更".to_string()],
+        image_paths: Vec::new(),
         args_excerpt: Some("{\n  \"limit\": 3\n}".to_string()),
         output_excerpt: Some("命中 3 个结果。".to_string()),
     };
@@ -1088,6 +1113,7 @@ fn shell_pending_approval_title_line_shows_reason_instead_of_call_id() {
                 "高风险工具调用: shell".to_string(),
                 "命令: cargo test -p spirit-agent".to_string(),
             ],
+            image_paths: Vec::new(),
             args_excerpt: None,
             output_excerpt: None,
         },
@@ -1102,6 +1128,213 @@ fn shell_pending_approval_title_line_shows_reason_instead_of_call_id() {
     assert!(lines[0].contains("查看构建输出"));
     assert!(!lines[0].contains("call_00_demo_reason"));
     assert!(!lines.iter().any(|line| line == "  ▌ 查看构建输出"));
+}
+
+#[test]
+fn generate_image_tool_card_shows_structured_path_when_aux_details_collapsed() {
+    let mut app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-1".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: Vec::new(),
+            image_paths: vec![
+                "C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/example.png"
+                    .to_string(),
+            ],
+            args_excerpt: Some("{\n  \"prompt\": \"画一张图\"\n}".to_string()),
+            output_excerpt: Some("[generated image]\npath: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/example.png".to_string()),
+        },
+    ));
+    app.show_aux_details = false;
+
+    let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
+
+    assert!(lines.iter().any(|line| line.contains("图片生成完成")));
+    assert!(lines.iter().any(|line| {
+        line.contains("路径: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/example.png")
+    }));
+    assert!(lines.iter().all(|line| !line.contains("\"prompt\": \"画一张图\"")));
+    assert!(lines.iter().all(|line| !line.contains("[generated image]")));
+}
+
+#[test]
+fn generate_image_tool_card_keeps_rail_on_wrapped_path_lines() {
+    let mut app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-wrap".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: vec![
+                "路径: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/this-is-a-very-long-image-name-that-must-wrap/example-output.png"
+                    .to_string(),
+            ],
+            image_paths: Vec::new(),
+            args_excerpt: None,
+            output_excerpt: None,
+        },
+    ));
+    app.show_aux_details = false;
+
+    let (flat, _) = crate::conversation_select::flatten_wrapped_history(
+        render_message_lines(&app, &app.messages[0], 0),
+        28,
+        None,
+    );
+    let lines = render_text_lines(flat);
+    let path_line_index = lines
+        .iter()
+        .position(|line| line.contains("路径:"))
+        .expect("path line exists");
+
+    assert!(
+        lines
+            .get(path_line_index + 1)
+            .is_some_and(|line| line.starts_with("  ▌ ")),
+        "wrapped path continuation should keep tool rail: {lines:#?}"
+    );
+}
+
+#[test]
+fn generate_image_tool_card_selection_highlights_wrapped_rail_consistently() {
+    let mut app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-select-wrap".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: vec![
+                "路径: C:/Users/pc/AppData/Roaming/SpiritAgent/generated-images/this-is-a-very-long-image-name-that-must-wrap/example-output.png"
+                    .to_string(),
+            ],
+            image_paths: Vec::new(),
+            args_excerpt: None,
+            output_excerpt: None,
+        },
+    ));
+    app.show_aux_details = false;
+
+    let message_lines = render_message_lines(&app, &app.messages[0], 0);
+    let (flat, _) = crate::conversation_select::flatten_wrapped_history(message_lines.clone(), 28, None);
+    let plain_lines = render_text_lines(flat);
+    let continuation_index = plain_lines
+        .iter()
+        .position(|line| line.starts_with("  ▌ "))
+        .expect("wrapped continuation line exists");
+
+    let selection = crate::conversation_select::normalize_selection(
+        crate::conversation_select::CellPointer {
+            line: continuation_index,
+            col: 0,
+        },
+        crate::conversation_select::CellPointer {
+            line: continuation_index,
+            col: 3,
+        },
+    );
+    let (selected_flat, _) =
+        crate::conversation_select::flatten_wrapped_history(message_lines, 28, Some(selection));
+    let selected_line = &selected_flat[continuation_index];
+
+    let mut covered_width = 0usize;
+    let mut covered_spans = 0usize;
+    for span in &selected_line.spans {
+        let width = UnicodeWidthStr::width(span.content.as_ref());
+        if width == 0 {
+            continue;
+        }
+        covered_width += width;
+        covered_spans += 1;
+        assert!(
+            span.style.add_modifier.contains(Modifier::REVERSED),
+            "wrapped continuation prefix should be selection-highlighted: {selected_line:#?}"
+        );
+        if covered_width >= 4 {
+            break;
+        }
+    }
+
+    assert!(covered_spans > 0);
+    assert!(covered_width >= 4);
+}
+
+#[test]
+fn generate_image_history_render_reserves_image_block() {
+    let app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-range".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: vec!["路径: demo.png".to_string()],
+            image_paths: vec!["demo.png".to_string()],
+            args_excerpt: None,
+            output_excerpt: None,
+        },
+    ));
+
+    let render = build_history_render_result(&app, 80);
+
+    assert_eq!(render.image_blocks.len(), 1);
+    assert!(render.image_blocks[0].reserved_rows >= 6);
+    assert!(render.image_blocks[0].x_offset > 0);
+}
+
+#[test]
+fn generate_image_ui_renders_halfblock_preview_from_local_file() {
+    let file_path = test_image_path("halfblock-preview");
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent).expect("create ui test image dir");
+    }
+    let image = image::RgbaImage::from_pixel(16, 16, image::Rgba([255, 0, 0, 255]));
+    image.save(&file_path).expect("save temp image");
+
+    let app = build_view_model(ChatMessage::with_tool_block(
+        MessageRole::Agent,
+        String::new(),
+        ToolUiBlock {
+            tool_call_id: Some("call-image-render".to_string()),
+            tool_name: "generate_image".to_string(),
+            phase: ToolUiPhase::Succeeded,
+            headline: "图片生成完成".to_string(),
+            detail_lines: vec![format!("路径: {}", file_path.display())],
+            image_paths: vec![file_path.to_string_lossy().to_string()],
+            args_excerpt: None,
+            output_excerpt: None,
+        },
+    ));
+
+    let (lines, buffer) = render_ui_snapshot(&app, 80, 36);
+    let file_name = file_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("temp image file name");
+    let path_index = lines
+        .iter()
+        .position(|line| line.contains(file_name))
+        .expect("path line exists");
+
+    let has_red_pixels = ((path_index + 1) as u16..=(path_index + 12) as u16).any(|y| {
+        (0..80).any(|x| {
+            let cell = &buffer[(x, y)];
+            cell.fg == ratatui::style::Color::Rgb(255, 0, 0)
+                || cell.bg == ratatui::style::Color::Rgb(255, 0, 0)
+        })
+    });
+
+    assert!(has_red_pixels, "expected colored image pixels below generated path");
+
+    let _ = fs::remove_file(file_path);
 }
 
 #[test]

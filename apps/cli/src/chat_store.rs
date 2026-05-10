@@ -7,6 +7,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use crate::rewind::{ConversationMessageRole, ConversationMessageSnapshot, MessageAuxSnapshot};
+
 const CHAT_DIR_NAME: &str = "chats";
 
 #[derive(Serialize, Deserialize)]
@@ -28,7 +30,7 @@ struct ChatFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     git_branch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    desktop_messages: Option<Vec<StoredDesktopMessage>>,
+    desktop_messages: Option<Vec<ConversationMessageSnapshot>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -42,26 +44,6 @@ struct StoredChatMessage {
 #[serde(rename_all = "camelCase")]
 struct StoredAssistantAux {
     message_index: usize,
-    #[serde(default)]
-    thinking: Option<String>,
-    #[serde(default)]
-    compaction: Option<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredDesktopMessage {
-    id: usize,
-    role: String,
-    content: String,
-    pending: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    aux: Option<StoredDesktopMessageAux>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredDesktopMessageAux {
     #[serde(default)]
     thinking: Option<String>,
     #[serde(default)]
@@ -94,7 +76,7 @@ struct StoredSubagentSessionSummary {
 struct SanitizedChatData {
     messages: Vec<StoredChatMessage>,
     assistant_aux: Vec<StoredAssistantAux>,
-    desktop_messages: Vec<StoredDesktopMessage>,
+    desktop_messages: Vec<ConversationMessageSnapshot>,
 }
 
 pub struct LoadedChat {
@@ -102,6 +84,7 @@ pub struct LoadedChat {
     pub assistant_aux: Vec<crate::ports::AssistantAuxArchiveEntry>,
     pub llm_history: Vec<crate::ports::ArchivedLlmMessage>,
     pub subagent_sessions: Vec<crate::ports::SubagentSessionArchiveEntry>,
+    pub desktop_messages: Option<Vec<ConversationMessageSnapshot>>,
     pub rewind: Option<Value>,
 }
 
@@ -146,6 +129,7 @@ pub fn save_chat(
     llm_history: &[crate::ports::ArchivedLlmMessage],
     subagent_sessions: &[crate::ports::SubagentSessionArchiveEntry],
     rewind: Option<&Value>,
+    desktop_messages: Option<&[ConversationMessageSnapshot]>,
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
     if let Some(parent) = path.parent() {
@@ -153,7 +137,7 @@ pub fn save_chat(
             .with_context(|| format!("创建对话目录失败: {}", parent.display()))?;
     }
 
-    let sanitized = sanitize_chat_data(messages, assistant_aux);
+    let sanitized = sanitize_chat_data(messages, assistant_aux, desktop_messages);
     let workspace_root = current_workspace_root();
 
     let file = ChatFile {
@@ -203,13 +187,21 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
     let parsed: ChatFile = serde_json::from_str(&text)
         .with_context(|| format!("解析对话文件失败: {}", path.display()))?;
 
-    let messages = parsed
-        .messages
+    let ChatFile {
+        messages: parsed_messages,
+        assistant_aux: parsed_assistant_aux,
+        llm_history,
+        subagent_sessions,
+        rewind,
+        desktop_messages,
+        ..
+    } = parsed;
+
+    let messages = parsed_messages
         .into_iter()
         .map(|m| (m.role, m.content))
         .collect::<Vec<_>>();
-    let assistant_aux = parsed
-        .assistant_aux
+    let assistant_aux = parsed_assistant_aux
         .into_iter()
         .filter(|entry| {
             entry
@@ -227,7 +219,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
             compaction: entry.compaction.filter(|value| !value.trim().is_empty()),
         })
         .collect::<Vec<_>>();
-    let sanitized = sanitize_chat_data(&messages, &assistant_aux);
+    let sanitized = sanitize_chat_data(&messages, &assistant_aux, desktop_messages.as_deref());
 
     Ok(LoadedChat {
         messages: sanitized
@@ -244,9 +236,8 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
                 compaction: entry.compaction,
             })
             .collect(),
-        llm_history: parsed.llm_history,
-        subagent_sessions: parsed
-            .subagent_sessions
+        llm_history,
+        subagent_sessions: subagent_sessions
             .into_iter()
             .map(|entry| crate::ports::SubagentSessionArchiveEntry {
                 summary: crate::ports::SubagentSessionSummary {
@@ -264,7 +255,9 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
                 llm_history: entry.llm_history,
             })
             .collect(),
-        rewind: parsed.rewind,
+        desktop_messages: (!sanitized.desktop_messages.is_empty())
+            .then_some(sanitized.desktop_messages),
+        rewind,
     })
 }
 
@@ -278,6 +271,7 @@ fn current_unix_millis() -> u128 {
 fn sanitize_chat_data(
     messages: &[(String, String)],
     assistant_aux: &[crate::ports::AssistantAuxArchiveEntry],
+    desktop_messages: Option<&[ConversationMessageSnapshot]>,
 ) -> SanitizedChatData {
     let normalized_aux = assistant_aux
         .iter()
@@ -307,7 +301,6 @@ fn sanitize_chat_data(
 
     let mut persisted_messages = Vec::new();
     let mut persisted_aux = Vec::new();
-    let mut desktop_messages = Vec::new();
 
     for (original_index, (role, content)) in messages.iter().enumerate() {
         let aux = normalized_aux
@@ -324,23 +317,15 @@ fn sanitize_chat_data(
             content: content.clone(),
         });
 
-        let desktop_aux = aux.clone().map(|mut entry| {
+        aux.map(|mut entry| {
             entry.message_index = message_index;
             persisted_aux.push(entry.clone());
-            StoredDesktopMessageAux {
-                thinking: entry.thinking,
-                compaction: entry.compaction,
-            }
-        });
-
-        desktop_messages.push(StoredDesktopMessage {
-            id: message_index + 1,
-            role: role.clone(),
-            content: content.clone(),
-            pending: false,
-            aux: desktop_aux,
         });
     }
+
+    let desktop_messages = sanitize_desktop_messages(desktop_messages).unwrap_or_else(|| {
+        build_fallback_desktop_messages(&persisted_messages, &persisted_aux)
+    });
 
     SanitizedChatData {
         messages: persisted_messages,
@@ -349,10 +334,86 @@ fn sanitize_chat_data(
     }
 }
 
-fn derive_session_display_name(messages: &[StoredDesktopMessage]) -> Option<String> {
+fn sanitize_desktop_messages(
+    desktop_messages: Option<&[ConversationMessageSnapshot]>,
+) -> Option<Vec<ConversationMessageSnapshot>> {
+    let sanitized = desktop_messages?
+        .iter()
+        .filter_map(|message| {
+            let aux = sanitize_message_aux_snapshot(message.aux.as_ref());
+            if message.role == ConversationMessageRole::Assistant
+                && message.content.trim().is_empty()
+                && message.tool.is_none()
+                && aux.is_none()
+            {
+                return None;
+            }
+            Some(ConversationMessageSnapshot {
+                id: message.id,
+                role: message.role,
+                content: message.content.clone(),
+                tool: message.tool.clone(),
+                aux,
+                pending: message.pending,
+            })
+        })
+        .collect::<Vec<_>>();
+    (!sanitized.is_empty()).then_some(sanitized)
+}
+
+fn sanitize_message_aux_snapshot(aux: Option<&MessageAuxSnapshot>) -> Option<MessageAuxSnapshot> {
+    let aux = aux?;
+    let thinking = aux.thinking.clone().filter(|value| !value.trim().is_empty());
+    let compaction = aux
+        .compaction
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    if thinking.is_none() && compaction.is_none() {
+        None
+    } else {
+        Some(MessageAuxSnapshot {
+            thinking,
+            compaction,
+        })
+    }
+}
+
+fn build_fallback_desktop_messages(
+    messages: &[StoredChatMessage],
+    assistant_aux: &[StoredAssistantAux],
+) -> Vec<ConversationMessageSnapshot> {
+    messages
+        .iter()
+        .enumerate()
+        .map(|(index, message)| ConversationMessageSnapshot {
+            id: index + 1,
+            role: if message.role == "user" {
+                ConversationMessageRole::User
+            } else {
+                ConversationMessageRole::Assistant
+            },
+            content: message.content.clone(),
+            tool: None,
+            aux: assistant_aux
+                .iter()
+                .find(|entry| entry.message_index == index)
+                .and_then(|entry| {
+                    sanitize_message_aux_snapshot(Some(&MessageAuxSnapshot {
+                        thinking: entry.thinking.clone(),
+                        compaction: entry.compaction.clone(),
+                    }))
+                }),
+            pending: false,
+        })
+        .collect()
+}
+
+fn derive_session_display_name(messages: &[ConversationMessageSnapshot]) -> Option<String> {
     let seed = messages
         .iter()
-        .find(|message| message.role == "user" && !message.content.trim().is_empty())?
+        .find(|message| {
+            message.role == ConversationMessageRole::User && !message.content.trim().is_empty()
+        })?
         .content
         .trim();
     let truncated = seed.chars().take(28).collect::<String>();
@@ -487,6 +548,7 @@ mod tests {
             &llm_history,
             &[],
             None,
+            None,
         )
         .expect("save chat");
 
@@ -512,6 +574,14 @@ mod tests {
         let loaded = load_chat(saved.to_string_lossy().as_ref()).expect("reload chat");
         assert_eq!(loaded.messages.len(), 3);
         assert_eq!(loaded.assistant_aux.len(), 1);
+        assert_eq!(
+            loaded
+                .desktop_messages
+                .as_ref()
+                .expect("desktop messages loaded")
+                .len(),
+            3
+        );
         assert_eq!(loaded.assistant_aux[0].message_index, 1);
         assert_eq!(
             loaded.assistant_aux[0].thinking.as_deref(),
@@ -544,6 +614,80 @@ mod tests {
         assert_eq!(loaded.llm_history.len(), 1);
         assert_eq!(loaded.llm_history[0].text_content(), "hello");
         assert_eq!(loaded.llm_history[0].image_paths(), vec!["demo.png".to_string()]);
+        assert_eq!(
+            loaded
+                .desktop_messages
+                .as_ref()
+                .expect("fallback desktop messages")
+                .len(),
+            1
+        );
+
+        let _ = fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn load_chat_preserves_desktop_tool_snapshots() {
+        let file_path = test_file_path("desktop-tool-snapshot");
+        let raw = json!({
+            "savedAtUnixMs": current_unix_millis(),
+            "messages": [{ "role": "user", "content": "画一张图" }],
+            "assistantAux": [],
+            "llmHistory": [],
+            "subagentSessions": [],
+            "desktopMessages": [
+                {
+                    "id": 1,
+                    "role": "user",
+                    "content": "画一张图",
+                    "pending": false
+                },
+                {
+                    "id": 2,
+                    "role": "assistant",
+                    "content": "",
+                    "pending": false,
+                    "tool": {
+                        "toolName": "generate_image",
+                        "phase": "succeeded",
+                        "headline": "图片生成完成",
+                        "detailLines": [
+                            "path: C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png"
+                        ],
+                        "outputExcerpt": "[generated image]\npath: C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png",
+                        "imagePaths": [
+                            "C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png"
+                        ]
+                    }
+                }
+            ]
+        });
+        fs::write(&file_path, serde_json::to_string_pretty(&raw).expect("serialize desktop json"))
+            .expect("write desktop chat");
+
+        let loaded = load_chat(file_path.to_string_lossy().as_ref()).expect("load desktop chat");
+        let desktop_messages = loaded
+            .desktop_messages
+            .as_ref()
+            .expect("desktop tool snapshots");
+        assert_eq!(loaded.messages.len(), 1);
+        assert_eq!(desktop_messages.len(), 2);
+        assert_eq!(
+            desktop_messages[1]
+                .tool
+                .as_ref()
+                .expect("tool snapshot")
+                .tool_name,
+            "generate_image"
+        );
+        assert_eq!(
+            desktop_messages[1]
+                .tool
+                .as_ref()
+                .expect("tool snapshot")
+                .image_paths,
+            vec!["C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png"]
+        );
 
         let _ = fs::remove_file(file_path);
     }

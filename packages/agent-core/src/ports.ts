@@ -41,6 +41,25 @@ export interface ToolExecutionOutput {
   summaryText: string;
 }
 
+export const DEFAULT_IMAGE_GENERATION_SIZE = '1024x1024';
+
+export interface ImageGenerationRequest {
+  prompt: string;
+  size: string;
+}
+
+export interface GeneratedImageSaveRequest {
+  data: Uint8Array;
+  mediaType: string;
+  prompt: string;
+  model: string;
+}
+
+export interface GeneratedImageFile {
+  path: string;
+  mimeType: string;
+}
+
 export function createToolExecutionTextOutput(text: string): ToolExecutionOutput {
   return {
     content: createLlmMessageContentFromText(text),

@@ -147,6 +147,8 @@ pub struct ChatArchive {
     #[serde(default)]
     pub subagent_sessions: Vec<SubagentSessionArchiveEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desktop_messages: Option<Vec<crate::rewind::ConversationMessageSnapshot>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rewind: Option<serde_json::Value>,
 }
 

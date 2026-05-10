@@ -1,9 +1,14 @@
+use std::collections::HashMap;
+
+use image::ImageReader;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
+use ratatui_image::picker::{Picker, ProtocolType};
+use ratatui_image::{Resize, StatefulImage, protocol::StatefulProtocol};
 use rust_i18n::t;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -67,7 +72,163 @@ pub struct ConversationPanelRenderFeedback {
     pub history_offset_from_bottom: usize,
 }
 
-pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFeedback {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageRenderBackend {
+    QueriedProtocol,
+    HalfblocksFallback,
+}
+
+enum CachedRenderedImage {
+    Ready(StatefulProtocol),
+    Failed,
+}
+
+pub struct ImageRenderState {
+    picker: Picker,
+    backend: ImageRenderBackend,
+    cache: HashMap<String, CachedRenderedImage>,
+}
+
+impl ImageRenderState {
+    pub fn from_terminal_query() -> Self {
+        match Picker::from_query_stdio() {
+            Ok(picker) => {
+                logging::log_event("[ui:image] initialized ratatui-image picker from terminal query");
+                Self {
+                    picker,
+                    backend: ImageRenderBackend::QueriedProtocol,
+                    cache: HashMap::new(),
+                }
+            }
+            Err(err) => {
+                logging::log_event(&format!(
+                    "[ui:image] terminal query failed, falling back to halfblocks: {err:#}"
+                ));
+                Self::halfblocks()
+            }
+        }
+    }
+
+    pub fn halfblocks() -> Self {
+        let mut picker = Picker::from_fontsize((10, 20));
+        picker.set_protocol_type(ProtocolType::Halfblocks);
+        Self {
+            picker,
+            backend: ImageRenderBackend::HalfblocksFallback,
+            cache: HashMap::new(),
+        }
+    }
+
+    pub fn backend(&self) -> ImageRenderBackend {
+        self.backend
+    }
+
+    pub fn picker(&self) -> &Picker {
+        &self.picker
+    }
+
+    pub fn picker_mut(&mut self) -> &mut Picker {
+        &mut self.picker
+    }
+
+    pub fn render_path_in_area(
+        &mut self,
+        frame: &mut ratatui::Frame<'_>,
+        path: &str,
+        area: Rect,
+    ) {
+        if area.width == 0 || area.height == 0 || path.trim().is_empty() {
+            return;
+        }
+
+        if !self.cache.contains_key(path) {
+            self.cache.insert(
+                path.to_string(),
+                load_cached_rendered_image(path, &self.picker),
+            );
+        }
+
+        let mut encoding_error = None;
+        if let Some(CachedRenderedImage::Ready(protocol)) = self.cache.get_mut(path) {
+            frame.render_stateful_widget(
+                StatefulImage::default().resize(Resize::Fit(None)),
+                area,
+                protocol,
+            );
+            encoding_error = protocol
+                .last_encoding_result()
+                .and_then(Result::err)
+                .map(|err| format!("{err:#}"));
+        }
+
+        if let Some(err) = encoding_error {
+            logging::log_event(&format!(
+                "[ui:image] rendering failed for {}: {}",
+                path, err
+            ));
+            self.cache
+                .insert(path.to_string(), CachedRenderedImage::Failed);
+        }
+    }
+}
+
+fn load_cached_rendered_image(path: &str, picker: &Picker) -> CachedRenderedImage {
+    match ImageReader::open(path) {
+        Ok(reader) => match reader.decode() {
+            Ok(image) => CachedRenderedImage::Ready(picker.new_resize_protocol(image)),
+            Err(err) => {
+                let message = format!("decode failed: {err:#}");
+                logging::log_event(&format!(
+                    "[ui:image] failed to decode {}: {}",
+                    path, message
+                ));
+                CachedRenderedImage::Failed
+            }
+        },
+        Err(err) => {
+            let message = format!("open failed: {err:#}");
+            logging::log_event(&format!(
+                "[ui:image] failed to open {}: {}",
+                path, message
+            ));
+            CachedRenderedImage::Failed
+        }
+    }
+}
+
+pub struct UiRuntimeState {
+    image_render: ImageRenderState,
+}
+
+impl Default for UiRuntimeState {
+    fn default() -> Self {
+        Self {
+            image_render: ImageRenderState::halfblocks(),
+        }
+    }
+}
+
+impl UiRuntimeState {
+    pub fn from_terminal_query() -> Self {
+        Self {
+            image_render: ImageRenderState::from_terminal_query(),
+        }
+    }
+
+    pub fn image_render(&self) -> &ImageRenderState {
+        &self.image_render
+    }
+
+    pub fn image_render_mut(&mut self) -> &mut ImageRenderState {
+        &mut self.image_render
+    }
+}
+
+pub fn draw_ui(
+    frame: &mut ratatui::Frame<'_>,
+    app: &TuiViewModel,
+    runtime: &mut UiRuntimeState,
+) -> UiRenderFeedback {
     let mut feedback = UiRenderFeedback::default();
     set_active_cli_ui_hooks(app.cli_ui_hooks.clone());
     let show_model_picker = app.model_picker_active;
@@ -160,6 +321,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     let history_render =
         build_history_render_result(&app, chunks[0].width.saturating_sub(1) as usize);
+    let history_image_blocks = history_render.image_blocks.clone();
+    let history_message_ranges = history_render.message_ranges.clone();
     let history_lines = history_render.lines;
     // 对话区无边框，内容与命中区域占满 chunks[0]。
     let inner_x = chunks[0].x;
@@ -168,6 +331,8 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
     let inner_h = chunks[0].height.max(1);
     let history_view_height = inner_h as usize;
     let w = inner_w.max(1) as u16;
+    let history_lines_for_images = history_lines.clone();
+    let logical_line_visual_offsets = build_visual_row_offsets(&history_lines_for_images, w);
     // 以 WordWrapper 折行为准，避免 Paragraph::line_count 与自定义折行在少数宽度/CJK 下不一致导致滚动错位。
     let (flat_measure, _) = flatten_wrapped_history(history_lines.clone(), w, None);
     let total_visual_lines = flat_measure.len();
@@ -184,6 +349,15 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
         .collect();
     let history = Paragraph::new(visible);
     frame.render_widget(history, chunks[0]);
+    render_history_tool_images(
+        frame,
+        chunks[0],
+        history_scroll,
+        history_view_height,
+        &history_image_blocks,
+        &logical_line_visual_offsets,
+        runtime,
+    );
     feedback.conversation_panel = Some(ConversationPanelRenderFeedback {
         hit: ConversationPanelHit {
             x: inner_x,
@@ -194,7 +368,7 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
             total_lines: total_visual_lines,
         },
         plain_rows: plain,
-        message_ranges: history_render.message_ranges,
+        message_ranges: history_message_ranges,
         history_offset_from_bottom: offset_bottom,
     });
 
@@ -343,6 +517,61 @@ pub fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &TuiViewModel) -> UiRenderFe
 
     clear_active_cli_ui_hooks();
     feedback
+}
+
+fn render_history_tool_images(
+    frame: &mut ratatui::Frame<'_>,
+    history_area: Rect,
+    history_scroll: usize,
+    history_view_height: usize,
+    image_blocks: &[HistoryImageRenderBlock],
+    logical_line_visual_offsets: &[usize],
+    runtime: &mut UiRuntimeState,
+) {
+    for block in image_blocks {
+        let visual_top = logical_line_visual_offsets
+            .get(block.logical_top_line)
+            .copied()
+            .unwrap_or_else(|| logical_line_visual_offsets.last().copied().unwrap_or(0));
+        let visual_bottom = visual_top.saturating_add(block.reserved_rows as usize);
+        let view_bottom = history_scroll.saturating_add(history_view_height);
+        if visual_top < history_scroll || visual_bottom > view_bottom {
+            continue;
+        }
+
+        let local_top = visual_top.saturating_sub(history_scroll) as u16;
+        let x_offset = block.x_offset.min(history_area.width);
+        let render_width = history_area.width.saturating_sub(x_offset);
+        if render_width == 0 {
+            continue;
+        }
+
+        let render_area = Rect {
+            x: history_area.x.saturating_add(x_offset),
+            y: history_area.y.saturating_add(local_top),
+            width: render_width,
+            height: block.reserved_rows.min(history_area.height.saturating_sub(local_top)),
+        };
+        runtime
+            .image_render_mut()
+            .render_path_in_area(frame, &block.path, render_area);
+    }
+}
+
+fn build_visual_row_offsets(
+    logical_lines: &[Line<'static>],
+    wrap_width: u16,
+) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(logical_lines.len() + 1);
+    let mut total = 0usize;
+
+    for line in logical_lines {
+        offsets.push(total);
+        total = total.saturating_add(flatten_wrapped_history(vec![line.clone()], wrap_width, None).0.len());
+    }
+
+    offsets.push(total);
+    offsets
 }
 
 #[cfg(test)]

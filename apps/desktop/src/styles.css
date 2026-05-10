@@ -41,6 +41,8 @@
   /* 侧栏内分级：列表正文（比主色略淡）/ 极淡说明（如状态行、分区小标题） */
   --sidebar-list-foreground: oklch(0.4 0 0);
   --sidebar-faint-foreground: oklch(0.5 0 0);
+  /* Dialog 内部描边面板统一使用“连接提供商”选择框的边框色；后续仅 Dialog 内部块级边框复用，非 Dialog 场景不要使用。 */
+  --dialog-panel-border: color-mix(in oklab, var(--border) 40%, transparent);
 }
 
 html,
@@ -91,6 +93,7 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-dialog-panel-border: var(--dialog-panel-border);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);

@@ -48,6 +48,7 @@ const DEFAULT_CUSTOM_MODEL_CAPABILITIES: DesktopModelCapability[] = ['chat', 'vi
 export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
   activeModel: string;
+  imageGenerationModel?: string;
   recentWorkspaces?: string[];
   uiLocale?: string;
   windowsMica?: boolean;
@@ -420,10 +421,12 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
   const activeModel = normalizedModels.some((model) => model.name === raw.activeModel)
     ? raw.activeModel!.trim()
     : normalizedModels[0]!.name;
+  const imageGenerationModel = normalizeImageGenerationModel(raw.imageGenerationModel, normalizedModels);
 
   return {
     models: normalizedModels,
     activeModel,
+    ...(imageGenerationModel ? { imageGenerationModel } : {}),
     recentWorkspaces: normalizeRecentWorkspaceRoots(raw.recentWorkspaces),
     ...(typeof raw.uiLocale === 'string' && raw.uiLocale.trim()
       ? { uiLocale: raw.uiLocale.trim() }
@@ -433,6 +436,23 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
     webHost: normalizeWebHostConfig(raw.webHost),
     dreams: normalizeDreamConfig(raw.dreams),
   };
+}
+
+function normalizeImageGenerationModel(
+  value: unknown,
+  models: readonly ModelProfileSnapshot[],
+): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const modelName = value.trim();
+  const profile = models.find((model) => model.name === modelName);
+  return profile && modelSupportsImageGeneration(profile) ? profile.name : undefined;
+}
+
+function modelSupportsImageGeneration(model: ModelProfileSnapshot): boolean {
+  return model.capabilities?.includes('imageGeneration') === true;
 }
 
 export function normalizeModelCapabilities(

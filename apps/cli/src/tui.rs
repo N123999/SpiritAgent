@@ -32,6 +32,7 @@ use crate::{
         CliExtensionCliUiHookEntry, CliExtensionEntry, CliMarketplaceCatalogItem,
         CliMarketplaceDetail, CliMarketplaceDetailVersion, CliMarketplacePreparedInstall,
     },
+    ui::UiRuntimeState,
     view::{
         AssistantAuxData, BottomFormKind, ChatMessage, CliUiHookSlot, CliUiHookTokenRole,
         CliUiHookTokensView, CliUiHookVariant, CliUiHookView, InputSuggestion, InputSuggestionKind,
@@ -105,6 +106,7 @@ pub struct TuiShell {
     extension_entries: Vec<CliExtensionEntry>,
     marketplace: MarketplaceState,
     cli_ui_hooks: Vec<CliUiHookView>,
+    ui_runtime_state: UiRuntimeState,
 }
 
 impl TuiShell {
@@ -187,10 +189,15 @@ impl TuiShell {
             extension_entries,
             marketplace: MarketplaceState::default(),
             cli_ui_hooks,
+            ui_runtime_state: UiRuntimeState::from_terminal_query(),
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
         Ok(shell)
+    }
+
+    pub fn ui_runtime_state_mut(&mut self) -> &mut UiRuntimeState {
+        &mut self.ui_runtime_state
     }
 
     pub fn rule_entries(&self) -> &[RuleEntry] {
@@ -521,9 +528,7 @@ impl TuiShell {
     }
 
     fn save_current_chat(&mut self, path: Option<&str>) {
-        let messages = self.archive_messages_for_message_count(self.messages.len());
-        let assistant_aux = self.assistant_aux_for_message_count(self.messages.len());
-        match self.runtime.export_chat_archive(&messages, &assistant_aux) {
+        match self.export_chat_archive_for_message_count(self.messages.len()) {
             Ok(archive) => match self.chat_repository.save(path, &archive) {
                 Ok(saved_path) => {
                     self.messages.push(ChatMessage {
@@ -553,60 +558,64 @@ impl TuiShell {
     fn load_chat_by_path(&mut self, path: &str) {
         match self.chat_repository.load(path) {
             Ok(archive) => {
-                self.exit_rewind_picker_mode();
-                self.subagent.picker_active = false;
-                self.close_subagent_view();
-                let mut msgs = Vec::new();
-                for (role, content) in &archive.messages {
-                    msgs.push(ChatMessage {
-                        role: if role == "user" {
-                            MessageRole::User
-                        } else {
-                            MessageRole::Agent
-                        },
-                        content: content.clone(),
-                        tool_block: None,
-                    });
+                if let Some(snapshots) = archive.desktop_messages.as_deref() {
+                    self.restore_conversation_from_snapshots(snapshots);
+                } else {
+                    self.exit_rewind_picker_mode();
+                    self.subagent.picker_active = false;
+                    self.close_subagent_view();
+                    let mut msgs = Vec::new();
+                    for (role, content) in &archive.messages {
+                        msgs.push(ChatMessage {
+                            role: if role == "user" {
+                                MessageRole::User
+                            } else {
+                                MessageRole::Agent
+                            },
+                            content: content.clone(),
+                            tool_block: None,
+                        });
+                    }
+                    self.messages = msgs;
+                    self.assistant_aux_by_message = archive
+                        .assistant_aux
+                        .iter()
+                        .filter_map(|entry| {
+                            let thinking = entry
+                                .thinking
+                                .clone()
+                                .filter(|value| !value.trim().is_empty());
+                            let compaction = entry
+                                .compaction
+                                .clone()
+                                .filter(|value| !value.trim().is_empty());
+                            if thinking.is_none() && compaction.is_none() {
+                                None
+                            } else {
+                                Some((
+                                    entry.message_index,
+                                    AssistantAuxData {
+                                        thinking,
+                                        compaction,
+                                    },
+                                ))
+                            }
+                        })
+                        .collect();
+                    self.persisted_standalone_pending_aux = None;
+                    self.persisted_standalone_pending_aux_anchor = None;
+                    self.pending_assistant_msg_index = None;
+                    self.last_completed_assistant_msg_index = None;
+                    self.last_turn_can_continue = false;
+                    self.clear_input_history();
                 }
-                if msgs.is_empty() {
-                    msgs.push(ChatMessage {
+                if self.messages.is_empty() {
+                    self.messages.push(ChatMessage {
                         role: MessageRole::Agent,
                         content: t!("tui.session.loaded_empty").into_owned(),
                         tool_block: None,
                     });
                 }
-                self.messages = msgs;
-                self.assistant_aux_by_message = archive
-                    .assistant_aux
-                    .iter()
-                    .filter_map(|entry| {
-                        let thinking = entry
-                            .thinking
-                            .clone()
-                            .filter(|value| !value.trim().is_empty());
-                        let compaction = entry
-                            .compaction
-                            .clone()
-                            .filter(|value| !value.trim().is_empty());
-                        if thinking.is_none() && compaction.is_none() {
-                            None
-                        } else {
-                            Some((
-                                entry.message_index,
-                                AssistantAuxData {
-                                    thinking,
-                                    compaction,
-                                },
-                            ))
-                        }
-                    })
-                    .collect();
-                self.persisted_standalone_pending_aux = None;
-                self.persisted_standalone_pending_aux_anchor = None;
-                self.pending_assistant_msg_index = None;
-                self.last_completed_assistant_msg_index = None;
-                self.last_turn_can_continue = false;
-                self.clear_input_history();
                 self.runtime.replace_session_from_archive(&archive);
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
@@ -711,7 +720,10 @@ impl TuiShell {
     ) -> Result<crate::ports::ChatArchive> {
         let messages = self.archive_messages_for_message_count(message_count);
         let assistant_aux = self.assistant_aux_for_message_count(message_count);
-        self.runtime.export_chat_archive(&messages, &assistant_aux)
+        let mut archive = self.runtime.export_chat_archive(&messages, &assistant_aux)?;
+        let desktop_messages = self.conversation_snapshots_for_message_count(message_count);
+        archive.desktop_messages = (!desktop_messages.is_empty()).then_some(desktop_messages);
+        Ok(archive)
     }
 
     fn conversation_snapshots_for_message_count(

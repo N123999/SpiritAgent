@@ -6,6 +6,7 @@ import type {
   AuthorizationDecision,
   AssistantAuxArchiveEntry,
   ChatArchive,
+  ImageGenerationRequest,
   JsonValue,
   LlmMessage,
   LlmStreamEvent,
@@ -15,6 +16,7 @@ import type {
   ToolCallRequest,
 } from './ports.js';
 import {
+  DEFAULT_IMAGE_GENERATION_SIZE,
   cloneLlmMessageContent,
   createLlmMessageContentFromText,
   llmMessageContentWithoutImages,
@@ -42,6 +44,7 @@ import {
   renderError,
   isCompatibleContinuedToolRequest,
   shortLabelForPendingMcpResource,
+  toolArtifactsFromOutput,
   toolNameFromRequest,
 } from './runtime/helpers.js';
 import { formatUserMessageContentForLlm } from './runtime/user-turn-timestamp.js';
@@ -871,12 +874,14 @@ export class AgentRuntime<
       }
 
       const execution = await this.performToolExecution(pending.request, pending.toolName);
+      const artifacts = toolArtifactsFromOutput(execution.output);
       const finished: RuntimeToolExecution<ToolRequest> = {
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: pending.request,
         output: execution.output.summaryText,
         failed: execution.failed,
+        ...(artifacts ? { artifacts } : {}),
       };
       pending.turn.toolExecutions.push(finished);
       this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
@@ -1152,12 +1157,14 @@ export class AgentRuntime<
       }
 
       const execution = await this.performToolExecution(continuedRequest, pending.toolName);
+      const artifacts = toolArtifactsFromOutput(execution.output);
       const finished: RuntimeToolExecution<ToolRequest> = {
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: continuedRequest,
         output: execution.output.summaryText,
         failed: execution.failed,
+        ...(artifacts ? { artifacts } : {}),
       };
       pending.turn.toolExecutions.push(finished);
       this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
@@ -1338,6 +1345,17 @@ export class AgentRuntime<
     remainingCalls: ToolCallRequest[],
     turn: RuntimeTurnContext<ToolRequest>,
   ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget> | undefined> {
+    const imageResult = await this.tryExecuteGenerateImageTool(
+      request,
+      toolCallId,
+      _toolName,
+      state,
+      turn,
+    );
+    if (imageResult !== undefined) {
+      return imageResult;
+    }
+
     const outcome = await this.tryExecuteRunSubagentTool(
       request,
       toolCallId,
@@ -1417,6 +1435,23 @@ export class AgentRuntime<
     resumeAsStreaming = false,
     streamingEmitBeginResponse = true,
   ): Promise<boolean> {
+    const imageResult = await this.tryExecuteGenerateImageTool(
+      request,
+      toolCallId,
+      _toolName,
+      state,
+      turn,
+    );
+    if (imageResult !== undefined) {
+      if (resumeAsStreaming && imageResult.kind === 'completed' && imageResult.assistantText === '') {
+        this.storeCompletedTurnResult(imageResult);
+        this.emitEvent({ kind: 'assistant-response-completed' });
+      } else {
+        this.completeTurn(imageResult);
+      }
+      return true;
+    }
+
     const outcome = await this.tryExecuteRunSubagentTool(
       request,
       toolCallId,
@@ -2059,6 +2094,99 @@ export class AgentRuntime<
     );
   }
 
+  private async tryExecuteGenerateImageTool(
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    state: State,
+    turn: RuntimeTurnContext<ToolRequest>,
+  ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget> | undefined> {
+    const imageRequest = extractGenerateImageRequest(request);
+    if (imageRequest === undefined) {
+      return undefined;
+    }
+
+    try {
+      if (!this.options.generateImage) {
+        throw new Error('No image generation executor is configured.');
+      }
+
+      const output = await this.options.generateImage(imageRequest);
+      const resumedState = this.options.appendToolResultMessage(
+        state,
+        toolCallId,
+        output.summaryText,
+      );
+      this.finishGenerateImageToolCall(
+        request,
+        toolCallId,
+        toolName,
+        output.summaryText,
+        false,
+        turn,
+        toolArtifactsFromOutput(output),
+      );
+      this.persistToolExecutionMemory(request, output.summaryText);
+
+      return {
+        kind: 'completed',
+        assistantText: '',
+        state: resumedState,
+        requestTrace: [...turn.requestTrace],
+        toolExecutions: [...turn.toolExecutions],
+        compactions: [...turn.compactions],
+      };
+    } catch (error) {
+      const message = renderError(error);
+      this.finishGenerateImageToolCall(
+        request,
+        toolCallId,
+        toolName,
+        `generate_image failed: ${message}`,
+        true,
+        turn,
+      );
+      return this.failedTurnResult(message, state, turn);
+    }
+  }
+
+  private finishGenerateImageToolCall(
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    output: string,
+    failed: boolean,
+    turn: RuntimeTurnContext<ToolRequest>,
+    artifacts?: RuntimeToolExecution<ToolRequest>['artifacts'],
+  ): RuntimeToolExecution<ToolRequest> {
+    const finished: RuntimeToolExecution<ToolRequest> = {
+      toolCallId,
+      toolName,
+      request,
+      output,
+      failed,
+      ...(artifacts ? { artifacts } : {}),
+    };
+    turn.toolExecutions.push(finished);
+    this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
+    return finished;
+  }
+
+  private failedTurnResult(
+    error: string,
+    state: State,
+    turn: RuntimeTurnContext<ToolRequest>,
+  ): RuntimeTurnResult<State, ToolRequest, TrustTarget> {
+    return {
+      kind: 'failed',
+      error,
+      state,
+      requestTrace: [...turn.requestTrace],
+      toolExecutions: [...turn.toolExecutions],
+      compactions: [...turn.compactions],
+    };
+  }
+
   private async executeRunSubagentTool(
     request: RunSubagentRequest,
     parentToolCallId: string,
@@ -2399,6 +2527,55 @@ export class AgentRuntime<
     this.childSessionCounterStore += 1;
     return `subagent-${Date.now()}-${this.childSessionCounterStore}`;
   }
+}
+
+function extractGenerateImageRequest<ToolRequest>(request: ToolRequest): ImageGenerationRequest | undefined {
+  if (!isJsonObject(request)) {
+    return undefined;
+  }
+
+  let value: Record<string, JsonValue>;
+  if (readOptionalStringField(request, 'name') === 'generate_image') {
+    if (readOptionalStringField(request, 'prompt') !== undefined) {
+      value = request;
+    } else {
+      const argumentsJson = readOptionalStringField(request, 'argumentsJson');
+      if (argumentsJson === undefined) {
+        return undefined;
+      }
+
+      try {
+        const parsed = JSON.parse(argumentsJson) as JsonValue;
+        if (!isJsonObject(parsed)) {
+          return undefined;
+        }
+        value = parsed;
+      } catch {
+        return undefined;
+      }
+    }
+  } else {
+    if (!('GenerateImage' in request)) {
+      return undefined;
+    }
+
+    const candidate = request.GenerateImage;
+    if (!isJsonObject(candidate)) {
+      return undefined;
+    }
+
+    value = isJsonObject(candidate.request) ? candidate.request : candidate;
+  }
+
+  const prompt = readOptionalStringField(value, 'prompt');
+  if (prompt === undefined) {
+    return undefined;
+  }
+
+  return {
+    prompt,
+    size: readOptionalStringField(value, 'size') ?? DEFAULT_IMAGE_GENERATION_SIZE,
+  };
 }
 
 function extractRunSubagentRequest<ToolRequest>(request: ToolRequest): RunSubagentRequest | undefined {

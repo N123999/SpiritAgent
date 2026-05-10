@@ -182,6 +182,8 @@ pub struct ToolBlockSnapshot {
     pub phase: ToolBlockSnapshotPhase,
     pub headline: String,
     pub detail_lines: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub image_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub args_excerpt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -398,6 +400,10 @@ pub fn archive_before_last_user(archive: &ChatArchive) -> ChatArchive {
     }
     if let Some(index) = history_index {
         cloned.llm_history.truncate(index);
+    }
+    if let Some(messages) = cloned.desktop_messages.take() {
+        let trimmed = conversation_before_last_user(&messages);
+        cloned.desktop_messages = (!trimmed.is_empty()).then_some(trimmed);
     }
     cloned
 }
@@ -797,6 +803,7 @@ fn tool_snapshot_from_block(block: &ToolUiBlock) -> ToolBlockSnapshot {
         },
         headline: block.headline.clone(),
         detail_lines: block.detail_lines.clone(),
+        image_paths: block.image_paths.clone(),
         args_excerpt: block.args_excerpt.clone(),
         output_excerpt: block.output_excerpt.clone(),
     }
@@ -814,6 +821,7 @@ fn tool_block_from_snapshot(snapshot: &ToolBlockSnapshot) -> ToolUiBlock {
         },
         headline: snapshot.headline.clone(),
         detail_lines: snapshot.detail_lines.clone(),
+        image_paths: snapshot.image_paths.clone(),
         args_excerpt: snapshot.args_excerpt.clone(),
         output_excerpt: snapshot.output_excerpt.clone(),
     }

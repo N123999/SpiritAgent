@@ -28,6 +28,8 @@ rust-i18n = { version = "3", optional = true }
 base64 = "0.22"
 ignore = "0.4"
 uuid = { version = "1", features = ["v4"] }
+ratatui-image = { version = "8.0.1", default-features = false, features = ["crossterm", "image-defaults"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Input_KeyboardAndMouse"] }

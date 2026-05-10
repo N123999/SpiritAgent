@@ -17,8 +17,10 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Download,
   FolderPlus,
   LoaderCircle,
+  Maximize2,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -51,6 +53,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -278,7 +281,32 @@ function EmptyStateWorkspaceSelector({
   );
 }
 
-function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
+type ReadLocalImagePreview = (filePath: string) => Promise<string | null>;
+type SaveLocalImageAs = (filePath: string) => Promise<boolean>;
+
+function ToolCallCollapsible({
+  tool,
+  readLocalImagePreviewDataUrl,
+  saveLocalImageAs,
+}: {
+  tool: ToolBlockSnapshot;
+  readLocalImagePreviewDataUrl: ReadLocalImagePreview;
+  saveLocalImageAs: SaveLocalImageAs;
+}) {
+  if (tool.toolName === "generate_image") {
+    return (
+      <ImageGenerationToolCard
+        tool={tool}
+        readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
+        saveLocalImageAs={saveLocalImageAs}
+      />
+    );
+  }
+
+  return <GenericToolCallCollapsible tool={tool} />;
+}
+
+function GenericToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
   const hasExpandableContent =
     tool.detailLines.length > 0 ||
     Boolean(tool.argsExcerpt?.trim()) ||
@@ -330,6 +358,244 @@ function ToolCallCollapsible({ tool }: { tool: ToolBlockSnapshot }) {
         ) : null}
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function ImageGenerationToolCard({
+  tool,
+  readLocalImagePreviewDataUrl,
+  saveLocalImageAs,
+}: {
+  tool: ToolBlockSnapshot;
+  readLocalImagePreviewDataUrl: ReadLocalImagePreview;
+  saveLocalImageAs: SaveLocalImageAs;
+}) {
+  const previewableImagePath = tool.imagePaths?.find(isPreviewableImagePath) ?? "";
+  const imagePath = tool.imagePaths?.find((path) => path.trim().length > 0) ?? "";
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+  const [previewAspectRatio, setPreviewAspectRatio] = useState<number | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewDataUrl(null);
+    if (!previewableImagePath) {
+      setPreviewState("unavailable");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setPreviewState("loading");
+    void readLocalImagePreviewDataUrl(previewableImagePath)
+      .then((dataUrl) => {
+        if (cancelled) {
+          return;
+        }
+        setPreviewDataUrl(dataUrl);
+        setPreviewState(dataUrl ? "ready" : "unavailable");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewState("unavailable");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewableImagePath, readLocalImagePreviewDataUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewAspectRatio(null);
+    if (!previewDataUrl) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      if (!cancelled && image.naturalWidth > 0 && image.naturalHeight > 0) {
+        setPreviewAspectRatio(image.naturalWidth / image.naturalHeight);
+      }
+    };
+    image.onerror = () => {
+      if (!cancelled) {
+        setPreviewAspectRatio(null);
+      }
+    };
+    image.src = previewDataUrl;
+
+    return () => {
+      cancelled = true;
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [previewDataUrl]);
+
+  const loading = tool.phase === "running" || previewState === "loading";
+  const canInteract = Boolean(previewDataUrl && previewableImagePath);
+  const floatingActionButtonClass =
+    "size-8 rounded-full border border-border/50 bg-background/55 text-foreground shadow-sm backdrop-blur-xl transition-[background-color,border-color,box-shadow,transform] hover:border-border/60 hover:bg-background/72 dark:border-white/12 dark:bg-input/30 dark:hover:bg-input/40 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+  const viewerFrameStyle = previewAspectRatio
+    ? {
+        aspectRatio: String(previewAspectRatio),
+        width: `min(calc(100dvw - 5rem), calc((100dvh - 6rem) * ${previewAspectRatio}), 70rem)`,
+      }
+    : undefined;
+
+  const handleSaveImage = async () => {
+    if (!imagePath || saving) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await saveLocalImageAs(imagePath);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-[min(28rem,100%)] py-1">
+      <div
+        className={cn(
+          "group/image-card relative aspect-square overflow-hidden rounded-md border border-border/45 bg-muted/20 transition-colors duration-200",
+          canInteract && "cursor-zoom-in hover:border-border/70",
+          tool.phase === "failed" && "border-destructive/45 bg-destructive/5",
+        )}
+        role={canInteract ? "button" : undefined}
+        tabIndex={canInteract ? 0 : undefined}
+        onClick={canInteract ? () => setViewerOpen(true) : undefined}
+        onKeyDown={
+          canInteract
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setViewerOpen(true);
+                }
+              }
+            : undefined
+        }
+      >
+        {previewDataUrl ? (
+          <img
+            src={previewDataUrl}
+            alt=""
+            className="size-full object-cover transition-transform duration-300 group-hover/image-card:scale-[1.015]"
+            draggable={false}
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center px-4 text-center">
+            <span
+              className={cn(
+                "text-sm font-medium",
+                loading ? "spirit-thinking-shimmer-text" : "text-muted-foreground",
+              )}
+            >
+              {loading ? "Loading" : "预览不可用"}
+            </span>
+          </div>
+        )}
+        {previewDataUrl ? (
+          <div className="pointer-events-none absolute inset-0 z-10 opacity-0 transition duration-200 group-hover/image-card:opacity-100 group-focus-within/image-card:opacity-100">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={cn("pointer-events-auto absolute bottom-3 left-3", floatingActionButtonClass)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleSaveImage();
+              }}
+              disabled={saving}
+              title="下载图片"
+              aria-label="下载图片"
+            >
+              {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={cn("pointer-events-auto absolute right-3 bottom-3", floatingActionButtonClass)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setViewerOpen(true);
+              }}
+              title="查看大图"
+              aria-label="查看大图"
+            >
+              <Maximize2 className="size-4" aria-hidden />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {!previewDataUrl && imagePath ? (
+        <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground" title={imagePath}>
+          {imagePath}
+        </p>
+      ) : null}
+      {tool.phase === "failed" && tool.outputExcerpt ? (
+        <pre className="mt-2 whitespace-pre-wrap rounded-md border border-destructive/20 bg-destructive/5 p-2 font-mono text-xs leading-relaxed text-destructive">
+          {tool.outputExcerpt}
+        </pre>
+      ) : null}
+
+      <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="bg-background/40 backdrop-blur-md"
+          className="w-auto max-w-none gap-0 border-0 bg-transparent p-0 shadow-none ring-0 sm:max-w-none"
+        >
+          {previewDataUrl ? (
+            <div
+              className="pointer-events-auto relative inline-flex max-h-[calc(100dvh-2rem)] max-w-[calc(100dvw-2rem)] items-center justify-center overflow-hidden rounded-[1.1rem] border border-border/45"
+              style={viewerFrameStyle}
+            >
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn("absolute top-3 right-3 z-20", floatingActionButtonClass)}
+                  title="关闭图片预览"
+                  aria-label="关闭图片预览"
+                >
+                  <X className="size-4" aria-hidden />
+                  <span className="sr-only">关闭图片预览</span>
+                </Button>
+              </DialogClose>
+              <img
+                src={previewDataUrl}
+                alt=""
+                className="block size-full object-contain"
+                draggable={false}
+              />
+              <div className="pointer-events-none absolute top-3 left-3 z-10">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className={cn("pointer-events-auto", floatingActionButtonClass)}
+                  onClick={() => void handleSaveImage()}
+                  disabled={saving}
+                  title="下载图片"
+                  aria-label="下载图片"
+                >
+                  {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -743,6 +1009,8 @@ function MessageCard({
   onModelSelect,
   onModelReasoningEffortSelect,
   onPlanModeChange,
+  readLocalImagePreviewDataUrl,
+  saveLocalImageAs,
 }: {
   message: ConversationMessageSnapshot;
   listIndex: number;
@@ -764,6 +1032,8 @@ function MessageCard({
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
+  readLocalImagePreviewDataUrl: ReadLocalImagePreview;
+  saveLocalImageAs: SaveLocalImageAs;
 }) {
   const isUser = message.role === "user";
   const canStartRewind = isUser && message.canRewind === true && !message.pending;
@@ -853,7 +1123,13 @@ function MessageCard({
             <MarkdownMessage content={message.content} className="font-sans" />
           </div>
         ) : null}
-        {!isUser && message.tool ? <ToolCallCollapsible tool={message.tool} /> : null}
+        {!isUser && message.tool ? (
+          <ToolCallCollapsible
+            tool={message.tool}
+            readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
+            saveLocalImageAs={saveLocalImageAs}
+          />
+        ) : null}
         {!isUser && canContinue ? (
           <div className="ml-auto flex max-w-[min(72%,22rem)] justify-end pt-1">
             <Button
@@ -1971,6 +2247,8 @@ export default function App() {
                             onPlanModeChange={(planMode) => {
                               void runtime.saveSettingsPatch({ planMode });
                             }}
+                            readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
+                            saveLocalImageAs={runtime.saveLocalImageAs}
                           />
                         ))}
                       </div>

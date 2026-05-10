@@ -94,6 +94,7 @@ export interface HostApi {
   pickWorkspaceDirectory?(): Promise<string | null>;
   pickLocalFile?(): Promise<string | null>;
   readLocalImagePreviewDataUrl?(filePath: string): Promise<string | null>;
+  saveLocalImageAs?(filePath: string): Promise<boolean>;
   pairWebHost?(code: string): Promise<void>;
 }
 
