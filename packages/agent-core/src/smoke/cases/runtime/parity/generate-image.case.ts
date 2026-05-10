@@ -6,7 +6,10 @@ import type {
   ToolAgentRoundCompletion,
   ToolExecutionOutput,
 } from '../../../../ports.js';
-import { createLlmMessageContentFromTextAndImages } from '../../../../ports.js';
+import {
+  DEFAULT_IMAGE_GENERATION_SIZE,
+  createLlmMessageContentFromTextAndImages,
+} from '../../../../ports.js';
 import {
   AgentRuntime,
   HostExecutor,
@@ -23,13 +26,19 @@ import {
 } from './harness.js';
 
 export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
-  const nonStreamingTransport = new GenerateImageTerminalTransport('non-streaming');
+  const nonStreamingTransport = new GenerateImageTerminalTransport(
+    'non-streaming',
+    '{"prompt":"square poster of a quiet moonlit courtyard"}',
+    'generate_image square poster',
+  );
   const nonStreamingExecutor = new CountingHostExecutor();
   const nonStreamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const nonStreamingRuntime = createGenerateImageRuntime(
     nonStreamingTransport,
     nonStreamingExecutor,
     nonStreamingEvents,
+    'square poster',
+    DEFAULT_IMAGE_GENERATION_SIZE,
   );
 
   const nonStreamingResult = await nonStreamingRuntime.submitUserTurn('画一张正方形海报');
@@ -43,13 +52,19 @@ export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
     'generate_image 非流式 smoke',
   );
 
-  const streamingTransport = new GenerateImageTerminalTransport('streaming');
+  const streamingTransport = new GenerateImageTerminalTransport(
+    'streaming',
+    '{"prompt":"wide poster of a quiet moonlit courtyard","size":"1536x1024"}',
+    'generate_image wide poster',
+  );
   const streamingExecutor = new CountingHostExecutor();
   const streamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingRuntime = createGenerateImageRuntime(
     streamingTransport,
     streamingExecutor,
     streamingEvents,
+    'wide poster',
+    '1536x1024',
   );
 
   await streamingRuntime.startUserTurnStreaming('画一张正方形海报');
@@ -85,6 +100,8 @@ function createGenerateImageRuntime(
   transport: GenerateImageTerminalTransport,
   executor: CountingHostExecutor,
   events: RuntimeEvent<ScriptedToolRequest>[],
+  expectedPromptSnippet: string,
+  expectedSize: string,
 ): AgentRuntime<undefined, ScriptedState, ScriptedToolRequest> {
   return new AgentRuntime({
     config: undefined,
@@ -94,8 +111,11 @@ function createGenerateImageRuntime(
     appendToolResultMessage: appendScriptedToolResult,
     extractAssistantText: extractScriptedAssistantText,
     generateImage: async (request): Promise<ToolExecutionOutput> => {
-      if (!request.prompt.includes('square poster')) {
+      if (!request.prompt.includes(expectedPromptSnippet)) {
         throw new Error('generate_image smoke 未收到模型重写后的最终 prompt。');
+      }
+      if (request.size !== expectedSize) {
+        throw new Error(`generate_image smoke 未解析出预期 size：${request.size}`);
       }
 
       return {
@@ -135,7 +155,11 @@ function assertTerminalGenerateImageResult(
 class GenerateImageTerminalTransport implements LlmTransport<undefined, ScriptedState> {
   rounds = 0;
 
-  constructor(private readonly mode: 'non-streaming' | 'streaming') {}
+  constructor(
+    private readonly mode: 'non-streaming' | 'streaming',
+    private readonly argumentsJson: string,
+    private readonly previewLine: string,
+  ) {}
 
   async startToolAgentRound(
     _config: undefined,
@@ -165,8 +189,8 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
           kind: 'streaming-tool-preview',
           toolCallId: 'call-generate-image',
           toolName: 'generate_image',
-          argumentsJson: '{"prompt":"square poster of a quiet moonlit courtyard","size":"1024x1024"}',
-          previewLine: 'generate_image square poster',
+          argumentsJson: this.argumentsJson,
+          previewLine: this.previewLine,
         },
       ]),
       completion,
@@ -225,7 +249,7 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
                   type: 'function',
                   function: {
                     name: 'generate_image',
-                    arguments: '{"prompt":"square poster of a quiet moonlit courtyard","size":"1024x1024"}',
+                    arguments: this.argumentsJson,
                   },
                 },
               ],
@@ -239,7 +263,7 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
             {
               id: 'call-generate-image',
               name: 'generate_image',
-              argumentsJson: '{"prompt":"square poster of a quiet moonlit courtyard","size":"1024x1024"}',
+              argumentsJson: this.argumentsJson,
             },
           ],
         },

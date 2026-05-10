@@ -16,6 +16,7 @@ import type {
   ToolCallRequest,
 } from './ports.js';
 import {
+  DEFAULT_IMAGE_GENERATION_SIZE,
   cloneLlmMessageContent,
   createLlmMessageContentFromText,
   llmMessageContentWithoutImages,
@@ -2105,12 +2106,6 @@ export class AgentRuntime<
       return undefined;
     }
 
-    if (imageRequest.size && imageRequest.aspectRatio) {
-      const error = 'generate_image accepts either size or aspectRatio, not both.';
-      this.finishGenerateImageToolCall(request, toolCallId, toolName, error, true, turn);
-      return this.failedTurnResult(error, state, turn);
-    }
-
     try {
       if (!this.options.generateImage) {
         throw new Error('No image generation executor is configured.');
@@ -2572,13 +2567,9 @@ function extractGenerateImageRequest<ToolRequest>(request: ToolRequest): ImageGe
     return undefined;
   }
 
-  const size = readOptionalStringField(value, 'size');
-  const aspectRatio = readOptionalStringField(value, 'aspectRatio', 'aspect_ratio');
-
   return {
     prompt,
-    ...(size !== undefined ? { size } : {}),
-    ...(aspectRatio !== undefined ? { aspectRatio } : {}),
+    size: readOptionalStringField(value, 'size') ?? DEFAULT_IMAGE_GENERATION_SIZE,
   };
 }
 

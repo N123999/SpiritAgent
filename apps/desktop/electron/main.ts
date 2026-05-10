@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { copyFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -535,6 +535,43 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle(
+    'desktop:save-local-image-as',
+    async (event, payload: { filePath?: string }) => {
+      const sourcePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : '';
+      if (!sourcePath) {
+        return false;
+      }
+
+      const extension = path.extname(sourcePath).toLowerCase();
+      const mimeType = imagePreviewMimeType(extension);
+      if (!mimeType) {
+        throw new Error('当前仅支持另存常见图片格式。');
+      }
+
+      const sourceStat = await stat(sourcePath);
+      if (!sourceStat.isFile()) {
+        throw new Error('要另存的图片文件不存在。');
+      }
+
+      const targetWindow = BrowserWindow.fromWebContents(event.sender);
+      const saveResult = targetWindow
+        ? await dialog.showSaveDialog(targetWindow, buildSaveImageDialogOptions(sourcePath, extension))
+        : await dialog.showSaveDialog(buildSaveImageDialogOptions(sourcePath, extension));
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return false;
+      }
+
+      if (path.resolve(saveResult.filePath) === path.resolve(sourcePath)) {
+        return true;
+      }
+
+      await copyFile(sourcePath, saveResult.filePath);
+      return true;
+    },
+  );
+
+  ipcMain.handle(
     'desktop:application-menu-popup',
     (
       event,
@@ -628,6 +665,23 @@ function imagePreviewMimeType(extension: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+function buildSaveImageDialogOptions(sourcePath: string, extension: string): Electron.SaveDialogOptions {
+  const normalizedExtension = extension.startsWith('.') ? extension.slice(1) : extension;
+  return {
+    defaultPath: path.basename(sourcePath),
+    filters: [
+      {
+        name: 'Image',
+        extensions: normalizedExtension ? [normalizedExtension] : ['png'],
+      },
+      {
+        name: 'All Files',
+        extensions: ['*'],
+      },
+    ],
+  };
 }
 
 app.on('window-all-closed', () => {

@@ -41,10 +41,11 @@ export interface ToolExecutionOutput {
   summaryText: string;
 }
 
+export const DEFAULT_IMAGE_GENERATION_SIZE = '1024x1024';
+
 export interface ImageGenerationRequest {
   prompt: string;
-  size?: string;
-  aspectRatio?: string;
+  size: string;
 }
 
 export interface GeneratedImageSaveRequest {

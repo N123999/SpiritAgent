@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from './ports.js';
+import { DEFAULT_IMAGE_GENERATION_SIZE, type JsonObject, type JsonValue } from './ports.js';
 
 export interface BuiltinHostToolDefinitionEnvironment {
   shellDisplayName: string;
@@ -143,13 +143,7 @@ export function buildBuiltinHostToolDefinitions(
             type: 'string',
             pattern: '^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$',
             description:
-              'Optional pixel size in WIDTHxHEIGHT format, such as 1024x1024. If omitted, the image model default is used; prefer square output unless the user asked otherwise.',
-          },
-          aspectRatio: {
-            type: 'string',
-            pattern: '^[1-9][0-9]{0,3}:[1-9][0-9]{0,3}$',
-            description:
-              'Optional aspect ratio in WIDTH:HEIGHT format, such as 1:1, 16:9, or 3:4. Use either size or aspectRatio, not both.',
+              `Optional pixel size in WIDTHxHEIGHT format, such as 1024x1024 or 1536x1024. If omitted, default to ${DEFAULT_IMAGE_GENERATION_SIZE} so the image matches the square card unless the user asked otherwise.`,
           },
         },
         required: ['prompt'],

@@ -393,6 +393,23 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const saveLocalImageAs = useCallback(
+    async (filePath: string): Promise<boolean> => {
+      if (!api?.saveLocalImageAs) {
+        setRuntimeError("当前宿主不支持另存图片。");
+        return false;
+      }
+
+      try {
+        return await api.saveLocalImageAs(filePath);
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      }
+    },
+    [api],
+  );
+
   const commitChanges = useCallback(
     async (request: CommitChangesRequest): Promise<boolean> => {
       if (!api) {
@@ -1504,6 +1521,7 @@ export function useDesktopRuntime() {
     pickWorkspaceDirectory,
     pickLocalFile,
     readLocalImagePreviewDataUrl,
+    saveLocalImageAs,
     commitChanges,
     addModel,
     addProviderModels,

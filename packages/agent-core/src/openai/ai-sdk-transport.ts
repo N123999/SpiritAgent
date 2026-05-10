@@ -23,6 +23,7 @@ import {
 } from 'ai';
 
 import {
+  DEFAULT_IMAGE_GENERATION_SIZE,
   createLlmMessageContentFromTextAndImages,
   llmMessageHasImages,
   llmMessageTextContent,
@@ -110,11 +111,13 @@ export class AiSdkOpenAiCompatibleTransport
 
     let result: Awaited<ReturnType<typeof generateAiImage>>;
     try {
+      // TODO: If we later add image models that do not use OpenAI Images-compatible
+      // endpoints, do not blindly forward WIDTHxHEIGHT. Translate this shared size
+      // field per selected provider/model instead.
       result = await generateAiImage({
         model: createAiSdkImageModel(imageConfig),
         prompt: request.prompt,
-        ...(request.size ? { size: request.size as `${number}x${number}` } : {}),
-        ...(request.aspectRatio ? { aspectRatio: request.aspectRatio as `${number}:${number}` } : {}),
+        size: request.size as `${number}x${number}`,
         maxRetries: 0,
       });
     } catch (error) {
@@ -1380,8 +1383,8 @@ function logAiSdkImageGenerationStart(
     model: config.model,
     baseUrl: config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
     requestUrl,
-    size: request.size ?? null,
-    aspectRatio: request.aspectRatio ?? null,
+    size: request.size,
+    usedDefaultSize: request.size === DEFAULT_IMAGE_GENERATION_SIZE,
     promptPreview: truncateChars(singleLine(request.prompt), 160),
   });
 }
@@ -1413,8 +1416,8 @@ function logAiSdkImageGenerationFailure(
     model: config.model,
     baseUrl: config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
     requestUrl,
-    size: request.size ?? null,
-    aspectRatio: request.aspectRatio ?? null,
+    size: request.size,
+    usedDefaultSize: request.size === DEFAULT_IMAGE_GENERATION_SIZE,
     promptPreview: truncateChars(singleLine(request.prompt), 160),
     ...describeAiSdkErrorForDebug(error),
   });
