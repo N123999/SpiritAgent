@@ -44,6 +44,19 @@ export function summarizeMessagesTailForOrderDebug(
   return slice.map(formatMessageOrderToken).join('«');
 }
 
+export function summarizeToolRowsForDebug(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+  max = 8,
+): string {
+  const tools = messages.filter(
+    (message) => message.role === 'assistant' && Boolean(message.tool),
+  );
+  if (tools.length === 0) {
+    return '∅';
+  }
+  return tools.slice(Math.max(0, tools.length - max)).map(formatToolRowForDebug).join(',');
+}
+
 function formatMessageOrderToken(m: ConversationMessageSnapshot): string {
   if (m.role === 'user') {
     return 'U';
@@ -69,6 +82,25 @@ function formatMessageOrderToken(m: ConversationMessageSnapshot): string {
   const hasCompaction = Boolean(m.aux?.compaction?.trim());
   const prefix = hasThinking ? (hasCompaction ? 'aTC' : 'aT') : hasCompaction ? 'aC' : 'a';
   return `${prefix}#${m.id}:${truncateOneLineForDebug(c, 18)}`;
+}
+
+function formatToolRowForDebug(message: ConversationMessageSnapshot): string {
+  const tool = message.tool;
+  if (!tool) {
+    return `${message.id}:∅`;
+  }
+  const toolCallId = tool.toolCallId?.trim() || `tool:${tool.toolName}`;
+  const phase =
+    tool.phase === 'running'
+      ? '~'
+      : tool.phase === 'succeeded'
+        ? '='
+        : tool.phase === 'failed'
+          ? '!'
+          : tool.phase === 'pending-approval'
+            ? '?'
+            : '.';
+  return `${message.id}:${phase}${truncateOneLineForDebug(tool.toolName, 18)}:${truncateOneLineForDebug(toolCallId, 20)}`;
 }
 
 export function truncateOneLineForDebug(s: string, max: number): string {

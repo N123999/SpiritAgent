@@ -22,6 +22,7 @@ import {
   latestUnsyncedAssistantTextInCurrentTurn,
   messageOrderDebugLevel,
   summarizeMessagesTailForOrderDebug,
+  summarizeToolRowsForDebug,
   stripReasonLineFromShellPrompt,
   toolMessageKey,
 } from './message-ordering.js';
@@ -68,7 +69,7 @@ export class DesktopRuntimeEventOrchestrator {
       return;
     }
 
-    this.integrateToolExecutions(result.toolExecutions);
+    this.integrateToolExecutions(result.toolExecutions, 'turn-result');
     switch (result.kind) {
       case 'completed':
         this.options.clearCurrentTurnSkills();
@@ -208,7 +209,7 @@ export class DesktopRuntimeEventOrchestrator {
         if (event.execution.toolName === 'generate_image' && event.execution.toolCallId) {
           this.activeGenerateImageTools.delete(event.execution.toolCallId);
         }
-        this.integrateToolExecutions([event.execution]);
+        this.integrateToolExecutions([event.execution], 'event');
         this.options.dispatchExtensionEvent({
           type: 'onToolResult',
           detail: {
@@ -421,7 +422,10 @@ export class DesktopRuntimeEventOrchestrator {
     }
   }
 
-  private integrateToolExecutions(executions: RuntimeToolExecution<DesktopToolRequest>[]): void {
+  private integrateToolExecutions(
+    executions: RuntimeToolExecution<DesktopToolRequest>[],
+    source: 'event' | 'turn-result',
+  ): void {
     for (const execution of executions) {
       if (execution.toolName === 'generate_image' && execution.toolCallId) {
         this.activeGenerateImageTools.delete(execution.toolCallId);
@@ -455,7 +459,25 @@ export class DesktopRuntimeEventOrchestrator {
         toolBlock,
       );
       this.options.bindFileChangesToToolMessage(execution, message.id);
+      this.logToolExecutionIntegration(source, execution, message.id);
     }
+  }
+
+  private logToolExecutionIntegration(
+    source: 'event' | 'turn-result',
+    execution: RuntimeToolExecution<DesktopToolRequest>,
+    messageId: number,
+  ): void {
+    if (messageOrderDebugLevel() !== 'verbose') {
+      return;
+    }
+
+    const messages = this.options.messages();
+    const callId = execution.toolCallId || `tool:${execution.toolName}`;
+    const images = imagePathsFromExecution(execution).length;
+    console.log(
+      `[desktop-host][tool-flow] integrate source=${source} call=${callId} name=${execution.toolName} phase=${execution.failed ? 'failed' : 'succeeded'} msg=${messageId} images=${images} tools=${summarizeToolRowsForDebug(messages, 8)} tail=${summarizeMessagesTailForOrderDebug(messages, 8)}`,
+    );
   }
 
   private integrateApprovalResolution(

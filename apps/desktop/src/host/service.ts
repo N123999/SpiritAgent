@@ -203,6 +203,7 @@ import {
   restoreMessagesFromArchive,
   stripReasonLineFromShellPrompt,
   summarizeMessagesTailForOrderDebug,
+  summarizeToolRowsForDebug,
   toolMessageKey,
   truncateOneLineForDebug,
 } from './message-ordering.js';
@@ -450,6 +451,7 @@ class DesktopHostService {
   private dreamCollectorLastTickUnixMs = 0;
   private dreamCollectorMonitorTimer: ReturnType<typeof setInterval> | undefined;
   private readonly dreamUpdateListeners = new Set<(snapshot: DesktopSnapshot) => void>();
+  private lastToolSnapshotLogSignature: string | undefined;
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
@@ -2417,6 +2419,7 @@ class DesktopHostService {
       }
     }
 
+    const rawMessages = state.messages;
     const rawConversationMessages = this.desktopMessages();
 
     const conversationMessages = this.conversationSnapshotView.buildMessagesWithPendingAssistant({
@@ -2429,6 +2432,12 @@ class DesktopHostService {
       visibleMessages: conversationMessages,
       isBusy: this.runtime?.isBusy() ?? false,
       pendingAux,
+    });
+    this.logToolSnapshotState({
+      rawMessages,
+      timelineMessages: rawConversationMessages,
+      visibleMessages: conversationMessages,
+      isBusy: this.runtime?.isBusy() ?? false,
     });
 
     return buildDesktopSnapshot({
@@ -2912,6 +2921,46 @@ class DesktopHostService {
       : 'none';
     console.log(
       `[desktop-host][continue] snapshot busy=${input.isBusy} pendingAux=${pendingAux} raw=${rawMarked.map((message) => this.describeContinuationMessage(message)).join(',') || '∅'} visible=${visibleMarked.map((message) => this.describeContinuationMessage(message)).join(',') || '∅'} rawTail=${summarizeMessagesTailForOrderDebug(input.rawMessages, 8)} visibleTail=${summarizeMessagesTailForOrderDebug(input.visibleMessages, 8)}`,
+    );
+  }
+
+  private logToolSnapshotState(input: {
+    rawMessages: ConversationMessageSnapshot[];
+    timelineMessages: ConversationMessageSnapshot[];
+    visibleMessages: ConversationMessageSnapshot[];
+    isBusy: boolean;
+  }): void {
+    if (messageOrderDebugLevel() !== 'verbose') {
+      return;
+    }
+
+    const rawTools = summarizeToolRowsForDebug(input.rawMessages, 8);
+    const timelineTools = summarizeToolRowsForDebug(input.timelineMessages, 8);
+    const visibleTools = summarizeToolRowsForDebug(input.visibleMessages, 8);
+    if (rawTools === '∅' && timelineTools === '∅' && visibleTools === '∅') {
+      this.lastToolSnapshotLogSignature = undefined;
+      return;
+    }
+
+    const rawTail = summarizeMessagesTailForOrderDebug(input.rawMessages, 8);
+    const timelineTail = summarizeMessagesTailForOrderDebug(input.timelineMessages, 8);
+    const visibleTail = summarizeMessagesTailForOrderDebug(input.visibleMessages, 8);
+    const signature = [
+      input.isBusy ? '1' : '0',
+      rawTools,
+      timelineTools,
+      visibleTools,
+      rawTail,
+      timelineTail,
+      visibleTail,
+    ].join('|');
+    if (signature === this.lastToolSnapshotLogSignature) {
+      return;
+    }
+    this.lastToolSnapshotLogSignature = signature;
+
+    console.log(
+      `[desktop-host][tool-flow] snapshot busy=${input.isBusy} raw=${rawTools} timeline=${timelineTools} visible=${visibleTools} rawTail=${rawTail} timelineTail=${timelineTail} visibleTail=${visibleTail}`,
     );
   }
 
