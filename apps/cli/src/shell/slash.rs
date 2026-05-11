@@ -319,11 +319,8 @@ fn prompt_suggestion(command: PromptSlashCommand) -> InputSuggestion {
     }
 }
 
-fn command_visible_in_mode(command: &str, input_mode: MainInputMode) -> bool {
-    match command {
-        "/start-implementing" => matches!(input_mode, MainInputMode::Plan),
-        _ => true,
-    }
+fn command_visible_in_mode(_command: &str, _input_mode: MainInputMode) -> bool {
+    true
 }
 
 fn command_visible(shell: &TuiShell, command: &str) -> bool {
@@ -333,7 +330,7 @@ fn command_visible(shell: &TuiShell, command: &str) -> bool {
     }
 }
 
-pub(crate) fn help_text(input_mode: MainInputMode, can_continue_last_turn: bool) -> String {
+pub(crate) fn help_text(_input_mode: MainInputMode, can_continue_last_turn: bool) -> String {
     let mut lines = vec![
         "可用指令:".to_string(),
         "- /help".to_string(),
@@ -345,9 +342,7 @@ pub(crate) fn help_text(input_mode: MainInputMode, can_continue_last_turn: bool)
         lines.push("- /continue".to_string());
     }
 
-    if matches!(input_mode, MainInputMode::Plan) {
-        lines.push("- /start-implementing".to_string());
-    }
+    lines.push("- /start-implementing".to_string());
 
     lines.extend([
         "- /model [list|use <name>|add|add <name> <api_base> <api_key>|remove <name>]".to_string(),
@@ -507,8 +502,8 @@ mod tests {
     }
 
     #[test]
-    fn start_implementing_command_is_plan_only() {
-        assert!(!command_visible_in_mode(
+    fn start_implementing_command_is_visible_in_all_modes() {
+        assert!(command_visible_in_mode(
             "/start-implementing",
             MainInputMode::Agent,
         ));
@@ -516,7 +511,7 @@ mod tests {
             "/start-implementing",
             MainInputMode::Plan,
         ));
-        assert!(!help_text(MainInputMode::Agent, false).contains("/start-implementing"));
+        assert!(help_text(MainInputMode::Agent, false).contains("/start-implementing"));
         assert!(help_text(MainInputMode::Plan, false).contains("/start-implementing"));
     }
 

@@ -768,11 +768,6 @@ impl TuiShell {
     }
 
     pub(crate) fn handle_start_implementing_slash(&mut self) {
-        if !self.is_plan_mode_active() {
-            self.push_agent_message(t!("tui.plan.start_implementing_only_plan").into_owned());
-            return;
-        }
-
         if self.runtime.is_busy() {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
