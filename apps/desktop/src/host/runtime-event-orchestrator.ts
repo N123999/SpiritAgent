@@ -18,7 +18,6 @@ import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
   headlineForToolPhase,
   headlineForStreamingToolPreview,
-  indexForThinkingInsertBeforeFirstToolAfterLastUser,
   lastAssistantPlainTextInHistory,
   latestUnsyncedAssistantTextInCurrentTurn,
   messageOrderDebugLevel,
@@ -247,13 +246,10 @@ export class DesktopRuntimeEventOrchestrator {
       this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
       this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
     }
-    const placement = this.options.assistantMessages.placementState();
     this.logMessageOrderApplyBatch(
       batchId,
       events,
       messages,
-      placement.streamAssistantThinkingAnchor,
-      placement.streamAssistantAnchorSetInApplyBatchId,
     );
   }
 
@@ -308,8 +304,7 @@ export class DesktopRuntimeEventOrchestrator {
       prefixFromUnsyncedLatest !== prefixFromBeforeFirst;
 
     if (isLaterUnsyncedPrefix) {
-      const anchor = this.options.assistantMessages.streamAssistantThinkingAnchorOr(messages.length);
-      const insertAt = Math.max(0, Math.min(anchor, messages.length));
+      const insertAt = messages.length;
       const before = insertAt > 0 ? messages[insertAt - 1] : undefined;
       if (
         before?.role === 'assistant' &&
@@ -318,7 +313,7 @@ export class DesktopRuntimeEventOrchestrator {
       ) {
         return;
       }
-      this.insertAssistantPrefix(insertAt, prefix, `splice-at-anchor@${insertAt}`);
+      this.insertAssistantPrefix(insertAt, prefix, `append-unsynced-prefix@${insertAt}`);
       return;
     }
 
@@ -362,46 +357,19 @@ export class DesktopRuntimeEventOrchestrator {
     }
 
     if (lastMessage!.role === 'assistant' && lastMessage!.tool) {
-      const firstToolIndex = indexForThinkingInsertBeforeFirstToolAfterLastUser(messages);
-      if (firstToolIndex === undefined) {
+      if (messages.some((message) => message.role === 'assistant' && !message.tool && message.content === prefix)) {
         return;
       }
-      const beforeFirst = firstToolIndex > 0 ? messages[firstToolIndex - 1] : undefined;
-      if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
-        return;
-      }
-      this.insertAssistantPrefix(firstToolIndex, prefix, `splice-before-first-tool@${firstToolIndex}`);
+      this.insertAssistantPrefix(messages.length, prefix, 'append-prefix-after-tool');
       return;
     }
 
     if (lastMessage!.role === 'assistant' && !lastMessage!.tool && lastMessage!.content.trim() && lastMessage!.content !== prefix) {
-      const firstToolIndex = indexForThinkingInsertBeforeFirstToolAfterLastUser(messages);
-      if (firstToolIndex !== undefined) {
-        const beforeFirst = firstToolIndex > 0 ? messages[firstToolIndex - 1] : undefined;
-        if (beforeFirst?.role === 'assistant' && beforeFirst.content === prefix && !beforeFirst.tool) {
-          return;
-        }
-        this.insertAssistantPrefix(firstToolIndex, prefix, `splice-before-first-tool@${firstToolIndex}`);
-        return;
-      }
-      let toolIndex = -1;
-      for (let index = messageCount - 2; index >= 0; index -= 1) {
-        const message = messages[index];
-        if (message.role === 'assistant' && message.tool) {
-          toolIndex = index;
-          break;
-        }
-      }
-      if (toolIndex >= 0) {
-        const beforeTool = toolIndex > 0 ? messages[toolIndex - 1] : undefined;
-        if (beforeTool?.role === 'assistant' && beforeTool.content === prefix && !beforeTool.tool) {
-          return;
-        }
-        this.insertAssistantPrefix(toolIndex, prefix, `splice-before-tool@${toolIndex}`);
+      if (messages.some((message) => message.role === 'assistant' && !message.tool && message.content === prefix)) {
         return;
       }
       if (!lastMessage!.content.startsWith(prefix)) {
-        this.insertAssistantPrefix(messageCount - 1, prefix, `splice-before-tail@${messageCount - 1}`);
+        this.insertAssistantPrefix(messages.length, prefix, 'append-prefix-before-tail');
       }
       return;
     }
@@ -514,7 +482,6 @@ export class DesktopRuntimeEventOrchestrator {
 
   private insertAssistantPrefix(insertAt: number, prefix: string, logLabel: string): void {
     const messages = this.options.messages();
-    this.options.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
     messages.splice(insertAt, 0, {
       id: this.options.allocateMessageId(),
       role: 'assistant',
@@ -529,8 +496,6 @@ export class DesktopRuntimeEventOrchestrator {
     batchId: number,
     events: RuntimeEvent<DesktopToolRequest>[],
     messages: ConversationMessageSnapshot[],
-    anchorEnd: number | undefined,
-    anchorSourceBatchEnd: number,
   ): void {
     const mode = messageOrderDebugLevel();
     if (mode === 'off') return;
@@ -583,7 +548,7 @@ export class DesktopRuntimeEventOrchestrator {
 
     const tail = summarizeMessagesTailForOrderDebug(messages, 12);
     console.log(
-      `[desktop-host][msg-order] apply#${batchId} kinds=${tags.join(',')} anchor=${anchorEnd ?? '∅'} anchorBatch=${anchorSourceBatchEnd} len=${messages.length} tail=${tail}`,
+      `[desktop-host][msg-order] apply#${batchId} kinds=${tags.join(',')} placement=timeline len=${messages.length} tail=${tail}`,
     );
   }
 

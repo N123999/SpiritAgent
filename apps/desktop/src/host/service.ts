@@ -3124,7 +3124,6 @@ class DesktopHostService {
     }
 
     const insertAt = toolIndex + 1;
-    this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
     state.messages.splice(insertAt, 0, nextMessage);
     this.rebuildMessageTimelineFromMessages();
   }
