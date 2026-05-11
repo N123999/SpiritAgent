@@ -62,6 +62,7 @@ async function main() {
       schemaName: 'eval_judge_review',
       schema,
       systemSections,
+      includeToolAgentHostPrompt: false,
     });
 
     const normalized = normalizeJudgeOutput(
