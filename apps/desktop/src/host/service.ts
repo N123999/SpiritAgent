@@ -2397,7 +2397,6 @@ class DesktopHostService {
     const pendingApproval = this.runtime?.currentPendingApproval();
     const pendingQuestions = this.runtime?.currentPendingQuestions();
     const pendingAux = this.runtime?.pendingAuxState();
-    const rawConversationMessages = this.desktopMessages();
     const standaloneAnchorState = this.assistantMessages.standaloneAnchorState();
     this.conversationSnapshotView.syncStandalonePendingAux({
       livePendingAux: pendingAux,
@@ -2417,6 +2416,8 @@ class DesktopHostService {
         );
       }
     }
+
+    const rawConversationMessages = this.desktopMessages();
 
     const conversationMessages = this.conversationSnapshotView.buildMessagesWithPendingAssistant({
       messages: rawConversationMessages,
