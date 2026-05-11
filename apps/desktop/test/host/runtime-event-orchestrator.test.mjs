@@ -219,3 +219,44 @@ test('tool previews keep live and finalized thinking above the tool card without
     'tool:call-1',
   ]);
 });
+
+test('tool previews do not clone the first thinking block when multiple tool previews arrive', () => {
+  const harness = createHarness();
+  harness.pushUser('parallel tools');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    { kind: 'replace-pending-assistant', text: '好的，我先并发调用两个工具，然后执行 echo。' },
+    { kind: 'update-pending-assistant-thinking', text: 'The user is asking me to call a few tools.' },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-1',
+      toolName: 'list_directory_files',
+      argumentsJson: '{}',
+    },
+    {
+      kind: 'update-pending-assistant-thinking',
+      text: 'The user is asking me to call a few tools (preferably concurrently).',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-2',
+      toolName: 'read_file',
+      argumentsJson: '{}',
+    },
+  ]);
+
+  const messages = harness.timeline.toMessages();
+  const assistantRows = messages.filter((message) => message.role === 'assistant' && !message.tool);
+
+  assert.equal(assistantRows.length, 1);
+  assert.equal(assistantRows[0].content, '好的，我先并发调用两个工具，然后执行 echo。');
+  assert.equal(
+    assistantRows[0].aux?.thinking,
+    'The user is asking me to call a few tools (preferably concurrently).',
+  );
+  assert.deepEqual(
+    messages.filter((message) => message.tool).map((message) => message.tool.toolCallId),
+    ['call-1', 'call-2'],
+  );
+});

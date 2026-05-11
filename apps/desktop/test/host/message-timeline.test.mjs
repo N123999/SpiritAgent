@@ -128,6 +128,34 @@ test('live thinking stays above tool rows while the tool is running', () => {
   ]);
 });
 
+test('tool previews do not duplicate a thinking row after assistant prefix text appears', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('parallel tools');
+  timeline.beginAssistantSegment('initial');
+  timeline.replaceAssistantText('好的，我先并发调用两个工具，然后执行 echo。');
+  timeline.updatePendingAssistantAux('thinking', 'The user is asking me to call a few tools.');
+  timeline.upsertToolMessage('call-1', toolBlock('call-1'));
+  timeline.updatePendingAssistantAux(
+    'thinking',
+    'The user is asking me to call a few tools (preferably concurrently).',
+  );
+  timeline.upsertToolMessage('call-2', toolBlock('call-2'));
+
+  const messages = timeline.toMessages();
+  const assistantRows = messages.filter((message) => message.role === 'assistant' && !message.tool);
+
+  assert.equal(assistantRows.length, 1);
+  assert.equal(assistantRows[0].content, '好的，我先并发调用两个工具，然后执行 echo。');
+  assert.equal(
+    assistantRows[0].aux?.thinking,
+    'The user is asking me to call a few tools (preferably concurrently).',
+  );
+  assert.deepEqual(
+    messages.filter((message) => message.tool).map((message) => message.tool.toolCallId),
+    ['call-1', 'call-2'],
+  );
+});
+
 test('finalized thinking does not remain duplicated below tool rows', () => {
   const timeline = createTimeline();
   timeline.beginUserTurn('read README.md');

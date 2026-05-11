@@ -301,7 +301,6 @@ export class DesktopMessageTimeline {
     const activeText = this.activeAssistantTextRow(segment);
     if (activeText?.content.trim()) {
       activeText.pending = false;
-      segment.activeAssistantTextRowId = undefined;
     }
     const row = this.createRow({
       turnId: segment.turnId,
