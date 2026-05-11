@@ -379,10 +379,13 @@ export function buildPlanSystemMessage(
 
   const lines: string[] = [PLAN_SECTION_PREFIX];
 
-  if (planMode && hostZh.length > 0) {
-    lines.push(hostZh, '');
+  if (planMode) {
+    if (hostZh.length > 0) {
+      lines.push(hostZh, '');
+    }
     lines.push(
       'When the user\'s request is vague, ambiguous, or leaves important choices unresolved, you may use the `ask_questions` tool to ask clarifying questions.',
+      'When a concept image would materially clarify the plan, UX, layout, or visual direction, consider using the `generate_image` tool and then referencing the generated image in the plan document so the user can inspect it.',
       '',
     );
   }
