@@ -80,33 +80,3 @@ export function pruneEmptyAssistantMessages(
   });
   return { messages: nextMessages, removed };
 }
-
-export function shiftStreamAssistantThinkingAnchorForInsertion(
-  anchor: number | undefined,
-  insertAt: number,
-): number | undefined {
-  if (anchor !== undefined && insertAt <= anchor) {
-    return anchor + 1;
-  }
-  return anchor;
-}
-
-export function shiftStreamAssistantThinkingAnchorForRemoval(
-  anchor: number | undefined,
-  removeAt: number,
-  removeCount = 1,
-): number | undefined {
-  if (anchor === undefined || removeCount <= 0) {
-    return anchor;
-  }
-
-  if (removeAt + removeCount <= anchor) {
-    return anchor - removeCount;
-  }
-
-  if (removeAt < anchor) {
-    return removeAt;
-  }
-
-  return anchor;
-}

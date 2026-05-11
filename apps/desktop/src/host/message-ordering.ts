@@ -482,36 +482,6 @@ function defaultToolHeadline(
   }
 }
 
-/** 最后一条 user 之后、首条助手工具行之前；找不到则返回 `undefined`（由调用方改为插在「最后一条 user」之后）。 */
-export function indexForThinkingInsertBeforeFirstToolAfterLastUser(
-  messages: ConversationMessageSnapshot[],
-): number | undefined {
-  let lastUser = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i]?.role === 'user') {
-      lastUser = i;
-    }
-  }
-  for (let i = lastUser + 1; i < messages.length; i += 1) {
-    const m = messages[i];
-    if (m?.role === 'assistant' && m.tool) {
-      return i;
-    }
-  }
-  return undefined;
-}
-
-/** 与 `historyStore` 中最后一条 user 对齐：在其后插入思考，避免审批指导后尚无新工具行时误用 `push` 落到整段末尾。 */
-export function indexForThinkingInsertAfterLastUser(messages: ConversationMessageSnapshot[]): number {
-  let lastUser = -1;
-  for (let i = 0; i < messages.length; i += 1) {
-    if (messages[i]?.role === 'user') {
-      lastUser = i;
-    }
-  }
-  return lastUser < 0 ? 0 : lastUser + 1;
-}
-
 /** 末条 user 之后是否已有其它工具卡为「待审批」或「执行中」（不含当前 toolCallId）。 */
 function hasBlockingToolAheadOfSameTurnPreview(
   messages: ConversationMessageSnapshot[],

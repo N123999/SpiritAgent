@@ -7,8 +7,6 @@ import {
   describeAuxForDebug,
   describeOptionalAuxForDebug,
   hasStandaloneThinkingMessageInCurrentTurn,
-  indexForThinkingInsertAfterLastUser,
-  indexForThinkingInsertBeforeFirstToolAfterLastUser,
   messageIndexIsInCurrentTurn,
   messageOrderDebugLevel,
   normalizeMessageAuxSnapshot,
@@ -19,8 +17,6 @@ import {
 } from './message-ordering.js';
 import {
   pruneEmptyAssistantMessages as pruneEmptyAssistantMessagesFromSnapshots,
-  shiftStreamAssistantThinkingAnchorForInsertion as shiftThinkingAnchorForInsertion,
-  shiftStreamAssistantThinkingAnchorForRemoval as shiftThinkingAnchorForRemoval,
 } from './message-snapshots.js';
 
 export interface DesktopAssistantMessageStateMachineOptions {
@@ -35,18 +31,11 @@ export interface AssistantStandaloneAnchorState {
   lastSettledAssistantMessageId?: number;
 }
 
-export interface AssistantPlacementState {
-  streamAssistantThinkingAnchor?: number;
-  streamAssistantAnchorSetInApplyBatchId: number;
-}
-
 export class DesktopAssistantMessageStateMachine {
   private latestPendingAssistantAux: MessageAuxSnapshot | undefined;
   private pendingAssistantMessageId: number | undefined;
   private lastSettledAssistantMessageId: number | undefined;
   private lastFinalizedThinkingSegment = '';
-  private streamAssistantThinkingAnchor: number | undefined;
-  private streamAssistantAnchorSetInApplyBatchId = 0;
 
   constructor(private readonly options: DesktopAssistantMessageStateMachineOptions) {}
 
@@ -57,28 +46,16 @@ export class DesktopAssistantMessageStateMachine {
     };
   }
 
-  placementState(): AssistantPlacementState {
-    return {
-      streamAssistantThinkingAnchor: this.streamAssistantThinkingAnchor,
-      streamAssistantAnchorSetInApplyBatchId: this.streamAssistantAnchorSetInApplyBatchId,
-    };
-  }
-
-  beginAssistantResponse(insertAt: number, batchId: number): ConversationMessageSnapshot {
+  beginAssistantResponse(_insertAt: number, _batchId: number): ConversationMessageSnapshot {
     this.pendingAssistantMessageId = undefined;
     this.latestPendingAssistantAux = undefined;
-    this.streamAssistantThinkingAnchor =
-      this.streamAssistantThinkingAnchor === undefined
-        ? insertAt
-        : Math.min(this.streamAssistantThinkingAnchor, insertAt);
-    this.streamAssistantAnchorSetInApplyBatchId = batchId;
     return this.ensurePendingAssistantMessage();
   }
 
   upsertToolMessage(
     toolCallId: string,
     tool: ToolBlockSnapshot,
-    batchId: number,
+    _batchId: number,
   ): ConversationMessageSnapshot {
     const messages = this.messages();
     let existing: ConversationMessageSnapshot | undefined;
@@ -101,10 +78,6 @@ export class DesktopAssistantMessageStateMachine {
       return existing;
     }
 
-    if (this.streamAssistantThinkingAnchor === undefined) {
-      this.streamAssistantThinkingAnchor = messages.length;
-    }
-    this.streamAssistantAnchorSetInApplyBatchId = batchId;
     const pushAt = messages.length;
     const message: ConversationMessageSnapshot = {
       id: this.options.allocateMessageId(),
@@ -153,7 +126,7 @@ export class DesktopAssistantMessageStateMachine {
   appendAssistantThinkingSegment(text: string): void {
     this.lastFinalizedThinkingSegment = text.trim();
     const messages = this.messages();
-    this.stripFinalizedThinkingFromAssistantAnchors(text);
+    this.stripFinalizedThinkingFromAssistantAuxRows(text);
     const message: ConversationMessageSnapshot = {
       id: this.options.allocateMessageId(),
       role: 'assistant',
@@ -161,17 +134,9 @@ export class DesktopAssistantMessageStateMachine {
       aux: { thinking: text },
       pending: false,
     };
-    let insertAt = this.streamAssistantThinkingAnchor;
-    this.streamAssistantThinkingAnchor = undefined;
-    if (insertAt === undefined) {
-      insertAt = indexForThinkingInsertBeforeFirstToolAfterLastUser(messages);
-    }
-    if (insertAt === undefined) {
-      insertAt = indexForThinkingInsertAfterLastUser(messages);
-    }
-    const clamped = Math.max(0, Math.min(insertAt, messages.length));
-    messages.splice(clamped, 0, message);
-    const placed = `splice@${clamped}`;
+    const clamped = messages.length;
+    messages.push(message);
+    const placed = `append@${clamped}`;
     this.logMessageOrderThinkingFinalized(placed, messages.length, text);
     this.latestPendingAssistantAux = stripPendingThinkingMatchingFinalized(
       this.latestPendingAssistantAux,
@@ -371,36 +336,16 @@ export class DesktopAssistantMessageStateMachine {
     }
   }
 
-  streamAssistantThinkingAnchorOr(defaultValue: number): number {
-    return this.streamAssistantThinkingAnchor ?? defaultValue;
-  }
-
-  shiftStreamAssistantThinkingAnchorForInsertion(insertAt: number): void {
-    this.streamAssistantThinkingAnchor = shiftThinkingAnchorForInsertion(
-      this.streamAssistantThinkingAnchor,
-      insertAt,
-    );
-  }
-
-  shiftStreamAssistantThinkingAnchorForRemoval(removeAt: number, removeCount = 1): void {
-    this.streamAssistantThinkingAnchor = shiftThinkingAnchorForRemoval(
-      this.streamAssistantThinkingAnchor,
-      removeAt,
-      removeCount,
-    );
-  }
-
-  handleMessageRemoved(messageIndex: number, messageId: number, reason: string): void {
-    this.shiftStreamAssistantThinkingAnchorForRemoval(messageIndex);
+  handleMessageRemoved(_messageIndex: number, messageId: number, reason: string): void {
     if (this.pendingAssistantMessageId === messageId) {
       this.pendingAssistantMessageId = undefined;
     }
     if (this.lastSettledAssistantMessageId === messageId) {
       this.lastSettledAssistantMessageId = undefined;
     }
-    this.logAssistantAuxDecision('remove-message-anchor-shift', {
+    this.logAssistantAuxDecision('remove-message-cache-row', {
       messageId,
-      extra: `reason=${reason} nextAnchor=${this.streamAssistantThinkingAnchor ?? '∅'}`,
+      extra: `reason=${reason} placement=timeline`,
     });
   }
 
@@ -408,13 +353,10 @@ export class DesktopAssistantMessageStateMachine {
     this.pendingAssistantMessageId = undefined;
     this.lastSettledAssistantMessageId = undefined;
     if (!full) {
-      this.streamAssistantThinkingAnchor = undefined;
       return;
     }
     this.latestPendingAssistantAux = undefined;
     this.lastFinalizedThinkingSegment = '';
-    this.streamAssistantThinkingAnchor = undefined;
-    this.streamAssistantAnchorSetInApplyBatchId = 0;
   }
 
   private messages(): ConversationMessageSnapshot[] {
@@ -503,7 +445,7 @@ export class DesktopAssistantMessageStateMachine {
     return index;
   }
 
-  private stripFinalizedThinkingFromAssistantAnchors(text: string): void {
+  private stripFinalizedThinkingFromAssistantAuxRows(text: string): void {
     const messages = this.messages();
     const targets: Array<{ kind: 'pending' | 'settled'; index: number | undefined }> = [
       { kind: 'pending', index: this.findPendingAssistantMessageIndex() },
@@ -529,7 +471,7 @@ export class DesktopAssistantMessageStateMachine {
       } else {
         delete message.aux;
       }
-      this.logAssistantAuxDecision('strip-finalized-thinking-anchor', {
+      this.logAssistantAuxDecision('strip-finalized-thinking-aux-row', {
         messageId: message.id,
         aux: beforeAux,
         finalizedThinking: text,
