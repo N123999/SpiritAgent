@@ -704,7 +704,12 @@ async function resolveManagedGeneratedImagePath(reference: string): Promise<stri
     return null;
   }
 
-  const imageId = decodeURIComponent(url.pathname.replace(/^\/+/, '')).trim();
+  let imageId: string;
+  try {
+    imageId = decodeURIComponent(url.pathname.replace(/^\/+/, '')).trim();
+  } catch {
+    return null;
+  }
   if (!imageId || imageId !== path.basename(imageId) || imageId === '.' || imageId === '..') {
     return null;
   }
