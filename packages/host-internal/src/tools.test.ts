@@ -221,6 +221,52 @@ test('read_file accepts Spirit-managed generated image refs without leaking loca
   }
 });
 
+test('read_file accepts Spirit-managed generated image refs with mixed-case URL scheme and host', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-managed-image-read-case-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      {
+        getModelCompatibilityProfile: () => ({
+          hasExplicitCapabilities: true,
+          capabilities: { vision: true },
+        }),
+      },
+    );
+
+    const saved = await service.saveGeneratedImage({
+      data: Buffer.from(ONE_PIXEL_PNG_BASE64, 'base64'),
+      mediaType: 'image/png',
+      prompt: 'concept image',
+      model: 'test-image-model',
+    });
+    const mixedCaseRef = saved.markdownRef.replace(
+      'spirit-image://generated/',
+      'SPIRIT-IMAGE://GENERATED/',
+    );
+
+    const authorization = await service.authorize({
+      name: 'read_file',
+      path: mixedCaseRef,
+    });
+    assert.deepEqual(authorization, { kind: 'allowed' });
+
+    const output = await service.execute({
+      name: 'read_file',
+      path: mixedCaseRef,
+    });
+    assertHostToolExecutionOutput(output);
+    assert.match(output.summaryText, new RegExp(`path: ${escapeRegExp(mixedCaseRef)}`));
+    assert.equal(output.content.some((part) => part.type === 'image'), true);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('read_file missing Spirit-managed generated image ref reports sanitized error', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-missing-managed-image-read-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
@@ -244,6 +290,33 @@ test('read_file missing Spirit-managed generated image ref reports sanitized err
         return true;
       },
     );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('read_file reports canonical path for non-managed files', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-read-file-canonical-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const nestedDir = join(workspaceRoot, 'nested');
+  const filePath = join(nestedDir, 'note.txt');
+
+  try {
+    await mkdir(nestedDir, { recursive: true });
+    await mkdir(spiritDataDir, { recursive: true });
+    await writeFile(filePath, 'alpha\nbeta\n');
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const output = await service.execute({
+      name: 'read_file',
+      path: './nested/../nested/note.txt',
+      start_line: 1,
+      end_line: 1,
+    });
+
+    assertHostToolExecutionOutput(output);
+    assert.match(output.summaryText, new RegExp(`^\\[read\\]\\npath: ${escapeRegExp(filePath)}\\nrange: 1-1`, 'u'));
+    assert.doesNotMatch(output.summaryText, /\.\/nested\/\.\.\/nested\/note\.txt/u);
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
