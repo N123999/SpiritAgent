@@ -1361,6 +1361,7 @@ class DesktopHostService {
         .map((message) => message.id);
       try {
         this.clearAssistantContinuationMarkers();
+        this.resetStreamingPlacementState(false);
         await this.persistCurrentSessionIfNeeded();
         await runtime.continueAssistantCompletionStreaming();
       } catch (error) {
