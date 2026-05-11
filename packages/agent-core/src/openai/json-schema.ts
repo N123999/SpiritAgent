@@ -12,6 +12,7 @@ export interface OpenAiJsonSchemaCompletionRequest {
   schemaName: string;
   schema: JsonObject;
   systemSections?: Array<string | undefined>;
+  includeToolAgentHostPrompt?: boolean;
 }
 
 export interface OpenAiJsonSchemaCompletionResult<T extends JsonValue = JsonValue> {
@@ -43,14 +44,16 @@ export function buildJsonSchemaCompletionMessages(
   request: OpenAiJsonSchemaCompletionRequest,
 ): JsonValue[] {
   const structuredOutputSystemSection = buildStructuredOutputSystemSection(config, request);
+  const sections = [...(request.systemSections ?? []), structuredOutputSystemSection]
+    .filter((section): section is string => typeof section === 'string' && section.trim().length > 0)
+    .map((section) => section.trim());
   return [
     {
       role: 'system',
-      content: buildToolAgentSystemMessage(
-        config.model,
-        ...(request.systemSections ?? []),
-        structuredOutputSystemSection,
-      ),
+      content:
+        request.includeToolAgentHostPrompt === false
+          ? sections.join('\n\n')
+          : buildToolAgentSystemMessage(config.model, ...sections),
     },
     {
       role: 'user',
