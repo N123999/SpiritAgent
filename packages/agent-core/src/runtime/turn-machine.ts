@@ -5,6 +5,7 @@ import type {
   AuthorizationDecision,
   JsonValue,
   LlmMessage,
+  ToolExecutionOutput,
   ToolAgentRoundCompletion,
   ToolCallRequest,
 } from '../ports.js';
@@ -638,20 +639,13 @@ export async function executeAuthorizedToolCall<
   }
 
   const execution = await runtime.performToolExecution(request, toolName);
-  const artifacts = toolArtifactsFromOutput(execution.output);
-
-  const finished: RuntimeToolExecution<ToolRequest> = {
+  commitToolExecutionOutput(runtime, turn, {
     toolCallId,
     toolName,
     request,
-    output: execution.output.summaryText,
+    output: execution.output,
     failed: execution.failed,
-    ...(artifacts ? { artifacts } : {}),
-  };
-  turn.toolExecutions.push(finished);
-  runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
-  enqueueDeferredToolOutputGuidance(turn, toolName, execution.output);
-
+  });
   const resumedState = runtime.options.appendToolResultMessage(
     state,
     toolCallId,
@@ -1031,18 +1025,13 @@ export async function processToolCallsAsync<
     }
 
     const execution = await runtime.performToolExecution(request, call.name);
-    const artifacts = toolArtifactsFromOutput(execution.output);
-    const finished: RuntimeToolExecution<ToolRequest> = {
+    commitToolExecutionOutput(runtime, turn, {
       toolCallId: call.id,
       toolName: call.name,
       request,
-      output: execution.output.summaryText,
+      output: execution.output,
       failed: execution.failed,
-      ...(artifacts ? { artifacts } : {}),
-    };
-    turn.toolExecutions.push(finished);
-    runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
-    enqueueDeferredToolOutputGuidance(turn, call.name, execution.output);
+    });
     currentState = runtime.options.appendToolResultMessage(
       currentState,
       call.id,
@@ -1061,6 +1050,45 @@ export async function processToolCallsAsync<
   }
 
   startToolAgentRoundAsync(runtime, currentState, pendingUserInput, turn);
+}
+
+export interface CommitToolExecutionOutputOptions<ToolRequest> {
+  toolCallId: string;
+  toolName: string;
+  request: ToolRequest;
+  output: ToolExecutionOutput;
+  failed: boolean;
+}
+
+export function buildRuntimeToolExecution<ToolRequest>(
+  options: CommitToolExecutionOutputOptions<ToolRequest>,
+): RuntimeToolExecution<ToolRequest> {
+  const artifacts = toolArtifactsFromOutput(options.output);
+  return {
+    toolCallId: options.toolCallId,
+    toolName: options.toolName,
+    request: options.request,
+    output: options.output.summaryText,
+    failed: options.failed,
+    ...(artifacts ? { artifacts } : {}),
+  };
+}
+
+export function commitToolExecutionOutput<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: Pick<TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>, 'emitEvent'>,
+  turn: RuntimeTurnContext<ToolRequest>,
+  options: CommitToolExecutionOutputOptions<ToolRequest>,
+): RuntimeToolExecution<ToolRequest> {
+  const finished = buildRuntimeToolExecution(options);
+  turn.toolExecutions.push(finished);
+  runtime.emitEvent({ kind: 'tool-execution-finished', execution: finished });
+  enqueueDeferredToolOutputGuidance(turn, options.toolName, options.output);
+  return finished;
 }
 
 export async function waitForCompletedTurnResult<
