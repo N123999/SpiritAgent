@@ -502,6 +502,8 @@ function defaultToolHeadline(
   toolName: string,
 ): string {
   switch (phase) {
+    case 'preview':
+      return `预览中: ${toolName}`;
     case 'pending-approval':
       return `等待确认: ${toolName}`;
     case 'running':
@@ -534,7 +536,7 @@ function hasBlockingToolAheadOfSameTurnPreview(
       continue;
     }
     const p = m.tool.phase;
-    if (p === 'pending-approval' || p === 'running') {
+    if (p === 'preview' || p === 'pending-approval' || p === 'running') {
       return true;
     }
   }

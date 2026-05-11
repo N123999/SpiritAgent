@@ -636,7 +636,7 @@ export interface FileRewindWarning {
 export interface ToolBlockSnapshot {
   toolCallId?: string;
   toolName: string;
-  phase: 'pending-approval' | 'running' | 'succeeded' | 'failed';
+  phase: 'preview' | 'pending-approval' | 'running' | 'succeeded' | 'failed';
   headline: string;
   detailLines: string[];
   argsExcerpt?: string;

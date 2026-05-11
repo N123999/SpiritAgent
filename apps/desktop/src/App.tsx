@@ -439,7 +439,7 @@ function ImageGenerationToolCard({
     };
   }, [previewDataUrl]);
 
-  const loading = tool.phase === "running" || previewState === "loading";
+  const loading = tool.phase === "preview" || tool.phase === "running" || previewState === "loading";
   const canInteract = Boolean(previewDataUrl && previewableImagePath);
   const floatingActionButtonClass =
     "size-8 rounded-full border border-border/50 bg-background/55 text-foreground shadow-sm backdrop-blur-xl transition-[background-color,border-color,box-shadow,transform] hover:border-border/60 hover:bg-background/72 dark:border-white/12 dark:bg-input/30 dark:hover:bg-input/40 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
@@ -934,24 +934,51 @@ function assistantReasoningLive(message: ConversationMessageSnapshot): boolean {
   );
 }
 
-function AssistantThinkingCollapsible({ message }: { message: ConversationMessageSnapshot }) {
+function shouldCollapseThinkingDuringToolPreview(
+  messages: readonly ConversationMessageSnapshot[],
+  messageIndex: number,
+): boolean {
+  for (let index = messageIndex + 1; index < messages.length; index += 1) {
+    const candidate = messages[index];
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.role === "user") {
+      break;
+    }
+    if (candidate.role === "assistant" && candidate.tool?.phase === "preview") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function AssistantThinkingCollapsible({
+  message,
+  collapseDuringToolPreview,
+}: {
+  message: ConversationMessageSnapshot;
+  collapseDuringToolPreview: boolean;
+}) {
   const thinking = message.aux?.thinking;
   if (!thinking) {
     return null;
   }
 
   const reasoningLive = assistantReasoningLive(message);
+  const autoExpanded = reasoningLive && !collapseDuringToolPreview;
   const [manualOpen, setManualOpen] = useState(false);
-  const prevReasoningLiveRef = useRef(reasoningLive);
+  const prevAutoExpandedRef = useRef(autoExpanded);
 
   useEffect(() => {
-    if (prevReasoningLiveRef.current && !reasoningLive) {
+    if (prevAutoExpandedRef.current && !autoExpanded) {
       setManualOpen(false);
     }
-    prevReasoningLiveRef.current = reasoningLive;
-  }, [reasoningLive]);
+    prevAutoExpandedRef.current = autoExpanded;
+  }, [autoExpanded]);
 
-  const expanded = reasoningLive || manualOpen;
+  const expanded = autoExpanded || manualOpen;
+  const interactive = !autoExpanded;
 
   return (
     <div className="py-0.5">
@@ -959,18 +986,18 @@ function AssistantThinkingCollapsible({ message }: { message: ConversationMessag
         type="button"
         aria-expanded={expanded}
         onClick={() => {
-          if (reasoningLive) {
+          if (!interactive) {
             return;
           }
           setManualOpen((open) => !open);
         }}
         className={cn(
           "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
-          reasoningLive ? "cursor-default" : "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
+          interactive ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50" : "cursor-default",
         )}
       >
         <ThinkingLabelWithShimmer active={reasoningLive} />
-        {!reasoningLive ? (
+        {interactive ? (
           <ChevronRight
             className={cn(
               "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
@@ -991,6 +1018,7 @@ function AssistantThinkingCollapsible({ message }: { message: ConversationMessag
 }
 
 function MessageCard({
+  messages,
   message,
   listIndex,
   compactAfterPrevious,
@@ -1015,6 +1043,7 @@ function MessageCard({
   readLocalImagePreviewDataUrl,
   saveLocalImageAs,
 }: {
+  messages: readonly ConversationMessageSnapshot[];
   message: ConversationMessageSnapshot;
   listIndex: number;
   compactAfterPrevious: boolean;
@@ -1086,7 +1115,12 @@ function MessageCard({
             busy={rewindBusy}
           />
         ) : null}
-        {!isUser && message.aux?.thinking ? <AssistantThinkingCollapsible message={message} /> : null}
+        {!isUser && message.aux?.thinking ? (
+          <AssistantThinkingCollapsible
+            message={message}
+            collapseDuringToolPreview={shouldCollapseThinkingDuringToolPreview(messages, listIndex)}
+          />
+        ) : null}
         {!isUser && message.aux?.compaction ? (
           <div className="border-l border-dashed border-muted-foreground/35 py-0.5 pl-2.5">
             <p className="text-xs font-medium tracking-wide text-muted-foreground">
@@ -2259,6 +2293,7 @@ export default function App() {
                         {messages.map((message, index) => (
                           <MessageCard
                             key={conversationMessageDomId(message, index)}
+                            messages={messages}
                             listIndex={index}
                             message={message}
                             compactAfterPrevious={shouldCompactAfterPreviousMessage(messages[index - 1], message)}

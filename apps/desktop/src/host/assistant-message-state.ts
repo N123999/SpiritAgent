@@ -577,5 +577,5 @@ function isStableRuntimeToolCallId(toolCallId: string): boolean {
 }
 
 function canReuseToolMessageAcrossTurns(tool: ToolBlockSnapshot | undefined): boolean {
-  return tool?.phase === 'pending-approval' || tool?.phase === 'running';
+  return tool?.phase === 'preview' || tool?.phase === 'pending-approval' || tool?.phase === 'running';
 }

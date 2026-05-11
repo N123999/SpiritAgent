@@ -169,19 +169,21 @@ export class DesktopRuntimeEventOrchestrator {
         continue;
       }
       if (event.kind === 'tool-call-started') {
+        const runningTool: ToolBlockSnapshot = {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          phase: 'running',
+          headline: event.toolName === 'generate_image'
+            ? '生成图片'
+            : headlineForToolPhase('running', event.toolName, event.request),
+          detailLines: [],
+          argsExcerpt: truncateJson(event.request),
+        };
         if (event.toolName === 'generate_image') {
-          const runningTool: ToolBlockSnapshot = {
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            phase: 'running',
-            headline: '生成图片',
-            detailLines: [],
-            argsExcerpt: truncateJson(event.request),
-          };
           this.activeGenerateImageTools.set(event.toolCallId, runningTool);
-          this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
-          this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
         }
+        this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
+        this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
         this.options.dispatchExtensionEvent({
           type: 'onToolCall',
           detail: {
@@ -236,7 +238,7 @@ export class DesktopRuntimeEventOrchestrator {
       const runningTool: ToolBlockSnapshot = {
         toolCallId: event.toolCallId,
         toolName: event.toolName,
-        phase: 'running',
+        phase: 'preview',
         headline: headlineForStreamingToolPreview(
           messages,
           event.toolCallId,
