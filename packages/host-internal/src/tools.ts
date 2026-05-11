@@ -47,7 +47,8 @@ const MAX_WEB_FETCH_OUTPUT_CHARS = 24_000;
 const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
 const GENERATED_IMAGES_DIR = 'generated-images';
-const MANAGED_GENERATED_IMAGE_PREFIX = 'spirit-image://generated/';
+const MANAGED_GENERATED_IMAGE_PROTOCOL = 'spirit-image:';
+const MANAGED_GENERATED_IMAGE_HOST = 'generated';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
 const MAX_COMMAND_OUTPUT_CHARS = 16_000;
@@ -126,13 +127,66 @@ export interface HostGeneratedImageFile {
 }
 
 function generatedImageMarkdownRef(filePath: string): string {
-  return `spirit-image://generated/${encodeURIComponent(path.basename(filePath))}`;
+  return `${MANAGED_GENERATED_IMAGE_PROTOCOL}//${MANAGED_GENERATED_IMAGE_HOST}/${encodeURIComponent(path.basename(filePath))}`;
 }
 
 interface ResolvedReadFileTarget {
   canonicalPath: string;
   displayPath: string;
   managed: boolean;
+}
+
+interface ParsedManagedGeneratedImageReference {
+  basename: string;
+  reference: string;
+}
+
+function parseManagedGeneratedImageReference(
+  reference: string,
+): ParsedManagedGeneratedImageReference | undefined {
+  const trimmed = reference.trim();
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+
+  if (url.protocol.toLowerCase() !== MANAGED_GENERATED_IMAGE_PROTOCOL) {
+    return undefined;
+  }
+
+  if (
+    url.hostname.toLowerCase() !== MANAGED_GENERATED_IMAGE_HOST ||
+    url.search.length > 0 ||
+    url.hash.length > 0
+  ) {
+    throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
+  }
+
+  let basename: string;
+  try {
+    basename = decodeURIComponent(url.pathname.replace(/^\/+/, '')).trim();
+  } catch {
+    throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
+  }
+
+  if (
+    !basename ||
+    basename !== path.basename(basename) ||
+    basename === '.' ||
+    basename === '..' ||
+    basename.includes('/') ||
+    basename.includes('\\')
+  ) {
+    throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
+  }
+
+  return {
+    basename,
+    reference: trimmed,
+  };
 }
 
 export interface HostBuiltinToolDefinitionEnvironment {
@@ -1059,47 +1113,21 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       };
     }
 
+    const canonicalPath = await this.resolveExistingFilePath(trimmed);
     return {
-      canonicalPath: await this.resolveExistingFilePath(trimmed),
-      displayPath: trimmed,
+      canonicalPath,
+      displayPath: canonicalPath,
       managed: false,
     };
   }
 
   private async tryResolveManagedGeneratedImagePath(reference: string): Promise<string | undefined> {
-    const trimmed = reference.trim();
-    if (!trimmed.startsWith(MANAGED_GENERATED_IMAGE_PREFIX)) {
+    const parsed = parseManagedGeneratedImageReference(reference);
+    if (!parsed) {
       return undefined;
     }
 
-    const encodedBasename = trimmed.slice(MANAGED_GENERATED_IMAGE_PREFIX.length);
-    if (
-      !encodedBasename ||
-      encodedBasename.includes('/') ||
-      encodedBasename.includes('\\') ||
-      encodedBasename.includes('?') ||
-      encodedBasename.includes('#')
-    ) {
-      throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
-    }
-
-    let basename: string;
-    try {
-      basename = decodeURIComponent(encodedBasename).trim();
-    } catch {
-      throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
-    }
-
-    if (
-      !basename ||
-      basename !== path.basename(basename) ||
-      basename === '.' ||
-      basename === '..' ||
-      basename.includes('/') ||
-      basename.includes('\\')
-    ) {
-      throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
-    }
+    const { basename, reference: trimmed } = parsed;
 
     const managedRoot = path.join(this.spiritDataDir, GENERATED_IMAGES_DIR);
     const candidatePath = path.join(managedRoot, basename);
