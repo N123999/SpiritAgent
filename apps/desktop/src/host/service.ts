@@ -211,6 +211,7 @@ import { DesktopRuntimeEventOrchestrator } from './runtime-event-orchestrator.js
 import {
   DesktopMessageTimeline,
   type DesktopTimelineSegmentKind,
+  type DesktopTimelineTurnSnapshot,
 } from './message-timeline.js';
 import {
   buildActiveSkillPayload,
@@ -1795,7 +1796,10 @@ class DesktopHostService {
         fallbackMessages: restoreMessagesFromArchive(loaded),
       });
       state.messages = restored.messages;
-      state.messageTimeline = this.createMessageTimelineFromMessages(state.messages);
+      state.messageTimeline = this.createMessageTimelineFromMessages(
+        state.messages,
+        restored.desktopMessageTimeline,
+      );
       state.activeSession = restored.activeSession;
       state.archiveHistory = restored.archiveHistory;
       state.archiveSubagentSessions = restored.archiveSubagentSessions;
@@ -2405,10 +2409,13 @@ class DesktopHostService {
         pendingAux.kind,
         pendingAux.detailText ?? pendingAux.statusText,
       );
-      state.messageTimeline.updatePendingAssistantAux(
-        pendingAux.kind,
-        pendingAux.detailText ?? pendingAux.statusText,
-      );
+      const pendingAuxText = pendingAux.detailText ?? pendingAux.statusText;
+      if (!state.messageTimeline.hasFinalizedAuxInActiveSegment(pendingAux.kind, pendingAuxText)) {
+        state.messageTimeline.updatePendingAssistantAux(
+          pendingAux.kind,
+          pendingAuxText,
+        );
+      }
     }
 
     const conversationMessages = this.conversationSnapshotView.buildMessagesWithPendingAssistant({
@@ -2715,8 +2722,23 @@ class DesktopHostService {
 
   private createMessageTimelineFromMessages(
     messages: ConversationMessageSnapshot[],
+    timelineSnapshot?: DesktopTimelineTurnSnapshot[],
   ): DesktopMessageTimeline {
     let nextTimelineMessageId = nextMessageIdFromMessages(messages);
+    if (timelineSnapshot && timelineSnapshot.length > 0) {
+      try {
+        return DesktopMessageTimeline.fromSnapshot(timelineSnapshot, {
+          allocateMessageId: () => nextTimelineMessageId++,
+          reserveMessageId: (messageId) => {
+            if (messageId >= nextTimelineMessageId) {
+              nextTimelineMessageId = messageId + 1;
+            }
+          },
+        });
+      } catch {
+        nextTimelineMessageId = nextMessageIdFromMessages(messages);
+      }
+    }
     return DesktopMessageTimeline.fromMessages(messages, {
       allocateMessageId: () => nextTimelineMessageId++,
       reserveMessageId: (messageId) => {
@@ -3069,6 +3091,7 @@ class DesktopHostService {
       workspaceRoot: state.workspaceRoot,
       gitBranch: state.git.branch,
       desktopMessages: this.desktopMessages(),
+      desktopMessageTimeline: state.messageTimeline.snapshot(),
       rewind: state.rewind,
     });
     state.activeSession.filePath = await saveStoredSession(state.activeSession.filePath, stored);

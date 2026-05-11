@@ -8,6 +8,7 @@ import type {
   SessionListItem,
 } from '../types.js';
 import type { StoredDesktopSession } from './contracts.js';
+import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import {
   normalizeMessageAuxSnapshot,
   normalizeToolBlockSnapshot,
@@ -32,6 +33,7 @@ export interface EphemeralSessionRecord {
 
 export interface RestoredSessionState {
   messages: ConversationMessageSnapshot[];
+  desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   activeSession: ActiveSessionSnapshot;
   archiveHistory: ChatArchive['llmHistory'];
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
@@ -116,6 +118,9 @@ export function restoreStoredSessionState(input: {
     : cloneConversationMessages(input.fallbackMessages);
   return {
     messages,
+    ...(input.loaded.desktopMessageTimeline
+      ? { desktopMessageTimeline: cloneDesktopMessageTimeline(input.loaded.desktopMessageTimeline) }
+      : {}),
     activeSession: {
       filePath: path.resolve(input.filePath),
       displayName: input.loaded.sessionDisplayName ?? deriveDisplayNameFromMessages(messages),
@@ -134,6 +139,7 @@ export function buildStoredDesktopSession(input: {
   workspaceRoot: string;
   gitBranch?: string;
   desktopMessages: ConversationMessageSnapshot[];
+  desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind: StoredDesktopRewindMetadata;
 }): StoredDesktopSession {
   return {
@@ -143,6 +149,9 @@ export function buildStoredDesktopSession(input: {
     workspaceRoot: input.workspaceRoot,
     ...(input.gitBranch ? { gitBranch: input.gitBranch } : {}),
     desktopMessages: sanitizeConversationMessagesForPersistence(input.desktopMessages),
+    ...(input.desktopMessageTimeline
+      ? { desktopMessageTimeline: cloneDesktopMessageTimeline(input.desktopMessageTimeline) }
+      : {}),
     rewind: input.rewind,
   };
 }
@@ -216,6 +225,49 @@ function cloneConversationMessages(
   messages: ConversationMessageSnapshot[],
 ): ConversationMessageSnapshot[] {
   return messages.map((message) => ({ ...message }));
+}
+
+function cloneDesktopMessageTimeline(
+  timeline: DesktopTimelineTurnSnapshot[],
+): DesktopTimelineTurnSnapshot[] {
+  return timeline.map((turn) => ({
+    ...turn,
+    ...(turn.userRow
+      ? {
+          userRow: {
+            ...turn.userRow,
+            ...(turn.userRow.tool
+              ? {
+                  tool: {
+                    ...turn.userRow.tool,
+                    detailLines: [...turn.userRow.tool.detailLines],
+                    ...(turn.userRow.tool.imagePaths
+                      ? { imagePaths: [...turn.userRow.tool.imagePaths] }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(turn.userRow.aux ? { aux: { ...turn.userRow.aux } } : {}),
+          },
+        }
+      : {}),
+    segments: turn.segments.map((segment) => ({
+      ...segment,
+      rows: segment.rows.map((row) => ({
+        ...row,
+        ...(row.tool
+          ? {
+              tool: {
+                ...row.tool,
+                detailLines: [...row.tool.detailLines],
+                ...(row.tool.imagePaths ? { imagePaths: [...row.tool.imagePaths] } : {}),
+              },
+            }
+          : {}),
+        ...(row.aux ? { aux: { ...row.aux } } : {}),
+      })),
+    })),
+  }));
 }
 
 function archiveProjectableConversationMessages(

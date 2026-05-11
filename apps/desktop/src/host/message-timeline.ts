@@ -4,8 +4,10 @@ import type {
   ToolBlockSnapshot,
 } from '../types.js';
 import {
+  messageOrderDebugLevel,
   normalizeMessageAuxSnapshot,
   normalizeToolBlockSnapshot,
+  truncateOneLineForDebug,
 } from './message-ordering.js';
 
 export type DesktopTimelineRowKind =
@@ -81,6 +83,15 @@ const ROW_SECTION_ORDER: Record<DesktopTimelineRowSection, number> = {
   'after-tools': 2,
 };
 
+const ROW_KIND_ORDER: Record<DesktopTimelineRowKind, number> = {
+  user: 0,
+  'assistant-thinking': 1,
+  'assistant-compaction': 2,
+  'standalone-subagent-status': 3,
+  'assistant-text': 4,
+  tool: 5,
+};
+
 export class DesktopMessageTimeline {
   private turns: DesktopTimelineTurn[] = [];
   private nextTurnId = 1;
@@ -89,6 +100,8 @@ export class DesktopMessageTimeline {
   private nextCreatedOrder = 1;
   private activeTurnId: number | undefined;
   private activeSegmentId: number | undefined;
+  private lastSegmentRowsLogSignature: string | undefined;
+  private pendingSegmentRowsLogMsByKey = new Map<string, number>();
 
   constructor(private readonly options: DesktopMessageTimelineOptions) {}
 
@@ -100,6 +113,16 @@ export class DesktopMessageTimeline {
     for (const message of messages) {
       timeline.hydrateMessage(message);
     }
+    timeline.finalizeHydratedSegments();
+    return timeline;
+  }
+
+  static fromSnapshot(
+    snapshot: DesktopTimelineTurnSnapshot[],
+    options: DesktopMessageTimelineOptions,
+  ): DesktopMessageTimeline {
+    const timeline = new DesktopMessageTimeline(options);
+    timeline.hydrateSnapshot(snapshot);
     return timeline;
   }
 
@@ -165,21 +188,22 @@ export class DesktopMessageTimeline {
   }
 
   appendAssistantTextChunk(chunk: string): ConversationMessageSnapshot {
-    const row = this.ensureActiveAssistantTextRow();
+    const row = this.ensureActiveAssistantTextRow('text');
     row.content += chunk;
     row.pending = true;
     return rowToMessage(row);
   }
 
   replaceAssistantText(text: string): ConversationMessageSnapshot {
-    const row = this.ensureActiveAssistantTextRow();
+    const row = this.ensureActiveAssistantTextRow('text');
     row.content = text;
     row.pending = true;
     return rowToMessage(row);
   }
 
   updatePendingAssistantAux(kind: 'thinking' | 'compressing', text: string): ConversationMessageSnapshot {
-    const row = this.ensureActiveAssistantTextRow();
+    const segment = this.ensureActiveSegment();
+    const row = this.ensureActiveAssistantTextRow('aux');
     const normalized = text.trim();
     const aux = {
       ...(row.aux?.thinking ? { thinking: row.aux.thinking } : {}),
@@ -200,7 +224,22 @@ export class DesktopMessageTimeline {
     } else {
       delete row.aux;
     }
+    this.logSegmentRows(`update-pending-${kind}`, segment);
     return rowToMessage(row);
+  }
+
+  hasFinalizedAuxInActiveSegment(kind: 'thinking' | 'compressing', text: string): boolean {
+    const segment = this.activeSegment();
+    const normalized = text.trim();
+    if (!segment || !normalized) {
+      return false;
+    }
+    return segment.rows.some((row) => {
+      if (kind === 'thinking') {
+        return row.kind === 'assistant-thinking' && row.content.trim() === normalized;
+      }
+      return row.kind === 'assistant-compaction' && row.content.trim() === normalized;
+    });
   }
 
   finalizeThinkingSegment(text: string): ConversationMessageSnapshot | undefined {
@@ -208,7 +247,7 @@ export class DesktopMessageTimeline {
       return undefined;
     }
     const segment = this.ensureActiveSegment();
-    this.stripMatchingPendingAux(segment, 'thinking', text);
+    this.stripSegmentAuxKind(segment, 'thinking', text);
     const row = this.createRow({
       turnId: segment.turnId,
       segmentId: segment.segmentId,
@@ -219,6 +258,7 @@ export class DesktopMessageTimeline {
       aux: { thinking: text },
     });
     segment.rows.push(row);
+    this.logSegmentRows('finalize-thinking', segment);
     return rowToMessage(row);
   }
 
@@ -227,7 +267,7 @@ export class DesktopMessageTimeline {
       return undefined;
     }
     const segment = this.ensureActiveSegment();
-    this.stripMatchingPendingAux(segment, 'compaction', text);
+    this.stripSegmentAuxKind(segment, 'compaction', text);
     const row = this.createRow({
       turnId: segment.turnId,
       segmentId: segment.segmentId,
@@ -248,6 +288,12 @@ export class DesktopMessageTimeline {
       existing.tool = normalizedTool;
       existing.content = '';
       existing.pending = false;
+      const segment = existing.segmentId !== undefined
+        ? this.activeTurn()?.segments.find((candidate) => candidate.segmentId === existing.segmentId)
+        : undefined;
+      if (segment) {
+        this.logSegmentRows(`upsert-tool-${normalizedTool.phase}`, segment);
+      }
       return rowToMessage(existing);
     }
 
@@ -267,6 +313,7 @@ export class DesktopMessageTimeline {
       tool: normalizedTool,
     });
     segment.rows.push(row);
+    this.logSegmentRows(`upsert-tool-${normalizedTool.phase}`, segment);
     return rowToMessage(row);
   }
 
@@ -327,6 +374,9 @@ export class DesktopMessageTimeline {
     const segment = this.ensureActiveSegment();
     let row = this.activeAssistantTextRow(segment);
     const normalizedContent = content.trim();
+    if (!row) {
+      row = this.findReusableCompletedAssistantTextRow(segment, normalizedContent);
+    }
     if (
       row &&
       row.content.trim() &&
@@ -337,6 +387,7 @@ export class DesktopMessageTimeline {
       row.pending = false;
       row = undefined;
     }
+    const reused = row !== undefined;
     if (!row) {
       row = this.createAssistantTextRow(
         segment,
@@ -355,6 +406,8 @@ export class DesktopMessageTimeline {
     }
     segment.status = 'completed';
     segment.activeAssistantTextRowId = undefined;
+    this.logCompletedAssistantMaterialization(segment, row, reused, content);
+    this.logSegmentRows('complete-text', segment);
     return rowToMessage(row);
   }
 
@@ -467,30 +520,36 @@ export class DesktopMessageTimeline {
       return;
     }
 
-    const segment = this.activeSegment() ?? this.createSegment(this.ensureActiveTurn(), 'hydrated');
     const aux = normalizeMessageAuxSnapshot(message.aux);
-    if (message.tool) {
+    let segment = this.activeSegment() ?? this.createSegment(this.ensureActiveTurn(), 'hydrated');
+    let target = this.resolveHydratedMessageTarget(message, aux, segment);
+    if (this.shouldStartNewHydratedSegment(segment, target.section, target.kind)) {
+      segment = this.createSegment(this.ensureActiveTurn(), 'hydrated');
+      target = this.resolveHydratedMessageTarget(message, aux, segment);
+    }
+
+    if (target.kind === 'tool' && target.tool) {
       segment.rows.push(this.createRow({
         messageId: message.id,
         turnId: segment.turnId,
         segmentId: segment.segmentId,
-        kind: 'tool',
-        section: 'tools',
+        kind: target.kind,
+        section: target.section,
         content: '',
         pending: message.pending,
         canContinue: message.canContinue,
-        tool: cloneTool(message.tool),
+        tool: target.tool,
       }));
       return;
     }
 
-    if (!message.content.trim() && aux?.thinking) {
+    if (target.kind === 'assistant-thinking' && aux?.thinking) {
       segment.rows.push(this.createRow({
         messageId: message.id,
         turnId: segment.turnId,
         segmentId: segment.segmentId,
-        kind: 'assistant-thinking',
-        section: 'before-tools',
+        kind: target.kind,
+        section: target.section,
         content: aux.thinking,
         pending: false,
         canContinue: message.canContinue,
@@ -499,13 +558,13 @@ export class DesktopMessageTimeline {
       return;
     }
 
-    if (!message.content.trim() && aux?.compaction) {
+    if (target.kind === 'assistant-compaction' && aux?.compaction) {
       segment.rows.push(this.createRow({
         messageId: message.id,
         turnId: segment.turnId,
         segmentId: segment.segmentId,
-        kind: 'assistant-compaction',
-        section: 'before-tools',
+        kind: target.kind,
+        section: target.section,
         content: aux.compaction,
         pending: false,
         canContinue: message.canContinue,
@@ -518,8 +577,8 @@ export class DesktopMessageTimeline {
       messageId: message.id,
       turnId: segment.turnId,
       segmentId: segment.segmentId,
-      kind: 'assistant-text',
-      section: segmentHasToolRows(segment) ? 'after-tools' : 'before-tools',
+      kind: target.kind,
+      section: target.section,
       content: message.content,
       pending: message.pending,
       canContinue: message.canContinue,
@@ -528,6 +587,168 @@ export class DesktopMessageTimeline {
     segment.rows.push(row);
     if (message.pending) {
       segment.activeAssistantTextRowId = row.rowId;
+    }
+  }
+
+  private hydrateSnapshot(snapshot: DesktopTimelineTurnSnapshot[]): void {
+    let maxTurnId = 0;
+    let maxSegmentId = 0;
+    let maxCreatedOrder = 0;
+    let maxRowCounter = 0;
+
+    for (const turnSnapshot of snapshot) {
+      const turn: DesktopTimelineTurn = {
+        turnId: turnSnapshot.turnId,
+        createdOrder: turnSnapshot.createdOrder,
+        segments: [],
+      };
+      maxTurnId = Math.max(maxTurnId, turn.turnId);
+      maxCreatedOrder = Math.max(maxCreatedOrder, turn.createdOrder);
+
+      if (turnSnapshot.userRow) {
+        const userRow = this.restoreRowSnapshot(turnSnapshot.userRow);
+        turn.userRow = userRow;
+        maxCreatedOrder = Math.max(maxCreatedOrder, userRow.createdOrder);
+        maxRowCounter = Math.max(maxRowCounter, rowCounterFromRowId(userRow.rowId));
+      }
+
+      for (const segmentSnapshot of turnSnapshot.segments) {
+        const segment: DesktopTimelineSegment = {
+          segmentId: segmentSnapshot.segmentId,
+          turnId: turn.turnId,
+          kind: segmentSnapshot.kind,
+          status: segmentSnapshot.status,
+          createdOrder: segmentSnapshot.createdOrder,
+          rows: [],
+        };
+        maxSegmentId = Math.max(maxSegmentId, segment.segmentId);
+        maxCreatedOrder = Math.max(maxCreatedOrder, segment.createdOrder);
+
+        for (const rowSnapshot of segmentSnapshot.rows) {
+          const row = this.restoreRowSnapshot(rowSnapshot);
+          segment.rows.push(row);
+          if (row.kind === 'assistant-text' && row.pending) {
+            segment.activeAssistantTextRowId = row.rowId;
+          }
+          maxCreatedOrder = Math.max(maxCreatedOrder, row.createdOrder);
+          maxRowCounter = Math.max(maxRowCounter, rowCounterFromRowId(row.rowId));
+        }
+
+        turn.segments.push(segment);
+      }
+
+      this.turns.push(turn);
+    }
+
+    this.nextTurnId = maxTurnId + 1;
+    this.nextSegmentId = maxSegmentId + 1;
+    this.nextCreatedOrder = maxCreatedOrder + 1;
+    this.nextRowId = maxRowCounter + 1;
+
+    const lastTurn = this.turns[this.turns.length - 1];
+    this.activeTurnId = lastTurn?.turnId;
+    this.activeSegmentId = this.lastRestorableActiveSegmentId(lastTurn);
+  }
+
+  private restoreRowSnapshot(snapshot: DesktopTimelineRowSnapshot): DesktopTimelineRow {
+    this.options.reserveMessageId?.(snapshot.messageId);
+    return {
+      rowId: snapshot.rowId,
+      messageId: snapshot.messageId,
+      turnId: snapshot.turnId,
+      ...(snapshot.segmentId !== undefined ? { segmentId: snapshot.segmentId } : {}),
+      kind: snapshot.kind,
+      ...(snapshot.section ? { section: snapshot.section } : {}),
+      createdOrder: snapshot.createdOrder,
+      content: snapshot.content,
+      pending: snapshot.pending,
+      ...(snapshot.canContinue ? { canContinue: true } : {}),
+      ...(snapshot.tool ? { tool: cloneTool(snapshot.tool) } : {}),
+      ...(snapshot.aux ? { aux: cloneAux(snapshot.aux) } : {}),
+    };
+  }
+
+  private lastRestorableActiveSegmentId(turn: DesktopTimelineTurn | undefined): number | undefined {
+    if (!turn) {
+      return undefined;
+    }
+    for (let index = turn.segments.length - 1; index >= 0; index -= 1) {
+      const segment = turn.segments[index];
+      if (segment.activeAssistantTextRowId || segment.status === 'streaming') {
+        return segment.segmentId;
+      }
+    }
+    return turn.segments[turn.segments.length - 1]?.segmentId;
+  }
+
+  private resolveHydratedMessageTarget(
+    message: ConversationMessageSnapshot,
+    aux: MessageAuxSnapshot | undefined,
+    segment: DesktopTimelineSegment,
+  ): {
+    kind: DesktopTimelineRowKind;
+    section: DesktopTimelineRowSection;
+    tool?: ToolBlockSnapshot;
+  } {
+    if (message.tool) {
+      return {
+        kind: 'tool',
+        section: 'tools',
+        tool: cloneTool(message.tool),
+      };
+    }
+    if (!message.content.trim() && aux?.thinking) {
+      return {
+        kind: 'assistant-thinking',
+        section: 'before-tools',
+      };
+    }
+    if (!message.content.trim() && aux?.compaction) {
+      return {
+        kind: 'assistant-compaction',
+        section: 'before-tools',
+      };
+    }
+    return {
+      kind: 'assistant-text',
+      section: segmentHasToolRows(segment) ? 'after-tools' : 'before-tools',
+    };
+  }
+
+  private shouldStartNewHydratedSegment(
+    segment: DesktopTimelineSegment,
+    section: DesktopTimelineRowSection,
+    kind: DesktopTimelineRowKind,
+  ): boolean {
+    const lastRow = segment.rows[segment.rows.length - 1];
+    if (!lastRow) {
+      return false;
+    }
+    const lastSectionOrder = lastRow.section ? ROW_SECTION_ORDER[lastRow.section] : 0;
+    const nextSectionOrder = ROW_SECTION_ORDER[section];
+    if (nextSectionOrder < lastSectionOrder) {
+      return true;
+    }
+    if (nextSectionOrder > lastSectionOrder) {
+      return false;
+    }
+    const lastKindOrder = ROW_KIND_ORDER[lastRow.kind] ?? 99;
+    const nextKindOrder = ROW_KIND_ORDER[kind] ?? 99;
+    return nextKindOrder < lastKindOrder;
+  }
+
+  private finalizeHydratedSegments(): void {
+    for (const turn of this.turns) {
+      for (const segment of turn.segments) {
+        if (segment.kind !== 'hydrated') {
+          continue;
+        }
+        const hasPendingRow = segment.rows.some((row) => row.pending);
+        segment.status = hasPendingRow ? 'streaming' : 'completed';
+        if (!hasPendingRow) {
+          segment.activeAssistantTextRowId = undefined;
+        }
+      }
     }
   }
 
@@ -581,23 +802,30 @@ export class DesktopMessageTimeline {
     return segment;
   }
 
-  private ensureActiveAssistantTextRow(): DesktopTimelineRow {
+  private ensureActiveAssistantTextRow(mode: 'text' | 'aux'): DesktopTimelineRow {
     const segment = this.ensureActiveSegment();
     const existing = this.activeAssistantTextRow(segment);
     if (existing) {
-      if (segmentHasToolRows(segment) && existing.section === 'before-tools' && !existing.content.trim()) {
-        existing.section = 'after-tools';
-      }
-      if (segmentHasToolRows(segment) && existing.section === 'before-tools' && existing.content.trim()) {
-        const row = this.createAssistantTextRow(segment, 'after-tools', true);
-        segment.activeAssistantTextRowId = row.rowId;
-        return row;
+      if (segmentHasToolRows(segment) && existing.section === 'before-tools') {
+        if (mode === 'text') {
+          if (existing.content.trim() || hasRowAux(existing)) {
+            const row = this.createAssistantTextRow(segment, 'after-tools', true);
+            segment.activeAssistantTextRowId = row.rowId;
+            return row;
+          }
+          existing.section = 'after-tools';
+        }
+        return existing;
       }
       return existing;
     }
     const row = this.createAssistantTextRow(
       segment,
-      segmentHasToolRows(segment) ? 'after-tools' : 'before-tools',
+      mode === 'aux'
+        ? 'before-tools'
+        : segmentHasToolRows(segment)
+          ? 'after-tools'
+          : 'before-tools',
       true,
     );
     segment.activeAssistantTextRowId = row.rowId;
@@ -611,6 +839,26 @@ export class DesktopMessageTimeline {
     return segment.rows.find(
       (row) => row.rowId === segment.activeAssistantTextRowId && row.kind === 'assistant-text',
     );
+  }
+
+  private findReusableCompletedAssistantTextRow(
+    segment: DesktopTimelineSegment,
+    normalizedContent: string,
+  ): DesktopTimelineRow | undefined {
+    let emptyRow: DesktopTimelineRow | undefined;
+    for (let index = segment.rows.length - 1; index >= 0; index -= 1) {
+      const row = segment.rows[index];
+      if (row?.kind !== 'assistant-text') {
+        continue;
+      }
+      if (normalizedContent && row.content.trim() === normalizedContent) {
+        return row;
+      }
+      if (!row.content.trim() && !emptyRow) {
+        emptyRow = row;
+      }
+    }
+    return emptyRow;
   }
 
   private createAssistantTextRow(
@@ -676,30 +924,34 @@ export class DesktopMessageTimeline {
     return undefined;
   }
 
-  private stripMatchingPendingAux(
+  private stripSegmentAuxKind(
     segment: DesktopTimelineSegment,
     kind: 'thinking' | 'compaction',
     text: string,
   ): void {
-    const row = this.activeAssistantTextRow(segment);
-    if (!row?.aux) {
-      return;
+    const cleared: number[] = [];
+    for (const row of segment.rows) {
+      if (row.kind !== 'assistant-text' || !row.aux) {
+        continue;
+      }
+      const current = kind === 'thinking' ? row.aux.thinking : row.aux.compaction;
+      if (!current?.trim()) {
+        continue;
+      }
+      if (kind === 'thinking') {
+        delete row.aux.thinking;
+      } else {
+        delete row.aux.compaction;
+      }
+      const normalized = normalizeMessageAuxSnapshot(row.aux);
+      if (normalized) {
+        row.aux = normalized;
+      } else {
+        delete row.aux;
+      }
+      cleared.push(row.messageId);
     }
-    const current = kind === 'thinking' ? row.aux.thinking : row.aux.compaction;
-    if (current?.trim() !== text.trim()) {
-      return;
-    }
-    if (kind === 'thinking') {
-      delete row.aux.thinking;
-    } else {
-      delete row.aux.compaction;
-    }
-    const normalized = normalizeMessageAuxSnapshot(row.aux);
-    if (normalized) {
-      row.aux = normalized;
-    } else {
-      delete row.aux;
-    }
+    this.logStripSegmentAux(kind, segment, text, cleared);
   }
 
   private orderedTurns(): DesktopTimelineTurn[] {
@@ -714,7 +966,13 @@ export class DesktopMessageTimeline {
     return [...segment.rows].sort((left, right) => {
       const leftSection = left.section ? ROW_SECTION_ORDER[left.section] : 0;
       const rightSection = right.section ? ROW_SECTION_ORDER[right.section] : 0;
-      return leftSection - rightSection || left.createdOrder - right.createdOrder;
+      const leftKind = ROW_KIND_ORDER[left.kind] ?? 99;
+      const rightKind = ROW_KIND_ORDER[right.kind] ?? 99;
+      return (
+        leftSection - rightSection ||
+        leftKind - rightKind ||
+        left.createdOrder - right.createdOrder
+      );
     });
   }
 
@@ -732,6 +990,74 @@ export class DesktopMessageTimeline {
   private allRows(): DesktopTimelineRow[] {
     return this.orderedTurns().flatMap((turn) => this.rowsForTurn(turn));
   }
+
+  private logCompletedAssistantMaterialization(
+    segment: DesktopTimelineSegment,
+    row: DesktopTimelineRow,
+    reused: boolean,
+    content: string,
+  ): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    console.log(
+      `[desktop-host][timeline] complete-text ${reused ? 'reuse' : 'create'} turn=${segment.turnId} segment=${segment.segmentId} msg=${row.messageId} text≈${truncateOneLineForDebug(content, 48)}`,
+    );
+  }
+
+  private logStripSegmentAux(
+    kind: 'thinking' | 'compaction',
+    segment: DesktopTimelineSegment,
+    text: string,
+    cleared: number[],
+  ): void {
+    if (messageOrderDebugLevel() === 'off') {
+      return;
+    }
+    console.log(
+      `[desktop-host][timeline] strip-segment-aux kind=${kind} turn=${segment.turnId} segment=${segment.segmentId} cleared=${cleared.join(',') || '∅'} final≈${truncateOneLineForDebug(text, 48)}`,
+    );
+  }
+
+  private logSegmentRows(stage: string, segment: DesktopTimelineSegment): void {
+    if (messageOrderDebugLevel() !== 'verbose') {
+      return;
+    }
+    const rows = this.orderedSegmentRows(segment)
+      .map((row) => {
+        const section = row.section ?? 'none';
+        const text = row.tool
+          ? row.tool.headline
+          : row.aux?.thinking ?? row.aux?.compaction ?? row.content;
+        const clipped = text.trim() ? truncateOneLineForDebug(text, 42) : '∅';
+        return `${section}:${row.kind}#${row.messageId}≈${clipped}`;
+      })
+      .join('«');
+    const signature = `${stage}|${segment.turnId}|${segment.segmentId}|${rows || '∅'}`;
+    if (signature === this.lastSegmentRowsLogSignature) {
+      return;
+    }
+
+    const pendingStageKey = isPendingSegmentRowsLogStage(stage)
+      ? `${stage}:${segment.turnId}:${segment.segmentId}`
+      : undefined;
+    const now = Date.now();
+    if (pendingStageKey) {
+      const lastLoggedAt = this.pendingSegmentRowsLogMsByKey.get(pendingStageKey) ?? 0;
+      if (now - lastLoggedAt < 1200) {
+        return;
+      }
+    }
+
+    console.log(
+      `[desktop-host][timeline] segment-rows stage=${stage} turn=${segment.turnId} segment=${segment.segmentId} rows=${rows || '∅'}`,
+    );
+    this.lastSegmentRowsLogSignature = signature;
+    if (pendingStageKey) {
+      this.pendingSegmentRowsLogMsByKey.set(pendingStageKey, now);
+      trimPendingSegmentRowsLogMsByKey(this.pendingSegmentRowsLogMsByKey, 32);
+    }
+  }
 }
 
 export function isStableTimelineToolCallId(toolCallId: string): boolean {
@@ -740,6 +1066,24 @@ export function isStableTimelineToolCallId(toolCallId: string): boolean {
 
 function segmentHasToolRows(segment: DesktopTimelineSegment): boolean {
   return segment.rows.some((row) => row.kind === 'tool');
+}
+
+function hasRowAux(row: DesktopTimelineRow): boolean {
+  return Boolean(normalizeMessageAuxSnapshot(row.aux));
+}
+
+function isPendingSegmentRowsLogStage(stage: string): boolean {
+  return stage === 'update-pending-thinking' || stage === 'update-pending-compressing';
+}
+
+function trimPendingSegmentRowsLogMsByKey(map: Map<string, number>, maxEntries: number): void {
+  while (map.size > maxEntries) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    map.delete(oldestKey);
+  }
 }
 
 function isRenderableAssistantRow(row: DesktopTimelineRow): boolean {
@@ -800,4 +1144,9 @@ function cloneAux(aux: MessageAuxSnapshot): MessageAuxSnapshot {
     ...(aux.thinking ? { thinking: aux.thinking } : {}),
     ...(aux.compaction ? { compaction: aux.compaction } : {}),
   };
+}
+
+function rowCounterFromRowId(rowId: string): number {
+  const match = /^row-(\d+)$/.exec(rowId);
+  return match ? Number.parseInt(match[1], 10) : 0;
 }
