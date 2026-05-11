@@ -1104,6 +1104,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const managedRoot = path.join(this.spiritDataDir, GENERATED_IMAGES_DIR);
     const candidatePath = path.join(managedRoot, basename);
     try {
+      const managedRootStats = await lstat(managedRoot);
+      if (!managedRootStats.isDirectory() || managedRootStats.isSymbolicLink()) {
+        throw new Error(`Spirit 托管图片目录无效: ${trimmed}`);
+      }
+
       const candidate = await lstat(candidatePath);
       if (candidate.isSymbolicLink()) {
         throw new Error(`Spirit 托管图片引用不能指向符号链接: ${trimmed}`);
@@ -1112,10 +1117,14 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         throw new Error(`Spirit 托管图片不存在: ${trimmed}`);
       }
 
-      const [canonicalRoot, canonical] = await Promise.all([
+      const [canonicalSpiritRoot, canonicalRoot, canonical] = await Promise.all([
+        realpath(this.spiritDataDir),
         realpath(managedRoot),
         realpath(candidatePath),
       ]);
+      if (!pathHasPrefix(canonicalRoot, canonicalSpiritRoot)) {
+        throw new Error(`Spirit 托管图片目录越界: ${trimmed}`);
+      }
       if (!pathHasPrefix(canonical, canonicalRoot)) {
         throw new Error(`Spirit 托管图片引用越界: ${trimmed}`);
       }
