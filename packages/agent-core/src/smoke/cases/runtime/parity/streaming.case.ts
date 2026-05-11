@@ -22,17 +22,27 @@ import {
   createScriptedState,
   extractScriptedAssistantText,
   flushMicrotasks,
+  historyAsPlainApiMessages,
   isJsonObject,
   llmMessageImagePaths,
   llmMessageTextContent,
   rebuildScriptedStateAfterCompaction,
+  streamFromEvents,
   truncateScriptedHistoryForCompaction,
   truncateScriptedStateForContextRetry,
   type LlmMessage,
   type RuntimeEvent,
   type RuntimeParityCaseResult,
+  type ScriptedState,
   type ScriptedToolRequest,
 } from './harness.js';
+import type {
+  JsonValue,
+  LlmTransport,
+  StartedToolAgentRound,
+  ToolAgentRoundCompletion,
+  ToolExecutionOutput,
+} from '../../../../ports.js';
 
 export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   const streamingEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
@@ -43,6 +53,7 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   const streamingGuidanceEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const timeoutEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const streamingFailureEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const previewEarlyExecutionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
   const streamingRuntime = new AgentRuntime({
     config: undefined,
@@ -83,6 +94,64 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   }
   if (!drainedStreamingEvents.some((event) => event.kind === 'assistant-response-completed')) {
     throw new Error('streaming final smoke 缺少 completed event。');
+  }
+
+  const previewEarlyExecutionTransport = new PreviewEarlyExecutionTransport();
+  const previewEarlyExecutionExecutor = new CountingReadFileExecutor();
+  const previewEarlyExecutionRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: previewEarlyExecutionTransport,
+    toolExecutor: previewEarlyExecutionExecutor,
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => previewEarlyExecutionEvents.push(event),
+  });
+
+  await previewEarlyExecutionRuntime.startUserTurnStreaming('请预览后读取文件');
+  for (let index = 0; index < 8 && previewEarlyExecutionExecutor.executedCalls === 0; index += 1) {
+    await flushMicrotasks(4);
+    await previewEarlyExecutionRuntime.poll();
+  }
+  if (previewEarlyExecutionExecutor.executedCalls !== 1) {
+    throw new Error('preview early execution smoke 未在正式 tool-calls completion 前执行工具。');
+  }
+  if (previewEarlyExecutionTransport.toolCallRoundResolved) {
+    throw new Error('preview early execution smoke 在正式 tool-calls completion 前不应已 resolve。');
+  }
+  if (
+    !previewEarlyExecutionEvents.some(
+      (event) => event.kind === 'tool-execution-finished' && event.execution.toolCallId === 'call-preview-read',
+    )
+  ) {
+    throw new Error('preview early execution smoke 未在 preview 后发出工具完成事件。');
+  }
+
+  previewEarlyExecutionTransport.resolveToolCallRound();
+  for (let index = 0; index < 16 && previewEarlyExecutionRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await previewEarlyExecutionRuntime.poll();
+  }
+  if (previewEarlyExecutionRuntime.isBusy()) {
+    throw new Error('preview early execution smoke 未在预期轮次内完成。');
+  }
+  const previewEarlyExecutionResult = previewEarlyExecutionRuntime.takeCompletedTurnResult();
+  if (
+    !previewEarlyExecutionResult ||
+    previewEarlyExecutionResult.kind !== 'completed' ||
+    previewEarlyExecutionResult.assistantText !== 'PREVIEW_EARLY_OK'
+  ) {
+    throw new Error('preview early execution smoke 未完成最终 assistant 轮次。');
+  }
+  if (previewEarlyExecutionExecutor.executedCalls !== 1) {
+    throw new Error('preview early execution smoke 重复执行了工具。');
+  }
+  const previewToolExecutions = previewEarlyExecutionResult.toolExecutions.filter(
+    (execution) => execution.toolCallId === 'call-preview-read',
+  );
+  if (previewToolExecutions.length !== 1) {
+    throw new Error('preview early execution smoke 未复用预览阶段工具结果。');
   }
 
   const timeoutRuntime = new AgentRuntime({
@@ -510,5 +579,163 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   await flushMicrotasks();
   await noTimeoutRuntime.poll();
 
-  return { drainedStreamingEvents, drainedTimeoutEvents, drainedStreamingFailureEvents, drainedStreamingApprovalEvents, drainedStreamingApprovalImageEvents, drainedStreamingGuidanceEvents, drainedStreamingBackgroundEvents, drainedStreamingCompactionEvents };
+  return { drainedStreamingEvents, previewEarlyExecutionEvents, drainedTimeoutEvents, drainedStreamingFailureEvents, drainedStreamingApprovalEvents, drainedStreamingApprovalImageEvents, drainedStreamingGuidanceEvents, drainedStreamingBackgroundEvents, drainedStreamingCompactionEvents };
+}
+
+class PreviewEarlyExecutionTransport implements LlmTransport<undefined, ScriptedState> {
+  private rounds = 0;
+  private firstRoundState: ScriptedState | undefined;
+  private resolveFirstRound: ((completion: ToolAgentRoundCompletion<ScriptedState>) => void) | undefined;
+  toolCallRoundResolved = false;
+
+  async startToolAgentRound(
+    _config: undefined,
+    _state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    throw new Error('preview early execution smoke 应走 streaming transport。');
+  }
+
+  async startToolAgentRoundStreaming(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<StartedToolAgentRound<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      this.firstRoundState = state;
+      return {
+        eventStream: streamFromEvents([
+          {
+            kind: 'streaming-tool-preview',
+            toolCallId: 'call-preview-read',
+            toolName: 'read_file',
+            argumentsJson: '{"path":"preview.txt"}',
+            previewLine: '准备调用工具: read_file',
+          },
+        ]),
+        completion: new Promise((resolve) => {
+          this.resolveFirstRound = resolve;
+        }),
+      };
+    }
+
+    if (this.rounds === 2) {
+      return {
+        eventStream: streamFromEvents([
+          { kind: 'assistant-chunk', text: 'PREVIEW_EARLY_' },
+          { kind: 'assistant-chunk', text: 'OK' },
+          { kind: 'done' },
+        ]),
+        completion: Promise.resolve(this.buildFinalRound(state)),
+      };
+    }
+
+    return {
+      eventStream: streamFromEvents([]),
+      completion: Promise.resolve({
+        kind: 'failure',
+        error: 'preview early execution smoke 不应进入额外轮次。',
+        requestTrace: [{ mode: 'preview-early-extra-round' }],
+      }),
+    };
+  }
+
+  resolveToolCallRound(): void {
+    if (!this.firstRoundState || !this.resolveFirstRound) {
+      throw new Error('preview early execution smoke 未准备好正式 tool-calls completion。');
+    }
+    this.toolCallRoundResolved = true;
+    this.resolveFirstRound(this.buildToolCallRound(this.firstRoundState));
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return historyAsPlainApiMessages(history);
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+
+  private buildToolCallRound(state: ScriptedState): ToolAgentRoundCompletion<ScriptedState> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [
+            ...state.messages,
+            {
+              role: 'assistant',
+              content: '准备读取文件。',
+              tool_calls: [
+                {
+                  id: 'call-preview-read',
+                  type: 'function',
+                  function: {
+                    name: 'read_file',
+                    arguments: '{"path":"preview.txt"}',
+                  },
+                },
+              ],
+            },
+          ],
+          steps: state.steps + 1,
+        },
+        step: {
+          kind: 'tool-calls',
+          calls: [
+            {
+              id: 'call-preview-read',
+              name: 'read_file',
+              argumentsJson: '{"path":"preview.txt"}',
+            },
+          ],
+        },
+        requestTrace: [{ mode: 'preview-early-tool-round' }],
+      },
+    };
+  }
+
+  private buildFinalRound(state: ScriptedState): ToolAgentRoundCompletion<ScriptedState> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'PREVIEW_EARLY_OK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'preview-early-final-round' }],
+      },
+    };
+  }
+}
+
+class CountingReadFileExecutor extends HostExecutor {
+  executedCalls = 0;
+
+  override async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
+    this.executedCalls += 1;
+    return super.execute(request);
+  }
 }
