@@ -10,6 +10,10 @@ import type { DesktopToolRequest } from './contracts.js';
 import type { DesktopRuntime } from './runtime.js';
 import type { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
 import type { DesktopConversationSnapshotView } from './conversation-snapshot.js';
+import type {
+  DesktopMessageTimeline,
+  DesktopTimelineSegmentKind,
+} from './message-timeline.js';
 import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
   headlineForToolPhase,
@@ -28,6 +32,8 @@ export interface DesktopRuntimeEventOrchestratorOptions {
   messages: () => ConversationMessageSnapshot[];
   allocateMessageId: () => number;
   assistantMessages: DesktopAssistantMessageStateMachine;
+  messageTimeline?: () => DesktopMessageTimeline | undefined;
+  takeNextAssistantSegmentKind?: () => DesktopTimelineSegmentKind;
   conversationSnapshotView: DesktopConversationSnapshotView;
   clearCurrentTurnSkills: () => void;
   setLastRuntimeError: (error: string) => void;
@@ -72,6 +78,9 @@ export class DesktopRuntimeEventOrchestrator {
           if (!this.options.assistantMessages.materializeExistingCompletedAssistantMessage(result.assistantText, aux)) {
             this.options.assistantMessages.appendAssistantMessage(result.assistantText, aux);
           }
+          this.options.messageTimeline?.()?.materializeCompletedAssistantText(result.assistantText, aux);
+        } else {
+          this.options.messageTimeline?.()?.completeActiveAssistantSegment();
         }
         this.options.setLastRuntimeError('');
         break;
@@ -82,6 +91,7 @@ export class DesktopRuntimeEventOrchestrator {
           if (!this.options.assistantMessages.materializeExistingCompletedAssistantMessage(result.error, aux)) {
             this.options.assistantMessages.appendAssistantMessage(result.error, aux);
           }
+          this.options.messageTimeline?.()?.materializeCompletedAssistantText(result.error, aux);
         }
         this.options.setLastRuntimeError(result.error);
         break;
@@ -110,6 +120,10 @@ export class DesktopRuntimeEventOrchestrator {
             messages[messages.length - 1],
           );
         const pendingAssistant = this.options.assistantMessages.beginAssistantResponse(insertAt, batchId);
+        const timeline = this.options.messageTimeline?.();
+        if (timeline) {
+          timeline.beginAssistantSegment(this.options.takeNextAssistantSegmentKind?.() ?? 'initial');
+        }
         if (shouldReanchorStandalonePendingAux) {
           this.options.conversationSnapshotView.reanchorPersistedStandalonePendingAux(pendingAssistant.id);
         }
@@ -117,31 +131,38 @@ export class DesktopRuntimeEventOrchestrator {
       }
       if (event.kind === 'update-pending-assistant-thinking') {
         this.options.assistantMessages.updatePendingAssistantAux('thinking', event.text);
+        this.options.messageTimeline?.()?.updatePendingAssistantAux('thinking', event.text);
         continue;
       }
       if (event.kind === 'update-pending-assistant-compaction') {
         this.options.assistantMessages.updatePendingAssistantAux('compressing', event.text);
+        this.options.messageTimeline?.()?.updatePendingAssistantAux('compressing', event.text);
         continue;
       }
       if (event.kind === 'assistant-chunk') {
         this.options.assistantMessages.appendPendingAssistantChunk(event.text);
+        this.options.messageTimeline?.()?.appendAssistantTextChunk(event.text);
         continue;
       }
       if (event.kind === 'replace-pending-assistant') {
         this.options.assistantMessages.replacePendingAssistantText(event.text);
+        this.options.messageTimeline?.()?.replaceAssistantText(event.text);
         continue;
       }
       if (event.kind === 'assistant-response-completed') {
         this.options.assistantMessages.completePendingAssistantMessage();
+        this.options.messageTimeline?.()?.completeActiveAssistantSegment();
         continue;
       }
       if (event.kind === 'remove-pending-assistant') {
         this.options.assistantMessages.removePendingAssistantMessage();
+        this.options.messageTimeline?.()?.removePendingAssistantText();
         continue;
       }
       if (event.kind === 'assistant-thinking-segment-finalized') {
         if (event.text.trim()) {
           this.options.assistantMessages.appendAssistantThinkingSegment(event.text);
+          this.options.messageTimeline?.()?.finalizeThinkingSegment(event.text);
         }
         continue;
       }
@@ -157,6 +178,7 @@ export class DesktopRuntimeEventOrchestrator {
           };
           this.activeGenerateImageTools.set(event.toolCallId, runningTool);
           this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
+          this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
         }
         this.options.dispatchExtensionEvent({
           type: 'onToolCall',
@@ -209,7 +231,7 @@ export class DesktopRuntimeEventOrchestrator {
       } catch {
         argsExcerpt = truncateText(event.argumentsJson, 4_000);
       }
-      this.options.assistantMessages.upsertToolMessage(event.toolCallId, {
+      const runningTool: ToolBlockSnapshot = {
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         phase: 'running',
@@ -221,7 +243,9 @@ export class DesktopRuntimeEventOrchestrator {
         ),
         detailLines: [],
         argsExcerpt,
-      }, batchId);
+      };
+      this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
+      this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
     }
     const placement = this.options.assistantMessages.placementState();
     this.logMessageOrderApplyBatch(
@@ -332,6 +356,7 @@ export class DesktopRuntimeEventOrchestrator {
         content: prefix,
         pending: false,
       });
+      this.options.messageTimeline?.()?.insertAssistantPrefix(prefix);
       this.logMessageOrderPrefixSync('push-after-user', messages);
       return;
     }
@@ -386,37 +411,43 @@ export class DesktopRuntimeEventOrchestrator {
     const runtime = this.options.runtime();
     const approval = runtime?.currentPendingApproval();
     if (approval) {
-      this.options.assistantMessages.upsertToolMessage(toolMessageKey(approval), {
+      const pendingTool: ToolBlockSnapshot = {
         toolCallId: toolMessageKey(approval),
         toolName: approval.toolName,
         phase: 'pending-approval',
         headline: headlineForToolPhase('pending-approval', approval.toolName, approval.request),
         detailLines: [stripReasonLineFromShellPrompt(approval.toolName, approval.prompt)],
         argsExcerpt: truncateJson(approval.request),
-      }, this.lastApplyEventBatchId);
+      };
+      this.options.assistantMessages.upsertToolMessage(toolMessageKey(approval), pendingTool, this.lastApplyEventBatchId);
+      this.options.messageTimeline?.()?.upsertToolMessage(toolMessageKey(approval), pendingTool);
     }
 
     const questions = runtime?.currentPendingQuestions();
     if (questions) {
-      this.options.assistantMessages.upsertToolMessage(toolMessageKey(questions), {
+      const pendingTool: ToolBlockSnapshot = {
         toolCallId: toolMessageKey(questions),
         toolName: questions.toolName,
         phase: 'pending-approval',
         headline: `等待补充信息: ${questions.toolName}`,
         detailLines: [questions.questions.title ?? '请回答表单问题'],
         argsExcerpt: truncateJson(questions.questions),
-      }, this.lastApplyEventBatchId);
+      };
+      this.options.assistantMessages.upsertToolMessage(toolMessageKey(questions), pendingTool, this.lastApplyEventBatchId);
+      this.options.messageTimeline?.()?.upsertToolMessage(toolMessageKey(questions), pendingTool);
     }
 
     for (const [toolCallId, tool] of this.activeGenerateImageTools) {
+      const runningTool: ToolBlockSnapshot = {
+        ...tool,
+        phase: 'running',
+      };
       this.options.assistantMessages.upsertToolMessage(
         toolCallId,
-        {
-          ...tool,
-          phase: 'running',
-        },
+        runningTool,
         this.lastApplyEventBatchId,
       );
+      this.options.messageTimeline?.()?.upsertToolMessage(toolCallId, runningTool);
     }
   }
 
@@ -426,7 +457,7 @@ export class DesktopRuntimeEventOrchestrator {
         this.activeGenerateImageTools.delete(execution.toolCallId);
       }
       const imagePaths = imagePathsFromExecution(execution);
-      const message = this.options.assistantMessages.upsertToolMessage(execution.toolCallId || `tool:${execution.toolName}`, {
+      const toolBlock: ToolBlockSnapshot = {
         toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
         toolName: execution.toolName,
         phase: execution.failed ? 'failed' : 'succeeded',
@@ -443,7 +474,16 @@ export class DesktopRuntimeEventOrchestrator {
         ...(imagePaths.length > 0
           ? { imagePaths }
           : {}),
-      }, this.lastApplyEventBatchId);
+      };
+      const message = this.options.assistantMessages.upsertToolMessage(
+        execution.toolCallId || `tool:${execution.toolName}`,
+        toolBlock,
+        this.lastApplyEventBatchId,
+      );
+      this.options.messageTimeline?.()?.upsertToolMessage(
+        execution.toolCallId || `tool:${execution.toolName}`,
+        toolBlock,
+      );
       this.options.bindFileChangesToToolMessage(execution, message.id);
     }
   }
@@ -456,17 +496,20 @@ export class DesktopRuntimeEventOrchestrator {
     if (denied) {
       this.activeGenerateImageTools.delete(event.toolCallId);
       this.options.assistantMessages.removeToolMessage(event.toolCallId);
+      this.options.messageTimeline?.()?.removeToolMessage(event.toolCallId);
       return;
     }
 
-    this.options.assistantMessages.upsertToolMessage(event.toolCallId, {
+    const runningTool: ToolBlockSnapshot = {
       toolCallId: event.toolCallId,
       toolName: event.toolName,
       phase: 'running',
       headline: headlineForToolPhase('running', event.toolName, event.request),
       detailLines: [],
       argsExcerpt: truncateJson(event.request),
-    }, batchId);
+    };
+    this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
+    this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
   }
 
   private insertAssistantPrefix(insertAt: number, prefix: string, logLabel: string): void {
@@ -478,6 +521,7 @@ export class DesktopRuntimeEventOrchestrator {
       content: prefix,
       pending: false,
     });
+    this.options.messageTimeline?.()?.insertAssistantPrefix(prefix);
     this.logMessageOrderPrefixSync(logLabel, messages);
   }
 

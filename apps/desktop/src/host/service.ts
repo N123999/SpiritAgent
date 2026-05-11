@@ -209,6 +209,10 @@ import {
 import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
 import { DesktopRuntimeEventOrchestrator } from './runtime-event-orchestrator.js';
 import {
+  DesktopMessageTimeline,
+  type DesktopTimelineSegmentKind,
+} from './message-timeline.js';
+import {
   buildActiveSkillPayload,
   buildActivateSkillUserTurn,
   buildCreateSkillUserTurn,
@@ -321,6 +325,7 @@ interface HostState {
   metadata: HostMetadataSummary;
   plan: PlanSnapshot;
   messages: ConversationMessageSnapshot[];
+  messageTimeline: DesktopMessageTimeline;
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
   activeSession?: ActiveSessionSnapshot;
@@ -415,6 +420,8 @@ class DesktopHostService {
     messages: () => this.requireState().messages,
     allocateMessageId: () => this.allocateMessageId(),
     assistantMessages: this.assistantMessages,
+    messageTimeline: () => this.state?.messageTimeline,
+    takeNextAssistantSegmentKind: () => this.takeNextTimelineAssistantSegmentKind(),
     conversationSnapshotView: this.conversationSnapshotView,
     clearCurrentTurnSkills: () => {
       this.currentTurnSkills = [];
@@ -431,6 +438,7 @@ class DesktopHostService {
     },
   });
   private messageIdCounter = 1;
+  private nextTimelineAssistantSegmentKind: DesktopTimelineSegmentKind = 'initial';
   private pendingUnboundFileChangeIds: string[] = [];
   private currentTurnSkills: OpenAiActiveSkill[] = [];
   private serialized = Promise.resolve();
@@ -1363,8 +1371,10 @@ class DesktopHostService {
         this.clearAssistantContinuationMarkers();
         this.resetStreamingPlacementState(false);
         await this.persistCurrentSessionIfNeeded();
+        this.nextTimelineAssistantSegmentKind = 'continuation';
         await runtime.continueAssistantCompletionStreaming();
       } catch (error) {
+        this.nextTimelineAssistantSegmentKind = 'initial';
         for (const message of this.requireState().messages) {
           if (previousContinuationIds.includes(message.id)) {
             message.canContinue = true;
@@ -1488,6 +1498,7 @@ class DesktopHostService {
       pending: false,
     };
     state.messages.push(userMessage);
+    state.messageTimeline.beginUserTurn(userMessage.content, { messageId: userMessage.id });
     this.resetStreamingPlacementState(false);
     await this.persistCurrentSessionIfNeeded();
     await this.dispatchExtensionEvent({
@@ -1509,6 +1520,7 @@ class DesktopHostService {
       this.currentTurnSkills = [];
       this.assistantMessages.handleMessageRemoved(state.messages.length - 1, userMessage.id, 'send-user-rollback');
       state.messages.pop();
+      this.rebuildMessageTimelineFromMessages();
       throw error;
     }
 
@@ -1548,14 +1560,18 @@ class DesktopHostService {
     state.rewindWarnings = [];
     this.clearAssistantContinuationMarkers();
     this.ensureActiveSession(displayText);
-    state.messages.push({
+    const userMessage: ConversationMessageSnapshot = {
       id: this.allocateMessageId(),
       role: 'user',
       content: displayText,
       pending: false,
-    });
+    };
+    state.messages.push(userMessage);
+    state.messageTimeline.beginUserTurn(userMessage.content, { messageId: userMessage.id });
     this.resetStreamingPlacementState(false);
     this.assistantMessages.appendAssistantMessage(assistantText);
+    state.messageTimeline.beginAssistantSegment('initial');
+    state.messageTimeline.materializeCompletedAssistantText(assistantText);
     await this.persistCurrentSessionIfNeeded();
     await this.refreshGitState();
     return this.buildSnapshot();
@@ -1638,6 +1654,7 @@ class DesktopHostService {
       this.deferredRuntimeRefreshWhileBusy = false;
       const state = this.requireState();
       state.messages = [];
+      state.messageTimeline = this.createMessageTimelineFromMessages([]);
       state.activeSession = undefined;
       state.archiveHistory = [];
       state.archiveSubagentSessions = [];
@@ -1753,6 +1770,7 @@ class DesktopHostService {
         const state = this.requireState();
         const restored = restoreEphemeralSessionState(ephemeral);
         state.messages = restored.messages;
+        state.messageTimeline = this.createMessageTimelineFromMessages(state.messages);
         state.activeSession = restored.activeSession;
         state.archiveHistory = restored.archiveHistory;
         state.archiveSubagentSessions = restored.archiveSubagentSessions;
@@ -1776,6 +1794,7 @@ class DesktopHostService {
         fallbackMessages: restoreMessagesFromArchive(loaded),
       });
       state.messages = restored.messages;
+      state.messageTimeline = this.createMessageTimelineFromMessages(state.messages);
       state.activeSession = restored.activeSession;
       state.archiveHistory = restored.archiveHistory;
       state.archiveSubagentSessions = restored.archiveSubagentSessions;
@@ -2032,13 +2051,17 @@ class DesktopHostService {
       this.toolExecutor = undefined;
     }
 
+    const messages = switchingWorkspace ? [] : state?.messages ?? [];
     this.state = {
       workspaceRoot,
       config,
       git,
       metadata,
       plan,
-      messages: switchingWorkspace ? [] : state?.messages ?? [],
+      messages,
+      messageTimeline: switchingWorkspace
+        ? this.createMessageTimelineFromMessages([])
+        : state?.messageTimeline ?? this.createMessageTimelineFromMessages(messages),
       extensionsList: state?.extensionsList ?? [],
       extensionCss: state?.extensionCss ?? [],
       activeSession: switchingWorkspace ? undefined : state?.activeSession,
@@ -2681,11 +2704,37 @@ class DesktopHostService {
     return buildArchiveAssistantAuxFromConversation(this.requireState().messages);
   }
 
+  private createMessageTimelineFromMessages(
+    messages: ConversationMessageSnapshot[],
+  ): DesktopMessageTimeline {
+    let nextTimelineMessageId = nextMessageIdFromMessages(messages);
+    return DesktopMessageTimeline.fromMessages(messages, {
+      allocateMessageId: () => nextTimelineMessageId++,
+      reserveMessageId: (messageId) => {
+        if (messageId >= nextTimelineMessageId) {
+          nextTimelineMessageId = messageId + 1;
+        }
+      },
+    });
+  }
+
+  private rebuildMessageTimelineFromMessages(): void {
+    const state = this.requireState();
+    state.messageTimeline = this.createMessageTimelineFromMessages(state.messages);
+  }
+
+  private takeNextTimelineAssistantSegmentKind(): DesktopTimelineSegmentKind {
+    const kind = this.nextTimelineAssistantSegmentKind;
+    this.nextTimelineAssistantSegmentKind = 'initial';
+    return kind;
+  }
+
   private clearAssistantContinuationMarkers(): void {
     const messages = this.requireState().messages;
     for (const message of messages) {
       delete message.canContinue;
     }
+    this.requireState().messageTimeline.clearContinuationMarkers();
   }
 
   private markAssistantMessageContinuable(content: string): void {
@@ -2710,6 +2759,7 @@ class DesktopHostService {
         continue;
       }
       message.canContinue = true;
+      this.requireState().messageTimeline.markRowContinuable(message.id);
       this.logContinuationMarker('marked', message, normalized, messages);
       return;
     }
@@ -2755,6 +2805,7 @@ class DesktopHostService {
       }
 
       message.canContinue = true;
+  this.requireState().messageTimeline.markRowContinuable(message.id);
       this.logContinuationMarker('marked-fallback', message, '', messages);
       return;
     }
@@ -2952,6 +3003,7 @@ class DesktopHostService {
     const desktopMessages = snapshot.beforeDesktopMessages ?? snapshot.desktopMessages.slice(0, -1);
 
     state.messages = desktopMessages.map((message) => ({ ...message }));
+  state.messageTimeline = this.createMessageTimelineFromMessages(state.messages);
     state.archiveHistory = cloneArchiveHistory(archive.llmHistory);
     state.archiveSubagentSessions = cloneArchiveSubagentSessions(archive.subagentSessions ?? []);
     pruneRewindMetadataAfterCheckpoint(state.rewind, checkpointSequence);
@@ -3026,6 +3078,7 @@ class DesktopHostService {
 
     if (!pendingToolCallId) {
       state.messages.push(nextMessage);
+      this.rebuildMessageTimelineFromMessages();
       return;
     }
 
@@ -3034,12 +3087,14 @@ class DesktopHostService {
     );
     if (toolIndex < 0) {
       state.messages.push(nextMessage);
+      this.rebuildMessageTimelineFromMessages();
       return;
     }
 
     const insertAt = toolIndex + 1;
     this.assistantMessages.shiftStreamAssistantThinkingAnchorForInsertion(insertAt);
     state.messages.splice(insertAt, 0, nextMessage);
+    this.rebuildMessageTimelineFromMessages();
   }
 
   /**
@@ -3047,6 +3102,7 @@ class DesktopHostService {
    */
   private resetStreamingPlacementState(full: boolean): void {
     this.assistantMessages.resetStreamingPlacementState(full);
+    this.nextTimelineAssistantSegmentKind = 'initial';
     if (!full) {
       return;
     }

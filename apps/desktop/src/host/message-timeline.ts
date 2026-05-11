@@ -53,6 +53,7 @@ export interface DesktopTimelineTurnSnapshot {
 
 export interface DesktopMessageTimelineOptions {
   allocateMessageId: () => number;
+  reserveMessageId?: (messageId: number) => void;
 }
 
 interface DesktopTimelineRow extends DesktopTimelineRowSnapshot {}
@@ -266,6 +267,94 @@ export class DesktopMessageTimeline {
       tool: normalizedTool,
     });
     segment.rows.push(row);
+    return rowToMessage(row);
+  }
+
+  removeToolMessage(toolCallId: string): boolean {
+    for (const segment of this.orderedTurns().flatMap((turn) => this.orderedSegments(turn))) {
+      const index = segment.rows.findIndex(
+        (row) => row.kind === 'tool' && row.tool?.toolCallId === toolCallId,
+      );
+      if (index >= 0) {
+        segment.rows.splice(index, 1);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  insertAssistantPrefix(content: string): ConversationMessageSnapshot | undefined {
+    if (!content.trim()) {
+      return undefined;
+    }
+    const segment = this.ensureActiveSegment();
+    const existing = segment.rows.find(
+      (row) =>
+        row.kind === 'assistant-text' &&
+        row.section === 'before-tools' &&
+        row.content.trim() === content.trim(),
+    );
+    if (existing) {
+      existing.pending = false;
+      return rowToMessage(existing);
+    }
+
+    const activeText = this.activeAssistantTextRow(segment);
+    if (
+      activeText &&
+      activeText.section === 'before-tools' &&
+      !activeText.content.trim() &&
+      !normalizeMessageAuxSnapshot(activeText.aux)
+    ) {
+      activeText.content = content;
+      activeText.pending = false;
+      segment.activeAssistantTextRowId = undefined;
+      return rowToMessage(activeText);
+    }
+
+    const row = this.createAssistantTextRow(segment, 'before-tools', false);
+    row.content = content;
+    return rowToMessage(row);
+  }
+
+  materializeCompletedAssistantText(
+    content: string,
+    aux?: MessageAuxSnapshot,
+  ): ConversationMessageSnapshot | undefined {
+    if (!content.trim() && !normalizeMessageAuxSnapshot(aux)) {
+      return undefined;
+    }
+    const segment = this.ensureActiveSegment();
+    let row = this.activeAssistantTextRow(segment);
+    const normalizedContent = content.trim();
+    if (
+      row &&
+      row.content.trim() &&
+      row.content.trim() !== normalizedContent &&
+      row.section === 'before-tools' &&
+      segmentHasToolRows(segment)
+    ) {
+      row.pending = false;
+      row = undefined;
+    }
+    if (!row) {
+      row = this.createAssistantTextRow(
+        segment,
+        segmentHasToolRows(segment) ? 'after-tools' : 'before-tools',
+        false,
+      );
+    }
+
+    row.content = content;
+    row.pending = false;
+    const nextAux = normalizeMessageAuxSnapshot(aux);
+    if (nextAux) {
+      row.aux = nextAux;
+    } else {
+      delete row.aux;
+    }
+    segment.status = 'completed';
+    segment.activeAssistantTextRowId = undefined;
     return rowToMessage(row);
   }
 
@@ -533,9 +622,13 @@ export class DesktopMessageTimeline {
     tool?: ToolBlockSnapshot;
     aux?: MessageAuxSnapshot;
   }): DesktopTimelineRow {
+    const messageId = input.messageId ?? this.options.allocateMessageId();
+    if (input.messageId !== undefined) {
+      this.options.reserveMessageId?.(input.messageId);
+    }
     return {
       rowId: `row-${this.nextRowId++}`,
-      messageId: input.messageId ?? this.options.allocateMessageId(),
+      messageId,
       turnId: input.turnId,
       ...(input.segmentId !== undefined ? { segmentId: input.segmentId } : {}),
       kind: input.kind,
