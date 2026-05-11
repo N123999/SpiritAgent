@@ -82,6 +82,7 @@ import {
   buildSkillSlashSuggestions,
   CREATE_SKILL_SLASH_ALIAS,
   currentSkillSlashQuery,
+  START_IMPLEMENTING_SLASH_ALIAS,
 } from "@/lib/skill-slash";
 import {
   desktopNativeThemeForPreference,
@@ -97,7 +98,7 @@ import {
   mcpBadgeText,
   type SettingsSidebarTab,
 } from "@/components/session-sidebar";
-import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
+import { WorkspaceToolsDock, type WorkspaceToolsTab } from "@/components/workspace-tools-panel";
 import type {
   AskQuestionsQuestionSpec,
   DesktopCommitMode,
@@ -1564,6 +1565,13 @@ export default function App() {
     !pendingApproval &&
     !pendingQuestions &&
     !(runtime.busyAction === "send" && !conversationInterruptible);
+  const startImplementingDisabled =
+    !snapshot?.runtimeReady ||
+    activeSessionReadOnly ||
+    runtime.busyAction === "session" ||
+    Boolean(pendingApproval) ||
+    Boolean(pendingQuestions) ||
+    (runtime.busyAction === "send" && !conversationInterruptible);
   const [rewindDraft, setRewindDraft] = useState<MessageRewindDraftState | null>(null);
 
   const [activeSurface, setActiveSurface] = useState<"conversation" | "settings" | "marketplace">(
@@ -1576,6 +1584,8 @@ export default function App() {
   const [extensionSettingsId, setExtensionSettingsId] = useState<string | null>(null);
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(true);
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
+  const [workspaceToolsTab, setWorkspaceToolsTab] = useState<WorkspaceToolsTab>("files");
+  const [workspaceFilesPlanRevealNonce, setWorkspaceFilesPlanRevealNonce] = useState(0);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
   const [composerCursorCodeUnits, setComposerCursorCodeUnits] = useState(0);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
@@ -1594,6 +1604,9 @@ export default function App() {
     snapshot?.git.hasChanges !== true ||
     Boolean(runtime.busyAction);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
+  const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
+  const planAutoOpenInitializedRef = useRef(false);
   const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
   const marketplaceMode = activeSurface === "marketplace";
@@ -1602,6 +1615,38 @@ export default function App() {
     () => buildSkillSlashSuggestions(slashQuery, snapshot?.skillsList ?? []),
     [slashQuery, snapshot?.skillsList],
   );
+
+  useEffect(() => {
+    const plan = snapshot?.plan;
+    if (!plan) {
+      return;
+    }
+
+    const previousExists = previousPlanExistsRef.current;
+    const previousModifiedAt = previousPlanModifiedAtRef.current;
+    previousPlanExistsRef.current = plan.exists;
+    previousPlanModifiedAtRef.current = plan.modifiedAtUnixMs;
+
+    if (!planAutoOpenInitializedRef.current) {
+      planAutoOpenInitializedRef.current = true;
+      return;
+    }
+
+    const created = previousExists === false && plan.exists;
+    const modified =
+      plan.exists &&
+      plan.modifiedAtUnixMs !== undefined &&
+      previousModifiedAt !== undefined &&
+      plan.modifiedAtUnixMs !== previousModifiedAt;
+
+    if (!created && !modified) {
+      return;
+    }
+
+    setWorkspaceToolsOpen(true);
+    setWorkspaceToolsTab("files");
+    setWorkspaceFilesPlanRevealNonce((value) => value + 1);
+  }, [snapshot?.plan.exists, snapshot?.plan.modifiedAtUnixMs, snapshot?.plan]);
   const composerCursorChars = useMemo(
     () => codeUnitIndexToCharCount(runtime.composer, composerCursorCodeUnits),
     [composerCursorCodeUnits, runtime.composer],
@@ -2455,6 +2500,14 @@ export default function App() {
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
               readWorkspaceTextFile={runtime.readWorkspaceTextFile}
               writeWorkspaceTextFile={runtime.writeWorkspaceTextFile}
+              plan={snapshot?.plan ?? { path: "", exists: false }}
+              onStartImplementing={() => {
+                void runtime.sendMessage({ text: START_IMPLEMENTING_SLASH_ALIAS });
+              }}
+              startImplementingDisabled={startImplementingDisabled}
+              autoRevealPlanNonce={workspaceFilesPlanRevealNonce}
+              tab={workspaceToolsTab}
+              onTabChange={setWorkspaceToolsTab}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

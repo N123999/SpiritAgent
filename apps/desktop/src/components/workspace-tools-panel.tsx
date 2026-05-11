@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileText, GitBranch, Terminal } from "lucide-react";
-
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import { cn } from "@/lib/utils";
 import type {
+  PlanSnapshot,
   WorkspaceExplorerListResult,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
@@ -25,6 +25,12 @@ export type WorkspaceToolsDockProps = {
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile: (request: WriteWorkspaceTextFileRequest) => Promise<void>;
+  plan: PlanSnapshot;
+  onStartImplementing?: () => void;
+  startImplementingDisabled?: boolean;
+  autoRevealPlanNonce?: number;
+  tab: WorkspaceToolsTab;
+  onTabChange(next: WorkspaceToolsTab): void;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -43,6 +49,12 @@ export function WorkspaceToolsDock({
   listExplorerChildren,
   readWorkspaceTextFile,
   writeWorkspaceTextFile,
+  plan,
+  onStartImplementing,
+  startImplementingDisabled = false,
+  autoRevealPlanNonce = 0,
+  tab,
+  onTabChange,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -50,7 +62,6 @@ export function WorkspaceToolsDock({
   open,
   className,
 }: WorkspaceToolsDockProps) {
-  const [tab, setTab] = useState<WorkspaceToolsTab>("files");
   const [isResizing, setIsResizing] = useState(false);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -168,7 +179,7 @@ export function WorkspaceToolsDock({
                       ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-foreground/10",
                   )}
-                  onClick={() => setTab(item.id)}
+                  onClick={() => onTabChange(item.id)}
                 >
                   <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
                   <span className="truncate">{item.label}</span>
@@ -181,7 +192,7 @@ export function WorkspaceToolsDock({
             role="tabpanel"
             className={cn(
               "flex min-h-0 flex-1 flex-col overflow-hidden text-xs",
-              tab === "files" || tab === "shell" ? "p-0" : "p-3 text-muted-foreground",
+              tab === "files" || tab === "shell" ? "p-0" : "p-3",
             )}
             aria-live="polite"
           >
@@ -189,9 +200,13 @@ export function WorkspaceToolsDock({
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
                 <WorkspaceFilesTab
                   workspaceRoot={workspaceRoot}
+                  plan={plan}
                   listExplorerChildren={listExplorerChildren}
                   readWorkspaceTextFile={readWorkspaceTextFile}
                   writeWorkspaceTextFile={writeWorkspaceTextFile}
+                  onStartImplementing={onStartImplementing}
+                  startImplementingDisabled={startImplementingDisabled}
+                  autoRevealPlanNonce={autoRevealPlanNonce}
                 />
               </div>
             ) : tab === "shell" ? (
@@ -199,7 +214,9 @@ export function WorkspaceToolsDock({
                 <WorkspaceShellTab workspaceRoot={workspaceRoot} />
               </div>
             ) : (
-              <p>Git 区占位</p>
+              <div className="p-3 text-muted-foreground">
+                <p>Git 区占位</p>
+              </div>
             )}
           </div>
         </aside>

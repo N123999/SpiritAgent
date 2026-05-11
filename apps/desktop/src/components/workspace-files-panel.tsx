@@ -11,13 +11,14 @@ import {
   FileText,
   Folder,
   Image as ImageIcon,
+  ListTodo,
   Settings2,
   Terminal,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { WorkspaceExplorerEntry, WorkspaceExplorerListResult } from "@/types";
+import type { PlanSnapshot, WorkspaceExplorerEntry, WorkspaceExplorerListResult } from "@/types";
 
 function describeError(error: unknown): string {
   if (error instanceof Error) {
@@ -111,17 +112,21 @@ type DirCacheEntry =
 
 export type WorkspaceFilesPanelProps = {
   workspaceRoot: string;
+  plan: PlanSnapshot;
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
-  /** 当前在侧栏中选中的文件（工作区相对路径，与 `onOpenFile` 一致） */
-  selectedRelativePath?: string | null;
+  /** 当前选中的条目；`plan` 为托管计划文件，`workspace:*` 为工作区相对路径。 */
+  selectedEntryKey?: string | null;
   onOpenFile?: (relativePath: string) => void;
+  onOpenPlan?: () => void;
 };
 
 export function WorkspaceFilesPanel({
   workspaceRoot,
+  plan,
   listExplorerChildren,
-  selectedRelativePath = null,
+  selectedEntryKey = null,
   onOpenFile,
+  onOpenPlan,
 }: WorkspaceFilesPanelProps) {
   const [rootOpen, setRootOpen] = useState(true);
   const [cache, setCache] = useState<Record<string, DirCacheEntry>>({});
@@ -175,6 +180,30 @@ export function WorkspaceFilesPanel({
 
   const rootLabel = fileBasename(workspaceRoot.trim()) || workspaceRoot.trim();
 
+  const renderPlanItem = () => (
+    <ul className="list-none space-y-0.5 p-0">
+      <li className="min-w-0">
+        <button
+          type="button"
+          className={cn(
+            "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
+            "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+            onOpenPlan && "cursor-pointer",
+            selectedEntryKey === "plan" && "bg-foreground/[0.08] dark:bg-foreground/12",
+          )}
+          style={{ paddingLeft: "4px" }}
+          aria-current={selectedEntryKey === "plan" ? "true" : undefined}
+          onClick={() => onOpenPlan?.()}
+          title={plan.path}
+        >
+          <span className="inline-block size-3.5 shrink-0" aria-hidden />
+          <ListTodo className="size-3.5 shrink-0 opacity-70" aria-hidden />
+          <span className="min-w-0 truncate">Plan</span>
+        </button>
+      </li>
+    </ul>
+  );
+
   const renderDirBody = (rel: string, depth: number) => {
     const state = cache[rel];
     // 加载中不插入文案块，避免高度变化造成「卡一下」
@@ -193,7 +222,7 @@ export function WorkspaceFilesPanel({
           const open = isDir && expanded[childRel] === true;
 
           if (!isDir) {
-            const selected = selectedRelativePath === childRel;
+            const selected = selectedEntryKey === `workspace:${childRel}`;
             return (
               <li key={childRel} className="min-w-0">
                 <button
@@ -271,8 +300,11 @@ export function WorkspaceFilesPanel({
           aria-busy={cache[""]?.status === "loading" ? true : undefined}
         >
           {renderDirBody("", 0)}
+            <div className="mt-1">{renderPlanItem()}</div>
         </div>
-      ) : null}
+        ) : (
+          <div className="mb-1">{renderPlanItem()}</div>
+        )}
     </div>
   );
 }

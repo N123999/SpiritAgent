@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -29,6 +29,7 @@ import {
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
 import {
+  buildStartImplementingUserTurn,
   createHostExtensionMarketplace,
   createHostExtensionManager,
   createHostDreamStore,
@@ -73,6 +74,7 @@ import type {
   DesktopDreamCollectorSnapshot,
   DesktopModelCapability,
   DesktopModelProvider,
+  PlanSnapshot,
   DeleteSkillRequest,
   DesktopSnapshot,
   FileRewindWarning,
@@ -293,6 +295,7 @@ type CommandPayloads = {
   deleteSkill: { request: DeleteSkillRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
   submitSkillSlash: { request: SubmitSkillSlashRequest };
+  submitStartImplementing: undefined;
   exportSessionLog: undefined;
   submitUserTurn: SubmitUserTurnRequest;
   abortConversation: undefined;
@@ -316,6 +319,7 @@ interface HostState {
   config: DesktopConfigFile;
   git: DesktopGitSnapshot;
   metadata: HostMetadataSummary;
+  plan: PlanSnapshot;
   messages: ConversationMessageSnapshot[];
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
@@ -341,6 +345,39 @@ function defaultDisplayTextForUserTurn(
   }
 
   return `已附加文件: ${explicitWorkspaceFiles.map((file) => path.basename(file.path)).join(', ')}`;
+}
+
+function normalizeFsPath(value: string): string {
+  return path.normalize(value).replace(/\\/g, '/').toLowerCase();
+}
+
+function sameFsPath(left: string, right: string): boolean {
+  return normalizeFsPath(left) === normalizeFsPath(right);
+}
+
+async function loadDesktopPlanSnapshot(planPath: string, existsHint?: boolean): Promise<PlanSnapshot> {
+  try {
+    const stat = await lstat(planPath);
+    if (!stat.isFile()) {
+      return {
+        path: planPath,
+        exists: false,
+      };
+    }
+
+    const content = await readFile(planPath, 'utf8');
+    return {
+      path: planPath,
+      exists: true,
+      content,
+      modifiedAtUnixMs: stat.mtimeMs,
+    };
+  } catch {
+    return {
+      path: planPath,
+      exists: existsHint === true ? false : false,
+    };
+  }
 }
 
 class DesktopHostService {
@@ -1166,6 +1203,27 @@ class DesktopHostService {
     });
   }
 
+  async submitStartImplementing(): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      const runtime = this.requireRuntime();
+      if (runtime.isBusy()) {
+        throw new Error('当前已有响应或审批在处理中，请稍候。');
+      }
+
+      const state = this.requireState();
+      return this.submitUserTurnAfterInitialized(
+        buildStartImplementingUserTurn({
+          workspaceRoot: state.workspaceRoot,
+          spiritDataDir: spiritAgentDataDir(),
+        }),
+        {
+          displayText: '/start-implementing',
+        },
+      );
+    });
+  }
+
   async exportSessionLog(): Promise<{ snapshot: DesktopSnapshot; path: string }> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
@@ -1848,6 +1906,8 @@ class DesktopHostService {
         const typedPayload = payload as CommandPayloads['submitSkillSlash'];
         return this.submitSkillSlash(typedPayload.request);
       }
+      case 'submitStartImplementing':
+        return this.submitStartImplementing();
       case 'exportSessionLog':
         return this.exportSessionLog();
       case 'submitUserTurn': {
@@ -1942,10 +2002,15 @@ class DesktopHostService {
     if (this.initialized && this.state?.workspaceRoot && sameWorkspaceRoot(this.state.workspaceRoot, workspaceRoot)) {
       this.state.config = config;
       this.state.git = git;
+      this.state.plan = await loadDesktopPlanSnapshot(
+        this.state.metadata.planMetadata.path,
+        this.state.metadata.planMetadata.exists,
+      );
       return;
     }
 
     const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
+    const plan = await loadDesktopPlanSnapshot(metadata.planMetadata.path, metadata.planMetadata.exists);
     const state = this.state;
     const previousWorkspaceRoot = state?.workspaceRoot;
     const switchingWorkspace = Boolean(
@@ -1971,6 +2036,7 @@ class DesktopHostService {
       config,
       git,
       metadata,
+      plan,
       messages: switchingWorkspace ? [] : state?.messages ?? [],
       extensionsList: state?.extensionsList ?? [],
       extensionCss: state?.extensionCss ?? [],
@@ -1999,6 +2065,10 @@ class DesktopHostService {
     state.metadata = await loadHostMetadata(
       state.workspaceRoot,
       state.config.planMode === true,
+    );
+    state.plan = await loadDesktopPlanSnapshot(
+      state.metadata.planMetadata.path,
+      state.metadata.planMetadata.exists,
     );
     await this.ensureToolExecutor();
     this.currentTurnSkills = [];
@@ -2329,6 +2399,7 @@ class DesktopHostService {
       config: state.config,
       git: state.git,
       metadata: state.metadata,
+      plan: state.plan,
       extensionsList: state.extensionsList,
       extensionCss: state.extensionCss,
       dreamCollectorStatus: this.dreamCollectorStatus,
@@ -2766,7 +2837,23 @@ class DesktopHostService {
 
   private async recordHostFileChange(change: HostRecordedFileChange): Promise<void> {
     const state = this.state;
-    if (!state?.activeSession) {
+    if (!state) {
+      return;
+    }
+
+    if (sameFsPath(change.resolvedPath, state.plan.path)) {
+      state.metadata.planMetadata.exists = change.after.exists && change.after.file;
+      state.plan = {
+        path: state.plan.path,
+        exists: change.after.exists && change.after.file,
+        ...(change.after.content !== undefined ? { content: change.after.content } : {}),
+        ...(typeof change.after.mtimeMs === 'number'
+          ? { modifiedAtUnixMs: change.after.mtimeMs }
+          : {}),
+      };
+    }
+
+    if (!state.activeSession) {
       return;
     }
 

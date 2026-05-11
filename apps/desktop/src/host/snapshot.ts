@@ -26,6 +26,7 @@ export interface BuildDesktopSnapshotInput {
   config: DesktopConfigFile;
   git: DesktopGitSnapshot;
   metadata: HostMetadataSummary;
+  plan: DesktopSnapshot['plan'];
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
   dreamCollectorStatus: DesktopDreamCollectorSnapshot;
@@ -94,10 +95,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     })),
     extensionsList: input.extensionsList.map((item) => ({ ...item })),
     extensionCss: input.extensionCss.map((entry) => ({ ...entry })),
-    plan: {
-      path: input.metadata.planMetadata.path,
-      exists: input.metadata.planMetadata.exists,
-    },
+    plan: { ...input.plan },
     mcpStatus: input.mcpStatus,
     mcpServers: input.mcpServers,
     conversation: input.conversation,

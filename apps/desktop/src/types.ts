@@ -579,6 +579,8 @@ export interface DiscoverySummary {
 export interface PlanSnapshot {
   path: string;
   exists: boolean;
+  content?: string;
+  modifiedAtUnixMs?: number;
 }
 
 export interface McpStatusSnapshot {

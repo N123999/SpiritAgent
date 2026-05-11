@@ -18,6 +18,7 @@ export function skillSlashAlias(skillName: string): string {
 
 export const CREATE_SKILL_SLASH_ALIAS = '/create-skill'
 export const LOG_SESSION_SLASH_ALIAS = '/log-session'
+export const START_IMPLEMENTING_SLASH_ALIAS = '/start-implementing'
 
 const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
   {
@@ -31,6 +32,12 @@ const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
     alias: LOG_SESSION_SLASH_ALIAS,
     name: '/log-session',
     description: '导出当前会话 llm_history 与完整 API 请求轨迹并自动打开',
+  },
+  {
+    id: 'command:start-implementing',
+    alias: START_IMPLEMENTING_SLASH_ALIAS,
+    name: '/start-implementing',
+    description: '读取 Spirit 托管 plan.md 后直接开始实现',
   },
 ] as const
 
@@ -85,6 +92,10 @@ export function isCreateSkillSlashInput(input: string): boolean {
 
 export function isLogSessionSlashInput(input: string): boolean {
   return input.trim() === LOG_SESSION_SLASH_ALIAS
+}
+
+export function isStartImplementingSlashInput(input: string): boolean {
+  return input.trim() === START_IMPLEMENTING_SLASH_ALIAS
 }
 
 export function matchSkillSlashInput(

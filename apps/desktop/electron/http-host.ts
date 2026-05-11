@@ -594,6 +594,16 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/start-implementing') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('submitStartImplementing'),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/submit') {
     writeJson(
       request,

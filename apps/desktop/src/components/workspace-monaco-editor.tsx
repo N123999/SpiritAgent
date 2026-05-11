@@ -211,13 +211,14 @@ export type WorkspaceMonacoEditorProps = {
   initialText: string;
   onSave: (text: string) => Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  readOnly?: boolean;
 };
 
 export const WorkspaceMonacoEditor = forwardRef<
   WorkspaceMonacoEditorHandle,
   WorkspaceMonacoEditorProps
 >(function WorkspaceMonacoEditor(
-  { relativePath, initialText, onSave, onDirtyChange },
+  { relativePath, initialText, onSave, onDirtyChange, readOnly = false },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -262,7 +263,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     const editor = monaco.editor.create(root, {
       value: initialText,
       language: monacoLanguageId(relativePath),
-      readOnly: false,
+      readOnly,
       minimap: { enabled: false },
       fontSize: 12,
       scrollBeyondLastLine: false,
@@ -280,9 +281,11 @@ export const WorkspaceMonacoEditor = forwardRef<
       onDirtyChangeRef.current?.(editor.getValue() !== baselineRef.current);
     });
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      void runSave();
-    });
+    if (!readOnly) {
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        void runSave();
+      });
+    }
 
     const obs = new MutationObserver(() => {
       syncMonacoThemeFromDocument();
@@ -295,7 +298,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       editor.dispose();
       editorRef.current = null;
     };
-  }, [relativePath, initialText]);
+  }, [relativePath, initialText, readOnly]);
 
   return <div ref={containerRef} className="h-full min-h-0 w-full min-w-0" />;
 });

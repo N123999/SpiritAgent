@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   submitSkillSlash(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'submitSkillSlash', { request });
   },
+  submitStartImplementing() {
+    return ipcRenderer.invoke('desktop:invoke', 'submitStartImplementing');
+  },
   exportSessionLog() {
     return ipcRenderer.invoke('desktop:export-session-log');
   },

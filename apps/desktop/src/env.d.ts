@@ -71,6 +71,7 @@ declare global {
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
+    submitStartImplementing(): Promise<DesktopSnapshot>;
     exportSessionLog(): Promise<DesktopSnapshot>;
     submitUserTurn(request: SubmitUserTurnRequest): Promise<DesktopSnapshot>;
     abortConversation(): Promise<DesktopSnapshot>;

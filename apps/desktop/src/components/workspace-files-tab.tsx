@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Loader2, Save, X } from "lucide-react";
+import { Loader2, Play, Save, X } from "lucide-react";
 
 import { WorkspaceFilesPanel } from "@/components/workspace-files-panel";
 import {
@@ -9,10 +9,20 @@ import {
 } from "@/components/workspace-monaco-editor";
 import { cn } from "@/lib/utils";
 import type {
+  PlanSnapshot,
   WorkspaceExplorerListResult,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
 } from "@/types";
+
+type SelectedWorkspaceEntry = { kind: "workspace"; relativePath: string };
+type SelectedPlanEntry = { kind: "plan" };
+type SelectedEntry = SelectedWorkspaceEntry | SelectedPlanEntry | null;
+
+type LoadedDoc =
+  | { status: "ready"; text: string; readOnly: boolean; title: string; subtitle: string }
+  | { status: "error"; message: string; readOnly: boolean; title: string; subtitle: string }
+  | { status: "empty"; message: string; readOnly: boolean; title: string; subtitle: string };
 
 function describeError(error: unknown): string {
   if (error instanceof Error) {
@@ -29,33 +39,71 @@ function pathBasename(rel: string): string {
 
 export type WorkspaceFilesTabProps = {
   workspaceRoot: string;
+  plan: PlanSnapshot;
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile: (request: WriteWorkspaceTextFileRequest) => Promise<void>;
+  onStartImplementing?: () => void;
+  startImplementingDisabled?: boolean;
+  autoRevealPlanNonce?: number;
 };
 
 export function WorkspaceFilesTab({
   workspaceRoot,
+  plan,
   listExplorerChildren,
   readWorkspaceTextFile,
   writeWorkspaceTextFile,
+  onStartImplementing,
+  startImplementingDisabled = false,
+  autoRevealPlanNonce = 0,
 }: WorkspaceFilesTabProps) {
-  const [selectedRel, setSelectedRel] = useState<string | null>(null);
-  const [doc, setDoc] = useState<
-    { status: "ready"; text: string } | { status: "error"; message: string } | null
-  >(null);
+  const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
+  const [doc, setDoc] = useState<LoadedDoc | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const editorRef = useRef<WorkspaceMonacoEditorHandle>(null);
 
   useEffect(() => {
-    if (!selectedRel) {
+    if (autoRevealPlanNonce > 0) {
+      setSelectedEntry({ kind: "plan" });
+    }
+  }, [autoRevealPlanNonce]);
+
+  useEffect(() => {
+    if (!selectedEntry) {
       setDoc(null);
       setDirty(false);
       setSaveError("");
       return;
     }
+
+    if (selectedEntry.kind === "plan") {
+      setDirty(false);
+      setSaveError("");
+      if (!plan.exists) {
+        setDoc({
+          status: "empty",
+          message: "Plan 还没有创建。后续检测到实际写入时，这里会显示托管 plan.md。",
+          readOnly: true,
+          title: "Plan",
+          subtitle: plan.path,
+        });
+        return;
+      }
+
+      setDoc({
+        status: "ready",
+        text: plan.content ?? "",
+        readOnly: true,
+        title: "Plan",
+        subtitle: plan.path,
+      });
+      return;
+    }
+
+    const selectedRel = selectedEntry.relativePath;
     let cancelled = false;
     setDoc(null);
     setDirty(false);
@@ -63,28 +111,40 @@ export function WorkspaceFilesTab({
     void readWorkspaceTextFile(selectedRel)
       .then((r) => {
         if (!cancelled) {
-          setDoc({ status: "ready", text: r.text });
+          setDoc({
+            status: "ready",
+            text: r.text,
+            readOnly: false,
+            title: pathBasename(selectedRel),
+            subtitle: selectedRel,
+          });
         }
       })
       .catch((e) => {
         if (!cancelled) {
-          setDoc({ status: "error", message: describeError(e) });
+          setDoc({
+            status: "error",
+            message: describeError(e),
+            readOnly: false,
+            title: pathBasename(selectedRel),
+            subtitle: selectedRel,
+          });
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedRel, readWorkspaceTextFile]);
+  }, [selectedEntry, plan.content, plan.exists, plan.path, readWorkspaceTextFile]);
 
   const onEditorSave = useCallback(
     async (text: string) => {
-      if (!selectedRel) {
+      if (!selectedEntry || selectedEntry.kind !== "workspace") {
         return;
       }
       setSaving(true);
       setSaveError("");
       try {
-        await writeWorkspaceTextFile({ relativePath: selectedRel, text });
+        await writeWorkspaceTextFile({ relativePath: selectedEntry.relativePath, text });
       } catch (e) {
         setSaveError(describeError(e));
         throw e;
@@ -92,7 +152,7 @@ export function WorkspaceFilesTab({
         setSaving(false);
       }
     },
-    [selectedRel, writeWorkspaceTextFile],
+    [selectedEntry, writeWorkspaceTextFile],
   );
 
   const onClickSave = useCallback(() => {
@@ -106,38 +166,58 @@ export function WorkspaceFilesTab({
         return;
       }
     }
-    setSelectedRel(null);
+    setSelectedEntry(null);
     setDoc(null);
     setDirty(false);
     setSaveError("");
   }, [dirty]);
+
+  const selectedEntryKey = selectedEntry
+    ? selectedEntry.kind === "plan"
+      ? "plan"
+      : `workspace:${selectedEntry.relativePath}`
+    : null;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-hidden",
-          selectedRel ? "w-[min(40%,13rem)] shrink-0 border-r border-border/40 pr-2" : "min-w-0 flex-1",
+          selectedEntry ? "w-[min(40%,13rem)] shrink-0 border-r border-border/40 pr-2" : "min-w-0 flex-1",
         )}
       >
         <WorkspaceFilesPanel
           workspaceRoot={workspaceRoot}
+          plan={plan}
           listExplorerChildren={listExplorerChildren}
-          selectedRelativePath={selectedRel}
-          onOpenFile={setSelectedRel}
+          selectedEntryKey={selectedEntryKey}
+          onOpenFile={(relativePath) => setSelectedEntry({ kind: "workspace", relativePath })}
+          onOpenPlan={() => setSelectedEntry({ kind: "plan" })}
         />
       </div>
-      {selectedRel ? (
+      {selectedEntry ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pl-2">
           <div className="mb-1 flex shrink-0 flex-wrap items-center justify-between gap-2">
             <span
               className="min-w-0 truncate text-xs font-medium text-foreground/95"
-              title={selectedRel}
+              title={doc?.subtitle ?? undefined}
             >
-              {pathBasename(selectedRel)}
+              {doc?.title ?? ""}
             </span>
             <div className="flex shrink-0 items-center gap-0.5">
-              {doc?.status === "ready" ? (
+              {selectedEntry?.kind === "plan" ? (
+                <button
+                  type="button"
+                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground enabled:hover:bg-foreground/[0.06] enabled:hover:text-foreground disabled:opacity-50 dark:enabled:hover:bg-foreground/10"
+                  disabled={startImplementingDisabled}
+                  aria-label="开始实现"
+                  title="开始实现"
+                  onClick={onStartImplementing}
+                >
+                  <Play className="size-3.5" aria-hidden />
+                </button>
+              ) : null}
+              {doc?.status === "ready" && !doc.readOnly ? (
                 <button
                   type="button"
                   className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground enabled:hover:bg-foreground/[0.06] enabled:hover:text-foreground disabled:opacity-50 dark:enabled:hover:bg-foreground/10"
@@ -169,14 +249,19 @@ export function WorkspaceFilesTab({
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-border/50">
             {doc?.status === "error" ? (
               <p className="p-2 text-xs text-destructive/90">{doc.message}</p>
+            ) : doc?.status === "empty" ? (
+              <div className="flex h-full items-center justify-center p-4 text-center text-xs leading-relaxed text-muted-foreground">
+                {doc.message}
+              </div>
             ) : doc?.status === "ready" ? (
               <WorkspaceMonacoEditor
-                key={selectedRel}
+                key={selectedEntryKey}
                 ref={editorRef}
-                relativePath={selectedRel}
+                relativePath={doc.readOnly ? "plan.md" : doc.subtitle}
                 initialText={doc.text}
                 onSave={onEditorSave}
                 onDirtyChange={setDirty}
+                readOnly={doc.readOnly}
               />
             ) : null}
           </div>

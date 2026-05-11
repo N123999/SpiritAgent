@@ -7,6 +7,7 @@ import { useHostApi } from "@/hooks/useHostApi";
 import {
   isCreateSkillSlashInput,
   isLogSessionSlashInput,
+  isStartImplementingSlashInput,
   matchSkillSlashInput,
 } from "@/lib/skill-slash";
 import type {
@@ -1229,7 +1230,7 @@ export function useDesktopRuntime() {
       }
 
       const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
-      if (hasLocalFiles && (isCreateSkillSlashInput(text) || skillSlash)) {
+      if (hasLocalFiles && (isCreateSkillSlashInput(text) || isStartImplementingSlashInput(text) || skillSlash)) {
         setRuntimeError("附加文件暂不支持与 Slash 指令一起发送。");
         return false;
       }
@@ -1237,6 +1238,8 @@ export function useDesktopRuntime() {
         ? await api.submitCreateSkillSlash({
             rawText: text,
           })
+        : isStartImplementingSlashInput(text)
+        ? await api.submitStartImplementing()
         : skillSlash
         ? await api.submitSkillSlash({
             skillName: skillSlash.skillName,
