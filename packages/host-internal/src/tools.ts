@@ -1102,17 +1102,33 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }
 
     const managedRoot = path.join(this.spiritDataDir, GENERATED_IMAGES_DIR);
-    const canonical = await realpath(path.join(managedRoot, basename));
-    if (!pathHasPrefix(canonical, managedRoot)) {
-      throw new Error(`Spirit 托管图片引用越界: ${trimmed}`);
-    }
+    const candidatePath = path.join(managedRoot, basename);
+    try {
+      const candidate = await lstat(candidatePath);
+      if (candidate.isSymbolicLink()) {
+        throw new Error(`Spirit 托管图片引用不能指向符号链接: ${trimmed}`);
+      }
+      if (!candidate.isFile()) {
+        throw new Error(`Spirit 托管图片不存在: ${trimmed}`);
+      }
 
-    const st = await lstat(canonical);
-    if (!st.isFile()) {
+      const canonical = await realpath(candidatePath);
+      if (!pathHasPrefix(canonical, managedRoot)) {
+        throw new Error(`Spirit 托管图片引用越界: ${trimmed}`);
+      }
+
+      const st = await lstat(canonical);
+      if (st.isSymbolicLink() || !st.isFile()) {
+        throw new Error(`Spirit 托管图片不存在: ${trimmed}`);
+      }
+
+      return canonical;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(trimmed)) {
+        throw error;
+      }
       throw new Error(`Spirit 托管图片不存在: ${trimmed}`);
     }
-
-    return canonical;
   }
 
   private resolveWorkspaceWriteTarget(input: string): string {

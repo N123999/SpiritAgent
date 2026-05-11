@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { copyFile, readFile, stat } from 'node:fs/promises';
+import { copyFile, lstat, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -528,7 +528,7 @@ app.whenReady().then(async () => {
       return null;
     }
 
-    const filePath = resolveManagedGeneratedImagePath(reference);
+    const filePath = await resolveManagedGeneratedImagePath(reference);
     if (!filePath) {
       return null;
     }
@@ -689,7 +689,7 @@ async function readImagePreviewDataUrlFromPath(filePath: string): Promise<string
   }
 }
 
-function resolveManagedGeneratedImagePath(reference: string): string | null {
+async function resolveManagedGeneratedImagePath(reference: string): Promise<string | null> {
   let url: URL;
   try {
     url = new URL(reference);
@@ -709,7 +709,32 @@ function resolveManagedGeneratedImagePath(reference: string): string | null {
     return null;
   }
 
-  return path.join(spiritAgentDataDir(), MANAGED_GENERATED_IMAGES_DIR, imageId);
+  const managedRoot = path.join(spiritAgentDataDir(), MANAGED_GENERATED_IMAGES_DIR);
+  const candidatePath = path.join(managedRoot, imageId);
+
+  try {
+    const [rootStats, candidateStats] = await Promise.all([lstat(managedRoot), lstat(candidatePath)]);
+    if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+      return null;
+    }
+    if (!candidateStats.isFile() || candidateStats.isSymbolicLink()) {
+      return null;
+    }
+
+    const [canonicalRoot, canonicalPath] = await Promise.all([realpath(managedRoot), realpath(candidatePath)]);
+    if (!pathIsWithinRoot(canonicalPath, canonicalRoot)) {
+      return null;
+    }
+
+    return canonicalPath;
+  } catch {
+    return null;
+  }
+}
+
+function pathIsWithinRoot(candidatePath: string, rootPath: string): boolean {
+  const relative = path.relative(rootPath, candidatePath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function buildSaveImageDialogOptions(sourcePath: string, extension: string): Electron.SaveDialogOptions {

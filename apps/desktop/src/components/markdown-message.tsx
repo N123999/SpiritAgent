@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
 type ReadManagedImagePreviewDataUrl = (reference: string) => Promise<string | null>;
+type ManagedImageLoadState = "idle" | "loading" | "unavailable";
 
 const MANAGED_GENERATED_IMAGE_PREFIX = "spirit-image://generated/";
 
@@ -33,12 +34,14 @@ function MarkdownImage({
   const normalizedSrc = typeof src === "string" && src.trim().length > 0 ? src.trim() : null;
   const managedRef = normalizedSrc && isManagedGeneratedImageRef(normalizedSrc) ? normalizedSrc : null;
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(managedRef ? null : normalizedSrc);
+  const [managedLoadState, setManagedLoadState] = useState<ManagedImageLoadState>("idle");
 
   useEffect(() => {
     let cancelled = false;
 
     if (!normalizedSrc) {
       setResolvedSrc(null);
+      setManagedLoadState("idle");
       return () => {
         cancelled = true;
       };
@@ -46,6 +49,7 @@ function MarkdownImage({
 
     if (!managedRef) {
       setResolvedSrc(normalizedSrc);
+      setManagedLoadState("idle");
       return () => {
         cancelled = true;
       };
@@ -53,21 +57,30 @@ function MarkdownImage({
 
     if (!readManagedImagePreviewDataUrl) {
       setResolvedSrc(null);
+      setManagedLoadState("unavailable");
       return () => {
         cancelled = true;
       };
     }
 
     setResolvedSrc(null);
+    setManagedLoadState("loading");
     void readManagedImagePreviewDataUrl(managedRef)
       .then((dataUrl: string | null) => {
         if (!cancelled) {
-          setResolvedSrc(dataUrl);
+          if (dataUrl) {
+            setResolvedSrc(dataUrl);
+            setManagedLoadState("idle");
+            return;
+          }
+          setResolvedSrc(null);
+          setManagedLoadState("unavailable");
         }
       })
       .catch(() => {
         if (!cancelled) {
           setResolvedSrc(null);
+          setManagedLoadState("unavailable");
         }
       });
 
@@ -84,10 +97,18 @@ function MarkdownImage({
     );
   }
 
-  if (managedRef && !resolvedSrc) {
+  if (managedRef && managedLoadState === "loading") {
     return (
       <div className="my-3 flex min-h-28 w-full items-center justify-center rounded-md border border-dashed border-border/50 bg-muted/20 px-3 text-xs text-muted-foreground">
         加载图片中…
+      </div>
+    );
+  }
+
+  if (managedRef && managedLoadState === "unavailable") {
+    return (
+      <div className="my-3 flex min-h-28 w-full items-center justify-center rounded-md border border-dashed border-border/50 bg-muted/20 px-3 text-xs text-muted-foreground">
+        当前图片不可预览。
       </div>
     );
   }

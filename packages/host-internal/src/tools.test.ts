@@ -221,6 +221,34 @@ test('read_file accepts Spirit-managed generated image refs without leaking loca
   }
 });
 
+test('read_file missing Spirit-managed generated image ref reports sanitized error', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-missing-managed-image-read-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const missingRef = 'spirit-image://generated/missing-image.png';
+  const leakedLocalPath = join(spiritDataDir, 'generated-images', 'missing-image.png');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    await assert.rejects(
+      () =>
+        service.execute({
+          name: 'read_file',
+          path: missingRef,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, new RegExp(escapeRegExp(missingRef)));
+        assert.doesNotMatch(error.message, new RegExp(escapeRegExp(leakedLocalPath)));
+        return true;
+      },
+    );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('grep supports case-insensitive regular expression queries', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-search-regexp-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
