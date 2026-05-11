@@ -1353,7 +1353,20 @@ export class AgentRuntime<
       turn,
     );
     if (imageResult !== undefined) {
-      return imageResult;
+      if (imageResult.kind !== 'completed' || imageResult.assistantText !== '') {
+        return imageResult;
+      }
+
+      if (remainingCalls.length > 0) {
+        return this.processToolCalls(
+          imageResult.state,
+          pendingUserInput,
+          remainingCalls,
+          turn,
+        );
+      }
+
+      return this.runTurnLoop(imageResult.state, pendingUserInput, turn);
     }
 
     const outcome = await this.tryExecuteRunSubagentTool(
@@ -1443,12 +1456,34 @@ export class AgentRuntime<
       turn,
     );
     if (imageResult !== undefined) {
-      if (resumeAsStreaming && imageResult.kind === 'completed' && imageResult.assistantText === '') {
-        this.storeCompletedTurnResult(imageResult);
-        this.emitEvent({ kind: 'assistant-response-completed' });
-      } else {
+      if (imageResult.kind !== 'completed' || imageResult.assistantText !== '') {
         this.completeTurn(imageResult);
+        return true;
       }
+
+      if (remainingCalls.length > 0) {
+        await this.processToolCallsAsync(
+          imageResult.state,
+          pendingUserInput,
+          remainingCalls,
+          turn,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        );
+        return true;
+      }
+
+      if (resumeAsStreaming) {
+        await this.startStreamingRound(
+          imageResult.state,
+          pendingUserInput,
+          turn,
+          streamingEmitBeginResponse,
+        );
+        return true;
+      }
+
+      this.startToolAgentRoundAsync(imageResult.state, pendingUserInput, turn);
       return true;
     }
 

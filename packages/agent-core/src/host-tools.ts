@@ -155,7 +155,7 @@ export function buildBuiltinHostToolDefinitions(
     ),
     functionTool(
       'generate_image',
-      'Generate one image with the configured image generation model. Use this only when the user explicitly wants an image. First gather enough context and rewrite the final image prompt yourself, then call this tool as the user-visible final result for the turn; do not expect to add a normal assistant message after it completes.',
+      'Generate one image with the configured image generation model. Use this only when the user explicitly wants an image. First gather enough context and rewrite the final image prompt yourself, then call this tool. After it completes, you may continue with a normal assistant message when that helps the user.',
       {
         type: 'object',
         properties: {
