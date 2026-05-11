@@ -911,12 +911,21 @@ export class DesktopMessageTimeline {
 
   private findToolRow(toolCallId: string): DesktopTimelineRow | undefined {
     const stable = isStableTimelineToolCallId(toolCallId);
+    const activeTurnId = this.activeTurn()?.turnId;
     const candidates = stable
       ? this.allRows()
       : this.activeSegment()?.rows ?? [];
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
       const row = candidates[index];
       if (row?.kind === 'tool' && row.tool?.toolCallId === toolCallId) {
+        if (
+          stable &&
+          activeTurnId !== undefined &&
+          row.turnId !== activeTurnId &&
+          !canReuseToolMessageAcrossTurns(row.tool)
+        ) {
+          break;
+        }
         return row;
       }
     }
@@ -1061,6 +1070,10 @@ export class DesktopMessageTimeline {
 
 export function isStableTimelineToolCallId(toolCallId: string): boolean {
   return !toolCallId.startsWith('pending:') && !toolCallId.startsWith('tool:');
+}
+
+function canReuseToolMessageAcrossTurns(tool: ToolBlockSnapshot | undefined): boolean {
+  return tool?.phase === 'pending-approval' || tool?.phase === 'running';
 }
 
 function segmentHasToolRows(segment: DesktopTimelineSegment): boolean {

@@ -62,10 +62,14 @@ export class DesktopAssistantMessageStateMachine {
     const allowCrossUserLookup = isStableRuntimeToolCallId(toolCallId);
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
-      if (!allowCrossUserLookup && !messageIndexIsInCurrentTurn(messages, index)) {
+      const inCurrentTurn = messageIndexIsInCurrentTurn(messages, index);
+      if (!allowCrossUserLookup && !inCurrentTurn) {
         break;
       }
       if (message?.tool?.toolCallId === toolCallId) {
+        if (!inCurrentTurn && !canReuseToolMessageAcrossTurns(message.tool)) {
+          break;
+        }
         existing = message;
         break;
       }
@@ -570,4 +574,8 @@ export class DesktopAssistantMessageStateMachine {
 
 function isStableRuntimeToolCallId(toolCallId: string): boolean {
   return !toolCallId.startsWith('pending:') && !toolCallId.startsWith('tool:');
+}
+
+function canReuseToolMessageAcrossTurns(tool: ToolBlockSnapshot | undefined): boolean {
+  return tool?.phase === 'pending-approval' || tool?.phase === 'running';
 }
