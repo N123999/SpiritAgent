@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile as execFileCallback } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -316,7 +316,17 @@ async function listGitCommitParents(repoRoot, ref) {
 
 async function prepareOutputDirectory(outputDir) {
   if (existsSync(outputDir)) {
-    throw new Error(`--output-dir 指向的目录已存在，请提供一个新的空路径: ${outputDir}`);
+    const stats = await stat(outputDir);
+    if (!stats.isDirectory()) {
+      throw new Error(`--output-dir 必须指向目录路径；当前已存在且不是目录: ${outputDir}`);
+    }
+
+    const entries = await readdir(outputDir);
+    if (entries.length > 0) {
+      throw new Error(`--output-dir 指向的目录非空，请提供一个不存在的新路径或空目录: ${outputDir}`);
+    }
+
+    return outputDir;
   }
 
   await mkdir(outputDir, { recursive: true });
@@ -1154,7 +1164,7 @@ function printHelp() {
   console.log('  --model <id>             覆盖 OPENAI_MODEL；未传时直接读取环境变量');
   console.log('  --llm-vendor <vendor>    例如 deepseek / kimi / custom');
   console.log('  --reasoning-effort <v>   例如 low / medium / high');
-  console.log('  --output-dir <dir>       必填；本次 compare 的输出根目录，必须是一个不存在的新路径');
+  console.log('  --output-dir <dir>       必填；本次 compare 的输出根目录，可为一个不存在的新路径或已存在的空目录');
   console.log('  --workspace-source <dir> 复制指定工作区目录到输出目录；默认使用空工作区');
   console.log('  --auto-approve           显式自动放行高风险工具审批；默认阻塞并将结果记入 artifact');
 }
