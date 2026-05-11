@@ -4,10 +4,16 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { startOpenAiToolAgentState } from '@spirit-agent/agent-core';
+import {
+  buildPlanSystemMessage,
+  startOpenAiToolAgentState,
+} from '@spirit-agent/agent-core';
 import { createHostDreamStore } from '@spirit-agent/host-internal';
 
-import { buildDreamContextText } from '../../dist-electron/src/host/dreams.js';
+import {
+  buildDreamCollectorPlanMetadata,
+  buildDreamContextText,
+} from '../../dist-electron/src/host/dreams.js';
 import { spiritAgentDataDir } from '../../dist-electron/src/host/storage.js';
 
 test('desktop dreams context is injected into the main agent system message', async () => {
@@ -66,4 +72,22 @@ test('desktop dreams context is injected into the main agent system message', as
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test('dream collector plan metadata is always normalized to agent mode', () => {
+  const collectorPlanMetadata = buildDreamCollectorPlanMetadata({
+    path: 'D:/SpiritAgent/PLAN.md',
+    exists: true,
+    planMode: true,
+    planModeHostInstructions: '确定此方案后，请输入"/start-implementing" 或手动切换至 Agent 模式后要求开始实现。',
+  });
+
+  assert.equal(collectorPlanMetadata.planMode, false);
+  assert.equal(collectorPlanMetadata.planModeHostInstructions, undefined);
+
+  const planSystemMessage = buildPlanSystemMessage(collectorPlanMetadata);
+  assert.equal(typeof planSystemMessage, 'string');
+  assert.match(planSystemMessage, /<plan path="D:\/SpiritAgent\/PLAN\.md" \/>/);
+  assert.doesNotMatch(planSystemMessage, /start-implementing/);
+  assert.doesNotMatch(planSystemMessage, /Agent 模式/);
 });

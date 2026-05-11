@@ -101,6 +101,16 @@ export async function buildDreamCommitContext(input: {
   return buildDreamContextText(input);
 }
 
+export function buildDreamCollectorPlanMetadata(
+  planMetadata: OpenAiPlanMetadata,
+): OpenAiPlanMetadata {
+  const { planModeHostInstructions: _planModeHostInstructions, ...rest } = planMetadata;
+  return {
+    ...rest,
+    planMode: false,
+  };
+}
+
 export function buildCommitMessageGenerationPrompt(input: {
   workspaceRoot: string;
   branch?: string;

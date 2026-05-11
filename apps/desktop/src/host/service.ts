@@ -156,6 +156,7 @@ import {
 } from './runtime.js';
 import {
   buildCommitMessageGenerationPrompt,
+  buildDreamCollectorPlanMetadata,
   buildDreamContextText,
   buildDreamCommitContext,
   clearDreamCollectorIssue,
@@ -2275,7 +2276,7 @@ class DesktopHostService {
       gitBranch: state.git.branch,
       collectorModel: settings.collectorModel,
       config: cloneDesktopConfig(state.config),
-      planMetadata: { ...state.metadata.planMetadata },
+      planMetadata: buildDreamCollectorPlanMetadata(state.metadata.planMetadata),
     };
 
     void runDesktopDreamCollectorOnce(collectorInput, {
