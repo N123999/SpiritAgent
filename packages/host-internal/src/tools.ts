@@ -122,7 +122,7 @@ export interface HostGeneratedImageSaveRequest {
 export interface HostGeneratedImageFile {
   path: string;
   mimeType: string;
-  markdownRef?: string;
+  markdownRef: string;
 }
 
 function generatedImageMarkdownRef(filePath: string): string {
@@ -1112,8 +1112,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         throw new Error(`Spirit 托管图片不存在: ${trimmed}`);
       }
 
-      const canonical = await realpath(candidatePath);
-      if (!pathHasPrefix(canonical, managedRoot)) {
+      const [canonicalRoot, canonical] = await Promise.all([
+        realpath(managedRoot),
+        realpath(candidatePath),
+      ]);
+      if (!pathHasPrefix(canonical, canonicalRoot)) {
         throw new Error(`Spirit 托管图片引用越界: ${trimmed}`);
       }
 
@@ -1221,12 +1224,24 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   ): Promise<HostToolExecutionOutput> {
     const target = await this.resolveReadFileTarget(inputPath);
     const canonical = target.canonicalPath;
-    const st = await lstat(canonical);
-    if (!st.isFile()) {
-      throw new Error(`目标不是文件: ${canonical}`);
+    const errorPath = target.managed ? target.displayPath : canonical;
+
+    let st;
+    let bytes;
+    try {
+      st = await lstat(canonical);
+      if (!st.isFile()) {
+        throw new Error(`目标不是文件: ${errorPath}`);
+      }
+
+      bytes = await readFile(canonical);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(errorPath)) {
+        throw error;
+      }
+      throw new Error(`读取文件失败: ${errorPath}`);
     }
 
-    const bytes = await readFile(canonical);
     const image = detectSupportedImageFile(canonical, bytes);
     if (image) {
       return this.createImageToolOutput(
@@ -1238,11 +1253,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }
 
     if (hasSupportedImageExtension(canonical)) {
-      throw new Error(`图片文件校验失败: ${canonical}`);
+      throw new Error(`图片文件校验失败: ${errorPath}`);
     }
 
     if (bytes.includes(0)) {
-      throw new Error(`暂不支持以文本方式读取二进制文件: ${canonical}`);
+      throw new Error(`暂不支持以文本方式读取二进制文件: ${errorPath}`);
     }
 
     const content = bytes.toString('utf8');

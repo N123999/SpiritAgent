@@ -136,14 +136,12 @@ export class AiSdkOpenAiCompatibleTransport
     logAiSdkImageGenerationSuccess(imageConfig, requestUrl, saved);
 
     const summaryLines = ['[generated image]'];
-    const markdownRef = saved.markdownRef?.trim();
-    if (markdownRef) {
-      summaryLines.push(
-        `image_ref: ${markdownRef}`,
-        `read_file_path: ${markdownRef}`,
-        `embed_markdown: ![Generated image](${markdownRef})`,
-      );
-    }
+    const markdownRef = saved.markdownRef.trim();
+    summaryLines.push(
+      `image_ref: ${markdownRef}`,
+      `read_file_path: ${markdownRef}`,
+      `embed_markdown: ![Generated image](${markdownRef})`,
+    );
     summaryLines.push(`mime_type: ${saved.mimeType}`, `model: ${imageConfig.model}`);
     const summaryText = summaryLines.join('\n');
 
