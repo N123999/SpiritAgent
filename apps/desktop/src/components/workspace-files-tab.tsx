@@ -53,6 +53,7 @@ export type WorkspaceFilesTabProps = {
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile: (request: WriteWorkspaceTextFileRequest) => Promise<void>;
+  readManagedImagePreviewDataUrl?: (reference: string) => Promise<string | null>;
   onStartImplementing?: () => void;
   startImplementingDisabled?: boolean;
   autoRevealPlanNonce?: number;
@@ -64,6 +65,7 @@ export function WorkspaceFilesTab({
   listExplorerChildren,
   readWorkspaceTextFile,
   writeWorkspaceTextFile,
+  readManagedImagePreviewDataUrl,
   onStartImplementing,
   startImplementingDisabled = false,
   autoRevealPlanNonce = 0,
@@ -376,7 +378,11 @@ export function WorkspaceFilesTab({
                 <ScrollArea className="h-full min-h-0 w-full bg-background/30">
                   <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-4 sm:px-6">
                     {draftText.trim() ? (
-                      <MarkdownMessage content={draftText} className="text-sm" />
+                      <MarkdownMessage
+                        content={draftText}
+                        className="text-sm"
+                        readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
+                      />
                     ) : (
                       <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-border/50 bg-background/35 px-4 text-center text-xs text-muted-foreground">
                         当前 Markdown 文档为空。

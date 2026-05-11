@@ -25,6 +25,7 @@ export type WorkspaceToolsDockProps = {
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile: (request: WriteWorkspaceTextFileRequest) => Promise<void>;
+  readManagedImagePreviewDataUrl?: (reference: string) => Promise<string | null>;
   plan: PlanSnapshot;
   onStartImplementing?: () => void;
   startImplementingDisabled?: boolean;
@@ -49,6 +50,7 @@ export function WorkspaceToolsDock({
   listExplorerChildren,
   readWorkspaceTextFile,
   writeWorkspaceTextFile,
+  readManagedImagePreviewDataUrl,
   plan,
   onStartImplementing,
   startImplementingDisabled = false,
@@ -204,6 +206,7 @@ export function WorkspaceToolsDock({
                   listExplorerChildren={listExplorerChildren}
                   readWorkspaceTextFile={readWorkspaceTextFile}
                   writeWorkspaceTextFile={writeWorkspaceTextFile}
+                  readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
                   onStartImplementing={onStartImplementing}
                   startImplementingDisabled={startImplementingDisabled}
                   autoRevealPlanNonce={autoRevealPlanNonce}

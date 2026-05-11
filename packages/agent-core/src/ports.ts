@@ -58,6 +58,7 @@ export interface GeneratedImageSaveRequest {
 export interface GeneratedImageFile {
   path: string;
   mimeType: string;
+  markdownRef?: string;
 }
 
 export function createToolExecutionTextOutput(text: string): ToolExecutionOutput {

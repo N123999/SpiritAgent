@@ -150,6 +150,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     readLocalImagePreviewDataUrl(filePath) {
       return bridge.readLocalImagePreviewDataUrl(filePath);
     },
+    readManagedImagePreviewDataUrl(reference) {
+      return bridge.readManagedImagePreviewDataUrl(reference);
+    },
     saveLocalImageAs(filePath) {
       return bridge.saveLocalImageAs(filePath);
     },

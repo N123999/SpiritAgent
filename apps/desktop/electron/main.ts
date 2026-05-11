@@ -18,6 +18,7 @@ import {
 import {
   configFilePath,
   loadConfig,
+  spiritAgentDataDir,
   type DesktopWebHostConfigFile,
 } from '../src/host/storage.js';
 import { setDesktopWebHostRuntimeStatus } from '../src/host/web-host-state.js';
@@ -34,6 +35,9 @@ import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 /** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
 const TITLE_BAR_OVERLAY_HEIGHT = 32;
 const LOCAL_IMAGE_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+const MANAGED_IMAGE_PROTOCOL = 'spirit-image:';
+const MANAGED_IMAGE_HOST = 'generated';
+const MANAGED_GENERATED_IMAGES_DIR = 'generated-images';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -515,23 +519,21 @@ app.whenReady().then(async () => {
       return null;
     }
 
-    const extension = path.extname(filePath).toLowerCase();
-    const mimeType = imagePreviewMimeType(extension);
-    if (!mimeType) {
+    return readImagePreviewDataUrlFromPath(filePath);
+  });
+
+  ipcMain.handle('desktop:read-managed-image-preview', async (_event, payload: { reference?: string }) => {
+    const reference = typeof payload?.reference === 'string' ? payload.reference.trim() : '';
+    if (!reference) {
       return null;
     }
 
-    try {
-      const metadata = await stat(filePath);
-      if (!metadata.isFile() || metadata.size > LOCAL_IMAGE_PREVIEW_MAX_BYTES) {
-        return null;
-      }
-
-      const bytes = await readFile(filePath);
-      return `data:${mimeType};base64,${bytes.toString('base64')}`;
-    } catch {
+    const filePath = resolveManagedGeneratedImagePath(reference);
+    if (!filePath) {
       return null;
     }
+
+    return readImagePreviewDataUrlFromPath(filePath);
   });
 
   ipcMain.handle(
@@ -665,6 +667,49 @@ function imagePreviewMimeType(extension: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+async function readImagePreviewDataUrlFromPath(filePath: string): Promise<string | null> {
+  const extension = path.extname(filePath).toLowerCase();
+  const mimeType = imagePreviewMimeType(extension);
+  if (!mimeType) {
+    return null;
+  }
+
+  try {
+    const metadata = await stat(filePath);
+    if (!metadata.isFile() || metadata.size > LOCAL_IMAGE_PREVIEW_MAX_BYTES) {
+      return null;
+    }
+
+    const bytes = await readFile(filePath);
+    return `data:${mimeType};base64,${bytes.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+function resolveManagedGeneratedImagePath(reference: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(reference);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== MANAGED_IMAGE_PROTOCOL || url.hostname !== MANAGED_IMAGE_HOST) {
+    return null;
+  }
+  if (url.search.length > 0 || url.hash.length > 0) {
+    return null;
+  }
+
+  const imageId = decodeURIComponent(url.pathname.replace(/^\/+/, '')).trim();
+  if (!imageId || imageId !== path.basename(imageId) || imageId === '.' || imageId === '..') {
+    return null;
+  }
+
+  return path.join(spiritAgentDataDir(), MANAGED_GENERATED_IMAGES_DIR, imageId);
 }
 
 function buildSaveImageDialogOptions(sourcePath: string, extension: string): Electron.SaveDialogOptions {

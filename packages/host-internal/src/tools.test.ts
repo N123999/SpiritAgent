@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import {
   NodeHostToolService,
@@ -155,6 +155,72 @@ test('web_fetch returns blocked-vision text without image part for remote image 
   }
 });
 
+test('saveGeneratedImage returns a managed markdown reference instead of a raw local path', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-generated-image-ref-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const saved = await service.saveGeneratedImage({
+      data: Buffer.from(ONE_PIXEL_PNG_BASE64, 'base64'),
+      mediaType: 'image/png',
+      prompt: 'concept image',
+      model: 'test-image-model',
+    });
+
+    assert.equal(dirname(saved.path), join(spiritDataDir, 'generated-images'));
+    assert.equal(saved.markdownRef, `spirit-image://generated/${encodeURIComponent(basename(saved.path))}`);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('read_file accepts Spirit-managed generated image refs without leaking local paths', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-managed-image-read-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      {
+        getModelCompatibilityProfile: () => ({
+          hasExplicitCapabilities: true,
+          capabilities: { vision: true },
+        }),
+      },
+    );
+
+    const saved = await service.saveGeneratedImage({
+      data: Buffer.from(ONE_PIXEL_PNG_BASE64, 'base64'),
+      mediaType: 'image/png',
+      prompt: 'concept image',
+      model: 'test-image-model',
+    });
+
+    const authorization = await service.authorize({
+      name: 'read_file',
+      path: saved.markdownRef ?? '',
+    });
+    assert.deepEqual(authorization, { kind: 'allowed' });
+
+    const output = await service.execute({
+      name: 'read_file',
+      path: saved.markdownRef ?? '',
+    });
+    assertHostToolExecutionOutput(output);
+    assert.match(output.summaryText, /^\[read image\]/u);
+    assert.match(output.summaryText, new RegExp(`path: ${escapeRegExp(saved.markdownRef ?? '')}`));
+    assert.doesNotMatch(output.summaryText, new RegExp(escapeRegExp(saved.path)));
+    assert.equal(output.content.some((part) => part.type === 'image'), true);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('grep supports case-insensitive regular expression queries', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-search-regexp-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
@@ -303,4 +369,8 @@ function assertHostToolExecutionOutput(
 
 function assertTextToolOutput(output: HostToolExecutionOutput | string): asserts output is string {
   assert.equal(typeof output, 'string');
+}
+
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

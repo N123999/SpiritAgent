@@ -283,6 +283,7 @@ function EmptyStateWorkspaceSelector({
 }
 
 type ReadLocalImagePreview = (filePath: string) => Promise<string | null>;
+type ReadManagedImagePreview = (reference: string) => Promise<string | null>;
 type SaveLocalImageAs = (filePath: string) => Promise<boolean>;
 
 function ToolCallCollapsible({
@@ -1010,6 +1011,7 @@ function MessageCard({
   onModelSelect,
   onModelReasoningEffortSelect,
   onPlanModeChange,
+  readManagedImagePreviewDataUrl,
   readLocalImagePreviewDataUrl,
   saveLocalImageAs,
 }: {
@@ -1033,6 +1035,7 @@ function MessageCard({
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
+  readManagedImagePreviewDataUrl: ReadManagedImagePreview;
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
   saveLocalImageAs: SaveLocalImageAs;
 }) {
@@ -1121,7 +1124,11 @@ function MessageCard({
         ) : null}
         {!isUser && message.content.trim() ? (
           <div data-spirit-surface="message-bubble">
-            <MarkdownMessage content={message.content} className="font-sans" />
+            <MarkdownMessage
+              content={message.content}
+              className="font-sans"
+              readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
+            />
           </div>
         ) : null}
         {!isUser && message.tool ? (
@@ -2292,6 +2299,7 @@ export default function App() {
                             onPlanModeChange={(planMode) => {
                               void runtime.saveSettingsPatch({ planMode });
                             }}
+                            readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
                             readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
                             saveLocalImageAs={runtime.saveLocalImageAs}
                           />
@@ -2500,6 +2508,7 @@ export default function App() {
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
               readWorkspaceTextFile={runtime.readWorkspaceTextFile}
               writeWorkspaceTextFile={runtime.writeWorkspaceTextFile}
+              readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
               plan={snapshot?.plan ?? { path: "", exists: false }}
               onStartImplementing={() => {
                 void runtime.sendMessage({ text: START_IMPLEMENTING_SLASH_ALIAS });

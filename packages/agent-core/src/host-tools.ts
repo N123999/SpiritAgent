@@ -78,7 +78,7 @@ export function buildBuiltinHostToolDefinitions(
         properties: {
           path: {
             type: 'string',
-            description: 'Path to the file to read.',
+            description: 'Path to the file to read, or a Spirit-managed generated image ref such as spirit-image://generated/<name>.',
           },
           start_line: {
             type: 'integer',

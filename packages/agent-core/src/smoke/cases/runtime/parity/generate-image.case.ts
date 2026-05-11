@@ -25,6 +25,8 @@ import {
   type ScriptedToolRequest,
 } from './harness.js';
 
+const GENERATE_IMAGE_ASSISTANT_TEXT = 'GENERATE_IMAGE_OK';
+
 export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
   const nonStreamingTransport = new GenerateImageTerminalTransport(
     'non-streaming',
@@ -42,8 +44,11 @@ export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
   );
 
   const nonStreamingResult = await nonStreamingRuntime.submitUserTurn('画一张正方形海报');
-  if (nonStreamingResult.kind !== 'completed' || nonStreamingResult.assistantText !== '') {
-    throw new Error('generate_image 非流式 smoke 未以空 assistant 正文完成。');
+  if (
+    nonStreamingResult.kind !== 'completed' ||
+    nonStreamingResult.assistantText !== GENERATE_IMAGE_ASSISTANT_TEXT
+  ) {
+    throw new Error('generate_image 非流式 smoke 未完成。');
   }
   assertTerminalGenerateImageResult(
     nonStreamingResult.toolExecutions,
@@ -81,8 +86,12 @@ export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
   }
 
   const streamingResult = streamingRuntime.takeCompletedTurnResult();
-  if (!streamingResult || streamingResult.kind !== 'completed' || streamingResult.assistantText !== '') {
-    throw new Error('generate_image 流式 smoke 未以空 assistant 正文完成。');
+  if (
+    !streamingResult ||
+    streamingResult.kind !== 'completed' ||
+    streamingResult.assistantText !== GENERATE_IMAGE_ASSISTANT_TEXT
+  ) {
+    throw new Error('generate_image 流式 smoke 未完成。');
   }
   assertTerminalGenerateImageResult(
     streamingResult.toolExecutions,
@@ -94,10 +103,6 @@ export async function runGenerateImageCase(): Promise<RuntimeParityCaseResult> {
     streamingResult.state,
     'generate_image 流式 smoke',
   );
-  if (streamingEvents.some((event) => event.kind === 'assistant-chunk' && event.text.trim().length > 0)) {
-    throw new Error('generate_image 流式 smoke 不应产生最终 assistant 文本。');
-  }
-
   return {
     generateImageNonStreamingResult: nonStreamingResult,
     generateImageStreamingEvents: streamingEvents,
@@ -126,12 +131,17 @@ function createGenerateImageRuntime(
         throw new Error(`generate_image smoke 未解析出预期 size：${request.size}`);
       }
 
+      const markdownRef = 'spirit-image://generated/square-poster.png';
+      const summaryText = [
+        '[generated image]',
+        `image_ref: ${markdownRef}`,
+        `read_file_path: ${markdownRef}`,
+        `embed_markdown: ![Generated image](${markdownRef})`,
+      ].join('\n');
+
       return {
-        content: createLlmMessageContentFromTextAndImages(
-          'path: generated/square-poster.png',
-          ['generated/square-poster.png'],
-        ),
-        summaryText: 'path: generated/square-poster.png',
+        content: createLlmMessageContentFromTextAndImages(summaryText, ['generated/square-poster.png']),
+        summaryText,
       };
     },
     onEvent: (event) => events.push(event),
@@ -144,16 +154,19 @@ function assertTerminalGenerateImageResult(
   executedCalls: number,
   label: string,
 ): void {
-  if (rounds !== 1) {
-    throw new Error(`${label} 不应在 generate_image 完成后继续发起模型轮次。`);
+  if (rounds !== 2) {
+    throw new Error(`${label} 应在 generate_image 完成后继续到最终 assistant 轮次。`);
   }
   if (executedCalls !== 0) {
     throw new Error(`${label} 不应落到宿主 execute。`);
   }
 
   const execution = toolExecutions.find((item) => item.toolName === 'generate_image');
-  if (!execution || execution.failed || !execution.output.includes('generated/square-poster.png')) {
+  if (!execution || execution.failed || !execution.output.includes('spirit-image://generated/square-poster.png')) {
     throw new Error(`${label} 未记录正确的 generate_image 工具结果。`);
+  }
+  if (execution.output.includes('path: generated/square-poster.png')) {
+    throw new Error(`${label} 不应向模型暴露真实生成图片路径。`);
   }
   if (!execution.artifacts?.some((artifact) => artifact.path === 'generated/square-poster.png')) {
     throw new Error(`${label} 未把生成图片路径放入 structured artifacts。`);
@@ -172,8 +185,14 @@ function assertToolResultMessagePersisted(
     return message.role === 'tool' && message.tool_call_id === 'call-generate-image';
   }) as { content?: unknown } | undefined;
 
-  if (typeof toolMessage?.content !== 'string' || !toolMessage.content.includes('generated/square-poster.png')) {
+  if (
+    typeof toolMessage?.content !== 'string' ||
+    !toolMessage.content.includes('spirit-image://generated/square-poster.png')
+  ) {
     throw new Error(`${label} 未把 generate_image 结果写回 runtime state messages。`);
+  }
+  if (toolMessage.content.includes('path: generated/square-poster.png')) {
+    throw new Error(`${label} 不应把真实生成图片路径写回 runtime state messages。`);
   }
 }
 
@@ -195,7 +214,7 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
       throw new Error('generate_image streaming smoke 应走 streaming transport。');
     }
 
-    return this.nextToolCallRound(state);
+    return this.nextRound(state);
   }
 
   async startToolAgentRoundStreaming(
@@ -207,18 +226,40 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
       throw new Error('generate_image non-streaming smoke 不应走 streaming transport。');
     }
 
-    const completion = this.nextToolCallRound(state);
+    this.rounds += 1;
+    if (this.rounds === 1) {
+      return {
+        eventStream: streamFromEvents([
+          {
+            kind: 'streaming-tool-preview',
+            toolCallId: 'call-generate-image',
+            toolName: 'generate_image',
+            argumentsJson: this.argumentsJson,
+            previewLine: this.previewLine,
+          },
+        ]),
+        completion: Promise.resolve(this.buildToolCallRound(state)),
+      };
+    }
+
+    if (this.rounds === 2) {
+      return {
+        eventStream: streamFromEvents([
+          { kind: 'assistant-chunk', text: 'GENERATE_IMAGE_' },
+          { kind: 'assistant-chunk', text: 'OK' },
+          { kind: 'done' },
+        ]),
+        completion: Promise.resolve(this.buildFinalResponseRound(state)),
+      };
+    }
+
     return {
-      eventStream: streamFromEvents([
-        {
-          kind: 'streaming-tool-preview',
-          toolCallId: 'call-generate-image',
-          toolName: 'generate_image',
-          argumentsJson: this.argumentsJson,
-          previewLine: this.previewLine,
-        },
-      ]),
-      completion,
+      eventStream: streamFromEvents([]),
+      completion: Promise.resolve({
+        kind: 'failure',
+        error: 'generate_image completed but runtime continued into an unexpected streaming round.',
+        requestTrace: [{ mode: 'generate-image-terminal-extra-streaming-round' }],
+      }),
     };
   }
 
@@ -249,16 +290,24 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
     return {};
   }
 
-  private async nextToolCallRound(state: ScriptedState): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+  private async nextRound(state: ScriptedState): Promise<ToolAgentRoundCompletion<ScriptedState>> {
     this.rounds += 1;
-    if (this.rounds > 1) {
-      return {
-        kind: 'failure',
-        error: 'generate_image completed but runtime continued into another model round.',
-        requestTrace: [{ mode: 'generate-image-terminal-extra-round' }],
-      };
+    if (this.rounds === 1) {
+      return this.buildToolCallRound(state);
     }
 
+    if (this.rounds === 2) {
+      return this.buildFinalResponseRound(state);
+    }
+
+    return {
+      kind: 'failure',
+      error: 'generate_image completed but runtime continued into another model round.',
+      requestTrace: [{ mode: 'generate-image-terminal-extra-round' }],
+    };
+  }
+
+  private buildToolCallRound(state: ScriptedState): ToolAgentRoundCompletion<ScriptedState> {
     return {
       kind: 'success',
       result: {
@@ -293,6 +342,23 @@ class GenerateImageTerminalTransport implements LlmTransport<undefined, Scripted
           ],
         },
         requestTrace: [{ mode: 'generate-image-terminal-round' }],
+      },
+    };
+  }
+
+  private buildFinalResponseRound(state: ScriptedState): ToolAgentRoundCompletion<ScriptedState> {
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [
+            ...state.messages,
+            { role: 'assistant', content: GENERATE_IMAGE_ASSISTANT_TEXT },
+          ],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'generate-image-terminal-final-round' }],
       },
     };
   }

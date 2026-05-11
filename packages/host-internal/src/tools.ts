@@ -47,6 +47,7 @@ const MAX_WEB_FETCH_OUTPUT_CHARS = 24_000;
 const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
 const GENERATED_IMAGES_DIR = 'generated-images';
+const MANAGED_GENERATED_IMAGE_PREFIX = 'spirit-image://generated/';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
 const MAX_COMMAND_OUTPUT_CHARS = 16_000;
@@ -121,6 +122,17 @@ export interface HostGeneratedImageSaveRequest {
 export interface HostGeneratedImageFile {
   path: string;
   mimeType: string;
+  markdownRef?: string;
+}
+
+function generatedImageMarkdownRef(filePath: string): string {
+  return `spirit-image://generated/${encodeURIComponent(path.basename(filePath))}`;
+}
+
+interface ResolvedReadFileTarget {
+  canonicalPath: string;
+  displayPath: string;
+  managed: boolean;
 }
 
 export interface HostBuiltinToolDefinitionEnvironment {
@@ -716,7 +728,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         return this.authorizeExternalReadPath(canonical, '遍历工作目录外目录');
       }
       case 'read_file': {
-        const canonical = await this.resolveExistingFilePath(request.path);
+        const target = await this.resolveReadFileTarget(request.path);
+        if (target.managed) {
+          return { kind: 'allowed' };
+        }
+        const canonical = target.canonicalPath;
         return this.authorizeExternalReadPath(canonical, '读取工作目录外文件');
       }
       case 'create_file':
@@ -867,6 +883,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     return {
       path: filePath,
       mimeType: imageType.mimeType,
+      markdownRef: generatedImageMarkdownRef(filePath),
     };
   }
 
@@ -1027,6 +1044,77 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     return realpath(raw);
   }
 
+  private async resolveReadFileTarget(input: string): Promise<ResolvedReadFileTarget> {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      throw new Error('path 不能为空');
+    }
+
+    const managedCanonical = await this.tryResolveManagedGeneratedImagePath(trimmed);
+    if (managedCanonical) {
+      return {
+        canonicalPath: managedCanonical,
+        displayPath: trimmed,
+        managed: true,
+      };
+    }
+
+    return {
+      canonicalPath: await this.resolveExistingFilePath(trimmed),
+      displayPath: trimmed,
+      managed: false,
+    };
+  }
+
+  private async tryResolveManagedGeneratedImagePath(reference: string): Promise<string | undefined> {
+    const trimmed = reference.trim();
+    if (!trimmed.startsWith(MANAGED_GENERATED_IMAGE_PREFIX)) {
+      return undefined;
+    }
+
+    const encodedBasename = trimmed.slice(MANAGED_GENERATED_IMAGE_PREFIX.length);
+    if (
+      !encodedBasename ||
+      encodedBasename.includes('/') ||
+      encodedBasename.includes('\\') ||
+      encodedBasename.includes('?') ||
+      encodedBasename.includes('#')
+    ) {
+      throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
+    }
+
+    let basename: string;
+    try {
+      basename = decodeURIComponent(encodedBasename).trim();
+    } catch {
+      throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
+    }
+
+    if (
+      !basename ||
+      basename !== path.basename(basename) ||
+      basename === '.' ||
+      basename === '..' ||
+      basename.includes('/') ||
+      basename.includes('\\')
+    ) {
+      throw new Error(`无效的 Spirit 托管图片引用: ${trimmed}`);
+    }
+
+    const managedRoot = path.join(this.spiritDataDir, GENERATED_IMAGES_DIR);
+    const canonical = await realpath(path.join(managedRoot, basename));
+    if (!pathHasPrefix(canonical, managedRoot)) {
+      throw new Error(`Spirit 托管图片引用越界: ${trimmed}`);
+    }
+
+    const st = await lstat(canonical);
+    if (!st.isFile()) {
+      throw new Error(`Spirit 托管图片不存在: ${trimmed}`);
+    }
+
+    return canonical;
+  }
+
   private resolveWorkspaceWriteTarget(input: string): string {
     const trimmed = input.trim();
     if (!trimmed) {
@@ -1115,7 +1203,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     startLine?: number,
     endLine?: number,
   ): Promise<HostToolExecutionOutput> {
-    const canonical = await this.resolveExistingFilePath(inputPath);
+    const target = await this.resolveReadFileTarget(inputPath);
+    const canonical = target.canonicalPath;
     const st = await lstat(canonical);
     if (!st.isFile()) {
       throw new Error(`目标不是文件: ${canonical}`);
@@ -1126,7 +1215,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     if (image) {
       return this.createImageToolOutput(
         '[read image]',
-        `path: ${canonical}`,
+        `path: ${target.displayPath}`,
         canonical,
         image.mimeType,
       );
@@ -1156,7 +1245,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const s = Math.min(start, maxLine);
     const e = Math.min(end, maxLine);
 
-    let out = `[read]\npath: ${canonical}\nrange: ${s}-${e}\n\n`;
+    let out = `[read]\npath: ${target.displayPath}\nrange: ${s}-${e}\n\n`;
     for (let index = s; index <= e; index += 1) {
       const line = lines[index - 1] ?? '';
       out += `${String(index).padStart(6, ' ')} | ${line}\n`;

@@ -186,6 +186,9 @@ export function createWebHostApi(): HostApi {
     async readLocalImagePreviewDataUrl() {
       return null;
     },
+    async readManagedImagePreviewDataUrl() {
+      return null;
+    },
     async saveLocalImageAs() {
       return false;
     },

@@ -394,6 +394,21 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const readManagedImagePreviewDataUrl = useCallback(
+    async (reference: string): Promise<string | null> => {
+      if (!api?.readManagedImagePreviewDataUrl) {
+        return null;
+      }
+
+      try {
+        return await api.readManagedImagePreviewDataUrl(reference);
+      } catch {
+        return null;
+      }
+    },
+    [api],
+  );
+
   const saveLocalImageAs = useCallback(
     async (filePath: string): Promise<boolean> => {
       if (!api?.saveLocalImageAs) {
@@ -1536,6 +1551,7 @@ export function useDesktopRuntime() {
     pickWorkspaceDirectory,
     pickLocalFile,
     readLocalImagePreviewDataUrl,
+    readManagedImagePreviewDataUrl,
     saveLocalImageAs,
     commitChanges,
     addModel,
