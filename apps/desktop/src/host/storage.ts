@@ -295,6 +295,9 @@ function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDe
     ...(Array.isArray(parsed.desktopMessages)
       ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
       : {}),
+    ...(Array.isArray(parsed.desktopMessageTimeline)
+      ? { desktopMessageTimeline: parsed.desktopMessageTimeline }
+      : {}),
     rewind: normalizeDesktopRewindMetadata(parsed.rewind),
   } satisfies StoredDesktopSession;
 }

@@ -1,5 +1,6 @@
 import type { ChatArchive } from '@spirit-agent/agent-core';
 import type { HostToolRequest } from '@spirit-agent/host-internal';
+import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import type { StoredDesktopRewindMetadata } from './rewind.js';
 
 import type {
@@ -63,6 +64,7 @@ export interface StoredDesktopSession extends ChatArchive {
   workspaceRoot?: string;
   gitBranch?: string;
   desktopMessages?: ConversationMessageSnapshot[];
+  desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind?: StoredDesktopRewindMetadata;
 }
 
