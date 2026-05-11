@@ -209,8 +209,10 @@ export type WorkspaceMonacoEditorHandle = {
 export type WorkspaceMonacoEditorProps = {
   relativePath: string;
   initialText: string;
+  baselineText?: string;
   onSave: (text: string) => Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  onTextChange?: (text: string) => void;
   readOnly?: boolean;
 };
 
@@ -218,16 +220,32 @@ export const WorkspaceMonacoEditor = forwardRef<
   WorkspaceMonacoEditorHandle,
   WorkspaceMonacoEditorProps
 >(function WorkspaceMonacoEditor(
-  { relativePath, initialText, onSave, onDirtyChange, readOnly = false },
+  {
+    relativePath,
+    initialText,
+    baselineText,
+    onSave,
+    onDirtyChange,
+    onTextChange,
+    readOnly = false,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const baselineRef = useRef(initialText);
+  const baselineRef = useRef(baselineText ?? initialText);
   const onSaveRef = useRef(onSave);
   const onDirtyChangeRef = useRef(onDirtyChange);
+  const onTextChangeRef = useRef(onTextChange);
   onSaveRef.current = onSave;
   onDirtyChangeRef.current = onDirtyChange;
+  onTextChangeRef.current = onTextChange;
+
+  useEffect(() => {
+    if (baselineText !== undefined) {
+      baselineRef.current = baselineText;
+    }
+  }, [baselineText]);
 
   const runSave = useCallback(async () => {
     const editor = editorRef.current;
@@ -238,6 +256,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     try {
       await onSaveRef.current(value);
       baselineRef.current = value;
+      onTextChangeRef.current?.(value);
       onDirtyChangeRef.current?.(false);
     } catch {
       /* 由上层展示错误；不更新 baseline */
@@ -278,7 +297,9 @@ export const WorkspaceMonacoEditor = forwardRef<
     editorRef.current = editor;
 
     const dirtyDisposable = editor.onDidChangeModelContent(() => {
-      onDirtyChangeRef.current?.(editor.getValue() !== baselineRef.current);
+      const value = editor.getValue();
+      onTextChangeRef.current?.(value);
+      onDirtyChangeRef.current?.(value !== baselineRef.current);
     });
 
     if (!readOnly) {
@@ -298,7 +319,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       editor.dispose();
       editorRef.current = null;
     };
-  }, [relativePath, initialText, readOnly]);
+  }, [relativePath, readOnly, runSave]);
 
   return <div ref={containerRef} className="h-full min-h-0 w-full min-w-0" />;
 });
