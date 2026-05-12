@@ -1,5 +1,6 @@
 import {
   type AskQuestionsResult,
+  type DreamHostToolName,
   type OpenAiModelCompatibilityProfile,
   type OpenAiTransportConfig,
   resolveOpenAiModelCompatibilityProfile,
@@ -7,6 +8,7 @@ import {
   createLlmTextContentPart,
   buildBuiltinHostToolDefinitions,
   buildDreamHostToolDefinitions,
+  buildDreamReadHostToolDefinitions,
   AuthorizationDecision,
   createToolExecutionTextOutput,
   JsonValue,
@@ -34,12 +36,22 @@ import type { AskQuestionsQuestionSpec } from '../types.js';
 import { spiritAgentDataDir } from './storage.js';
 import type { DesktopToolRequest } from './contracts.js';
 
+type DesktopDreamToolMode = 'read-only' | 'collector';
+
+const READ_ONLY_DREAM_TOOL_NAMES = new Set<DreamHostToolName>(['dream_list', 'dream_read']);
+
+function isDreamToolRequest(request: DesktopToolRequest): request is Extract<DesktopToolRequest, { name: DreamHostToolName }> {
+  return typeof request?.name === 'string' && request.name.startsWith('dream_');
+}
+
 export class DesktopToolExecutor
   implements ToolExecutor<DesktopToolRequest, string>
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
   private readonly mcp: McpService;
   private readonly dreamToolDefinitions: JsonValue[];
+  private readonly dreamScope: HostDreamScope | undefined;
+  private readonly dreamToolMode: DesktopDreamToolMode | undefined;
   private extensionToolDefinitions: JsonValue[];
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
   private imageGenerationAvailable = false;
@@ -51,12 +63,19 @@ export class DesktopToolExecutor
       fileChangeObserver?: HostFileChangeObserver;
       extensions?: HostExtensionRuntimeBinding<unknown>;
       dreamScope?: HostDreamScope;
+      dreamToolMode?: DesktopDreamToolMode;
       dreamSourceSession?: HostDreamSourceSessionRef;
     } = {},
   ) {
     this.mcp = new McpService(workspaceRoot);
     this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
-    this.dreamToolDefinitions = options.dreamScope ? buildDreamHostToolDefinitions() : [];
+    this.dreamScope = options.dreamScope;
+    this.dreamToolMode = options.dreamScope ? (options.dreamToolMode ?? 'collector') : undefined;
+    this.dreamToolDefinitions = !options.dreamScope
+      ? []
+      : this.dreamToolMode === 'read-only'
+        ? buildDreamReadHostToolDefinitions()
+        : buildDreamHostToolDefinitions();
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
@@ -83,6 +102,15 @@ export class DesktopToolExecutor
 
   operatingSystemInfo(): HostOperatingSystemInfo {
     return this.tools.operatingSystemInfo();
+  }
+
+  matchesDreamAccess(
+    dreamScope: HostDreamScope | undefined,
+    dreamToolMode: DesktopDreamToolMode | undefined,
+  ): boolean {
+    return this.dreamToolMode === dreamToolMode
+      && this.dreamScope?.workspaceRoot === dreamScope?.workspaceRoot
+      && this.dreamScope?.gitBranch === dreamScope?.gitBranch;
   }
 
   toolDefinitionsJson(): JsonValue {
@@ -115,7 +143,9 @@ export class DesktopToolExecutor
     if (localMcpRequest) {
       return localMcpRequest as unknown as DesktopToolRequest;
     }
-    return this.tools.requestFromFunctionCall(name, argumentsJson);
+    const request = await this.tools.requestFromFunctionCall(name, argumentsJson);
+    this.assertAllowedDreamToolRequest(request);
+    return request;
   }
 
   async authorize(
@@ -125,6 +155,7 @@ export class DesktopToolExecutor
       await this.mcp.authorizeToolRequest(request as unknown as McpToolRequest);
       return { kind: 'allowed' };
     }
+    this.assertAllowedDreamToolRequest(request);
     return this.tools.authorize(request);
   }
 
@@ -139,6 +170,7 @@ export class DesktopToolExecutor
       );
     }
 
+    this.assertAllowedDreamToolRequest(request);
     const output = await this.tools.execute(request);
     if (typeof output === 'string') {
       return createToolExecutionTextOutput(output);
@@ -219,6 +251,18 @@ export class DesktopToolExecutor
 
   async listMcpResources(name: string): Promise<unknown[]> {
     return this.mcp.listResources(name);
+  }
+
+  private assertAllowedDreamToolRequest(request: DesktopToolRequest): void {
+    if (!isDreamToolRequest(request)) {
+      return;
+    }
+    if (!this.dreamToolMode) {
+      throw new Error(`Dream tools are not enabled for this runtime: ${request.name}`);
+    }
+    if (this.dreamToolMode === 'read-only' && !READ_ONLY_DREAM_TOOL_NAMES.has(request.name)) {
+      throw new Error(`Dream tool is not available in read-only mode: ${request.name}`);
+    }
   }
 
   async readMcpResource(name: string, uri: string): Promise<JsonValue> {

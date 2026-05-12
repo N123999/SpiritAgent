@@ -486,11 +486,14 @@ export function buildDreamsSystemMessage(
 
   return [
     DREAMS_SECTION_PREFIX,
-    'Dream summaries',
+    'Dream catalog',
     '',
     'These are short-lived host-provided summaries of recent work movement for the current workspace and Git branch.',
     'Treat them as background continuity, not as authoritative current state.',
     'Prefer the current user request, visible conversation, and tool results when they conflict with these summaries.',
+    'Only summary-level dream catalog entries are embedded here; full dream details are not included in this system message.',
+    'Use `dream_list` to refresh the current dream catalog and `dream_read` with a relevant dream id when you need more detail.',
+    'Do not assume details that are not present in the catalog or returned by the dream tools.',
     '',
     trimmed,
   ].join('\n');

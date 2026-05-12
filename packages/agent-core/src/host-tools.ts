@@ -421,6 +421,44 @@ export function buildDreamHostToolDefinitions(): JsonValue[] {
   ];
 }
 
+export function buildDreamReadHostToolDefinitions(): JsonValue[] {
+  return [
+    functionTool(
+      'dream_list',
+      'List short-lived dream summaries for the current workspace and Git branch. Use this when the dream catalog in the system message suggests relevant prior work, or when you want the freshest list of dream ids before reading one in detail.',
+      {
+        type: 'object',
+        properties: {
+          include_deleted: {
+            type: 'boolean',
+            description: 'Whether to include dreams previously marked as deleted. Defaults to false.',
+          },
+          include_expired: {
+            type: 'boolean',
+            description: 'Whether to include expired dreams. Defaults to false.',
+          },
+        },
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'dream_read',
+      'Read one dream by id for the current workspace and Git branch. Use this after dream_list or after the dream catalog in the system message highlights a potentially relevant dream id.',
+      {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Dream id returned by dream_list or shown in the system message dream catalog.',
+          },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    ),
+  ];
+}
+
 export function buildDreamCollectorSystemMessage(): string {
   return [
     '[SPIRIT_DREAM_COLLECTOR]',

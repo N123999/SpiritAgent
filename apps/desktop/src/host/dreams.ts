@@ -16,6 +16,7 @@ import {
   createHostDreamStore,
   DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,
   dreamLogsDirPath,
+  type HostDreamRecord,
   type HostDreamSessionProgress,
 } from '@spirit-agent/host-internal';
 
@@ -59,13 +60,13 @@ type DesktopRuntime = AgentRuntime<
   string
 >;
 
-export async function buildDreamContextText(input: {
+async function listActiveDreams(input: {
   workspaceRoot: string;
   gitBranch?: string;
-}): Promise<string> {
+}): Promise<HostDreamRecord[]> {
   const gitBranch = input.gitBranch?.trim();
   if (!gitBranch) {
-    return '';
+    return [];
   }
 
   const dreamStore = createHostDreamStore({
@@ -76,16 +77,22 @@ export async function buildDreamContextText(input: {
     },
   });
   await dreamStore.pruneExpired();
-  const dreams = await dreamStore.list({ includeDeleted: false, includeExpired: false });
+  return dreamStore.list({ includeDeleted: false, includeExpired: false });
+}
+
+export async function buildDreamContextText(input: {
+  workspaceRoot: string;
+  gitBranch?: string;
+}): Promise<string> {
+  const dreams = await listActiveDreams(input);
   if (dreams.length === 0) {
     return '';
   }
 
   const rendered = dreams.map((dream, index) => {
     const lines = [
-      `${index + 1}. ${dream.title}`,
+      `${index + 1}. [id=${dream.id}] ${dream.title}`,
       `summary: ${dream.summary}`,
-      dream.details ? `details: ${dream.details}` : '',
       dream.tags?.length ? `tags: ${dream.tags.join(', ')}` : '',
       `updatedAtUnixMs: ${dream.updatedAtUnixMs}`,
     ].filter(Boolean);
@@ -98,7 +105,22 @@ export async function buildDreamCommitContext(input: {
   workspaceRoot: string;
   gitBranch?: string;
 }): Promise<string> {
-  return buildDreamContextText(input);
+  const dreams = await listActiveDreams(input);
+  if (dreams.length === 0) {
+    return '';
+  }
+
+  const rendered = dreams.map((dream, index) => {
+    const lines = [
+      `${index + 1}. [id=${dream.id}] ${dream.title}`,
+      `summary: ${dream.summary}`,
+      dream.details ? `details: ${dream.details}` : '',
+      dream.tags?.length ? `tags: ${dream.tags.join(', ')}` : '',
+      `updatedAtUnixMs: ${dream.updatedAtUnixMs}`,
+    ].filter(Boolean);
+    return lines.join('\n');
+  }).join('\n\n');
+  return truncateText(rendered, DREAM_CONTEXT_MAX_CHARS);
 }
 
 export function buildDreamCollectorPlanMetadata(
@@ -249,6 +271,7 @@ export async function runDesktopDreamCollectorOnce(
     // 的暴露策略一起设计清楚，避免现在先做一层局部限制后再打破宿主边界。
     const toolExecutor = new DesktopToolExecutor(input.workspaceRoot, {
       dreamScope: scope,
+      dreamToolMode: 'collector',
       dreamSourceSession: {
         path: sourceSession.path,
         displayName: sourceSession.displayName,

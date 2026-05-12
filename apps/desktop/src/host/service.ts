@@ -43,6 +43,7 @@ import {
   partitionModelsByProvider,
   resolveModelReasoningEffortForContext,
   restoreHostFileChanges,
+  type HostDreamScope,
   type ModelReasoningEffort,
   type HostExtensionMarketplaceManager,
   type HostExtensionEvent,
@@ -2188,8 +2189,15 @@ class DesktopHostService {
   }
 
   private async ensureToolExecutor(): Promise<DesktopToolExecutor> {
-    if (!this.toolExecutor) {
-      const state = this.requireState();
+    const state = this.requireState();
+    const dreamScope: HostDreamScope | undefined = state.git.branch
+      ? {
+          workspaceRoot: state.workspaceRoot,
+          gitBranch: state.git.branch,
+        }
+      : undefined;
+
+    if (!this.toolExecutor || !this.toolExecutor.matchesDreamAccess(dreamScope, dreamScope ? 'read-only' : undefined)) {
       const extensions = await this.extensionManager().list();
       this.toolExecutor = new DesktopToolExecutor(state.workspaceRoot, {
         extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
@@ -2207,6 +2215,12 @@ class DesktopHostService {
           },
           logger: console,
         },
+        ...(dreamScope
+          ? {
+              dreamScope,
+              dreamToolMode: 'read-only' as const,
+            }
+          : {}),
       });
       this.toolExecutor.startMcpBackgroundRefresh();
       return this.toolExecutor;
