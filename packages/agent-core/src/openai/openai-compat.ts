@@ -1,16 +1,11 @@
 import type { JsonObject, JsonValue } from '../ports.js';
+import type { LlmModelCapabilities } from '../llm-provider-shared.js';
 import { cloneJsonValue } from '../tool-agent.js';
 
 /** 与宿主 `ModelProfile.provider` 对齐；用于在 OpenAI 形态 API 上附加厂商扩展字段。 */
 export type OpenAiLlmVendor = 'deepseek' | 'kimi' | 'minimax' | 'alibaba' | 'custom';
 
-export interface OpenAiModelCapabilities {
-  chat?: true;
-  vision?: true;
-  audioInput?: true;
-  videoInput?: true;
-  imageGeneration?: true;
-}
+export type OpenAiModelCapabilities = LlmModelCapabilities;
 
 export interface OpenAiModelCompatibilityProfile {
   /**
@@ -39,6 +34,7 @@ export interface OpenAiImageGenerationConfig {
 }
 
 export interface OpenAiTransportConfig {
+  transportKind?: 'openai-compatible';
   apiKey: string;
   model: string;
   baseUrl?: string;

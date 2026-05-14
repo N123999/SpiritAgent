@@ -26,6 +26,7 @@
     "smoke:host-config": "npm run build && node dist/smoke/host-config/mcp-missing-env-smoke.js",
     "smoke:offline": "npm run smoke:contract && npm run smoke:runtime && npm run smoke:host-config",
     "smoke:live": "npm run smoke:live:openai-compatible",
+    "smoke:live:anthropic": "npm run build && node dist/smoke/live/ai-sdk-anthropic-live-smoke.js",
     "smoke:live:openai-compatible": "npm run build && node dist/smoke/live/ai-sdk-openai-compatible-live-smoke.js",
     "eval:scenario:validate": "npm run build && node dist/eval/validate-scenario.js",
     "eval:compare:dry-run": "npm run build && node dist/eval/compare-dry-run.js",
@@ -48,6 +49,7 @@
   },
   "dependencies": {
     "@ai-sdk/alibaba": "^1.0.22",
+    "@ai-sdk/anthropic": "^2.0.79",
     "@ai-sdk/deepseek": "^2.0.32",
     "@ai-sdk/openai-compatible": "^2.0.46",
     "@modelcontextprotocol/sdk": "^1.29.0",

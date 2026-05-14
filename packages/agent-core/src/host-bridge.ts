@@ -3,16 +3,13 @@ import { release as osRelease } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
 import {
-  createOpenAiCompatibleTransport,
   resolveOpenAiModelCompatibilityProfile,
-  type OpenAiCompatibleTransport,
   type OpenAiModelCompatibilityProfile,
-  type OpenAiTransportConfig,
 } from './openai/index.js';
 import {
-  appendOpenAiToolResultMessage,
-  appendOpenAiUserMessage,
-  appendOpenAiUserLlmMessage,
+  appendLlmToolResultMessage,
+  appendLlmUserMessage,
+  appendLlmUserLlmMessage,
   buildActiveSkillsSystemMessage,
   buildBasicInfoSystemMessage,
   buildExtensionsSystemMessage,
@@ -20,22 +17,25 @@ import {
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
   buildToolAgentHostPrompt,
-  continueOpenAiToolAgentState,
-  extractLastOpenAiAssistantText,
-  rebuildOpenAiToolAgentStateAfterCompaction,
-  startOpenAiToolAgentState,
-  truncateOpenAiHistoryForCompaction,
-  truncateOpenAiToolAgentStateForContextRetry,
-  type OpenAiActiveSkill,
-  type OpenAiEnabledRule,
-  type OpenAiEnabledSkillCatalogEntry,
-  type OpenAiExtensionSystemPrompt,
-  type OpenAiPlanMetadata,
-  type OpenAiToolAgentBasicInfo,
-  type OpenAiToolAgentState,
-} from './openai/tool-agent-helpers.js';
+  continueLlmToolAgentState,
+  extractLastLlmAssistantText,
+  rebuildLlmToolAgentStateAfterCompaction,
+  startLlmToolAgentState,
+  truncateLlmHistoryForCompaction,
+  truncateLlmToolAgentStateForContextRetry,
+  type LlmActiveSkill,
+  type LlmEnabledRule,
+  type LlmEnabledSkillCatalogEntry,
+  type LlmExtensionSystemPrompt,
+  type LlmPlanMetadata,
+  type LlmToolAgentBasicInfo,
+  type LlmToolAgentState,
+} from './llm-tool-agent.js';
 import { buildContributedHostToolDefinitions } from './host-tools.js';
+import type { LlmTransportConfig } from './provider-config.js';
+import { createLlmTransport } from './transport-factory.js';
 import type {
+  GeneratedImageSaveRequest,
   JsonObject,
   JsonValue,
   LlmMessage,
@@ -75,7 +75,7 @@ import type {
   RuntimeSubmitUserTurnParams,
 } from './host-bridge/protocol.js';
 
-type HostRuntime = AgentRuntime<OpenAiTransportConfig, OpenAiToolAgentState, JsonValue, JsonValue>;
+type HostRuntime = AgentRuntime<LlmTransportConfig, LlmToolAgentState, JsonValue, JsonValue>;
 
 interface ToolExecutionMetadata {
   backgroundExecution: boolean;
@@ -87,13 +87,13 @@ const toolExecutor = new HostToolExecutorProxy(peer);
 const ENV_HOST_INTERNAL_MODULE_PATH = 'SPIRIT_HOST_INTERNAL_MODULE_PATH';
 const ENV_HOST_INTERNAL_SPIRIT_DATA_DIR = 'SPIRIT_HOST_INTERNAL_SPIRIT_DATA_DIR';
 let runtime: HostRuntime | undefined;
-let transportConfig: OpenAiTransportConfig | undefined;
+let transportConfig: LlmTransportConfig | undefined;
 let currentHostToolModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
-let enabledRules: OpenAiEnabledRule[] = [];
-let enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] = [];
-let activeSkills: OpenAiActiveSkill[] = [];
-let planMetadata: OpenAiPlanMetadata | undefined;
-let extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [];
+let enabledRules: LlmEnabledRule[] = [];
+let enabledSkillCatalog: LlmEnabledSkillCatalogEntry[] = [];
+let activeSkills: LlmActiveSkill[] = [];
+let planMetadata: LlmPlanMetadata | undefined;
+let extensionSystemPrompts: LlmExtensionSystemPrompt[] = [];
 
 interface CliHostInternalModule {
   NodeHostToolService: new (
@@ -113,16 +113,16 @@ interface CliHostInternalModule {
     context: { workspaceRoot: string; spiritDataDir: string },
     options?: { planMode?: boolean },
   ) => Promise<{
-    rules: { enabledRules: OpenAiEnabledRule[] };
-    skills: { enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[] };
-    planMetadata: OpenAiPlanMetadata;
+    rules: { enabledRules: LlmEnabledRule[] };
+    skills: { enabledSkillCatalog: LlmEnabledSkillCatalogEntry[] };
+    planMetadata: LlmPlanMetadata;
   }>;
   discoverRuleEntries: (context: { workspaceRoot: string; spiritDataDir: string }) => Promise<JsonValue>;
   discoverSkillEntries: (context: { workspaceRoot: string; spiritDataDir: string }) => Promise<JsonValue>;
   planMetadataSnapshot: (
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
-  ) => OpenAiPlanMetadata;
+  ) => LlmPlanMetadata;
   listWorkspaceFileReferenceSuggestions?: (
     workspaceRoot: string,
     input: string,
@@ -596,7 +596,7 @@ function currentOperatingSystemInfo(): { name: string; version: string } {
 function buildRuntimeBasicInfo(
   workspaceRoot: string,
   service: LocalHostToolService | undefined,
-): OpenAiToolAgentBasicInfo {
+): LlmToolAgentBasicInfo {
   const shell = service?.toolDefinitionEnvironment();
   return {
     workspaceRoot,
@@ -748,14 +748,14 @@ async function requireCliHostInternal(): Promise<CliHostInternalState> {
 }
 
 function pruneActiveSkillsAgainstCatalog(
-  skills: OpenAiActiveSkill[],
-  catalog: OpenAiEnabledSkillCatalogEntry[],
-): OpenAiActiveSkill[] {
+  skills: LlmActiveSkill[],
+  catalog: LlmEnabledSkillCatalogEntry[],
+): LlmActiveSkill[] {
   const allowedIds = new Set(catalog.map((entry) => entry.id));
   return skills.filter((skill) => allowedIds.has(skill.id));
 }
 
-function upsertActiveSkill(skills: OpenAiActiveSkill[], next: OpenAiActiveSkill): OpenAiActiveSkill[] {
+function upsertActiveSkill(skills: LlmActiveSkill[], next: LlmActiveSkill): LlmActiveSkill[] {
   const filtered = skills.filter((skill) => skill.id !== next.id);
   filtered.push({ ...next, resources: [...next.resources] });
   return filtered;
@@ -1235,14 +1235,14 @@ async function forwardRuntimeEventsToExtensions(events: RuntimeEvent<JsonValue>[
 }
 
 async function createRuntime(
-  config: OpenAiTransportConfig,
+  config: LlmTransportConfig,
   history: LlmMessage[] = [],
 ): Promise<HostRuntime> {
-  currentHostToolModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config);
+  currentHostToolModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config as any);
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
   const hostInternal = await ensureCliHostInternal(workspaceRoot);
   const basicInfo = buildRuntimeBasicInfo(workspaceRoot, hostInternal?.service);
-  toolExecutor.setImageGenerationAvailable(config.imageGeneration !== undefined);
+  toolExecutor.setImageGenerationAvailable('imageGeneration' in config && config.imageGeneration !== undefined);
   await toolExecutor.refreshCaches();
   logBridge('createRuntime', {
     workspaceRoot,
@@ -1252,7 +1252,7 @@ async function createRuntime(
     cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
   });
   const createToolAgentState = (messages: LlmMessage[], userInput: string) =>
-    startOpenAiToolAgentState(
+    startLlmToolAgentState(
       messages,
       userInput,
       workspaceRoot,
@@ -1265,7 +1265,7 @@ async function createRuntime(
       undefined,
       basicInfo,
     );
-  const llmTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport(config);
+  const llmTransport = createLlmTransport(config);
 
   return new AgentRuntime({
     config,
@@ -1273,7 +1273,7 @@ async function createRuntime(
     toolExecutor,
     createToolAgentState,
     createContinuationState: (messages) =>
-      continueOpenAiToolAgentState(
+      continueLlmToolAgentState(
         messages,
         workspaceRoot,
         enabledRules,
@@ -1285,14 +1285,14 @@ async function createRuntime(
         undefined,
         basicInfo,
       ),
-    appendToolResultMessage: appendOpenAiToolResultMessage,
-    appendUserMessage: appendOpenAiUserMessage,
-    appendUserLlmMessage: (state, message) => appendOpenAiUserLlmMessage(state, message, workspaceRoot),
-    extractAssistantText: extractLastOpenAiAssistantText,
-    truncateStateForContextRetry: truncateOpenAiToolAgentStateForContextRetry,
-    truncateHistoryForCompaction: truncateOpenAiHistoryForCompaction,
+    appendToolResultMessage: appendLlmToolResultMessage,
+    appendUserMessage: appendLlmUserMessage,
+    appendUserLlmMessage: (state, message) => appendLlmUserLlmMessage(state, message, workspaceRoot),
+    extractAssistantText: extractLastLlmAssistantText,
+    truncateStateForContextRetry: truncateLlmToolAgentStateForContextRetry,
+    truncateHistoryForCompaction: truncateLlmHistoryForCompaction,
     rebuildRetryStateAfterCompaction: (messages, userInput, retryState) =>
-      rebuildOpenAiToolAgentStateAfterCompaction(
+      rebuildLlmToolAgentStateAfterCompaction(
         messages,
         userInput,
         retryState,
@@ -1307,7 +1307,7 @@ async function createRuntime(
         basicInfo,
       ),
     generateImage: (request) =>
-      llmTransport.generateImage(config, request, async (saveRequest) => {
+      llmTransport.generateImage(config, request, async (saveRequest: GeneratedImageSaveRequest) => {
         const hostInternal = await ensureCliHostInternal(workspaceRoot);
         const saveGeneratedImage = hostInternal?.service.saveGeneratedImage;
         if (!saveGeneratedImage) {
@@ -1903,7 +1903,7 @@ peer.on('runtime.exportState', async () => {
     throw new Error('transportConfig 尚未初始化。');
   }
 
-  const exportTransport = createOpenAiCompatibleTransport(config);
+  const exportTransport = createLlmTransport(config);
   const baseSystemPrompts = exportTransport.llmSystemPromptsForExport() as Record<string, JsonValue>;
   const rulesSystemPrompt = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
