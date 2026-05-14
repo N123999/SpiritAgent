@@ -164,6 +164,7 @@ export class AiSdkAnthropicTransport
         buildAssistantMessageFromGenerateTextResult(
           result.text,
           typeof result.reasoningText === 'string' ? result.reasoningText : '',
+          result.reasoning,
           result.toolCalls,
         ),
       );
@@ -239,6 +240,7 @@ export class AiSdkAnthropicTransport
       return {
         eventStream: anthropicEventStreamToRuntimeEvents(
           result.fullStream,
+          result,
           nextState,
           requestTrace,
           completion,
@@ -505,11 +507,14 @@ function userContentToAiSdkContent(
 }
 
 function assistantMessageToAiSdkMessage(message: JsonObject): Record<string, unknown> | undefined {
+  const reasoningParts = extractStoredAnthropicReasoningParts(message);
   const reasoningText = extractAssistantReasoningContentFromJson(message);
   const toolCallParts = extractAssistantToolCallParts(message);
   const contentParts: Array<Record<string, unknown>> = [];
 
-  if (reasoningText) {
+  if (reasoningParts.length > 0) {
+    contentParts.push(...reasoningParts);
+  } else if (reasoningText) {
     contentParts.push({ type: 'reasoning', text: reasoningText });
   }
 
@@ -618,31 +623,38 @@ function extractAssistantToolCallParts(message: JsonObject): Array<Record<string
 function buildAssistantMessageFromGenerateTextResult(
   text: string,
   reasoningText: string,
+  reasoning: unknown,
   toolCalls: readonly AnthropicToolCall[],
 ): JsonValue {
   return withReasoningContentIfNeeded(
-    {
-      role: 'assistant',
-      content: text || null,
-      ...(toolCalls.length > 0
-        ? {
-            tool_calls: toolCalls.map((toolCall) => ({
-              id: toolCall.toolCallId,
-              type: 'function',
-              function: {
-                name: toolCall.toolName,
-                arguments: JSON.stringify(toolCall.input),
-              },
-            })),
-          }
-        : {}),
-    },
+    withStoredAnthropicReasoningPartsIfNeeded(
+      {
+        role: 'assistant',
+        content: text || null,
+        ...(toolCalls.length > 0
+          ? {
+              tool_calls: toolCalls.map((toolCall) => ({
+                id: toolCall.toolCallId,
+                type: 'function',
+                function: {
+                  name: toolCall.toolName,
+                  arguments: JSON.stringify(toolCall.input),
+                },
+              })),
+            }
+          : {}),
+      },
+      normalizeAiSdkReasoningParts(reasoning),
+    ),
     reasoningText,
   );
 }
 
 async function* anthropicEventStreamToRuntimeEvents(
   stream: AsyncIterable<TextStreamPart<any>>,
+  result: {
+    reasoning?: PromiseLike<unknown>;
+  },
   nextState: ToolAgentState,
   requestTrace: JsonValue[],
   completion: Deferred<ToolAgentRoundCompletion<ToolAgentState>>,
@@ -703,7 +715,9 @@ async function* anthropicEventStreamToRuntimeEvents(
       switch (part.type) {
         case 'reasoning-delta':
           reasoningContent += part.text;
-          yield { kind: 'thinking-chunk', text: part.text };
+          if (part.text.length > 0) {
+            yield { kind: 'thinking-chunk', text: part.text };
+          }
           break;
         case 'text-delta': {
           const normalizedText = trimLeadingStreamLineBreaks(assistantContent, part.text);
@@ -753,7 +767,13 @@ async function* anthropicEventStreamToRuntimeEvents(
     }
 
     nextState.messages.push(
-      buildStreamingAssistantMessage(assistantContent, reasoningContent, toolCalls, toolCallOrder),
+      buildStreamingAssistantMessage(
+        assistantContent,
+        reasoningContent,
+        await result.reasoning,
+        toolCalls,
+        toolCallOrder,
+      ),
     );
 
     const calls = extractToolCallsFromStreamingMap(toolCalls, toolCallOrder);
@@ -791,6 +811,7 @@ function maybeEmitStreamingPreview(current: StreamingToolCallAccumulator): void 
 function buildStreamingAssistantMessage(
   assistantContent: string,
   reasoningContent: string,
+  reasoning: unknown,
   toolCalls: Map<string, StreamingToolCallAccumulator>,
   order: readonly string[],
 ): JsonValue {
@@ -807,11 +828,14 @@ function buildStreamingAssistantMessage(
     }));
 
   return withReasoningContentIfNeeded(
-    {
-      role: 'assistant',
-      content: assistantContent || null,
-      ...(functionToolCalls.length > 0 ? { tool_calls: functionToolCalls } : {}),
-    },
+    withStoredAnthropicReasoningPartsIfNeeded(
+      {
+        role: 'assistant',
+        content: assistantContent || null,
+        ...(functionToolCalls.length > 0 ? { tool_calls: functionToolCalls } : {}),
+      },
+      normalizeAiSdkReasoningParts(reasoning),
+    ),
     reasoningContent,
   );
 }
@@ -866,6 +890,24 @@ function withReasoningContentIfNeeded(message: JsonObject, reasoningContent: str
   return message;
 }
 
+function withStoredAnthropicReasoningPartsIfNeeded(
+  message: JsonObject,
+  reasoningParts: readonly JsonValue[],
+): JsonObject {
+  if (
+    reasoningParts.length === 0 ||
+    Array.isArray(message.reasoning_parts) ||
+    Array.isArray(message.reasoningParts)
+  ) {
+    return message;
+  }
+
+  return {
+    ...message,
+    reasoning_parts: reasoningParts.map((part) => cloneJsonValue(part)),
+  };
+}
+
 function messageContentHasEmbeddedThinking(message: JsonObject): boolean {
   if (typeof message.content !== 'string') {
     return false;
@@ -876,9 +918,108 @@ function messageContentHasEmbeddedThinking(message: JsonObject): boolean {
 }
 
 function extractAssistantReasoningContentFromJson(message: JsonObject): string {
-  return [message.reasoning_content, message.reasoningContent, message.reasoning, message.thinking]
+  const storedReasoning = [message.reasoning_content, message.reasoningContent, message.reasoning, message.thinking]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
     .join('');
+
+  if (storedReasoning.length > 0) {
+    return storedReasoning;
+  }
+
+  return extractStoredAnthropicReasoningParts(message)
+    .map((part) => (typeof part.text === 'string' ? part.text : ''))
+    .filter((value) => value.length > 0)
+    .join('');
+}
+
+function normalizeAiSdkReasoningParts(reasoning: unknown): JsonValue[] {
+  if (!Array.isArray(reasoning)) {
+    return [];
+  }
+
+  return reasoning.flatMap((part) => {
+    if (!isJsonObject(part) || part.type !== 'reasoning') {
+      return [];
+    }
+
+    const text = typeof part.text === 'string' ? part.text : '';
+    const providerOptions = normalizeAnthropicReasoningProviderOptions(part.providerMetadata);
+    if (text.length === 0 && providerOptions === undefined) {
+      return [];
+    }
+
+    return [{
+      type: 'reasoning',
+      text,
+      ...(providerOptions === undefined ? {} : { providerOptions }),
+    } satisfies JsonObject];
+  });
+}
+
+function extractStoredAnthropicReasoningParts(message: JsonObject): Array<Record<string, unknown>> {
+  const storedParts = Array.isArray(message.reasoning_parts)
+    ? message.reasoning_parts
+    : Array.isArray(message.reasoningParts)
+      ? message.reasoningParts
+      : [];
+
+  return storedParts.flatMap((part) => {
+    if (!isJsonObject(part) || part.type !== 'reasoning') {
+      return [];
+    }
+
+    const text = typeof part.text === 'string' ? part.text : '';
+    const providerOptions = normalizeAnthropicReasoningProviderOptions(
+      part.providerOptions ??
+        part.provider_options ??
+        part.providerMetadata ??
+        part.provider_metadata,
+    );
+    if (text.length === 0 && providerOptions === undefined) {
+      return [];
+    }
+
+    return [{
+      type: 'reasoning',
+      text,
+      ...(providerOptions === undefined ? {} : { providerOptions }),
+    }];
+  });
+}
+
+function normalizeAnthropicReasoningProviderOptions(value: unknown): JsonObject | undefined {
+  if (!isJsonObject(value as JsonValue | undefined)) {
+    return undefined;
+  }
+
+  const metadata = value as JsonObject;
+  const anthropic = metadata.anthropic;
+  if (!isJsonObject(anthropic as JsonValue | undefined)) {
+    return undefined;
+  }
+  const anthropicMetadataValue = anthropic as JsonObject;
+
+  const anthropicMetadata: JsonObject = {};
+  if (
+    typeof anthropicMetadataValue.signature === 'string' &&
+    anthropicMetadataValue.signature.length > 0
+  ) {
+    anthropicMetadata.signature = anthropicMetadataValue.signature;
+  }
+  if (
+    typeof anthropicMetadataValue.redactedData === 'string' &&
+    anthropicMetadataValue.redactedData.length > 0
+  ) {
+    anthropicMetadata.redactedData = anthropicMetadataValue.redactedData;
+  }
+
+  if (Object.keys(anthropicMetadata).length === 0) {
+    return undefined;
+  }
+
+  return {
+    anthropic: anthropicMetadata,
+  };
 }
 
 function buildToolProgressPreview(name: string, argumentsJson: string): string {

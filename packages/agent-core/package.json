@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke:contract": "npm run build && node dist/smoke/contract/ai-sdk-openai-smoke.js && node dist/smoke/contract/ai-sdk-openai-json-schema-smoke.js && node dist/smoke/contract/ai-sdk-openai-streaming-smoke.js && node dist/smoke/contract/ai-sdk-openai-stream-reasoning-only-smoke.js && node dist/smoke/contract/ai-sdk-deepseek-streaming-smoke.js",
+    "smoke:contract": "npm run build && node dist/smoke/contract/ai-sdk-openai-smoke.js && node dist/smoke/contract/ai-sdk-openai-json-schema-smoke.js && node dist/smoke/contract/ai-sdk-openai-streaming-smoke.js && node dist/smoke/contract/ai-sdk-openai-stream-reasoning-only-smoke.js && node dist/smoke/contract/ai-sdk-deepseek-streaming-smoke.js && node dist/smoke/contract/ai-sdk-anthropic-streaming-smoke.js",
     "smoke:runtime": "npm run build && node dist/smoke/runtime/ai-sdk-openai-runtime-smoke.js && node dist/smoke/runtime/runtime-parity-smoke.js",
     "smoke:host-config": "npm run build && node dist/smoke/host-config/mcp-missing-env-smoke.js",
     "smoke:offline": "npm run smoke:contract && npm run smoke:runtime && npm run smoke:host-config",
@@ -37,6 +37,7 @@
     "smoke:ai-sdk:openai:stream-reasoning-only": "npm run build && node dist/smoke/contract/ai-sdk-openai-stream-reasoning-only-smoke.js",
     "smoke:ai-sdk:deepseek:streaming": "npm run build && node dist/smoke/contract/ai-sdk-deepseek-streaming-smoke.js",
     "smoke:ai-sdk:openai:all": "npm run smoke:ai-sdk:openai && npm run smoke:ai-sdk:openai:streaming && npm run smoke:ai-sdk:openai:stream-reasoning-only",
+    "smoke:ai-sdk:anthropic:streaming": "npm run build && node dist/smoke/contract/ai-sdk-anthropic-streaming-smoke.js",
     "smoke:runtime:parity": "npm run build && node dist/smoke/runtime/runtime-parity-smoke.js",
     "smoke:mcp:missing-env": "npm run build && node dist/smoke/host-config/mcp-missing-env-smoke.js",
     "notice": "node scripts/gen-notice.mjs",
