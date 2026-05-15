@@ -144,28 +144,19 @@ export function buildDreamCollectorPlanMetadata(
 export function buildCommitMessageGenerationPrompt(input: {
   workspaceRoot: string;
   branch?: string;
-  dreamContextText?: string;
   statusText: string;
   diffStatText: string;
   diffText: string;
 }): string {
-  const dreamSection = input.dreamContextText?.trim()
-    ? [
-        '',
-        '[dream summaries] 当前工作动向摘要',
-        input.dreamContextText.trim(),
-      ]
-    : [];
   return [
-    '请为以下 Git 变更生成一条提交信息。',
-    '必须遵守仓库约定：type / 可选 scope 使用英文；subject 使用中文。',
-    '输出 JSON，由宿主解析。不要输出 Markdown、解释、代码块或额外字段。',
-    'message 应该是一条可直接执行 git commit 的提交信息。若需要正文，可使用换行。',
-    '如果提供了 dream summaries，请把它作为“为什么做这些变更”的语义背景；最终提交信息仍以 Git diff 为准。',
+    'Generate one Git commit message for the current changes.',
+    'Repository convention: type and optional scope in English; subject in Chinese.',
+    'Return JSON only: {"message":"..."}. No Markdown, no explanations, no extra keys.',
+    'The message must be ready for git commit. A body is allowed when needed.',
+    'Use the Git changes as the source of truth. Dreams are only background continuity when relevant.',
     '',
     `workspace: ${input.workspaceRoot}`,
     `branch: ${input.branch ?? '(unknown)'}`,
-    ...dreamSection,
     '',
     '[git status --short --branch]',
     input.statusText || '(empty)',

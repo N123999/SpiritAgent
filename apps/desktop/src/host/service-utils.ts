@@ -69,6 +69,45 @@ export function normalizeGeneratedCommitMessage(value: unknown): string {
   return normalized;
 }
 
+export function parseGeneratedCommitMessageResponse(rawText: string): string {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    throw new Error('自动生成提交信息失败：模型未返回正文。');
+  }
+
+  const candidate = extractJsonObjectText(trimmed);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    throw new Error('自动生成提交信息失败：模型未返回合法 JSON。');
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('自动生成提交信息失败：模型返回的 JSON 不是对象。');
+  }
+
+  return normalizeGeneratedCommitMessage((parsed as { message?: unknown }).message);
+}
+
+function extractJsonObjectText(text: string): string {
+  if (text.startsWith('```')) {
+    const fenceMatch = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (fenceMatch?.[1]) {
+      return fenceMatch[1].trim();
+    }
+  }
+
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return text.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return text;
+}
+
 export function sameDreamCollectorSnapshot(
   left: DesktopDreamCollectorSnapshot,
   right: DesktopDreamCollectorSnapshot,
