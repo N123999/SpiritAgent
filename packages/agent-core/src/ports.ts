@@ -7,6 +7,12 @@ export interface JsonObject {
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
+export interface LlmToolCall {
+  id: string;
+  name: string;
+  argumentsJson: string;
+}
+
 export interface LlmTextContentPart extends JsonObject {
   type: 'text';
   text: string;
@@ -23,17 +29,50 @@ export type LlmMessageContent = LlmContentPart[];
 export interface LlmMessage {
   role: ChatRole;
   content: LlmMessageContent;
+  toolCallId?: string;
+  toolCalls?: LlmToolCall[];
+  providerState?: JsonObject;
 }
 
 export interface LegacyLlmMessageArchiveEntry {
   role: ChatRole;
   content: string;
   imagePaths?: string[];
+  toolCallId?: string;
+  toolCalls?: LlmToolCall[];
+  providerState?: JsonObject;
 }
 
 export interface StoredLlmMessageArchiveEntry {
   role: ChatRole;
   content: LlmMessageContent;
+  toolCallId?: string;
+  toolCalls?: LlmToolCall[];
+  providerState?: JsonObject;
+}
+
+function cloneLlmToolCalls(toolCalls: readonly LlmToolCall[]): LlmToolCall[] {
+  return toolCalls.map((toolCall) => ({
+    id: toolCall.id,
+    name: toolCall.name,
+    argumentsJson: toolCall.argumentsJson,
+  }));
+}
+
+export function cloneLlmProviderState(providerState: JsonObject): JsonObject {
+  return Object.fromEntries(
+    Object.entries(providerState).map(([key, value]) => [key, cloneJsonValue(value)]),
+  );
+}
+
+function cloneJsonValue(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneJsonValue(item));
+  }
+  if (typeof value === 'object' && value !== null) {
+    return cloneLlmProviderState(value);
+  }
+  return value;
 }
 
 export interface ToolExecutionOutput {
@@ -136,10 +175,34 @@ export function llmMessageContentWithoutImages(
 export function normalizeStoredLlmMessage(
   message: StoredLlmMessageArchiveEntry | LegacyLlmMessageArchiveEntry,
 ): LlmMessage {
+  const toolCallId =
+    'toolCallId' in message && typeof message.toolCallId === 'string'
+      ? message.toolCallId
+      : 'tool_call_id' in message && typeof message.tool_call_id === 'string'
+        ? message.tool_call_id
+        : undefined;
+  const toolCalls =
+    'toolCalls' in message && Array.isArray(message.toolCalls)
+      ? cloneLlmToolCalls(message.toolCalls)
+      : 'tool_calls' in message && Array.isArray(message.tool_calls)
+        ? cloneLlmToolCalls(message.tool_calls)
+        : undefined;
+  const providerState =
+    'providerState' in message && typeof message.providerState === 'object' && message.providerState !== null
+      ? cloneLlmProviderState(message.providerState)
+      : 'provider_state' in message
+          && typeof message.provider_state === 'object'
+          && message.provider_state !== null
+        ? cloneLlmProviderState(message.provider_state as JsonObject)
+        : undefined;
+
   if (Array.isArray(message.content)) {
     return {
       role: message.role,
       content: cloneLlmMessageContent(message.content),
+      ...(toolCallId !== undefined ? { toolCallId } : {}),
+      ...(toolCalls !== undefined ? { toolCalls } : {}),
+      ...(providerState !== undefined ? { providerState } : {}),
     };
   }
 
@@ -149,6 +212,9 @@ export function normalizeStoredLlmMessage(
       message.content,
       'imagePaths' in message ? message.imagePaths ?? [] : [],
     ),
+    ...(toolCallId !== undefined ? { toolCallId } : {}),
+    ...(toolCalls !== undefined ? { toolCalls } : {}),
+    ...(providerState !== undefined ? { providerState } : {}),
   };
 }
 

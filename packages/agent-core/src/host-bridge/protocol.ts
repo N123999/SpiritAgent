@@ -13,12 +13,12 @@ import type {
   RuntimeSubagentSessionSummary,
 } from '../runtime.js';
 import type {
-  OpenAiActiveSkill,
-  OpenAiEnabledRule,
-  OpenAiEnabledSkillCatalogEntry,
-  OpenAiPlanMetadata,
-} from '../openai/tool-agent-helpers.js';
-import type { OpenAiTransportConfig } from '../openai/openai-compat.js';
+  LlmActiveSkill,
+  LlmEnabledRule,
+  LlmEnabledSkillCatalogEntry,
+  LlmPlanMetadata,
+} from '../llm-tool-agent.js';
+import type { LlmTransportConfig } from '../provider-config.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -82,11 +82,11 @@ export interface BridgeExportState {
 }
 
 export interface RuntimeInitParams {
-  transportConfig: OpenAiTransportConfig;
+  transportConfig: LlmTransportConfig;
   history?: LlmMessage[];
-  enabledRules?: OpenAiEnabledRule[];
-  enabledSkillCatalog?: OpenAiEnabledSkillCatalogEntry[];
-  planMetadata?: OpenAiPlanMetadata;
+  enabledRules?: LlmEnabledRule[];
+  enabledSkillCatalog?: LlmEnabledSkillCatalogEntry[];
+  planMetadata?: LlmPlanMetadata;
   extensionToolDefinitions?: JsonValue[];
 }
 
@@ -105,15 +105,15 @@ export interface RuntimeExportArchiveParams {
 }
 
 export interface RuntimeReplaceConfigParams {
-  transportConfig: OpenAiTransportConfig;
+  transportConfig: LlmTransportConfig;
 }
 
 export interface RuntimeReplacePlanMetadataParams {
-  planMetadata: OpenAiPlanMetadata;
+  planMetadata: LlmPlanMetadata;
 }
 
 export interface RuntimeActivateSkillParams {
-  skill: OpenAiActiveSkill;
+  skill: LlmActiveSkill;
 }
 
 export interface RuntimeAddPendingImageParams {

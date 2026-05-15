@@ -12,42 +12,51 @@ import {
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
   buildToolAgentHostPrompt,
-  createOpenAiCompatibleTransport,
-  createOpenAiJsonSchemaTransport,
-  type OpenAiActiveSkill,
-  type OpenAiCompatibleTransport,
-  type OpenAiExtensionSystemPrompt,
-  type OpenAiJsonSchemaTransport,
+  createJsonSchemaTransport,
+  createLlmTransport,
   type AssistantAuxArchiveEntry,
+  type AnthropicTransportConfig,
   type ChatArchive,
-  type OpenAiEnabledRule,
-  type OpenAiEnabledSkillCatalogEntry,
-  type OpenAiPlanMetadata,
-  type OpenAiToolAgentBasicInfo,
-  type RuntimeApprovalDecision,
+  type JsonSchemaTransport,
+  type LlmActiveSkill,
+  type LlmEnabledRule,
+  type LlmEnabledSkillCatalogEntry,
+  type LlmExtensionSystemPrompt,
+  type LlmModelCapabilities,
+  type LlmPlanMetadata,
+  type LlmToolAgentBasicInfo,
+  type LlmTransportConfig,
   type OpenAiTransportConfig,
+  type RuntimeApprovalDecision,
   type PendingWorkspaceFile,
   type RuntimeToolExecution,
+  type SpiritLlmTransport,
 } from '@spirit-agent/agent-core';
+import {
+  defaultModelReasoningEffort,
+  resolveAnthropicTransportReasoningEffortForContext,
+  resolveModelReasoningEffortForContext,
+  resolveOpenAiTransportReasoningEffortForContext,
+  type ModelReasoningEffort,
+} from '@spirit-agent/agent-core/reasoning-effort';
 import {
   buildStartImplementingUserTurn,
   createHostExtensionMarketplace,
   createHostExtensionManager,
   createHostDreamStore,
-  defaultModelReasoningEffort,
   localFileAttachmentFromPath,
   listWorkspaceFileReferenceSuggestions as listWorkspaceFileReferenceSuggestionsFromHostInternal,
-  listOpenAiCompatibleModelIds,
+  listProviderModels,
   parseModelProviderId,
   parsePresetModelProviderId,
   partitionModelsByProvider,
-  resolveModelReasoningEffortForContext,
+  PROVIDER_PRESET_API_BASE,
   restoreHostFileChanges,
   type HostDreamScope,
-  type ModelReasoningEffort,
   type HostExtensionMarketplaceManager,
   type HostExtensionEvent,
   type HostRecordedFileChange,
+  type ProviderListedModelEntry,
 } from '@spirit-agent/host-internal';
 
 import type {
@@ -76,7 +85,11 @@ import type {
   DesktopDreamCollectorSnapshot,
   DesktopModelCapability,
   DesktopModelProvider,
+  DesktopModelReasoningEffort,
+  DesktopTransportKind,
+  ModelProfileSnapshot,
   PlanSnapshot,
+  PreviewModelCatalogEntry,
   DeleteSkillRequest,
   DesktopSnapshot,
   FileRewindWarning,
@@ -124,6 +137,11 @@ import {
   readModelCatalogCache,
   writeModelCatalogCache,
 } from './model-catalog-cache.js';
+import {
+  previewCatalogMapForTransport,
+  previewModelCatalogForTransport,
+  usesAnthropicModelCatalogMetadata,
+} from './model-catalog-metadata.js';
 import {
   DEFAULT_API_BASE,
   defaultNewSessionPath,
@@ -392,8 +410,8 @@ async function loadDesktopPlanSnapshot(planPath: string, existsHint?: boolean): 
 }
 
 class DesktopHostService {
-  private runtimeTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport();
-  private jsonSchemaTransport: OpenAiJsonSchemaTransport = createOpenAiJsonSchemaTransport();
+  private runtimeTransport: SpiritLlmTransport = createLlmTransport();
+  private jsonSchemaTransport: JsonSchemaTransport = createJsonSchemaTransport();
   private readonly extensionStateStore = createDesktopExtensionStateStore({
     spiritDataDir: spiritAgentDataDir(),
     hostKind: 'desktop',
@@ -446,7 +464,7 @@ class DesktopHostService {
   private messageIdCounter = 1;
   private nextTimelineAssistantSegmentKind: DesktopTimelineSegmentKind = 'initial';
   private pendingUnboundFileChangeIds: string[] = [];
-  private currentTurnSkills: OpenAiActiveSkill[] = [];
+  private currentTurnSkills: LlmActiveSkill[] = [];
   private serialized = Promise.resolve();
   /** 忙时改 planMode / 模型或 endpoint 时推迟 `refreshRuntime`，避免替换 runtime 导致流式输出丢失；空闲后由 `flushDeferredRuntimeRefreshIfIdle` 应用。 */
   private deferredRuntimeRefreshWhileBusy = false;
@@ -542,6 +560,10 @@ class DesktopHostService {
           existing.reasoningEffort = resolveModelReasoningEffortForContext(reasoningEffort, {
             ...(existing.provider ? { provider: existing.provider } : {}),
             model: existing.name,
+            ...(existing.transportKind ? { transportKind: existing.transportKind } : {}),
+            ...(existing.supportedReasoningEfforts !== undefined
+              ? { supportedEfforts: existing.supportedReasoningEfforts }
+              : {}),
           });
         }
       } else {
@@ -643,21 +665,29 @@ class DesktopHostService {
   }
 
   async previewModels(request: PreviewModelsRequest): Promise<PreviewModelsResponse> {
+    const provider = parseModelProviderId(request.provider);
+    const transportKind = resolveDesktopTransportKind({
+      provider,
+      transportKind: request.transportKind,
+    });
     const apiBaseRaw = request.apiBase.trim();
-    const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+    const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
     const apiKey = request.apiKey.trim();
     if (!apiKey) {
       throw new Error('API Key 不能为空。');
     }
-    const forceRefresh = request.forceRefresh === true;
-    const cached = await readModelCatalogCache(apiBase, apiKey);
-    const now = Date.now();
-    if (cached && isModelCatalogCacheFresh(cached, now, forceRefresh)) {
-      return { modelIds: cached.modelIds, fromCache: true };
-    }
-    const modelIds = await listOpenAiCompatibleModelIds({ baseUrl: apiBase, apiKey });
-    await writeModelCatalogCache(apiBase, modelIds, apiKey);
-    return { modelIds, fromCache: false };
+    const result = await loadPreviewModelsForTransport({
+      provider,
+      transportKind,
+      apiBase,
+      apiKey,
+      forceRefresh: request.forceRefresh === true,
+    });
+    return {
+      modelIds: result.modelIds,
+      ...(result.modelCatalog ? { models: result.modelCatalog } : {}),
+      fromCache: result.fromCache,
+    };
   }
 
   async addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot> {
@@ -669,14 +699,18 @@ class DesktopHostService {
         throw new Error('当前已有响应或审批在处理中，请稍候。');
       }
 
+      const provider = parseModelProviderId(request.provider);
+      const transportKind = resolveDesktopTransportKind({
+        provider,
+        transportKind: request.transportKind,
+      });
       const apiBaseRaw = request.apiBase.trim();
-      const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+      const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
       const apiKey = request.apiKey.trim();
       if (!apiKey) {
         throw new Error('API Key 不能为空。');
       }
 
-      const provider = parseModelProviderId(request.provider);
       const rawIds = request.modelIds.map((id) => id.trim()).filter((id) => id.length > 0);
       const uniqueIds = [...new Set(rawIds)];
       if (uniqueIds.length === 0) {
@@ -687,23 +721,42 @@ class DesktopHostService {
         name: string;
         apiBase: string;
         reasoningEffort: ModelReasoningEffort;
+        supportedReasoningEfforts?: DesktopModelReasoningEffort[];
+        capabilities?: DesktopModelCapability[];
         provider?: DesktopModelProvider;
+        transportKind?: DesktopTransportKind;
       };
+      const catalogEntries = previewCatalogMapForAddProviderRequest(request, provider, transportKind);
       const toAdd: NewProfile[] = [];
       for (const name of uniqueIds) {
         if (state.config.models.some((model) => model.name === name)) {
           continue;
         }
+        const catalogEntry = catalogEntries.get(name);
         const profile: NewProfile = {
           name,
           apiBase,
           reasoningEffort: defaultModelReasoningEffort({
-            ...(provider !== undefined ? { provider } : {}),
+            ...(reasoningProviderForTransport(provider, transportKind)
+              ? { provider: reasoningProviderForTransport(provider, transportKind) }
+              : {}),
             model: name,
+            ...(catalogEntry?.supportedReasoningEfforts !== undefined
+              ? { supportedEfforts: catalogEntry.supportedReasoningEfforts }
+              : {}),
           }),
         };
+        if (catalogEntry?.supportedReasoningEfforts !== undefined) {
+          profile.supportedReasoningEfforts = catalogEntry.supportedReasoningEfforts;
+        }
+        if (catalogEntry?.capabilities) {
+          profile.capabilities = catalogEntry.capabilities;
+        }
         if (provider !== undefined) {
           profile.provider = provider;
+          if (transportKind === 'anthropic') {
+            profile.transportKind = 'anthropic';
+          }
         }
         toAdd.push(profile);
       }
@@ -749,8 +802,13 @@ class DesktopHostService {
       }
 
       const name = request.name.trim();
+      const provider = parseModelProviderId(request.provider);
+      const transportKind = resolveDesktopTransportKind({
+        provider,
+        transportKind: request.transportKind,
+      });
       const apiBaseRaw = request.apiBase.trim();
-      const apiBase = apiBaseRaw || DEFAULT_API_BASE;
+      const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
       const apiKey = request.apiKey.trim();
 
       if (!name) {
@@ -763,29 +821,52 @@ class DesktopHostService {
         throw new Error(`模型已存在: ${name}`);
       }
 
-      const provider = parseModelProviderId(request.provider);
+      const catalogEntry = await findCatalogEntryForModel({
+        provider,
+        transportKind,
+        apiBase,
+        apiKey,
+        model: name,
+      });
+      const requestedCapabilities = normalizeModelCapabilities(request.capabilities);
+
       const profile: {
         name: string;
         apiBase: string;
         reasoningEffort: ModelReasoningEffort;
+        supportedReasoningEfforts?: DesktopModelReasoningEffort[];
         provider?: DesktopModelProvider;
+        transportKind?: DesktopTransportKind;
         capabilities?: DesktopModelCapability[];
       } = {
         name,
         apiBase,
         reasoningEffort: defaultModelReasoningEffort({
-          ...(provider !== undefined ? { provider } : {}),
+          ...(reasoningProviderForTransport(provider, transportKind)
+            ? { provider: reasoningProviderForTransport(provider, transportKind) }
+            : {}),
           model: name,
+          ...(catalogEntry?.supportedReasoningEfforts !== undefined
+            ? { supportedEfforts: catalogEntry.supportedReasoningEfforts }
+            : {}),
         }),
       };
+      if (catalogEntry?.supportedReasoningEfforts !== undefined) {
+        profile.supportedReasoningEfforts = catalogEntry.supportedReasoningEfforts;
+      }
       if (provider !== undefined) {
         profile.provider = provider;
+        if (transportKind === 'anthropic') {
+          profile.transportKind = 'anthropic';
+        }
       }
-      const capabilities = normalizeModelCapabilities(request.capabilities);
+      const capabilities = resolveAddedModelCapabilities({
+        provider,
+        requestedCapabilities,
+        catalogEntry,
+      });
       if (capabilities) {
         profile.capabilities = capabilities;
-      } else if (provider === 'custom') {
-        profile.capabilities = defaultCustomModelCapabilities();
       }
       state.config.models.push(profile);
       state.config.activeModel = name;
@@ -1480,7 +1561,7 @@ class DesktopHostService {
     options: {
       preserveRewindWarnings?: boolean;
       displayText?: string;
-      turnSkills?: OpenAiActiveSkill[];
+      turnSkills?: LlmActiveSkill[];
       explicitWorkspaceFiles?: PendingWorkspaceFile[];
     } = {},
   ): Promise<DesktopSnapshot> {
@@ -2122,8 +2203,8 @@ class DesktopHostService {
     const imageGenerationApiKey = imageGenerationProfile
       ? await resolveApiKeyForModel(imageGenerationProfile.name)
       : undefined;
-    this.runtimeTransport = createOpenAiCompatibleTransport();
-    this.jsonSchemaTransport = createOpenAiJsonSchemaTransport();
+    this.runtimeTransport = createLlmTransport();
+    this.jsonSchemaTransport = createJsonSchemaTransport();
     if (!apiKey) {
       this.runtime = undefined;
       this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
@@ -2131,33 +2212,36 @@ class DesktopHostService {
       return;
     }
 
-    const llmVendor = activeProfile?.provider;
-    const runtimeTransportConfig: OpenAiTransportConfig = {
+    let runtimeTransportConfig = buildPrimaryTransportConfig({
       apiKey,
       model: state.config.activeModel,
       baseUrl: currentApiBase(state.config),
       workspaceRoot: state.workspaceRoot,
-      ...(llmVendor ? { llmVendor } : {}),
-      ...(activeProfile?.capabilities
-        ? { modelCapabilities: modelCapabilitiesFromConfig(activeProfile.capabilities) }
-        : {}),
-      ...(imageGenerationProfile && imageGenerationApiKey && supportsImageGeneration(imageGenerationProfile)
-        ? {
-            imageGeneration: {
-              apiKey: imageGenerationApiKey,
-              model: imageGenerationProfile.name,
-              baseUrl: imageGenerationProfile.apiBase || DEFAULT_API_BASE,
-              ...(imageGenerationProfile.provider ? { llmVendor: imageGenerationProfile.provider } : {}),
-              ...(imageGenerationProfile.capabilities
-                ? { modelCapabilities: modelCapabilitiesFromConfig(imageGenerationProfile.capabilities) }
-                : {}),
-            },
-          }
-        : {}),
-      reasoningEffort: activeProfile?.reasoningEffort,
-    };
-    this.runtimeTransport = createOpenAiCompatibleTransport(runtimeTransportConfig);
-    this.jsonSchemaTransport = createOpenAiJsonSchemaTransport(runtimeTransportConfig);
+      profile: activeProfile,
+    });
+    if (
+      runtimeTransportConfig.transportKind !== 'anthropic'
+      && imageGenerationProfile
+      && imageGenerationApiKey
+      && supportsImageGeneration(imageGenerationProfile)
+      && resolveDesktopTransportKind(imageGenerationProfile) === 'openai-compatible'
+    ) {
+      const imageGenerationVendor = openAiCompatibleVendorFromProvider(imageGenerationProfile.provider);
+      runtimeTransportConfig = {
+        ...runtimeTransportConfig,
+        imageGeneration: {
+          apiKey: imageGenerationApiKey,
+          model: imageGenerationProfile.name,
+          baseUrl: imageGenerationProfile.apiBase || DEFAULT_API_BASE,
+          ...(imageGenerationVendor ? { llmVendor: imageGenerationVendor } : {}),
+          ...(imageGenerationProfile.capabilities
+            ? { modelCapabilities: modelCapabilitiesFromConfig(imageGenerationProfile.capabilities) }
+            : {}),
+        },
+      };
+    }
+    this.runtimeTransport = createLlmTransport(runtimeTransportConfig);
+    this.jsonSchemaTransport = createJsonSchemaTransport(runtimeTransportConfig);
 
     const runtime = this.createRuntime(
       runtimeTransportConfig,
@@ -2395,15 +2479,15 @@ class DesktopHostService {
   }
 
   private createRuntime(
-    transportConfig: OpenAiTransportConfig,
+    transportConfig: LlmTransportConfig,
     history: ChatArchive['llmHistory'],
-    enabledRules: OpenAiEnabledRule[],
-    enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[],
-    planMetadata: OpenAiPlanMetadata,
-    extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
+    enabledRules: LlmEnabledRule[],
+    enabledSkillCatalog: LlmEnabledSkillCatalogEntry[],
+    planMetadata: LlmPlanMetadata,
+    extensionSystemPrompts: LlmExtensionSystemPrompt[],
     dreamsContextText?: string,
     toolExecutor: DesktopToolExecutor = this.requireToolExecutor(),
-    llmTransport: OpenAiCompatibleTransport = createOpenAiCompatibleTransport(transportConfig),
+    llmTransport: SpiritLlmTransport = createLlmTransport(transportConfig),
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
     toolExecutor.setActiveTransportConfig(transportConfig);
@@ -2426,7 +2510,7 @@ class DesktopHostService {
   private buildRuntimeBasicInfo(
     workspaceRoot: string,
     toolExecutor: DesktopToolExecutor,
-  ): OpenAiToolAgentBasicInfo {
+  ): LlmToolAgentBasicInfo {
     const shell = toolExecutor.toolDefinitionEnvironment();
     return {
       workspaceRoot,
@@ -2593,13 +2677,13 @@ class DesktopHostService {
       const result = await this.jsonSchemaTransport.createJsonSchemaCompletion<{
         message?: string;
       }>(
-        {
+        buildPrimaryTransportConfig({
           apiKey,
           model: state.config.activeModel,
           baseUrl: currentApiBase(state.config),
           workspaceRoot: state.workspaceRoot,
-          ...(activeProfile?.provider ? { llmVendor: activeProfile.provider } : {}),
-        },
+          profile: activeProfile,
+        }),
         {
           userPrompt: prompt,
           schemaName: 'desktop_commit_message',
@@ -2703,7 +2787,7 @@ class DesktopHostService {
     this.toolExecutor.setExtensionToolDefinitions(buildDesktopExtensionToolDefinitions(extensions));
   }
 
-  private async collectExtensionSystemPrompts(): Promise<OpenAiExtensionSystemPrompt[]> {
+  private async collectExtensionSystemPrompts(): Promise<LlmExtensionSystemPrompt[]> {
     const adapter = desktopExtensionHostAdapter;
     if (!adapter) {
       return [];
@@ -3348,7 +3432,7 @@ function normalizeApprovalDecision(
 
 function modelCapabilitiesFromConfig(
   capabilities: readonly DesktopModelCapability[],
-): OpenAiTransportConfig['modelCapabilities'] {
+): LlmModelCapabilities {
   return {
     ...(capabilities.includes('chat') ? { chat: true } : {}),
     ...(capabilities.includes('vision') ? { vision: true } : {}),
@@ -3356,7 +3440,240 @@ function modelCapabilitiesFromConfig(
   };
 }
 
+function resolveDesktopTransportKind(
+  profile?: Pick<ModelProfileSnapshot, 'provider' | 'transportKind'>,
+): DesktopTransportKind {
+  return profile?.transportKind ?? (profile?.provider === 'anthropic' ? 'anthropic' : 'openai-compatible');
+}
+
+function defaultApiBaseForTransport(
+  provider?: DesktopModelProvider,
+  transportKind?: DesktopTransportKind,
+): string {
+  return transportKind === 'anthropic' || provider === 'anthropic'
+    ? PROVIDER_PRESET_API_BASE.anthropic
+    : DEFAULT_API_BASE;
+}
+
+function reasoningProviderForTransport(
+  provider: DesktopModelProvider | undefined,
+  transportKind: DesktopTransportKind,
+): DesktopModelProvider | undefined {
+  if (transportKind === 'anthropic') {
+    return 'anthropic';
+  }
+  return provider;
+}
+
+function openAiCompatibleVendorFromProvider(
+  provider?: DesktopModelProvider,
+): Exclude<DesktopModelProvider, 'anthropic'> | undefined {
+  return provider && provider !== 'anthropic' ? provider : undefined;
+}
+
+function buildPrimaryTransportConfig(input: {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  workspaceRoot: string;
+  profile?: Pick<
+    ModelProfileSnapshot,
+    'provider' | 'transportKind' | 'capabilities' | 'reasoningEffort' | 'supportedReasoningEfforts'
+  >;
+}): LlmTransportConfig {
+  const transportKind = resolveDesktopTransportKind(input.profile);
+  if (transportKind === 'anthropic') {
+    const supportedAnthropicEfforts = normalizeAnthropicSupportedEfforts(
+      input.profile?.supportedReasoningEfforts,
+    );
+    const anthropicEffort = resolveAnthropicTransportReasoningEffortForContext(
+      input.profile?.reasoningEffort,
+      {
+        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+        ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+        ...(input.profile?.supportedReasoningEfforts !== undefined
+          ? { supportedEfforts: input.profile.supportedReasoningEfforts }
+          : {}),
+        model: input.model,
+      },
+    );
+    return {
+      transportKind: 'anthropic',
+      apiKey: input.apiKey,
+      model: input.model,
+      baseUrl: input.baseUrl,
+      workspaceRoot: input.workspaceRoot,
+      ...(input.profile?.capabilities
+        ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
+        : {}),
+      ...(supportedAnthropicEfforts !== undefined
+        ? { supportedEfforts: supportedAnthropicEfforts }
+        : {}),
+      ...(anthropicEffort ? { effort: anthropicEffort } : {}),
+    };
+  }
+
+  const llmVendor = openAiCompatibleVendorFromProvider(input.profile?.provider);
+  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
+    input.profile?.reasoningEffort,
+    {
+      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+      ...(input.profile?.supportedReasoningEfforts !== undefined
+        ? { supportedEfforts: input.profile.supportedReasoningEfforts }
+        : {}),
+      model: input.model,
+    },
+  );
+  return {
+    apiKey: input.apiKey,
+    model: input.model,
+    baseUrl: input.baseUrl,
+    workspaceRoot: input.workspaceRoot,
+    ...(llmVendor ? { llmVendor } : {}),
+    ...(input.profile?.capabilities
+      ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
+      : {}),
+    ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+  };
+}
+
+function normalizeAnthropicSupportedEfforts(
+  efforts?: readonly string[],
+): AnthropicTransportConfig['supportedEfforts'] {
+  if (efforts === undefined) {
+    return undefined;
+  }
+
+  return efforts.filter((effort): effort is NonNullable<AnthropicTransportConfig['supportedEfforts']>[number] => (
+    effort === 'low'
+    || effort === 'medium'
+    || effort === 'high'
+    || effort === 'xhigh'
+    || effort === 'max'
+  ));
+}
+
 function supportsImageGeneration(model: { capabilities?: readonly DesktopModelCapability[] }): boolean {
   return model.capabilities?.includes('imageGeneration') === true;
+}
+
+interface LoadedPreviewModelsResult {
+  modelIds: string[];
+  modelCatalog?: PreviewModelCatalogEntry[];
+  fromCache: boolean;
+}
+
+async function loadPreviewModelsForTransport(input: {
+  provider?: DesktopModelProvider;
+  transportKind: DesktopTransportKind;
+  apiBase: string;
+  apiKey: string;
+  forceRefresh: boolean;
+}): Promise<LoadedPreviewModelsResult> {
+  const cached = await readModelCatalogCache(
+    input.apiBase,
+    input.apiKey,
+    input.provider,
+    input.transportKind,
+  );
+  const now = Date.now();
+  if (cached && isModelCatalogCacheFresh(cached, now, input.forceRefresh)) {
+    return {
+      modelIds: cached.modelIds,
+      ...(cached.modelCatalog ? { modelCatalog: cached.modelCatalog } : {}),
+      fromCache: true,
+    };
+  }
+
+  const listedModels = await listProviderModels({
+    provider: input.provider,
+    transportKind: input.transportKind,
+    baseUrl: input.apiBase,
+    apiKey: input.apiKey,
+  });
+  const modelCatalog = previewModelCatalogForProvider(input.provider, input.transportKind, listedModels);
+  const modelIds = listedModels.map((entry) => entry.id);
+  await writeModelCatalogCache(
+    input.apiBase,
+    modelIds,
+    input.apiKey,
+    modelCatalog,
+    input.provider,
+    input.transportKind,
+  );
+  return {
+    modelIds,
+    ...(modelCatalog ? { modelCatalog } : {}),
+    fromCache: false,
+  };
+}
+
+function previewModelCatalogForProvider(
+  provider: DesktopModelProvider | undefined,
+  transportKind: DesktopTransportKind,
+  listedModels: readonly ProviderListedModelEntry[],
+): PreviewModelCatalogEntry[] | undefined {
+  return previewModelCatalogForTransport({ provider, transportKind, listedModels });
+}
+
+function previewCatalogMapForAddProviderRequest(
+  request: AddProviderModelsRequest,
+  provider: DesktopModelProvider | undefined,
+  transportKind: DesktopTransportKind,
+): Map<string, PreviewModelCatalogEntry> {
+  return previewCatalogMapForTransport({
+    provider,
+    transportKind,
+    modelCatalog: request.modelCatalog,
+  });
+}
+
+async function findCatalogEntryForModel(input: {
+  provider?: DesktopModelProvider;
+  transportKind: DesktopTransportKind;
+  apiBase: string;
+  apiKey: string;
+  model: string;
+}): Promise<PreviewModelCatalogEntry | undefined> {
+  if (!usesAnthropicModelCatalogMetadata(input)) {
+    return undefined;
+  }
+
+  try {
+    const preview = await loadPreviewModelsForTransport({
+      provider: input.provider,
+      transportKind: input.transportKind,
+      apiBase: input.apiBase,
+      apiKey: input.apiKey,
+      forceRefresh: false,
+    });
+    return preview.modelCatalog?.find((entry) => entry.id === input.model);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveAddedModelCapabilities(input: {
+  provider?: DesktopModelProvider;
+  requestedCapabilities?: DesktopModelCapability[];
+  catalogEntry?: PreviewModelCatalogEntry;
+}): DesktopModelCapability[] | undefined {
+  if (input.catalogEntry?.capabilities) {
+    const merged = [...input.catalogEntry.capabilities];
+    if (
+      input.requestedCapabilities?.includes('imageGeneration') === true
+      && !merged.includes('imageGeneration')
+    ) {
+      merged.push('imageGeneration');
+    }
+    return merged;
+  }
+
+  if (input.requestedCapabilities) {
+    return input.requestedCapabilities;
+  }
+
+  return input.provider === 'custom' ? defaultCustomModelCapabilities() : undefined;
 }
 

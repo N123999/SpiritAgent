@@ -1,0 +1,1 @@
+import './contract/ai-sdk-anthropic-streaming-smoke.js';

@@ -8,8 +8,10 @@ use serde_json::{Map, Value};
 use crate::{
     mcp::{McpCapabilityToggles, McpServerConfig, McpTransportConfig},
     mcp_types::McpDiscoveredPrompt,
-    model_provider_presets::model_add_preset_api_base_by_choice_index,
-    model_registry::{DEFAULT_API_BASE, ModelProvider},
+    model_provider_presets::{
+        model_add_default_custom_api_base, model_add_preset_api_base_by_choice_index,
+    },
+    model_registry::{ModelProvider, ModelTransportKind},
     rules::{RuleEntry, RuleScope},
     skills::{SkillEntry, SkillScope},
     ts_bridge::CliExtensionEntry,
@@ -92,6 +94,7 @@ fn model_add_provider_choice_labels() -> Vec<String> {
         t!("form.model.provider.kimi").into_owned(),
         t!("form.model.provider.minimax").into_owned(),
         t!("form.model.provider.alibaba").into_owned(),
+        t!("form.model.provider.anthropic").into_owned(),
         t!("form.model.provider.custom").into_owned(),
     ]
 }
@@ -106,7 +109,7 @@ fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
 }
 
 fn model_add_mode_bulk(form: &BottomFormView, provider_idx: usize) -> bool {
-    if provider_idx < 4 {
+    if provider_idx < 5 {
         return true;
     }
     match form.fields.get(1).map(|f| &f.editor) {
@@ -117,7 +120,38 @@ fn model_add_mode_bulk(form: &BottomFormView, provider_idx: usize) -> bool {
     }
 }
 
-/// API Key 始终在「连接模型」表单最后一项（预设 3 项、自定义单条 5 项、自定义批量 4 项）。
+fn model_add_transport_field(selected: usize) -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.api_kind.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: vec![
+                t!("form.model.api_kind.openai_compatible").into_owned(),
+                t!("form.model.api_kind.anthropic").into_owned(),
+            ],
+            selected: selected.min(1),
+        },
+    }
+}
+
+fn model_add_transport_kind(form: &BottomFormView, provider: ModelProvider) -> ModelTransportKind {
+    match provider {
+        ModelProvider::Anthropic => ModelTransportKind::Anthropic,
+        ModelProvider::Custom => match form.fields.get(2).map(|f| &f.editor) {
+            Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() > 1 => {
+                if *selected == 1 {
+                    ModelTransportKind::Anthropic
+                } else {
+                    ModelTransportKind::OpenAiCompatible
+                }
+            }
+            _ => ModelTransportKind::OpenAiCompatible,
+        },
+        _ => ModelTransportKind::OpenAiCompatible,
+    }
+}
+
+/// API Key 始终在「连接模型」表单最后一项（预设 3 项、自定义单条 6 项、自定义批量 5 项）。
 fn model_add_api_key_field_index(form: &BottomFormView) -> usize {
     form.fields.len().saturating_sub(1)
 }
@@ -128,7 +162,7 @@ fn model_add_provider_field(selected: usize) -> BottomFormFieldView {
         help: String::new(),
         editor: BottomFormFieldEditorView::Choice {
             options: model_add_provider_choice_labels(),
-            selected: selected.min(4),
+            selected: selected.min(5),
         },
     }
 }
@@ -212,7 +246,8 @@ fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
         1 => Some(ModelProvider::Kimi),
         2 => Some(ModelProvider::Minimax),
         3 => Some(ModelProvider::Alibaba),
-        4 => Some(ModelProvider::Custom),
+        4 => Some(ModelProvider::Anthropic),
+        5 => Some(ModelProvider::Custom),
         _ => None,
     }
 }
@@ -233,23 +268,29 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         }
         _ => 0,
     };
-
-    let name_raw = if old_len == 5 {
-        bottom_form_text_value(form, 2)
-    } else {
-        ""
+    let transport_selected = match form.fields.get(2).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() > 1 => {
+            (*selected).min(1)
+        }
+        _ => 0,
     };
-    let base_raw = if old_len == 5 {
+
+    let name_raw = if old_len == 6 {
         bottom_form_text_value(form, 3)
-    } else if old_len == 4 {
-        bottom_form_text_value(form, 2)
+    } else {
+        ""
+    };
+    let base_raw = if old_len == 6 {
+        bottom_form_text_value(form, 4)
+    } else if old_len == 5 {
+        bottom_form_text_value(form, 3)
     } else {
         ""
     };
 
-    let bulk_custom = provider_idx >= 4 && mode_custom == 1;
+    let bulk_custom = provider_idx >= 5 && mode_custom == 1;
 
-    let new_fields: Vec<BottomFormFieldView> = if provider_idx < 4 {
+    let new_fields: Vec<BottomFormFieldView> = if provider_idx < 5 {
         vec![
             model_add_provider_field(provider_idx),
             model_add_mode_field_preset(),
@@ -259,6 +300,7 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         vec![
             model_add_provider_field(provider_idx),
             model_add_mode_field_custom(mode_custom),
+            model_add_transport_field(transport_selected),
             model_add_api_base_field(base_raw),
             model_add_api_key_field(api_key_raw),
         ]
@@ -266,6 +308,7 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         vec![
             model_add_provider_field(provider_idx),
             model_add_mode_field_custom(mode_custom),
+            model_add_transport_field(transport_selected),
             model_add_model_name_field(name_raw),
             model_add_api_base_field(base_raw),
             model_add_api_key_field(api_key_raw),
@@ -294,6 +337,7 @@ pub(crate) fn new_model_add_form() -> BottomFormView {
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedModelAddForm {
     pub provider: ModelProvider,
+    pub transport_kind: ModelTransportKind,
     pub bulk: bool,
     pub model_name: Option<String>,
     pub api_base: String,
@@ -773,6 +817,7 @@ pub(crate) fn parse_model_add_connection(
     let Some(provider) = model_add_provider_to_enum(provider_idx) else {
         return Err(t!("form.model.validation.provider_invalid").into_owned());
     };
+    let transport_kind = model_add_transport_kind(form, provider);
 
     let key_idx = model_add_api_key_field_index(form);
     let api_key = bottom_form_text_value(form, key_idx).trim().to_string();
@@ -785,15 +830,15 @@ pub(crate) fn parse_model_add_connection(
         preset
     } else {
         let base_idx = match form.fields.len() {
-            4 => 2,
             5 => 3,
+            6 => 4,
             _ => {
                 return Err(t!("form.model.validation.invalid_form_kind").into_owned());
             }
         };
         let v = bottom_form_text_value(form, base_idx).trim().to_string();
         if v.is_empty() {
-            DEFAULT_API_BASE.to_string()
+            model_add_default_custom_api_base(transport_kind)
         } else {
             v
         }
@@ -802,10 +847,10 @@ pub(crate) fn parse_model_add_connection(
     let model_name = if bulk {
         None
     } else {
-        if form.fields.len() != 5 {
+        if form.fields.len() != 6 {
             return Err(t!("form.model.validation.invalid_form_kind").into_owned());
         }
-        let n = bottom_form_text_value(form, 2).trim().to_string();
+        let n = bottom_form_text_value(form, 3).trim().to_string();
         if n.is_empty() {
             return Err(t!("form.model.validation.name_empty").into_owned());
         }
@@ -817,6 +862,7 @@ pub(crate) fn parse_model_add_connection(
 
     Ok(ParsedModelAddForm {
         provider,
+        transport_kind,
         bulk,
         model_name,
         api_base,
@@ -1262,7 +1308,7 @@ mod tests {
         parse_metadata_map, parse_model_add_connection, prompt_user_message, rules_form_overrides,
         select_next_field, skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
     };
-    use crate::model_registry::ModelProvider;
+    use crate::model_registry::{ModelProvider, ModelTransportKind};
     use rust_i18n::t;
     use std::path::PathBuf;
 
@@ -1513,18 +1559,19 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 4;
+                *selected = 5;
             }
         }
         sync_model_add_form_fields(&mut form);
-        form.selected_field = 2;
-        insert_text(&mut form, "my-model");
         form.selected_field = 3;
-        insert_text(&mut form, "https://custom.example/v1");
+        insert_text(&mut form, "my-model");
         form.selected_field = 4;
+        insert_text(&mut form, "https://custom.example/v1");
+        form.selected_field = 5;
         insert_text(&mut form, "sk-c");
         let parsed = parse_model_add_connection(&form).expect("parse");
         assert_eq!(parsed.provider, ModelProvider::Custom);
+        assert_eq!(parsed.transport_kind, ModelTransportKind::OpenAiCompatible);
         assert!(!parsed.bulk);
         assert_eq!(parsed.model_name.as_deref(), Some("my-model"));
         assert_eq!(parsed.api_base, "https://custom.example/v1");
@@ -1536,30 +1583,57 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 4;
+                *selected = 5;
             }
         }
         sync_model_add_form_fields(&mut form);
-        assert_eq!(form.fields.len(), 5);
+        assert_eq!(form.fields.len(), 6);
         form.selected_field = 1;
         move_right(&mut form);
-        assert_eq!(form.fields.len(), 4);
+        assert_eq!(form.fields.len(), 5);
         assert!(
             !form
                 .fields
                 .iter()
                 .any(|f| f.label == t!("form.model.field.model_name.label").into_owned())
         );
-        form.selected_field = 2;
-        insert_text(&mut form, "https://bulk.example/v1");
         form.selected_field = 3;
+        insert_text(&mut form, "https://bulk.example/v1");
+        form.selected_field = 4;
         insert_text(&mut form, "sk-bulk");
         let parsed = parse_model_add_connection(&form).expect("parse");
         assert_eq!(parsed.provider, ModelProvider::Custom);
+        assert_eq!(parsed.transport_kind, ModelTransportKind::OpenAiCompatible);
         assert!(parsed.bulk);
         assert!(parsed.model_name.is_none());
         assert_eq!(parsed.api_base, "https://bulk.example/v1");
         assert_eq!(parsed.api_key, "sk-bulk");
+    }
+
+    #[test]
+    fn model_add_form_parses_custom_anthropic_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 5;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        if let Some(f) = form.fields.get_mut(2) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 1;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        form.selected_field = 3;
+        insert_text(&mut form, "claude-custom");
+        form.selected_field = 5;
+        insert_text(&mut form, "sk-anthropic");
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::Custom);
+        assert_eq!(parsed.transport_kind, ModelTransportKind::Anthropic);
+        assert_eq!(parsed.model_name.as_deref(), Some("claude-custom"));
+        assert_eq!(parsed.api_base, "https://api.anthropic.com/v1");
     }
 
     #[test]
@@ -1581,6 +1655,27 @@ mod tests {
         assert!(parsed.model_name.is_none());
         assert_eq!(parsed.api_base, "https://dashscope.aliyuncs.com/compatible-mode/v1");
         assert_eq!(parsed.api_key, "sk-ali");
+    }
+
+    #[test]
+    fn model_add_form_parses_anthropic_preset_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 4;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        assert_eq!(form.fields.len(), 3);
+        form.selected_field = 2;
+        insert_text(&mut form, "sk-anthropic");
+
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::Anthropic);
+        assert!(parsed.bulk);
+        assert!(parsed.model_name.is_none());
+        assert_eq!(parsed.api_base, "https://api.anthropic.com/v1");
+        assert_eq!(parsed.api_key, "sk-anthropic");
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

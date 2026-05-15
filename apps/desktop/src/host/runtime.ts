@@ -1,25 +1,26 @@
 import {
   AgentRuntime,
-  appendOpenAiUserLlmMessage,
+  assistantToolCallMessageFromLlmState,
+  appendLlmUserLlmMessage,
   normalizeStoredLlmMessage,
-  type OpenAiCompatibleTransport,
-  appendOpenAiToolResultMessage,
-  appendOpenAiUserMessage,
-  continueOpenAiToolAgentState,
-  extractLastOpenAiAssistantText,
-  rebuildOpenAiToolAgentStateAfterCompaction,
-  startOpenAiToolAgentState,
-  truncateOpenAiHistoryForCompaction,
-  truncateOpenAiToolAgentStateForContextRetry,
+  type SpiritLlmTransport,
+  appendLlmToolResultMessage,
+  appendLlmUserMessage,
+  continueLlmToolAgentState,
+  extractLastLlmAssistantText,
+  rebuildLlmToolAgentStateAfterCompaction,
+  startLlmToolAgentState,
+  truncateLlmHistoryForCompaction,
+  truncateLlmToolAgentStateForContextRetry,
   type ChatArchive,
-  type OpenAiActiveSkill,
-  type OpenAiEnabledRule,
-  type OpenAiEnabledSkillCatalogEntry,
-  type OpenAiExtensionSystemPrompt,
-  type OpenAiPlanMetadata,
-  type OpenAiToolAgentBasicInfo,
-  type OpenAiToolAgentState,
-  type OpenAiTransportConfig,
+  type LlmActiveSkill,
+  type LlmEnabledRule,
+  type LlmEnabledSkillCatalogEntry,
+  type LlmExtensionSystemPrompt,
+  type LlmPlanMetadata,
+  type LlmToolAgentBasicInfo,
+  type LlmToolAgentState,
+  type LlmTransportConfig,
 } from '@spirit-agent/agent-core';
 import { resolveWorkspaceFileReferenceAttachmentsFromInput } from '@spirit-agent/host-internal';
 
@@ -27,32 +28,32 @@ import type { DesktopToolRequest } from './contracts.js';
 import type { DesktopToolExecutor } from './tool-executor.js';
 
 export type DesktopRuntime = AgentRuntime<
-  OpenAiTransportConfig,
-  OpenAiToolAgentState,
+  LlmTransportConfig,
+  LlmToolAgentState,
   DesktopToolRequest,
   string
 >;
 
 export function createDesktopRuntime(input: {
-  transportConfig: OpenAiTransportConfig;
+  transportConfig: LlmTransportConfig;
   history: ChatArchive['llmHistory'];
-  enabledRules: OpenAiEnabledRule[];
-  enabledSkillCatalog: OpenAiEnabledSkillCatalogEntry[];
-  planMetadata: OpenAiPlanMetadata;
-  extensionSystemPrompts: OpenAiExtensionSystemPrompt[];
+  enabledRules: LlmEnabledRule[];
+  enabledSkillCatalog: LlmEnabledSkillCatalogEntry[];
+  planMetadata: LlmPlanMetadata;
+  extensionSystemPrompts: LlmExtensionSystemPrompt[];
   dreamsContextText?: string;
   toolExecutor: DesktopToolExecutor;
-  llmTransport: OpenAiCompatibleTransport;
-  activeSkills: OpenAiActiveSkill[];
+  llmTransport: SpiritLlmTransport;
+  activeSkills: LlmActiveSkill[];
   workspaceRoot: string;
-  basicInfo: OpenAiToolAgentBasicInfo;
+  basicInfo: LlmToolAgentBasicInfo;
 }): DesktopRuntime {
   return new AgentRuntime({
     config: input.transportConfig,
     llmTransport: input.llmTransport,
     toolExecutor: input.toolExecutor,
     createToolAgentState: (messages, userInput) =>
-      startOpenAiToolAgentState(
+      startLlmToolAgentState(
         messages,
         userInput,
         input.workspaceRoot,
@@ -66,7 +67,7 @@ export function createDesktopRuntime(input: {
         input.basicInfo,
       ),
     createContinuationState: (messages) =>
-      continueOpenAiToolAgentState(
+      continueLlmToolAgentState(
         messages,
         input.workspaceRoot,
         input.enabledRules,
@@ -78,14 +79,15 @@ export function createDesktopRuntime(input: {
         input.dreamsContextText,
         input.basicInfo,
       ),
-    appendToolResultMessage: appendOpenAiToolResultMessage,
-    appendUserMessage: appendOpenAiUserMessage,
-    appendUserLlmMessage: (state, message) => appendOpenAiUserLlmMessage(state, message, input.workspaceRoot),
-    extractAssistantText: extractLastOpenAiAssistantText,
-    truncateStateForContextRetry: truncateOpenAiToolAgentStateForContextRetry,
-    truncateHistoryForCompaction: truncateOpenAiHistoryForCompaction,
+    appendToolResultMessage: appendLlmToolResultMessage,
+    assistantToolCallMessageFromState: assistantToolCallMessageFromLlmState,
+    appendUserMessage: appendLlmUserMessage,
+    appendUserLlmMessage: (state, message) => appendLlmUserLlmMessage(state, message, input.workspaceRoot),
+    extractAssistantText: extractLastLlmAssistantText,
+    truncateStateForContextRetry: truncateLlmToolAgentStateForContextRetry,
+    truncateHistoryForCompaction: truncateLlmHistoryForCompaction,
     rebuildRetryStateAfterCompaction: (messages, userInput, retryState) =>
-      rebuildOpenAiToolAgentStateAfterCompaction(
+      rebuildLlmToolAgentStateAfterCompaction(
         messages,
         userInput,
         retryState,
@@ -110,7 +112,7 @@ export function createDesktopRuntime(input: {
   }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 
-export function cloneActiveSkills(skills: OpenAiActiveSkill[]): OpenAiActiveSkill[] {
+export function cloneActiveSkills(skills: LlmActiveSkill[]): LlmActiveSkill[] {
   return skills.map((skill) => ({
     ...skill,
     resources: skill.resources.map((resource) => ({ ...resource })),

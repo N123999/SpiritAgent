@@ -45,6 +45,7 @@ export function historyAsPlainApiMessages(history: LlmMessage[]): JsonValue[] {
   return history.map((message) => ({
     role: message.role,
     content: llmMessageTextContent(message.content),
+    ...(message.toolCallId !== undefined ? { tool_call_id: message.toolCallId } : {}),
   }));
 }
 
@@ -2555,6 +2556,7 @@ export function createScriptedState(history: LlmMessage[], userInput: string): S
     ...history.map((message) => ({
       role: message.role,
       content: llmMessageTextContent(message.content),
+      ...(message.toolCallId !== undefined ? { tool_call_id: message.toolCallId } : {}),
       ...((message.role === 'user' && llmMessageHasImages(message.content))
         ? {
             image_paths: message.content
@@ -2657,10 +2659,20 @@ export function truncateScriptedHistoryForCompaction(
   let changed = false;
   const nextHistory = history.map((message) => {
     const text = llmMessageTextContent(message.content);
-    if (message.role !== 'system' || !text.startsWith('[TOOL_MEMORY]')) {
+    if (message.role !== 'tool') {
       return {
         role: message.role,
         content: cloneLlmMessageContent(message.content),
+        ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+        ...(message.toolCalls !== undefined
+          ? {
+              toolCalls: message.toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                name: toolCall.name,
+                argumentsJson: toolCall.argumentsJson,
+              })),
+            }
+          : {}),
       };
     }
 
@@ -2668,6 +2680,16 @@ export function truncateScriptedHistoryForCompaction(
       return {
         role: message.role,
         content: cloneLlmMessageContent(message.content),
+        ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+        ...(message.toolCalls !== undefined
+          ? {
+              toolCalls: message.toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                name: toolCall.name,
+                argumentsJson: toolCall.argumentsJson,
+              })),
+            }
+          : {}),
       };
     }
 
@@ -2675,8 +2697,18 @@ export function truncateScriptedHistoryForCompaction(
     return {
       role: message.role,
       content: createLlmMessageContentFromText(
-        `${text.slice(0, 120)}...[tool memory truncated for context retry]`,
+        `${text.slice(0, 120)}...[tool output truncated for context retry]`,
       ),
+      ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+      ...(message.toolCalls !== undefined
+        ? {
+            toolCalls: message.toolCalls.map((toolCall) => ({
+              id: toolCall.id,
+              name: toolCall.name,
+              argumentsJson: toolCall.argumentsJson,
+            })),
+          }
+        : {}),
     };
   });
 

@@ -10,14 +10,17 @@ import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
 import {
-  createFileExtensionStateStore,
   defaultModelReasoningEffort,
+  normalizeModelReasoningEffort,
+  resolveModelReasoningEffortForContext,
+} from '@spirit-agent/agent-core/reasoning-effort';
+import {
+  createFileExtensionStateStore,
   type ExtensionManagementContext,
   type ExtensionSettingValue,
   type ExtensionStateStore,
   loadHostInstructionMetadata,
   parseModelProviderId,
-  resolveModelReasoningEffortForContext,
   resolveInstructionPaths,
   type HostInstructionMetadataSummary,
   type HostRuleDiscoveryResult,
@@ -28,6 +31,8 @@ import type {
   ConversationMessageSnapshot,
   DesktopModelCapability,
   DesktopModelProvider,
+  DesktopModelReasoningEffort,
+  DesktopTransportKind,
   ModelProfileSnapshot,
   SessionListItem,
 } from '../types.js';
@@ -406,16 +411,22 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
         )
         .map((model) => {
           const provider = parseModelProviderId(model.provider);
+          const transportKind = normalizeDesktopTransportKind(model.transportKind, provider);
           const capabilities = normalizeModelCapabilities(model.capabilities);
+          const supportedReasoningEfforts = normalizeSupportedReasoningEfforts(model.supportedReasoningEfforts);
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
             reasoningEffort: resolveModelReasoningEffortForContext(model.reasoningEffort, {
               ...(provider ? { provider } : {}),
               model: model.name,
+              ...(transportKind ? { transportKind } : {}),
+              ...(supportedReasoningEfforts !== undefined ? { supportedEfforts: supportedReasoningEfforts } : {}),
             }),
+            ...(supportedReasoningEfforts !== undefined ? { supportedReasoningEfforts } : {}),
             ...(capabilities ? { capabilities } : {}),
             ...(provider ? { provider } : {}),
+            ...(transportKind ? { transportKind } : {}),
           };
         })
     : [];
@@ -458,6 +469,17 @@ function modelSupportsImageGeneration(model: ModelProfileSnapshot): boolean {
   return model.capabilities?.includes('imageGeneration') === true;
 }
 
+function normalizeDesktopTransportKind(
+  value: unknown,
+  provider?: DesktopModelProvider,
+): DesktopTransportKind | undefined {
+  if (value === 'openai-compatible' || value === 'anthropic') {
+    return value;
+  }
+
+  return provider === 'anthropic' ? 'anthropic' : undefined;
+}
+
 export function normalizeModelCapabilities(
   value: unknown,
 ): DesktopModelCapability[] | undefined {
@@ -485,6 +507,27 @@ export function normalizeModelCapabilities(
 
 export function defaultCustomModelCapabilities(): DesktopModelCapability[] {
   return [...DEFAULT_CUSTOM_MODEL_CAPABILITIES];
+}
+
+export function normalizeSupportedReasoningEfforts(
+  value: unknown,
+): DesktopModelReasoningEffort[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const seen = new Set<string>();
+  const normalized: DesktopModelReasoningEffort[] = [];
+  for (const item of value) {
+    const effort = normalizeModelReasoningEffort(item);
+    if (!effort || effort === 'default' || seen.has(effort)) {
+      continue;
+    }
+    seen.add(effort);
+    normalized.push(effort);
+  }
+
+  return normalized;
 }
 
 export function normalizeDreamConfig(

@@ -262,9 +262,10 @@ impl TuiShell {
             self.forms.active = None;
 
             if parsed.bulk {
-                match openai_models_list::list_openai_compatible_model_ids(
+                match openai_models_list::list_model_ids(
                     parsed.api_base.as_str(),
                     parsed.api_key.as_str(),
+                    parsed.transport_kind,
                 ) {
                     Ok(ids) => match self.apply_model_add_bulk(&ids, &parsed) {
                         Ok(msg) => {
@@ -300,6 +301,7 @@ impl TuiShell {
                     parsed.api_base.as_str(),
                     parsed.api_key.as_str(),
                     Some(parsed.provider),
+                    parsed.transport_kind,
                 ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {
@@ -447,12 +449,19 @@ impl TuiShell {
             if config.has_model(id) {
                 continue;
             }
+            let mut extra = serde_json::Map::new();
+            if parsed.transport_kind == crate::model_registry::ModelTransportKind::Anthropic {
+                extra.insert(
+                    "transportKind".to_string(),
+                    serde_json::json!(parsed.transport_kind.as_str()),
+                );
+            }
             config.add_model(ModelProfile {
                 name: id.clone(),
                 api_base: parsed.api_base.clone(),
                 provider: Some(parsed.provider),
                 reasoning_effort: None,
-                extra: Default::default(),
+                extra,
             });
             if let Err(err) = self
                 .secret_store

@@ -58,6 +58,7 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   const previewEarlyExecutionEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const previewBackgroundDeferredEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
   const previewSubagentDeferredEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
+  const authorizationFailureEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
 
   const streamingRuntime = new AgentRuntime({
     config: undefined,
@@ -256,6 +257,106 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
     ).length !== 1
   ) {
     throw new Error('preview subagent smoke 的 tool-call-started 不应重复。');
+  }
+
+  const authorizationFailureRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new AuthorizationFailureTransport(),
+    toolExecutor: new AuthorizationFailureExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    onEvent: (event) => authorizationFailureEvents.push(event),
+  });
+
+  await authorizationFailureRuntime.startUserTurnStreaming('请读取不存在的文件');
+  for (let index = 0; index < 12 && authorizationFailureRuntime.isBusy(); index += 1) {
+    await flushMicrotasks(4);
+    await authorizationFailureRuntime.poll();
+  }
+  if (authorizationFailureRuntime.isBusy()) {
+    throw new Error('authorization failure smoke 未在预期轮次内完成。');
+  }
+
+  const drainedAuthorizationFailureEvents = authorizationFailureRuntime.drainEvents();
+  if (
+    !drainedAuthorizationFailureEvents.some(
+      (event) => event.kind === 'tool-call-started' && event.toolCallId === 'call-stream-auth-fail',
+    )
+  ) {
+    throw new Error('authorization failure smoke 缺少 tool-call-started 事件。');
+  }
+  if (
+    !drainedAuthorizationFailureEvents.some(
+      (event) =>
+        event.kind === 'tool-execution-finished' &&
+        event.execution.toolCallId === 'call-stream-auth-fail' &&
+        event.execution.failed &&
+        event.execution.output.includes('[authorization error]'),
+    )
+  ) {
+    throw new Error('authorization failure smoke 缺少 failed 工具完成事件。');
+  }
+
+  const authorizationFailureResult = authorizationFailureRuntime.takeCompletedTurnResult();
+  if (
+    !authorizationFailureResult ||
+    authorizationFailureResult.kind !== 'completed' ||
+    authorizationFailureResult.assistantText !== 'AUTHORIZATION_FAILURE_OK'
+  ) {
+    throw new Error('authorization failure smoke 未完成最终回复。');
+  }
+  if (
+    !authorizationFailureResult.toolExecutions.some(
+      (execution) =>
+        execution.toolCallId === 'call-stream-auth-fail' &&
+        execution.failed &&
+        execution.output.includes('[authorization error]'),
+    )
+  ) {
+    throw new Error('authorization failure smoke 未记录失败工具执行。');
+  }
+  if (
+    !authorizationFailureRuntime.history().some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.toolCalls?.some(
+          (toolCall) =>
+            toolCall.id === 'call-stream-auth-fail' &&
+            toolCall.name === 'read_file' &&
+            toolCall.argumentsJson === '{"path":"D:\\SpiritAgent\\apps\\cli\\src\\tool_runtime.rs"}',
+        ),
+    )
+  ) {
+    throw new Error('authorization failure smoke 未把 assistant tool call 父消息写入 llmHistory。');
+  }
+  if (
+    !authorizationFailureRuntime.history().some(
+      (message) =>
+        message.role === 'tool' &&
+        message.toolCallId === 'call-stream-auth-fail' &&
+        llmMessageTextContent(message.content).includes('[authorization error]'),
+    )
+  ) {
+    throw new Error('authorization failure smoke 未把失败工具结果写入 llmHistory。');
+  }
+
+  if (
+    !authorizationFailureRuntime.toArchive([], []).llmHistory.some(
+      (message) =>
+        message.role === 'assistant' &&
+        'toolCalls' in message &&
+        Array.isArray(message.toolCalls) &&
+        message.toolCalls.some(
+          (toolCall) =>
+            toolCall.id === 'call-stream-auth-fail' &&
+            toolCall.name === 'read_file' &&
+            toolCall.argumentsJson === '{"path":"D:\\SpiritAgent\\apps\\cli\\src\\tool_runtime.rs"}',
+        ),
+    )
+  ) {
+    throw new Error('authorization failure smoke 未把 assistant tool call 父消息写入 archive。');
   }
 
   const timeoutRuntime = new AgentRuntime({
@@ -737,8 +838,14 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
     onEvent: (event) => streamingCompactionEvents.push(event),
   }, [
     {
-      role: 'system',
-      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
+      role: 'assistant',
+      content: [],
+      toolCalls: [{ id: 'call-old-streaming', name: 'read_file', argumentsJson: '{}' }],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-old-streaming',
+      content: createLlmMessageContentFromText('old tool output\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',
@@ -805,7 +912,7 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   await flushMicrotasks();
   await noTimeoutRuntime.poll();
 
-  return { drainedStreamingEvents, previewEarlyExecutionEvents, drainedTimeoutEvents, drainedStreamingFailureEvents, drainedStreamingApprovalEvents, drainedStreamingApprovalImageEvents, drainedStreamingGuidanceEvents, drainedStreamingBackgroundEvents, drainedStreamingCompactionEvents, drainedApprovalThenImageEvents };
+  return { drainedStreamingEvents, previewEarlyExecutionEvents, drainedAuthorizationFailureEvents, drainedTimeoutEvents, drainedStreamingFailureEvents, drainedStreamingApprovalEvents, drainedStreamingApprovalImageEvents, drainedStreamingGuidanceEvents, drainedStreamingBackgroundEvents, drainedStreamingCompactionEvents, drainedApprovalThenImageEvents };
 }
 
 class StreamingApprovalThenGenerateImageTransport implements LlmTransport<undefined, ScriptedState> {
@@ -1132,6 +1239,125 @@ class CountingReadFileExecutor extends HostExecutor {
   override async execute(request: ScriptedToolRequest): Promise<ToolExecutionOutput> {
     this.executedCalls += 1;
     return super.execute(request);
+  }
+}
+
+class AuthorizationFailureTransport implements LlmTransport<undefined, ScriptedState> {
+  private rounds = 0;
+
+  async startToolAgentRound(
+    _config: undefined,
+    state: ScriptedState,
+    _tools: JsonValue,
+  ): Promise<ToolAgentRoundCompletion<ScriptedState>> {
+    this.rounds += 1;
+
+    if (this.rounds === 1) {
+      return {
+        kind: 'success',
+        result: {
+          state: {
+            messages: [
+              ...state.messages,
+              {
+                role: 'assistant',
+                content: '我先读一下这个文件。',
+                tool_calls: [
+                  {
+                    id: 'call-stream-auth-fail',
+                    type: 'function',
+                    function: {
+                      name: 'read_file',
+                      arguments: '{"path":"D:\\SpiritAgent\\apps\\cli\\src\\tool_runtime.rs"}',
+                    },
+                  },
+                ],
+              },
+            ],
+            steps: state.steps + 1,
+          },
+          step: {
+            kind: 'tool-calls',
+            calls: [
+              {
+                id: 'call-stream-auth-fail',
+                name: 'read_file',
+                argumentsJson: '{"path":"D:\\SpiritAgent\\apps\\cli\\src\\tool_runtime.rs"}',
+              },
+            ],
+          },
+          requestTrace: [{ mode: 'authorization-failure-round-1' }],
+        },
+      };
+    }
+
+    const hasAuthorizationFailure = state.messages.some(
+      (message) =>
+        isJsonObject(message) &&
+        message.role === 'tool' &&
+        message.tool_call_id === 'call-stream-auth-fail' &&
+        typeof message.content === 'string' &&
+        message.content.includes('[authorization error]'),
+    );
+    if (!hasAuthorizationFailure) {
+      return {
+        kind: 'failure',
+        error: 'authorization failure 状态未写回。',
+        requestTrace: [{ mode: 'authorization-failure-round-2-missing-tool' }],
+      };
+    }
+
+    return {
+      kind: 'success',
+      result: {
+        state: {
+          messages: [...state.messages, { role: 'assistant', content: 'AUTHORIZATION_FAILURE_OK' }],
+          steps: state.steps + 1,
+        },
+        step: { kind: 'final-response-ready' },
+        requestTrace: [{ mode: 'authorization-failure-round-2' }],
+      },
+    };
+  }
+
+  async compactHistoryManual(
+    _config: undefined,
+    history: LlmMessage[],
+  ): Promise<{ droppedMessages: number; beforeLength: number; afterLength: number }> {
+    return {
+      droppedMessages: 0,
+      beforeLength: history.length,
+      afterLength: history.length,
+    };
+  }
+
+  compactSummaryText(): string | undefined {
+    return undefined;
+  }
+
+  isContextOverflowError(error: string): boolean {
+    return error.includes('context');
+  }
+
+  llmHistoryAsApiMessages(history: LlmMessage[]): JsonValue[] {
+    return historyAsPlainApiMessages(history);
+  }
+
+  llmSystemPromptsForExport(): JsonValue {
+    return {};
+  }
+}
+
+class AuthorizationFailureExecutor extends HostExecutor {
+  override async authorize(request: ScriptedToolRequest): Promise<{ kind: 'allowed' }> {
+    if (
+      request.name === 'read_file' &&
+      request.argumentsJson.includes('D:\\SpiritAgent\\apps\\cli\\src\\tool_runtime.rs')
+    ) {
+      throw new Error('path not found: D:\\SpiritAgent\\apps\\cli\\src\\tool_runtime.rs');
+    }
+
+    return { kind: 'allowed' };
   }
 }
 

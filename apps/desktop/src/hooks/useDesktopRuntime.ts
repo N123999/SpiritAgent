@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ModelReasoningEffort } from "@spirit-agent/host-internal/reasoning-effort";
-
 import type { SettingsFormState } from "@/components/settings-view";
 import { useHostApi } from "@/hooks/useHostApi";
 import {
@@ -25,6 +23,7 @@ import type {
   DeleteMcpServerRequest,
   DeleteSkillRequest,
   DesktopApprovalDecision,
+  DesktopModelReasoningEffort,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
@@ -1124,7 +1123,7 @@ export function useDesktopRuntime() {
   );
 
   const setModelReasoningEffort = useCallback(
-    async (name: string, reasoningEffort: ModelReasoningEffort) => {
+    async (name: string, reasoningEffort: DesktopModelReasoningEffort) => {
       if (!api || !snapshot) {
         return;
       }

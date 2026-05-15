@@ -67,8 +67,20 @@ export async function pollRuntimeUntilIdle<
 export function buildCompactSmokeHistory(): LlmMessage[] {
   return [
     {
-      role: 'system',
-      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: list_directory_files path=packages/agent-core\nresult_snippet:\npackage.json\nsrc/openai/ai-sdk-transport.ts'),
+      role: 'assistant',
+      content: createLlmMessageContentFromText('我先列一下 packages/agent-core。'),
+      toolCalls: [
+        {
+          id: 'call-list-agent-core',
+          name: 'list_dir',
+          argumentsJson: '{"path":"packages/agent-core"}',
+        },
+      ],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-list-agent-core',
+      content: createLlmMessageContentFromText('package.json\nsrc/openai/ai-sdk-transport.ts'),
     },
     {
       role: 'user',
@@ -87,8 +99,20 @@ export function buildCompactSmokeHistory(): LlmMessage[] {
       content: createLlmMessageContentFromText('已接入 OpenAI SDK，basic chat 与 tool call smoke 已跑通，接下来补 round-trip 和 compact smoke。'),
     },
     {
-      role: 'system',
-      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: read_file path=packages/agent-core/src/openai/ai-sdk-transport.ts\nresult_snippet:\ncontains AiSdkOpenAiCompatibleTransport and compactHistoryManual'),
+      role: 'assistant',
+      content: createLlmMessageContentFromText('我再读一下 openai transport 实现。'),
+      toolCalls: [
+        {
+          id: 'call-read-openai-transport',
+          name: 'read_file',
+          argumentsJson: '{"filePath":"packages/agent-core/src/openai/ai-sdk-transport.ts"}',
+        },
+      ],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-read-openai-transport',
+      content: createLlmMessageContentFromText('contains AiSdkOpenAiCompatibleTransport and compactHistoryManual'),
     },
     {
       role: 'user',

@@ -3,7 +3,10 @@ import type {
   ChatArchive,
   RuntimePendingQuestions,
 } from '@spirit-agent/agent-core';
-import { cloneLlmMessageContent } from '@spirit-agent/agent-core';
+import {
+  cloneLlmMessageContent,
+  cloneLlmProviderState,
+} from '@spirit-agent/agent-core';
 
 import type {
   AskQuestionsResult,
@@ -130,6 +133,23 @@ export function cloneArchiveHistory(history: ChatArchive['llmHistory']): ChatArc
       return {
         role: message.role,
         content: cloneLlmMessageContent(message.content),
+        ...('toolCallId' in message && typeof message.toolCallId === 'string'
+          ? { toolCallId: message.toolCallId }
+          : {}),
+        ...('toolCalls' in message && Array.isArray(message.toolCalls)
+          ? {
+              toolCalls: message.toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                name: toolCall.name,
+                argumentsJson: toolCall.argumentsJson,
+              })),
+            }
+          : {}),
+        ...('providerState' in message
+          && typeof message.providerState === 'object'
+          && message.providerState !== null
+          ? { providerState: cloneLlmProviderState(message.providerState) }
+          : {}),
       };
     }
 
@@ -137,6 +157,23 @@ export function cloneArchiveHistory(history: ChatArchive['llmHistory']): ChatArc
       role: message.role,
       content: message.content,
       imagePaths: [...(('imagePaths' in message ? message.imagePaths : []) ?? [])],
+      ...('toolCallId' in message && typeof message.toolCallId === 'string'
+        ? { toolCallId: message.toolCallId }
+        : {}),
+      ...('toolCalls' in message && Array.isArray(message.toolCalls)
+        ? {
+            toolCalls: message.toolCalls.map((toolCall) => ({
+              id: toolCall.id,
+              name: toolCall.name,
+              argumentsJson: toolCall.argumentsJson,
+            })),
+          }
+        : {}),
+      ...('providerState' in message
+        && typeof message.providerState === 'object'
+        && message.providerState !== null
+        ? { providerState: cloneLlmProviderState(message.providerState) }
+        : {}),
     };
   });
 }

@@ -1,3 +1,4 @@
+import type { AnthropicTransportConfig } from '../../anthropic/anthropic-compat.js';
 import type { OpenAiLlmVendor, OpenAiTransportConfig } from '../../openai/openai-compat.js';
 
 import { requireEnv } from '../shared/env.js';
@@ -33,6 +34,19 @@ export function createLiveOpenAiCompatibleSmokeConfig(): OpenAiTransportConfig {
     model,
     ...(baseUrl ? { baseUrl } : {}),
     ...(llmVendor ? { llmVendor } : {}),
+  };
+}
+
+export function createLiveAnthropicSmokeConfig(): AnthropicTransportConfig {
+  const apiKey = requireEnv('ANTHROPIC_API_KEY');
+  const model = requireEnv('ANTHROPIC_MODEL');
+  const baseUrl = requireEnv('ANTHROPIC_BASE_URL');
+
+  return {
+    transportKind: 'anthropic',
+    apiKey,
+    model,
+    baseUrl,
   };
 }
 

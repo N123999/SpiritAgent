@@ -35,8 +35,14 @@ export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
     rebuildRetryStateAfterCompaction: rebuildScriptedStateAfterCompaction,
   }, [
     {
-      role: 'system',
-      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
+      role: 'assistant',
+      content: [],
+      toolCalls: [{ id: 'call-old-compact', name: 'read_file', argumentsJson: '{}' }],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-old-compact',
+      content: createLlmMessageContentFromText('old tool output\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',
@@ -70,8 +76,14 @@ export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
     onEvent: (event) => pollingCompactEvents.push(event),
   }, [
     {
-      role: 'system',
-      content: createLlmMessageContentFromText('[TOOL_MEMORY]\nrequest: old\nresult_snippet:\n' + 'x'.repeat(5000)),
+      role: 'assistant',
+      content: [],
+      toolCalls: [{ id: 'call-old-compact', name: 'read_file', argumentsJson: '{}' }],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-old-compact',
+      content: createLlmMessageContentFromText('old tool output\n' + 'x'.repeat(5000)),
     },
     {
       role: 'assistant',

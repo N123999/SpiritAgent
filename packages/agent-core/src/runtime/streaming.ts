@@ -71,6 +71,7 @@ export interface StreamingRuntime<
   performToolExecution(
     request: ToolRequest,
     toolName: string,
+    toolCallId?: string,
   ): Promise<ToolExecutionResult>;
   tryPerformEarlyInternalToolCall?(
     request: ToolRequest,

@@ -1,5 +1,6 @@
 //! 与 `packages/host-internal/src/model-provider-presets.json` 同源（TUI 预设根 URL 与顺序）。
 
+use crate::model_registry::ModelTransportKind;
 use serde::Deserialize;
 use std::sync::OnceLock;
 
@@ -34,6 +35,20 @@ pub(crate) fn model_add_preset_api_base_by_choice_index(selected: usize) -> Opti
     p.preset_api_base_by_provider.get(id).cloned()
 }
 
+pub(crate) fn model_add_default_custom_api_base(
+    transport_kind: ModelTransportKind,
+) -> String {
+    let p = presets();
+    match transport_kind {
+        ModelTransportKind::OpenAiCompatible => p.default_custom_api_base.clone(),
+        ModelTransportKind::Anthropic => p
+            .preset_api_base_by_provider
+            .get("anthropic")
+            .cloned()
+            .unwrap_or_else(|| p.default_custom_api_base.clone()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,6 +71,22 @@ mod tests {
             model_add_preset_api_base_by_choice_index(3).as_deref(),
             Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
         );
-        assert!(model_add_preset_api_base_by_choice_index(4).is_none());
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(4).as_deref(),
+            Some("https://api.anthropic.com/v1")
+        );
+        assert!(model_add_preset_api_base_by_choice_index(5).is_none());
+    }
+
+    #[test]
+    fn custom_default_base_follows_transport_kind() {
+        assert_eq!(
+            model_add_default_custom_api_base(ModelTransportKind::OpenAiCompatible),
+            "https://api.openai.com/v1"
+        );
+        assert_eq!(
+            model_add_default_custom_api_base(ModelTransportKind::Anthropic),
+            "https://api.anthropic.com/v1"
+        );
     }
 }

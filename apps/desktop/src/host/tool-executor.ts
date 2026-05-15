@@ -1,6 +1,7 @@
 import {
   type AskQuestionsResult,
   type DreamHostToolName,
+  type LlmTransportConfig,
   type OpenAiModelCompatibilityProfile,
   type OpenAiTransportConfig,
   resolveOpenAiModelCompatibilityProfile,
@@ -90,9 +91,12 @@ export class DesktopToolExecutor
   }
 
   setActiveTransportConfig(
-    config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'modelCapabilities' | 'imageGeneration'>,
+    config: Pick<LlmTransportConfig, 'model' | 'modelCapabilities'> & {
+      llmVendor?: OpenAiTransportConfig['llmVendor'];
+      imageGeneration?: unknown;
+    },
   ): void {
-    this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config);
+    this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config as any);
     this.imageGenerationAvailable = config.imageGeneration !== undefined;
   }
 

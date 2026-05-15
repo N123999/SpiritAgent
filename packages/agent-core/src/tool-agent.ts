@@ -1,14 +1,15 @@
 import {
+  cloneLlmProviderState,
   cloneLlmMessageContent,
   createLlmMessageContentFromText,
   llmMessageTextContent,
   type JsonObject,
   type JsonValue,
   type LlmMessage,
+  type ToolCallRequest,
 } from './ports.js';
 
 const TOOL_OUTPUT_RETRY_MAX_CHARS = 12_000;
-const TOOL_MEMORY_RETRY_MAX_CHARS = 4_000;
 const TOOL_TRUNCATION_HEAD_RATIO_NUM = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
 const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
@@ -18,7 +19,6 @@ const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
 const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
 const DREAMS_SECTION_PREFIX = '[SPIRIT_DREAMS]';
 const BASIC_INFO_SECTION_PREFIX = '[SPIRIT_BASIC_INFO]';
-const TOOL_MEMORY_PREFIX = '[TOOL_MEMORY]';
 
 export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
 
@@ -247,6 +247,39 @@ export function extractLastAssistantText(
   return undefined;
 }
 
+export function assistantToolCallMessageFromState(
+  state: ToolAgentState,
+  calls: ToolCallRequest[],
+): LlmMessage | undefined {
+  if (calls.length === 0) {
+    return undefined;
+  }
+
+  for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+    const message = state.messages[index];
+    if (!isJsonObject(message) || message.role !== 'assistant') {
+      continue;
+    }
+
+    const toolCalls = extractAssistantToolCalls(message);
+    if (toolCalls === undefined || !assistantToolCallsMatchRequests(toolCalls, calls)) {
+      continue;
+    }
+
+    const providerState = extractAssistantProviderState(message);
+    return {
+      role: 'assistant',
+      content: createLlmMessageContentFromText(
+        typeof message.content === 'string' ? message.content : '',
+      ),
+      toolCalls,
+      ...(providerState !== undefined ? { providerState } : {}),
+    };
+  }
+
+  return undefined;
+}
+
 export function truncateToolAgentStateForContextRetry(
   state: ToolAgentState,
 ): { state: ToolAgentState; changed: boolean } {
@@ -283,22 +316,45 @@ export function truncateHistoryForCompaction(
   let changed = false;
   const nextHistory = history.map((message) => {
     const contentText = llmMessageTextContent(message.content);
-    if (message.role !== 'system' || !contentText.startsWith(TOOL_MEMORY_PREFIX)) {
+    if (message.role !== 'tool') {
       return {
         role: message.role,
         content: cloneLlmMessageContent(message.content),
+        ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+        ...(message.toolCalls !== undefined
+          ? {
+              toolCalls: message.toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                name: toolCall.name,
+                argumentsJson: toolCall.argumentsJson,
+              })),
+            }
+          : {}),
+        ...(message.providerState !== undefined
+          ? { providerState: cloneLlmProviderState(message.providerState) }
+          : {}),
       };
     }
 
     const replacement = buildContextRetryExcerpt(
       contentText,
-      TOOL_MEMORY_RETRY_MAX_CHARS,
-      '[tool memory truncated for context retry]',
+      TOOL_OUTPUT_RETRY_MAX_CHARS,
+      '[tool output truncated for context retry]',
     );
     if (replacement === undefined) {
       return {
         role: message.role,
         content: cloneLlmMessageContent(message.content),
+        ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+        ...(message.toolCalls !== undefined
+          ? {
+              toolCalls: message.toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                name: toolCall.name,
+                argumentsJson: toolCall.argumentsJson,
+              })),
+            }
+          : {}),
       };
     }
 
@@ -306,6 +362,19 @@ export function truncateHistoryForCompaction(
     return {
       role: message.role,
       content: createLlmMessageContentFromText(replacement),
+      ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+      ...(message.toolCalls !== undefined
+        ? {
+            toolCalls: message.toolCalls.map((toolCall) => ({
+              id: toolCall.id,
+              name: toolCall.name,
+              argumentsJson: toolCall.argumentsJson,
+            })),
+          }
+        : {}),
+      ...(message.providerState !== undefined
+        ? { providerState: cloneLlmProviderState(message.providerState) }
+        : {}),
     };
   });
 
@@ -612,6 +681,63 @@ function extractStoredAssistantReasoningText(message: JsonObject): string | unde
   return pieces.length > 0 ? pieces.join('') : undefined;
 }
 
+function extractAssistantToolCalls(message: JsonObject): LlmMessage['toolCalls'] | undefined {
+  if (!Array.isArray(message.tool_calls)) {
+    return undefined;
+  }
+
+  const toolCalls = message.tool_calls.flatMap((entry) => {
+    if (!isJsonObject(entry) || !isJsonObject(entry.function)) {
+      return [];
+    }
+    if (typeof entry.id !== 'string' || typeof entry.function.name !== 'string') {
+      return [];
+    }
+
+    return [{
+      id: entry.id,
+      name: entry.function.name,
+      argumentsJson:
+        typeof entry.function.arguments === 'string'
+          ? entry.function.arguments
+          : JSON.stringify(entry.function.arguments ?? {}),
+    }];
+  });
+
+  return toolCalls.length > 0 ? toolCalls : undefined;
+}
+
+function assistantToolCallsMatchRequests(
+  toolCalls: NonNullable<LlmMessage['toolCalls']>,
+  calls: ToolCallRequest[],
+): boolean {
+  if (toolCalls.length !== calls.length) {
+    return false;
+  }
+
+  return toolCalls.every((toolCall, index) => {
+    const expected = calls[index];
+    return expected !== undefined && toolCall.id === expected.id && toolCall.name === expected.name;
+  });
+}
+
+function extractAssistantProviderState(message: JsonObject): JsonObject | undefined {
+  const entries = Object.entries(message).filter(([key]) => (
+    key !== 'role'
+    && key !== 'content'
+    && key !== 'tool_calls'
+    && key !== 'toolCallId'
+    && key !== 'tool_call_id'
+    && key !== 'toolCalls'
+  ));
+
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries.map(([key, value]) => [key, cloneJsonValue(value)]));
+}
+
 function truncateMessageContentForRetry(
   role: JsonValue | undefined,
   content: string,
@@ -621,14 +747,6 @@ function truncateMessageContentForRetry(
       content,
       TOOL_OUTPUT_RETRY_MAX_CHARS,
       '[tool output truncated for context retry]',
-    );
-  }
-
-  if (role === 'system' && content.startsWith(TOOL_MEMORY_PREFIX)) {
-    return buildContextRetryExcerpt(
-      content,
-      TOOL_MEMORY_RETRY_MAX_CHARS,
-      '[tool memory truncated for context retry]',
     );
   }
 

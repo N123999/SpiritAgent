@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import {
+  cloneLlmProviderState,
   cloneLlmMessageContent,
   createLlmMessageContentFromText,
   createLlmMessageContentFromTextAndImages,
@@ -17,8 +18,6 @@ import {
 
 import {
   PENDING_WORKSPACE_FILE_MAX_CHARS,
-  TOOL_MEMORY_PREFIX,
-  TOOL_MEMORY_RESULT_MAX_CHARS,
 } from './constants.js';
 import { formatUserMessageContentForLlm } from './user-turn-timestamp.js';
 import type {
@@ -158,46 +157,20 @@ export function cloneHistory(history: LlmMessage[]): LlmMessage[] {
   return history.map((message) => ({
     role: message.role,
     content: cloneLlmMessageContent(message.content),
+    ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+    ...(message.toolCalls !== undefined
+      ? {
+          toolCalls: message.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.name,
+            argumentsJson: toolCall.argumentsJson,
+          })),
+        }
+      : {}),
+    ...(message.providerState !== undefined
+      ? { providerState: cloneLlmProviderState(message.providerState) }
+      : {}),
   }));
-}
-
-export function pruneToolMemories(history: LlmMessage[], maxEntries: number): void {
-  let seen = 0;
-  const total = history.filter(
-    (message) =>
-      message.role === 'system' && llmMessageTextContent(message.content).startsWith(TOOL_MEMORY_PREFIX),
-  ).length;
-
-  if (total <= maxEntries) {
-    return;
-  }
-
-  const removeCount = total - maxEntries;
-  const pruned = history.filter((message) => {
-    if (
-      message.role === 'system' &&
-      llmMessageTextContent(message.content).startsWith(TOOL_MEMORY_PREFIX)
-    ) {
-      seen += 1;
-      return seen > removeCount;
-    }
-
-    return true;
-  });
-
-  history.splice(0, history.length, ...pruned);
-}
-
-export function defaultToolMemoryFormatter<ToolRequest>(
-  request: ToolRequest,
-  output: string,
-): string {
-  return [
-    TOOL_MEMORY_PREFIX,
-    `request: ${truncateForPreview(safeStringify(request), 600)}`,
-    'result_snippet:',
-    truncateForPreview(output, TOOL_MEMORY_RESULT_MAX_CHARS),
-  ].join('\n');
 }
 
 export function renderError(error: unknown): string {

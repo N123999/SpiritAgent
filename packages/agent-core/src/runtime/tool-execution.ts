@@ -1,11 +1,11 @@
 import {
+  cloneLlmMessageContent,
   createLlmMessageContentFromText,
   type LlmMessage,
   type ToolExecutionOutput,
 } from '../ports.js';
 
-import { TOOL_MEMORY_MAX_ENTRIES } from './constants.js';
-import { defaultToolMemoryFormatter, pruneToolMemories, renderError } from './helpers.js';
+import { renderError } from './helpers.js';
 import type { AgentRuntimeOptions, RuntimeEvent } from './types.js';
 
 export interface ToolExecutionResult {
@@ -35,6 +35,7 @@ export async function performToolExecution<
   runtime: ToolExecutionRuntime<Config, State, ToolRequest, TrustTarget>,
   request: ToolRequest,
   toolName: string,
+  toolCallId?: string,
 ): Promise<ToolExecutionResult> {
   let output: ToolExecutionOutput;
   let failed = false;
@@ -77,7 +78,7 @@ export async function performToolExecution<
     }
   }
 
-  persistToolExecutionMemory(runtime, request, output.summaryText);
+  persistToolExecutionResult(runtime, output, toolCallId);
   return {
     output,
     failed,
@@ -85,28 +86,23 @@ export async function performToolExecution<
   };
 }
 
-export function persistToolExecutionMemory<
+export function persistToolExecutionResult<
   Config,
   State,
   ToolRequest,
   TrustTarget = string,
 >(
   runtime: ToolExecutionRuntime<Config, State, ToolRequest, TrustTarget>,
-  request: ToolRequest,
-  output: string,
+  output: ToolExecutionOutput,
+  toolCallId?: string,
 ): void {
-  const toolMemory = (runtime.options.formatToolMemory ?? defaultToolMemoryFormatter)(
-    request,
-    output,
-  );
-  if (toolMemory?.trim()) {
-    runtime.historyStore.push({
-      role: 'system',
-      content: createLlmMessageContentFromText(toolMemory),
-    });
-    pruneToolMemories(
-      runtime.historyStore,
-      runtime.options.maxToolMemoryEntries ?? TOOL_MEMORY_MAX_ENTRIES,
-    );
+  if (!toolCallId || output.content.length === 0) {
+    return;
   }
+
+  runtime.historyStore.push({
+    role: 'tool',
+    toolCallId,
+    content: cloneLlmMessageContent(output.content),
+  });
 }

@@ -6,6 +6,7 @@ import { normalizeOpenAiApiBase } from "@spirit-agent/host-internal/openai-model
 import type {
   DesktopModelCatalogHint,
   DesktopModelProvider,
+  DesktopTransportKind,
   ModelProfileSnapshot,
 } from "@/types";
 
@@ -15,9 +16,24 @@ function providerLabel(provider: DesktopModelProvider): string {
   return PROVIDER_PICKER_ROWS.find((row) => row.id === provider)?.label ?? provider;
 }
 
-function catalogOrderIndex(name: string, apiBase: string, hints: DesktopModelCatalogHint[] | undefined): number {
+function normalizeTransportKind(
+  transportKind: DesktopTransportKind | undefined,
+  provider?: DesktopModelProvider,
+): DesktopTransportKind {
+  return transportKind ?? (provider === 'anthropic' ? 'anthropic' : 'openai-compatible');
+}
+
+function catalogOrderIndex(
+  name: string,
+  apiBase: string,
+  transportKind: DesktopTransportKind,
+  hints: DesktopModelCatalogHint[] | undefined,
+): number {
   const normalizedBase = normalizeOpenAiApiBase(apiBase);
-  const hint = hints?.find((h) => normalizeOpenAiApiBase(h.apiBase) === normalizedBase);
+  const hint = hints?.find((h) =>
+    normalizeOpenAiApiBase(h.apiBase) === normalizedBase
+    && normalizeTransportKind(h.transportKind, h.provider) === transportKind,
+  );
   if (!hint) {
     return 10_000;
   }
@@ -57,8 +73,21 @@ export function groupModelsForPicker(
 
   return keys.map((provider) => {
     const items = (buckets.get(provider) ?? []).slice().sort((a, b) => {
-      const oa = catalogOrderIndex(a.name, a.apiBase, catalogHints);
-      const ob = catalogOrderIndex(b.name, b.apiBase, catalogHints);
+      const filteredHints = catalogHints?.filter((hint) => (hint.provider ?? 'custom') === provider);
+      const aTransportKind = normalizeTransportKind(a.transportKind, a.provider);
+      const bTransportKind = normalizeTransportKind(b.transportKind, b.provider);
+      const oa = catalogOrderIndex(
+        a.name,
+        a.apiBase,
+        aTransportKind,
+        filteredHints,
+      );
+      const ob = catalogOrderIndex(
+        b.name,
+        b.apiBase,
+        bTransportKind,
+        filteredHints,
+      );
       if (oa !== ob) {
         return oa - ob;
       }

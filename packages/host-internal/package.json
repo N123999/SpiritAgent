@@ -63,9 +63,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm --prefix ../agent-core run build && tsc -p tsconfig.json",
     "test:workspace-file-references": "npm run build && node --test dist/workspace-file-references.test.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "npm --prefix ../agent-core run build && tsc -p tsconfig.json --noEmit",
     "smoke:openai-models-parse": "npm run build && node dist/smoke/openai-models-parse-smoke.js",
     "notice": "node scripts/gen-notice.mjs",
     "notice:production": "node scripts/gen-notice.mjs --production"

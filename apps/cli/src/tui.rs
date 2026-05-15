@@ -430,10 +430,19 @@ impl TuiShell {
         api_base: &str,
         api_key: &str,
         provider: Option<ModelProvider>,
+        transport_kind: crate::model_registry::ModelTransportKind,
     ) -> Result<(), String> {
         let mut config = self.runtime.config().clone();
         if config.has_model(name) {
             return Err(t!("tui.model_add.duplicate", name = name).into_owned());
+        }
+
+        let mut extra = serde_json::Map::new();
+        if transport_kind == crate::model_registry::ModelTransportKind::Anthropic {
+            extra.insert(
+                "transportKind".to_string(),
+                serde_json::json!(transport_kind.as_str()),
+            );
         }
 
         config.add_model(ModelProfile {
@@ -441,7 +450,7 @@ impl TuiShell {
             api_base: api_base.to_string(),
             provider,
             reasoning_effort: None,
-            extra: Default::default(),
+            extra,
         });
         config.active_model = name.to_string();
 

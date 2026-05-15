@@ -4,14 +4,21 @@ import path from 'node:path';
 
 import type {
   AgentRuntime,
-  OpenAiPlanMetadata,
-  OpenAiToolAgentState,
+  AnthropicTransportConfig,
+  LlmModelCapabilities,
+  LlmPlanMetadata,
+  LlmToolAgentState,
+  LlmTransportConfig,
   OpenAiTransportConfig,
 } from '@spirit-agent/agent-core';
 import {
   llmMessageTextContent,
   normalizeStoredLlmMessage,
 } from '@spirit-agent/agent-core';
+import {
+  resolveAnthropicTransportReasoningEffortForContext,
+  resolveOpenAiTransportReasoningEffortForContext,
+} from '@spirit-agent/agent-core/reasoning-effort';
 import {
   createHostDreamStore,
   DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,
@@ -22,6 +29,7 @@ import {
 
 import type {
   ConversationMessageSnapshot,
+  DesktopModelCapability,
   DesktopDreamCollectorSnapshot,
   SessionListItem,
 } from '../types.js';
@@ -54,8 +62,8 @@ const DREAM_COLLECTOR_SESSION_COOLDOWN_MS = 2 * 60 * 1000;
 const DREAM_CONTEXT_MAX_CHARS = 6_000;
 
 type DesktopRuntime = AgentRuntime<
-  OpenAiTransportConfig,
-  OpenAiToolAgentState,
+  LlmTransportConfig,
+  LlmToolAgentState,
   DesktopToolRequest,
   string
 >;
@@ -124,8 +132,8 @@ export async function buildDreamCommitContext(input: {
 }
 
 export function buildDreamCollectorPlanMetadata(
-  planMetadata: OpenAiPlanMetadata,
-): OpenAiPlanMetadata {
+  planMetadata: LlmPlanMetadata,
+): LlmPlanMetadata {
   const { planModeHostInstructions: _planModeHostInstructions, ...rest } = planMetadata;
   return {
     ...rest,
@@ -175,13 +183,13 @@ export interface RunDesktopDreamCollectorOnceInput {
   gitBranch: string;
   collectorModel: string;
   config: DesktopConfigFile;
-  planMetadata: OpenAiPlanMetadata;
+  planMetadata: LlmPlanMetadata;
 }
 
 export interface RunDesktopDreamCollectorOnceDeps {
   createRuntime(
-    transportConfig: OpenAiTransportConfig,
-    planMetadata: OpenAiPlanMetadata,
+    transportConfig: LlmTransportConfig,
+    planMetadata: LlmPlanMetadata,
     toolExecutor: DesktopToolExecutor,
   ): DesktopRuntime;
   getStatus(): DesktopDreamCollectorSnapshot;
@@ -279,13 +287,13 @@ export async function runDesktopDreamCollectorOnce(
       },
     });
     const runtime = deps.createRuntime(
-      {
+      buildDreamCollectorTransportConfig({
         apiKey,
         model: input.collectorModel,
         baseUrl: activeProfile?.apiBase ?? currentApiBase(input.config),
         workspaceRoot: input.workspaceRoot,
-        ...(activeProfile?.provider ? { llmVendor: activeProfile.provider } : {}),
-      },
+        profile: activeProfile,
+      }),
       input.planMetadata,
       toolExecutor,
     );
@@ -675,6 +683,99 @@ export function clearDreamCollectorIssue(
 ): DesktopDreamCollectorSnapshot {
   const { lastError: _lastError, backoffUntilUnixMs: _backoffUntilUnixMs, ...clean } = snapshot;
   return clean;
+}
+
+function buildDreamCollectorTransportConfig(input: {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  workspaceRoot: string;
+  profile?: DesktopConfigFile['models'][number];
+}): LlmTransportConfig {
+  const transportKind = input.profile?.transportKind
+    ?? (input.profile?.provider === 'anthropic' ? 'anthropic' : 'openai-compatible');
+  if (transportKind === 'anthropic') {
+    const supportedAnthropicEfforts = normalizeAnthropicSupportedEfforts(
+      input.profile?.supportedReasoningEfforts,
+    );
+    const anthropicEffort = resolveAnthropicTransportReasoningEffortForContext(
+      input.profile?.reasoningEffort,
+      {
+        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+        ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+        ...(input.profile?.supportedReasoningEfforts !== undefined
+          ? { supportedEfforts: input.profile.supportedReasoningEfforts }
+          : {}),
+        model: input.model,
+      },
+    );
+    return {
+      transportKind: 'anthropic',
+      apiKey: input.apiKey,
+      model: input.model,
+      baseUrl: input.baseUrl,
+      workspaceRoot: input.workspaceRoot,
+      ...(input.profile?.capabilities
+        ? { modelCapabilities: dreamCollectorModelCapabilities(input.profile.capabilities) }
+        : {}),
+      ...(supportedAnthropicEfforts !== undefined
+        ? { supportedEfforts: supportedAnthropicEfforts }
+        : {}),
+      ...(anthropicEffort ? { effort: anthropicEffort } : {}),
+    };
+  }
+
+  const llmVendor = input.profile?.provider && input.profile.provider !== 'anthropic'
+    ? input.profile.provider
+    : undefined;
+  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
+    input.profile?.reasoningEffort,
+    {
+      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+      ...(input.profile?.supportedReasoningEfforts !== undefined
+        ? { supportedEfforts: input.profile.supportedReasoningEfforts }
+        : {}),
+      model: input.model,
+    },
+  );
+  return {
+    apiKey: input.apiKey,
+    model: input.model,
+    baseUrl: input.baseUrl,
+    workspaceRoot: input.workspaceRoot,
+    ...(llmVendor ? { llmVendor } : {}),
+    ...(input.profile?.capabilities
+      ? { modelCapabilities: dreamCollectorModelCapabilities(input.profile.capabilities) }
+      : {}),
+    ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+  };
+}
+
+function normalizeAnthropicSupportedEfforts(
+  efforts?: readonly string[],
+): AnthropicTransportConfig['supportedEfforts'] {
+  if (efforts === undefined) {
+    return undefined;
+  }
+
+  return efforts.filter((effort): effort is NonNullable<AnthropicTransportConfig['supportedEfforts']>[number] => (
+    effort === 'low'
+    || effort === 'medium'
+    || effort === 'high'
+    || effort === 'xhigh'
+    || effort === 'max'
+  ));
+}
+
+function dreamCollectorModelCapabilities(
+  capabilities: readonly DesktopModelCapability[],
+): LlmModelCapabilities {
+  return {
+    ...(capabilities.includes('chat') ? { chat: true } : {}),
+    ...(capabilities.includes('vision') ? { vision: true } : {}),
+    ...(capabilities.includes('imageGeneration') ? { imageGeneration: true } : {}),
+  };
 }
 
 function truncateText(value: string, maxChars: number): string {

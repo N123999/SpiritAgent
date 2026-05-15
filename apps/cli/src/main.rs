@@ -96,12 +96,11 @@ enum ModelAction {
         name: String,
         #[arg(long)]
         api_base: Option<String>,
-        #[arg(long, value_parser = ["deepseek", "kimi", "minimax", "alibaba", "custom"])]
+        #[arg(long, value_parser = ["deepseek", "kimi", "minimax", "alibaba", "anthropic", "custom"])]
         provider: Option<String>,
-        #[arg(
-            long,
-            value_parser = ["default", "minimal", "none", "low", "medium", "high", "xhigh", "max"]
-        )]
+        #[arg(long, value_parser = ["openai-compatible", "anthropic"])]
+        transport_kind: Option<String>,
+        #[arg(long)]
         reasoning_effort: Option<String>,
         #[arg(long = "capability", value_parser = ["chat", "vision", "imageGeneration"])]
         capabilities: Vec<String>,
@@ -265,6 +264,7 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             name,
             api_base,
             provider,
+            transport_kind,
             reasoning_effort,
             capabilities,
             key,
@@ -272,6 +272,7 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             name,
             api_base,
             provider,
+            transport_kind,
             reasoning_effort,
             capabilities,
             key,

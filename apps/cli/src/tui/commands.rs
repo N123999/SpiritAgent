@@ -81,7 +81,13 @@ impl TuiShell {
                 });
             }
             ["add", model, api_base, api_key] => {
-                match self.apply_model_add_and_switch(model, api_base, api_key, None) {
+                match self.apply_model_add_and_switch(
+                    model,
+                    api_base,
+                    api_key,
+                    None,
+                    crate::model_registry::ModelTransportKind::OpenAiCompatible,
+                ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {
                             role: MessageRole::Agent,

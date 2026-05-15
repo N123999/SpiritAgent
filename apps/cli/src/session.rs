@@ -3,8 +3,8 @@ use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    llm_types::LlmMessage,
-    ports::{ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive},
+    llm_types::{LlmMessage, LlmToolCall},
+    ports::{ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -168,6 +168,9 @@ impl SessionModel {
             role,
             content,
             image_paths: vec![],
+            tool_call_id: None,
+            tool_calls: None,
+            provider_state: None,
         });
     }
 
@@ -176,6 +179,9 @@ impl SessionModel {
             role: "user",
             content: text,
             image_paths: images,
+            tool_call_id: None,
+            tool_calls: None,
+            provider_state: None,
         });
     }
 
@@ -184,6 +190,9 @@ impl SessionModel {
             role: "assistant",
             content: text,
             image_paths: vec![],
+            tool_call_id: None,
+            tool_calls: None,
+            provider_state: None,
         });
     }
 
@@ -196,11 +205,25 @@ impl SessionModel {
                     "assistant"
                 } else if message.role == "system" {
                     "system"
+                } else if message.role == "tool" {
+                    "tool"
                 } else {
                     "user"
                 },
                 content: message.text_content(),
                 image_paths: message.image_paths(),
+                tool_call_id: message.tool_call_id.clone(),
+                tool_calls: message.tool_calls.as_ref().map(|tool_calls| {
+                    tool_calls
+                        .iter()
+                        .map(|tool_call| LlmToolCall {
+                            id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            arguments_json: tool_call.arguments_json.clone(),
+                        })
+                        .collect()
+                }),
+                    provider_state: message.provider_state.clone(),
             })
             .collect();
         self.llm_api_trace.clear();
@@ -226,6 +249,18 @@ impl SessionModel {
                         message.content.clone(),
                         message.image_paths.clone(),
                     )
+                    .with_tool_call_id(message.tool_call_id.clone())
+                    .with_tool_calls(message.tool_calls.as_ref().map(|tool_calls| {
+                        tool_calls
+                            .iter()
+                            .map(|tool_call| ArchivedLlmToolCall {
+                                id: tool_call.id.clone(),
+                                name: tool_call.name.clone(),
+                                arguments_json: tool_call.arguments_json.clone(),
+                            })
+                            .collect()
+                            }))
+                            .with_provider_state(message.provider_state.clone())
                 })
                 .collect(),
             subagent_sessions: Vec::new(),

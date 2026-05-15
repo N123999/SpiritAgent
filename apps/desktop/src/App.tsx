@@ -3,8 +3,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import {
   modelReasoningEffortOptions,
   modelReasoningEffortLabel,
-  type ModelReasoningEffort,
-} from "@spirit-agent/host-internal/reasoning-effort";
+} from "@spirit-agent/agent-core/reasoning-effort";
 import {
   charCountToCodeUnitIndex,
   codeUnitIndexToCharCount,
@@ -102,6 +101,7 @@ import { WorkspaceToolsDock, type WorkspaceToolsTab } from "@/components/workspa
 import type {
   AskQuestionsQuestionSpec,
   DesktopCommitMode,
+  DesktopModelReasoningEffort,
   ConversationMessageSnapshot,
   DesktopSnapshot,
   MessageRewindDraftState,
@@ -133,7 +133,7 @@ function conversationMessageDomId(message: ConversationMessageSnapshot, index: n
 /** 主会话列最大宽度（居中） */
 const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
 
-function formatModelPickerLabel(name: string, reasoningEffort: ModelReasoningEffort): string {
+function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReasoningEffort): string {
   return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
 }
 
@@ -617,7 +617,7 @@ type ComposerSurfaceProps = {
   onSubmit(): void;
   onAbort?(): void;
   onModelSelect(name: string): void;
-  onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
+  onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
   onKeyDown?(event: ReactKeyboardEvent<HTMLTextAreaElement>): void;
@@ -858,6 +858,10 @@ function ComposerSurface({
                                     {modelReasoningEffortOptions({
                                       provider: model.provider,
                                       model: model.name,
+                                      ...(model.supportedReasoningEfforts !== undefined
+                                        ? { supportedEfforts: model.supportedReasoningEfforts }
+                                        : {}),
+                                      transportKind: model.transportKind,
                                     }).map((option) => (
                                       <DropdownMenuItem
                                         key={option.value}
@@ -1062,7 +1066,7 @@ function MessageCard({
   onRewindStart(message: ConversationMessageSnapshot): void;
   onRewindSubmit(): void;
   onModelSelect(name: string): void;
-  onModelReasoningEffortSelect(name: string, reasoningEffort: ModelReasoningEffort): void;
+  onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
   readManagedImagePreviewDataUrl: ReadManagedImagePreview;
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;

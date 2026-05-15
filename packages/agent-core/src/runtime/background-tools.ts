@@ -1,4 +1,4 @@
-import type { ToolCallRequest } from '../ports.js';
+import type { ToolCallRequest, ToolExecutionOutput } from '../ports.js';
 import { createToolExecutionTextOutput } from '../ports.js';
 
 import { renderError } from './helpers.js';
@@ -28,7 +28,7 @@ export interface BackgroundToolsRuntime<
     | RuntimeCompletedManualToolCommandResult<ToolRequest>
     | undefined;
   emitEvent(event: RuntimeEvent<ToolRequest>): void;
-  persistToolExecutionMemory(request: ToolRequest, output: string): void;
+  persistToolExecutionResult(output: ToolExecutionOutput, toolCallId?: string): void;
   startToolAgentRoundAsync(
     state: State,
     pendingUserInput: string,
@@ -110,13 +110,13 @@ export function startBackgroundToolExecutionAsync<
     .execute(request)
     .then((output) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = output.summaryText;
+        pending.output = output;
         pending.failed = false;
       }
     })
     .catch((error: unknown) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = createToolExecutionTextOutput(`[tool error] ${renderError(error)}`).summaryText;
+        pending.output = createToolExecutionTextOutput(`[tool error] ${renderError(error)}`);
         pending.failed = true;
       }
     });
@@ -156,13 +156,13 @@ export function startManualBackgroundToolExecution<
     .execute(request)
     .then((output) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = output.summaryText;
+        pending.output = output;
         pending.failed = false;
       }
     })
     .catch((error: unknown) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
-        pending.output = createToolExecutionTextOutput(`[tool error] ${renderError(error)}`).summaryText;
+        pending.output = createToolExecutionTextOutput(`[tool error] ${renderError(error)}`);
         pending.failed = true;
       }
     });
@@ -194,13 +194,16 @@ export async function pollPendingBackgroundToolExecution<
     failed: pending.failed,
   });
 
-  runtime.persistToolExecutionMemory(pending.request, pending.output);
+  runtime.persistToolExecutionResult(
+    pending.output,
+    pending.kind === 'tool-call' ? pending.toolCallId : undefined,
+  );
   if (pending.kind === 'manual') {
     runtime.completedManualToolCommandResultStore = {
       kind: 'completed',
       request: pending.request,
       toolName: pending.toolName,
-      output: pending.output,
+      output: pending.output.summaryText,
       failed: pending.failed,
       backgroundExecution: true,
     };
@@ -211,14 +214,14 @@ export async function pollPendingBackgroundToolExecution<
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
     request: pending.request,
-    output: pending.output,
+    output: pending.output.summaryText,
     failed: pending.failed,
   });
 
   const resumedState = runtime.options.appendToolResultMessage(
     pending.state,
     pending.toolCallId,
-    pending.output,
+    pending.output.summaryText,
   );
   if (pending.remainingCalls.length > 0) {
     runtime.queuePendingToolCallContinuation(

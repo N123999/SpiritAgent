@@ -28,11 +28,11 @@ use crate::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
     },
-    model_registry::{AppConfig, ModelProvider},
+    model_registry::{AppConfig, ModelProvider, normalize_reasoning_effort_value},
     plan::PlanMetadata,
     ports::{
-        ArchivedLlmMessage, AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
-        SubagentSessionArchiveEntry, SubagentSessionSummary,
+        ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
+        McpStatusSnapshot, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
     rewind::{self, DesktopRewindCheckpointSnapshot, RewindRestoreOutcome},
     rules::{EnabledRule, RuleEntry},
@@ -1639,55 +1639,85 @@ impl TsBridgeRuntime {
 
         let api_base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
 
-        let mut transport = serde_json::json!({
-            "apiKey": api_key,
-            "model": active.name,
-            "baseUrl": api_base,
-            "workspaceRoot": self.workspace_root,
-        });
-        if let Some(provider) = active.provider {
-            if let Some(obj) = transport.as_object_mut() {
-                obj.insert(
-                    "llmVendor".to_string(),
-                    json!(model_provider_vendor(provider)),
-                );
-            }
-        }
+        let normalized_reasoning_effort = normalize_reasoning_effort_value(
+            active.reasoning_effort.clone(),
+            active.provider,
+            active.transport_kind(),
+            &active.name,
+        );
+
+        let mut transport = if active.transport_kind() == crate::model_registry::ModelTransportKind::Anthropic {
+            serde_json::json!({
+                "transportKind": "anthropic",
+                "apiKey": api_key,
+                "model": active.name,
+                "baseUrl": api_base,
+                "workspaceRoot": self.workspace_root,
+            })
+        } else {
+            serde_json::json!({
+                "apiKey": api_key,
+                "model": active.name,
+                "baseUrl": api_base,
+                "workspaceRoot": self.workspace_root,
+            })
+        };
+
         if let Some(model_capabilities) = model_capabilities_json(active) {
             if let Some(obj) = transport.as_object_mut() {
                 obj.insert("modelCapabilities".to_string(), model_capabilities);
             }
         }
-        if let Some(reasoning_effort) = active.reasoning_effort.as_deref() {
-            if let Some(obj) = transport.as_object_mut() {
-                obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
+
+        if active.transport_kind() == crate::model_registry::ModelTransportKind::Anthropic {
+            if let Some(effort) = anthropic_effort_value(normalized_reasoning_effort.as_deref()) {
+                if let Some(obj) = transport.as_object_mut() {
+                    obj.insert("effort".to_string(), json!(effort));
+                }
             }
-        }
-        if let Some(image_profile) = config.image_generation_model_profile() {
-            if image_profile.supports_image_generation() {
-                if let Some(image_api_key) =
-                    self.resolve_optional_key_from_store(&image_profile.name)?
+        } else {
+            if let Some(provider) = active.provider {
+                if let Some(obj) = transport.as_object_mut() {
+                    obj.insert(
+                        "llmVendor".to_string(),
+                        json!(model_provider_vendor(provider)),
+                    );
+                }
+            }
+            if let Some(reasoning_effort) = normalized_reasoning_effort.as_deref() {
+                if let Some(obj) = transport.as_object_mut() {
+                    obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
+                }
+            }
+            if let Some(image_profile) = config.image_generation_model_profile() {
+                if image_profile.supports_image_generation()
+                    && image_profile.transport_kind()
+                        == crate::model_registry::ModelTransportKind::OpenAiCompatible
                 {
-                    let mut image_generation = serde_json::json!({
-                        "apiKey": image_api_key,
-                        "model": image_profile.name,
-                        "baseUrl": image_profile.api_base,
-                    });
-                    if let Some(provider) = image_profile.provider {
-                        if let Some(obj) = image_generation.as_object_mut() {
-                            obj.insert(
-                                "llmVendor".to_string(),
-                                json!(model_provider_vendor(provider)),
-                            );
+                    if let Some(image_api_key) =
+                        self.resolve_optional_key_from_store(&image_profile.name)?
+                    {
+                        let mut image_generation = serde_json::json!({
+                            "apiKey": image_api_key,
+                            "model": image_profile.name,
+                            "baseUrl": image_profile.api_base,
+                        });
+                        if let Some(provider) = image_profile.provider {
+                            if let Some(obj) = image_generation.as_object_mut() {
+                                obj.insert(
+                                    "llmVendor".to_string(),
+                                    json!(model_provider_vendor(provider)),
+                                );
+                            }
                         }
-                    }
-                    if let Some(model_capabilities) = model_capabilities_json(image_profile) {
-                        if let Some(obj) = image_generation.as_object_mut() {
-                            obj.insert("modelCapabilities".to_string(), model_capabilities);
+                        if let Some(model_capabilities) = model_capabilities_json(image_profile) {
+                            if let Some(obj) = image_generation.as_object_mut() {
+                                obj.insert("modelCapabilities".to_string(), model_capabilities);
+                            }
                         }
-                    }
-                    if let Some(obj) = transport.as_object_mut() {
-                        obj.insert("imageGeneration".to_string(), image_generation);
+                        if let Some(obj) = transport.as_object_mut() {
+                            obj.insert("imageGeneration".to_string(), image_generation);
+                        }
                     }
                 }
             }
@@ -1714,6 +1744,17 @@ impl TsBridgeRuntime {
         if self
             .config
             .active_model_profile()
+            .map(|profile| profile.transport_kind())
+            != config
+                .active_model_profile()
+                .map(|profile| profile.transport_kind())
+        {
+            return true;
+        }
+
+        if self
+            .config
+            .active_model_profile()
             .and_then(|profile| profile.reasoning_effort.as_deref())
             != config
                 .active_model_profile()
@@ -1730,12 +1771,14 @@ impl TsBridgeRuntime {
             (
                 profile.api_base.as_str(),
                 profile.provider,
+                profile.transport_kind(),
                 profile.supports_image_generation(),
             )
         }) != config.image_generation_model_profile().map(|profile| {
             (
                 profile.api_base.as_str(),
                 profile.provider,
+                profile.transport_kind(),
                 profile.supports_image_generation(),
             )
         }) {
@@ -2682,20 +2725,57 @@ fn llm_history_to_json(history: &[LlmMessage]) -> Vec<Value> {
     history
         .iter()
         .map(|message| {
-            archived_llm_message_to_json(&ArchivedLlmMessage::from_text_and_images(
-                message.role.to_string(),
-                message.content.clone(),
-                message.image_paths.clone(),
-            ))
+            archived_llm_message_to_json(
+                &ArchivedLlmMessage::from_text_and_images(
+                    message.role.to_string(),
+                    message.content.clone(),
+                    message.image_paths.clone(),
+                )
+                .with_tool_call_id(message.tool_call_id.clone())
+                .with_tool_calls(message.tool_calls.as_ref().map(|tool_calls| {
+                    tool_calls
+                        .iter()
+                        .map(|tool_call| ArchivedLlmToolCall {
+                            id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            arguments_json: tool_call.arguments_json.clone(),
+                        })
+                        .collect()
+                }))
+                .with_provider_state(message.provider_state.clone()),
+            )
         })
         .collect()
 }
 
 fn archived_llm_message_to_json(message: &ArchivedLlmMessage) -> Value {
-    json!({
+    let mut value = json!({
         "role": message.role,
         "content": message.content,
-    })
+    });
+
+    if let Some(tool_call_id) = &message.tool_call_id {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("toolCallId".to_string(), Value::String(tool_call_id.clone()));
+        }
+    }
+
+    if let Some(tool_calls) = &message.tool_calls {
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "toolCalls".to_string(),
+                serde_json::to_value(tool_calls).unwrap_or(Value::Null),
+            );
+        }
+    }
+
+    if let Some(provider_state) = &message.provider_state {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("providerState".to_string(), provider_state.clone());
+        }
+    }
+
+    value
 }
 
 fn write_message_to_stdin(stdin: &Arc<Mutex<ChildStdin>>, payload: &Value) -> Result<()> {
@@ -2734,7 +2814,19 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::Kimi => "kimi",
         ModelProvider::Minimax => "minimax",
         ModelProvider::Alibaba => "alibaba",
+        ModelProvider::Anthropic => unreachable!("Anthropic 不应映射到 openai-compatible llmVendor"),
         ModelProvider::Custom => "custom",
+    }
+}
+
+fn anthropic_effort_value(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim) {
+        Some("low") => Some("low"),
+        Some("medium") => Some("medium"),
+        Some("high") => Some("high"),
+        Some("xhigh") => Some("xhigh"),
+        Some("max") => Some("max"),
+        _ => None,
     }
 }
 
@@ -2982,7 +3074,7 @@ mod tests {
         assert!(transport.get("transportImplementation").is_none());
         assert_eq!(
             transport.get("reasoningEffort").and_then(Value::as_str),
-            Some("minimal")
+            Some("default")
         );
     }
 
@@ -3045,6 +3137,39 @@ mod tests {
     }
 
     #[test]
+    fn resolve_transport_config_json_uses_anthropic_union_shape() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let mut next = runtime.config().clone();
+        let active = next
+            .active_model_profile_mut()
+            .expect("active model should exist");
+        active.provider = Some(ModelProvider::Anthropic);
+        active.reasoning_effort = Some("max".to_string());
+        active.extra.insert(
+            "transportKind".to_string(),
+            json!("anthropic"),
+        );
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport.get("transportKind").and_then(Value::as_str),
+            Some("anthropic")
+        );
+        assert_eq!(transport.get("llmVendor"), None);
+        assert_eq!(
+            transport.get("effort").and_then(Value::as_str),
+            Some("max")
+        );
+        assert_eq!(transport.get("imageGeneration"), None);
+    }
+
+    #[test]
     fn transport_config_change_detects_model_knobs() {
         let Some(runtime) = make_test_runtime() else {
             return;
@@ -3054,6 +3179,13 @@ mod tests {
         next.active_model_profile_mut()
             .expect("active model should exist")
             .provider = Some(ModelProvider::Custom);
+        assert!(runtime.transport_config_will_change(&next));
+
+        let mut next = runtime.config().clone();
+        next.active_model_profile_mut()
+            .expect("active model should exist")
+            .extra
+            .insert("transportKind".to_string(), json!("anthropic"));
         assert!(runtime.transport_config_will_change(&next));
 
         let mut next = runtime.config().clone();

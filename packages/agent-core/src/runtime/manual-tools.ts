@@ -30,7 +30,11 @@ export interface ManualToolsRuntime<
   isBusy(): boolean;
   startUserTurn(userInput: string, explicitImages?: string[]): Promise<void>;
   startManualBackgroundToolExecution(request: ToolRequest, toolName: string): string | undefined;
-  performToolExecution(request: ToolRequest, toolName: string): Promise<ToolExecutionResult>;
+  performToolExecution(
+    request: ToolRequest,
+    toolName: string,
+    toolCallId?: string,
+  ): Promise<ToolExecutionResult>;
   takeCompletedManualToolCommandResult():
     | RuntimeCompletedManualToolCommandResult<ToolRequest>
     | undefined;

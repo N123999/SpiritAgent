@@ -292,6 +292,21 @@ export function llmHistoryToOpenAiMessages(
 }
 
 function llmMessageToOpenAiMessage(message: LlmMessage, assetRoot: string): JsonValue {
+  if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
+    return {
+      role: 'assistant',
+      content: llmMessageTextContent(message.content),
+      tool_calls: message.toolCalls.map((toolCall) => ({
+        id: toolCall.id,
+        type: 'function',
+        function: {
+          name: toolCall.name,
+          arguments: toolCall.argumentsJson,
+        },
+      })),
+    };
+  }
+
   if (message.role === 'user' && llmMessageHasImages(message.content)) {
     const parts: JsonValue[] = [];
 
@@ -324,6 +339,7 @@ function llmMessageToOpenAiMessage(message: LlmMessage, assetRoot: string): Json
   return {
     role: message.role,
     content: llmMessageTextContent(message.content),
+    ...(message.toolCallId !== undefined ? { tool_call_id: message.toolCallId } : {}),
   };
 }
 
