@@ -10,14 +10,16 @@ import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
 import {
-  createFileExtensionStateStore,
   defaultModelReasoningEffort,
+  resolveModelReasoningEffortForContext,
+} from '@spirit-agent/agent-core/reasoning-effort';
+import {
+  createFileExtensionStateStore,
   type ExtensionManagementContext,
   type ExtensionSettingValue,
   type ExtensionStateStore,
   loadHostInstructionMetadata,
   parseModelProviderId,
-  resolveModelReasoningEffortForContext,
   resolveInstructionPaths,
   type HostInstructionMetadataSummary,
   type HostRuleDiscoveryResult,

@@ -1,5 +1,5 @@
 import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
-import type { ModelReasoningEffort } from '@spirit-agent/host-internal/reasoning-effort';
+import type { ModelReasoningEffort } from '@spirit-agent/agent-core/reasoning-effort';
 import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult } from '@spirit-agent/host-internal';
 
 export interface BootstrapRequest {
@@ -53,7 +53,7 @@ export type DesktopModelProvider = ModelProviderId;
 
 export type DesktopTransportKind = 'openai-compatible' | 'anthropic';
 
-/** 模型推理强度字符串；具体允许值由 provider / transportKind 在 host-internal 中约束。 */
+/** 模型推理强度字符串；具体允许值由 provider / transportKind 在 agent-core 中约束。 */
 export type DesktopModelReasoningEffort = ModelReasoningEffort;
 
 export type DesktopModelCapability = 'chat' | 'vision' | 'imageGeneration';

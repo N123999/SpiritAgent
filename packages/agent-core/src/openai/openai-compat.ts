@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '../ports.js';
 import type { LlmModelCapabilities } from '../llm-provider-shared.js';
+import { resolveOpenAiTransportReasoningEffortForContext } from '../reasoning-effort.js';
 import { cloneJsonValue } from '../tool-agent.js';
 
 /** 与宿主 `ModelProfile.provider` 对齐；用于在 OpenAI 形态 API 上附加厂商扩展字段。 */
@@ -120,60 +121,11 @@ export function resolveOpenAiModelCompatibilityProfile(
 export function openAiReasoningEffort(
   config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'reasoningEffort'>,
 ): string | undefined {
-  if (config.reasoningEffort === undefined || config.reasoningEffort === 'default') {
-    return undefined;
-  }
-
-  if (isDeepSeekV4ReasoningEffortModel(config)) {
-    switch (config.reasoningEffort) {
-      case 'low':
-      case 'medium':
-      case 'high':
-        return 'high';
-      case 'xhigh':
-      case 'max':
-        return 'max';
-      case 'none':
-        return undefined;
-    }
-  }
-
-  if (isKimiReasoningEffortModel(config)) {
-    switch (config.reasoningEffort) {
-      case 'minimal':
-        return 'minimal';
-      case 'none':
-        return undefined;
-      case 'xhigh':
-      case 'max':
-        return 'high';
-      default:
-        return config.reasoningEffort;
-    }
-  }
-
-  if (config.reasoningEffort === 'max') {
-    return 'xhigh';
-  }
-
-  return config.reasoningEffort;
-}
-
-function isDeepSeekV4ReasoningEffortModel(
-  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model'>,
-): boolean {
-  if (config.llmVendor !== 'deepseek') {
-    return false;
-  }
-
-  const normalizedModel = config.model.trim().toLowerCase();
-  return normalizedModel === 'deepseek-v4-pro' || normalizedModel === 'deepseek-v4-flash';
-}
-
-function isKimiReasoningEffortModel(
-  config: Pick<OpenAiTransportConfig, 'llmVendor'>,
-): boolean {
-  return config.llmVendor === 'kimi';
+  return resolveOpenAiTransportReasoningEffortForContext(config.reasoningEffort, {
+    ...(config.llmVendor ? { provider: config.llmVendor } : {}),
+    model: config.model,
+    transportKind: 'openai-compatible',
+  });
 }
 
 function isKimiVisionModel(model: string): boolean {

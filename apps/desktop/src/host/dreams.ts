@@ -15,10 +15,13 @@ import {
   normalizeStoredLlmMessage,
 } from '@spirit-agent/agent-core';
 import {
+  resolveAnthropicTransportReasoningEffortForContext,
+  resolveOpenAiTransportReasoningEffortForContext,
+} from '@spirit-agent/agent-core/reasoning-effort';
+import {
   createHostDreamStore,
   DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,
   dreamLogsDirPath,
-  resolveModelReasoningEffortForContext,
   type HostDreamRecord,
   type HostDreamSessionProgress,
 } from '@spirit-agent/host-internal';
@@ -26,7 +29,6 @@ import {
 import type {
   ConversationMessageSnapshot,
   DesktopModelCapability,
-  DesktopModelReasoningEffort,
   DesktopDreamCollectorSnapshot,
   SessionListItem,
 } from '../types.js';
@@ -692,7 +694,14 @@ function buildDreamCollectorTransportConfig(input: {
   const transportKind = input.profile?.transportKind
     ?? (input.profile?.provider === 'anthropic' ? 'anthropic' : 'openai-compatible');
   if (transportKind === 'anthropic') {
-    const anthropicEffort = dreamCollectorAnthropicEffort(input.profile?.reasoningEffort);
+    const anthropicEffort = resolveAnthropicTransportReasoningEffortForContext(
+      input.profile?.reasoningEffort,
+      {
+        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+        ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+        model: input.model,
+      },
+    );
     return {
       transportKind: 'anthropic',
       apiKey: input.apiKey,
@@ -709,15 +718,14 @@ function buildDreamCollectorTransportConfig(input: {
   const llmVendor = input.profile?.provider && input.profile.provider !== 'anthropic'
     ? input.profile.provider
     : undefined;
-  const normalizedReasoningEffort = input.profile?.reasoningEffort
-    ? openAiCompatibleReasoningEffortFromModelReasoningEffort(
-        resolveModelReasoningEffortForContext(input.profile.reasoningEffort, {
-          ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-          ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-          model: input.model,
-        }),
-      )
-    : undefined;
+  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
+    input.profile?.reasoningEffort,
+    {
+      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+      model: input.model,
+    },
+  );
   return {
     apiKey: input.apiKey,
     model: input.model,
@@ -731,24 +739,6 @@ function buildDreamCollectorTransportConfig(input: {
   };
 }
 
-function openAiCompatibleReasoningEffortFromModelReasoningEffort(
-  effort: DesktopModelReasoningEffort,
-): OpenAiTransportConfig['reasoningEffort'] | undefined {
-  switch (effort) {
-    case 'default':
-    case 'none':
-    case 'low':
-    case 'medium':
-    case 'high':
-    case 'xhigh':
-    case 'minimal':
-    case 'max':
-      return effort;
-    default:
-      return undefined;
-  }
-}
-
 function dreamCollectorModelCapabilities(
   capabilities: readonly DesktopModelCapability[],
 ): LlmModelCapabilities {
@@ -757,22 +747,6 @@ function dreamCollectorModelCapabilities(
     ...(capabilities.includes('vision') ? { vision: true } : {}),
     ...(capabilities.includes('imageGeneration') ? { imageGeneration: true } : {}),
   };
-}
-
-function dreamCollectorAnthropicEffort(
-  effort: DesktopModelReasoningEffort | undefined,
-): 'low' | 'medium' | 'high' | undefined {
-  switch (effort) {
-    case 'low':
-    case 'medium':
-    case 'high':
-      return effort;
-    case 'xhigh':
-    case 'max':
-      return 'high';
-    default:
-      return undefined;
-  }
 }
 
 function truncateText(value: string, maxChars: number): string {

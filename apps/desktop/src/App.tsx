@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import {
   modelReasoningEffortOptions,
   modelReasoningEffortLabel,
-} from "@spirit-agent/host-internal/reasoning-effort";
+} from "@spirit-agent/agent-core/reasoning-effort";
 import {
   charCountToCodeUnitIndex,
   codeUnitIndexToCharCount,

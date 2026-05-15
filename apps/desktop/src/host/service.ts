@@ -33,11 +33,17 @@ import {
   type SpiritLlmTransport,
 } from '@spirit-agent/agent-core';
 import {
+  defaultModelReasoningEffort,
+  resolveAnthropicTransportReasoningEffortForContext,
+  resolveModelReasoningEffortForContext,
+  resolveOpenAiTransportReasoningEffortForContext,
+  type ModelReasoningEffort,
+} from '@spirit-agent/agent-core/reasoning-effort';
+import {
   buildStartImplementingUserTurn,
   createHostExtensionMarketplace,
   createHostExtensionManager,
   createHostDreamStore,
-  defaultModelReasoningEffort,
   localFileAttachmentFromPath,
   listWorkspaceFileReferenceSuggestions as listWorkspaceFileReferenceSuggestionsFromHostInternal,
   listProviderModelIds,
@@ -45,10 +51,8 @@ import {
   parsePresetModelProviderId,
   partitionModelsByProvider,
   PROVIDER_PRESET_API_BASE,
-  resolveModelReasoningEffortForContext,
   restoreHostFileChanges,
   type HostDreamScope,
-  type ModelReasoningEffort,
   type HostExtensionMarketplaceManager,
   type HostExtensionEvent,
   type HostRecordedFileChange,
@@ -3434,7 +3438,14 @@ function buildPrimaryTransportConfig(input: {
 }): LlmTransportConfig {
   const transportKind = resolveDesktopTransportKind(input.profile);
   if (transportKind === 'anthropic') {
-    const anthropicEffort = anthropicEffortFromReasoningEffort(input.profile?.reasoningEffort);
+    const anthropicEffort = resolveAnthropicTransportReasoningEffortForContext(
+      input.profile?.reasoningEffort,
+      {
+        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+        ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+        model: input.model,
+      },
+    );
     return {
       transportKind: 'anthropic',
       apiKey: input.apiKey,
@@ -3449,15 +3460,14 @@ function buildPrimaryTransportConfig(input: {
   }
 
   const llmVendor = openAiCompatibleVendorFromProvider(input.profile?.provider);
-  const normalizedReasoningEffort = input.profile?.reasoningEffort
-    ? openAiCompatibleReasoningEffortFromModelReasoningEffort(
-        resolveModelReasoningEffortForContext(input.profile.reasoningEffort, {
-          ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-          ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-          model: input.model,
-        }),
-      )
-    : undefined;
+  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
+    input.profile?.reasoningEffort,
+    {
+      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
+      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
+      model: input.model,
+    },
+  );
   return {
     apiKey: input.apiKey,
     model: input.model,
@@ -3469,40 +3479,6 @@ function buildPrimaryTransportConfig(input: {
       : {}),
     ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
   };
-}
-
-function openAiCompatibleReasoningEffortFromModelReasoningEffort(
-  effort: ModelReasoningEffort,
-): OpenAiTransportConfig['reasoningEffort'] | undefined {
-  switch (effort) {
-    case 'default':
-    case 'none':
-    case 'low':
-    case 'medium':
-    case 'high':
-    case 'xhigh':
-    case 'minimal':
-    case 'max':
-      return effort;
-    default:
-      return undefined;
-  }
-}
-
-function anthropicEffortFromReasoningEffort(
-  effort: ModelReasoningEffort | undefined,
-): AnthropicTransportConfig['effort'] | undefined {
-  switch (effort) {
-    case 'low':
-    case 'medium':
-    case 'high':
-      return effort;
-    case 'xhigh':
-    case 'max':
-      return 'high';
-    default:
-      return undefined;
-  }
 }
 
 function supportsImageGeneration(model: { capabilities?: readonly DesktopModelCapability[] }): boolean {
