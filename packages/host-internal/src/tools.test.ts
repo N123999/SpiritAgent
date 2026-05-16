@@ -462,6 +462,24 @@ test('requestFromFunctionCall parses grep is_regexp flag', async () => {
   }
 });
 
+test('requestFromFunctionCall accepts empty arguments for finish_task', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-finish-task-parse-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const request = await service.requestFromFunctionCall('finish_task', '   ');
+
+    assert.deepEqual(request, {
+      name: 'finish_task',
+    });
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 function assertHostToolExecutionOutput(
   output: HostToolExecutionOutput | string,
 ): asserts output is HostToolExecutionOutput {

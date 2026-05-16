@@ -1818,6 +1818,9 @@ async function savePermissions(filePath: string, store: ToolPermissionStore): Pr
 }
 
 function parseJsonObject(argumentsJson: string): HostJsonObject {
+  if (argumentsJson.trim().length === 0) {
+    return {};
+  }
   const parsed = JSON.parse(argumentsJson) as HostJsonValue;
   if (!isJsonObject(parsed)) {
     throw new Error('工具参数必须为对象。');
