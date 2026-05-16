@@ -924,7 +924,7 @@ function ThinkingLabelWithShimmer({ active }: { active: boolean }) {
         active ? "spirit-thinking-shimmer-text" : "text-muted-foreground",
       )}
     >
-      Thinking
+      {active ? "Thinking" : "Thought"}
     </span>
   );
 }
