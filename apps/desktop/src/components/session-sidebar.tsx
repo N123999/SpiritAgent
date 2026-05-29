@@ -2,8 +2,6 @@ import { useMemo, useState } from "react";
 
 import {
   ArrowLeft,
-  ChevronDown,
-  ChevronRight,
   FolderClosed,
   FolderOpen,
   Layers,
@@ -444,11 +442,6 @@ export function SessionSidebar({
                         )}
                         title={group.rootPath ?? group.label}
                       >
-                        {expanded ? (
-                          <ChevronDown className="size-3 shrink-0 text-sidebar-faint-foreground" aria-hidden />
-                        ) : (
-                          <ChevronRight className="size-3 shrink-0 text-sidebar-faint-foreground" aria-hidden />
-                        )}
                         {expanded ? (
                           <FolderOpen className="size-3.5 shrink-0" aria-hidden />
                         ) : (
