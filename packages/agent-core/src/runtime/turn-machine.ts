@@ -1229,6 +1229,28 @@ export function buildRuntimeToolExecution<ToolRequest>(
   };
 }
 
+export function shouldSkipPersistAssistantToolCalls(
+  historyStore: readonly LlmMessage[],
+  calls: ToolCallRequest[],
+): boolean {
+  if (calls.length === 0) {
+    return true;
+  }
+
+  const pendingIds = new Set(calls.map((call) => call.id));
+  for (const message of historyStore) {
+    if (message.role !== 'assistant' || !message.toolCalls?.length) {
+      continue;
+    }
+    const existingIds = new Set(message.toolCalls.map((toolCall) => toolCall.id));
+    if ([...pendingIds].every((id) => existingIds.has(id))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function persistAssistantToolCalls<
   Config,
   State,
@@ -1243,6 +1265,11 @@ function persistAssistantToolCalls<
   calls: ToolCallRequest[],
 ): void {
   if (calls.length === 0) {
+    return;
+  }
+
+  const skipped = shouldSkipPersistAssistantToolCalls(runtime.historyStore, calls);
+  if (skipped) {
     return;
   }
 
