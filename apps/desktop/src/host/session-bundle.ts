@@ -31,6 +31,8 @@ export interface SessionBundle {
   nextTimelineAssistantSegmentKind: DesktopTimelineSegmentKind;
   deferredRuntimeRefreshWhileBusy: boolean;
   lastPersistedAtUnixMs?: number;
+  /** `savedAtUnixMs` from disk; used to avoid bumping list order on background/switch persist. */
+  listSortSavedAtUnixMs?: number;
   runtime?: DesktopRuntime;
   runtimeTransport?: SpiritLlmTransport;
   toolExecutor?: DesktopToolExecutor;

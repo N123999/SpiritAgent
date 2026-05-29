@@ -1763,7 +1763,10 @@ class DesktopHostService {
     orchestration.runtimeEvents.consumeCompletedTurnResult();
     orchestration.runtimeEvents.syncPendingToolStates();
     orchestration.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-    await this.persistSessionBundle(bundle, { fromRuntime: bundle.runtime });
+    await this.persistSessionBundle(bundle, {
+      fromRuntime: bundle.runtime,
+      bumpListSortAt: false,
+    });
     await this.flushDeferredRuntimeRefreshIfIdle(bundle);
   }
 
@@ -1820,6 +1823,7 @@ class DesktopHostService {
       if (leaving?.activeSession) {
         await this.persistSessionBundle(leaving, {
           fromRuntime: this.sessionRegistry.activeSessionId() === leaving.id ? this.runtime : undefined,
+          bumpListSortAt: false,
         });
       }
       const bundle = this.sessionRegistry.beginNewActive(state.workspaceRoot);
@@ -1930,9 +1934,14 @@ class DesktopHostService {
   async openSession(filePath: string): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       const leaving = this.sessionRegistry.getActive();
-      if (leaving?.activeSession) {
+      if (
+        leaving?.activeSession
+        && leaving.activeSession.kind !== 'ephemeral'
+        && leaving.runtime?.isBusy()
+      ) {
         await this.persistSessionBundle(leaving, {
           fromRuntime: this.sessionRegistry.activeSessionId() === leaving.id ? this.runtime : undefined,
+          bumpListSortAt: false,
         });
       }
 
@@ -1966,6 +1975,7 @@ class DesktopHostService {
         restored,
         (messages, timelineSnapshot) => this.createMessageTimelineFromMessages(messages, timelineSnapshot),
       );
+      bundle.listSortSavedAtUnixMs = loaded.savedAtUnixMs;
       await this.finishSessionActivation(bundle);
       this.lastRuntimeError = '';
       await this.dispatchExtensionEvent({
@@ -3414,12 +3424,16 @@ class DesktopHostService {
     }
     await this.persistSessionBundle(bundle, {
       fromRuntime: this.runtime,
+      bumpListSortAt: true,
     });
   }
 
   private async persistSessionBundle(
     bundle: SessionBundle,
-    options: { fromRuntime?: DesktopRuntime } = {},
+    options: {
+      fromRuntime?: DesktopRuntime;
+      bumpListSortAt?: boolean;
+    } = {},
   ): Promise<void> {
     const state = this.requireState();
     const activeSession = bundle.activeSession;
@@ -3444,8 +3458,13 @@ class DesktopHostService {
     bundle.archiveSubagentSessions = archive.subagentSessions ?? [];
     bundle.loopEnabled = archive.loopEnabled === true;
 
+    const bumpListSortAt = options.bumpListSortAt === true;
+    const savedAtUnixMs = bumpListSortAt
+      ? Date.now()
+      : (bundle.listSortSavedAtUnixMs ?? Date.now());
     const stored = buildStoredDesktopSession({
       archive,
+      savedAtUnixMs,
       sessionDisplayName: activeSession.displayName,
       workspaceRoot: bundle.workspaceRoot || state.workspaceRoot,
       gitBranch: state.git.branch,
@@ -3454,6 +3473,9 @@ class DesktopHostService {
       rewind: bundle.rewind,
       loopEnabled: bundle.loopEnabled,
     });
+    if (bumpListSortAt) {
+      bundle.listSortSavedAtUnixMs = savedAtUnixMs;
+    }
     const previousId = bundle.id;
     activeSession.filePath = await saveStoredSession(activeSession.filePath, stored);
     if (path.resolve(previousId) !== path.resolve(activeSession.filePath)) {
