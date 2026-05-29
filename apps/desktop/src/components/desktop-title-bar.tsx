@@ -22,7 +22,7 @@ function popupMenuAtAnchor(
 type DesktopTitleBarProps = {
   /** 与根布局云母透明策略一致 */
   useMicaBackdrop: boolean;
-  /** 侧栏展开时底部分割线仅在主内容区，与侧栏右边线相接 */
+  /** 侧栏是否展开（影响顶栏左侧菜单区宽度） */
   sessionSidebarOpen: boolean;
 };
 
@@ -75,36 +75,26 @@ function TitleBarMenuCluster() {
  * Windows：自绘顶栏（LOGO + 菜单文案），窗口控制键仍由 `titleBarOverlay` 绘制。
  */
 export function DesktopTitleBar({ useMicaBackdrop, sessionSidebarOpen }: DesktopTitleBarProps) {
-  if (!sessionSidebarOpen) {
-    return (
-      <header
-        className={cn(
-          "electron-drag flex h-8 w-full shrink-0 items-center gap-1 border-b pl-2",
-          titleBarSurfaceClass(useMicaBackdrop, true, "sidebar"),
-        )}
-      >
-        <TitleBarMenuCluster />
-        <div className="electron-drag min-h-0 min-w-0 flex-1" aria-hidden />
-      </header>
-    );
-  }
-
   return (
-    <header className="flex h-8 w-full shrink-0">
+    <header
+      className={cn(
+        "electron-drag flex h-8 w-full shrink-0 overflow-hidden border-b",
+        titleBarSurfaceClass(useMicaBackdrop, true, "sidebar"),
+      )}
+    >
       <div
         className={cn(
-          "electron-drag flex h-8 shrink-0 items-center gap-1 pl-2",
-          SESSION_SIDEBAR_WIDTH_CLASS,
+          "flex h-full min-h-0 shrink-0 items-center gap-1 pl-2",
+          sessionSidebarOpen ? SESSION_SIDEBAR_WIDTH_CLASS : "min-w-0 flex-1",
           titleBarSurfaceClass(useMicaBackdrop, false, "sidebar"),
         )}
       >
         <TitleBarMenuCluster />
       </div>
-      {/* 底部分割线仅覆盖主内容区，与侧栏 `border-r` 在顶角自然衔接 */}
       <div
         className={cn(
-          "electron-drag h-8 min-w-0 flex-1 border-b",
-          titleBarSurfaceClass(useMicaBackdrop, true, "main"),
+          "electron-drag h-full min-w-0 flex-1",
+          titleBarSurfaceClass(useMicaBackdrop, false, sessionSidebarOpen ? "main" : "sidebar"),
         )}
         aria-hidden
       />
