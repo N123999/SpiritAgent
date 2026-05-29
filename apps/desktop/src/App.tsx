@@ -79,6 +79,7 @@ import {
   type ComposerLocalFileAttachmentView,
 } from "@/components/composer-local-file-strip";
 import { ComposerInsertMenu } from "@/components/composer-insert-menu";
+import { ApprovalLevelMenu } from "@/components/approval-level-menu";
 import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { MinimalToolCallCard } from "@/components/minimal-tool-call-card";
@@ -2674,6 +2675,15 @@ export default function App() {
                     onRemoveLocalFileAttachment={removeLocalFileAttachment}
                     onPaste={handleComposerPaste}
                   />
+                  <div className="flex justify-start px-3 pb-0.5">
+                    <ApprovalLevelMenu
+                      approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
+                      disabled={activeSessionReadOnly}
+                      onApprovalLevelChange={(level) => {
+                        void runtime.setApprovalLevel(level);
+                      }}
+                    />
+                  </div>
                   {snapshot?.conversation.pendingQuestions ? (
                     <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
                       请先完成上方问卷
