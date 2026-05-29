@@ -233,15 +233,17 @@ pub fn draw_ui(
     set_active_cli_ui_hooks(app.cli_ui_hooks.clone());
     let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
+    let show_access_picker = app.access_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_subagent_picker = app.subagent_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_rewind_picker = app.rewind_picker.is_some();
     let show_bottom_form = app.bottom_form.is_some();
     let show_marketplace = app.marketplace_view.is_some();
-    let show_inline_picker = show_model_picker || show_chat_picker;
+    let show_inline_picker = show_model_picker || show_chat_picker || show_access_picker;
     let show_picker = show_model_picker
         || show_language_picker
+        || show_access_picker
         || show_chat_picker
         || show_subagent_picker
         || show_image_picker;
@@ -425,6 +427,9 @@ pub fn draw_ui(
 
     if show_model_picker {
         let picker_lines = build_model_picker_lines(&app, 5);
+        draw_inline_picker(frame, chunks[2], picker_lines);
+    } else if show_access_picker {
+        let picker_lines = build_access_picker_lines(&app, 5);
         draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_language_picker {
         let picker_lines = build_language_picker_lines(&app, 5);

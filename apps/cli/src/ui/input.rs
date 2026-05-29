@@ -70,30 +70,29 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
     } else {
         t!("ui.footer.loop.off")
     };
-    let left_label = if app.rewind_picker.is_some() {
-        format!(
-            "{}  |  {}  |  {}  |  {}",
-            t!("ui.footer.preview"),
-            mode_label,
-            loop_label,
-            t!("ui.footer.rewind_hint")
+    let approval_label = footer_approval_label(&app.approval_level);
+    let approval_style = if app.approval_level == "full-access" {
+        Style::default().fg(Color::Yellow)
+    } else {
+        footer_style
+    };
+    let left_prefix = format!("{}  |  {}  |  ", mode_label, loop_label);
+    let (left_suffix, left_suffix_plain) = if app.rewind_picker.is_some() {
+        let hint = t!("ui.footer.rewind_hint");
+        (
+            Some(Span::styled(format!("  |  {}", hint), footer_style)),
+            format!("  |  {}", hint),
         )
     } else if app.pending_response_active && app.pending_aux_state().is_some() {
-        format!(
-            "{}  |  {}  |  {}  |  {}",
-            t!("ui.footer.preview"),
-            mode_label,
-            loop_label,
-            t!("ui.footer.interrupt_reply_hint")
+        let hint = t!("ui.footer.interrupt_reply_hint");
+        (
+            Some(Span::styled(format!("  |  {}", hint), footer_style)),
+            format!("  |  {}", hint),
         )
     } else {
-        format!(
-            "{}  |  {}  |  {}",
-            t!("ui.footer.preview"),
-            mode_label,
-            loop_label
-        )
+        (None, String::new())
     };
+    let left_plain = format!("{}{}{}", left_prefix, approval_label, left_suffix_plain);
     let right_label = app.config.active_model.as_str();
     let side_padding = if width >= 12 {
         2
@@ -127,7 +126,7 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
     }
 
     let max_left_width = content_width.saturating_sub(right_width + 1);
-    let left_text = truncate_to_width(&left_label, max_left_width.max(1));
+    let left_text = truncate_to_width(&left_plain, max_left_width.max(1));
     let left_width = UnicodeWidthStr::width(left_text.as_str());
 
     if left_width + 1 > content_width.saturating_sub(right_width) {
@@ -144,6 +143,21 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
     }
 
     let gap = content_width.saturating_sub(left_width + right_width);
+    if left_text == left_plain {
+        let mut left_spans = vec![
+            Span::styled(" ".repeat(side_padding), footer_style),
+            Span::styled(left_prefix, footer_style),
+            Span::styled(approval_label, approval_style),
+        ];
+        if let Some(suffix) = left_suffix {
+            left_spans.push(suffix);
+        }
+        left_spans.push(Span::styled(" ".repeat(gap), footer_style));
+        left_spans.push(Span::styled(right_label.to_string(), footer_style));
+        left_spans.push(Span::styled(" ".repeat(side_padding), footer_style));
+        return Line::from(left_spans);
+    }
+
     Line::from(vec![
         Span::styled(" ".repeat(side_padding), footer_style),
         Span::styled(left_text, footer_style),
@@ -151,6 +165,14 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
         Span::styled(right_label.to_string(), footer_style),
         Span::styled(" ".repeat(side_padding), footer_style),
     ])
+}
+
+fn footer_approval_label(level: &str) -> String {
+    if level == "full-access" {
+        t!("ui.footer.approval.full_access").into_owned()
+    } else {
+        t!("ui.footer.approval.default").into_owned()
+    }
 }
 
 pub(in crate::ui) fn input_block_height(app: &TuiViewModel, max_width: usize) -> u16 {

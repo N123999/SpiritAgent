@@ -258,6 +258,7 @@ pub(in crate::ui) fn suggestion_summary(suggestion: &InputSuggestion) -> String 
         "/extensions" => t!("ui.suggestion.summary.extensions").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
+        "/access" => t!("ui.suggestion.summary.access").into_owned(),
         "/start-implementing" => t!("ui.suggestion.summary.start_implementing").into_owned(),
         _ => String::new(),
     }
@@ -362,6 +363,12 @@ pub(in crate::ui) fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec
             "    /language".to_string(),
             "    /language en".to_string(),
             "    /language zh-CN".to_string(),
+        ],
+        "/access" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /access".to_string(),
+            "    /access default".to_string(),
+            "    /access full-access".to_string(),
         ],
         "/start-implementing" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -489,6 +496,66 @@ pub(in crate::ui) fn build_subagent_picker_lines(
                 subtle_aux_text_style(),
             )));
         }
+    }
+
+    lines
+}
+
+fn access_level_display_label(level: &str) -> String {
+    if level == "full-access" {
+        t!("ui.footer.approval.full_access").into_owned()
+    } else {
+        t!("ui.footer.approval.default").into_owned()
+    }
+}
+
+pub(in crate::ui) fn build_access_picker_lines(
+    app: &TuiViewModel,
+    max_items: usize,
+) -> Vec<Line<'static>> {
+    const OPTIONS: [&str; 2] = ["default", "full-access"];
+    let selected = app
+        .access_picker_index
+        .min(OPTIONS.len().saturating_sub(1));
+    let total = OPTIONS.len();
+    let window = max_items.max(1);
+    let start = if selected + 1 > window {
+        selected + 1 - window
+    } else {
+        0
+    };
+    let end = (start + window).min(total);
+    let current = app.approval_level.as_str();
+
+    let mut lines = Vec::new();
+    for (idx, level) in OPTIONS.iter().enumerate().take(end).skip(start) {
+        let is_selected = idx == selected;
+        let is_active = *level == current;
+        let active_suffix = if is_active {
+            t!("ui.picker.access.current_suffix").into_owned()
+        } else {
+            String::new()
+        };
+        let style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else if is_active {
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(Span::styled(
+            format!(
+                "{}{} {}",
+                picker_selection_prefix(is_selected),
+                access_level_display_label(level),
+                active_suffix
+            ),
+            style,
+        )));
     }
 
     lines

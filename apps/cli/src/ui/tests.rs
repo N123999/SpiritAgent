@@ -91,6 +91,8 @@ fn build_view_model(message: ChatMessage) -> TuiViewModel {
         model_picker_index: 0,
         language_picker_active: false,
         language_picker_index: 0,
+        access_picker_active: false,
+        access_picker_index: 0,
         chat_picker_active: false,
         chat_picker_index: 0,
         chat_picker_files: vec![],
@@ -273,8 +275,21 @@ fn footer_shows_mode_without_tab_toggle_hint() {
 
     assert!(!agent_footer[0].contains("Tab"));
     assert!(!plan_footer[0].contains("Tab"));
-    assert!(agent_footer[0].contains(format!(" |  {}", t!("ui.footer.mode.agent")).as_str()));
-    assert!(plan_footer[0].contains(format!(" |  {}", t!("ui.footer.mode.plan")).as_str()));
+    assert!(agent_footer[0].contains(t!("ui.footer.mode.agent").as_ref()));
+    assert!(plan_footer[0].contains(t!("ui.footer.mode.plan").as_ref()));
+    assert!(!agent_footer[0].contains(t!("ui.footer.preview").as_ref()));
+    assert!(agent_footer[0].contains(t!("ui.footer.approval.default").as_ref()));
+}
+
+#[test]
+fn footer_full_access_approval_uses_yellow_style() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "welcome"));
+    app.approval_level = "full-access".to_string();
+    let line = build_footer_line(&app, 80);
+    assert!(line
+        .spans
+        .iter()
+        .any(|span| span.style.fg == Some(Color::Yellow)));
 }
 
 #[test]

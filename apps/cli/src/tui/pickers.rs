@@ -1,6 +1,24 @@
 use super::image_paths::list_local_image_files;
 use super::*;
 
+pub(crate) const ACCESS_LEVEL_OPTIONS: [&str; 2] = ["default", "full-access"];
+
+pub(crate) fn access_level_label(level: &str) -> String {
+    if level == "full-access" {
+        t!("ui.footer.approval.full_access").into_owned()
+    } else {
+        t!("ui.footer.approval.default").into_owned()
+    }
+}
+
+pub(crate) fn access_level_picker_index(current: &str) -> usize {
+    if current == "full-access" {
+        1
+    } else {
+        0
+    }
+}
+
 impl TuiShell {
     pub fn cancel_model_picker(&mut self) {
         self.model_picker_active = false;
@@ -8,6 +26,10 @@ impl TuiShell {
 
     pub fn cancel_language_picker(&mut self) {
         self.language_picker_active = false;
+    }
+
+    pub fn cancel_access_picker(&mut self) {
+        self.access_picker_active = false;
     }
 
     pub fn select_next_model(&mut self) {
@@ -24,6 +46,11 @@ impl TuiShell {
             return;
         }
         self.language_picker_index = (self.language_picker_index + 1) % locales.len();
+    }
+
+    pub fn select_next_access_level(&mut self) {
+        self.access_picker_index =
+            (self.access_picker_index + 1) % ACCESS_LEVEL_OPTIONS.len();
     }
 
     pub fn select_prev_model(&mut self) {
@@ -46,6 +73,14 @@ impl TuiShell {
             self.language_picker_index = locales.len() - 1;
         } else {
             self.language_picker_index -= 1;
+        }
+    }
+
+    pub fn select_prev_access_level(&mut self) {
+        if self.access_picker_index == 0 {
+            self.access_picker_index = ACCESS_LEVEL_OPTIONS.len() - 1;
+        } else {
+            self.access_picker_index -= 1;
         }
     }
 
@@ -99,6 +134,21 @@ impl TuiShell {
 
         self.switch_ui_locale(selected);
         self.language_picker_active = false;
+    }
+
+    pub fn confirm_access_picker(&mut self) {
+        let Some(selected) = ACCESS_LEVEL_OPTIONS.get(self.access_picker_index).copied() else {
+            self.access_picker_active = false;
+            return;
+        };
+
+        match self.runtime.set_approval_level(selected) {
+            Ok(()) => self.push_agent_message(
+                t!("tui.access.changed", level = access_level_label(selected)).into_owned(),
+            ),
+            Err(err) => self.push_agent_message(t!("tui.access.failed", err = err).into_owned()),
+        }
+        self.access_picker_active = false;
     }
 
     pub fn cancel_chat_picker(&mut self) {
@@ -226,6 +276,7 @@ impl TuiShell {
         self.exit_rewind_picker_mode();
         self.model_picker_active = false;
         self.language_picker_active = false;
+        self.access_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.forms.active = None;
@@ -263,6 +314,12 @@ impl TuiShell {
             .unwrap_or(0);
         self.reset_primary_picker_overlay();
         self.language_picker_active = true;
+    }
+
+    pub(super) fn open_access_picker(&mut self) {
+        self.access_picker_index = access_level_picker_index(self.runtime.approval_level());
+        self.reset_primary_picker_overlay();
+        self.access_picker_active = true;
     }
 
     pub(super) fn open_chat_picker(&mut self) {
