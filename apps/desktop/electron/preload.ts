@@ -91,6 +91,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   setLoopEnabled(enabled: boolean) {
     return ipcRenderer.invoke('desktop:invoke', 'setLoopEnabled', { enabled });
   },
+  setApprovalLevel(approvalLevel: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'setApprovalLevel', { approvalLevel });
+  },
   abortConversation() {
     return ipcRenderer.invoke('desktop:invoke', 'abortConversation');
   },

@@ -136,6 +136,9 @@ export function createWebHostApi(): HostApi {
     setLoopEnabled(enabled: boolean) {
       return post<DesktopSnapshot>(baseUrl, '/api/loop', { enabled });
     },
+    setApprovalLevel(approvalLevel: import('@spirit-agent/host-internal').ApprovalLevel) {
+      return post<DesktopSnapshot>(baseUrl, '/api/access', { approvalLevel });
+    },
     abortConversation() {
       return post<DesktopSnapshot>(baseUrl, '/api/abort');
     },

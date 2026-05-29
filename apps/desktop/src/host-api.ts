@@ -76,6 +76,7 @@ export interface HostApi {
   exportSessionLog?(): Promise<DesktopSnapshot>;
   submitUserTurn(request: SubmitUserTurnRequest): Promise<DesktopSnapshot>;
   setLoopEnabled(enabled: boolean): Promise<DesktopSnapshot>;
+  setApprovalLevel(approvalLevel: import('@spirit-agent/host-internal').ApprovalLevel): Promise<DesktopSnapshot>;
   abortConversation(): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;

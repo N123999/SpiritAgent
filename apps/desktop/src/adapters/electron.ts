@@ -99,6 +99,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     setLoopEnabled(enabled) {
       return bridge.setLoopEnabled(enabled);
     },
+    setApprovalLevel(approvalLevel) {
+      return bridge.setApprovalLevel(approvalLevel);
+    },
     abortConversation() {
       return bridge.abortConversation();
     },

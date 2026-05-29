@@ -628,6 +628,18 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/access') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('setApprovalLevel', {
+        approvalLevel: jsonBody?.approvalLevel,
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/git/commit') {
     writeJson(
       request,

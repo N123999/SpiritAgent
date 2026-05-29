@@ -7,6 +7,8 @@ import type {
   ConversationMessageSnapshot,
   SessionListItem,
 } from '../types.js';
+import type { ApprovalLevel } from '@spirit-agent/host-internal';
+import { normalizeApprovalLevel } from '@spirit-agent/host-internal';
 import type { StoredDesktopSession } from './contracts.js';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import {
@@ -39,6 +41,7 @@ export interface RestoredSessionState {
   archiveSubagentSessions: NonNullable<ChatArchive['subagentSessions']>;
   rewind: StoredDesktopRewindMetadata;
   loopEnabled: boolean;
+  approvalLevel: ApprovalLevel;
 }
 
 export function isEphemeralCommitSessionPath(filePath: string): boolean {
@@ -107,6 +110,7 @@ export function restoreEphemeralSessionState(record: EphemeralSessionRecord): Re
     archiveSubagentSessions: [],
     rewind: createDesktopRewindMetadata(),
     loopEnabled: false,
+    approvalLevel: 'default',
   };
 }
 
@@ -131,6 +135,7 @@ export function restoreStoredSessionState(input: {
     archiveSubagentSessions: cloneSubagentSessions(input.loaded.subagentSessions ?? []),
     rewind: input.loaded.rewind ?? createDesktopRewindMetadata(),
     loopEnabled: input.loaded.loopEnabled === true,
+    approvalLevel: normalizeApprovalLevel(input.loaded.approvalLevel),
   };
 }
 
@@ -144,10 +149,12 @@ export function buildStoredDesktopSession(input: {
   desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind: StoredDesktopRewindMetadata;
   loopEnabled: boolean;
+  approvalLevel: ApprovalLevel;
 }): StoredDesktopSession {
   return {
     ...input.archive,
     loopEnabled: input.loopEnabled,
+    approvalLevel: input.approvalLevel,
     savedAtUnixMs: input.savedAtUnixMs ?? Date.now(),
     sessionDisplayName: input.sessionDisplayName,
     workspaceRoot: input.workspaceRoot,

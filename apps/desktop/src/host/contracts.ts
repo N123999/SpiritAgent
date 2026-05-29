@@ -1,5 +1,5 @@
 import type { ChatArchive } from '@spirit-agent/agent-core';
-import type { HostToolRequest } from '@spirit-agent/host-internal';
+import type { HostToolRequest, ApprovalLevel } from '@spirit-agent/host-internal';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import type { StoredDesktopRewindMetadata } from './rewind.js';
 
@@ -41,6 +41,7 @@ export type HostCommandName =
   | 'exportSessionLog'
   | 'submitUserTurn'
   | 'setLoopEnabled'
+  | 'setApprovalLevel'
   | 'abortConversation'
   | 'continueAssistantCompletion'
   | 'poll'
@@ -67,6 +68,7 @@ export interface StoredDesktopSession extends ChatArchive {
   desktopMessages?: ConversationMessageSnapshot[];
   desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind?: StoredDesktopRewindMetadata;
+  approvalLevel?: ApprovalLevel;
 }
 
 export type DesktopHostCommitRequest = CommitChangesRequest;
