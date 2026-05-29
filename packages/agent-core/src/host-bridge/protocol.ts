@@ -55,6 +55,8 @@ export type JsonRpcMessage =
   | JsonRpcSuccessResponse
   | JsonRpcErrorResponse;
 
+export type BridgeApprovalLevel = 'default' | 'full-access';
+
 export interface BridgeRuntimeSnapshot {
   pendingUserTurn?: string;
   pendingImagePaths: string[];
@@ -68,6 +70,7 @@ export interface BridgeRuntimeSnapshot {
   childSessions: RuntimeSubagentSessionSummary[];
   isBusy: boolean;
   loopEnabled: boolean;
+  approvalLevel: BridgeApprovalLevel;
   backgroundToolStatus?: string;
 }
 
@@ -90,6 +93,11 @@ export interface RuntimeInitParams {
   planMetadata?: LlmPlanMetadata;
   extensionToolDefinitions?: JsonValue[];
   loopEnabled?: boolean;
+  approvalLevel?: BridgeApprovalLevel;
+}
+
+export interface RuntimeSetApprovalLevelParams {
+  approvalLevel: BridgeApprovalLevel;
 }
 
 export interface RuntimeSetLoopEnabledParams {

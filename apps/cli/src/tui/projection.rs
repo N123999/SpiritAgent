@@ -32,6 +32,7 @@ impl TuiShell {
             pending_image_paths: self.runtime.session().pending_image_paths().to_vec(),
             pending_mcp_resources: self.runtime.session().pending_mcp_resources().to_vec(),
             loop_enabled: self.runtime.loop_enabled(),
+            approval_level: self.runtime.approval_level().to_string(),
             history_truncated_before,
             messages: visible_messages,
             assistant_aux_by_message,

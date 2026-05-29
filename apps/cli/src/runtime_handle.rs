@@ -216,6 +216,14 @@ impl RuntimeHandle {
         self.runtime.set_loop_enabled(enabled)
     }
 
+    pub fn approval_level(&self) -> &str {
+        self.runtime.approval_level()
+    }
+
+    pub fn set_approval_level(&mut self, approval_level: &str) -> Result<()> {
+        self.runtime.set_approval_level(approval_level)
+    }
+
     pub fn abort(&mut self) {
         self.runtime.abort()
     }

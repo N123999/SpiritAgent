@@ -76,6 +76,7 @@ fn build_view_model(message: ChatMessage) -> TuiViewModel {
         pending_image_paths: vec![],
         pending_mcp_resources: vec![],
         loop_enabled: false,
+        approval_level: "default".to_string(),
         history_truncated_before: 0,
         messages: vec![message],
         assistant_aux_by_message: HashMap::new(),

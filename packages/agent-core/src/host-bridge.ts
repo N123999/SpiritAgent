@@ -559,6 +559,11 @@ interface CliHostInternalState {
 }
 
 let cliHostInternal: CliHostInternalState | undefined;
+let currentApprovalLevel: import('./host-bridge/protocol.js').BridgeApprovalLevel = 'default';
+
+function normalizeBridgeApprovalLevel(value: unknown): import('./host-bridge/protocol.js').BridgeApprovalLevel {
+  return value === 'full-access' ? 'full-access' : 'default';
+}
 
 function logBridge(message: string, extra?: unknown): void {
   if (extra === undefined) {
@@ -651,6 +656,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
         }
       : {}),
     getModelCompatibilityProfile: () => currentHostToolModelCompatibilityProfile,
+    getApprovalLevel: () => currentApprovalLevel,
   };
   const service = new module.NodeHostToolService(
     { workspaceRoot, spiritDataDir },
@@ -1355,6 +1361,7 @@ function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
   ...(currentPendingQuestions !== undefined ? { currentPendingQuestions } : {}),
   isBusy: target.isBusy(),
   loopEnabled: target.loopEnabled(),
+  approvalLevel: currentApprovalLevel,
     ...(backgroundToolStatus !== undefined ? { backgroundToolStatus } : {}),
   };
 }
@@ -1397,6 +1404,7 @@ peer.on('runtime.init', async (rawParams) => {
     planMetadata = params.planMetadata;
   }
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
+  currentApprovalLevel = normalizeBridgeApprovalLevel(params.approvalLevel);
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
   runtime.setLoopEnabled(params.loopEnabled === true);
   const workspaceRoot =
@@ -1676,6 +1684,10 @@ peer.on('runtime.replaceHistory', async (rawParams) => {
 });
 
 peer.on('runtime.replaceFromArchive', async (archive) => {
+  const typedArchive = archive as { approvalLevel?: unknown };
+  if (typedArchive.approvalLevel !== undefined) {
+    currentApprovalLevel = normalizeBridgeApprovalLevel(typedArchive.approvalLevel);
+  }
   requireRuntime().replaceFromArchive(archive as never);
   await dispatchCliExtensionEvent({
     type: 'onSessionOpened',
@@ -1761,6 +1773,12 @@ peer.on('runtime.snapshot', async () => buildSnapshot(requireRuntime()));
 peer.on('runtime.setLoopEnabled', async (rawParams) => {
   const params = rawParams as RuntimeSetLoopEnabledParams;
   requireRuntime().setLoopEnabled(params.enabled === true);
+  return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.setApprovalLevel', async (rawParams) => {
+  const params = rawParams as import('./host-bridge/protocol.js').RuntimeSetApprovalLevelParams;
+  currentApprovalLevel = normalizeBridgeApprovalLevel(params.approvalLevel);
   return buildSnapshot(requireRuntime());
 });
 

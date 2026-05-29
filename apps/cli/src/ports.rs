@@ -189,6 +189,18 @@ pub struct SubagentSessionArchiveEntry {
     pub llm_history: Vec<ArchivedLlmMessage>,
 }
 
+fn default_approval_level() -> String {
+    "default".to_string()
+}
+
+pub fn normalize_approval_level(value: &str) -> String {
+    if value == "full-access" {
+        "full-access".to_string()
+    } else {
+        "default".to_string()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatArchive {
@@ -197,6 +209,8 @@ pub struct ChatArchive {
     pub llm_history: Vec<ArchivedLlmMessage>,
     #[serde(default)]
     pub loop_enabled: bool,
+    #[serde(default = "default_approval_level")]
+    pub approval_level: String,
     #[serde(default)]
     pub subagent_sessions: Vec<SubagentSessionArchiveEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

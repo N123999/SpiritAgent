@@ -11,6 +11,10 @@ use crate::rewind::{ConversationMessageRole, ConversationMessageSnapshot, Messag
 
 const CHAT_DIR_NAME: &str = "chats";
 
+fn default_chat_approval_level() -> String {
+    "default".to_string()
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatFile {
@@ -21,6 +25,8 @@ struct ChatFile {
     llm_history: Vec<crate::ports::ArchivedLlmMessage>,
     #[serde(default)]
     loop_enabled: bool,
+    #[serde(default = "default_chat_approval_level")]
+    approval_level: String,
     #[serde(default)]
     subagent_sessions: Vec<StoredSubagentSession>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,6 +92,7 @@ pub struct LoadedChat {
     pub assistant_aux: Vec<crate::ports::AssistantAuxArchiveEntry>,
     pub llm_history: Vec<crate::ports::ArchivedLlmMessage>,
     pub loop_enabled: bool,
+    pub approval_level: String,
     pub subagent_sessions: Vec<crate::ports::SubagentSessionArchiveEntry>,
     pub desktop_messages: Option<Vec<ConversationMessageSnapshot>>,
     pub rewind: Option<Value>,
@@ -131,6 +138,7 @@ pub fn save_chat(
     assistant_aux: &[crate::ports::AssistantAuxArchiveEntry],
     llm_history: &[crate::ports::ArchivedLlmMessage],
     loop_enabled: bool,
+    approval_level: &str,
     subagent_sessions: &[crate::ports::SubagentSessionArchiveEntry],
     rewind: Option<&Value>,
     desktop_messages: Option<&[ConversationMessageSnapshot]>,
@@ -150,6 +158,7 @@ pub fn save_chat(
         assistant_aux: sanitized.assistant_aux,
         llm_history: llm_history.to_vec(),
         loop_enabled,
+        approval_level: crate::ports::normalize_approval_level(approval_level),
         subagent_sessions: subagent_sessions
             .iter()
             .map(|entry| StoredSubagentSession {
@@ -197,6 +206,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
         assistant_aux: parsed_assistant_aux,
         llm_history,
         loop_enabled,
+        approval_level,
         subagent_sessions,
         rewind,
         desktop_messages,
@@ -244,6 +254,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
             .collect(),
         llm_history,
         loop_enabled,
+        approval_level: crate::ports::normalize_approval_level(&approval_level),
         subagent_sessions: subagent_sessions
             .into_iter()
             .map(|entry| crate::ports::SubagentSessionArchiveEntry {
@@ -556,6 +567,7 @@ mod tests {
             &assistant_aux,
             &llm_history,
             true,
+            "default",
             &[],
             None,
             None,
