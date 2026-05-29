@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 const APPROVAL_LEVEL_OPTIONS: Array<{ value: ApprovalLevel; label: string }> = [
   { value: "default", label: "默认权限" },
-  { value: "full-access", label: "完全访问" },
+  { value: "full-access", label: "完全访问权限" },
 ];
 
 function approvalLevelLabel(level: ApprovalLevel): string {
