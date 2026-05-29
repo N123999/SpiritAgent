@@ -75,6 +75,7 @@ import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
+import { useFont } from "@/hooks/useFont";
 import { useTheme } from "@/hooks/useTheme";
 import {
   DESKTOP_CHROME_COMMIT_BTN,
@@ -1622,6 +1623,7 @@ function DesktopLayoutChromeBar({
 
 export default function App() {
   const { theme, setTheme } = useTheme();
+  const { font, setFont } = useFont();
   const runtime = useDesktopRuntime();
   const snapshot = runtime.snapshot;
   /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
@@ -2274,6 +2276,8 @@ export default function App() {
               extensionSettingsId={extensionSettingsId}
               theme={theme}
               onThemeChange={setTheme}
+              font={font}
+              onFontChange={setFont}
               settings={runtime.settings}
               snapshot={snapshot}
               runtimeError={runtime.runtimeError}

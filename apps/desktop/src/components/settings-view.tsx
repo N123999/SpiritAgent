@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronsUpDown, LoaderCircle, RefreshCw, Sparkles, X } from "lucide-react";
 
 import { DreamGraphCard } from "@/components/dream-graph-card";
+import { FontSelect } from "@/components/font-select";
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { FontPreference } from "@/lib/font";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import type {
@@ -83,6 +85,8 @@ type SettingsViewProps = {
   extensionSettingsId?: string | null;
   theme: ThemePreference;
   onThemeChange: (value: ThemePreference) => void;
+  font: FontPreference;
+  onFontChange: (value: FontPreference) => void;
   settings: SettingsFormState;
   snapshot: DesktopSnapshot | null;
   runtimeError: string;
@@ -129,7 +133,7 @@ const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   mcps: "MCP 服务",
   skills: "Skills",
   dreams: "梦境",
-  appearance: "主题与窗口效果",
+  appearance: "外观与字体",
 };
 
 function formatExtensionInstalledAt(unixMs: number): string {
@@ -2808,12 +2812,14 @@ function ModelsSettingsPanel({
 function AppearanceSettingsPanel({
   theme,
   onThemeChange,
+  font,
+  onFontChange,
   settings,
   isElectronShell,
   onSavePatch,
 }: Pick<
   SettingsViewProps,
-  "theme" | "onThemeChange" | "settings" | "isElectronShell" | "onSavePatch"
+  "theme" | "onThemeChange" | "font" | "onFontChange" | "settings" | "isElectronShell" | "onSavePatch"
 >) {
   return (
     <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
@@ -2834,6 +2840,14 @@ function AppearanceSettingsPanel({
             ))}
           </SelectContent>
         </Select>
+      </SettingsRow>
+
+      <SettingsRow
+        label="字体"
+        description="立即应用到界面；默认与 shadcn/ui 一致（Geist）。"
+        htmlFor="settings-font-select"
+      >
+        <FontSelect id="settings-font-select" value={font} onValueChange={onFontChange} />
       </SettingsRow>
 
       <SettingsRow
@@ -3012,6 +3026,8 @@ export function SettingsView({
   extensionSettingsId = null,
   theme,
   onThemeChange,
+  font,
+  onFontChange,
   settings,
   snapshot,
   runtimeError,
@@ -3127,6 +3143,8 @@ export function SettingsView({
               <AppearanceSettingsPanel
                 theme={theme}
                 onThemeChange={onThemeChange}
+                font={font}
+                onFontChange={onFontChange}
                 settings={settings}
                 isElectronShell={isElectronShell}
                 onSavePatch={onSavePatch}

@@ -30,6 +30,7 @@ import {
   type DesktopHttpHost,
 } from './http-host.js';
 import { resolveRendererDistPath } from './renderer-dist.js';
+import { listSystemFonts } from './system-fonts.js';
 import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 
 /** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
@@ -512,6 +513,8 @@ app.whenReady().then(async () => {
     }
     return result.filePaths[0] ?? null;
   });
+
+  ipcMain.handle('desktop:list-system-fonts', () => listSystemFonts());
 
   ipcMain.handle('desktop:read-local-image-preview', async (_event, payload: { filePath?: string }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : '';

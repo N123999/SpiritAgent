@@ -94,6 +94,7 @@ declare global {
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     pickWorkspaceDirectory(): Promise<string | null>;
     pickLocalFile(): Promise<string | null>;
+    listSystemFonts(): Promise<string[]>;
     readLocalImagePreviewDataUrl(filePath: string): Promise<string | null>;
     readManagedImagePreviewDataUrl(reference: string): Promise<string | null>;
     saveLocalImageAs(filePath: string): Promise<boolean>;
