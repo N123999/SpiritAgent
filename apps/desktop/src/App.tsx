@@ -2486,7 +2486,7 @@ export default function App() {
 
               <div
                 data-spirit-surface="composer-dock"
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
               >
                 <div className={cn("pointer-events-auto mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
                 {messages.length === 0 ? (
@@ -2675,7 +2675,7 @@ export default function App() {
                     onRemoveLocalFileAttachment={removeLocalFileAttachment}
                     onPaste={handleComposerPaste}
                   />
-                  <div className="flex justify-start px-3 pb-0.5">
+                  <div className="flex justify-start px-3">
                     <ApprovalLevelMenu
                       approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
                       disabled={activeSessionReadOnly}
