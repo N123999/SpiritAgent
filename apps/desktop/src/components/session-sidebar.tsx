@@ -281,12 +281,6 @@ export function SessionSidebar({
             <ArrowLeft className="size-4" aria-hidden />
             <span className={cn(narrow && "sr-only")}>返回</span>
           </Button>
-          {narrow ? null : (
-            <div className="px-1.5 pb-1">
-              <p className="text-[0.65rem] text-sidebar-faint-foreground">设置</p>
-              <p className="pt-1 text-sm font-medium text-sidebar-foreground">页面导航</p>
-            </div>
-          )}
         </div>
       ) : (
         <div
