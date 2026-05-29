@@ -277,9 +277,8 @@ export function toolCallSummaryForPhase(
   toolName: string,
   request: unknown,
 ): ToolCallSummaryCopy {
-  const readFileHeadline = headlineForReadFileRequest(toolName, request);
-  if (readFileHeadline) {
-    return { headline: readFileHeadline };
+  if (toolName === 'read_file') {
+    return readFileSummaryCopy(request);
   }
 
   const custom = toolCallSummaryCopyForRequest(toolName, request);
@@ -773,9 +772,8 @@ export function toolCallSummaryForStreamingPreview(
   toolName: string,
   request?: unknown,
 ): ToolCallSummaryCopy {
-  const readFileHeadline = headlineForReadFileRequest(toolName, request);
-  if (readFileHeadline) {
-    return { headline: readFileHeadline };
+  if (toolName === 'read_file') {
+    return readFileSummaryCopy(request);
   }
 
   const custom = request !== undefined ? toolCallSummaryCopyForRequest(toolName, request) : undefined;
@@ -799,13 +797,9 @@ export function headlineForStreamingToolPreview(
   return toolCallSummaryForStreamingPreview(messages, toolCallId, toolName, request).headline;
 }
 
-function headlineForReadFileRequest(toolName: string, request: unknown): string | undefined {
-  if (toolName !== 'read_file') {
-    return undefined;
-  }
-
+function readFileSummaryCopy(request: unknown): ToolCallSummaryCopy {
   if (!request || typeof request !== 'object') {
-    return '查看文件';
+    return { headline: '查看', headlineDetail: '文件' };
   }
 
   const record = request as Record<string, unknown>;
@@ -816,8 +810,12 @@ function headlineForReadFileRequest(toolName: string, request: unknown): string 
       : '';
   const displayPath = displayPathForReadFile(rawPath);
   const lineRange = lineRangeForReadFile(record.start_line, record.end_line);
+  const detail = `${displayPath}${lineRange}`.trim();
 
-  return `查看 ${displayPath}${lineRange}`;
+  return {
+    headline: '查看',
+    ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
+  };
 }
 
 function truncateSummaryDetail(value: string, max = SUMMARY_DETAIL_MAX): string {

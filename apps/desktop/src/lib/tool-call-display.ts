@@ -10,9 +10,18 @@ export type ToolCallSummaryParts = {
   detail?: string;
 };
 
+const LEGACY_READ_FILE_HEADLINE = /^查看\s+(.+)$/u;
+
 export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts {
   const headline = tool.headline.trim();
-  const snapshotDetail = tool.headlineDetail?.trim();
+  let snapshotDetail = tool.headlineDetail?.trim();
+
+  if (tool.toolName === 'read_file' && !snapshotDetail) {
+    const legacy = LEGACY_READ_FILE_HEADLINE.exec(headline);
+    if (legacy) {
+      return { headline: '查看', detail: legacy[1] };
+    }
+  }
 
   if (tool.toolName === 'run_shell_command') {
     const command = snapshotDetail || parseShellCommand(tool);
@@ -29,10 +38,6 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
 }
 
 export function toolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
-  if (tool.toolName === 'read_file') {
-    return false;
-  }
-
   if (tool.toolName === 'run_shell_command') {
     const command = tool.headlineDetail?.trim() || parseShellCommand(tool);
     return shellHasExpandableContent(tool, command);

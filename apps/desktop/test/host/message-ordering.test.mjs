@@ -80,14 +80,14 @@ test('toolCallSummaryCopyForRequest: ask_questions and subagent', () => {
   });
 });
 
-test('toolCallSummaryForPhase: read_file stays single headline', () => {
+test('toolCallSummaryForPhase: read_file splits headline and path detail', () => {
   assert.deepEqual(
     toolCallSummaryForPhase('succeeded', 'read_file', {
       path: 'D:/proj/src/App.tsx',
       start_line: 1,
       end_line: 50,
     }),
-    { headline: '查看 App.tsx 1 - 50' },
+    { headline: '查看', headlineDetail: 'App.tsx 1 - 50' },
   );
 });
 
