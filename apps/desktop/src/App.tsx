@@ -1026,39 +1026,43 @@ function AssistantThinkingCollapsible({
   const interactive = !autoExpanded;
 
   return (
-    <div className="py-0.5">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => {
-          if (!interactive) {
-            return;
-          }
-          setManualOpen((open) => !open);
-        }}
-        className={cn(
-          "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
-          interactive ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50" : "cursor-default",
-        )}
-      >
-        <ThinkingLabelWithShimmer active={thinkingActive} />
-        {interactive ? (
-          <ChevronRight
-            className={cn(
-              "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
-              "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
-              expanded && "rotate-90",
-            )}
-            aria-hidden
-          />
-        ) : null}
-      </button>
-      {expanded ? (
-        <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-muted-foreground">
+    <Collapsible
+      open={expanded}
+      onOpenChange={(open) => {
+        if (!interactive) {
+          return;
+        }
+        setManualOpen(open);
+      }}
+      className="min-w-0 py-0.5"
+    >
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
+            interactive ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50" : "cursor-default",
+          )}
+        >
+          <ThinkingLabelWithShimmer active={thinkingActive} />
+          {interactive ? (
+            <ChevronRight
+              className={cn(
+                "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+                "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                expanded && "rotate-90",
+              )}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="min-w-0">
+        <pre className="whitespace-pre-wrap break-words pt-1.5 font-sans text-sm leading-relaxed text-muted-foreground">
           {thinking}
         </pre>
-      ) : null}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
