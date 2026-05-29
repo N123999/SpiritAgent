@@ -560,13 +560,15 @@ export function useDesktopRuntime() {
             break;
           }
           applySnapshot(next);
+          if (next.conversation.isBusy === true) {
+            continue;
+          }
           const sessionItems = await api.listSessions();
           if (cancelled) {
             break;
           }
           setSessions(sessionItems);
-          const stillBusy =
-            next.conversation.isBusy === true || sessionItems.some((session) => session.isBusy === true);
+          const stillBusy = sessionItems.some((session) => session.isBusy === true);
           if (!stillBusy) {
             break;
           }

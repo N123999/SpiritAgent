@@ -641,6 +641,8 @@ export interface ConversationMessageSnapshot {
 
 export interface MessageRewindDraftState {
   messageId: number;
+  /** List index in the visible conversation; disambiguates duplicate `messageId`s in the timeline. */
+  listIndex: number;
   text: string;
 }
 

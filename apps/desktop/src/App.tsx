@@ -1123,7 +1123,7 @@ function MessageCard({
   planMode: boolean;
   onContinue(message: ConversationMessageSnapshot): void;
   onRewindChange(value: string): void;
-  onRewindStart(message: ConversationMessageSnapshot): void;
+  onRewindStart(message: ConversationMessageSnapshot, listIndex: number): void;
   onRewindSubmit(): void;
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
@@ -1162,7 +1162,7 @@ function MessageCard({
             : "w-full",
         )}
       >
-        {rewindSelected ? (
+        {rewindSelected && isUser ? (
           <ComposerSurface
             value={rewindText}
             localFileAttachments={[]}
@@ -1209,13 +1209,13 @@ function MessageCard({
             )}
             role={canStartRewind ? "button" : undefined}
             tabIndex={canStartRewind ? 0 : undefined}
-            onClick={canStartRewind ? () => onRewindStart(message) : undefined}
+            onClick={canStartRewind ? () => onRewindStart(message, listIndex) : undefined}
             onKeyDown={
               canStartRewind
                 ? (event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      onRewindStart(message);
+                      onRewindStart(message, listIndex);
                     }
                   }
                 : undefined
@@ -1896,9 +1896,9 @@ export default function App() {
     if (!rewindDraft) {
       return;
     }
-    const stillAvailable = messages.some(
-      (message) => message.id === rewindDraft.messageId && message.canRewind === true,
-    );
+    const anchor = messages[rewindDraft.listIndex];
+    const stillAvailable =
+      anchor?.id === rewindDraft.messageId && anchor.canRewind === true;
     if (!stillAvailable) {
       setRewindDraft(null);
     }
@@ -1908,11 +1908,11 @@ export default function App() {
     setLocalFileAttachments([]);
   }, [snapshot?.workspaceRoot, snapshot?.activeSession?.filePath]);
 
-  const startMessageRewind = (message: ConversationMessageSnapshot) => {
+  const startMessageRewind = (message: ConversationMessageSnapshot, listIndex: number) => {
     if (!runtime.summary.canSend || runtime.busyAction || message.canRewind !== true) {
       return;
     }
-    setRewindDraft({ messageId: message.id, text: message.content });
+    setRewindDraft({ messageId: message.id, listIndex, text: message.content });
   };
 
   const submitMessageRewind = () => {
@@ -2417,9 +2417,9 @@ export default function App() {
                                 snapshot?.conversation.isBusy !== true
                               }
                               continueBusy={continueBusy}
-                              rewindSelected={rewindDraft?.messageId === message.id}
+                              rewindSelected={rewindDraft?.listIndex === index}
                               rewindText={
-                                rewindDraft?.messageId === message.id ? rewindDraft.text : ""
+                                rewindDraft?.listIndex === index ? rewindDraft.text : ""
                               }
                               rewindCanSubmit={
                                 runtime.summary.canSend &&
