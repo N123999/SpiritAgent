@@ -73,7 +73,6 @@ impl PendingWorkspaceFile {
     }
 }
 
-#[derive(Default)]
 pub struct SessionModel {
     llm_history: Vec<LlmMessage>,
     llm_api_trace: Vec<Value>,
@@ -81,6 +80,21 @@ pub struct SessionModel {
     pending_image_paths: Vec<String>,
     pending_mcp_resources: Vec<PendingMcpResource>,
     loop_enabled: bool,
+    approval_level: String,
+}
+
+impl Default for SessionModel {
+    fn default() -> Self {
+        Self {
+            llm_history: Vec::new(),
+            llm_api_trace: Vec::new(),
+            pending_user_turn: None,
+            pending_image_paths: Vec::new(),
+            pending_mcp_resources: Vec::new(),
+            loop_enabled: false,
+            approval_level: "default".to_string(),
+        }
+    }
 }
 
 impl SessionModel {
@@ -95,6 +109,7 @@ impl SessionModel {
         self.pending_image_paths.clear();
         self.pending_mcp_resources.clear();
         self.loop_enabled = false;
+        self.approval_level = "default".to_string();
     }
 
     pub fn llm_history(&self) -> &[LlmMessage] {
@@ -143,6 +158,14 @@ impl SessionModel {
 
     pub fn set_loop_enabled(&mut self, enabled: bool) {
         self.loop_enabled = enabled;
+    }
+
+    pub fn approval_level(&self) -> &str {
+        &self.approval_level
+    }
+
+    pub fn set_approval_level(&mut self, approval_level: &str) {
+        self.approval_level = crate::ports::normalize_approval_level(approval_level);
     }
 
     pub fn add_pending_image(&mut self, path: String) {
@@ -241,6 +264,7 @@ impl SessionModel {
         self.pending_image_paths.clear();
         self.pending_mcp_resources.clear();
         self.loop_enabled = archive.loop_enabled;
+        self.approval_level = crate::ports::normalize_approval_level(&archive.approval_level);
     }
 
     pub fn to_archive(
@@ -275,6 +299,7 @@ impl SessionModel {
                 })
                 .collect(),
             loop_enabled: self.loop_enabled,
+            approval_level: self.approval_level.clone(),
             subagent_sessions: Vec::new(),
             desktop_messages: None,
             rewind: None,

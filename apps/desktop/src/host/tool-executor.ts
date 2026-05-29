@@ -29,7 +29,9 @@ import {
   type HostGeneratedImageSaveRequest,
   type HostBuiltinToolDefinitionEnvironment,
   type HostOperatingSystemInfo,
+  type ApprovalLevel,
   NodeHostToolService,
+  normalizeApprovalLevel,
   createNoopMcpAdapter,
 } from '@spirit-agent/host-internal';
 
@@ -56,6 +58,7 @@ export class DesktopToolExecutor
   private extensionToolDefinitions: JsonValue[];
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
   private imageGenerationAvailable = false;
+  private approvalLevel: ApprovalLevel = 'default';
 
   constructor(
     private readonly workspaceRoot: string,
@@ -83,6 +86,7 @@ export class DesktopToolExecutor
     }, {
       mcp: createNoopMcpAdapter(),
       getModelCompatibilityProfile: () => this.activeModelCompatibilityProfile,
+      getApprovalLevel: () => this.approvalLevel,
       ...(options.fileChangeObserver ? { fileChangeObserver: options.fileChangeObserver } : {}),
       ...(options.extensions ? { extensions: options.extensions } : {}),
       ...(options.dreamScope ? { dreamScope: options.dreamScope } : {}),
@@ -98,6 +102,14 @@ export class DesktopToolExecutor
   ): void {
     this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config as any);
     this.imageGenerationAvailable = config.imageGeneration !== undefined;
+  }
+
+  setApprovalLevel(level: ApprovalLevel): void {
+    this.approvalLevel = normalizeApprovalLevel(level);
+  }
+
+  approvalLevelSnapshot(): ApprovalLevel {
+    return this.approvalLevel;
   }
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {

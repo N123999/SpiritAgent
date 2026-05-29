@@ -59,6 +59,8 @@ import {
   type HostExtensionEvent,
   type HostRecordedFileChange,
   type ProviderListedModelEntry,
+  type ApprovalLevel,
+  normalizeApprovalLevel,
 } from '@spirit-agent/host-internal';
 
 import type {
@@ -312,6 +314,7 @@ type CommandPayloads = {
   commitChanges: { request: CommitChangesRequest };
   updateConfig: { request: UpdateConfigRequest };
   setLoopEnabled: { enabled: boolean };
+  setApprovalLevel: { approvalLevel: ApprovalLevel };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   addProviderModels: { request: AddProviderModelsRequest };
@@ -1466,6 +1469,19 @@ class DesktopHostService {
     });
   }
 
+  async setApprovalLevel(approvalLevel: ApprovalLevel): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      const normalized = normalizeApprovalLevel(approvalLevel);
+      const bundle = this.activeBundle();
+      bundle.approvalLevel = normalized;
+      const toolExecutor = await this.ensureToolExecutor(bundle);
+      toolExecutor.setApprovalLevel(normalized);
+      await this.persistCurrentSessionIfNeeded();
+      return this.buildSnapshot();
+    });
+  }
+
   async abortConversation(): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
@@ -2151,6 +2167,10 @@ class DesktopHostService {
         const typedPayload = payload as CommandPayloads['setLoopEnabled'];
         return this.setLoopEnabled(typedPayload.enabled === true);
       }
+      case 'setApprovalLevel': {
+        const typedPayload = payload as CommandPayloads['setApprovalLevel'];
+        return this.setApprovalLevel(typedPayload.approvalLevel);
+      }
       case 'abortConversation':
         return this.abortConversation();
       case 'continueAssistantCompletion': {
@@ -2384,6 +2404,8 @@ class DesktopHostService {
       });
     }
     runtime.setLoopEnabled(bundle.loopEnabled);
+    const toolExecutor = await this.ensureToolExecutor(bundle);
+    toolExecutor.setApprovalLevel(bundle.approvalLevel);
     bundle.runtime = runtime;
     if (bundle.id === this.sessionRegistry.activeSessionId()) {
       this.runtime = runtime;
@@ -2416,13 +2438,13 @@ class DesktopHostService {
     } else {
       await this.refreshExtensionToolDefinitions(bundle.toolExecutor);
     }
-
     if (isActive) {
       this.toolExecutor = bundle.toolExecutor;
     }
     if (!bundle.toolExecutor) {
       throw new Error('Desktop MCP tool executor 尚未初始化。');
     }
+    bundle.toolExecutor.setApprovalLevel(bundle.approvalLevel);
     return bundle.toolExecutor;
   }
 
@@ -2740,6 +2762,7 @@ class DesktopHostService {
       conversation: {
         messages: conversationMessages,
         loopEnabled: this.activeBundle().loopEnabled,
+        approvalLevel: this.activeBundle().approvalLevel,
         ...(this.runtime?.pendingUserTurn()
           ? { pendingUserTurn: this.runtime.pendingUserTurn() }
           : {}),
@@ -3607,6 +3630,7 @@ class DesktopHostService {
       desktopMessageTimeline: bundle.messageTimeline.snapshot(),
       rewind: bundle.rewind,
       loopEnabled: bundle.loopEnabled,
+      approvalLevel: bundle.approvalLevel,
     });
     if (bumpListSortAt) {
       bundle.listSortSavedAtUnixMs = savedAtUnixMs;

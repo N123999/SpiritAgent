@@ -462,6 +462,81 @@ test('requestFromFunctionCall parses grep is_regexp flag', async () => {
   }
 });
 
+test('authorize returns need-approval for shell commands under default approval level', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-auth-default-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      { getApprovalLevel: () => 'default' },
+    );
+    const decision = await service.authorize({
+      name: 'run_shell_command',
+      command: 'echo hello',
+      reason: 'test',
+    });
+
+    assert.equal(decision.kind, 'need-approval');
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('authorize allows shell commands under full-approval approval level', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-auth-full-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      { getApprovalLevel: () => 'full-approval' },
+    );
+    const decision = await service.authorize({
+      name: 'run_shell_command',
+      command: 'echo hello',
+      reason: 'test',
+    });
+
+    assert.deepEqual(decision, { kind: 'allowed' });
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('authorize still requires ask_questions under full-approval approval level', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-auth-questions-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      { getApprovalLevel: () => 'full-approval' },
+    );
+    const decision = await service.authorize({
+      name: 'ask_questions',
+      questions: [{
+        id: 'q1',
+        title: 'Choose one',
+        kind: 'single_select',
+        required: true,
+        options: [{ label: 'A' }],
+        allowCustomInput: false,
+      }],
+    });
+
+    assert.equal(decision.kind, 'need-questions');
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('requestFromFunctionCall accepts empty arguments for finish_task', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-finish-task-parse-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');

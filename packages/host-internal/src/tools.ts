@@ -362,6 +362,15 @@ export interface HostExtensionRuntimeBinding<THostApi> {
   logger?: Pick<Console, 'error' | 'log'>;
 }
 
+export type ApprovalLevel = 'default' | 'full-approval';
+
+export function normalizeApprovalLevel(value: unknown): ApprovalLevel {
+  if (value === 'full-approval' || value === 'full-access') {
+    return 'full-approval';
+  }
+  return 'default';
+}
+
 export interface NodeHostToolServiceOptions {
   mcp?: HostMcpAdapter;
   fileChangeObserver?: HostFileChangeObserver;
@@ -369,6 +378,7 @@ export interface NodeHostToolServiceOptions {
   dreamScope?: HostDreamScope;
   dreamSourceSession?: HostDreamSourceSessionRef;
   getModelCompatibilityProfile?: () => HostToolModelCompatibilityProfile | undefined;
+  getApprovalLevel?: () => ApprovalLevel;
 }
 
 interface ToolPermissionStore {
@@ -487,11 +497,14 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       : undefined;
     this.dreamSourceSession = options.dreamSourceSession;
     this.getModelCompatibilityProfile = options.getModelCompatibilityProfile;
+    this.getApprovalLevel = options.getApprovalLevel;
   }
 
   private readonly getModelCompatibilityProfile:
     | (() => HostToolModelCompatibilityProfile | undefined)
     | undefined;
+
+  private readonly getApprovalLevel: (() => ApprovalLevel) | undefined;
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {
     return detectShellForTools();
@@ -733,6 +746,16 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   async authorize(
     request: HostToolRequest<QuestionSpec>,
   ): Promise<HostAuthorizationDecision<QuestionSpec>> {
+    const isExtensionQuestions =
+      request.name === 'extension_tool' && request.approval_mode === 'need-questions';
+    const bypassHighRiskApproval =
+      this.getApprovalLevel?.() === 'full-approval'
+      && request.name !== 'ask_questions'
+      && !isExtensionQuestions;
+    if (bypassHighRiskApproval) {
+      return { kind: 'allowed' };
+    }
+
     switch (request.name) {
       case 'finish_task':
       case 'glob':

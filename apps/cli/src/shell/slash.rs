@@ -54,6 +54,7 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/extensions",
     "/log",
     "/language",
+    "/approval",
 ];
 
 const RESERVED_SLASH_COMMANDS: &[&str] = &[
@@ -77,6 +78,7 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/extensions",
     "/log",
     "/language",
+    "/approval",
 ];
 
 pub(crate) fn default_commands() -> Vec<String> {
@@ -127,7 +129,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 fn command_replacement(command: &str) -> String {
     match command {
         "/model" | "/sessions" | "/subagents" | "/image" | "/mcp" | "/create-rule" | "/log"
-        | "/language" | "/create-skill" | "/extensions" => {
+        | "/language" | "/approval" | "/create-skill" | "/extensions" => {
             format!("{} ", command)
         }
         _ => command.to_string(),
@@ -209,6 +211,9 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
 
     if query == "/language" || query.starts_with("/language ") {
         return vec![primary_help_suggestion("/language", query)];
+    }
+    if query == "/approval" || query.starts_with("/approval ") {
+        return vec![primary_help_suggestion("/approval", query)];
     }
 
     Vec::new()
@@ -402,6 +407,7 @@ pub(crate) fn help_text(_input_mode: MainInputMode, can_continue_last_turn: bool
         "- /mcp tools、/mcp resources、/mcp prompts 在只有一个 server 时可省略 server。".to_string(),
         "- /log 默认打开当前 CLI 日志；/log export 导出当前 CLI 日志快照；/log session export 导出 LLM 会话全文与请求轨迹。".to_string(),
         "- /language 不带参数时打开语言选择菜单。".to_string(),
+        "- /approval 不带参数时打开审批级别选择菜单。".to_string(),
         "- 鼠标默认开启：滚轮浏览历史；在 Conversation 内拖拽选区，Ctrl+Shift+C 或右键复制后会清除反色选区。".to_string(),
         "- Ctrl+O 切换辅助细节的显示/隐藏：包括思考内容、压缩摘要以及工具结果细节；已完成回复的辅助细节也会保留，失败与待确认工具保持展开。".to_string(),
         "".to_string(),
@@ -447,6 +453,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/extensions" => shell.handle_extensions_slash(message),
         "/log" => shell.handle_log_slash(&parts[1..]),
         "/language" => shell.handle_language_slash(&parts[1..]),
+        "/approval" => shell.handle_approval_slash(&parts[1..]),
         _ => {
             if !shell.handle_skill_alias_slash(message) {
                 shell.push_agent_message(t!("tui.slash.unknown_command").into_owned());

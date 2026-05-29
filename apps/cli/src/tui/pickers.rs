@@ -1,6 +1,16 @@
 use super::image_paths::list_local_image_files;
 use super::*;
 
+pub(crate) const APPROVAL_LEVEL_OPTIONS: [&str; 2] = ["default", "full-approval"];
+
+pub(crate) fn approval_level_picker_index(current: &str) -> usize {
+    if current == "full-approval" {
+        1
+    } else {
+        0
+    }
+}
+
 impl TuiShell {
     pub fn cancel_model_picker(&mut self) {
         self.model_picker_active = false;
@@ -8,6 +18,10 @@ impl TuiShell {
 
     pub fn cancel_language_picker(&mut self) {
         self.language_picker_active = false;
+    }
+
+    pub fn cancel_approval_picker(&mut self) {
+        self.approval_picker_active = false;
     }
 
     pub fn select_next_model(&mut self) {
@@ -24,6 +38,11 @@ impl TuiShell {
             return;
         }
         self.language_picker_index = (self.language_picker_index + 1) % locales.len();
+    }
+
+    pub fn select_next_approval_level(&mut self) {
+        self.approval_picker_index =
+            (self.approval_picker_index + 1) % APPROVAL_LEVEL_OPTIONS.len();
     }
 
     pub fn select_prev_model(&mut self) {
@@ -46,6 +65,14 @@ impl TuiShell {
             self.language_picker_index = locales.len() - 1;
         } else {
             self.language_picker_index -= 1;
+        }
+    }
+
+    pub fn select_prev_approval_level(&mut self) {
+        if self.approval_picker_index == 0 {
+            self.approval_picker_index = APPROVAL_LEVEL_OPTIONS.len() - 1;
+        } else {
+            self.approval_picker_index -= 1;
         }
     }
 
@@ -99,6 +126,21 @@ impl TuiShell {
 
         self.switch_ui_locale(selected);
         self.language_picker_active = false;
+    }
+
+    pub fn confirm_approval_picker(&mut self) {
+        let Some(selected) = APPROVAL_LEVEL_OPTIONS.get(self.approval_picker_index).copied() else {
+            self.approval_picker_active = false;
+            return;
+        };
+
+        match self.runtime.set_approval_level(selected) {
+            Ok(()) => self.push_agent_message(
+                t!("tui.approval.changed", level = crate::ui::approval_level_label(selected)).into_owned(),
+            ),
+            Err(err) => self.push_agent_message(t!("tui.approval.failed", err = err).into_owned()),
+        }
+        self.approval_picker_active = false;
     }
 
     pub fn cancel_chat_picker(&mut self) {
@@ -226,6 +268,7 @@ impl TuiShell {
         self.exit_rewind_picker_mode();
         self.model_picker_active = false;
         self.language_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.forms.active = None;
@@ -263,6 +306,12 @@ impl TuiShell {
             .unwrap_or(0);
         self.reset_primary_picker_overlay();
         self.language_picker_active = true;
+    }
+
+    pub(super) fn open_approval_picker(&mut self) {
+        self.approval_picker_index = approval_level_picker_index(self.runtime.approval_level());
+        self.reset_primary_picker_overlay();
+        self.approval_picker_active = true;
     }
 
     pub(super) fn open_chat_picker(&mut self) {

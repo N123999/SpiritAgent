@@ -1,6 +1,6 @@
 import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
 import type { ModelReasoningEffort } from '@spirit-agent/agent-core/reasoning-effort';
-import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult } from '@spirit-agent/host-internal';
+import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult, ApprovalLevel } from '@spirit-agent/host-internal';
 
 import type { ComposerLocalFileAttachmentView } from './lib/local-file-attachments.js';
 
@@ -623,6 +623,7 @@ export interface McpStatusSnapshot {
 export interface ConversationSnapshot {
   messages: ConversationMessageSnapshot[];
   loopEnabled: boolean;
+  approvalLevel: ApprovalLevel;
   pendingUserTurn?: string;
   pendingImagePaths: string[];
   pendingMcpResources: PendingMcpResource[];

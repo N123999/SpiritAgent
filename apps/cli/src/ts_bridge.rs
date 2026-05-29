@@ -120,6 +120,10 @@ struct LocalMcpToolFailedEvent {
     subagent_title: Option<String>,
 }
 
+fn default_bridge_approval_level() -> String {
+    "default".to_string()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BridgeRuntimeSnapshot {
@@ -137,6 +141,8 @@ struct BridgeRuntimeSnapshot {
     is_busy: bool,
     #[serde(default)]
     loop_enabled: bool,
+    #[serde(default = "default_bridge_approval_level")]
+    approval_level: String,
     background_tool_status: Option<String>,
 }
 
@@ -156,6 +162,8 @@ struct BridgeChatArchive {
     llm_history: Vec<ArchivedLlmMessage>,
     #[serde(default)]
     loop_enabled: bool,
+    #[serde(default = "default_bridge_approval_level")]
+    approval_level: String,
     #[serde(default)]
     subagent_sessions: Vec<BridgeSubagentSessionArchiveEntry>,
     #[serde(default)]
@@ -1000,6 +1008,7 @@ impl TsBridgeRuntime {
                 .collect(),
             llm_history: bridge_archive.llm_history,
             loop_enabled: bridge_archive.loop_enabled,
+            approval_level: crate::ports::normalize_approval_level(&bridge_archive.approval_level),
             subagent_sessions: bridge_archive
                 .subagent_sessions
                 .into_iter()
@@ -1211,6 +1220,25 @@ impl TsBridgeRuntime {
             "runtime.setLoopEnabled",
             Some(json!({
                 "enabled": enabled,
+            })),
+        )?;
+        self.apply_snapshot(serde_json::from_value(value)?);
+        Ok(())
+    }
+
+    pub fn approval_level(&self) -> &str {
+        self.session.approval_level()
+    }
+
+    pub fn set_approval_level(&mut self, approval_level: &str) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已处于失败状态。"));
+        }
+        let normalized = crate::ports::normalize_approval_level(approval_level);
+        let value = self.call_bridge(
+            "runtime.setApprovalLevel",
+            Some(json!({
+                "approvalLevel": normalized,
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(value)?);
@@ -1635,6 +1663,7 @@ impl TsBridgeRuntime {
                 "enabledSkillCatalog": self.enabled_skill_catalog,
                 "planMetadata": self.plan_metadata,
                 "loopEnabled": self.session.loop_enabled(),
+                "approvalLevel": self.session.approval_level(),
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
@@ -2025,6 +2054,8 @@ impl TsBridgeRuntime {
         self.session.clear_pending_images();
         self.session.clear_pending_mcp_resources();
         self.session.set_loop_enabled(snapshot.loop_enabled);
+        self.session
+            .set_approval_level(snapshot.approval_level.as_str());
         if let Some(turn) = snapshot.pending_user_turn {
             self.session.set_pending_user_turn(turn);
         }
@@ -2991,6 +3022,7 @@ mod tests {
             child_sessions: vec![],
             is_busy: true,
             loop_enabled: false,
+            approval_level: "default".to_string(),
             background_tool_status: None,
         }
     }
@@ -3018,6 +3050,7 @@ mod tests {
             child_sessions: vec![],
             is_busy: false,
             loop_enabled: false,
+            approval_level: "default".to_string(),
             background_tool_status: None,
         }
     }
@@ -3545,6 +3578,7 @@ fn chat_archive_to_bridge_json(archive: &crate::ports::ChatArchive) -> Value {
         }).collect::<Vec<_>>(),
         "llmHistory": archive.llm_history.iter().map(archived_llm_message_to_json).collect::<Vec<_>>(),
         "loopEnabled": archive.loop_enabled,
+        "approvalLevel": archive.approval_level,
         "subagentSessions": archive.subagent_sessions.iter().map(|entry| {
             json!({
                 "summary": {

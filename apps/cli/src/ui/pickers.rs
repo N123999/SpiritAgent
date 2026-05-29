@@ -258,6 +258,7 @@ pub(in crate::ui) fn suggestion_summary(suggestion: &InputSuggestion) -> String 
         "/extensions" => t!("ui.suggestion.summary.extensions").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
         "/language" => t!("ui.suggestion.summary.language").into_owned(),
+        "/approval" => t!("ui.suggestion.summary.approval").into_owned(),
         "/start-implementing" => t!("ui.suggestion.summary.start_implementing").into_owned(),
         _ => String::new(),
     }
@@ -362,6 +363,12 @@ pub(in crate::ui) fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec
             "    /language".to_string(),
             "    /language en".to_string(),
             "    /language zh-CN".to_string(),
+        ],
+        "/approval" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /approval".to_string(),
+            "    /approval default".to_string(),
+            "    /approval full-approval".to_string(),
         ],
         "/start-implementing" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
@@ -489,6 +496,38 @@ pub(in crate::ui) fn build_subagent_picker_lines(
                 subtle_aux_text_style(),
             )));
         }
+    }
+
+    lines
+}
+
+pub(crate) fn approval_level_label(level: &str) -> String {
+    if level == "full-approval" {
+        t!("ui.footer.approval.full").into_owned()
+    } else {
+        t!("ui.footer.approval.default").into_owned()
+    }
+}
+
+pub(in crate::ui) fn build_approval_picker_lines(
+    app: &TuiViewModel,
+    max_items: usize,
+) -> Vec<Line<'static>> {
+    const OPTIONS: [&str; 2] = ["default", "full-approval"];
+    let selected = app
+        .approval_picker_index
+        .min(OPTIONS.len().saturating_sub(1));
+    let total = OPTIONS.len();
+    let (start, end) = inline_picker_bounds(total, selected, max_items);
+
+    let mut lines = Vec::new();
+    for (idx, level) in OPTIONS.iter().enumerate().take(end).skip(start) {
+        let is_selected = idx == selected;
+        let row_style = inline_picker_text_style(is_selected);
+        lines.push(Line::from(vec![
+            Span::styled(picker_selection_prefix(is_selected), row_style),
+            Span::styled(approval_level_label(level), row_style),
+        ]));
     }
 
     lines

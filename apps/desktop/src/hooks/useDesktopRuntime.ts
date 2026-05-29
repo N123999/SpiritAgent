@@ -1483,6 +1483,23 @@ export function useDesktopRuntime() {
     }
   }, [api, applySnapshot, refreshSessions]);
 
+  const setApprovalLevel = useCallback(async (approvalLevel: import('@spirit-agent/host-internal').ApprovalLevel): Promise<boolean> => {
+    if (!api) {
+      return false;
+    }
+
+    try {
+      const next = await api.setApprovalLevel(approvalLevel);
+      applySnapshot(next);
+      setRuntimeError("");
+      void refreshSessions();
+      return true;
+    } catch (error) {
+      setRuntimeError(describeError(error));
+      return false;
+    }
+  }, [api, applySnapshot, refreshSessions]);
+
   const continueAssistantCompletion = useCallback(
     async (messageId: number): Promise<boolean> => {
       if (!api) {
@@ -1765,6 +1782,7 @@ export function useDesktopRuntime() {
     inspectMcpServer,
     abortConversation,
     setLoopEnabled,
+    setApprovalLevel,
     continueAssistantCompletion,
     openSession,
     listWorkspaceFileReferenceSuggestions,

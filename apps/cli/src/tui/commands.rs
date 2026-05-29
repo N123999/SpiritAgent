@@ -522,6 +522,28 @@ impl TuiShell {
         }
     }
 
+    pub(crate) fn handle_approval_slash(&mut self, args: &[&str]) {
+        match args {
+            [] => self.open_approval_picker(),
+            [level] => {
+                let normalized = crate::ports::normalize_approval_level(level);
+                match self.runtime.set_approval_level(&normalized) {
+                    Ok(()) => self.push_agent_message(
+                        t!(
+                            "tui.approval.changed",
+                            level = crate::ui::approval_level_label(&normalized)
+                        )
+                        .into_owned(),
+                    ),
+                    Err(err) => self.push_agent_message(
+                        t!("tui.approval.failed", err = err).into_owned(),
+                    ),
+                }
+            }
+            _ => self.push_agent_message(t!("tui.approval.usage").into_owned()),
+        }
+    }
+
     pub(crate) fn handle_language_slash(&mut self, args: &[&str]) {
         match args {
             [] => self.open_language_picker(),
