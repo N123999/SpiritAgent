@@ -673,7 +673,7 @@ function ComposerSurface({
   return (
     <div
       data-spirit-surface="composer-surface"
-      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-shadow focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/25 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
+      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-0 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
     >
       <ComposerLocalFileStrip
         attachments={localFileAttachments}
@@ -1626,6 +1626,7 @@ export default function App() {
 
   const models = snapshot?.config.models ?? [];
   const messages = snapshot?.conversation.messages ?? [];
+  const isEmptySession = messages.length === 0;
   const rewindWarnings = snapshot?.conversation.rewindWarnings ?? [];
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
   const pendingQuestions = runtime.pendingQuestions;
@@ -2389,22 +2390,10 @@ export default function App() {
                   data-spirit-surface="conversation-scroll-body"
                   className={cn(
                     "min-h-full w-full bg-background",
-                    "pb-[calc(12rem+env(safe-area-inset-bottom,0px))]",
+                    !isEmptySession && "pb-[calc(12rem+env(safe-area-inset-bottom,0px))]",
                   )}
                 >
-                  {messages.length === 0 ? (
-                    <div
-                      data-spirit-surface="conversation-empty"
-                      className={cn(
-                        "mx-auto box-border flex min-h-[calc(100dvh-11rem)] w-full items-center justify-center px-3",
-                        CONVERSATION_MAX_W,
-                      )}
-                    >
-                      <p className="text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-                        Start something.
-                      </p>
-                    </div>
-                  ) : (
+                  {!isEmptySession ? (
                     <div
                       data-spirit-surface="conversation-list-shell"
                       className={cn(
@@ -2480,36 +2469,61 @@ export default function App() {
                         })}
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </ScrollArea>
 
               <div
                 data-spirit-surface="composer-dock"
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-transparent pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+                className={cn(
+                  "pointer-events-none absolute inset-x-0 z-10 bg-transparent",
+                  isEmptySession
+                    ? "inset-y-0 flex items-center justify-center px-3 pb-[env(safe-area-inset-bottom,0px)]"
+                    : "bottom-0 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]",
+                )}
               >
-                <div className={cn("pointer-events-auto mx-auto w-full space-y-2 px-3", CONVERSATION_MAX_W)}>
-                {messages.length === 0 ? (
-                  <EmptyStateWorkspaceSelector
-                    currentWorkspaceRoot={snapshot?.workspaceRoot ?? ""}
-                    availableWorkspaces={snapshot?.availableWorkspaces ?? []}
-                    disabled={runtime.busyAction === "bootstrap" || runtime.busyAction === "session"}
-                    onSelectWorkspace={(workspaceRoot) => {
-                      if (!snapshot?.workspaceRoot || sameWorkspacePath(snapshot.workspaceRoot, workspaceRoot)) {
-                        return;
-                      }
-                      void runtime.switchWorkspaceRoot(workspaceRoot);
-                    }}
-                    onAddWorkspace={() => {
-                      void (async () => {
-                        const workspaceRoot = await runtime.pickWorkspaceDirectory();
-                        if (!workspaceRoot) {
+                <div
+                  className={cn(
+                    "pointer-events-auto mx-auto w-full px-3",
+                    CONVERSATION_MAX_W,
+                  )}
+                >
+                {isEmptySession ? (
+                  <p className="mb-6 text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+                    Start something.
+                  </p>
+                ) : null}
+                <div className="space-y-2">
+                {isEmptySession ? (
+                  <div className="flex items-center gap-2 px-0.5">
+                    <EmptyStateWorkspaceSelector
+                      currentWorkspaceRoot={snapshot?.workspaceRoot ?? ""}
+                      availableWorkspaces={snapshot?.availableWorkspaces ?? []}
+                      disabled={runtime.busyAction === "bootstrap" || runtime.busyAction === "session"}
+                      onSelectWorkspace={(workspaceRoot) => {
+                        if (!snapshot?.workspaceRoot || sameWorkspacePath(snapshot.workspaceRoot, workspaceRoot)) {
                           return;
                         }
-                        await runtime.rememberWorkspaceRoot(workspaceRoot);
-                      })();
-                    }}
-                  />
+                        void runtime.switchWorkspaceRoot(workspaceRoot);
+                      }}
+                      onAddWorkspace={() => {
+                        void (async () => {
+                          const workspaceRoot = await runtime.pickWorkspaceDirectory();
+                          if (!workspaceRoot) {
+                            return;
+                          }
+                          await runtime.rememberWorkspaceRoot(workspaceRoot);
+                        })();
+                      }}
+                    />
+                    <ApprovalLevelMenu
+                      approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
+                      disabled={activeSessionReadOnly}
+                      onApprovalLevelChange={(level) => {
+                        void runtime.setApprovalLevel(level);
+                      }}
+                    />
+                  </div>
                 ) : null}
                 {runtime.runtimeError ? (
                   <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
@@ -2675,20 +2689,23 @@ export default function App() {
                     onRemoveLocalFileAttachment={removeLocalFileAttachment}
                     onPaste={handleComposerPaste}
                   />
-                  <div className="flex justify-start px-3">
-                    <ApprovalLevelMenu
-                      approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
-                      disabled={activeSessionReadOnly}
-                      onApprovalLevelChange={(level) => {
-                        void runtime.setApprovalLevel(level);
-                      }}
-                    />
-                  </div>
+                  {!isEmptySession ? (
+                    <div className="flex justify-start px-3">
+                      <ApprovalLevelMenu
+                        approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
+                        disabled={activeSessionReadOnly}
+                        onApprovalLevelChange={(level) => {
+                          void runtime.setApprovalLevel(level);
+                        }}
+                      />
+                    </div>
+                  ) : null}
                   {snapshot?.conversation.pendingQuestions ? (
                     <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
                       请先完成上方问卷
                     </p>
                   ) : null}
+                </div>
                 </div>
                 </div>
               </div>
