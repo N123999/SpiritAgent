@@ -505,9 +505,12 @@ export function useDesktopRuntime() {
     });
   }, [pendingQuestions]);
 
-  /** `isBusy` 期间连续 poll 直至空闲，无固定间隔（便于观察流式与 IPC 真实性能）。 */
+  const backgroundSessionsBusy = sessions.some((session) => session.isBusy === true);
+
+  /** Active or background session busy: poll until none are busy. */
   useEffect(() => {
-    if (!api || !snapshot?.conversation.isBusy) {
+    const shouldPoll = snapshot?.conversation.isBusy === true || backgroundSessionsBusy;
+    if (!api || !shouldPoll) {
       return;
     }
 
@@ -521,8 +524,14 @@ export function useDesktopRuntime() {
             break;
           }
           applySnapshot(next);
-          if (!next.conversation.isBusy) {
-            void refreshSessions();
+          const sessionItems = await api.listSessions();
+          if (cancelled) {
+            break;
+          }
+          setSessions(sessionItems);
+          const stillBusy =
+            next.conversation.isBusy === true || sessionItems.some((session) => session.isBusy === true);
+          if (!stillBusy) {
             break;
           }
         }
@@ -536,7 +545,7 @@ export function useDesktopRuntime() {
     return () => {
       cancelled = true;
     };
-  }, [api, applySnapshot, refreshSessions, snapshot?.conversation.isBusy]);
+  }, [api, applySnapshot, backgroundSessionsBusy, snapshot?.conversation.isBusy]);
 
   useEffect(() => {
     if (!api?.subscribeDreamUpdates) {

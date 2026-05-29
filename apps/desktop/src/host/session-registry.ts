@@ -114,6 +114,20 @@ export class SessionRegistry {
     return bundle;
   }
 
+  /** New empty foreground session; prior bundles (including busy runs) stay loaded. */
+  beginNewActive(workspaceRoot: string): SessionBundle {
+    const id = `__draft__${Date.now()}`;
+    const bundle = createEmptySessionBundle(workspaceRoot, id);
+    this.evictIfNeeded();
+    this.bundles.set(id, bundle);
+    this.activeId = id;
+    return bundle;
+  }
+
+  isBundleBusy(bundle: SessionBundle): boolean {
+    return bundle.runtime?.isBusy() === true;
+  }
+
   clear(): void {
     this.bundles.clear();
     this.activeId = undefined;

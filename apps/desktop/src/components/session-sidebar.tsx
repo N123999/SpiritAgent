@@ -430,7 +430,7 @@ export function SessionSidebar({
                     <div key={group.id} className="min-w-0">
                       <button
                         type="button"
-                        disabled={disabled || sessionNavigationBusy}
+                        disabled={disabled}
                         aria-expanded={expanded}
                         aria-controls={panelId}
                         onClick={() => toggleWorkspaceGroup(group.id)}
@@ -468,7 +468,7 @@ export function SessionSidebar({
                               <button
                                 key={session.path}
                                 type="button"
-                                disabled={disabled || sessionNavigationBusy}
+                                disabled={disabled}
                                 aria-current={sessionRowSelected ? "true" : undefined}
                                 onClick={() => onSelectSession(session.path)}
                                 className={cn(
@@ -487,6 +487,12 @@ export function SessionSidebar({
                                 >
                                   {session.displayName}
                                 </span>
+                                {session.isBusy ? (
+                                  <span
+                                    className="size-1.5 shrink-0 rounded-full bg-primary animate-pulse"
+                                    aria-label="运行中"
+                                  />
+                                ) : null}
                               </button>
                             );
                           })}

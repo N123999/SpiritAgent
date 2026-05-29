@@ -447,6 +447,10 @@ export interface SessionListItem {
   gitBranch?: string;
   kind?: 'stored' | 'ephemeral';
   readOnly?: boolean;
+  /** Agent turn in progress for this session (in-memory registry). */
+  isBusy?: boolean;
+  /** Currently focused session in the desktop host. */
+  isActive?: boolean;
 }
 
 export interface DesktopWorkspaceListItem {

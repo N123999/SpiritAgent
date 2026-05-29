@@ -1,4 +1,6 @@
-import type { ChatArchive, LlmActiveSkill } from '@spirit-agent/agent-core';
+import type { ChatArchive, LlmActiveSkill, SpiritLlmTransport } from '@spirit-agent/agent-core';
+
+import type { DesktopRuntime } from './runtime.js';
 
 import type {
   ActiveSessionSnapshot,
@@ -28,6 +30,8 @@ export interface SessionBundle {
   nextTimelineAssistantSegmentKind: DesktopTimelineSegmentKind;
   deferredRuntimeRefreshWhileBusy: boolean;
   lastPersistedAtUnixMs?: number;
+  runtime?: DesktopRuntime;
+  runtimeTransport?: SpiritLlmTransport;
 }
 
 export function createEmptySessionBundle(workspaceRoot: string, id = '__draft__'): SessionBundle {
