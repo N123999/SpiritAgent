@@ -175,6 +175,34 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
   pre {
     @apply font-sans;
   }
+
+  /* 可点击控件统一手型光标；disabled 保持 not-allowed（组件内 cursor-default 等 utility 仍可覆盖） */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="combobox"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  a[href] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [role="menuitem"][data-disabled],
+  [role="option"][data-disabled],
+  [role="tab"][aria-disabled="true"],
+  [role="switch"][aria-disabled="true"],
+  [role="checkbox"][aria-disabled="true"],
+  [role="radio"][aria-disabled="true"],
+  [role="combobox"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 /* WebView2 / Chrome：用细轨道 + 无箭头，替代系统默认“经典”滚动条 */
