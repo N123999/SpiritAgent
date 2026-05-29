@@ -628,7 +628,7 @@ async function handleApiRequest({
     return;
   }
 
-  if (request.method === 'POST' && pathname === '/api/access') {
+  if (request.method === 'POST' && pathname === '/api/approval') {
     writeJson(
       request,
       response,

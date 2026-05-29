@@ -362,10 +362,13 @@ export interface HostExtensionRuntimeBinding<THostApi> {
   logger?: Pick<Console, 'error' | 'log'>;
 }
 
-export type ApprovalLevel = 'default' | 'full-access';
+export type ApprovalLevel = 'default' | 'full-approval';
 
 export function normalizeApprovalLevel(value: unknown): ApprovalLevel {
-  return value === 'full-access' ? 'full-access' : 'default';
+  if (value === 'full-approval' || value === 'full-access') {
+    return 'full-approval';
+  }
+  return 'default';
 }
 
 export interface NodeHostToolServiceOptions {
@@ -746,7 +749,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const isExtensionQuestions =
       request.name === 'extension_tool' && request.approval_mode === 'need-questions';
     const bypassHighRiskApproval =
-      this.getApprovalLevel?.() === 'full-access'
+      this.getApprovalLevel?.() === 'full-approval'
       && request.name !== 'ask_questions'
       && !isExtensionQuestions;
     if (bypassHighRiskApproval) {

@@ -522,25 +522,25 @@ impl TuiShell {
         }
     }
 
-    pub(crate) fn handle_access_slash(&mut self, args: &[&str]) {
+    pub(crate) fn handle_approval_slash(&mut self, args: &[&str]) {
         match args {
-            [] => self.open_access_picker(),
+            [] => self.open_approval_picker(),
             [level] => {
                 let normalized = crate::ports::normalize_approval_level(level);
                 match self.runtime.set_approval_level(&normalized) {
                     Ok(()) => self.push_agent_message(
                         t!(
-                            "tui.access.changed",
-                            level = crate::ui::access_level_label(&normalized)
+                            "tui.approval.changed",
+                            level = crate::ui::approval_level_label(&normalized)
                         )
                         .into_owned(),
                     ),
                     Err(err) => self.push_agent_message(
-                        t!("tui.access.failed", err = err).into_owned(),
+                        t!("tui.approval.failed", err = err).into_owned(),
                     ),
                 }
             }
-            _ => self.push_agent_message(t!("tui.access.usage").into_owned()),
+            _ => self.push_agent_message(t!("tui.approval.usage").into_owned()),
         }
     }
 

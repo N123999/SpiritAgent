@@ -327,7 +327,7 @@ export interface ChatArchive {
   llmHistory: Array<StoredLlmMessageArchiveEntry | LegacyLlmMessageArchiveEntry>;
   subagentSessions?: SubagentSessionArchiveEntry[];
   loopEnabled?: boolean;
-  approvalLevel?: 'default' | 'full-access';
+  approvalLevel?: 'default' | 'full-approval';
 }
 
 export type McpStatusState = 'idle' | 'loading' | 'ready' | 'error';

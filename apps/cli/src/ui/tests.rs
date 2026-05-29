@@ -91,8 +91,8 @@ fn build_view_model(message: ChatMessage) -> TuiViewModel {
         model_picker_index: 0,
         language_picker_active: false,
         language_picker_index: 0,
-        access_picker_active: false,
-        access_picker_index: 0,
+        approval_picker_active: false,
+        approval_picker_index: 0,
         chat_picker_active: false,
         chat_picker_index: 0,
         chat_picker_files: vec![],
@@ -292,9 +292,9 @@ fn footer_shows_mode_without_tab_toggle_hint() {
 }
 
 #[test]
-fn footer_full_access_approval_uses_yellow_style() {
+fn footer_full_approval_uses_yellow_style() {
     let mut app = build_view_model(ChatMessage::new(MessageRole::Agent, "welcome"));
-    app.approval_level = "full-access".to_string();
+    app.approval_level = "full-approval".to_string();
     let line = build_footer_line(&app, 80);
     assert!(line
         .spans

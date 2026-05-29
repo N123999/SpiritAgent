@@ -906,7 +906,7 @@ impl TuiShell {
         self.forms.active = None;
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.subagent.picker_active = false;
         self.close_subagent_view();

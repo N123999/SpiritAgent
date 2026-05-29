@@ -194,8 +194,8 @@ fn default_approval_level() -> String {
 }
 
 pub fn normalize_approval_level(value: &str) -> String {
-    if value == "full-access" {
-        "full-access".to_string()
+    if value == "full-approval" || value == "full-access" {
+        "full-approval".to_string()
     } else {
         "default".to_string()
     }

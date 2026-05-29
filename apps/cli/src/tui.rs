@@ -83,8 +83,8 @@ pub struct TuiShell {
     model_picker_index: usize,
     language_picker_active: bool,
     language_picker_index: usize,
-    access_picker_active: bool,
-    access_picker_index: usize,
+    approval_picker_active: bool,
+    approval_picker_index: usize,
     chat_picker_active: bool,
     chat_picker_index: usize,
     chat_picker_files: Vec<String>,
@@ -168,8 +168,8 @@ impl TuiShell {
             model_picker_index: 0,
             language_picker_active: false,
             language_picker_index: 0,
-            access_picker_active: false,
-            access_picker_index: 0,
+            approval_picker_active: false,
+            approval_picker_index: 0,
             chat_picker_active: false,
             chat_picker_index: 0,
             chat_picker_files: vec![],
@@ -415,8 +415,8 @@ impl TuiShell {
         self.language_picker_active
     }
 
-    pub fn is_access_picker_active(&self) -> bool {
-        self.access_picker_active
+    pub fn is_approval_picker_active(&self) -> bool {
+        self.approval_picker_active
     }
 
     pub fn is_chat_picker_active(&self) -> bool {

@@ -10,12 +10,12 @@ import {
 import { cn } from "@/lib/utils";
 
 const APPROVAL_LEVEL_OPTIONS: Array<{ value: ApprovalLevel; label: string }> = [
-  { value: "default", label: "默认权限" },
-  { value: "full-access", label: "完全访问权限" },
+  { value: "default", label: "默认审批" },
+  { value: "full-approval", label: "绕过审批" },
 ];
 
 function approvalLevelLabel(level: ApprovalLevel): string {
-  return APPROVAL_LEVEL_OPTIONS.find((option) => option.value === level)?.label ?? "默认权限";
+  return APPROVAL_LEVEL_OPTIONS.find((option) => option.value === level)?.label ?? "默认审批";
 }
 
 type ApprovalLevelMenuProps = {
@@ -29,7 +29,7 @@ export function ApprovalLevelMenu({
   disabled = false,
   onApprovalLevelChange,
 }: ApprovalLevelMenuProps) {
-  const isFullAccess = approvalLevel === "full-access";
+  const isFullApproval = approvalLevel === "full-approval";
   const label = approvalLevelLabel(approvalLevel);
 
   return (
@@ -41,11 +41,11 @@ export function ApprovalLevelMenu({
           disabled={disabled}
           className={cn(
             "inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-1 text-left text-xs font-medium outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50",
-            isFullAccess ? "text-yellow-500 hover:text-yellow-500" : "text-muted-foreground",
+            isFullApproval ? "text-yellow-500 hover:text-yellow-500" : "text-muted-foreground",
           )}
         >
           <ShieldCheck
-            className={cn("size-3.5 shrink-0", isFullAccess ? "text-yellow-500" : "text-muted-foreground/80")}
+            className={cn("size-3.5 shrink-0", isFullApproval ? "text-yellow-500" : "text-muted-foreground/80")}
             aria-hidden
           />
           <span className="min-w-0 truncate" title={label}>
@@ -54,7 +54,7 @@ export function ApprovalLevelMenu({
           <ChevronDown
             className={cn(
               "size-3 shrink-0",
-              isFullAccess ? "text-yellow-500/80" : "text-muted-foreground/80",
+              isFullApproval ? "text-yellow-500/80" : "text-muted-foreground/80",
             )}
             aria-hidden
           />

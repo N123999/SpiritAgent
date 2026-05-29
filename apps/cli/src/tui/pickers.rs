@@ -1,10 +1,10 @@
 use super::image_paths::list_local_image_files;
 use super::*;
 
-pub(crate) const ACCESS_LEVEL_OPTIONS: [&str; 2] = ["default", "full-access"];
+pub(crate) const APPROVAL_LEVEL_OPTIONS: [&str; 2] = ["default", "full-approval"];
 
-pub(crate) fn access_level_picker_index(current: &str) -> usize {
-    if current == "full-access" {
+pub(crate) fn approval_level_picker_index(current: &str) -> usize {
+    if current == "full-approval" {
         1
     } else {
         0
@@ -20,8 +20,8 @@ impl TuiShell {
         self.language_picker_active = false;
     }
 
-    pub fn cancel_access_picker(&mut self) {
-        self.access_picker_active = false;
+    pub fn cancel_approval_picker(&mut self) {
+        self.approval_picker_active = false;
     }
 
     pub fn select_next_model(&mut self) {
@@ -40,9 +40,9 @@ impl TuiShell {
         self.language_picker_index = (self.language_picker_index + 1) % locales.len();
     }
 
-    pub fn select_next_access_level(&mut self) {
-        self.access_picker_index =
-            (self.access_picker_index + 1) % ACCESS_LEVEL_OPTIONS.len();
+    pub fn select_next_approval_level(&mut self) {
+        self.approval_picker_index =
+            (self.approval_picker_index + 1) % APPROVAL_LEVEL_OPTIONS.len();
     }
 
     pub fn select_prev_model(&mut self) {
@@ -68,11 +68,11 @@ impl TuiShell {
         }
     }
 
-    pub fn select_prev_access_level(&mut self) {
-        if self.access_picker_index == 0 {
-            self.access_picker_index = ACCESS_LEVEL_OPTIONS.len() - 1;
+    pub fn select_prev_approval_level(&mut self) {
+        if self.approval_picker_index == 0 {
+            self.approval_picker_index = APPROVAL_LEVEL_OPTIONS.len() - 1;
         } else {
-            self.access_picker_index -= 1;
+            self.approval_picker_index -= 1;
         }
     }
 
@@ -128,19 +128,19 @@ impl TuiShell {
         self.language_picker_active = false;
     }
 
-    pub fn confirm_access_picker(&mut self) {
-        let Some(selected) = ACCESS_LEVEL_OPTIONS.get(self.access_picker_index).copied() else {
-            self.access_picker_active = false;
+    pub fn confirm_approval_picker(&mut self) {
+        let Some(selected) = APPROVAL_LEVEL_OPTIONS.get(self.approval_picker_index).copied() else {
+            self.approval_picker_active = false;
             return;
         };
 
         match self.runtime.set_approval_level(selected) {
             Ok(()) => self.push_agent_message(
-                t!("tui.access.changed", level = crate::ui::access_level_label(selected)).into_owned(),
+                t!("tui.approval.changed", level = crate::ui::approval_level_label(selected)).into_owned(),
             ),
-            Err(err) => self.push_agent_message(t!("tui.access.failed", err = err).into_owned()),
+            Err(err) => self.push_agent_message(t!("tui.approval.failed", err = err).into_owned()),
         }
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
     }
 
     pub fn cancel_chat_picker(&mut self) {
@@ -268,7 +268,7 @@ impl TuiShell {
         self.exit_rewind_picker_mode();
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.forms.active = None;
@@ -308,10 +308,10 @@ impl TuiShell {
         self.language_picker_active = true;
     }
 
-    pub(super) fn open_access_picker(&mut self) {
-        self.access_picker_index = access_level_picker_index(self.runtime.approval_level());
+    pub(super) fn open_approval_picker(&mut self) {
+        self.approval_picker_index = approval_level_picker_index(self.runtime.approval_level());
         self.reset_primary_picker_overlay();
-        self.access_picker_active = true;
+        self.approval_picker_active = true;
     }
 
     pub(super) fn open_chat_picker(&mut self) {

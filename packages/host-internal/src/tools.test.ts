@@ -485,7 +485,7 @@ test('authorize returns need-approval for shell commands under default approval 
   }
 });
 
-test('authorize allows shell commands under full-access approval level', async () => {
+test('authorize allows shell commands under full-approval approval level', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-auth-full-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
 
@@ -494,7 +494,7 @@ test('authorize allows shell commands under full-access approval level', async (
 
     const service = new NodeHostToolService(
       { workspaceRoot, spiritDataDir },
-      { getApprovalLevel: () => 'full-access' },
+      { getApprovalLevel: () => 'full-approval' },
     );
     const decision = await service.authorize({
       name: 'run_shell_command',
@@ -508,7 +508,7 @@ test('authorize allows shell commands under full-access approval level', async (
   }
 });
 
-test('authorize still requires ask_questions under full-access approval level', async () => {
+test('authorize still requires ask_questions under full-approval approval level', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-auth-questions-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
 
@@ -517,7 +517,7 @@ test('authorize still requires ask_questions under full-access approval level', 
 
     const service = new NodeHostToolService(
       { workspaceRoot, spiritDataDir },
-      { getApprovalLevel: () => 'full-access' },
+      { getApprovalLevel: () => 'full-approval' },
     );
     const decision = await service.authorize({
       name: 'ask_questions',

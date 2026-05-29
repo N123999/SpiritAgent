@@ -70,8 +70,8 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
     } else {
         t!("ui.footer.loop.off")
     };
-    let approval_label = access_level_label(&app.approval_level);
-    let approval_style = if app.approval_level == "full-access" {
+    let approval_label = approval_level_label(&app.approval_level);
+    let approval_style = if app.approval_level == "full-approval" {
         Style::default().fg(Color::Yellow)
     } else {
         footer_style

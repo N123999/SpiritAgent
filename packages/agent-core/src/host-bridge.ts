@@ -562,7 +562,10 @@ let cliHostInternal: CliHostInternalState | undefined;
 let currentApprovalLevel: import('./host-bridge/protocol.js').BridgeApprovalLevel = 'default';
 
 function normalizeBridgeApprovalLevel(value: unknown): import('./host-bridge/protocol.js').BridgeApprovalLevel {
-  return value === 'full-access' ? 'full-access' : 'default';
+  if (value === 'full-approval' || value === 'full-access') {
+    return 'full-approval';
+  }
+  return 'default';
 }
 
 function logBridge(message: string, extra?: unknown): void {

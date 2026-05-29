@@ -504,7 +504,7 @@ impl TuiShell {
         self.forms.active = Some(bottom_form::new_mcp_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
@@ -515,7 +515,7 @@ impl TuiShell {
         self.forms.active = Some(bottom_form::new_model_add_form());
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
@@ -531,7 +531,7 @@ impl TuiShell {
         self.forms.active = Some(ask_questions::new_form(tool_call_id, tool_name, questions));
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
@@ -591,7 +591,7 @@ impl TuiShell {
         ));
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
@@ -603,7 +603,7 @@ impl TuiShell {
         self.forms.active = Some(bottom_form::new_rules_form(&self.rule_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
@@ -615,7 +615,7 @@ impl TuiShell {
         self.forms.active = Some(bottom_form::new_skills_form(&self.skill_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
@@ -627,7 +627,7 @@ impl TuiShell {
         self.forms.active = Some(bottom_form::new_extensions_form(&self.extension_entries));
         self.model_picker_active = false;
         self.language_picker_active = false;
-        self.access_picker_active = false;
+        self.approval_picker_active = false;
         self.chat_picker_active = false;
         self.image_picker_active = false;
         self.set_input(String::new());
