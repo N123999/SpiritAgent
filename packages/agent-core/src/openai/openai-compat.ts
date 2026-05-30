@@ -10,6 +10,7 @@ export type OpenAiLlmVendor =
   | 'minimax'
   | 'alibaba'
   | 'vercel-ai-gateway'
+  | 'openai'
   | 'custom';
 
 export type OpenAiModelCapabilities = LlmModelCapabilities;
@@ -80,7 +81,8 @@ export interface OpenAiRequestTrace extends JsonObject {
     | 'openai_sdk_chat_completions'
     | 'deepseek_sdk_chat_completions'
     | 'alibaba_sdk_chat_completions'
-    | 'gateway_sdk_chat_completions';
+    | 'gateway_sdk_chat_completions'
+    | 'openai_official_sdk_chat_completions';
   stepIndex: number;
   model: string;
   stream: boolean;

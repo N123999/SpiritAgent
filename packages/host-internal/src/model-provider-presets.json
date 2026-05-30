@@ -6,9 +6,10 @@
     "minimax": "https://api.minimaxi.com/v1",
     "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "anthropic": "https://api.anthropic.com/v1",
-    "vercel-ai-gateway": "https://ai-gateway.vercel.sh/v1"
+    "vercel-ai-gateway": "https://ai-gateway.vercel.sh/v1",
+    "openai": "https://api.openai.com/v1"
   },
-  "pickerOrder": ["deepseek", "kimi", "minimax", "alibaba", "anthropic", "vercel-ai-gateway", "custom"],
+  "pickerOrder": ["deepseek", "kimi", "minimax", "alibaba", "anthropic", "vercel-ai-gateway", "openai", "custom"],
   "pickerLabels": {
     "deepseek": "DeepSeek",
     "kimi": "Kimi",
@@ -16,6 +17,7 @@
     "alibaba": "Alibaba",
     "anthropic": "Anthropic",
     "vercel-ai-gateway": "Vercel AI Gateway",
+    "openai": "OpenAI",
     "custom": "自定义"
   }
 }

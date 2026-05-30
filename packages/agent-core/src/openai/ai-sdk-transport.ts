@@ -9,6 +9,7 @@ import {
   type DeepSeekLanguageModelOptions,
 } from '@ai-sdk/deepseek';
 import { createGateway } from '@ai-sdk/gateway';
+import { createOpenAI } from '@ai-sdk/openai';
 import {
   createOpenAICompatible,
   type OpenAICompatibleLanguageModelChatOptions,
@@ -522,7 +523,8 @@ function buildAiSdkRequestTrace(
   if (
     !isDeepSeekOfficialAiSdkProvider(config) &&
     !isAlibabaOfficialAiSdkProvider(config) &&
-    !isVercelAiGatewayProvider(config)
+    !isVercelAiGatewayProvider(config) &&
+    !isOpenAiOfficialAiSdkProvider(config)
   ) {
     return requestTrace;
   }
@@ -536,7 +538,9 @@ function buildAiSdkRequestTrace(
     ? 'deepseek_sdk_chat_completions'
     : isAlibabaOfficialAiSdkProvider(config)
       ? 'alibaba_sdk_chat_completions'
-      : 'gateway_sdk_chat_completions';
+      : isVercelAiGatewayProvider(config)
+        ? 'gateway_sdk_chat_completions'
+        : 'openai_official_sdk_chat_completions';
 
   return [
     {
@@ -558,6 +562,10 @@ function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
 
   if (isVercelAiGatewayProvider(config)) {
     return createAiSdkGatewayProvider(config)(config.model);
+  }
+
+  if (isOpenAiOfficialAiSdkProvider(config)) {
+    return createAiSdkOpenAiProvider(config).chat(config.model);
   }
 
   return createAiSdkOpenAiCompatibleProvider(config).chatModel(config.model);
@@ -645,6 +653,15 @@ function createAiSdkGatewayProvider(config: OpenAiTransportConfig) {
   return createGateway({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+  });
+}
+
+function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
+  return createOpenAI({
+    apiKey: config.apiKey,
+    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+    ...(config.organization ? { organization: config.organization } : {}),
+    ...(config.project ? { project: config.project } : {}),
   });
 }
 
@@ -1479,6 +1496,10 @@ function isAlibabaOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean 
 
 function isVercelAiGatewayProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'vercel-ai-gateway';
+}
+
+function isOpenAiOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
+  return config.llmVendor === 'openai';
 }
 
 function buildAiSdkImageGenerationUrl(config: OpenAiImageGenerationConfig): string {

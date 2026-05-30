@@ -9,6 +9,7 @@ export type ModelReasoningProvider =
   | 'alibaba'
   | 'anthropic'
   | 'vercel-ai-gateway'
+  | 'openai'
   | 'custom';
 
 export type ModelReasoningEffort = string;

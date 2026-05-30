@@ -22,6 +22,7 @@ pub enum ModelProvider {
     Alibaba,
     Anthropic,
     VercelAiGateway,
+    Openai,
     Custom,
 }
 
@@ -34,6 +35,7 @@ impl ModelProvider {
             Self::Alibaba => "alibaba",
             Self::Anthropic => "anthropic",
             Self::VercelAiGateway => "vercel-ai-gateway",
+            Self::Openai => "openai",
             Self::Custom => "custom",
         }
     }
@@ -50,6 +52,7 @@ impl FromStr for ModelProvider {
             "alibaba" => Ok(Self::Alibaba),
             "anthropic" => Ok(Self::Anthropic),
             "vercel-ai-gateway" => Ok(Self::VercelAiGateway),
+            "openai" => Ok(Self::Openai),
             "custom" => Ok(Self::Custom),
             other => Err(format!("不支持的 provider: {other}")),
         }
@@ -126,6 +129,7 @@ impl ModelProfile {
             | Some(ModelProvider::Alibaba)
             | Some(ModelProvider::Anthropic)
             | Some(ModelProvider::VercelAiGateway)
+            | Some(ModelProvider::Openai)
             | Some(ModelProvider::Custom)
             | None => true,
         }

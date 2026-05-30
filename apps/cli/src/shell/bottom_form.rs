@@ -96,6 +96,7 @@ fn model_add_provider_choice_labels() -> Vec<String> {
         t!("form.model.provider.alibaba").into_owned(),
         t!("form.model.provider.anthropic").into_owned(),
         t!("form.model.provider.vercel_ai_gateway").into_owned(),
+        t!("form.model.provider.openai").into_owned(),
         t!("form.model.provider.custom").into_owned(),
     ]
 }
@@ -257,7 +258,8 @@ fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
         3 => Some(ModelProvider::Alibaba),
         4 => Some(ModelProvider::Anthropic),
         5 => Some(ModelProvider::VercelAiGateway),
-        6 => Some(ModelProvider::Custom),
+        6 => Some(ModelProvider::Openai),
+        7 => Some(ModelProvider::Custom),
         _ => None,
     }
 }

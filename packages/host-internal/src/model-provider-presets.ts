@@ -8,6 +8,7 @@ export type ModelProviderId =
   | 'alibaba'
   | 'anthropic'
   | 'vercel-ai-gateway'
+  | 'openai'
   | 'custom';
 export type PresetModelProviderId = Exclude<ModelProviderId, 'custom'>;
 
@@ -18,6 +19,7 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'alibaba',
   'anthropic',
   'vercel-ai-gateway',
+  'openai',
   'custom',
 ];
 
@@ -36,7 +38,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["deepseek","kimi","minimax","alibaba","anthropic","vercel-ai-gateway","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["deepseek","kimi","minimax","alibaba","anthropic","vercel-ai-gateway","openai","custom"]',
     );
   }
 }
@@ -44,7 +46,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
 interface ParsedModelProviderPresets {
   defaultCustomApiBase: string;
   presetApiBaseByProvider: Record<
-    'deepseek' | 'kimi' | 'minimax' | 'alibaba' | 'anthropic' | 'vercel-ai-gateway',
+    'deepseek' | 'kimi' | 'minimax' | 'alibaba' | 'anthropic' | 'vercel-ai-gateway' | 'openai',
     string
   >;
   pickerOrder: readonly ModelProviderId[];
@@ -85,6 +87,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     alibaba: requireStringField(presetRaw, 'alibaba'),
     anthropic: requireStringField(presetRaw, 'anthropic'),
     'vercel-ai-gateway': requireStringField(presetRaw, 'vercel-ai-gateway'),
+    openai: requireStringField(presetRaw, 'openai'),
   };
 
   const labelsRaw = data.pickerLabels;
@@ -120,6 +123,7 @@ const minimaxBase = raw.presetApiBaseByProvider.minimax;
 const alibabaBase = raw.presetApiBaseByProvider.alibaba;
 const anthropicBase = raw.presetApiBaseByProvider.anthropic;
 const vercelAiGatewayBase = raw.presetApiBaseByProvider['vercel-ai-gateway'];
+const openaiBase = raw.presetApiBaseByProvider.openai;
 
 export const PROVIDER_PRESET_API_BASE = {
   deepseek: deepseekBase,
@@ -128,6 +132,7 @@ export const PROVIDER_PRESET_API_BASE = {
   alibaba: alibabaBase,
   anthropic: anthropicBase,
   'vercel-ai-gateway': vercelAiGatewayBase,
+  openai: openaiBase,
 } as const satisfies Record<Exclude<ModelProviderId, 'custom'>, string>;
 
 const pickerLabels = raw.pickerLabels;
@@ -192,6 +197,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE.anthropic;
     case 'vercel-ai-gateway':
       return PROVIDER_PRESET_API_BASE['vercel-ai-gateway'];
+    case 'openai':
+      return PROVIDER_PRESET_API_BASE.openai;
     case 'custom': {
       const trimmed = customApiBaseTrimmed.trim();
       return trimmed.length > 0 ? trimmed : DEFAULT_CUSTOM_API_BASE;
