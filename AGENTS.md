@@ -8,6 +8,13 @@
 | [`.github/instructions/agent-core-host-boundary.instructions.md`](.github/instructions/agent-core-host-boundary.instructions.md) | **agent-core / 宿主内部库 / apps** 职责、工具定义 vs 实现、强约束 |
 | [`.github/instructions/cli-rust.instructions.md`](.github/instructions/cli-rust.instructions.md) | `apps/cli/**/*.rs` 代码风格与构建习惯 |
 
+## 提交信息约定
+
+- 格式：`type(可选 scope): Subject`，换行后可选 Body。
+- `type` / `scope`：英文（如 `feat`、`fix`、`desktop`）。
+- **Subject / Body：简体中文**（专有名词、路径、标识符除外）。创建 commit 时不得用英文写 Subject 或 Body。
+- 细则见 [`.github/copilot-instructions.md`](.github/copilot-instructions.md)。Cursor 可在本地 `.cursor/rules/git-commit-zh.mdc` 维护同等约定（`.cursor/` 不纳入版本库）。
+
 ## 提交范围约定
 
 - `scope`：英文，可选；表示模块、包或子系统，例如 `cli`、`agent-core`、`desktop`、`tui`。无合适范围时可省略括号段。
