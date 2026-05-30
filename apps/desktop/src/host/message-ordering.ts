@@ -8,6 +8,7 @@ import {
   llmMessageTextContent,
 } from '@spirit-agent/agent-core';
 
+import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js';
 import {
   hasActiveRunSubagentToolInMessages,
   hasRunSubagentToolInCurrentTurn,
@@ -533,16 +534,7 @@ export function stripRedundantThinkingFromMessageAux(
   return normalizedAux;
 }
 
-export function isStandaloneThinkingMessage(
-  message: ConversationMessageSnapshot | undefined,
-): boolean {
-  return Boolean(
-    message?.role === 'assistant' &&
-      !message.tool &&
-      !message.content.trim() &&
-      message.aux?.thinking?.trim(),
-  );
-}
+export { isStandaloneThinkingMessage };
 
 export function rewindStandalonePendingAuxInsertIndexForThinking(
   messages: ReadonlyArray<ConversationMessageSnapshot>,

@@ -2,6 +2,7 @@ import type { ToolCallRequest, ToolExecutionOutput } from '../ports.js';
 import { createToolExecutionTextOutput } from '../ports.js';
 
 import { renderError } from './helpers.js';
+import { commitToolExecutionOutput } from './turn-machine.js';
 import type {
   AgentRuntimeOptions,
   PendingEarlyToolExecution,
@@ -210,11 +211,11 @@ export async function pollPendingBackgroundToolExecution<
     return;
   }
 
-  pending.turn.toolExecutions.push({
+  commitToolExecutionOutput(runtime, pending.turn, {
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
     request: pending.request,
-    output: pending.output.summaryText,
+    output: pending.output,
     failed: pending.failed,
   });
 

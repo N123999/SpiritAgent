@@ -30,6 +30,7 @@ import {
   type LlmTransportConfig,
   type OpenAiTransportConfig,
   type RuntimeApprovalDecision,
+  type RuntimeEvent,
   type PendingWorkspaceFile,
   type RuntimeToolExecution,
   type SpiritLlmTransport,
@@ -575,6 +576,11 @@ class DesktopHostService {
             this.emitLiveSnapshotUpdate();
           }
         });
+      },
+      requestLiveSnapshotUpdate: () => {
+        if (bundle.id === this.sessionRegistry.activeSessionId()) {
+          this.emitLiveSnapshotUpdate();
+        }
       },
     });
     return { assistantMessages, runtimeEvents, conversationSnapshotView };
@@ -3086,7 +3092,6 @@ class DesktopHostService {
       visibleMessages: conversationMessages,
       isBusy: this.runtime?.isBusy() ?? false,
     });
-
     const activeBundle = this.activeBundle();
 
     return buildDesktopSnapshot({

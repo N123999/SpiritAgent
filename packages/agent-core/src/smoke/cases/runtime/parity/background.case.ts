@@ -123,6 +123,15 @@ export async function runBackgroundCase(): Promise<RuntimeParityCaseResult> {
   if (!pollingStartedBackground || !pollingFinishedBackground) {
     throw new Error('polling background smoke 未收到完整的后台状态事件。');
   }
+  const pollingToolFinished = pollingBackgroundEvents.find(
+    (
+      event,
+    ): event is Extract<RuntimeEvent<ScriptedToolRequest>, { kind: 'tool-execution-finished' }> =>
+      event.kind === 'tool-execution-finished',
+  );
+  if (!pollingToolFinished || pollingToolFinished.execution.toolName !== 'grep') {
+    throw new Error('polling background smoke 应在后台工具完成时发出 tool-execution-finished。');
+  }
 
   return { backgroundResult, pollingBackgroundResult };
 }

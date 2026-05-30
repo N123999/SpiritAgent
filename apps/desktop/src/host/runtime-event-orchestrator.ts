@@ -55,6 +55,11 @@ export interface DesktopRuntimeEventOrchestratorOptions {
     messageId: number,
   ) => void;
   onTodoStoreMutated?: () => void;
+  requestLiveSnapshotUpdate?: () => void;
+}
+
+function isMcpLikeToolName(toolName: string): boolean {
+  return toolName.startsWith('mcp__') || toolName.includes('microsoft_docs');
 }
 
 export class DesktopRuntimeEventOrchestrator {
@@ -268,6 +273,9 @@ export class DesktopRuntimeEventOrchestrator {
           this.activeGenerateImageTools.delete(event.execution.toolCallId);
         }
         this.integrateToolExecutions([event.execution], 'event');
+        if (isMcpLikeToolName(event.execution.toolName)) {
+          this.options.requestLiveSnapshotUpdate?.();
+        }
         this.options.dispatchExtensionEvent({
           type: 'onToolResult',
           detail: {

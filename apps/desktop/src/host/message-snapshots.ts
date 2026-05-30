@@ -4,6 +4,7 @@ import type {
 } from '../types.js';
 import { canRewindMessage, type StoredDesktopRewindMetadata } from './rewind.js';
 import { isGenericPendingThinkingStatusText } from '../lib/subagent-display.js';
+import { shouldStripThinkingAuxNearToolCard } from '../lib/conversation-thinking-ui.js';
 import {
   normalizeMessageAuxSnapshot,
   normalizeToolBlockSnapshot,
@@ -33,9 +34,11 @@ export function buildVisibleMessageSnapshots(input: {
   livePendingAux?: PendingAssistantAux;
   rewind: StoredDesktopRewindMetadata;
 }): ConversationMessageSnapshot[] {
-  return input.messages.flatMap((message) => {
+  return input.messages.flatMap((message, messageIndex) => {
     const snapshot = buildVisibleMessageSnapshot({
       message,
+      messageIndex,
+      messages: input.messages,
       livePendingAux: input.livePendingAux,
       rewind: input.rewind,
     });
@@ -47,18 +50,26 @@ export function buildVisibleMessageSnapshots(input: {
 
 export function buildVisibleMessageSnapshot(input: {
   message: ConversationMessageSnapshot;
+  messageIndex?: number;
+  messages?: ConversationMessageSnapshot[];
   livePendingAux?: PendingAssistantAux;
   rewind: StoredDesktopRewindMetadata;
 }): ConversationMessageSnapshot | undefined {
   const tool = normalizeToolBlockSnapshot(input.message.tool);
-  const baseAux = stripGenericPendingThinkingStatusFromAux(
-    shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
-      input.message,
-      input.livePendingAux,
-    )
-      ? stripThinkingFromAux(input.message.aux)
-      : normalizeMessageAuxSnapshot(input.message.aux),
-  );
+  let normalizedAux = shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
+    input.message,
+    input.livePendingAux,
+  )
+    ? stripThinkingFromAux(input.message.aux)
+    : normalizeMessageAuxSnapshot(input.message.aux);
+  if (
+    input.messages !== undefined &&
+    input.messageIndex !== undefined &&
+    shouldStripThinkingAuxNearToolCard(input.message, input.messages, input.messageIndex)
+  ) {
+    normalizedAux = stripThinkingFromAux(normalizedAux);
+  }
+  const baseAux = stripGenericPendingThinkingStatusFromAux(normalizedAux);
   const aux = stripRedundantThinkingFromMessageAux(input.message.content, baseAux);
   if (shouldDropEmptyAssistantMessage(input.message, tool, aux)) {
     return undefined;

@@ -93,6 +93,10 @@ import {
   isSubagentStatusSurfaceMessage,
 } from "@/lib/subagent-display";
 import {
+  shouldCollapseThinkingDuringToolPreview,
+  shouldShowAssistantThinkingCollapsible,
+} from "@/lib/conversation-thinking-ui";
+import {
   isGrayMetaLeadingMessage,
   isGrayMetaTrailingMessage,
   isStandaloneAssistantAuxMessage,
@@ -173,10 +177,12 @@ function mcpStateVariant(
   }
 }
 
-/** 复合 DOM id/`key`，避免 `message.id` 碰撞导致子树被 React 错误复用。 */
-function conversationMessageDomId(message: ConversationMessageSnapshot, index: number): string {
-  const toolPart = message.tool?.toolCallId ?? (message.tool ? `${message.tool.toolName}:${message.tool.phase}` : "");
-  return `message-${index}-${message.id}-${message.pending ? "p" : "m"}-${toolPart}`;
+/** Stable list identity — must not include list index (rows insert above tools during finalize-thinking). */
+function conversationMessageStableId(message: ConversationMessageSnapshot): string {
+  const toolPart =
+    message.tool?.toolCallId ??
+    (message.tool ? `${message.tool.toolName}:${message.tool.phase}` : "");
+  return `message-${message.id}-${message.pending ? "p" : "m"}-${toolPart}`;
 }
 
 /** 主会话列最大宽度（居中） */
@@ -999,63 +1005,6 @@ function isLiveStreamingThinkingMessage(
   return Boolean(message && assistantReasoningLive(message, pendingAuxState));
 }
 
-function hasDisplayableThinkingAux(message: ConversationMessageSnapshot): boolean {
-  const thinking = message.aux?.thinking?.trim();
-  if (!thinking || isGenericPendingThinkingStatusText(thinking)) {
-    return false;
-  }
-  if (!message.content.trim()) {
-    return true;
-  }
-  return thinking !== message.content.trim();
-}
-
-function shouldShowAssistantThinkingCollapsible(
-  message: ConversationMessageSnapshot,
-  pendingAuxState: PendingAssistantAux | undefined,
-): boolean {
-  if (message.role === "user") {
-    return false;
-  }
-  return (
-    hasDisplayableThinkingAux(message) ||
-    isLiveReasoningPlaceholderMessage(message, pendingAuxState)
-  );
-}
-
-function toolPhaseCollapsesLiveThinking(phase: ToolBlockSnapshot["phase"]): boolean {
-  return phase === "preview" || phase === "running" || phase === "pending-approval";
-}
-
-function shouldCollapseThinkingDuringToolPreview(
-  messages: readonly ConversationMessageSnapshot[],
-  messageIndex: number,
-  pendingAuxState?: PendingAssistantAux,
-): boolean {
-  const message = messages[messageIndex];
-  const liveThinking = isLiveStreamingThinkingMessage(message, pendingAuxState);
-
-  for (let index = messageIndex + 1; index < messages.length; index += 1) {
-    const candidate = messages[index];
-    if (!candidate) {
-      continue;
-    }
-    if (candidate.role === "user") {
-      break;
-    }
-    if (candidate.role === "assistant" && candidate.tool) {
-      if (toolPhaseCollapsesLiveThinking(candidate.tool.phase)) {
-        return true;
-      }
-      if (liveThinking) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 function AssistantThinkingCollapsible({
   message,
   pendingAuxState,
@@ -1207,10 +1156,21 @@ function MessageCard({
     "rounded-2xl rounded-br-md border border-border/50 bg-muted px-3 py-2.5 shadow-sm";
   const subagentStatusSurface =
     !isUser && message.content.trim() ? isSubagentStatusSurfaceMessage(message) : false;
+  const showThinkingCollapsible = shouldShowAssistantThinkingCollapsible(
+    message,
+    pendingAuxState,
+    messages,
+    listIndex,
+  );
+  const collapseThinkingDuringToolPreview = shouldCollapseThinkingDuringToolPreview(
+    messages,
+    listIndex,
+  );
+  const nextMessage = messages[listIndex + 1];
 
   return (
     <div
-      id={conversationMessageDomId(message, listIndex)}
+      id={conversationMessageStableId(message)}
       data-spirit-surface="message-row"
       data-spirit-message-role={message.role}
       data-spirit-message-pending={message.pending ? "true" : "false"}
@@ -1259,15 +1219,11 @@ function MessageCard({
             onPaste={onRewindPaste}
           />
         ) : null}
-        {shouldShowAssistantThinkingCollapsible(message, pendingAuxState) ? (
+        {showThinkingCollapsible ? (
           <AssistantThinkingCollapsible
             message={message}
             pendingAuxState={pendingAuxState}
-            collapseDuringToolPreview={shouldCollapseThinkingDuringToolPreview(
-              messages,
-              listIndex,
-              pendingAuxState,
-            )}
+            collapseDuringToolPreview={collapseThinkingDuringToolPreview}
             readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
           />
         ) : null}
@@ -2656,7 +2612,7 @@ export default function App() {
                           const tightenAfterPreviousMeta = shouldTightenAfterPreviousMetaMessage(previous, message);
                           return (
                             <MessageCard
-                              key={conversationMessageDomId(message, index)}
+                              key={conversationMessageStableId(message)}
                               messages={messages}
                               pendingAuxState={snapshot?.conversation.pendingAuxState}
                               listIndex={index}
