@@ -94,6 +94,8 @@ export interface RuntimeInitParams {
   extensionToolDefinitions?: JsonValue[];
   loopEnabled?: boolean;
   approvalLevel?: BridgeApprovalLevel;
+  /** CLI: must be set before createRuntime so [SPIRIT_TODOS] is included in tool-agent state. */
+  todoSessionKey?: string;
 }
 
 export interface RuntimeSetApprovalLevelParams {

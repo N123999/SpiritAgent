@@ -604,9 +604,9 @@ impl TsBridgeRuntime {
             "[ts-bridge-host] runtime init workspace_root={}",
             runtime.workspace_root.display()
         ));
-        runtime.initialize_bridge()?;
         let session_key = runtime.rewind.session_id.clone();
         runtime.set_todo_session_key(&session_key)?;
+        runtime.initialize_bridge()?;
         Ok(runtime)
     }
 
@@ -1701,6 +1701,7 @@ impl TsBridgeRuntime {
                 "planMetadata": self.plan_metadata,
                 "loopEnabled": self.session.loop_enabled(),
                 "approvalLevel": self.session.approval_level(),
+                "todoSessionKey": self.rewind.session_id,
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);

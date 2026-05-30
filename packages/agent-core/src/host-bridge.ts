@@ -1475,7 +1475,22 @@ async function drainEvents(): Promise<DrainEventsResult> {
 
 peer.on('hostInternal.setTodoSessionKey', async (rawParams) => {
   const params = rawParams as { sessionKey?: string };
-  await updateCliTodoScope(typeof params.sessionKey === 'string' ? params.sessionKey : undefined);
+  const nextKey =
+    typeof params.sessionKey === 'string' && params.sessionKey.trim()
+      ? params.sessionKey.trim()
+      : undefined;
+  const previousKey = currentTodoSessionKey;
+  await updateCliTodoScope(nextKey);
+  if (
+    runtime
+    && transportConfig
+    && (previousKey?.trim() || '') !== (nextKey ?? '')
+  ) {
+    const target = requireRuntime();
+    const loopEnabled = target.loopEnabled();
+    runtime = await createRuntime(transportConfig, [...target.history()]);
+    runtime.setLoopEnabled(loopEnabled);
+  }
   return { ok: true };
 });
 
@@ -1522,6 +1537,9 @@ peer.on('runtime.init', async (rawParams) => {
   }
   activeSkills = pruneActiveSkillsAgainstCatalog(activeSkills, enabledSkillCatalog);
   currentApprovalLevel = normalizeBridgeApprovalLevel(params.approvalLevel);
+  if (typeof params.todoSessionKey === 'string' && params.todoSessionKey.trim()) {
+    await updateCliTodoScope(params.todoSessionKey.trim());
+  }
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
   runtime.setLoopEnabled(params.loopEnabled === true);
   const workspaceRoot =

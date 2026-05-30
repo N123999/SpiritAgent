@@ -718,9 +718,8 @@ impl TuiShell {
 
     fn refresh_todo_items(&mut self) {
         self.todo_items = self.runtime.list_session_todos().unwrap_or_default();
-        if self.todo_items.len() <= 1 {
-            self.todo_strip_expanded = true;
-        }
+        // No expand/collapse keybinding in TUI — always show the full list when todos exist.
+        self.todo_strip_expanded = !self.todo_items.is_empty();
     }
 
     fn archive_messages_for_message_count(&self, message_count: usize) -> Vec<(String, String)> {

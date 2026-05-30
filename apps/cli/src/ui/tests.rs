@@ -115,6 +115,7 @@ fn build_view_model(message: ChatMessage) -> TuiViewModel {
         persisted_standalone_pending_aux: None,
         persisted_standalone_pending_aux_anchor: None,
         cli_ui_hooks: vec![],
+        todo_strip: None,
         conversation_sel_anchor: None,
         conversation_sel_head: None,
     }
