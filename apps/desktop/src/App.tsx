@@ -3133,16 +3133,16 @@ export default function App() {
       >
         <DialogContent className="sm:max-w-md" showCloseButton>
           <DialogHeader>
-            <DialogTitle>合并 Worktree 至主分支</DialogTitle>
+            <DialogTitle>合并至默认分支</DialogTitle>
             <DialogDescription>
               {snapshot?.git.worktreeBranch && snapshot?.git.defaultBranch
-                ? `将 ${snapshot.git.worktreeBranch} 合并到 ${snapshot.git.defaultBranch}（主仓库）。`
-                : "将当前 Worktree 分支合并到主仓库默认分支。"}
+                ? `将 ${snapshot.git.worktreeBranch} 合并到 ${snapshot.git.defaultBranch}。`
+                : "将当前分支合并到默认分支。"}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
             <p className="text-sm text-muted-foreground">
-              合并将在主仓库执行。请确保 Worktree 中的更改已提交；主仓库不能有未提交更改。
+              请确保 Worktree 中的更改已提交；默认分支上不能有未提交更改。
             </p>
             {runtime.runtimeError && mergeDialogOpen ? (
               <p className="text-sm leading-relaxed text-destructive">{runtime.runtimeError}</p>
