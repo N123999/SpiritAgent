@@ -65,6 +65,10 @@ test('isSubagentStatusSurfaceText detects runtime status lines', () => {
     isSubagentStatusSurfaceText('子智能体已完成，输出如下：\n\n**Spirit 牛逼**'),
     false,
   );
+  assert.equal(
+    isSubagentStatusSurfaceText('好的，又来一遍 :) 有什么需要我接着搞的？'),
+    false,
+  );
 });
 
 test('toolCallSummaryCopyForRequest: ask_questions and subagent', () => {

@@ -2838,16 +2838,26 @@ class DesktopHostService {
       lastSettledAssistantMessageId: standaloneAnchorState.lastSettledAssistantMessageId,
     });
     if (pendingAux && !parsePendingSubagentStatusText(pendingAux.statusText)) {
-      this.activeOrchestration().assistantMessages.updatePendingAssistantAux(
-        pendingAux.kind,
-        pendingAux.detailText ?? pendingAux.statusText,
-      );
-      const pendingAuxText = pendingAux.detailText ?? pendingAux.statusText;
-      if (!this.activeBundle().messageTimeline.hasFinalizedAuxInActiveSegment(pendingAux.kind, pendingAuxText)) {
-        this.activeBundle().messageTimeline.updatePendingAssistantAux(
+      const pendingAssistantMessage = [...this.desktopMessages()]
+        .reverse()
+        .find((message) => message.role === 'assistant' && message.pending);
+      const detailText = pendingAux.detailText?.trim();
+      const auxText =
+        detailText ??
+        (pendingAssistantMessage && !pendingAssistantMessage.content.trim()
+          ? pendingAux.statusText
+          : undefined);
+      if (auxText?.trim()) {
+        this.activeOrchestration().assistantMessages.updatePendingAssistantAux(
           pendingAux.kind,
-          pendingAuxText,
+          auxText,
         );
+        if (!this.activeBundle().messageTimeline.hasFinalizedAuxInActiveSegment(pendingAux.kind, auxText)) {
+          this.activeBundle().messageTimeline.updatePendingAssistantAux(
+            pendingAux.kind,
+            auxText,
+          );
+        }
       }
     }
 

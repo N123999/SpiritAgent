@@ -285,6 +285,15 @@ export function currentAuxKind<
     runtime.pendingToolAgentRound !== undefined ||
     runtime.pendingBackgroundToolExecution !== undefined
   ) {
+    // Body is streaming; only surface aux while a reasoning/compaction buffer exists.
+    if (
+      runtime.pendingAssistantTextStore.trim() &&
+      !runtime.thinkingTextStore.trim() &&
+      !runtime.compactionTextStore.trim() &&
+      !runtime.pendingBackgroundToolStatusStore?.trim()
+    ) {
+      return undefined;
+    }
     return 'thinking';
   }
 

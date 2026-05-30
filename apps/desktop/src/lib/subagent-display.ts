@@ -5,6 +5,26 @@ function isParentSubagentCompletionSurfaceText(text: string): boolean {
   return /子智能体已完成|输出如下/u.test(text);
 }
 
+/** Colon is part of an emoticon (e.g. `:)`), not a `label: status` separator. */
+function isEmoticonColon(text: string, colonIdx: number): boolean {
+  const next = text[colonIdx + 1];
+  return next !== undefined && /[)D(P/\\\]oO0-3]/.test(next);
+}
+
+function lastStatusColonIndex(text: string): number {
+  let colonIdx = Math.max(text.lastIndexOf(':'), text.lastIndexOf('：'));
+  while (colonIdx > 0 && isEmoticonColon(text, colonIdx)) {
+    const prevAscii = text.lastIndexOf(':', colonIdx - 1);
+    const prevFull = text.lastIndexOf('：', colonIdx - 1);
+    const prev = Math.max(prevAscii, prevFull);
+    if (prev <= 0) {
+      return -1;
+    }
+    colonIdx = prev;
+  }
+  return colonIdx;
+}
+
 /**
  * Runtime status like `task: 运行中` or `task: The user wants…` — not child final output
  * or parent post-tool summary (Markdown).
@@ -30,7 +50,7 @@ export function isSubagentStatusSurfaceText(text: string | undefined): boolean {
     return true;
   }
 
-  const colonIdx = Math.max(normalized.lastIndexOf(':'), normalized.lastIndexOf('：'));
+  const colonIdx = lastStatusColonIndex(normalized);
   if (colonIdx <= 0) {
     return false;
   }

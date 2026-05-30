@@ -1136,6 +1136,8 @@ function MessageCard({
   const canStartRewind = isUser && message.canRewind === true && !message.pending;
   const userBubble =
     "rounded-2xl rounded-br-md border border-border/50 bg-muted px-3 py-2.5 shadow-sm";
+  const subagentStatusSurface =
+    !isUser && message.content.trim() ? isSubagentStatusSurfaceMessage(message) : false;
 
   return (
     <div
@@ -1214,7 +1216,7 @@ function MessageCard({
           />
         ) : null}
         {!isUser && message.content.trim() ? (
-          isSubagentStatusSurfaceMessage(message) ? (
+          subagentStatusSurface ? (
             <p className="text-sm leading-relaxed text-muted-foreground">{message.content}</p>
           ) : (
           <div data-spirit-surface="message-bubble">
