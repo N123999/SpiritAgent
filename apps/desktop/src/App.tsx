@@ -84,6 +84,7 @@ import { BranchSelectMenu } from "@/components/branch-select-menu";
 import { WorkLocationMenu } from "@/components/work-location-menu";
 import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
+import { ComposerTodoCard } from "@/components/composer-todo-card";
 import { MinimalToolCallCard } from "@/components/minimal-tool-call-card";
 import { isMinimalToolCallMessage, toolHasExpandableContent } from "@/lib/tool-call-display";
 import {
@@ -330,7 +331,7 @@ function ToolCallCollapsible({
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
   saveLocalImageAs: SaveLocalImageAs;
 }) {
-  if (tool.toolName === "finish_task") {
+  if (tool.toolName === "finish_task" || tool.toolName.startsWith("todo_")) {
     return null;
   }
 
@@ -616,6 +617,7 @@ type ComposerSurfaceProps = {
   onRemoveLocalFileAttachment?(path: string): void;
   onPaste?(event: ReactClipboardEvent<HTMLTextAreaElement>): void;
   showLoopSwitch?: boolean;
+  fusedWithTodoAbove?: boolean;
 };
 
 function ComposerSurface({
@@ -649,6 +651,7 @@ function ComposerSurface({
   onRemoveLocalFileAttachment,
   onPaste,
   showLoopSwitch = true,
+  fusedWithTodoAbove = false,
 }: ComposerSurfaceProps) {
   const [modelFilter, setModelFilter] = useState("");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -680,7 +683,10 @@ function ComposerSurface({
   return (
     <div
       data-spirit-surface="composer-surface"
-      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-0 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
+      className={cn(
+        "relative overflow-hidden border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-0 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25",
+        fusedWithTodoAbove ? "rounded-t-none rounded-b-2xl border-t-0" : "rounded-2xl",
+      )}
     >
       <ComposerLocalFileStrip
         attachments={localFileAttachments}
@@ -2855,6 +2861,12 @@ export default function App() {
 
                 <div className="relative">
                 <div className="relative z-10 grid gap-1.5">
+                  {snapshot?.conversation.todos ? (
+                    <ComposerTodoCard
+                      todos={snapshot.conversation.todos}
+                      sessionKey={snapshot.composerSessionKey}
+                    />
+                  ) : null}
                   {fileReferenceSuggestions ? (
                     <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 pb-2">
                       <div className="pointer-events-auto">
@@ -2882,6 +2894,7 @@ export default function App() {
                     </div>
                   ) : null}
                   <ComposerSurface
+                    fusedWithTodoAbove={Boolean(snapshot?.conversation.todos)}
                     value={runtime.composer}
                     onChange={runtime.setComposer}
                     onSubmit={submitComposerMessage}
