@@ -26,8 +26,8 @@ function CollapsibleContent({
       data-slot="collapsible-content"
       className={cn(
         "overflow-hidden",
-        "data-[state=open]:animate-collapsible-down",
-        "data-[state=closed]:animate-collapsible-up",
+        "data-[state=open]:animate-collapsible-down data-[state=open]:[animation-fill-mode:forwards]",
+        "data-[state=closed]:animate-collapsible-up data-[state=closed]:[animation-fill-mode:forwards]",
         className,
       )}
       {...props}

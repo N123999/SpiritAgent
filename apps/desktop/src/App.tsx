@@ -1115,12 +1115,14 @@ function AssistantThinkingCollapsible({
         </button>
       </CollapsibleTrigger>
       {showThinkingBody ? (
-        <CollapsibleContent className="min-w-0 pt-1.5">
-          <MarkdownMessage
-            content={thinking}
-            tone="muted"
-            readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
-          />
+        <CollapsibleContent className="min-w-0">
+          <div className="overflow-hidden pt-1.5 [&_p:last-child]:mb-0 [&_ul:last-child]:mb-0 [&_ol:last-child]:mb-0 [&_blockquote:last-child]:mb-0 [&_pre:last-child]:mb-0">
+            <MarkdownMessage
+              content={thinking}
+              tone="muted"
+              readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
+            />
+          </div>
         </CollapsibleContent>
       ) : null}
     </Collapsible>
