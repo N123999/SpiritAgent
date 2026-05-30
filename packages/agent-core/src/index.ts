@@ -9,5 +9,6 @@ export * from './transport-factory.js';
 export * from './openai/index.js';
 export * from './anthropic/index.js';
 export * from './host-tools.js';
+export * from './finish-task-preview.js';
 export * from './mcp/index.js';
 export * from './eval/index.js';

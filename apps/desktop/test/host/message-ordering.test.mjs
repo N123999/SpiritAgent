@@ -3,6 +3,8 @@ import { test } from 'node:test';
 
 import { isSubagentStatusSurfaceText } from '../../dist-electron/src/lib/subagent-display.js';
 import {
+  finishTaskNoticePreviewFromArguments,
+  finishTaskSummaryFromStreamingArguments,
   toolCallSummaryCopyForRequest,
   toolCallSummaryForPhase,
 } from '../../dist-electron/src/host/message-ordering.js';
@@ -102,5 +104,22 @@ test('toolCallSummaryCopyForRequest: shell reason and command', () => {
       command: 'npm install',
     }),
     { headline: 'Install dependencies', headlineDetail: 'npm install' },
+  );
+});
+
+test('finishTaskNoticePreviewFromArguments streams partial summary text', () => {
+  assert.equal(
+    finishTaskSummaryFromStreamingArguments('{"summary":"确认每条'),
+    '确认每条',
+  );
+  assert.equal(
+    finishTaskNoticePreviewFromArguments('{"summary":"确认每条'),
+    '任务因 确认每条',
+  );
+  assert.equal(
+    finishTaskNoticePreviewFromArguments(
+      '{"summary":"确认每条消息输出完毕后调用 finish_task。"}',
+    ),
+    '任务因 确认每条消息输出完毕后调用 finish_task。 完成。',
   );
 });

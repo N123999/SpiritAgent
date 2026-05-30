@@ -3,7 +3,10 @@ import type {
   RuntimePendingApproval,
   RuntimePendingQuestions,
 } from '@spirit-agent/agent-core';
-import { llmMessageTextContent } from '@spirit-agent/agent-core';
+import {
+  finishTaskNoticeFromSummary,
+  llmMessageTextContent,
+} from '@spirit-agent/agent-core';
 
 import type {
   ConversationMessageSnapshot,
@@ -641,6 +644,13 @@ export function normalizeMessageAuxSnapshot(
 
 const FINISH_TASK_DEFAULT_OUTPUT = 'Task marked complete.';
 
+export {
+  finishTaskArgumentsJsonComplete,
+  finishTaskNoticeFromSummary,
+  finishTaskNoticePreviewFromArguments,
+  finishTaskSummaryFromStreamingArguments,
+} from '@spirit-agent/agent-core';
+
 export function finishTaskSummaryFromExecution(input: {
   request: unknown;
   output?: string;
@@ -667,12 +677,7 @@ export function finishTaskNoticeFromExecution(input: {
   request: unknown;
   output?: string;
 }): string {
-  const summary = finishTaskSummaryFromExecution(input);
-  if (!summary) {
-    return '任务已完成。';
-  }
-
-  return `任务因 ${summary} 完成。`;
+  return finishTaskNoticeFromSummary(finishTaskSummaryFromExecution(input));
 }
 
 export function assistantContentDuplicatesFinishTaskSummary(

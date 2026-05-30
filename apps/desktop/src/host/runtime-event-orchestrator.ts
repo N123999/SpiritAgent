@@ -21,6 +21,7 @@ import type {
 import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
   finishTaskNoticeFromExecution,
+  finishTaskNoticePreviewFromArguments,
   finishTaskSummaryFromExecution,
   applyToolCallSummaryCopy,
   hasActiveRunSubagentToolInMessages,
@@ -210,6 +211,8 @@ export class DesktopRuntimeEventOrchestrator {
       }
       if (event.kind === 'tool-call-started') {
         if (isFinishTaskToolName(event.toolName)) {
+          const notice = finishTaskNoticeFromExecution({ request: event.request });
+          this.applyFinishTaskNoticePreview(notice);
           continue;
         }
         const runningSummary =
@@ -276,6 +279,10 @@ export class DesktopRuntimeEventOrchestrator {
         continue;
       }
       if (isFinishTaskToolName(event.toolName)) {
+        const notice = finishTaskNoticePreviewFromArguments(event.argumentsJson);
+        if (notice) {
+          this.applyFinishTaskNoticePreview(notice);
+        }
         continue;
       }
       let previewRequest: unknown;
@@ -495,6 +502,11 @@ export class DesktopRuntimeEventOrchestrator {
     }
   }
 
+  private applyFinishTaskNoticePreview(notice: string): void {
+    this.options.assistantMessages.updateFinishTaskNoticePreview(notice);
+    this.options.messageTimeline?.()?.updateFinishTaskNoticePreview(notice);
+  }
+
   private integrateToolExecutions(
     executions: RuntimeToolExecution<DesktopToolRequest>[],
     source: 'event' | 'turn-result',
@@ -692,4 +704,36 @@ function truncateText(value: string, maxChars: number): string {
     return value;
   }
   return `${chars.slice(0, maxChars).join('')}...<truncated>`;
+}
+
+export function splitRuntimeEventsForIncrementalFinishTaskPreview(
+  events: RuntimeEvent<DesktopToolRequest>[],
+): {
+  toApply: RuntimeEvent<DesktopToolRequest>[];
+  deferred: RuntimeEvent<DesktopToolRequest>[];
+} {
+  let previewIndex = -1;
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index]!;
+    if (event.kind === 'streaming-tool-preview' && isFinishTaskToolName(event.toolName)) {
+      previewIndex = index;
+      break;
+    }
+  }
+  if (previewIndex < 0) {
+    return { toApply: events, deferred: [] };
+  }
+  return {
+    toApply: events.slice(0, previewIndex + 1),
+    deferred: events.slice(previewIndex + 1),
+  };
+}
+
+export function runtimeEventsIncludeAppliedFinishTaskPreview(
+  events: RuntimeEvent<DesktopToolRequest>[],
+): boolean {
+  return events.some(
+    (event) =>
+      event.kind === 'streaming-tool-preview' && isFinishTaskToolName(event.toolName),
+  );
 }

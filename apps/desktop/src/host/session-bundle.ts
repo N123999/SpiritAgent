@@ -1,4 +1,10 @@
-import type { ChatArchive, LlmActiveSkill, SpiritLlmTransport } from '@spirit-agent/agent-core';
+import type {
+  ChatArchive,
+  LlmActiveSkill,
+  RuntimeEvent,
+  SpiritLlmTransport,
+} from '@spirit-agent/agent-core';
+import type { DesktopToolRequest } from './contracts.js';
 import type { ApprovalLevel, WorkLocationKind } from '@spirit-agent/host-internal';
 
 import type { DesktopRuntime } from './runtime.js';
@@ -34,6 +40,7 @@ export interface SessionBundle {
   pendingUnboundFileChangeIds: string[];
   nextTimelineAssistantSegmentKind: DesktopTimelineSegmentKind;
   deferredRuntimeRefreshWhileBusy: boolean;
+  deferredRuntimeHostEvents: RuntimeEvent<DesktopToolRequest>[];
   lastPersistedAtUnixMs?: number;
   /** `savedAtUnixMs` from disk; used to avoid bumping list order on background/switch persist. */
   listSortSavedAtUnixMs?: number;
@@ -65,6 +72,7 @@ export function createEmptySessionBundle(workspaceRoot: string, id = '__draft__'
     pendingUnboundFileChangeIds: [],
     nextTimelineAssistantSegmentKind: 'initial',
     deferredRuntimeRefreshWhileBusy: false,
+    deferredRuntimeHostEvents: [],
   };
 }
 
@@ -99,6 +107,7 @@ export function sessionBundleFromRestored(
     pendingUnboundFileChangeIds: [],
     nextTimelineAssistantSegmentKind: 'initial',
     deferredRuntimeRefreshWhileBusy: false,
+    deferredRuntimeHostEvents: [],
   };
 }
 
@@ -122,4 +131,5 @@ export function resetSessionBundleInPlace(bundle: SessionBundle): void {
   bundle.pendingUnboundFileChangeIds = [];
   bundle.nextTimelineAssistantSegmentKind = 'initial';
   bundle.deferredRuntimeRefreshWhileBusy = false;
+  bundle.deferredRuntimeHostEvents = [];
 }

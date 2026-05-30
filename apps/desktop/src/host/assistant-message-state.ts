@@ -176,6 +176,9 @@ export class DesktopAssistantMessageStateMachine {
         : currentAux?.compaction
           ? { compaction: currentAux.compaction }
           : {}),
+      ...(currentAux?.finishTaskNotice
+        ? { finishTaskNotice: currentAux.finishTaskNotice }
+        : {}),
     });
 
     if (message) {
@@ -190,6 +193,30 @@ export class DesktopAssistantMessageStateMachine {
       this.latestPendingAssistantAux = nextAux;
     } else {
       this.latestPendingAssistantAux = undefined;
+    }
+  }
+
+  updateFinishTaskNoticePreview(notice: string): void {
+    const normalized = notice.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const messages = this.messages();
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      if (message.role === 'user') {
+        break;
+      }
+      if (message.role !== 'assistant' || message.tool) {
+        continue;
+      }
+      message.aux = normalizeMessageAuxSnapshot({
+        ...(message.aux?.thinking ? { thinking: message.aux.thinking } : {}),
+        ...(message.aux?.compaction ? { compaction: message.aux.compaction } : {}),
+        finishTaskNotice: normalized,
+      });
+      return;
     }
   }
 

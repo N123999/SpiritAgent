@@ -49,6 +49,7 @@ import {
   isJsonObject,
   type ToolAgentState,
 } from '../tool-agent.js';
+import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
 import {
   buildOpenAiRequestTrace,
   openAiReasoningEffort,
@@ -1090,7 +1091,17 @@ function accumulateStreamingToolCallProgressFromRawChunk(
         current.functionArguments += delta.function.arguments;
       }
 
-      if (
+      if (current.functionName === 'finish_task') {
+        if (finishTaskStreamingPreviewReady(current.functionName, current.functionArguments)) {
+          updates.push({
+            kind: 'streaming-tool-preview',
+            toolCallId: current.id,
+            toolName: current.functionName,
+            argumentsJson: current.functionArguments,
+            previewLine: buildToolProgressPreview(current.functionName, current.functionArguments),
+          });
+        }
+      } else if (
         current.functionName &&
         !current.readyPreviewEmitted &&
         !isGeneratedStreamingToolCallId(current.id) &&

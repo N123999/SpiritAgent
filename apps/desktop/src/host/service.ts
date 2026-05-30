@@ -244,7 +244,11 @@ import {
   truncateOneLineForDebug,
 } from './message-ordering.js';
 import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
-import { DesktopRuntimeEventOrchestrator } from './runtime-event-orchestrator.js';
+import {
+  DesktopRuntimeEventOrchestrator,
+  runtimeEventsIncludeAppliedFinishTaskPreview,
+  splitRuntimeEventsForIncrementalFinishTaskPreview,
+} from './runtime-event-orchestrator.js';
 import {
   extractSubagentSessionStreamingText,
   findRunSubagentToolPhase,
@@ -1901,7 +1905,18 @@ class DesktopHostService {
       bundle.runtime.tickThinkingSpinner();
       if (!options.light) {
         await bundle.runtime.poll();
-        orchestration.runtimeEvents.applyRuntimeHostEvents(bundle.runtime.drainEvents());
+        const drained = bundle.runtime.drainEvents();
+        const queued = [...bundle.deferredRuntimeHostEvents, ...drained];
+        bundle.deferredRuntimeHostEvents = [];
+        const { toApply, deferred } = splitRuntimeEventsForIncrementalFinishTaskPreview(queued);
+        bundle.deferredRuntimeHostEvents = deferred;
+        orchestration.runtimeEvents.applyRuntimeHostEvents(toApply);
+        if (
+          runtimeEventsIncludeAppliedFinishTaskPreview(toApply) &&
+          bundle.id === this.sessionRegistry.activeSessionId()
+        ) {
+          this.emitLiveSnapshotUpdate();
+        }
       }
     }
     if (options.light) {
@@ -2749,6 +2764,16 @@ class DesktopHostService {
   }
 
   private emitDreamUpdate(): void {
+    if (!this.state || this.dreamUpdateListeners.size === 0) {
+      return;
+    }
+    const snapshot = this.buildSnapshot();
+    for (const listener of this.dreamUpdateListeners) {
+      listener(snapshot);
+    }
+  }
+
+  private emitLiveSnapshotUpdate(): void {
     if (!this.state || this.dreamUpdateListeners.size === 0) {
       return;
     }

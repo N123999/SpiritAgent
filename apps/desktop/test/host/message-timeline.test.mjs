@@ -121,6 +121,43 @@ test('finish_task notice clears duplicate completion text instead of adding a se
   ]);
 });
 
+test('finish_task notice preview updates the active assistant text row', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('loop');
+  timeline.beginAssistantSegment('initial');
+  timeline.appendAssistantTextChunk('明白，我会在每条回复末尾调用 finish_task。');
+
+  timeline.updateFinishTaskNoticePreview('任务因 确认每条');
+  assert.equal(
+    timeline.toMessages().find((message) => message.role === 'assistant' && !message.tool)?.aux
+      ?.finishTaskNotice,
+    '任务因 确认每条',
+  );
+
+  timeline.updateFinishTaskNoticePreview('任务因 确认每条消息输出完毕后调用 finish_task。 完成。');
+  assert.equal(
+    timeline.toMessages().find((message) => message.role === 'assistant' && !message.tool)?.aux
+      ?.finishTaskNotice,
+    '任务因 确认每条消息输出完毕后调用 finish_task。 完成。',
+  );
+});
+
+test('updatePendingAssistantAux preserves finish_task notice preview on assistant text row', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('loop');
+  timeline.beginAssistantSegment('initial');
+  timeline.appendAssistantTextChunk('正文内容。');
+  timeline.updateFinishTaskNoticePreview('任务因 确认每条');
+
+  timeline.updatePendingAssistantAux('thinking', 'Still reasoning about the reply.');
+
+  assert.equal(
+    timeline.toMessages().find((message) => message.content.includes('正文内容'))?.aux
+      ?.finishTaskNotice,
+    '任务因 确认每条',
+  );
+});
+
 test('finalized thinking stays above completed assistant text in the same segment', () => {
   const timeline = createTimeline();
   timeline.beginUserTurn('你好啊');

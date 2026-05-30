@@ -17,6 +17,7 @@ import {
   type OpenAiJsonSchemaCompletionRequest,
   type OpenAiJsonSchemaCompletionResult,
 } from '../openai/json-schema.js';
+import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
 import {
   buildToolAgentHostPrompt,
   cloneJsonValue,
@@ -790,7 +791,7 @@ async function* anthropicEventStreamToRuntimeEvents(
           };
           current.toolName = part.toolName;
           current.argumentsJson = argumentsJson;
-          if (hostToolArgumentsReadyForPreview(current.toolName, current.argumentsJson)) {
+          if (toolArgumentsReadyForStreamingPreview(current.toolName, current.argumentsJson)) {
             yield {
               kind: 'streaming-tool-preview',
               toolCallId: current.toolCallId,
@@ -847,10 +848,17 @@ async function* anthropicEventStreamToRuntimeEvents(
   }
 }
 
+function toolArgumentsReadyForStreamingPreview(name: string, argumentsJson: string): boolean {
+  if (name === 'finish_task') {
+    return finishTaskStreamingPreviewReady(name, argumentsJson);
+  }
+  return hostToolArgumentsReadyForPreview(name, argumentsJson);
+}
+
 function maybeEmitStreamingPreview(current: StreamingToolCallAccumulator): void {
   if (
     current.readyPreviewEmitted ||
-    !hostToolArgumentsReadyForPreview(current.toolName, current.argumentsJson)
+    !toolArgumentsReadyForStreamingPreview(current.toolName, current.argumentsJson)
   ) {
     return;
   }

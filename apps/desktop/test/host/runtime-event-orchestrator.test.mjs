@@ -6,7 +6,7 @@ import { DesktopConversationSnapshotView } from '../../dist-electron/src/host/co
 import { DesktopMessageTimeline } from '../../dist-electron/src/host/message-timeline.js';
 import { buildVisibleMessageSnapshots } from '../../dist-electron/src/host/message-snapshots.js';
 import { createDesktopRewindMetadata } from '../../dist-electron/src/host/rewind.js';
-import { DesktopRuntimeEventOrchestrator } from '../../dist-electron/src/host/runtime-event-orchestrator.js';
+import { DesktopRuntimeEventOrchestrator, splitRuntimeEventsForIncrementalFinishTaskPreview } from '../../dist-electron/src/host/runtime-event-orchestrator.js';
 
 function createHarness() {
   let messages = [];
@@ -275,4 +275,73 @@ test('tool previews do not clone the first thinking block when multiple tool pre
     messages.filter((message) => message.tool).map((message) => message.tool.toolCallId),
     ['call-1', 'call-2'],
   );
+});
+
+test('finish_task streaming preview updates finishTaskNotice on assistant text row', () => {
+  const harness = createHarness();
+  harness.pushUser('loop task');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    {
+      kind: 'replace-pending-assistant',
+      text: '明白，我会在每条回复末尾调用 finish_task。',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-finish',
+      toolName: 'finish_task',
+      argumentsJson: '{"summary":"确认每条',
+    },
+  ]);
+
+  const assistantRow = harness.timeline
+    .toMessages()
+    .find((message) => message.role === 'assistant' && !message.tool);
+  assert.equal(assistantRow?.content, '明白，我会在每条回复末尾调用 finish_task。');
+  assert.equal(assistantRow?.aux?.finishTaskNotice, '任务因 确认每条');
+  assert.equal(
+    harness.timeline.toMessages().some((message) => message.tool?.toolName === 'finish_task'),
+    false,
+  );
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-finish',
+      toolName: 'finish_task',
+      argumentsJson: '{"summary":"确认每条消息输出完毕后调用 finish_task。"}',
+    },
+  ]);
+
+  const updatedAssistantRow = harness.timeline
+    .toMessages()
+    .find((message) => message.role === 'assistant' && !message.tool);
+  assert.equal(
+    updatedAssistantRow?.aux?.finishTaskNotice,
+    '任务因 确认每条消息输出完毕后调用 finish_task。 完成。',
+  );
+});
+
+test('splitRuntimeEventsForIncrementalFinishTaskPreview applies one finish_task preview per batch', () => {
+  const events = [
+    { kind: 'assistant-chunk', text: 'hello' },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-finish',
+      toolName: 'finish_task',
+      argumentsJson: '{"summary":"a"}',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-finish',
+      toolName: 'finish_task',
+      argumentsJson: '{"summary":"ab"}',
+    },
+  ];
+  const split = splitRuntimeEventsForIncrementalFinishTaskPreview(events);
+  assert.equal(split.toApply.length, 2);
+  assert.equal(split.deferred.length, 1);
+  assert.equal(split.toApply[1].argumentsJson, '{"summary":"a"}');
+  assert.equal(split.deferred[0].argumentsJson, '{"summary":"ab"}');
 });

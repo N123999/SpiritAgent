@@ -238,6 +238,7 @@ export class DesktopMessageTimeline {
     const aux = {
       ...(row.aux?.thinking ? { thinking: row.aux.thinking } : {}),
       ...(row.aux?.compaction ? { compaction: row.aux.compaction } : {}),
+      ...(row.aux?.finishTaskNotice ? { finishTaskNotice: row.aux.finishTaskNotice } : {}),
       ...(kind === 'thinking' && normalized ? { thinking: text } : {}),
       ...(kind === 'compressing' && normalized ? { compaction: text } : {}),
     } satisfies MessageAuxSnapshot;
@@ -256,6 +257,31 @@ export class DesktopMessageTimeline {
     }
     this.logSegmentRows(`update-pending-${kind}`, segment);
     return rowToMessage(row);
+  }
+
+  updateFinishTaskNoticePreview(notice: string): ConversationMessageSnapshot | undefined {
+    const normalizedNotice = notice.trim();
+    if (!normalizedNotice) {
+      return undefined;
+    }
+
+    const segment = this.activeSegment() ?? this.lastSegmentOfActiveTurn();
+    if (!segment) {
+      return undefined;
+    }
+
+    const target = this.findLastAssistantTextRow(segment);
+    if (!target) {
+      return undefined;
+    }
+
+    target.aux = normalizeMessageAuxSnapshot({
+      ...(target.aux?.thinking ? { thinking: target.aux.thinking } : {}),
+      ...(target.aux?.compaction ? { compaction: target.aux.compaction } : {}),
+      finishTaskNotice: normalizedNotice,
+    });
+    this.logSegmentRows('finish-task-notice-preview', segment);
+    return rowToMessage(target);
   }
 
   hasFinalizedAuxInActiveSegment(kind: 'thinking' | 'compressing', text: string): boolean {
@@ -455,9 +481,6 @@ export class DesktopMessageTimeline {
     }
 
     const normalizedCompletion = completionText.trim();
-    const normalizedAux = normalizeMessageAuxSnapshot({
-      finishTaskNotice: normalizedNotice,
-    });
     let target = this.findAssistantTextRowWithContent(segment, normalizedCompletion);
     if (target) {
       target.content = '';
@@ -471,6 +494,12 @@ export class DesktopMessageTimeline {
         false,
       );
     }
+
+    const normalizedAux = normalizeMessageAuxSnapshot({
+      ...(target.aux?.thinking ? { thinking: target.aux.thinking } : {}),
+      ...(target.aux?.compaction ? { compaction: target.aux.compaction } : {}),
+      finishTaskNotice: normalizedNotice,
+    });
 
     target.pending = false;
     target.aux = normalizedAux;

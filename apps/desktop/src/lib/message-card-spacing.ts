@@ -29,7 +29,7 @@ export function isGrayMetaLeadingMessage(
   if (message.tool) {
     return isMinimalToolCallMessage(message);
   }
-  return Boolean(message.aux?.thinking?.trim() || message.aux?.finishTaskNotice?.trim());
+  return Boolean(message.aux?.thinking?.trim());
 }
 
 export function isGrayMetaTrailingMessage(
