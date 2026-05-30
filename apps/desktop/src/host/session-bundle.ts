@@ -49,6 +49,8 @@ export interface SessionBundle {
   runtimeTransport?: SpiritLlmTransport;
   toolExecutor?: DesktopToolExecutor;
   toolExecutorWorkspaceRoot?: string;
+  toolExecutorTodoSessionKey?: string;
+  cachedTodoSnapshot?: import('../types.js').ConversationTodoSnapshot;
 }
 
 export function createEmptySessionBundle(workspaceRoot: string, id = '__draft__'): SessionBundle {

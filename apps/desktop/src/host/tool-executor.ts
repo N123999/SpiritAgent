@@ -10,6 +10,7 @@ import {
   buildBuiltinHostToolDefinitions,
   buildDreamHostToolDefinitions,
   buildDreamReadHostToolDefinitions,
+  buildTodoHostToolDefinitions,
   AuthorizationDecision,
   createToolExecutionTextOutput,
   JsonValue,
@@ -23,6 +24,7 @@ import {
 import {
   type HostDreamScope,
   type HostDreamSourceSessionRef,
+  type HostTodoScope,
   type HostExtensionRuntimeBinding,
   type HostFileChangeObserver,
   type HostGeneratedImageFile,
@@ -53,8 +55,10 @@ export class DesktopToolExecutor
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
   private readonly mcp: McpService;
   private readonly dreamToolDefinitions: JsonValue[];
+  private readonly todoToolDefinitions: JsonValue[];
   private readonly dreamScope: HostDreamScope | undefined;
   private readonly dreamToolMode: DesktopDreamToolMode | undefined;
+  private readonly todoScope: HostTodoScope | undefined;
   private extensionToolDefinitions: JsonValue[];
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
   private imageGenerationAvailable = false;
@@ -69,17 +73,20 @@ export class DesktopToolExecutor
       dreamScope?: HostDreamScope;
       dreamToolMode?: DesktopDreamToolMode;
       dreamSourceSession?: HostDreamSourceSessionRef;
+      todoScope?: HostTodoScope;
     } = {},
   ) {
     this.mcp = new McpService(workspaceRoot);
     this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
     this.dreamScope = options.dreamScope;
+    this.todoScope = options.todoScope;
     this.dreamToolMode = options.dreamScope ? (options.dreamToolMode ?? 'collector') : undefined;
     this.dreamToolDefinitions = !options.dreamScope
       ? []
       : this.dreamToolMode === 'read-only'
         ? buildDreamReadHostToolDefinitions()
         : buildDreamHostToolDefinitions();
+    this.todoToolDefinitions = options.todoScope ? buildTodoHostToolDefinitions() : [];
     this.tools = new NodeHostToolService<AskQuestionsQuestionSpec>({
       workspaceRoot,
       spiritDataDir: spiritAgentDataDir(),
@@ -91,6 +98,7 @@ export class DesktopToolExecutor
       ...(options.extensions ? { extensions: options.extensions } : {}),
       ...(options.dreamScope ? { dreamScope: options.dreamScope } : {}),
       ...(options.dreamSourceSession ? { dreamSourceSession: options.dreamSourceSession } : {}),
+      ...(options.todoScope ? { todoScope: options.todoScope } : {}),
     });
   }
 
@@ -129,6 +137,10 @@ export class DesktopToolExecutor
       && this.dreamScope?.gitBranch === dreamScope?.gitBranch;
   }
 
+  matchesTodoAccess(todoScope: HostTodoScope | undefined): boolean {
+    return this.todoScope?.sessionKey === todoScope?.sessionKey;
+  }
+
   toolDefinitionsJson(): JsonValue {
     const builtinDefinitions = this.imageGenerationAvailable
       ? buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
@@ -138,6 +150,7 @@ export class DesktopToolExecutor
     return mergeToolDefinitions(
       ...builtinDefinitions,
       ...this.dreamToolDefinitions,
+      ...this.todoToolDefinitions,
       ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
     );

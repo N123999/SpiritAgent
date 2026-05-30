@@ -640,6 +640,22 @@ export interface McpStatusSnapshot {
   lastError?: string;
 }
 
+export type DesktopTodoStatus = 'pending' | 'completed';
+
+export interface DesktopTodoItem {
+  id: string;
+  title: string;
+  status: DesktopTodoStatus;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  completedAtUnixMs?: number;
+}
+
+export interface ConversationTodoSnapshot {
+  items: DesktopTodoItem[];
+  clearingUntilUnixMs?: number;
+}
+
 export interface ConversationSnapshot {
   messages: ConversationMessageSnapshot[];
   loopEnabled: boolean;
@@ -652,6 +668,7 @@ export interface ConversationSnapshot {
   pendingQuestions?: PendingQuestionsSnapshot;
   isBusy: boolean;
   rewindWarnings?: FileRewindWarning[];
+  todos?: ConversationTodoSnapshot;
 }
 
 export interface ConversationLocalFileAttachmentSnapshot {

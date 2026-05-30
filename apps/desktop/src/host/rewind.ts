@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ChatArchive } from '@spirit-agent/agent-core';
-import type { HostRecordedFileChange } from '@spirit-agent/host-internal';
+import type { HostRecordedFileChange, HostTodoRecord } from '@spirit-agent/host-internal';
 
 import type { ConversationMessageSnapshot } from '../types.js';
 
@@ -48,6 +48,8 @@ export interface DesktopRewindCheckpointSnapshot {
   desktopMessages: ConversationMessageSnapshot[];
   beforeArchive?: ChatArchive;
   beforeDesktopMessages?: ConversationMessageSnapshot[];
+  todos?: HostTodoRecord[];
+  beforeTodos?: HostTodoRecord[];
 }
 
 export function createDesktopRewindMetadata(): StoredDesktopRewindMetadata {
