@@ -5,6 +5,13 @@ function isParentSubagentCompletionSurfaceText(text: string): boolean {
   return /子智能体已完成|输出如下/u.test(text);
 }
 
+/** Spinner frame prefix from runtime `pendingAuxState()` during subagent execution. */
+const SUBAGENT_SPINNER_PREFIX = /^[|/\\-]\s+/;
+
+/** Progress tail after `title:` on the subagent status line (streaming English fragments included). */
+const SUBAGENT_STATUS_TAIL_PREFIX =
+  /^(The|Sub|Sp|Thinking|Compressing|运行|等待)\b/u;
+
 /** Colon is part of an emoticon (e.g. `:)`), not a `label: status` separator. */
 function isEmoticonColon(text: string, colonIdx: number): boolean {
   const next = text[colonIdx + 1];
@@ -25,9 +32,37 @@ function lastStatusColonIndex(text: string): number {
   return colonIdx;
 }
 
+export function stripSubagentSpinnerPrefix(text: string): string {
+  return text.trim().replace(SUBAGENT_SPINNER_PREFIX, '').trim();
+}
+
+function isSubagentRuntimeStatusTail(after: string): boolean {
+  const tail = after.trim();
+  if (!tail) {
+    return false;
+  }
+  if (SUBAGENT_STATUS_TAIL_PREFIX.test(tail)) {
+    return true;
+  }
+  if (/^The user wants\b/u.test(tail)) {
+    return true;
+  }
+  if (/^运行中\s*$/u.test(tail)) {
+    return true;
+  }
+  if (/^等待/u.test(tail)) {
+    return true;
+  }
+  if (/^已完成\s*$/u.test(tail)) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Runtime status like `task: 运行中` or `task: The user wants…` — not child final output
- * or parent post-tool summary (Markdown).
+ * or parent post-tool summary (Markdown), and not normal assistant prose that happens to
+ * contain a colon.
  */
 export function isSubagentStatusSurfaceText(text: string | undefined): boolean {
   const normalized = text?.trim();
@@ -40,24 +75,31 @@ export function isSubagentStatusSurfaceText(text: string | undefined): boolean {
   if (/\*\*[\s\S]+\*\*/u.test(normalized) || /^#{1,6}\s/m.test(normalized)) {
     return false;
   }
-  if (normalized === 'Thinking...' || normalized === 'Compressing...') {
+  // Assistant replies are often multi-line; subagent status is always a single line.
+  if (/[\r\n]/.test(normalized)) {
+    return false;
+  }
+
+  const withoutSpinner = stripSubagentSpinnerPrefix(normalized);
+
+  if (withoutSpinner === 'Thinking...' || withoutSpinner === 'Compressing...') {
     return true;
   }
-  if (/:\s*运行中\s*$/u.test(normalized)) {
+  if (/:\s*运行中\s*$/u.test(withoutSpinner)) {
     return true;
   }
-  if (/:\s*等待/u.test(normalized)) {
+  if (/:\s*等待/u.test(withoutSpinner)) {
     return true;
   }
 
-  const colonIdx = lastStatusColonIndex(normalized);
+  const colonIdx = lastStatusColonIndex(withoutSpinner);
   if (colonIdx <= 0) {
     return false;
   }
 
-  const before = normalized.slice(0, colonIdx).trim();
-  const after = normalized.slice(colonIdx + 1).trim();
-  if (!after || before.length < 4 || after.includes('\n') || after.startsWith('```')) {
+  const before = withoutSpinner.slice(0, colonIdx).trim();
+  const after = withoutSpinner.slice(colonIdx + 1).trim();
+  if (!after || before.length < 4 || after.startsWith('```')) {
     return false;
   }
 
@@ -65,19 +107,25 @@ export function isSubagentStatusSurfaceText(text: string | undefined): boolean {
     return false;
   }
 
+  // Runtime truncates progress to ~120 chars; real answers are longer.
+  if (withoutSpinner.length > 220) {
+    return false;
+  }
+
+  // Prose after a colon (lists, sentences) is not subagent progress.
+  if (/[。！？；*•]/.test(after) || /^\s*[-*]\s/m.test(after)) {
+    return false;
+  }
+
+  if (!isSubagentRuntimeStatusTail(after)) {
+    return false;
+  }
+
   if (after.length > 200) {
     return false;
   }
 
-  if (
-    /^(The|Sub|Sp|Thinking|Compressing|运行|等待)\b/u.test(after) ||
-    /^The user wants\b/u.test(after) ||
-    after.length <= 16
-  ) {
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
 export function hasRunSubagentToolInCurrentTurn(
@@ -118,4 +166,22 @@ export function isSubagentStatusSurfaceMessage(
       !message.tool &&
       isSubagentStatusSurfaceText(message.content),
   );
+}
+
+/** Parsed subagent runtime status from `pendingAuxState().statusText` (spinner stripped). */
+export function parsePendingSubagentStatusText(text: string | undefined): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  const status = stripSubagentSpinnerPrefix(text);
+  if (!status || status === 'Thinking...' || status === 'Compressing...') {
+    return undefined;
+  }
+
+  if (!isSubagentStatusSurfaceText(status)) {
+    return undefined;
+  }
+
+  return status;
 }

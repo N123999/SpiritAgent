@@ -3752,7 +3752,7 @@ class DesktopHostService {
       if (!isSubagentStatusSurfaceMessage(message)) {
         continue;
       }
-      bundle.messageTimeline.setAssistantTextContent(message.id, '');
+      bundle.messageTimeline.clearSubagentStatusLeak(message.id);
     }
   }
 

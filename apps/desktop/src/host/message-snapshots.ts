@@ -9,6 +9,7 @@ import {
   shouldDropEmptyAssistantMessage,
   shouldHideEmptyPendingAssistantSnapshot,
   shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus,
+  stripRedundantThinkingFromMessageAux,
   stripThinkingFromAux,
 } from './message-ordering.js';
 
@@ -38,12 +39,13 @@ export function buildVisibleMessageSnapshot(input: {
   rewind: StoredDesktopRewindMetadata;
 }): ConversationMessageSnapshot | undefined {
   const tool = normalizeToolBlockSnapshot(input.message.tool);
-  const aux = shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
+  const baseAux = shouldHidePendingAssistantThinkingForLiveStandaloneSubagentStatus(
     input.message,
     input.livePendingAux,
   )
     ? stripThinkingFromAux(input.message.aux)
     : normalizeMessageAuxSnapshot(input.message.aux);
+  const aux = stripRedundantThinkingFromMessageAux(input.message.content, baseAux);
   if (shouldDropEmptyAssistantMessage(input.message, tool, aux)) {
     return undefined;
   }

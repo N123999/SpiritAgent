@@ -1190,7 +1190,9 @@ function MessageCard({
             onPaste={onRewindPaste}
           />
         ) : null}
-        {!isUser && message.aux?.thinking ? (
+        {!isUser &&
+        message.aux?.thinking?.trim() &&
+        (!message.content.trim() || message.aux.thinking.trim() !== message.content.trim()) ? (
           <AssistantThinkingCollapsible
             message={message}
             collapseDuringToolPreview={shouldCollapseThinkingDuringToolPreview(messages, listIndex)}

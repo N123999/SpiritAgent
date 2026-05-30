@@ -166,10 +166,11 @@ export class DesktopRuntimeEventOrchestrator {
       if (event.kind === 'update-pending-assistant-thinking') {
         const timelineMessages =
           this.options.messageTimeline?.()?.toMessages() ?? this.options.messages();
-        if (!hasActiveRunSubagentToolInMessages(timelineMessages)) {
-          this.options.assistantMessages.updatePendingAssistantAux('thinking', event.text);
-          this.options.messageTimeline?.()?.updatePendingAssistantAux('thinking', event.text);
+        if (hasActiveRunSubagentToolInMessages(timelineMessages)) {
+          continue;
         }
+        this.options.assistantMessages.updatePendingAssistantAux('thinking', event.text);
+        this.options.messageTimeline?.()?.updatePendingAssistantAux('thinking', event.text);
         continue;
       }
       if (event.kind === 'update-pending-assistant-compaction') {

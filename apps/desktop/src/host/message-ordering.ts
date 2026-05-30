@@ -8,6 +8,13 @@ import {
   llmMessageTextContent,
 } from '@spirit-agent/agent-core';
 
+import {
+  hasActiveRunSubagentToolInMessages,
+  hasRunSubagentToolInCurrentTurn,
+  isSubagentStatusSurfaceMessage,
+  isSubagentStatusSurfaceText,
+  parsePendingSubagentStatusText,
+} from '../lib/subagent-display.js';
 import type {
   ConversationMessageSnapshot,
   MessageAuxSnapshot,
@@ -15,6 +22,14 @@ import type {
   ToolBlockSnapshot,
 } from '../types.js';
 import type { DesktopToolRequest, StoredDesktopSession } from './contracts.js';
+
+export {
+  hasActiveRunSubagentToolInMessages,
+  hasRunSubagentToolInCurrentTurn,
+  isSubagentStatusSurfaceMessage,
+  isSubagentStatusSurfaceText,
+  parsePendingSubagentStatusText,
+};
 
 /** 环境变量 `SPIRIT_DESKTOP_MESSAGE_ORDER_DEBUG`：不设为关；`1`/compact/on 紧凑；`2`/verbose 更详并节流纯 preview；`0`/off 显式关闭。 */
 export type MessageOrderDebugLevel = 'off' | 'compact' | 'verbose';
@@ -462,6 +477,29 @@ export function stripThinkingFromAux(aux: MessageAuxSnapshot | undefined): Messa
   return normalizeMessageAuxSnapshot(rest);
 }
 
+/** Drop reasoning aux that duplicates visible body text or leaked subagent status. */
+export function stripRedundantThinkingFromMessageAux(
+  content: string,
+  aux: MessageAuxSnapshot | undefined,
+): MessageAuxSnapshot | undefined {
+  const normalizedContent = content.trim();
+  const normalizedAux = normalizeMessageAuxSnapshot(aux);
+  if (!normalizedContent || !normalizedAux?.thinking?.trim()) {
+    return normalizedAux;
+  }
+
+  const thinking = normalizedAux.thinking.trim();
+  if (
+    thinking === normalizedContent ||
+    normalizedContent.startsWith(thinking) ||
+    isSubagentStatusSurfaceText(thinking)
+  ) {
+    return stripThinkingFromAux(normalizedAux);
+  }
+
+  return normalizedAux;
+}
+
 export function isStandaloneThinkingMessage(
   message: ConversationMessageSnapshot | undefined,
 ): boolean {
@@ -482,30 +520,6 @@ export function rewindStandalonePendingAuxInsertIndexForThinking(
     index -= 1;
   }
   return index;
-}
-
-export {
-  hasActiveRunSubagentToolInMessages,
-  hasRunSubagentToolInCurrentTurn,
-  isSubagentStatusSurfaceMessage,
-  isSubagentStatusSurfaceText,
-} from '../lib/subagent-display.js';
-
-export function parsePendingSubagentStatusText(text: string | undefined): string | undefined {
-  if (!text) {
-    return undefined;
-  }
-
-  const status = text
-    .trim()
-    .replace(/^[|/\\-]\s*/, '')
-    .trim();
-
-  if (!status || status === 'Thinking...' || status === 'Compressing...') {
-    return undefined;
-  }
-
-  return status;
 }
 
 export function isStandaloneSubagentStatusAux(

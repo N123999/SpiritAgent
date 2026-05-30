@@ -4,10 +4,13 @@ import type {
   MessageAuxSnapshot,
   ToolBlockSnapshot,
 } from '../types.js';
+import { isSubagentStatusSurfaceText } from '../lib/subagent-display.js';
 import {
   messageOrderDebugLevel,
   normalizeMessageAuxSnapshot,
   normalizeToolBlockSnapshot,
+  stripRedundantThinkingFromMessageAux,
+  stripThinkingFromAux,
   truncateOneLineForDebug,
 } from './message-ordering.js';
 
@@ -207,6 +210,31 @@ export class DesktopMessageTimeline {
       row.content = content;
       row.pending = false;
       return true;
+    }
+    return false;
+  }
+
+  clearSubagentStatusLeak(messageId: number): boolean {
+    let cleared = false;
+    for (const row of this.allRows()) {
+      if (row.messageId !== messageId || row.kind !== 'assistant-text') {
+        continue;
+      }
+      if (row.content.trim() && isSubagentStatusSurfaceText(row.content)) {
+        row.content = '';
+        cleared = true;
+      }
+      if (row.aux?.thinking?.trim() && isSubagentStatusSurfaceText(row.aux.thinking)) {
+        const nextAux = stripThinkingFromAux(row.aux);
+        if (nextAux) {
+          row.aux = nextAux;
+        } else {
+          delete row.aux;
+        }
+        cleared = true;
+      }
+      row.pending = false;
+      return cleared;
     }
     return false;
   }
@@ -539,6 +567,12 @@ export class DesktopMessageTimeline {
     const row = this.activeAssistantTextRow(segment);
     if (row) {
       row.pending = false;
+      const nextAux = stripRedundantThinkingFromMessageAux(row.content, row.aux);
+      if (nextAux) {
+        row.aux = nextAux;
+      } else {
+        delete row.aux;
+      }
     }
     segment.status = 'completed';
     segment.activeAssistantTextRowId = undefined;

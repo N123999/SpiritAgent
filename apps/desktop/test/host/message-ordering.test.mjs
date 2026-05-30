@@ -5,6 +5,7 @@ import { isSubagentStatusSurfaceText } from '../../dist-electron/src/lib/subagen
 import {
   finishTaskNoticePreviewFromArguments,
   finishTaskSummaryFromStreamingArguments,
+  stripRedundantThinkingFromMessageAux,
   toolCallSummaryCopyForRequest,
   toolCallSummaryForPhase,
 } from '../../dist-electron/src/host/message-ordering.js';
@@ -70,6 +71,28 @@ test('isSubagentStatusSurfaceText detects runtime status lines', () => {
   assert.equal(
     isSubagentStatusSurfaceText('好的，又来一遍 :) 有什么需要我接着搞的？'),
     false,
+  );
+  assert.equal(isSubagentStatusSurfaceText('你是想让我：删除目录'), false);
+  assert.equal(
+    isSubagentStatusSurfaceText(
+      '在 VS Code 里通常分为「暂存」「更改」「未跟踪」。你是想让我：\n* 删除目录',
+    ),
+    false,
+  );
+});
+
+test('stripRedundantThinkingFromMessageAux removes duplicate or leaked reasoning', () => {
+  assert.deepEqual(
+    stripRedundantThinkingFromMessageAux('正文', { thinking: '正文' }),
+    undefined,
+  );
+  assert.deepEqual(
+    stripRedundantThinkingFromMessageAux('正文后半', { thinking: '正文' }),
+    undefined,
+  );
+  assert.deepEqual(
+    stripRedundantThinkingFromMessageAux('正文', { thinking: '独立推理' }),
+    { thinking: '独立推理' },
   );
 });
 

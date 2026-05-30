@@ -11,6 +11,7 @@ import {
   messageOrderDebugLevel,
   normalizeMessageAuxSnapshot,
   stripPendingThinkingMatchingFinalized,
+  stripRedundantThinkingFromMessageAux,
   stripThinkingFromAux,
   summarizeMessagesTailForOrderDebug,
   truncateOneLineForDebug,
@@ -238,6 +239,12 @@ export class DesktopAssistantMessageStateMachine {
     }
     const message = this.messages()[index]!;
     message.pending = false;
+    const nextAux = stripRedundantThinkingFromMessageAux(message.content, message.aux);
+    if (nextAux) {
+      message.aux = nextAux;
+    } else {
+      delete message.aux;
+    }
     this.lastSettledAssistantMessageId = message.id;
     this.pendingAssistantMessageId = undefined;
     this.latestPendingAssistantAux = undefined;
