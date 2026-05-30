@@ -1274,6 +1274,7 @@ async function createRuntime(
       planMetadata,
       extensionSystemPrompts,
       undefined,
+      undefined,
       basicInfo,
     );
   const llmTransport = createLlmTransport(config);
@@ -1293,6 +1294,7 @@ async function createRuntime(
         config.model,
         planMetadata,
         extensionSystemPrompts,
+        undefined,
         undefined,
         basicInfo,
       ),
@@ -1315,6 +1317,7 @@ async function createRuntime(
         config.model,
         planMetadata,
         extensionSystemPrompts,
+        undefined,
         undefined,
         basicInfo,
       ),

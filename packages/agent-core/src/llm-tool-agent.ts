@@ -2,6 +2,7 @@ export {
   buildActiveSkillsSystemMessage,
   buildBasicInfoSystemMessage,
   buildDreamsSystemMessage,
+  buildTodosSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
