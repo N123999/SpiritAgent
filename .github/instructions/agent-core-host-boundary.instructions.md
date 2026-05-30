@@ -124,14 +124,17 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | Rules / Skills / Plan 的系统段落语义 | `agent-core` |
 | 内建工具名称、描述、JSON Schema | `agent-core` |
 | 梦境工具名称、描述、JSON Schema 与收集者系统提示 | `agent-core` |
+| 会话 TODO 工具名称、描述、JSON Schema 与 `[SPIRIT_TODOS]` 系统段 | `agent-core` |
 | MCP 协议、MCP tool / resource / prompt 运行时 | `agent-core` |
 | Host 接口定义 | `agent-core` |
 | Rules / Skills / Plan 的发现与管理 | 宿主内部库 |
 | 宿主工具请求类型、解析、校验、审批、执行 | 宿主内部库 |
 | 梦境文件存储、过期清理与运行日志 | 宿主内部库 |
+| 会话 TODO 存储、`replaceAll` 与工具执行 | 宿主内部库 |
 | shell / search / file / web fetch 的平台适配 | 宿主内部库 |
 | CLI / Desktop UI 与平台接线 | apps |
 | Desktop 梦境设置页、后台调度与 Commit 消费 | apps |
+| Desktop / CLI Composer TODO 卡片与条带 UI | apps |
 
 ## 强约束
 
