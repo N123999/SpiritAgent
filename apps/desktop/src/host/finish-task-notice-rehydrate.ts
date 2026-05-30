@@ -144,6 +144,9 @@ function finishTaskNoticesFromHistoryTurn(historyTurn: LlmMessage[]): string[] {
         toolResult?.role === 'tool' && toolResult.toolCallId === toolCall.id
           ? llmMessageTextContent(toolResult.content).trim()
           : undefined;
+      if (!output || output.startsWith('[tool schema error]')) {
+        continue;
+      }
       if (output === FINISH_TASK_DEFAULT_OUTPUT) {
         notices.push(finishTaskNoticeFromExecution({ request }));
         continue;

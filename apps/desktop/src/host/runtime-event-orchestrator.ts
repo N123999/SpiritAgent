@@ -88,6 +88,9 @@ export class DesktopRuntimeEventOrchestrator {
         const finishExecution = [...result.toolExecutions]
           .reverse()
           .find((execution) => isFinishTaskToolName(execution.toolName) && !execution.failed);
+        const failedFinishTask = result.toolExecutions.some(
+          (execution) => isFinishTaskToolName(execution.toolName) && execution.failed,
+        );
         const aux = this.options.assistantMessages.takeLatestPendingAux();
         if (finishExecution) {
           const summary = finishTaskSummaryFromExecution(finishExecution);
@@ -106,6 +109,8 @@ export class DesktopRuntimeEventOrchestrator {
             notice,
             summary || result.assistantText,
           );
+        } else if (failedFinishTask) {
+          this.clearFinishTaskNoticePreview();
         } else if (result.assistantText.trim()) {
           if (!this.options.assistantMessages.materializeExistingCompletedAssistantMessage(result.assistantText, aux)) {
             this.options.assistantMessages.appendAssistantMessage(result.assistantText, aux);
@@ -213,8 +218,6 @@ export class DesktopRuntimeEventOrchestrator {
       }
       if (event.kind === 'tool-call-started') {
         if (isFinishTaskToolName(event.toolName)) {
-          const notice = finishTaskNoticeFromExecution({ request: event.request });
-          this.applyFinishTaskNoticePreview(notice);
           continue;
         }
         const runningSummary =
@@ -509,6 +512,11 @@ export class DesktopRuntimeEventOrchestrator {
     this.options.messageTimeline?.()?.updateFinishTaskNoticePreview(notice);
   }
 
+  private clearFinishTaskNoticePreview(): void {
+    this.options.assistantMessages.clearFinishTaskNoticePreview();
+    this.options.messageTimeline?.()?.clearFinishTaskNoticePreview();
+  }
+
   private integrateToolExecutions(
     executions: RuntimeToolExecution<DesktopToolRequest>[],
     source: 'event' | 'turn-result',
@@ -518,6 +526,14 @@ export class DesktopRuntimeEventOrchestrator {
         const toolCallId = execution.toolCallId || `tool:${execution.toolName}`;
         this.options.assistantMessages.removeToolMessage(toolCallId);
         this.options.messageTimeline?.()?.removeToolMessage(toolCallId);
+        if (execution.failed) {
+          this.clearFinishTaskNoticePreview();
+        } else {
+          const notice = finishTaskNoticeFromExecution(execution);
+          if (notice) {
+            this.applyFinishTaskNoticePreview(notice);
+          }
+        }
         continue;
       }
       if (execution.toolName === 'generate_image' && execution.toolCallId) {

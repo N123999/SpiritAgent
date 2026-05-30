@@ -283,6 +283,7 @@ export class AgentRuntime<
 
   setLoopEnabled(enabled: boolean): void {
     this.loopEnabledStore = enabled;
+    this.options.toolExecutor.setLoopToolExposure?.(enabled);
   }
 
   childSessionArchives(): readonly RuntimeSubagentSessionArchiveEntry[] {
@@ -598,6 +599,7 @@ export class AgentRuntime<
       archive.llmHistory.map((message) => normalizeStoredLlmMessage(message)),
     );
     this.loopEnabledStore = archive.loopEnabled === true;
+    this.options.toolExecutor.setLoopToolExposure?.(this.loopEnabledStore);
     this.requestTraceStore = [];
     this.clearPendingStreamingState();
     this.clearPendingNonStreamingState();
@@ -1427,7 +1429,7 @@ export class AgentRuntime<
     turn: RuntimeTurnContext<ToolRequest>,
   ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget> | undefined> {
     const finishSummary = extractFinishTaskSummary(request);
-    if (finishSummary !== undefined) {
+    if (finishSummary !== undefined && this.loopEnabled()) {
       return this.completeFinishTaskToolCall(state, request, toolCallId, finishSummary, turn);
     }
 
@@ -1535,7 +1537,7 @@ export class AgentRuntime<
     streamingEmitBeginResponse = true,
   ): Promise<boolean> {
     const finishSummary = extractFinishTaskSummary(request);
-    if (finishSummary !== undefined) {
+    if (finishSummary !== undefined && this.loopEnabled()) {
       this.completeTurn(this.completeFinishTaskToolCall(
         state,
         request,

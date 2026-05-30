@@ -570,6 +570,7 @@ export async function processToolCalls<
         request,
       });
     } catch (error) {
+      commitToolCallSchemaError(runtime, turn, call, error);
       currentState = runtime.options.appendToolResultMessage(
         currentState,
         call.id,
@@ -1031,6 +1032,7 @@ export async function processToolCallsAsync<
         request,
       });
     } catch (error) {
+      commitToolCallSchemaError(runtime, turn, call, error);
       currentState = runtime.options.appendToolResultMessage(
         currentState,
         call.id,
@@ -1319,6 +1321,40 @@ function persistAssistantToolCalls<
       argumentsJson: call.argumentsJson,
     })),
   });
+}
+
+function requestStubFromToolCall(call: ToolCallRequest): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(call.argumentsJson) as Record<string, unknown>;
+    return { name: call.name, ...parsed };
+  } catch {
+    return { name: call.name };
+  }
+}
+
+export function commitToolCallSchemaError<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: Pick<
+    TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+    'emitEvent' | 'historyStore'
+  >,
+  turn: RuntimeTurnContext<ToolRequest>,
+  call: ToolCallRequest,
+  error: unknown,
+): RuntimeToolExecution<ToolRequest> {
+  const outputText = `[tool schema error] ${renderError(error)}`;
+  return commitSyntheticToolExecutionFailure(
+    runtime,
+    turn,
+    requestStubFromToolCall(call) as ToolRequest,
+    call.id,
+    call.name,
+    outputText,
+  );
 }
 
 export function commitSyntheticToolExecutionFailure<

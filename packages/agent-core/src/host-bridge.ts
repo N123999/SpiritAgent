@@ -1541,6 +1541,7 @@ peer.on('runtime.init', async (rawParams) => {
     await updateCliTodoScope(params.todoSessionKey.trim());
   }
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
+  toolExecutor.setLoopToolExposure(params.loopEnabled === true);
   runtime.setLoopEnabled(params.loopEnabled === true);
   const workspaceRoot =
     params.transportConfig.workspaceRoot?.trim() || currentWorkspaceRoot();

@@ -333,6 +333,25 @@ export class DesktopMessageTimeline {
     return rowToMessage(target);
   }
 
+  clearFinishTaskNoticePreview(): ConversationMessageSnapshot | undefined {
+    const segment = this.activeSegment() ?? this.lastSegmentOfActiveTurn();
+    if (!segment) {
+      return undefined;
+    }
+
+    const target = this.findLastAssistantTextRow(segment);
+    if (!target?.aux?.finishTaskNotice) {
+      return undefined;
+    }
+
+    target.aux = normalizeMessageAuxSnapshot({
+      ...(target.aux.thinking ? { thinking: target.aux.thinking } : {}),
+      ...(target.aux.compaction ? { compaction: target.aux.compaction } : {}),
+    });
+    this.logSegmentRows('finish-task-notice-cleared', segment);
+    return rowToMessage(target);
+  }
+
   hasFinalizedAuxInActiveSegment(kind: 'thinking' | 'compressing', text: string): boolean {
     const segment = this.activeSegment();
     const normalized = text.trim();

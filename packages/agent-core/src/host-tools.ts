@@ -24,9 +24,16 @@ export type TodoHostToolName =
   | 'todo_update'
   | 'todo_complete';
 
-export function buildBuiltinHostToolDefinitions(
-  environment: BuiltinHostToolDefinitionEnvironment,
-): JsonValue[] {
+export const FINISH_TASK_TOOL_NAME = 'finish_task';
+
+/** Reject finish_task when Loop is off (model may still call it from prior turns). */
+export function assertFinishTaskToolAllowed(toolName: string, loopEnabled: boolean): void {
+  if (toolName.trim() === FINISH_TASK_TOOL_NAME && !loopEnabled) {
+    throw new Error(`未知工具: ${toolName}`);
+  }
+}
+
+export function buildFinishTaskHostToolDefinitions(): JsonValue[] {
   return [
     functionTool(
       'finish_task',
@@ -43,6 +50,13 @@ export function buildBuiltinHostToolDefinitions(
         additionalProperties: false,
       },
     ),
+  ];
+}
+
+export function buildBuiltinHostToolDefinitions(
+  environment: BuiltinHostToolDefinitionEnvironment,
+): JsonValue[] {
+  return [
     functionTool('run_shell_command', buildShellToolDescription(environment.shellDisplayName), {
       type: 'object',
       properties: {

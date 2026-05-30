@@ -323,6 +323,87 @@ test('finish_task streaming preview updates finishTaskNotice on assistant text r
   );
 });
 
+test('failed finish_task clears streaming finishTaskNotice preview', () => {
+  const harness = createHarness();
+  harness.pushUser('再调用一次');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    {
+      kind: 'replace-pending-assistant',
+      text: '这次报错了：未知工具 finish_task。',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-finish',
+      toolName: 'finish_task',
+      argumentsJson: '{"summary":"按用户要求再次调用"}',
+    },
+    {
+      kind: 'tool-execution-finished',
+      execution: {
+        toolCallId: 'call-finish',
+        toolName: 'finish_task',
+        request: { name: 'finish_task', summary: '按用户要求再次调用' },
+        output: '[tool schema error] 未知工具: finish_task',
+        failed: true,
+      },
+    },
+  ]);
+
+  const assistantRow = harness.timeline
+    .toMessages()
+    .find((message) => message.role === 'assistant' && !message.tool);
+  assert.equal(assistantRow?.content, '这次报错了：未知工具 finish_task。');
+  assert.equal(assistantRow?.aux?.finishTaskNotice, undefined);
+});
+
+test('failed finish_task clears notice when preview and tool-finished are split across batches', () => {
+  const harness = createHarness();
+  harness.pushUser('再调用一次');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'call-finish',
+      toolName: 'finish_task',
+      argumentsJson: '{"summary":"再次确认 finish_task 可用"}',
+    },
+  ]);
+
+  const afterPreview = harness.timeline
+    .toMessages()
+    .find((message) => message.role === 'assistant' && !message.tool);
+  assert.equal(afterPreview?.aux?.finishTaskNotice, '任务以 再次确认 finish_task 可用 完成。');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    {
+      kind: 'tool-execution-finished',
+      execution: {
+        toolCallId: 'call-finish',
+        toolName: 'finish_task',
+        request: { name: 'finish_task', summary: '再次确认 finish_task 可用' },
+        output: '[tool schema error] 未知工具: finish_task',
+        failed: true,
+      },
+    },
+    {
+      kind: 'replace-pending-assistant',
+      text: '这次调用失败了——返回了 `未知工具: finish_task`。',
+    },
+  ]);
+
+  const assistantRow = harness.timeline
+    .toMessages()
+    .find((message) => message.role === 'assistant' && !message.tool);
+  assert.equal(
+    assistantRow?.content,
+    '这次调用失败了——返回了 `未知工具: finish_task`。',
+  );
+  assert.equal(assistantRow?.aux?.finishTaskNotice, undefined);
+});
+
 test('splitRuntimeEventsForIncrementalFinishTaskPreview applies one finish_task preview per batch', () => {
   const events = [
     { kind: 'assistant-chunk', text: 'hello' },

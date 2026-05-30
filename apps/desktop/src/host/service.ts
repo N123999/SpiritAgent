@@ -1527,7 +1527,10 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
       const state = this.requireState();
-      this.activeBundle().loopEnabled = enabled;
+      const bundle = this.activeBundle();
+      bundle.loopEnabled = enabled;
+      const toolExecutor = await this.ensureToolExecutor(bundle);
+      toolExecutor.setLoopToolExposure(enabled);
       this.runtime?.setLoopEnabled(enabled);
       await this.persistCurrentSessionIfNeeded();
       return this.buildSnapshot();
@@ -2633,6 +2636,7 @@ class DesktopHostService {
       throw new Error('Desktop MCP tool executor 尚未初始化。');
     }
     bundle.toolExecutor.setApprovalLevel(bundle.approvalLevel);
+    bundle.toolExecutor.setLoopToolExposure(bundle.loopEnabled);
     return bundle.toolExecutor;
   }
 

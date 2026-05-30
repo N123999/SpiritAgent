@@ -221,6 +221,29 @@ export class DesktopAssistantMessageStateMachine {
     }
   }
 
+  clearFinishTaskNoticePreview(): void {
+    if (this.latestPendingAssistantAux?.finishTaskNotice) {
+      const { finishTaskNotice: _notice, ...rest } = this.latestPendingAssistantAux;
+      this.latestPendingAssistantAux = Object.keys(rest).length > 0 ? rest : undefined;
+    }
+
+    const messages = this.messages();
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      if (message.role === 'user') {
+        break;
+      }
+      if (message.role !== 'assistant' || message.tool || !message.aux?.finishTaskNotice) {
+        continue;
+      }
+      message.aux = normalizeMessageAuxSnapshot({
+        ...(message.aux.thinking ? { thinking: message.aux.thinking } : {}),
+        ...(message.aux.compaction ? { compaction: message.aux.compaction } : {}),
+      });
+      return;
+    }
+  }
+
   appendPendingAssistantChunk(chunk: string): void {
     const message = this.ensurePendingAssistantMessage();
     message.content += chunk;

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { AgentRuntime } from '../runtime.js';
 import { assistantToolCallMessageFromState } from '../tool-agent.js';
 import { createTurnContext, repairMissingToolResultsInHistory } from './helpers.js';
+import type { RuntimeEvent } from './types.js';
 import {
   processToolCalls,
   resumePendingApproval,
@@ -121,6 +122,71 @@ test('repairMissingToolResultsInHistory inserts placeholders for orphaned tool c
 
   assert.ok(toolMessage);
   assert.equal(repaired.indexOf(toolMessage!), 1);
+});
+
+test('processToolCalls emits tool-execution-finished when requestFromFunctionCall schema fails', async () => {
+  const events: RuntimeEvent<{ name: string; summary?: string }>[] = [];
+  const state = { messages: [] as Array<{ role: string; content: string }>, steps: 0 };
+  const turn = createTurnContext<{ name: string; summary?: string }>();
+  const runtime = {
+    options: {
+      config: {},
+      llmTransport: {
+        startToolAgentRound: async () => ({
+          kind: 'success',
+          result: {
+            state,
+            step: { kind: 'final-response-ready' },
+            requestTrace: [],
+          },
+        }),
+      },
+      toolExecutor: {
+        toolDefinitionsJson: () => [],
+        requestFromFunctionCall: async () => {
+          throw new Error('未知工具: finish_task');
+        },
+        authorize: async () => {
+          throw new Error('unused');
+        },
+      },
+      createToolAgentState: () => state,
+      appendToolResultMessage: (currentState: typeof state) => currentState,
+      extractAssistantText: () => 'tool failed',
+    },
+    historyStore: [] as Array<{ role: string; toolCallId?: string; content: Array<{ type: string; text: string }> }>,
+    requestTraceStore: [],
+    pendingUserTurnStore: undefined,
+    pendingApproval: undefined,
+    pendingQuestions: undefined,
+    pendingToolAgentRound: undefined,
+    appendTrace: () => {},
+    clearStreamingUiState: () => {},
+    completeTurn: () => {},
+    emitEvent: (event: RuntimeEvent<{ name: string; summary?: string }>) => {
+      events.push(event);
+    },
+    performToolExecution: async () => {
+      throw new Error('unused');
+    },
+    startBackgroundToolExecutionAsync: () => {},
+    startHistoryCompactionAsync: () => {},
+    loopEnabled: () => false,
+  } as unknown as TurnMachineRuntime<{}, typeof state, { name: string; summary?: string }>;
+
+  await processToolCalls(
+    runtime,
+    state,
+    'call finish_task',
+    [{ id: 'call_finish', name: 'finish_task', argumentsJson: '{"summary":"再次确认"}' }],
+    turn,
+  );
+
+  const finished = events.find((event) => event.kind === 'tool-execution-finished');
+  assert.ok(finished);
+  assert.equal(finished.execution.toolName, 'finish_task');
+  assert.equal(finished.execution.failed, true);
+  assert.match(finished.execution.output, /schema error/);
 });
 
 test('processToolCalls does not re-persist assistant tool calls when continuing remaining calls', async () => {
@@ -357,6 +423,7 @@ test('AgentRuntime omits sync assistant UI events when finish_task completes', a
       { kind: 'tool', id: 'call_finish', name: 'finish_task', argumentsJson: '{"summary":"all done"}' },
     ]),
   );
+  runtime.setLoopEnabled(true);
 
   await runtime.submitUserTurn('work');
   const events = runtime.drainEvents();
@@ -366,17 +433,25 @@ test('AgentRuntime omits sync assistant UI events when finish_task completes', a
   assert.equal(events.some((event) => event.kind === 'assistant-response-completed'), false);
 });
 
-test('AgentRuntime accepts finish_task when Loop is disabled', async () => {
+test('AgentRuntime rejects finish_task when Loop is disabled', async () => {
   const runtime = new AgentRuntime(
     buildAgentRuntimeOptions([
       { kind: 'tool', id: 'call_finish', name: 'finish_task', argumentsJson: '{}' },
-    ]),
+      { kind: 'final', text: 'done without finish_task' },
+    ], {
+      requestFromFunctionCall: async (name: string) => {
+        if (name === 'finish_task') {
+          throw new Error(`未知工具: ${name}`);
+        }
+        return { name };
+      },
+    }),
   );
 
   const result = await runtime.submitUserTurn('work');
 
   assert.equal(result.kind, 'completed');
-  assert.equal(result.kind === 'completed' ? result.assistantText : '', 'Task marked complete.');
+  assert.equal(result.kind === 'completed' ? result.assistantText : '', 'done without finish_task');
   assert.equal(runtime.loopEnabled(), false);
 });
 
@@ -476,8 +551,39 @@ function buildLoopTestRuntime(options: {
   return runtime;
 }
 
-function buildAgentRuntimeOptions(rounds: LoopTestRound[]): any {
+function buildAgentRuntimeOptions(
+  rounds: LoopTestRound[],
+  toolExecutorOverrides: Record<string, unknown> = {},
+): any {
   let index = 0;
+  const baseToolExecutor = {
+    toolDefinitionsJson: () => [],
+    parseCommand: async () => ({ name: 'finish_task' }),
+    requestFromFunctionCall: async (name: string, argumentsJson: string) => ({
+      name,
+      ...(JSON.parse(argumentsJson || '{}') as { summary?: string }),
+    }),
+    authorize: async () => ({ kind: 'allowed' as const }),
+    trust: async () => {},
+    execute: async () => ({ content: [], summaryText: '' }),
+    startMcpBackgroundRefresh: () => {},
+    mcpStatusSnapshot: () => ({
+      revision: 0,
+      state: 'idle' as const,
+      configuredServers: 0,
+      loadedServers: 0,
+      cachedTools: 0,
+    }),
+    addMcpServer: async () => '',
+    listMcpServers: async () => [],
+    inspectMcpServer: async () => ({}),
+    listMcpTools: async () => [],
+    listMcpResources: async () => [],
+    readMcpResource: async () => ({}),
+    listCachedMcpPrompts: async () => [],
+    listMcpPrompts: async () => [],
+    getMcpPrompt: async () => ({}),
+  };
   return {
     config: {},
     llmTransport: {
@@ -533,32 +639,8 @@ function buildAgentRuntimeOptions(rounds: LoopTestRound[]): any {
       llmSystemPromptsForExport: () => ({}),
     },
     toolExecutor: {
-      toolDefinitionsJson: () => [],
-      parseCommand: async () => ({ name: 'finish_task' }),
-      requestFromFunctionCall: async (name: string, argumentsJson: string) => ({
-        name,
-        ...(JSON.parse(argumentsJson || '{}') as { summary?: string }),
-      }),
-      authorize: async () => ({ kind: 'allowed' as const }),
-      trust: async () => {},
-      execute: async () => ({ content: [], summaryText: '' }),
-      startMcpBackgroundRefresh: () => {},
-      mcpStatusSnapshot: () => ({
-        revision: 0,
-        state: 'idle' as const,
-        configuredServers: 0,
-        loadedServers: 0,
-        cachedTools: 0,
-      }),
-      addMcpServer: async () => '',
-      listMcpServers: async () => [],
-      inspectMcpServer: async () => ({}),
-      listMcpTools: async () => [],
-      listMcpResources: async () => [],
-      readMcpResource: async () => ({}),
-      listCachedMcpPrompts: async () => [],
-      listMcpPrompts: async () => [],
-      getMcpPrompt: async () => ({}),
+      ...baseToolExecutor,
+      ...toolExecutorOverrides,
     },
     createToolAgentState: (_history: unknown[], userInput: string) => ({
       messages: [{ role: 'user', content: userInput }],

@@ -11,7 +11,9 @@ import type {
 } from '../ports.js';
 import { createToolExecutionTextOutput } from '../ports.js';
 import {
+  assertFinishTaskToolAllowed,
   buildBuiltinHostToolDefinitions,
+  buildFinishTaskHostToolDefinitions,
   type BuiltinHostToolDefinitionEnvironment,
 } from '../host-tools.js';
 import { McpService, type McpToolRequest } from '../mcp/service.js';
@@ -43,6 +45,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private hostToolDefinitionsCache: JsonValue = [];
   private extensionToolDefinitionsCache: JsonValue[] = [];
   private todoToolDefinitionsCache: JsonValue[] = [];
+  private loopToolDefinitionsCache: JsonValue[] = [];
+  private loopToolExposureEnabled = false;
   private hostToolDefinitionsLoaded = false;
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
@@ -71,6 +75,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
   setTodoToolDefinitions(definitions: JsonValue[] | undefined): void {
     this.todoToolDefinitionsCache = Array.isArray(definitions) ? [...definitions] : [];
+    this.refreshMergedToolDefinitions();
+  }
+
+  setLoopToolExposure(loopEnabled: boolean): void {
+    this.loopToolExposureEnabled = loopEnabled;
+    this.loopToolDefinitionsCache = loopEnabled ? buildFinishTaskHostToolDefinitions() : [];
     this.refreshMergedToolDefinitions();
   }
 
@@ -103,6 +113,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async requestFromFunctionCall(name: string, argumentsJson: string): Promise<JsonValue> {
+    assertFinishTaskToolAllowed(name, this.loopToolExposureEnabled);
     const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
     if (localMcpRequest) {
       return localMcpRequest;
@@ -385,8 +396,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       ? this.hostToolDefinitionsCache
       : filterToolDefinitionByName(this.hostToolDefinitionsCache, 'generate_image');
     const mergedHostDefinitions = Array.isArray(hostDefinitions)
-      ? [...hostDefinitions, ...this.todoToolDefinitionsCache]
-      : [...this.todoToolDefinitionsCache];
+      ? [...hostDefinitions, ...this.loopToolDefinitionsCache, ...this.todoToolDefinitionsCache]
+      : [...this.loopToolDefinitionsCache, ...this.todoToolDefinitionsCache];
     this.toolDefinitionsCache = mergeToolDefinitions(
       mergedHostDefinitions,
       this.extensionToolDefinitionsCache,

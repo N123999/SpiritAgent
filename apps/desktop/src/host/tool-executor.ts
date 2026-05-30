@@ -10,6 +10,8 @@ import {
   buildBuiltinHostToolDefinitions,
   buildDreamHostToolDefinitions,
   buildDreamReadHostToolDefinitions,
+  assertFinishTaskToolAllowed,
+  buildFinishTaskHostToolDefinitions,
   buildTodoHostToolDefinitions,
   AuthorizationDecision,
   createToolExecutionTextOutput,
@@ -60,6 +62,8 @@ export class DesktopToolExecutor
   private readonly dreamToolMode: DesktopDreamToolMode | undefined;
   private readonly todoScope: HostTodoScope | undefined;
   private extensionToolDefinitions: JsonValue[];
+  private loopToolDefinitions: JsonValue[] = [];
+  private loopToolExposureEnabled = false;
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
   private imageGenerationAvailable = false;
   private approvalLevel: ApprovalLevel = 'default';
@@ -116,6 +120,11 @@ export class DesktopToolExecutor
     this.approvalLevel = normalizeApprovalLevel(level);
   }
 
+  setLoopToolExposure(loopEnabled: boolean): void {
+    this.loopToolExposureEnabled = loopEnabled;
+    this.loopToolDefinitions = loopEnabled ? buildFinishTaskHostToolDefinitions() : [];
+  }
+
   approvalLevelSnapshot(): ApprovalLevel {
     return this.approvalLevel;
   }
@@ -149,6 +158,7 @@ export class DesktopToolExecutor
 
     return mergeToolDefinitions(
       ...builtinDefinitions,
+      ...this.loopToolDefinitions,
       ...this.dreamToolDefinitions,
       ...this.todoToolDefinitions,
       ...this.extensionToolDefinitions,
@@ -168,6 +178,7 @@ export class DesktopToolExecutor
     name: string,
     argumentsJson: string,
   ): Promise<DesktopToolRequest> {
+    assertFinishTaskToolAllowed(name, this.loopToolExposureEnabled);
     const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
     if (localMcpRequest) {
       return localMcpRequest as unknown as DesktopToolRequest;
