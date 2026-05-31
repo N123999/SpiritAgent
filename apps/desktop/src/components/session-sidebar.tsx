@@ -500,7 +500,7 @@ export function SessionSidebar({
                                 {session.isBusy ? (
                                   <span
                                     className="size-1.5 shrink-0 rounded-full bg-primary animate-pulse"
-                                    aria-label={t('common.loading')}
+                                    aria-label={t('common.running')}
                                   />
                                 ) : null}
                               </button>
