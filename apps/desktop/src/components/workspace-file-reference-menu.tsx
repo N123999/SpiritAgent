@@ -8,6 +8,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { instantHoverMotionClass } from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
 
 type WorkspaceFileReferenceMenuProps = {
@@ -49,7 +50,7 @@ export function WorkspaceFileReferenceMenu({
     >
       <div
         ref={scrollViewportRef}
-        className="no-scrollbar max-h-[min(48vh,32rem)] overscroll-contain overflow-x-hidden overflow-y-auto outline-none"
+        className="no-scrollbar max-h-[min(16rem,34vh)] overscroll-contain overflow-x-hidden overflow-y-auto outline-none"
       >
         <CommandList className="max-h-none overflow-visible" onMouseLeave={() => onSelectIndex(-1)}>
           {suggestions.map((path, index) => (
@@ -58,7 +59,8 @@ export function WorkspaceFileReferenceMenu({
               value={path}
               data-workspace-file-reference-index={index}
               className={cn(
-                'min-w-0 rounded-xl px-3 py-2 [&>svg:last-child]:hidden',
+                'min-w-0 cursor-pointer rounded-xl px-3 py-2 [&>svg:last-child]:hidden',
+                instantHoverMotionClass,
                 index === selectedIndex
                   ? 'bg-foreground/[0.06] text-foreground'
                   : 'text-foreground hover:bg-foreground/[0.05]',
