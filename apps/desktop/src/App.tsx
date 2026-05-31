@@ -869,7 +869,7 @@ function ComposerSurface({
                         filteredModelGroups.map((group) => (
                           <div key={group.provider} className="mb-2 last:mb-0">
                             <div className="px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground">
-                              {group.label}
+                              {t(group.labelKey, { defaultValue: group.fallbackLabel })}
                             </div>
                             {group.items.map((model) => {
                               const modelSummary = formatModelPickerLabel(

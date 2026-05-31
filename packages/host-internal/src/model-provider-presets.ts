@@ -58,6 +58,15 @@ type PresetApiBaseByTransport = Partial<
   Record<PresetModelProviderId, Partial<Record<ProviderModelTransportKind, string>>>
 >;
 
+export interface ProviderPickerLabel {
+  labelKey: string;
+  fallbackLabel: string;
+}
+
+export interface ProviderPickerRow extends ProviderPickerLabel {
+  id: ModelProviderId;
+}
+
 interface ParsedModelProviderPresets {
   defaultCustomApiBase: string;
   presetApiBaseByProvider: Record<
@@ -66,7 +75,7 @@ interface ParsedModelProviderPresets {
   >;
   presetApiBaseByTransport: PresetApiBaseByTransport;
   pickerOrder: readonly ModelProviderId[];
-  pickerLabels: Record<string, string>;
+  pickerLabels: Record<ModelProviderId, ProviderPickerLabel>;
 }
 
 function requireStringField(obj: Record<string, unknown>, key: string): string {
@@ -124,6 +133,15 @@ function parsePresetApiBaseByTransport(data: unknown): PresetApiBaseByTransport 
   return result;
 }
 
+function parsePickerLabel(data: unknown, id: ModelProviderId): ProviderPickerLabel {
+  if (!isJsonRecord(data)) {
+    throw new Error(`model-provider-presets.json: pickerLabels.${id} must be an object`);
+  }
+  const labelKey = requireStringField(data, 'labelKey');
+  const fallbackLabel = requireStringField(data, 'fallbackLabel');
+  return { labelKey, fallbackLabel };
+}
+
 function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPresets {
   if (!isJsonRecord(data)) {
     throw new Error('model-provider-presets.json: root must be a JSON object');
@@ -158,13 +176,10 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
   if (!isJsonRecord(labelsRaw)) {
     throw new Error('model-provider-presets.json: pickerLabels must be an object');
   }
-  const pickerLabels: Record<string, string> = {};
+  const pickerLabels: Partial<Record<ModelProviderId, ProviderPickerLabel>> = {};
   for (const id of pickerOrder) {
     const label = labelsRaw[id];
-    if (typeof label !== 'string' || label.trim() === '') {
-      throw new Error(`model-provider-presets.json: pickerLabels.${id} must be a non-empty string`);
-    }
-    pickerLabels[id] = label;
+    pickerLabels[id] = parsePickerLabel(label, id);
   }
 
   const defaultCustomApiBase = requireStringField(data, 'defaultCustomApiBase');
@@ -180,7 +195,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     presetApiBaseByProvider,
     presetApiBaseByTransport,
     pickerOrder,
-    pickerLabels,
+    pickerLabels: pickerLabels as Record<ModelProviderId, ProviderPickerLabel>,
   };
 }
 
@@ -211,8 +226,8 @@ export const PROVIDER_PRESET_API_BASE = {
 const pickerLabels = raw.pickerLabels;
 
 /** 设置页等：按固定顺序展示提供商选项。 */
-export const PROVIDER_PICKER_ROWS: Array<{ id: ModelProviderId; label: string }> = raw.pickerOrder.map(
-  (id) => ({ id, label: pickerLabels[id]! }),
+export const PROVIDER_PICKER_ROWS: ProviderPickerRow[] = raw.pickerOrder.map(
+  (id) => ({ id, ...pickerLabels[id] }),
 );
 
 /** 分组排序等与 `pickerOrder` 一致。 */

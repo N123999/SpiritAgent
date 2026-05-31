@@ -27,14 +27,41 @@
   },
   "pickerOrder": ["openai", "xai", "anthropic", "deepseek", "vercel-ai-gateway", "moonshot-ai", "alibaba", "minimax", "custom"],
   "pickerLabels": {
-    "deepseek": "DeepSeek",
-    "xai": "xAI",
-    "moonshot-ai": "Moonshot AI",
-    "minimax": "MiniMax",
-    "alibaba": "Alibaba",
-    "anthropic": "Anthropic",
-    "vercel-ai-gateway": "Vercel AI Gateway",
-    "openai": "OpenAI",
-    "custom": "自定义"
+    "deepseek": {
+      "labelKey": "providers.deepseek",
+      "fallbackLabel": "DeepSeek"
+    },
+    "xai": {
+      "labelKey": "providers.xai",
+      "fallbackLabel": "xAI"
+    },
+    "moonshot-ai": {
+      "labelKey": "providers.moonshotAi",
+      "fallbackLabel": "Moonshot AI"
+    },
+    "minimax": {
+      "labelKey": "providers.minimax",
+      "fallbackLabel": "MiniMax"
+    },
+    "alibaba": {
+      "labelKey": "providers.alibaba",
+      "fallbackLabel": "Alibaba"
+    },
+    "anthropic": {
+      "labelKey": "providers.anthropic",
+      "fallbackLabel": "Anthropic"
+    },
+    "vercel-ai-gateway": {
+      "labelKey": "providers.vercelAiGateway",
+      "fallbackLabel": "Vercel AI Gateway"
+    },
+    "openai": {
+      "labelKey": "providers.openai",
+      "fallbackLabel": "OpenAI"
+    },
+    "custom": {
+      "labelKey": "providers.custom",
+      "fallbackLabel": "Custom"
+    }
   }
 }

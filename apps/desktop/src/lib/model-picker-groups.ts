@@ -12,8 +12,9 @@ import type {
 
 const PROVIDER_ORDER: DesktopModelProvider[] = [...MODEL_PROVIDER_PICKER_ORDER];
 
-function providerLabel(provider: DesktopModelProvider): string {
-  return PROVIDER_PICKER_ROWS.find((row) => row.id === provider)?.label ?? provider;
+function providerLabelMetadata(provider: DesktopModelProvider): { labelKey: string; fallbackLabel: string } {
+  const row = PROVIDER_PICKER_ROWS.find((item) => item.id === provider);
+  return row ? { labelKey: row.labelKey, fallbackLabel: row.fallbackLabel } : { labelKey: provider, fallbackLabel: provider };
 }
 
 function normalizeTransportKind(
@@ -47,7 +48,8 @@ function catalogOrderIndex(
 
 export type ModelPickerGroup = {
   provider: DesktopModelProvider;
-  label: string;
+  labelKey: string;
+  fallbackLabel: string;
   items: ModelProfileSnapshot[];
 };
 
@@ -99,7 +101,7 @@ export function groupModelsForPicker(
     });
     return {
       provider,
-      label: providerLabel(provider),
+      ...providerLabelMetadata(provider),
       items,
     };
   });

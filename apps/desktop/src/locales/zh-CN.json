@@ -41,6 +41,17 @@
     "create": "创建",
     "clear": "清除"
   },
+  "providers": {
+    "openai": "OpenAI",
+    "xai": "xAI",
+    "anthropic": "Anthropic",
+    "deepseek": "DeepSeek",
+    "vercelAiGateway": "Vercel AI Gateway",
+    "moonshotAi": "Moonshot AI",
+    "alibaba": "Alibaba",
+    "minimax": "MiniMax",
+    "custom": "自定义"
+  },
   "settings": {
     "title": "设置",
     "basic": "工作区与连接",

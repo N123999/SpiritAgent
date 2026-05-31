@@ -2057,7 +2057,8 @@ function ModelsSettingsPanel({
   }
 
   function providerLabel(provider: DesktopModelProvider): string {
-    return PROVIDER_PICKER_ROWS.find((row) => row.id === provider)?.label ?? provider;
+    const row = PROVIDER_PICKER_ROWS.find((item) => item.id === provider);
+    return row ? String(t(row.labelKey, { defaultValue: row.fallbackLabel })) : provider;
   }
 
   const resetConnectWizard = () => {
@@ -2091,13 +2092,17 @@ function ModelsSettingsPanel({
     setConnectDialogOpen(true);
   };
 
-  const filteredProviders = PROVIDER_PICKER_ROWS.filter((row) =>
+  const localizedProviderRows = PROVIDER_PICKER_ROWS.map((row) => ({
+    ...row,
+    label: providerLabel(row.id),
+  }));
+  const filteredProviders = localizedProviderRows.filter((row) =>
     row.label.toLowerCase().includes(providerQuery.trim().toLowerCase()),
   );
   const selectedProviderLabel =
     selectedProvider === null
       ? t('settings.connectProvider')
-      : PROVIDER_PICKER_ROWS.find((row) => row.id === selectedProvider)?.label ?? t('settings.connectProvider');
+      : providerLabel(selectedProvider);
 
   const openModelDefaultsDialog = (model: SettingsModelProfile) => {
     setModelDefaultsDialogTarget(model.name);

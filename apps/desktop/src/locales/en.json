@@ -41,6 +41,17 @@
     "create": "Create",
     "clear": "Clear"
   },
+  "providers": {
+    "openai": "OpenAI",
+    "xai": "xAI",
+    "anthropic": "Anthropic",
+    "deepseek": "DeepSeek",
+    "vercelAiGateway": "Vercel AI Gateway",
+    "moonshotAi": "Moonshot AI",
+    "alibaba": "Alibaba",
+    "minimax": "MiniMax",
+    "custom": "Custom"
+  },
   "settings": {
     "title": "Settings",
     "basic": "Workspace & Connection",
