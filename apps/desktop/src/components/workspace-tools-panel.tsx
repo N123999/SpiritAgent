@@ -5,7 +5,6 @@ import { FileText, GitBranch, Plus, Terminal, X } from "lucide-react";
 import { ActionPopover, type ActionPopoverItem } from "@/components/ui/action-popover";
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
-import i18n from "@/lib/i18n";
 import { instantHoverMotionClass } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 import {
@@ -29,11 +28,11 @@ export type { WorkspaceToolTab, WorkspaceToolTabKind };
 
 const TAB_KIND_META: Record<
   WorkspaceToolTabKind,
-  { label: string; icon: typeof FileText }
+  { labelKey: string; icon: typeof FileText }
 > = {
-  files: { label: i18n.t('workspace.files'), icon: FileText },
-  shell: { label: "Shell", icon: Terminal },
-  git: { label: "Git", icon: GitBranch },
+  files: { labelKey: 'workspace.files', icon: FileText },
+  shell: { labelKey: 'workspace.shell', icon: Terminal },
+  git: { labelKey: 'workspace.git', icon: GitBranch },
 };
 
 export type WorkspaceToolsDockProps = {
@@ -172,11 +171,11 @@ export function WorkspaceToolsDock({
         return {
           id: `new-${kind}`,
           icon: <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />,
-          label: meta.label,
+          label: t(meta.labelKey),
           onSelect: () => handleAddTab(kind),
         };
       }),
-    [handleAddTab],
+    [handleAddTab, t],
   );
 
   const shellWidth = open ? `calc(0.25rem + ${widthPx}px)` : "0px";
@@ -236,7 +235,7 @@ export function WorkspaceToolsDock({
                 const meta = TAB_KIND_META[item.kind];
                 const Icon = meta.icon;
                 const selected = item.id === activeTabId;
-                const label = workspaceToolTabLabel(item.kind, tabs, item.id);
+                const label = workspaceToolTabLabel(item.kind, tabs, item.id, t);
                 return (
                   <div
                     key={item.id}

@@ -1,4 +1,3 @@
-import i18n from '@/lib/i18n'
 import type { DesktopSkillListItem } from '@/types'
 
 export type SkillSlashSuggestionKind =
@@ -12,7 +11,8 @@ export interface SkillSlashSuggestion {
   id: string
   alias: string
   name: string
-  description: string
+  description?: string
+  descriptionKey?: string
   kind: SkillSlashSuggestionKind
 }
 
@@ -35,28 +35,28 @@ const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
     id: 'command:create-skill',
     alias: CREATE_SKILL_SLASH_ALIAS,
     name: 'create-skill',
-    description: i18n.t('slash.createSkill'),
+    descriptionKey: 'slash.createSkill',
     kind: 'create-skill',
   },
   {
     id: 'command:log-session',
     alias: LOG_SESSION_SLASH_ALIAS,
     name: 'log-session',
-    description: i18n.t('slash.logSession'),
+    descriptionKey: 'slash.logSession',
     kind: 'log-session',
   },
   {
     id: 'command:start-implementing',
     alias: START_IMPLEMENTING_SLASH_ALIAS,
     name: 'start-implementing',
-    description: i18n.t('slash.startImplementing'),
+    descriptionKey: 'slash.startImplementing',
     kind: 'start-implementing',
   },
   {
     id: 'command:compact',
     alias: COMPACT_SLASH_ALIAS,
     name: 'compact',
-    description: i18n.t('slash.compact'),
+    descriptionKey: 'slash.compact',
     kind: 'compact',
   },
 ] as const

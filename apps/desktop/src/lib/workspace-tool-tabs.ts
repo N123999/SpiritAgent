@@ -1,5 +1,3 @@
-import i18n from "@/lib/i18n";
-
 export type WorkspaceToolTabKind = "files" | "shell" | "git";
 
 export type WorkspaceToolTab = {
@@ -7,10 +5,10 @@ export type WorkspaceToolTab = {
   kind: WorkspaceToolTabKind;
 };
 
-const KIND_BASE_LABEL: Record<WorkspaceToolTabKind, string> = {
-  files: i18n.t('workspace.files'),
-  shell: "Shell",
-  git: "Git",
+const KIND_BASE_LABEL_KEY: Record<WorkspaceToolTabKind, string> = {
+  files: 'workspace.files',
+  shell: 'workspace.shell',
+  git: 'workspace.git',
 };
 
 function newTabId(): string {
@@ -50,9 +48,10 @@ export function workspaceToolTabLabel(
   kind: WorkspaceToolTabKind,
   tabs: readonly WorkspaceToolTab[],
   tabId: string,
+  translate: (key: string) => string,
 ): string {
   const index = tabs.filter((t) => t.kind === kind).findIndex((t) => t.id === tabId);
-  const base = KIND_BASE_LABEL[kind];
+  const base = translate(KIND_BASE_LABEL_KEY[kind]);
   if (index <= 0) {
     return base;
   }

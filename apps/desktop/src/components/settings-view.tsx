@@ -189,40 +189,41 @@ type ModelDefaultRole = keyof ModelDefaultAssignments;
 const modelCapabilityOptions: Array<{
   value: DesktopModelCapability;
   label: string;
-  summary: string;
+  labelKey: string;
+  summaryKey: string;
 }> = [
-  { value: "chat", label: "Chat", summary: i18n.t('settings.capabilityChat') },
-  { value: "image", label: "Image", summary: i18n.t('settings.capabilityImage') },
-  { value: "video", label: "Video", summary: i18n.t('settings.capabilityVideo') },
-  { value: "imageGeneration", label: "Image generation", summary: i18n.t('settings.capabilityImageGeneration') },
+  { value: "chat", label: "Chat", labelKey: 'settings.capabilityChatLabel', summaryKey: 'settings.capabilityChat' },
+  { value: "image", label: "Image", labelKey: 'settings.capabilityImageLabel', summaryKey: 'settings.capabilityImage' },
+  { value: "video", label: "Video", labelKey: 'settings.capabilityVideoLabel', summaryKey: 'settings.capabilityVideo' },
+  { value: "imageGeneration", label: "Image generation", labelKey: 'settings.capabilityImageGenerationLabel', summaryKey: 'settings.capabilityImageGeneration' },
 ];
 
 type ConnectTransportOption = {
   value: DesktopTransportKind;
   label: string;
-  summary: string;
+  summaryKey: string;
 };
 
 const connectTransportOptionCatalog = {
   chatCompletions: {
     value: "openai-compatible" as const,
     label: "Chat Completions API",
-    summary: i18n.t('settings.transportChatCompletions'),
+    summaryKey: 'settings.transportChatCompletions',
   },
   messagesApi: {
     value: "anthropic" as const,
     label: "Messages API",
-    summary: i18n.t('settings.transportMessagesApi'),
+    summaryKey: 'settings.transportMessagesApi',
   },
   responsesApi: {
     value: "open-responses" as const,
     label: "Responses API",
-    summary: i18n.t('settings.transportResponsesApi'),
+    summaryKey: 'settings.transportResponsesApi',
   },
   openResponsesApi: {
     value: "open-responses" as const,
     label: "Open Responses API",
-    summary: i18n.t('settings.transportOpenResponses'),
+    summaryKey: 'settings.transportOpenResponses',
   },
 } satisfies Record<string, ConnectTransportOption>;
 
@@ -287,10 +288,10 @@ function connectTransportOptionSummary(
   }
 
   if (option.value === "open-responses" && provider === "custom") {
-    return connectTransportOptionCatalog.openResponsesApi.summary;
+    return i18n.t(connectTransportOptionCatalog.openResponsesApi.summaryKey);
   }
 
-  return option.summary;
+  return i18n.t(option.summaryKey);
 }
 
 function resolveCustomConnectApiBase(
@@ -301,7 +302,8 @@ function resolveCustomConnectApiBase(
 }
 
 function modelCapabilityLabel(value: DesktopModelCapability): string {
-  return modelCapabilityOptions.find((option) => option.value === value)?.label ?? value;
+  const option = modelCapabilityOptions.find((item) => item.value === value);
+  return option ? i18n.t(option.labelKey, { defaultValue: option.label }) : value;
 }
 
 function normalizeModelCapabilitySelection(
@@ -373,6 +375,7 @@ function ModelCapabilitiesCombobox({
   disabled?: boolean;
   onChange: (value: DesktopModelCapability[]) => void;
 }) {
+  const { t } = useTranslation();
   const selected = normalizeModelCapabilitySelection(value);
   const selectedOptions = modelCapabilityOptions.filter((option) =>
     selected.includes(option.value),
@@ -400,16 +403,18 @@ function ModelCapabilitiesCombobox({
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             {selectedOptions.length > 0 ? (
-              selectedOptions.map((option) => (
-                <span
-                  key={option.value}
-                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 text-xs text-foreground"
-                >
-                  <span className="truncate">{option.label}</span>
+              selectedOptions.map((option) => {
+                const label = t(option.labelKey, { defaultValue: option.label });
+                return (
+                  <span
+                    key={option.value}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 text-xs text-foreground"
+                  >
+                    <span className="truncate">{label}</span>
                   <span
                     role="button"
                     tabIndex={-1}
-                    aria-label={i18n.t('settings.removeCapability', { label: option.label })}
+                    aria-label={t('settings.removeCapability', { label })}
                     className="rounded-sm text-muted-foreground hover:text-foreground"
                     onPointerDown={(event) => {
                       event.preventDefault();
@@ -423,10 +428,11 @@ function ModelCapabilitiesCombobox({
                   >
                     <X className="size-3" aria-hidden />
                   </span>
-                </span>
-              ))
+                  </span>
+                );
+              })
             ) : (
-              <span className="px-1 text-muted-foreground">{i18n.t('settings.selectCapability')}</span>
+              <span className="px-1 text-muted-foreground">{t('settings.selectCapability')}</span>
             )}
           </span>
           <ChevronsUpDown className="size-4 shrink-0 opacity-60" aria-hidden />
@@ -446,9 +452,9 @@ function ModelCapabilitiesCombobox({
             className="items-start gap-2 py-2"
           >
             <span className="min-w-0 flex-1">
-              <span className="block text-sm">{option.label}</span>
+              <span className="block text-sm">{t(option.labelKey, { defaultValue: option.label })}</span>
               <span className="block truncate text-xs text-muted-foreground">
-                {option.summary}
+                {t(option.summaryKey)}
               </span>
             </span>
           </DropdownMenuCheckboxItem>
@@ -833,12 +839,13 @@ function DeveloperSettingsPanel({
 
 const skillCreateRootOptions: Array<{
   kind: DesktopSkillRootKind;
-  label: string;
-  hint: string;
+  labelKey?: string;
+  labelFallback: string;
+  hintKey: string;
 }> = [
-  { kind: "user", label: i18n.t('settings.skillUserDirShort'), hint: i18n.t('settings.skillUserDirHint') },
-  { kind: "workspaceSpirit", label: ".spirit", hint: i18n.t('settings.skillWorkspaceSpiritHint') },
-  { kind: "workspaceAgents", label: ".agents", hint: i18n.t('settings.skillWorkspaceAgentsHint') },
+  { kind: "user", labelKey: 'settings.skillUserDirShort', labelFallback: 'User', hintKey: 'settings.skillUserDirHint' },
+  { kind: "workspaceSpirit", labelFallback: ".spirit", hintKey: 'settings.skillWorkspaceSpiritHint' },
+  { kind: "workspaceAgents", labelFallback: ".agents", hintKey: 'settings.skillWorkspaceAgentsHint' },
 ];
 
 function SkillsSettingsPanel({
@@ -865,6 +872,11 @@ function SkillsSettingsPanel({
   const [createRootKind, setCreateRootKind] = useState<DesktopSkillRootKind>("user");
 
   const items = snapshot?.skillsList ?? [];
+  const localizedSkillCreateRootOptions = skillCreateRootOptions.map((option) => ({
+    ...option,
+    label: option.labelKey ? t(option.labelKey) : option.labelFallback,
+    hint: t(option.hintKey),
+  }));
 
   const resetForm = () => {
     setNewName("");
@@ -1024,7 +1036,7 @@ function SkillsSettingsPanel({
                 aria-label={t('settings.saveLocation')}
                 className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
               >
-                {skillCreateRootOptions.map((opt) => (
+                {localizedSkillCreateRootOptions.map((opt) => (
                   <button
                     key={opt.kind}
                     type="button"
@@ -1045,7 +1057,7 @@ function SkillsSettingsPanel({
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                {skillCreateRootOptions.find((o) => o.kind === createRootKind)?.hint}
+                {localizedSkillCreateRootOptions.find((o) => o.kind === createRootKind)?.hint}
               </p>
             </div>
             <div className="grid gap-2">
