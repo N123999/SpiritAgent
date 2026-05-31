@@ -16,7 +16,8 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
+  SPIRIT_RELEASE_NODE_MAJOR: '22'
   CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
 jobs:

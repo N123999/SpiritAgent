@@ -111,7 +111,7 @@ async function resolveNodeReleaseVersion() {
     return process.env.SPIRIT_RELEASE_NODE_VERSION.replace(/^v/, '');
   }
 
-  const major = process.env.SPIRIT_RELEASE_NODE_MAJOR ?? '20';
+  const major = process.env.SPIRIT_RELEASE_NODE_MAJOR ?? '22';
   const response = await fetch('https://nodejs.org/dist/index.json');
   if (!response.ok) {
     throw new Error(`无法查询 Node.js ${major}.x 版本: ${response.status}`);

@@ -20,7 +20,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -66,6 +66,7 @@
     "@ai-sdk/openai-compatible": "^2.0.46",
     "@ai-sdk/xai": "^3.0.93",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "ai": "^6.0.175"
+    "ai": "^6.0.175",
+    "spirit-agent-repo": "file:../.."
   }
 }

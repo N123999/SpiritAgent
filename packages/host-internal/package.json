@@ -60,7 +60,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "npm --prefix ../agent-core run build && tsc -p tsconfig.json",

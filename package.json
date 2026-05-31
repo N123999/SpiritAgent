@@ -20,6 +20,6 @@
     "dev:desktop:web": "npm --prefix apps/desktop run dev:web"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

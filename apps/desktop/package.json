@@ -5,6 +5,9 @@
   "description": "Desktop application for Spirit Agent",
   "author": "Spirit Agent contributors",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build:deps": "npm --prefix ../../packages/agent-core run build && npm run build:host-internal",
     "dev": "npm run build:deps && npm run build:electron && concurrently -k -n renderer,electron \"npm run dev:renderer\" \"npm run dev:electron:run\"",
