@@ -186,7 +186,7 @@ const modelCapabilityOptions: Array<{
   { value: "imageGeneration", label: "Image generation", summary: "生成图片输出" },
 ];
 
-const customTransportOptions: Array<{
+const connectTransportOptions: Array<{
   value: DesktopTransportKind;
   label: string;
   summary: string;
@@ -205,9 +205,26 @@ const customTransportOptions: Array<{
     value: "open-responses",
     label: "Open Responses API",
     summary:
-      "Open Responses 协议（`/responses`）。provider=openai 时走 OpenAI 官方 Responses；custom 时走兼容实现。",
+      "Open Responses 协议（`/responses`）。provider=openai 时走 OpenAI 官方 Responses；其它预设与 custom 走兼容实现。",
   },
 ];
+
+function providerSupportsConnectTransportPicker(
+  provider: DesktopModelProvider | null,
+): provider is DesktopModelProvider {
+  return provider === "custom" || provider === "vercel-ai-gateway";
+}
+
+function connectTransportOptionSummary(
+  option: (typeof connectTransportOptions)[number],
+  provider: DesktopModelProvider | null,
+): string {
+  if (option.value === "open-responses" && provider === "vercel-ai-gateway") {
+    return "经 Vercel AI Gateway 调用 Open Responses（`/responses`），底层使用 open-responses-compatible provider。";
+  }
+
+  return option.summary;
+}
 
 function resolveCustomConnectApiBase(
   transportKind: DesktopTransportKind,
@@ -226,6 +243,22 @@ function resolveCustomConnectApiBase(
   }
 
   return resolveConnectApiBase("custom", "");
+}
+
+function resolvePresetConnectApiBase(
+  provider: DesktopModelProvider,
+  transportKind: DesktopTransportKind,
+  apiBaseOverride: string,
+): string {
+  const trimmed = apiBaseOverride.trim();
+  if (trimmed.length > 0) {
+    return trimmed;
+  }
+  if (transportKind === "anthropic") {
+    return resolveConnectApiBase("anthropic", "");
+  }
+
+  return resolveConnectApiBase(provider, "");
 }
 
 function modelCapabilityLabel(value: DesktopModelCapability): string {
@@ -1891,7 +1924,7 @@ function ModelsSettingsPanel({
   const [connectCapabilities, setConnectCapabilities] = useState<DesktopModelCapability[]>(
     defaultCustomModelCapabilities,
   );
-  const [customConnectTransportKind, setCustomConnectTransportKind] = useState<DesktopTransportKind>(
+  const [connectTransportKind, setConnectTransportKind] = useState<DesktopTransportKind>(
     "openai-compatible",
   );
   const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
@@ -1950,7 +1983,7 @@ function ModelsSettingsPanel({
     setConnectName("");
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
-    setCustomConnectTransportKind("openai-compatible");
+    setConnectTransportKind("openai-compatible");
     setCustomConnectMode("single");
     setSelectedProvider(null);
   };
@@ -1967,7 +2000,7 @@ function ModelsSettingsPanel({
     setConnectName("");
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
-    setCustomConnectTransportKind("openai-compatible");
+    setConnectTransportKind("openai-compatible");
     setCustomConnectMode("single");
     setConnectDialogOpen(true);
   };
@@ -2077,8 +2110,10 @@ function ModelsSettingsPanel({
     selectedProvider === null
       ? ""
       : selectedProvider === "custom"
-        ? resolveCustomConnectApiBase(customConnectTransportKind, connectApiBase)
-        : resolveConnectApiBase(selectedProvider, connectApiBase);
+        ? resolveCustomConnectApiBase(connectTransportKind, connectApiBase)
+        : providerSupportsConnectTransportPicker(selectedProvider)
+          ? resolvePresetConnectApiBase(selectedProvider, connectTransportKind, connectApiBase)
+          : resolveConnectApiBase(selectedProvider, connectApiBase);
 
   const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {
@@ -2091,7 +2126,9 @@ function ModelsSettingsPanel({
       apiBase: effectiveApiBase,
       apiKey: connectApiKey,
       provider: selectedProvider,
-      ...(selectedProvider === "custom" ? { transportKind: customConnectTransportKind } : {}),
+      ...(providerSupportsConnectTransportPicker(selectedProvider)
+        ? { transportKind: connectTransportKind }
+        : {}),
       forceRefresh,
     });
     if (res.modelIds.length === 0) {
@@ -2103,7 +2140,9 @@ function ModelsSettingsPanel({
       modelIds: res.modelIds,
       ...(res.models ? { modelCatalog: res.models } : {}),
       provider: selectedProvider,
-      ...(selectedProvider === "custom" ? { transportKind: customConnectTransportKind } : {}),
+      ...(providerSupportsConnectTransportPicker(selectedProvider)
+        ? { transportKind: connectTransportKind }
+        : {}),
     };
     await onAddProviderModels(bulk);
     setConnectDialogOpen(false);
@@ -2127,7 +2166,7 @@ function ModelsSettingsPanel({
       apiBase,
       apiKey: connectApiKey,
       provider: "custom",
-      transportKind: customConnectTransportKind,
+      transportKind: connectTransportKind,
       capabilities: normalizeModelCapabilitySelection(connectCapabilities),
     });
     setConnectDialogOpen(false);
@@ -2628,23 +2667,25 @@ function ModelsSettingsPanel({
             <DialogDescription>
               {selectedProvider === "custom"
                 ? "先选择 API 类型，再填写端点与密钥。"
-                : "填写 API Key 即可连接。"}
+                : providerSupportsConnectTransportPicker(selectedProvider)
+                  ? "选择 API 类型并填写 API Key；批量导入的模型会沿用该类型。"
+                  : "填写 API Key 即可连接。"}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3 py-1">
-            {selectedProvider === "custom" ? (
+            {providerSupportsConnectTransportPicker(selectedProvider) ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-transport">API 类型</Label>
                 <Select
-                  value={customConnectTransportKind}
-                  onValueChange={(value) => setCustomConnectTransportKind(value as DesktopTransportKind)}
+                  value={connectTransportKind}
+                  onValueChange={(value) => setConnectTransportKind(value as DesktopTransportKind)}
                 >
                   <SelectTrigger id="connect-api-transport">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {customTransportOptions.map((option) => (
+                    {connectTransportOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -2652,7 +2693,10 @@ function ModelsSettingsPanel({
                   </SelectContent>
                 </Select>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  {customTransportOptions.find((option) => option.value === customConnectTransportKind)?.summary}
+                  {connectTransportOptions
+                    .filter((option) => option.value === connectTransportKind)
+                    .map((option) => connectTransportOptionSummary(option, selectedProvider))
+                    .join("")}
                 </p>
               </div>
             ) : null}

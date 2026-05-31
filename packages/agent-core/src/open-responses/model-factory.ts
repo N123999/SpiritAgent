@@ -5,6 +5,7 @@ import type { JsonObject } from '../ports.js';
 import {
   openResponsesPostUrl,
   openResponsesReasoningEffort,
+  resolveOpenResponsesReasoningSummary,
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
 } from './responses-compat.js';
@@ -32,16 +33,20 @@ export function buildResponsesProviderOptions(
   config: OpenResponsesTransportConfig,
   previousResponseId?: string,
 ): Record<string, JsonObject> {
+  const reasoningEffort = openResponsesReasoningEffort(config);
+  const reasoningSummary = resolveOpenResponsesReasoningSummary(config);
+
   if (resolveOpenResponsesSdkProvider(config) !== 'openai') {
-    const effort = openResponsesReasoningEffort(config);
-    if (effort === undefined) {
+    const providerOptions: JsonObject = {
+      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+      ...(reasoningSummary !== undefined ? { reasoningSummary } : {}),
+    };
+    if (Object.keys(providerOptions).length === 0) {
       return {};
     }
 
     return {
-      [config.llmVendor ?? 'open-responses']: {
-        reasoningEffort: effort,
-      } as JsonObject,
+      [config.llmVendor ?? 'open-responses']: providerOptions,
     };
   }
 
@@ -50,13 +55,12 @@ export function buildResponsesProviderOptions(
     ...(config.truncation === 'auto' ? { truncation: 'auto' } : { truncation: 'disabled' }),
   };
 
-  const reasoningEffort = openResponsesReasoningEffort(config);
   if (reasoningEffort !== undefined) {
     openaiOptions.reasoningEffort = reasoningEffort;
   }
 
-  if (config.reasoningSummary && config.reasoningSummary !== 'off') {
-    openaiOptions.reasoningSummary = config.reasoningSummary;
+  if (reasoningSummary !== undefined) {
+    openaiOptions.reasoningSummary = reasoningSummary;
   }
 
   if (previousResponseId && shouldAttachPreviousResponseId(config)) {

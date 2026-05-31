@@ -109,6 +109,12 @@ export async function* responsesEventStreamToRuntimeEvents(
           if (rawResponseId) {
             responseId = rawResponseId;
           }
+
+          const reasoningDelta = extractOpenResponsesReasoningTextFromRawChunk(part.rawValue);
+          if (reasoningDelta) {
+            reasoningContent += reasoningDelta;
+            yield { kind: 'thinking-chunk', text: reasoningDelta };
+          }
           break;
         }
         default:
@@ -316,6 +322,24 @@ function maybeEmitPreview(events: LlmStreamEvent[], call: AggregatedStreamingToo
     previewLine: `准备调用工具: ${call.functionName}`,
   });
   call.readyPreviewEmitted = true;
+}
+
+/** OpenAI / Open Responses SSE：reasoning summary 与部分模型的 reasoning_text。 */
+export function extractOpenResponsesReasoningTextFromRawChunk(rawValue: unknown): string | undefined {
+  const chunk = asJsonObject(rawValue);
+  if (!chunk || typeof chunk.type !== 'string') {
+    return undefined;
+  }
+
+  switch (chunk.type) {
+    case 'response.reasoning_summary_text.delta':
+    case 'response.reasoning_text.delta': {
+      const delta = chunk.delta;
+      return typeof delta === 'string' && delta.length > 0 ? delta : undefined;
+    }
+    default:
+      return undefined;
+  }
 }
 
 function readResponseIdFromRawChunk(rawValue: unknown): string | undefined {

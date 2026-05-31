@@ -74,6 +74,59 @@ export function openResponsesReasoningEffort(
   });
 }
 
+/**
+ * 解析是否向 Responses 请求 reasoning summary。
+ * 未显式配置时：reasoningEffort 为 none 则关闭，否则默认 auto（便于 UI 展示思考摘要）。
+ */
+export function resolveOpenResponsesReasoningSummary(
+  config: Pick<
+    OpenResponsesTransportConfig,
+    'llmVendor' | 'model' | 'reasoningEffort' | 'reasoningSummary'
+  >,
+): OpenResponsesReasoningSummary | undefined {
+  if (config.reasoningSummary === 'off' || config.reasoningEffort === 'none') {
+    return undefined;
+  }
+
+  if (config.reasoningSummary === 'auto' || config.reasoningSummary === 'detailed') {
+    return config.reasoningSummary;
+  }
+
+  return 'auto';
+}
+
+export function openResponsesReasoningTrace(
+  config: Pick<
+    OpenResponsesTransportConfig,
+    'llmVendor' | 'model' | 'reasoningEffort' | 'reasoningSummary'
+  >,
+): JsonObject | undefined {
+  const effort = openResponsesReasoningEffort(config);
+  const summary = resolveOpenResponsesReasoningSummary(config);
+  if (effort === undefined && summary === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(effort !== undefined ? { effort } : {}),
+    ...(summary !== undefined ? { summary } : {}),
+  };
+}
+
+export function buildOpenResponsesTraceExtras(
+  config: OpenResponsesTransportConfig,
+  previousResponseId?: string,
+): Pick<OpenResponsesRequestTrace, 'store' | 'previousResponseId' | 'reasoning' | 'truncation'> {
+  const reasoning = openResponsesReasoningTrace(config);
+
+  return {
+    ...(config.store !== undefined ? { store: config.store } : {}),
+    ...(previousResponseId ? { previousResponseId } : {}),
+    ...(config.truncation ? { truncation: config.truncation } : {}),
+    ...(reasoning ? { reasoning } : {}),
+  };
+}
+
 export function buildOpenResponsesRequestTrace(
   config: OpenResponsesTransportConfig,
   stepIndex: number,

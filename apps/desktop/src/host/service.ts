@@ -30,6 +30,7 @@ import {
   type LlmToolAgentBasicInfo,
   type LlmTransportConfig,
   type OpenAiTransportConfig,
+  resolveOpenResponsesReasoningSummary,
   type RuntimeApprovalDecision,
   type RuntimeEvent,
   type PendingWorkspaceFile,
@@ -4499,6 +4500,11 @@ function buildPrimaryTransportConfig(input: {
     );
     const responsesProvider =
       input.profile?.provider === 'openai' ? 'openai' : 'open-responses-compatible';
+    const reasoningSummary = resolveOpenResponsesReasoningSummary({
+      ...(llmVendor ? { llmVendor } : {}),
+      model: input.model,
+      ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+    });
 
     return {
       transportKind: 'open-responses',
@@ -4513,6 +4519,7 @@ function buildPrimaryTransportConfig(input: {
         ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
         : {}),
       ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+      ...(reasoningSummary ? { reasoningSummary } : {}),
     };
   }
 

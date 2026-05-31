@@ -37,6 +37,7 @@ import {
 } from './provider-state.js';
 import {
   buildOpenResponsesRequestTrace,
+  buildOpenResponsesTraceExtras,
   type OpenResponsesTransportConfig,
 } from './responses-compat.js';
 import { createDeferred, responsesEventStreamToRuntimeEvents } from './streaming.js';
@@ -106,11 +107,7 @@ export class AiSdkOpenResponsesTransport
     const requestMessages = nextState.messages.map((message) => cloneJsonValue(message));
     const normalizedTools = normalizeResponsesToolDefinitions(tools);
     const previousResponseId = findPreviousResponseId(requestMessages);
-    const traceExtras: Parameters<typeof buildOpenResponsesRequestTrace>[5] = {
-      ...(config.store !== undefined ? { store: config.store } : {}),
-      ...(previousResponseId ? { previousResponseId } : {}),
-      ...(config.truncation ? { truncation: config.truncation } : {}),
-    };
+    const traceExtras = buildOpenResponsesTraceExtras(config, previousResponseId);
     const tracedRequest = buildOpenResponsesRequestTrace(
       config,
       nextState.steps,
@@ -193,11 +190,7 @@ export class AiSdkOpenResponsesTransport
     const requestMessages = nextState.messages.map((message) => cloneJsonValue(message));
     const normalizedTools = normalizeResponsesToolDefinitions(tools);
     const previousResponseId = findPreviousResponseId(requestMessages);
-    const traceExtras: Parameters<typeof buildOpenResponsesRequestTrace>[5] = {
-      ...(config.store !== undefined ? { store: config.store } : {}),
-      ...(previousResponseId ? { previousResponseId } : {}),
-      ...(config.truncation ? { truncation: config.truncation } : {}),
-    };
+    const traceExtras = buildOpenResponsesTraceExtras(config, previousResponseId);
     const requestTrace = buildOpenResponsesRequestTrace(
       config,
       nextState.steps,
