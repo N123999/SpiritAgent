@@ -21,6 +21,7 @@ pub enum ModelProvider {
     Minimax,
     Alibaba,
     Anthropic,
+    #[serde(rename = "vercel-ai-gateway", alias = "vercelaigateway")]
     VercelAiGateway,
     Openai,
     Custom,
@@ -679,6 +680,42 @@ mod tests {
             super::ModelTransportKind::Anthropic
         );
         assert_eq!(active.reasoning_effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn deserializes_vercel_ai_gateway_provider_from_desktop_config() {
+        let config = r#"
+{
+    "models": [
+        {
+            "name": "gateway-model",
+            "apiBase": "https://ai-gateway.vercel.sh/v1",
+            "provider": "vercel-ai-gateway",
+            "transportKind": "open-responses",
+            "reasoningEffort": "medium"
+        }
+    ],
+    "activeModel": "gateway-model"
+}
+"#;
+
+        let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+        let serialized = serialize_config(&parsed).expect("serialize config");
+        let json: Value = serde_json::from_str(&serialized).expect("json value");
+        let active = parsed.active_model_profile().expect("active model");
+
+        assert_eq!(
+            active.provider,
+            Some(super::ModelProvider::VercelAiGateway)
+        );
+        assert_eq!(
+            json.get("models")
+                .and_then(Value::as_array)
+                .and_then(|models| models.first())
+                .and_then(|model| model.get("provider"))
+                .and_then(Value::as_str),
+            Some("vercel-ai-gateway")
+        );
     }
 
     #[test]
