@@ -42,6 +42,10 @@ test('partition models by provider preserves ordering and separates unmatched en
 
 test('resolveProviderConnectApiBase uses transport-specific preset bases', () => {
   assert.equal(
+    resolveProviderConnectApiBase('xai', 'openai-compatible'),
+    'https://api.x.ai/v1',
+  );
+  assert.equal(
     resolveProviderConnectApiBase('xai', 'open-responses'),
     'https://api.x.ai/v1',
   );

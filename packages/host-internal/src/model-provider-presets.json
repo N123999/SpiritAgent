@@ -11,10 +11,6 @@
     "openai": "https://api.openai.com/v1"
   },
   "presetApiBaseByTransport": {
-    "xai": {
-      "openai-compatible": "https://api.x.ai/v1",
-      "open-responses": "https://api.x.ai/v1"
-    },
     "minimax": {
       "openai-compatible": "https://api.minimaxi.com/v1",
       "anthropic": "https://api.minimaxi.com/anthropic/v1"

@@ -26,7 +26,7 @@ export interface OpenResponsesTransportConfig {
   llmVendor?: OpenAiLlmVendor;
   modelCapabilities?: LlmModelCapabilities;
   /**
-   * 显式指定底层 SDK。缺省时：`llmVendor === 'openai'` → `openai`，否则 `open-responses-compatible`。
+   * 显式指定底层 SDK。缺省时：`openai` → OpenAI 官方、`xai` → `@ai-sdk/xai` 官方，其余 → `open-responses-compatible`。
    */
   responsesProvider?: OpenResponsesSdkProvider;
   /** OpenAI 官方 Responses：是否由 OpenAI 服务端存储会话。默认 false。 */
