@@ -11,6 +11,10 @@ import {
   createMoonshotAI,
   type MoonshotAILanguageModelOptions,
 } from '@ai-sdk/moonshotai';
+import {
+  createXai,
+  type XaiLanguageModelChatOptions,
+} from '@ai-sdk/xai';
 import { createGateway } from '@ai-sdk/gateway';
 import { createOpenAI } from '@ai-sdk/openai';
 import {
@@ -85,6 +89,7 @@ import {
 } from './json-schema.js';
 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = 'https://api.openai.com/v1';
+const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 const STREAMING_TOOL_CALL_PLACEHOLDER_PREFIX = 'stream-tool-call-';
 
 type AiSdkToolCall = {
@@ -570,6 +575,7 @@ function buildAiSdkRequestTrace(
   const requestTrace = buildOpenAiRequestTrace(config, stepIndex, messages, tools, stream);
   if (
     !isDeepSeekOfficialAiSdkProvider(config) &&
+    !isXaiOfficialAiSdkProvider(config) &&
     !isMoonshotOfficialAiSdkProvider(config) &&
     !isAlibabaOfficialAiSdkProvider(config) &&
     !isVercelAiGatewayProvider(config) &&
@@ -585,13 +591,15 @@ function buildAiSdkRequestTrace(
 
   const kind = isDeepSeekOfficialAiSdkProvider(config)
     ? 'deepseek_sdk_chat_completions'
-    : isMoonshotOfficialAiSdkProvider(config)
-      ? 'moonshot_sdk_chat_completions'
-      : isAlibabaOfficialAiSdkProvider(config)
-        ? 'alibaba_sdk_chat_completions'
-        : isVercelAiGatewayProvider(config)
-          ? 'gateway_sdk_chat_completions'
-          : 'openai_official_sdk_chat_completions';
+    : isXaiOfficialAiSdkProvider(config)
+      ? 'xai_sdk_chat_completions'
+      : isMoonshotOfficialAiSdkProvider(config)
+        ? 'moonshot_sdk_chat_completions'
+        : isAlibabaOfficialAiSdkProvider(config)
+          ? 'alibaba_sdk_chat_completions'
+          : isVercelAiGatewayProvider(config)
+            ? 'gateway_sdk_chat_completions'
+            : 'openai_official_sdk_chat_completions';
 
   return [
     {
@@ -605,6 +613,10 @@ function buildAiSdkRequestTrace(
 function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
   if (isDeepSeekOfficialAiSdkProvider(config)) {
     return createAiSdkDeepSeekProvider(config).chat(config.model);
+  }
+
+  if (isXaiOfficialAiSdkProvider(config)) {
+    return createAiSdkXaiProvider(config).chat(config.model);
   }
 
   if (isAlibabaOfficialAiSdkProvider(config)) {
@@ -706,6 +718,13 @@ function createAiSdkMoonshotProvider(config: OpenAiTransportConfig) {
   });
 }
 
+function createAiSdkXaiProvider(config: OpenAiTransportConfig) {
+  return createXai({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
+  });
+}
+
 function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
   const reasoningEffort = openAiReasoningEffort(config);
   const fetchWrapper =
@@ -780,6 +799,21 @@ function buildAiSdkProviderOptions(
 
     return {
       moonshotai: moonshotaiOptions as JsonObject,
+    };
+  }
+
+  if (isXaiOfficialAiSdkProvider(config)) {
+    const reasoningEffort = xaiChatReasoningEffort(openAiReasoningEffort(config));
+    if (reasoningEffort === undefined) {
+      return {};
+    }
+
+    const xaiOptions = {
+      reasoningEffort,
+    } satisfies XaiLanguageModelChatOptions;
+
+    return {
+      xai: xaiOptions as JsonObject,
     };
   }
 
@@ -1466,6 +1500,10 @@ function isDeepSeekOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean
   return config.llmVendor === 'deepseek';
 }
 
+function isXaiOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
+  return config.llmVendor === 'xai';
+}
+
 function isMoonshotOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'moonshot-ai';
 }
@@ -1484,6 +1522,16 @@ function isVercelAiGatewayProvider(config: OpenAiTransportConfig): boolean {
 
 function isOpenAiOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'openai';
+}
+
+function xaiChatReasoningEffort(
+  effort: string | undefined,
+): XaiLanguageModelChatOptions['reasoningEffort'] | undefined {
+  if (effort === 'low' || effort === 'high') {
+    return effort;
+  }
+
+  return effort === 'medium' ? 'high' : undefined;
 }
 
 function buildAiSdkImageGenerationUrl(config: OpenAiImageGenerationConfig): string {

@@ -3,6 +3,7 @@ import rawImport from './model-provider-presets.json' with { type: 'json' };
 /** 与 `config.json` / CLI `ModelProvider` 小写字符串对齐（须与 `pickerOrder` 一致）。 */
 export type ModelProviderId =
   | 'deepseek'
+  | 'xai'
   | 'moonshot-ai'
   | 'minimax'
   | 'alibaba'
@@ -23,6 +24,7 @@ const PROVIDER_MODEL_TRANSPORT_KINDS: readonly ProviderModelTransportKind[] = [
 
 const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'openai',
+  'xai',
   'anthropic',
   'deepseek',
   'vercel-ai-gateway',
@@ -47,7 +49,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","deepseek","vercel-ai-gateway","moonshot-ai","alibaba","minimax","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","xai","anthropic","deepseek","vercel-ai-gateway","moonshot-ai","alibaba","minimax","custom"]',
     );
   }
 }
@@ -59,7 +61,7 @@ type PresetApiBaseByTransport = Partial<
 interface ParsedModelProviderPresets {
   defaultCustomApiBase: string;
   presetApiBaseByProvider: Record<
-    'deepseek' | 'moonshot-ai' | 'minimax' | 'alibaba' | 'anthropic' | 'vercel-ai-gateway' | 'openai',
+    'deepseek' | 'xai' | 'moonshot-ai' | 'minimax' | 'alibaba' | 'anthropic' | 'vercel-ai-gateway' | 'openai',
     string
   >;
   presetApiBaseByTransport: PresetApiBaseByTransport;
@@ -143,6 +145,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
   }
   const presetApiBaseByProvider = {
     deepseek: requireStringField(presetRaw, 'deepseek'),
+    xai: requireStringField(presetRaw, 'xai'),
     'moonshot-ai': requireStringField(presetRaw, 'moonshot-ai'),
     minimax: requireStringField(presetRaw, 'minimax'),
     alibaba: requireStringField(presetRaw, 'alibaba'),
@@ -186,6 +189,7 @@ const raw = parseModelProviderPresetsJson(rawImport as unknown);
 export const DEFAULT_CUSTOM_API_BASE: string = raw.defaultCustomApiBase;
 
 const deepseekBase = raw.presetApiBaseByProvider.deepseek;
+const xaiBase = raw.presetApiBaseByProvider.xai;
 const moonshotAiBase = raw.presetApiBaseByProvider['moonshot-ai'];
 const minimaxBase = raw.presetApiBaseByProvider.minimax;
 const alibabaBase = raw.presetApiBaseByProvider.alibaba;
@@ -195,6 +199,7 @@ const openaiBase = raw.presetApiBaseByProvider.openai;
 
 export const PROVIDER_PRESET_API_BASE = {
   deepseek: deepseekBase,
+  xai: xaiBase,
   'moonshot-ai': moonshotAiBase,
   minimax: minimaxBase,
   alibaba: alibabaBase,
@@ -255,6 +260,8 @@ export function resolveConnectApiBase(
   switch (provider) {
     case 'deepseek':
       return PROVIDER_PRESET_API_BASE.deepseek;
+    case 'xai':
+      return PROVIDER_PRESET_API_BASE.xai;
     case 'moonshot-ai':
       return PROVIDER_PRESET_API_BASE['moonshot-ai'];
     case 'minimax':

@@ -226,6 +226,7 @@ const connectTransportOptionCatalog = {
 function connectTransportOptionsForProvider(provider: DesktopModelProvider): ConnectTransportOption[] {
   switch (provider) {
     case "openai":
+    case "xai":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.responsesApi];
     case "minimax":
     case "deepseek":
@@ -257,6 +258,7 @@ function providerSupportsConnectTransportPicker(
 ): provider is DesktopModelProvider {
   return (
     provider === "openai" ||
+    provider === "xai" ||
     provider === "minimax" ||
     provider === "deepseek" ||
     provider === "alibaba" ||
@@ -269,6 +271,10 @@ function connectTransportOptionSummary(
   option: ConnectTransportOption,
   provider: DesktopModelProvider | null,
 ): string {
+  if (option.value === "open-responses" && provider === "xai") {
+    return "xAI 官方 Responses API（`@ai-sdk/xai`，`/responses`、`/models`）。";
+  }
+
   if (option.value === "open-responses" && provider === "vercel-ai-gateway") {
     return "经 Vercel AI Gateway 调用 Open Responses（`/responses`），底层使用 open-responses-compatible provider。";
   }

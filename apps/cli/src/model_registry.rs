@@ -17,6 +17,7 @@ const KEYRING_ACCOUNT_API_KEY: &str = "openai_api_key";
 #[serde(rename_all = "lowercase")]
 pub enum ModelProvider {
     Deepseek,
+    Xai,
     #[serde(rename = "moonshot-ai")]
     Moonshot,
     Minimax,
@@ -32,6 +33,7 @@ impl ModelProvider {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Deepseek => "deepseek",
+            Self::Xai => "xai",
             Self::Moonshot => "moonshot-ai",
             Self::Minimax => "minimax",
             Self::Alibaba => "alibaba",
@@ -49,6 +51,7 @@ impl FromStr for ModelProvider {
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "deepseek" => Ok(Self::Deepseek),
+            "xai" => Ok(Self::Xai),
             "moonshot-ai" => Ok(Self::Moonshot),
             "minimax" => Ok(Self::Minimax),
             "alibaba" => Ok(Self::Alibaba),
@@ -132,7 +135,8 @@ impl ModelProfile {
         match self.provider {
             Some(ModelProvider::Deepseek) => false,
             Some(ModelProvider::Moonshot) => false,
-            Some(ModelProvider::Minimax)
+            Some(ModelProvider::Xai)
+            | Some(ModelProvider::Minimax)
             | Some(ModelProvider::Alibaba)
             | Some(ModelProvider::Anthropic)
             | Some(ModelProvider::VercelAiGateway)
@@ -382,6 +386,12 @@ pub(crate) fn normalize_reasoning_effort_value(
             Some(ModelProvider::Moonshot) => match normalized.as_str() {
                 "default" | "minimal" | "low" | "medium" | "high" => normalized,
                 "none" => "default".to_string(),
+                "xhigh" | "max" => "high".to_string(),
+                _ => "default".to_string(),
+            },
+            Some(ModelProvider::Xai) => match normalized.as_str() {
+                "default" | "none" | "low" | "medium" | "high" => normalized,
+                "minimal" => "low".to_string(),
                 "xhigh" | "max" => "high".to_string(),
                 _ => "default".to_string(),
             },

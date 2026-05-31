@@ -4,6 +4,7 @@ import type { OpenAiTransportConfig } from './openai/openai-compat.js';
 
 export type ModelReasoningProvider =
   | 'deepseek'
+  | 'xai'
   | 'moonshot-ai'
   | 'minimax'
   | 'alibaba'
@@ -27,6 +28,8 @@ export type OpenAiCompatibleReasoningEffort =
 export type DeepSeekV4ReasoningEffort = 'default' | 'high' | 'max';
 
 export type MoonshotReasoningEffort = 'default' | 'minimal' | 'low' | 'medium' | 'high';
+
+export type XaiReasoningEffort = 'default' | 'none' | 'low' | 'medium' | 'high';
 
 export type AnthropicReasoningEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -73,6 +76,16 @@ export const MOONSHOT_REASONING_EFFORT_OPTIONS: ReadonlyArray<
   { value: 'high', label: 'High' },
 ];
 
+export const XAI_REASONING_EFFORT_OPTIONS: ReadonlyArray<
+  ModelReasoningEffortOption<XaiReasoningEffort>
+> = [
+  { value: 'default', label: 'Default' },
+  { value: 'none', label: 'None' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
 export const ANTHROPIC_REASONING_EFFORT_OPTIONS: ReadonlyArray<
   ModelReasoningEffortOption<AnthropicReasoningEffort>
 > = [
@@ -90,6 +103,7 @@ const ALL_REASONING_EFFORT_OPTIONS = dedupeReasoningEffortOptions([
   ...OPENAI_COMPATIBLE_REASONING_EFFORT_OPTIONS,
   ...DEEPSEEK_V4_REASONING_EFFORT_OPTIONS,
   ...MOONSHOT_REASONING_EFFORT_OPTIONS,
+  ...XAI_REASONING_EFFORT_OPTIONS,
   ...ANTHROPIC_REASONING_EFFORT_OPTIONS,
 ]);
 
@@ -107,6 +121,10 @@ const DEEPSEEK_V4_REASONING_EFFORT_VALUES = new Set<string>(
 
 const MOONSHOT_REASONING_EFFORT_VALUES = new Set<string>(
   MOONSHOT_REASONING_EFFORT_OPTIONS.map((option) => option.value),
+);
+
+const XAI_REASONING_EFFORT_VALUES = new Set<string>(
+  XAI_REASONING_EFFORT_OPTIONS.map((option) => option.value),
 );
 
 const ANTHROPIC_REASONING_EFFORT_VALUES = new Set<string>(
@@ -141,6 +159,10 @@ export function defaultModelReasoningEffort(
     return 'default';
   }
 
+  if (isXaiReasoningEffortModel(context)) {
+    return 'default';
+  }
+
   if (isAnthropicReasoningEffortModel(context)) {
     return 'default';
   }
@@ -160,6 +182,10 @@ export function modelReasoningEffortOptions(
       return moonshotReasoningEffortOptionsForSupportedEfforts(context.supportedEfforts);
     }
     return MOONSHOT_REASONING_EFFORT_OPTIONS;
+  }
+
+  if (isXaiReasoningEffortModel(context)) {
+    return XAI_REASONING_EFFORT_OPTIONS;
   }
 
   if (isAnthropicReasoningEffortModel(context)) {
@@ -242,6 +268,12 @@ export function isMoonshotReasoningEffortModel(
   return context?.provider === 'moonshot-ai';
 }
 
+export function isXaiReasoningEffortModel(
+  context?: ModelReasoningEffortContext,
+): boolean {
+  return context?.provider === 'xai';
+}
+
 export function isAnthropicReasoningEffortModel(
   context?: ModelReasoningEffortContext,
 ): boolean {
@@ -289,6 +321,18 @@ function resolveCompatibleModelReasoningEffort(
         return 'high';
       default:
         return moonshotReasoningEffortValueForContext(normalized, supportedEfforts) ?? 'default';
+    }
+  }
+
+  if (isXaiReasoningEffortModel(context)) {
+    switch (normalized) {
+      case 'minimal':
+        return 'low';
+      case 'xhigh':
+      case 'max':
+        return 'high';
+      default:
+        return XAI_REASONING_EFFORT_VALUES.has(normalized) ? normalized : 'default';
     }
   }
 

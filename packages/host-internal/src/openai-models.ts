@@ -345,6 +345,10 @@ export async function listProviderModels(
     return listMoonshotModels(options);
   }
 
+  if (options.provider === 'xai') {
+    return listXaiModels(options);
+  }
+
   return listOpenAiCompatibleModels(options);
 }
 
@@ -352,6 +356,12 @@ export async function listMoonshotModels(
   options: ListOpenAiCompatibleModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
   return listOpenAiCompatibleModelsForProvider(options, 'moonshot-ai');
+}
+
+export async function listXaiModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  return listOpenAiCompatibleModelsForProvider(options, 'xai');
 }
 
 export async function listProviderModelIds(

@@ -5,7 +5,7 @@ import { resolveOpenAiTransportReasoningEffortForContext } from '../reasoning-ef
 import { cloneJsonValue } from '../tool-agent.js';
 
 /** 底层 AI SDK provider：OpenAI 官方 Responses 或 Open Responses 兼容 endpoint。 */
-export type OpenResponsesSdkProvider = 'openai' | 'open-responses-compatible';
+export type OpenResponsesSdkProvider = 'openai' | 'xai' | 'open-responses-compatible';
 
 export type OpenResponsesPreviousResponseMode = 'disabled' | 'stored' | 'stateless';
 
@@ -26,7 +26,7 @@ export interface OpenResponsesTransportConfig {
   llmVendor?: OpenAiLlmVendor;
   modelCapabilities?: LlmModelCapabilities;
   /**
-   * 显式指定底层 SDK。缺省时：`llmVendor === 'openai'` → `openai`，否则 `open-responses-compatible`。
+   * 显式指定底层 SDK。缺省时：`openai` → OpenAI 官方、`xai` → `@ai-sdk/xai` 官方，其余 → `open-responses-compatible`。
    */
   responsesProvider?: OpenResponsesSdkProvider;
   /** OpenAI 官方 Responses：是否由 OpenAI 服务端存储会话。默认 false。 */
@@ -39,6 +39,7 @@ export interface OpenResponsesTransportConfig {
 
 export type OpenResponsesRequestTraceKind =
   | 'openai_sdk_responses'
+  | 'xai_sdk_responses'
   | 'open_responses_sdk_responses';
 
 export interface OpenResponsesRequestTrace extends JsonObject {
@@ -61,7 +62,15 @@ export function resolveOpenResponsesSdkProvider(
     return config.responsesProvider;
   }
 
-  return config.llmVendor === 'openai' ? 'openai' : 'open-responses-compatible';
+  if (config.llmVendor === 'openai') {
+    return 'openai';
+  }
+
+  if (config.llmVendor === 'xai') {
+    return 'xai';
+  }
+
+  return 'open-responses-compatible';
 }
 
 export function openResponsesReasoningEffort(
@@ -135,10 +144,13 @@ export function buildOpenResponsesRequestTrace(
   stream = false,
   extras?: Pick<OpenResponsesRequestTrace, 'store' | 'previousResponseId' | 'reasoning' | 'truncation'>,
 ): JsonValue[] {
+  const provider = resolveOpenResponsesSdkProvider(config);
   const kind: OpenResponsesRequestTraceKind =
-    resolveOpenResponsesSdkProvider(config) === 'openai'
+    provider === 'openai'
       ? 'openai_sdk_responses'
-      : 'open_responses_sdk_responses';
+      : provider === 'xai'
+        ? 'xai_sdk_responses'
+        : 'open_responses_sdk_responses';
 
   const trace: OpenResponsesRequestTrace = {
     kind,

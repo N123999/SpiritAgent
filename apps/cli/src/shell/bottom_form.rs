@@ -91,6 +91,7 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
 fn model_add_provider_choice_labels() -> Vec<String> {
     vec![
         t!("form.model.provider.openai").into_owned(),
+        t!("form.model.provider.xai").into_owned(),
         t!("form.model.provider.anthropic").into_owned(),
         t!("form.model.provider.deepseek").into_owned(),
         t!("form.model.provider.vercel_ai_gateway").into_owned(),
@@ -254,13 +255,14 @@ fn model_add_api_key_field(api_key: &str) -> BottomFormFieldView {
 fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
     match idx {
         0 => Some(ModelProvider::Openai),
-        1 => Some(ModelProvider::Anthropic),
-        2 => Some(ModelProvider::Deepseek),
-        3 => Some(ModelProvider::VercelAiGateway),
-        4 => Some(ModelProvider::Moonshot),
-        5 => Some(ModelProvider::Alibaba),
-        6 => Some(ModelProvider::Minimax),
-        7 => Some(ModelProvider::Custom),
+        1 => Some(ModelProvider::Xai),
+        2 => Some(ModelProvider::Anthropic),
+        3 => Some(ModelProvider::Deepseek),
+        4 => Some(ModelProvider::VercelAiGateway),
+        5 => Some(ModelProvider::Moonshot),
+        6 => Some(ModelProvider::Alibaba),
+        7 => Some(ModelProvider::Minimax),
+        8 => Some(ModelProvider::Custom),
         _ => None,
     }
 }
@@ -1544,7 +1546,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 7;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 8;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -1552,7 +1554,7 @@ mod tests {
         assert!(matches!(form.kind, crate::view::BottomFormKind::ModelAdd));
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 2;
+                *selected = 3;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -1662,7 +1664,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 5;
+                *selected = 6;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -1683,7 +1685,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 1;
+                *selected = 2;
             }
         }
         sync_model_add_form_fields(&mut form);

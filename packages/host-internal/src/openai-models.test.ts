@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   moonshotSupportedReasoningEfforts,
   parseAnthropicModelEntriesPayload,
+  parseOpenAiCompatibleModelEntriesPayload,
   parseMoonshotModelEntriesPayload,
 } from './openai-models.js';
 
@@ -95,5 +96,21 @@ test('parseMoonshotModelEntriesPayload maps Moonshot model trait fields', () => 
       supportsReasoning: false,
       supportedReasoningEfforts: [],
     },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload keeps xAI models as plain ids', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload({
+    object: 'list',
+    data: [
+      { id: 'grok-4.3', object: 'model' },
+      { id: ' grok-code-fast-1 ' },
+      { object: 'model' },
+    ],
+  }, 'xai');
+
+  assert.deepEqual(entries, [
+    { id: 'grok-4.3' },
+    { id: 'grok-code-fast-1' },
   ]);
 });

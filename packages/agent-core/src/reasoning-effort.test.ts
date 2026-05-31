@@ -64,6 +64,30 @@ test('moonshot-ai supported efforts restrict unavailable levels', () => {
   );
 });
 
+test('xAI models normalize reasoning efforts to supported values', () => {
+  assert.equal(
+    resolveModelReasoningEffortForContext('minimal', {
+      provider: 'xai',
+      transportKind: 'openai-compatible',
+    }),
+    'low',
+  );
+  assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('max', {
+      provider: 'xai',
+      transportKind: 'openai-compatible',
+    }),
+    'high',
+  );
+  assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('none', {
+      provider: 'xai',
+      transportKind: 'open-responses',
+    }),
+    'none',
+  );
+});
+
 test('anthropic supported efforts restrict unavailable levels', () => {
   assert.equal(
     resolveAnthropicTransportReasoningEffortForContext('xhigh', {

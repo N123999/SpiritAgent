@@ -12,6 +12,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('alibaba'), 'alibaba');
   assert.equal(parseModelProviderId('vercel-ai-gateway'), 'vercel-ai-gateway');
   assert.equal(parseModelProviderId('openai'), 'openai');
+  assert.equal(parseModelProviderId('xai'), 'xai');
   assert.equal(parseModelProviderId('custom'), 'custom');
   assert.equal(parseModelProviderId('moonshot-ai'), 'moonshot-ai');
   assert.equal(parseModelProviderId('kimi'), undefined);
@@ -19,6 +20,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId(''), undefined);
 
   assert.equal(parsePresetModelProviderId('alibaba'), 'alibaba');
+  assert.equal(parsePresetModelProviderId('xai'), 'xai');
   assert.equal(parsePresetModelProviderId('custom'), undefined);
   assert.equal(parsePresetModelProviderId('unknown'), undefined);
 });
@@ -39,6 +41,14 @@ test('partition models by provider preserves ordering and separates unmatched en
 });
 
 test('resolveProviderConnectApiBase uses transport-specific preset bases', () => {
+  assert.equal(
+    resolveProviderConnectApiBase('xai', 'openai-compatible'),
+    'https://api.x.ai/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('xai', 'open-responses'),
+    'https://api.x.ai/v1',
+  );
   assert.equal(
     resolveProviderConnectApiBase('minimax', 'anthropic'),
     'https://api.minimaxi.com/anthropic/v1',

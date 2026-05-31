@@ -142,6 +142,7 @@ form.extensions.footer_hint: "↑/↓ Move  Mouse wheel scroll  Enter placeholde
 form.model.title: "Connect models"
 form.model.field.provider.label: "Provider"
 form.model.provider.deepseek: "DeepSeek"
+form.model.provider.xai: "xAI"
 form.model.provider.moonshot-ai: "Moonshot AI"
 form.model.provider.minimax: "MiniMax"
 form.model.provider.alibaba: "Alibaba"
