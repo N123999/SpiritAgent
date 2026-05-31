@@ -135,6 +135,39 @@ function run(command, args, options = {}) {
   }
 }
 
+function runPowerShell(script) {
+  const executable = process.env.PWSH ?? (process.platform === 'win32' ? 'powershell' : 'pwsh');
+  run(executable, ['-NoProfile', '-NonInteractive', '-Command', script]);
+}
+
+function psSingleQuote(value) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function extractArchive(archivePath, destinationDir, archiveExt) {
+  if (process.platform === 'win32' && archiveExt === 'zip') {
+    runPowerShell(
+      `Expand-Archive -LiteralPath ${psSingleQuote(archivePath)} -DestinationPath ${psSingleQuote(destinationDir)} -Force`,
+    );
+    return;
+  }
+  run('tar', ['-xf', archivePath, '-C', destinationDir]);
+}
+
+function createArchive(sourceDir, archivePath, archiveExt) {
+  if (process.platform === 'win32' && archiveExt === 'zip') {
+    runPowerShell(
+      `Compress-Archive -LiteralPath ${psSingleQuote(sourceDir)} -DestinationPath ${psSingleQuote(archivePath)} -Force`,
+    );
+    return;
+  }
+  if (archiveExt === 'zip') {
+    run('tar', ['-a', '-cf', archivePath, '-C', path.dirname(sourceDir), path.basename(sourceDir)]);
+  } else {
+    run('tar', ['-czf', archivePath, '-C', path.dirname(sourceDir), path.basename(sourceDir)]);
+  }
+}
+
 async function ensureNodeRuntime(targetInfo) {
   const version = await resolveNodeReleaseVersion();
   const nodeName = `node-v${version}-${targetInfo.nodePlatform}-${targetInfo.nodeArch}`;
@@ -149,7 +182,7 @@ async function ensureNodeRuntime(targetInfo) {
       console.log(`Downloading ${url}`);
       await downloadFile(url, archivePath);
     }
-    run('tar', ['-xf', archivePath, '-C', cacheDir]);
+    extractArchive(archivePath, cacheDir, targetInfo.nodeArchiveExt);
   }
 
   return extractedRoot;
@@ -221,11 +254,7 @@ async function main() {
 
   const archivePath = path.join(releaseRoot, `${bundleName}.${targetInfo.archiveExt}`);
   await rm(archivePath, { force: true });
-  if (targetInfo.archiveExt === 'zip') {
-    run('tar', ['-a', '-cf', archivePath, '-C', path.dirname(bundleRoot), path.basename(bundleRoot)]);
-  } else {
-    run('tar', ['-czf', archivePath, '-C', path.dirname(bundleRoot), path.basename(bundleRoot)]);
-  }
+  createArchive(bundleRoot, archivePath, targetInfo.archiveExt);
   console.log(`Created ${archivePath}`);
 }
 

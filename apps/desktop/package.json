@@ -3,7 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "description": "Desktop application for Spirit Agent",
-  "author": "Spirit Agent contributors",
+  "homepage": "https://github.com/N123999/SpiritAgent",
+  "author": {
+    "name": "Spirit Agent contributors",
+    "email": "121384036+N123999@users.noreply.github.com"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"

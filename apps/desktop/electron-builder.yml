@@ -26,16 +26,8 @@ buildDependenciesFromSource: false
 publish: null
 win:
   target:
-    - target: nsis
-      arch:
-        - x64
-        - ia32
-        - arm64
-    - target: zip
-      arch:
-        - x64
-        - ia32
-        - arm64
+    - nsis
+    - zip
   signAndEditExecutable: false
   verifyUpdateCodeSignature: false
 nsis:
@@ -44,25 +36,14 @@ nsis:
   allowToChangeInstallationDirectory: true
 mac:
   target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
-    - target: zip
-      arch:
-        - x64
-        - arm64
+    - dmg
+    - zip
   hardenedRuntime: false
   gatekeeperAssess: false
   identity: null
 linux:
+  maintainer: Spirit Agent contributors <121384036+N123999@users.noreply.github.com>
   target:
-    - target: AppImage
-      arch:
-        - x64
-        - arm64
-    - target: deb
-      arch:
-        - x64
-        - arm64
+    - AppImage
+    - deb
   category: Development

@@ -188,7 +188,9 @@ jobs:
 
       - name: Package Desktop
         working-directory: apps/desktop
-        run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --${{ matrix.arch }}
+        env:
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+        run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --${{ matrix.arch }} --publish never
 
       - name: Upload Desktop artifact
         uses: actions/upload-artifact@v4
