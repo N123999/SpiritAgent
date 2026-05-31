@@ -105,6 +105,7 @@ import {
 } from "@/lib/message-card-spacing";
 import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
 import { UserMessageBubble } from "@/components/user-message-bubble";
+import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import { useFont } from "@/hooks/useFont";
@@ -1683,9 +1684,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 windowsMica / Electron 壳
   }, [isElectronShell, snapshot?.config.windowsMica]);
 
+  const compactionDemo = useCompactionUiDemo();
   const models = snapshot?.config.models ?? [];
-  const messages = snapshot?.conversation.messages ?? [];
-  const isEmptySession = messages.length === 0;
+  const sessionMessages = snapshot?.conversation.messages ?? [];
+  const messages = compactionDemo.active ? compactionDemo.messages : sessionMessages;
+  const isEmptySession = !compactionDemo.active && sessionMessages.length === 0;
+  const conversationPendingAuxState = compactionDemo.active
+    ? compactionDemo.pendingAuxState
+    : snapshot?.conversation.pendingAuxState;
   const rewindWarnings = snapshot?.conversation.rewindWarnings ?? [];
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
   const pendingQuestions = runtime.pendingQuestions;
@@ -1698,6 +1704,7 @@ export default function App() {
   const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
   const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
   const composerCanSend =
+    !compactionDemo.active &&
     (Boolean(runtime.composer.trim()) || runtime.composerLocalFileAttachments.length > 0) &&
     !activeSessionReadOnly &&
     runtime.busyAction !== "session" &&
@@ -2532,6 +2539,10 @@ export default function App() {
               onDeleteMcpServer={runtime.deleteMcpServer}
               onInspectMcpServer={runtime.inspectMcpServer}
               onCreateSkill={runtime.createSkill}
+              onStartCompactionUiDemo={() => {
+                setActiveSurface("conversation");
+                compactionDemo.start();
+              }}
               onDeleteSkill={runtime.deleteSkill}
               onListDreamsOverview={runtime.listDreamsOverview}
               onGenerateSkillNavigate={() => {
@@ -2575,6 +2586,30 @@ export default function App() {
                 onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
               />
             <div data-spirit-surface="conversation-stage" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
+              {compactionDemo.active ? (
+                <div
+                  data-spirit-surface="compaction-ui-demo-banner"
+                  className="shrink-0 bg-background"
+                >
+                  <div
+                    className={cn(
+                      "mx-auto flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2",
+                      CONVERSATION_MAX_W,
+                    )}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">上下文压缩 UI 演示</span>
+                      <span className="hidden sm:inline">
+                        {" "}
+                        · 模拟 Compressing → Compaction 摘要 → 压缩后回复（不写入会话）
+                      </span>
+                    </p>
+                    <Button type="button" variant="outline" size="sm" onClick={compactionDemo.stop}>
+                      退出演示
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               {rewindDraft ? (
                 <button
                   type="button"
@@ -2614,7 +2649,7 @@ export default function App() {
                             <MessageCard
                               key={conversationMessageStableId(message)}
                               messages={messages}
-                              pendingAuxState={snapshot?.conversation.pendingAuxState}
+                              pendingAuxState={conversationPendingAuxState}
                               listIndex={index}
                               message={message}
                               compactAfterPrevious={compactAfterPrevious}

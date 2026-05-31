@@ -122,6 +122,8 @@ type SettingsViewProps = {
   onListDreamsOverview: () => Promise<DesktopDreamOverviewItem[]>;
   /** Skills 页「生成 Skill」：回到主对话区并预填 `/create-skill `，后续直接写自然语言。 */
   onGenerateSkillNavigate?: () => void;
+  /** 开发者页：在对话区播放上下文压缩 UI 演示（不调用模型）。 */
+  onStartCompactionUiDemo?: () => void;
 };
 
 const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
@@ -138,6 +140,7 @@ const settingsPageTitle: Record<SettingsSidebarTab, string> = {
   skills: "Skills",
   dreams: "梦境",
   appearance: "外观与字体",
+  developer: "开发者",
 };
 
 function formatExtensionInstalledAt(unixMs: number): string {
@@ -772,6 +775,34 @@ function BasicSettingsPanel({
             </span>
           </span>
         </p>
+      </div>
+
+    </div>
+  );
+}
+
+function DeveloperSettingsPanel({
+  onStartCompactionUiDemo,
+}: Pick<SettingsViewProps, "onStartCompactionUiDemo">) {
+  return (
+    <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
+      <div className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium text-foreground">UI 演示 · 上下文压缩</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            在对话区模拟上下文触发压缩：Compressing 动画、Compaction 摘要流式与压缩后助手回复（不调用模型、不写入会话）。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 self-start sm:self-center"
+          disabled={!onStartCompactionUiDemo}
+          onClick={() => onStartCompactionUiDemo?.()}
+        >
+          在对话中演示
+        </Button>
       </div>
     </div>
   );
@@ -3143,6 +3174,7 @@ export function SettingsView({
   onDeleteSkill,
   onListDreamsOverview,
   onGenerateSkillNavigate,
+  onStartCompactionUiDemo,
 }: SettingsViewProps) {
   const extensionSettingsItem = extensionSettingsId
     ? snapshot?.extensionsList.find((item) => item.id === extensionSettingsId)
@@ -3179,6 +3211,8 @@ export function SettingsView({
                 onSavePatch={onSavePatch}
                 onResetWebHostPairing={onResetWebHostPairing}
               />
+            ) : tab === "developer" ? (
+              <DeveloperSettingsPanel onStartCompactionUiDemo={onStartCompactionUiDemo} />
             ) : tab === "dreams" ? (
               <DreamSettingsPanel
                 theme={theme}
@@ -3225,7 +3259,7 @@ export function SettingsView({
                 onDeleteMcpServer={onDeleteMcpServer}
                 onInspectMcpServer={onInspectMcpServer}
               />
-            ) : (
+            ) : tab === "appearance" ? (
               <AppearanceSettingsPanel
                 theme={theme}
                 onThemeChange={onThemeChange}
@@ -3235,7 +3269,7 @@ export function SettingsView({
                 isElectronShell={isElectronShell}
                 onSavePatch={onSavePatch}
               />
-            )}
+            ) : null}
           </div>
         </div>
       </ScrollArea>

@@ -5,6 +5,7 @@ import {
   FolderClosed,
   FolderOpen,
   Layers,
+  Code2,
   MoonStar,
   Package,
   Palette,
@@ -57,7 +58,15 @@ type SessionSidebarProps = {
   disabled?: boolean;
 };
 
-export type SettingsSidebarTab = "basic" | "appearance" | "models" | "mcps" | "skills" | "extensions" | "dreams";
+export type SettingsSidebarTab =
+  | "basic"
+  | "appearance"
+  | "models"
+  | "mcps"
+  | "skills"
+  | "extensions"
+  | "dreams"
+  | "developer";
 
 type SessionWorkspaceGroup = {
   id: string;
@@ -168,6 +177,11 @@ const settingsTabs: Array<{
     id: "appearance",
     label: "外观",
     icon: Palette,
+  },
+  {
+    id: "developer",
+    label: "开发者",
+    icon: Code2,
   },
 ];
 
