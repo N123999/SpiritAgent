@@ -1,4 +1,4 @@
-import { generateText, streamText } from 'ai';
+import { generateObject, generateText, jsonSchema, streamText } from 'ai';
 
 import type {
   JsonValue,
@@ -7,6 +7,12 @@ import type {
   StartedToolAgentRound,
   ToolAgentRoundCompletion,
 } from '../ports.js';
+import type { JsonSchemaCompletionRequest, JsonSchemaCompletionResult, JsonSchemaTransport } from '../json-schema.js';
+import {
+  buildJsonSchemaCompletionMessages,
+  stringifyJsonSchemaCompletionOutput,
+} from '../openai/json-schema.js';
+import { llmMessageHasImages, llmMessageTextContent } from '../ports.js';
 import {
   COMPACT_SUMMARY_PREFIX,
   buildToolAgentHostPrompt,
@@ -35,9 +41,58 @@ import {
 } from './responses-compat.js';
 import { createDeferred, responsesEventStreamToRuntimeEvents } from './streaming.js';
 
+function saturatingSub(value: number, delta: number): number {
+  return Math.max(0, value - delta);
+}
+
+function trimLeadingStreamLineBreaks(existingText: string, nextText: string): string {
+  if (existingText.length > 0) {
+    return nextText;
+  }
+
+  return nextText.replace(/^[\r\n]+/u, '');
+}
+
 export class AiSdkOpenResponsesTransport
-  implements LlmTransport<OpenResponsesTransportConfig, ToolAgentState>
+  implements
+    LlmTransport<OpenResponsesTransportConfig, ToolAgentState>,
+    JsonSchemaTransport
 {
+  async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(
+    config: OpenResponsesTransportConfig,
+    request: JsonSchemaCompletionRequest,
+  ): Promise<JsonSchemaCompletionResult<T>> {
+    const messages = buildJsonSchemaCompletionMessages(
+      {
+        model: config.model,
+        ...(config.llmVendor ? { llmVendor: config.llmVendor } : {}),
+      },
+      request,
+    );
+    const requestTrace = buildOpenResponsesRequestTrace(config, 1, messages, []);
+
+    try {
+      const result = await generateObject({
+        model: createResponsesLanguageModel(config) as any,
+        messages: openAiMessagesToResponsesAiSdkMessages(messages) as any,
+        allowSystemInMessages: true,
+        schema: jsonSchema(request.schema as Record<string, unknown>),
+        schemaName: request.schemaName,
+        providerOptions: buildResponsesProviderOptions(config),
+        maxRetries: 0,
+      });
+      const output = cloneJsonValue(result.object as JsonValue) as T;
+
+      return {
+        output,
+        rawText: stringifyJsonSchemaCompletionOutput(output),
+        requestTrace,
+      };
+    } catch (error) {
+      throw new Error(renderResponsesTransportError(error));
+    }
+  }
+
   async startToolAgentRound(
     config: OpenResponsesTransportConfig,
     state: ToolAgentState,
@@ -205,8 +260,6 @@ export class AiSdkOpenResponsesTransport
     beforeLength: number;
     afterLength: number;
   }> {
-    void config;
-    void onProgress;
     const beforeLength = history.length;
     if (beforeLength === 0) {
       return {
@@ -216,7 +269,91 @@ export class AiSdkOpenResponsesTransport
       };
     }
 
-    throw new Error('Open Responses transport: compactHistoryManual 尚未实现。');
+    const promptMessages = openAiMessagesToResponsesAiSdkMessages([
+      {
+        role: 'system',
+        content: [
+          'Summarize the following conversation into a reusable system summary for later turns.',
+          'Preserve: user goals, key constraints, verified conclusions, failed attempts, and open items.',
+          'Omit small talk.',
+          'Output plain text only.',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: history
+          .map((message) => {
+            const text = llmMessageTextContent(message.content);
+            const imageNote = llmMessageHasImages(message.content) ? '\n[images attached]' : '';
+            return `${message.role.toUpperCase()}: ${text}${imageNote}`;
+          })
+          .join('\n\n'),
+      },
+    ]);
+    const compactConfig: OpenResponsesTransportConfig = {
+      ...config,
+      model: config.compactModel ?? config.model,
+    };
+
+    let summary = '';
+    if (onProgress) {
+      let emittedProgress = false;
+      try {
+        const streamed = streamText({
+          model: createResponsesLanguageModel(compactConfig) as any,
+          messages: promptMessages as any,
+          allowSystemInMessages: true,
+          providerOptions: buildResponsesProviderOptions(compactConfig),
+          maxRetries: 0,
+        });
+
+        for await (const part of streamed.fullStream) {
+          if (part.type !== 'text-delta') {
+            continue;
+          }
+
+          const normalizedText = trimLeadingStreamLineBreaks(summary, part.text);
+          if (!normalizedText) {
+            continue;
+          }
+
+          summary += normalizedText;
+          emittedProgress = true;
+          onProgress(normalizedText);
+        }
+      } catch (error) {
+        if (emittedProgress) {
+          throw error;
+        }
+      }
+    }
+
+    if (!summary.trim()) {
+      const result = await generateText({
+        model: createResponsesLanguageModel(compactConfig) as any,
+        messages: promptMessages as any,
+        allowSystemInMessages: true,
+        providerOptions: buildResponsesProviderOptions(compactConfig),
+        maxRetries: 0,
+      });
+      summary = result.text;
+    }
+
+    const normalizedSummary = summary.trim();
+    if (!normalizedSummary) {
+      throw new Error('Open Responses 压缩返回为空，无法生成摘要。');
+    }
+
+    history.splice(0, history.length, {
+      role: 'system',
+      content: [{ type: 'text', text: `${COMPACT_SUMMARY_PREFIX}\n${normalizedSummary}` }],
+    });
+
+    return {
+      droppedMessages: saturatingSub(beforeLength, 1),
+      beforeLength,
+      afterLength: history.length,
+    };
   }
 
   compactSummaryText(history: LlmMessage[]): string | undefined {
