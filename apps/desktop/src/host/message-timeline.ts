@@ -839,6 +839,9 @@ export class DesktopMessageTimeline {
       content: snapshot.content,
       pending: snapshot.pending,
       ...(snapshot.canContinue ? { canContinue: true } : {}),
+      ...(snapshot.localFileAttachments?.length
+        ? { localFileAttachments: cloneLocalFileAttachments(snapshot.localFileAttachments) }
+        : {}),
       ...(snapshot.tool ? { tool: cloneTool(snapshot.tool) } : {}),
       ...(snapshot.aux ? { aux: cloneAux(snapshot.aux) } : {}),
     };

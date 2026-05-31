@@ -295,6 +295,13 @@ function cloneDesktopMessageTimeline(
       ? {
           userRow: {
             ...turn.userRow,
+            ...(turn.userRow.localFileAttachments?.length
+              ? {
+                  localFileAttachments: turn.userRow.localFileAttachments.map((attachment) => ({
+                    ...attachment,
+                  })),
+                }
+              : {}),
             ...(turn.userRow.tool
               ? {
                   tool: {
@@ -314,6 +321,13 @@ function cloneDesktopMessageTimeline(
       ...segment,
       rows: segment.rows.map((row) => ({
         ...row,
+        ...(row.localFileAttachments?.length
+          ? {
+              localFileAttachments: row.localFileAttachments.map((attachment) => ({
+                ...attachment,
+              })),
+            }
+          : {}),
         ...(row.tool
           ? {
               tool: {

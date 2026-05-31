@@ -458,3 +458,30 @@ test('user local file attachments survive timeline round trip', () => {
   const roundTripped = rebuilt.toMessages();
   assert.deepEqual(roundTripped[0].localFileAttachments, messages[0].localFileAttachments);
 });
+
+test('user local file attachments survive timeline snapshot restore', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('哈哈哈', {
+    localFileAttachments: [
+      { path: 'D:\\project\\ReadmeHero_en.png', name: 'ReadmeHero_en.png', isImage: true },
+    ],
+  });
+  timeline.beginAssistantSegment('initial');
+  timeline.appendAssistantTextChunk('Looks good.');
+  timeline.completeActiveAssistantSegment();
+
+  const snapshot = timeline.snapshot();
+  let nextMessageId = 10;
+  const restored = DesktopMessageTimeline.fromSnapshot(snapshot, {
+    allocateMessageId: () => nextMessageId++,
+    reserveMessageId: (messageId) => {
+      if (messageId >= nextMessageId) {
+        nextMessageId = messageId + 1;
+      }
+    },
+  });
+
+  const messages = restored.toMessages();
+  assert.equal(messages[0].localFileAttachments?.length, 1);
+  assert.equal(messages[0].localFileAttachments?.[0]?.name, 'ReadmeHero_en.png');
+});
