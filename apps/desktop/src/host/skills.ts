@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import i18n from '@/lib/i18n';
 import type {
   OpenAiActiveSkill,
   OpenAiActiveSkillResourceEntry,
@@ -45,7 +46,7 @@ export function parseSkillRootKind(value: unknown): DesktopSkillRootKind {
   if (value === 'user' || value === 'workspaceSpirit' || value === 'workspaceAgents') {
     return value;
   }
-  throw new Error('无效的 Skill 根类型。');
+  throw new Error(i18n.t('error.invalidSkillRootKind'));
 }
 
 export function resolveSkillRootDir(
@@ -82,7 +83,7 @@ export function assertPathUnderSkillRoot(
   const root = path.resolve(resolveSkillRootDir(instructionPaths, rootKind));
   const resolved = path.resolve(targetDir);
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    throw new Error('Skill 路径不在允许的根目录内。');
+    throw new Error(i18n.t('error.skillPathOutsideRoot'));
   }
 }
 
@@ -100,11 +101,11 @@ export async function createSkillFile(
 
   const description = (request.description ?? '').trim();
   if (!description) {
-    throw new Error('描述不能为空。');
+    throw new Error(i18n.t('error.descriptionRequired'));
   }
   const skillDir = resolveSkillDir(instructionPaths, name, rootKind);
   if (existsSync(skillDir)) {
-    throw new Error(`该位置已存在同名 Skill：${name}`);
+    throw new Error(i18n.t('error.skillAlreadyExists', { name }));
   }
 
   const frontmatterDescription = formatYamlScalarForSkillFrontmatter(description);
@@ -136,7 +137,7 @@ export async function deleteSkillDir(
   assertPathUnderSkillRoot(instructionPaths, skillDir, rootKind);
 
   if (!existsSync(skillDir)) {
-    throw new Error(`Skill 不存在：${name}`);
+    throw new Error(i18n.t('error.skillNotFound', { name }));
   }
 
   await rm(skillDir, { recursive: true, force: true });
@@ -145,7 +146,7 @@ export async function deleteSkillDir(
 export function buildActivateSkillUserTurn(skillName: string, extraNote: string): string {
   const trimmed = extraNote.trim();
   if (!trimmed) {
-    return `请按 skill "${skillName}" 处理当前任务。`;
+    return i18n.t('slash.activateSkillPrompt', { skillName });
   }
   return trimmed;
 }

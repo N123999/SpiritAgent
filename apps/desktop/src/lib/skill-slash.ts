@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n'
 import type { DesktopSkillListItem } from '@/types'
 
 export type SkillSlashSuggestionKind =
@@ -34,28 +35,28 @@ const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
     id: 'command:create-skill',
     alias: CREATE_SKILL_SLASH_ALIAS,
     name: 'create-skill',
-    description: '用自然语言创建或收紧一个 SKILL.md',
+    description: i18n.t('slash.createSkill'),
     kind: 'create-skill',
   },
   {
     id: 'command:log-session',
     alias: LOG_SESSION_SLASH_ALIAS,
     name: 'log-session',
-    description: '导出当前会话 llm_history 与完整 API 请求轨迹并自动打开',
+    description: i18n.t('slash.logSession'),
     kind: 'log-session',
   },
   {
     id: 'command:start-implementing',
     alias: START_IMPLEMENTING_SLASH_ALIAS,
     name: 'start-implementing',
-    description: '读取 Spirit 托管 plan.md 后直接开始实现',
+    description: i18n.t('slash.startImplementing'),
     kind: 'start-implementing',
   },
   {
     id: 'command:compact',
     alias: COMPACT_SLASH_ALIAS,
     name: 'compact',
-    description: '主动压缩当前会话上下文历史',
+    description: i18n.t('slash.compact'),
     kind: 'compact',
   },
 ] as const

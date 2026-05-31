@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n';
 import type { ConversationMessageSnapshot, PendingAssistantAux } from '../types.js';
 
 /** Negative ids — UI-only demo, never persisted. */
@@ -7,17 +8,11 @@ export const COMPACTION_UI_DEMO_MESSAGE_IDS = {
   reply: -9102,
 } as const;
 
-const DEMO_USER_TEXT =
-  '请继续实现 Desktop 连接向导：在上下文接近上限时自动压缩历史，并保留最近一轮工具结果。';
+const DEMO_USER_TEXT = i18n.t('demo.compactionUserText');
 
-const DEMO_COMPACTION_SUMMARY = `## Context compressed
+const DEMO_COMPACTION_SUMMARY = i18n.t('demo.compactionSummary');
 
-- 用户要求实现连接向导与上下文压缩相关 UI。
-- 已讨论 OpenAI Responses API、transportKind 与 provider 预设。
-- 丢弃较早的 8 条工具输出与 3 轮闲聊（约 42k tokens），保留当前任务与最近 read_file 结果。`;
-
-const DEMO_ASSISTANT_REPLY =
-  '已根据压缩后的上下文继续：我会在设置里补「上下文压缩」样式演示入口，并核对 Compaction 区块与后续助手回复的间距。';
+const DEMO_ASSISTANT_REPLY = i18n.t('demo.compactionAssistantReply');
 
 const SPINNER_FRAMES = ['|', '/', '-', '\\'] as const;
 

@@ -6,6 +6,7 @@ import {
 } from '@spirit-agent/agent-core';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 
+import i18n from '@/lib/i18n';
 import type {
   ConversationMessageSnapshot,
   MessageAuxSnapshot,
@@ -228,7 +229,7 @@ export class DesktopRuntimeEventOrchestrator {
         }
         const runningSummary =
           event.toolName === 'generate_image'
-            ? { headline: '生成图片' }
+            ? { headline: i18n.t('tool.generateImage') }
             : toolCallSummaryForPhase('running', event.toolName, event.request);
         const runningTool: ToolBlockSnapshot = applyToolCallSummaryCopy(
           {
@@ -493,8 +494,8 @@ export class DesktopRuntimeEventOrchestrator {
         toolCallId: toolMessageKey(questions),
         toolName: questions.toolName,
         phase: 'pending-approval',
-        headline: `等待补充信息: ${questions.toolName}`,
-        detailLines: [questions.questions.title ?? '请回答表单问题'],
+        headline: i18n.t('tool.awaitingInfo', { toolName: questions.toolName }),
+        detailLines: [questions.questions.title ?? i18n.t('tool.answerFormQuestions')],
         argsExcerpt: truncateJson(questions.questions),
       };
       this.options.assistantMessages.upsertToolMessage(toolMessageKey(questions), pendingTool, this.lastApplyEventBatchId);
@@ -551,7 +552,7 @@ export class DesktopRuntimeEventOrchestrator {
       const executionSummary =
         execution.toolName === 'generate_image'
           ? {
-              headline: execution.failed ? '图片生成失败' : '图片生成完成',
+              headline: execution.failed ? i18n.t('tool.imageGenFailed') : i18n.t('tool.imageGenComplete'),
             }
           : toolCallSummaryForPhase(
               execution.failed ? 'failed' : 'succeeded',

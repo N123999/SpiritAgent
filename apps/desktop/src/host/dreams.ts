@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import i18n from '@/lib/i18n';
 import type {
   AgentRuntime,
   AnthropicTransportConfig,
@@ -240,7 +241,7 @@ export async function runDesktopDreamCollectorOnce(
 
     const apiKey = await resolveApiKeyForModel(input.collectorModel);
     if (!apiKey) {
-      throw new Error('梦境收集模型未配置 API Key。');
+      throw new Error(i18n.t('error.dreamCollectorApiKeyMissing'));
     }
 
     const activeProfile = input.config.models.find((model) => model.name === input.collectorModel);
@@ -319,7 +320,7 @@ export async function runDesktopDreamCollectorOnce(
       failed: execution.failed,
     }));
     if (result.kind !== 'completed') {
-      throw new Error(result.kind === 'failed' ? result.error : `梦境收集未完成: ${result.kind}`);
+      throw new Error(result.kind === 'failed' ? result.error : i18n.t('error.dreamCollectorIncomplete', { kind: result.kind }));
     }
     if (input.config.dreams.debugMode) {
       await persistDreamCollectorDebugSession({
@@ -633,7 +634,7 @@ async function persistDreamCollectorDebugSession(input: {
     {
       id: 2,
       role: 'assistant',
-      content: input.failed ? `生成失败：${input.assistantText}` : input.assistantText,
+      content: input.failed ? i18n.t('error.dreamGenerationFailed', { text: input.assistantText }) : input.assistantText,
       pending: false,
     },
   ];
@@ -648,7 +649,7 @@ async function persistDreamCollectorDebugSession(input: {
     })),
     subagentSessions: [],
     savedAtUnixMs: now,
-    sessionDisplayName: `[梦境] ${input.sourceSession.displayName}`,
+    sessionDisplayName: i18n.t('error.dreamSessionDisplayName', { name: input.sourceSession.displayName }),
     workspaceRoot: input.workspaceRoot,
     gitBranch: input.gitBranch,
     desktopMessages: messages,

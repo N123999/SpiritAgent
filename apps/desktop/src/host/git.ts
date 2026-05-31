@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import i18n from '@/lib/i18n';
 import {
   addGitWorktree as addGitWorktreeInternal,
   checkoutGitBranch as checkoutGitBranchInternal,
@@ -42,7 +43,7 @@ async function runGit(
     };
   } catch (error) {
     const message = renderGitError(error);
-    throw new Error(`git ${args.join(' ')} 失败：${message}`);
+    throw new Error(i18n.t('error.gitCommandFailed', { command: args.join(' '), message }));
   }
 }
 
@@ -120,7 +121,7 @@ export async function mergeWorktreeBranchToMain(
     await mergeSpiritBranchToMainInternal(primaryRepoRoot, branchName);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(message.replace(/^git merge .* failed: /u, 'git merge 失败：'));
+    throw new Error(message.replace(/^git merge .* failed: /u, i18n.t('error.gitMergeFailed')));
   }
 }
 
@@ -137,12 +138,12 @@ export async function checkoutWorkspaceGitBranch(
     await checkoutGitBranchInternal(workspaceRoot, branch, options);
   } catch (error) {
     if (isGitCheckoutBlockedError(error)) {
-      const blocked = new Error('工作区有未提交更改，无法切换分支。') as Error & { code: string };
+      const blocked = new Error(i18n.t('error.uncommittedChangesBlockCheckout')) as Error & { code: string };
       blocked.code = 'GIT_CHECKOUT_LOCAL_CHANGES';
       throw blocked;
     }
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(message.replace(/^git checkout .* failed: /u, 'git checkout 失败：'));
+    throw new Error(message.replace(/^git checkout .* failed: /u, i18n.t('error.gitCheckoutFailed')));
   }
   return readWorkspaceGitSnapshot(workspaceRoot);
 }
@@ -174,7 +175,7 @@ export async function commitWorkspaceChanges(
     .filter((line) => line.length > 0);
 
   if (lines.length === 0) {
-    throw new Error('提交信息不能为空。');
+    throw new Error(i18n.t('error.commitMessageRequired'));
   }
 
   await runGit(workspaceRoot, ['add', '-A']);

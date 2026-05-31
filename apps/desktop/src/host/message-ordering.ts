@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n';
 import type {
   LlmMessageContent,
   RuntimePendingApproval,
@@ -131,7 +132,7 @@ export function truncateOneLineForDebug(s: string, max: number): string {
   return `${t.slice(0, max)}…`;
 }
 
-const SHELL_REASON_PREFIX = '理由:';
+const SHELL_REASON_PREFIX = i18n.t('tool.reasonPrefix');
 
 export function reasonForShellTool(toolName: string, request: unknown): string | undefined {
   if (toolName !== 'run_shell_command' || !request || typeof request !== 'object') {
@@ -190,7 +191,7 @@ export function toolCallSummaryCopyForRequest(
         return undefined;
       }
       return {
-        headline: reason ?? '运行命令',
+        headline: reason ?? i18n.t('tool.runCommand'),
         ...(command ? { headlineDetail: truncateSummaryDetail(command) } : {}),
       };
     }
@@ -200,43 +201,43 @@ export function toolCallSummaryCopyForRequest(
       const rawPath = typeof record.path === 'string' ? record.path : '';
       const basename = displayBasename(rawPath);
       const verb =
-        toolName === 'create_file' ? '创建' : toolName === 'edit_file' ? '编辑' : '删除';
+        toolName === 'create_file' ? i18n.t('tool.create') : toolName === 'edit_file' ? i18n.t('tool.edit') : i18n.t('tool.delete');
       return { headline: `${verb} ${basename}` };
     }
     case 'grep': {
       const query = typeof record.query === 'string' ? record.query.trim() : '';
-      const prefix = record.is_regexp === true ? '正则: ' : '';
+      const prefix = record.is_regexp === true ? i18n.t('tool.regexPrefix') : '';
       return {
-        headline: '搜索',
+        headline: i18n.t('tool.search'),
         ...(query ? { headlineDetail: truncateSummaryDetail(`${prefix}${query}`) } : {}),
       };
     }
     case 'glob': {
       const pattern = typeof record.pattern === 'string' ? record.pattern.trim() : '';
       return {
-        headline: '匹配',
+        headline: i18n.t('tool.match'),
         ...(pattern ? { headlineDetail: truncateSummaryDetail(pattern) } : {}),
       };
     }
     case 'web_fetch': {
       const url = typeof record.url === 'string' ? record.url.trim() : '';
       return {
-        headline: '抓取',
+        headline: i18n.t('tool.fetch'),
         ...(url ? { headlineDetail: truncateSummaryDetail(url) } : {}),
       };
     }
     case 'list_directory_files': {
       const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
       return {
-        headline: '列出目录',
+        headline: i18n.t('tool.listDirectory'),
         ...(rawPath ? { headlineDetail: truncateSummaryDetail(displayPathForListDirectory(rawPath)) } : {}),
       };
     }
     case 'ask_questions': {
       const questions = Array.isArray(record.questions) ? record.questions : [];
       return {
-        headline: '询问',
-        headlineDetail: questions.length > 0 ? `${questions.length} 个问题` : '问题',
+        headline: i18n.t('tool.askQuestions'),
+        headlineDetail: questions.length > 0 ? i18n.t('tool.nQuestions', { count: questions.length }) : i18n.t('tool.question'),
       };
     }
     case 'run_subagent': {
@@ -245,26 +246,26 @@ export function toolCallSummaryCopyForRequest(
         typeof record.context_summary === 'string' ? record.context_summary.trim() : '';
       const previewSource = task || contextSummary;
       return {
-        headline: '子智能体',
+        headline: i18n.t('tool.subagent'),
         headlineDetail: previewSource
           ? truncateSummaryDetail(previewSource, SUBAGENT_TASK_PREVIEW_MAX)
-          : '未指定任务',
+          : i18n.t('tool.unspecifiedTask'),
       };
     }
     case 'dream_list':
-      return { headline: '列出梦境' };
+      return { headline: i18n.t('tool.dreamList') };
     case 'dream_read':
-      return dreamIdSummaryCopy('查看梦境', record);
+      return dreamIdSummaryCopy(i18n.t('tool.dreamRead'), record);
     case 'dream_update':
-      return dreamIdSummaryCopy('更新梦境', record);
+      return dreamIdSummaryCopy(i18n.t('tool.dreamUpdate'), record);
     case 'dream_delete':
-      return dreamIdSummaryCopy('删除梦境', record);
+      return dreamIdSummaryCopy(i18n.t('tool.dreamDelete'), record);
     case 'dream_record': {
       const title = typeof record.title === 'string' ? record.title.trim() : '';
       const summary = typeof record.summary === 'string' ? record.summary.trim() : '';
       const detail = title || summary;
       return {
-        headline: '记录梦境',
+        headline: i18n.t('tool.dreamRecord'),
         ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
       };
     }
@@ -275,11 +276,11 @@ export function toolCallSummaryCopyForRequest(
           ? String((items[0] as Record<string, unknown>).title ?? '').trim()
           : '';
       return {
-        headline: '创建 TODO',
+        headline: i18n.t('tool.todoCreate'),
         headlineDetail: truncateSummaryDetail(
           items.length > 1
-            ? `${items.length} 项${firstTitle ? ` · ${firstTitle}` : ''}`
-            : firstTitle || '1 项',
+            ? i18n.t('tool.nItems', { count: items.length, firstTitle: firstTitle || '' })
+            : firstTitle || i18n.t('tool.oneItem'),
         ),
       };
     }
@@ -287,19 +288,19 @@ export function toolCallSummaryCopyForRequest(
       const title = typeof record.title === 'string' ? record.title.trim() : '';
       const id = typeof record.id === 'string' ? record.id.trim() : '';
       return {
-        headline: '更新 TODO',
+        headline: i18n.t('tool.todoUpdate'),
         headlineDetail: truncateSummaryDetail(title || id || ''),
       };
     }
     case 'todo_complete': {
       const id = typeof record.id === 'string' ? record.id.trim() : '';
       return {
-        headline: '完成 TODO',
+        headline: i18n.t('tool.todoComplete'),
         ...(id ? { headlineDetail: truncateSummaryDetail(id) } : {}),
       };
     }
     case 'todo_list':
-      return { headline: '列出 TODO' };
+      return { headline: i18n.t('tool.todoList') };
     case 'extension_tool': {
       const extensionToolName =
         typeof record.tool_name === 'string' ? record.tool_name.trim() : '';
@@ -784,16 +785,16 @@ function defaultToolHeadline(
 ): string {
   switch (phase) {
     case 'preview':
-      return `预览中: ${toolName}`;
+      return i18n.t('tool.previewing', { toolName });
     case 'pending-approval':
-      return `等待确认: ${toolName}`;
+      return i18n.t('tool.pendingApproval', { toolName });
     case 'running':
-      return `调用中: ${toolName}`;
+      return i18n.t('tool.running', { toolName });
     case 'failed':
-      return `工具执行失败: ${toolName}`;
+      return i18n.t('tool.failed', { toolName });
     case 'succeeded':
     default:
-      return `工具执行完成: ${toolName}`;
+      return i18n.t('tool.succeeded', { toolName });
   }
 }
 
@@ -841,8 +842,8 @@ export function toolCallSummaryForStreamingPreview(
 
   return {
     headline: hasBlockingToolAheadOfSameTurnPreview(messages, toolCallId)
-      ? `排队中: ${toolName}`
-      : `调用中: ${toolName}`,
+      ? i18n.t('tool.queued', { toolName })
+      : i18n.t('tool.running', { toolName }),
   };
 }
 
@@ -857,7 +858,7 @@ export function headlineForStreamingToolPreview(
 
 function readFileSummaryCopy(request: unknown): ToolCallSummaryCopy {
   if (!request || typeof request !== 'object') {
-    return { headline: '查看', headlineDetail: '文件' };
+    return { headline: i18n.t('tool.view'), headlineDetail: i18n.t('tool.file') };
   }
 
   const record = request as Record<string, unknown>;
@@ -871,7 +872,7 @@ function readFileSummaryCopy(request: unknown): ToolCallSummaryCopy {
   const detail = `${displayPath}${lineRange}`.trim();
 
   return {
-    headline: '查看',
+    headline: i18n.t('tool.view'),
     ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
   };
 }
@@ -887,7 +888,7 @@ function truncateSummaryDetail(value: string, max = SUMMARY_DETAIL_MAX): string 
 function displayBasename(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) {
-    return '文件';
+    return i18n.t('tool.file');
   }
 
   const normalized = trimmed.replace(/\\/g, '/');
@@ -898,7 +899,7 @@ function displayBasename(path: string): string {
 function displayPathForListDirectory(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) {
-    return '目录';
+    return i18n.t('tool.directory');
   }
   if (trimmed.length <= SUMMARY_DETAIL_MAX) {
     return trimmed.replace(/\\/g, '/');
@@ -909,7 +910,7 @@ function displayPathForListDirectory(path: string): string {
 function displayPathForReadFile(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) {
-    return '文件';
+    return i18n.t('tool.file');
   }
 
   const normalized = trimmed.replace(/\\/g, '/');

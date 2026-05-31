@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import i18n from '@/lib/i18n';
 import {
   mcpUserConfigPath,
   normalizeCapabilityToggles,
@@ -111,17 +112,17 @@ export function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): M
   if (request.transportType === 'http') {
     const endpoint = request.endpoint.trim();
     if (!endpoint) {
-      throw new Error('HTTP endpoint 不能为空。');
+      throw new Error(i18n.t('error.httpEndpointRequired'));
     }
 
     let url: URL;
     try {
       url = new URL(endpoint);
     } catch {
-      throw new Error('HTTP endpoint 必须是合法 URL。');
+      throw new Error(i18n.t('error.httpEndpointInvalidUrl'));
     }
     if (!url.protocol || !url.host) {
-      throw new Error('HTTP endpoint 必须包含 scheme 和 host。');
+      throw new Error(i18n.t('error.httpEndpointMissingSchemeHost'));
     }
 
     return {
@@ -140,7 +141,7 @@ export function buildMcpServerConfigFromRequest(request: AddMcpServerRequest): M
   const tokens = splitDesktopCommandLine(request.endpoint.trim());
   const [command, ...args] = tokens;
   if (!command) {
-    throw new Error('命令不能为空。');
+      throw new Error(i18n.t('error.commandRequired'));
   }
 
   return {
@@ -181,13 +182,13 @@ function parseDesktopMcpMetadata(
 
     if (parsed.length < 2) {
       throw new Error(kind === 'env'
-        ? '环境变量格式应为 KEY=value；多个条目用分号分隔。'
-        : 'Header 格式应为 Key: Value；多个条目用分号分隔。');
+        ? i18n.t('error.envFormatInvalid')
+        : i18n.t('error.headerFormatInvalid'));
     }
 
     const key = parsed[0]?.trim() ?? '';
     if (!key) {
-      throw new Error(kind === 'env' ? '环境变量名不能为空。' : 'Header 名不能为空。');
+      throw new Error(kind === 'env' ? i18n.t('error.envKeyRequired') : i18n.t('error.headerKeyRequired'));
     }
 
     result[key] = (parsed[1] ?? '').trim();
@@ -237,7 +238,7 @@ function splitDesktopCommandLine(input: string): string[] {
   }
 
   if (quote) {
-    throw new Error('命令格式错误：存在未闭合的引号。');
+      throw new Error(i18n.t('error.unclosedQuote'));
   }
   if (current) {
     tokens.push(current);

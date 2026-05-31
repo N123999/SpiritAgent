@@ -8,6 +8,7 @@ import {
   cloneLlmProviderState,
 } from '@spirit-agent/agent-core';
 
+import i18n from '@/lib/i18n';
 import type {
   AskQuestionsResult,
   DesktopDreamCollectorSnapshot,
@@ -71,7 +72,7 @@ export function cloneDesktopConfig(config: DesktopConfigFile): DesktopConfigFile
 
 export function normalizeGeneratedCommitMessage(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new Error('自动生成提交信息失败：模型未返回 message 字段。');
+    throw new Error(i18n.t('error.autoCommitFailedNoMessageField'));
   }
 
   const normalized = value
@@ -82,7 +83,7 @@ export function normalizeGeneratedCommitMessage(value: unknown): string {
     .join('\n');
 
   if (!normalized) {
-    throw new Error('自动生成提交信息失败：模型返回了空 message。');
+    throw new Error(i18n.t('error.autoCommitFailedEmptyMessage'));
   }
 
   return normalized;
@@ -91,7 +92,7 @@ export function normalizeGeneratedCommitMessage(value: unknown): string {
 export function parseGeneratedCommitMessageResponse(rawText: string): string {
   const trimmed = rawText.trim();
   if (!trimmed) {
-    throw new Error('自动生成提交信息失败：模型未返回正文。');
+    throw new Error(i18n.t('error.autoCommitFailedNoBody'));
   }
 
   const candidate = extractJsonObjectText(trimmed);
@@ -100,11 +101,11 @@ export function parseGeneratedCommitMessageResponse(rawText: string): string {
   try {
     parsed = JSON.parse(candidate);
   } catch {
-    throw new Error('自动生成提交信息失败：模型未返回合法 JSON。');
+    throw new Error(i18n.t('error.autoCommitFailedInvalidJson'));
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('自动生成提交信息失败：模型返回的 JSON 不是对象。');
+    throw new Error(i18n.t('error.autoCommitFailedNotObject'));
   }
 
   return normalizeGeneratedCommitMessage((parsed as { message?: unknown }).message);
@@ -115,19 +116,19 @@ export function normalizeGeneratedWorktreeNames(value: {
   branchName?: unknown;
 }): GeneratedWorktreeNames {
   if (typeof value.worktreeName !== 'string' || typeof value.branchName !== 'string') {
-    throw new Error('自动生成 Worktree 名称失败：模型未返回 worktreeName 或 branchName 字段。');
+    throw new Error(i18n.t('error.autoWorktreeNameFailedMissingFields'));
   }
 
   const worktreeName = value.worktreeName.trim();
   const branchName = value.branchName.trim();
   if (!worktreeName || !branchName) {
-    throw new Error('自动生成 Worktree 名称失败：模型返回了空名称。');
+    throw new Error(i18n.t('error.autoWorktreeNameFailedEmpty'));
   }
   if (!isSpiritWorktreeName(worktreeName)) {
-    throw new Error(`自动生成 Worktree 名称失败：worktreeName 格式无效（${worktreeName}）。`);
+    throw new Error(i18n.t('error.autoWorktreeNameFailedInvalidWorktreeName', { worktreeName }));
   }
   if (!isSpiritBranchName(branchName)) {
-    throw new Error(`自动生成 Worktree 名称失败：branchName 格式无效（${branchName}）。`);
+    throw new Error(i18n.t('error.autoWorktreeNameFailedInvalidBranchName', { branchName }));
   }
 
   return { worktreeName, branchName };
@@ -136,7 +137,7 @@ export function normalizeGeneratedWorktreeNames(value: {
 export function parseGeneratedWorktreeNamingResponse(rawText: string): GeneratedWorktreeNames {
   const trimmed = rawText.trim();
   if (!trimmed) {
-    throw new Error('自动生成 Worktree 名称失败：模型未返回正文。');
+    throw new Error(i18n.t('error.autoWorktreeNameFailedNoBody'));
   }
 
   const candidate = extractJsonObjectText(trimmed);
@@ -145,11 +146,11 @@ export function parseGeneratedWorktreeNamingResponse(rawText: string): Generated
   try {
     parsed = JSON.parse(candidate);
   } catch {
-    throw new Error('自动生成 Worktree 名称失败：模型未返回合法 JSON。');
+    throw new Error(i18n.t('error.autoWorktreeNameFailedInvalidJson'));
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('自动生成 Worktree 名称失败：模型返回的 JSON 不是对象。');
+    throw new Error(i18n.t('error.autoWorktreeNameFailedNotObject'));
   }
 
   return normalizeGeneratedWorktreeNames(parsed as { worktreeName?: unknown; branchName?: unknown });
@@ -357,7 +358,7 @@ export function mapPendingQuestions(
 }
 
 export function formatYamlScalarForSkillFrontmatter(value: string): string {
-  const flat = value.replace(/\r?\n/g, ' ').trim() || '说明';
+  const flat = value.replace(/\r?\n/g, ' ').trim() || i18n.t('common.description');
   return `"${flat.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
 }
 

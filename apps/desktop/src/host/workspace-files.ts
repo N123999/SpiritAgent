@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 import { lstat, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import i18n from '@/lib/i18n';
 import type {
   WorkspaceExplorerEntry,
   WorkspaceExplorerListResult,
@@ -24,19 +25,19 @@ export async function resolveWorkspaceRelativePath(
   const cleaned = relativePath.replace(/\0/g, '');
   const posix = cleaned.replace(/\\/g, '/').trim();
   if (posix.startsWith('/') || /^[a-zA-Z]:/.test(posix)) {
-    throw new Error('无效路径');
+    throw new Error(i18n.t('error.invalidPath'));
   }
   const segments = posix.split('/').filter((segment) => segment.length > 0);
   for (const segment of segments) {
     if (segment === '..' || segment === '.') {
-      throw new Error('无效路径');
+      throw new Error(i18n.t('error.invalidPath'));
     }
   }
 
   const target = segments.length === 0 ? root : path.resolve(root, ...segments);
   const rel = path.relative(root, target);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error('路径越出工作区');
+    throw new Error(i18n.t('error.pathOutsideWorkspace'));
   }
 
   let current = root;
@@ -45,10 +46,10 @@ export async function resolveWorkspaceRelativePath(
     try {
       const entry = await lstat(current);
       if (entry.isSymbolicLink()) {
-        throw new Error('路径包含符号链接');
+        throw new Error(i18n.t('error.pathContainsSymlink'));
       }
     } catch (error) {
-      if (error instanceof Error && error.message === '路径包含符号链接') {
+      if (error instanceof Error && error.message === i18n.t('error.pathContainsSymlink')) {
         throw error;
       }
       break;
@@ -59,10 +60,10 @@ export async function resolveWorkspaceRelativePath(
     const canonicalTarget = await realpath(target);
     const canonicalRel = path.relative(canonicalRoot, canonicalTarget);
     if (canonicalRel.startsWith('..') || path.isAbsolute(canonicalRel)) {
-      throw new Error('路径越出工作区');
+      throw new Error(i18n.t('error.pathOutsideWorkspace'));
     }
   } catch (error) {
-    if (error instanceof Error && error.message === '路径越出工作区') {
+    if (error instanceof Error && error.message === i18n.t('error.pathOutsideWorkspace')) {
       throw error;
     }
   }
@@ -106,20 +107,20 @@ export async function readWorkspaceTextFile(
 ): Promise<WorkspaceReadTextFileResult> {
   const posix = relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
   if (!posix) {
-    throw new Error('未指定文件路径');
+    throw new Error(i18n.t('error.noFilePath'));
   }
   const filePath = await resolveWorkspaceRelativePath(workspaceRoot, relativePath);
   let fileStat;
   try {
     fileStat = await stat(filePath);
   } catch {
-    throw new Error('文件不存在或无法访问');
+    throw new Error(i18n.t('error.fileNotAccessible'));
   }
   if (!fileStat.isFile()) {
-    throw new Error('不是文件');
+    throw new Error(i18n.t('error.notAFile'));
   }
   if (fileStat.size > WORKSPACE_TEXT_FILE_MAX_BYTES) {
-    throw new Error('文件过大，无法在侧栏打开');
+    throw new Error(i18n.t('error.fileTooLarge'));
   }
   const buffer = await readFile(filePath);
   return { text: buffer.toString('utf8') };
@@ -131,21 +132,21 @@ export async function writeWorkspaceTextFile(
 ): Promise<void> {
   const posix = request.relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
   if (!posix) {
-    throw new Error('未指定文件路径');
+    throw new Error(i18n.t('error.noFilePath'));
   }
   const filePath = await resolveWorkspaceRelativePath(workspaceRoot, request.relativePath);
   let fileStat;
   try {
     fileStat = await stat(filePath);
   } catch {
-    throw new Error('文件不存在或无法访问');
+    throw new Error(i18n.t('error.fileNotAccessible'));
   }
   if (!fileStat.isFile()) {
-    throw new Error('只能保存为普通文件');
+    throw new Error(i18n.t('error.onlyRegularFile'));
   }
   const bytes = Buffer.byteLength(request.text, 'utf8');
   if (bytes > WORKSPACE_TEXT_FILE_MAX_BYTES) {
-    throw new Error('内容过大，无法保存');
+    throw new Error(i18n.t('error.contentTooLarge'));
   }
   await writeFile(filePath, request.text, 'utf8');
 }

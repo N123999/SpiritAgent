@@ -2,6 +2,7 @@ import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import i18n from '@/lib/i18n';
 import {
   appendLlmToolResultMessages,
   buildActiveSkillsSystemMessage,
@@ -424,7 +425,7 @@ function defaultDisplayTextForUserTurn(
     return '';
   }
 
-  return `已附加文件: ${explicitWorkspaceFiles.map((file) => path.basename(file.path)).join(', ')}`;
+  return i18n.t('error.attachedFiles', { files: explicitWorkspaceFiles.map((file) => path.basename(file.path)).join(', ') });
 }
 
 function pendingWorkspaceFilesToAttachmentSnapshots(
@@ -620,7 +621,7 @@ class DesktopHostService {
         ? path.resolve(request.workspaceRoot.trim())
         : '';
       if (!workspaceRoot) {
-        throw new Error('工作区路径不能为空。');
+        throw new Error(i18n.t('error.workspacePathRequired'));
       }
 
       const state = this.requireState();
@@ -637,15 +638,15 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const state = this.requireState();
       if (!state.git.isRepository) {
-        throw new Error('当前工作区不是 Git 仓库。');
+        throw new Error(i18n.t('error.notGitRepo'));
       }
       if (!state.git.hasChanges) {
-        throw new Error('当前工作区没有可提交的更改。');
+        throw new Error(i18n.t('error.noChangesToCommit'));
       }
 
       const commitMessage = request.message?.trim()
@@ -669,7 +670,7 @@ class DesktopHostService {
       const prevPlanMode = state.config.planMode === true;
 
       if (this.runtime?.isBusy() && Boolean(request.apiKey?.trim())) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const activeModel = request.activeModel.trim();
@@ -706,10 +707,10 @@ class DesktopHostService {
         } else {
           const imageProfile = state.config.models.find((model) => model.name === imageGenerationModel);
           if (!imageProfile) {
-            throw new Error(`图片生成模型不存在: ${imageGenerationModel}`);
+            throw new Error(i18n.t('error.imageGenModelNotFound', { model: imageGenerationModel }));
           }
           if (!supportsImageGeneration(imageProfile)) {
-            throw new Error(`模型未声明图片生成能力: ${imageGenerationModel}`);
+            throw new Error(i18n.t('error.modelNoImageGenCapability', { model: imageGenerationModel }));
           }
           state.config.imageGenerationModel = imageProfile.name;
         }
@@ -796,7 +797,7 @@ class DesktopHostService {
     const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
     const apiKey = request.apiKey.trim();
     if (!apiKey) {
-      throw new Error('API Key 不能为空。');
+      throw new Error(i18n.t('error.apiKeyRequired'));
     }
     const result = await loadPreviewModelsForTransport({
       provider,
@@ -818,7 +819,7 @@ class DesktopHostService {
       const state = this.requireState();
 
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const provider = parseModelProviderId(request.provider);
@@ -830,13 +831,13 @@ class DesktopHostService {
       const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
       const apiKey = request.apiKey.trim();
       if (!apiKey) {
-        throw new Error('API Key 不能为空。');
+        throw new Error(i18n.t('error.apiKeyRequired'));
       }
 
       const rawIds = request.modelIds.map((id) => id.trim()).filter((id) => id.length > 0);
       const uniqueIds = [...new Set(rawIds)];
       if (uniqueIds.length === 0) {
-        throw new Error('模型列表为空。');
+        throw new Error(i18n.t('error.emptyModelList'));
       }
 
       type NewProfile = {
@@ -884,7 +885,7 @@ class DesktopHostService {
       }
 
       if (toAdd.length === 0) {
-        throw new Error('所选模型均已存在于配置中。');
+        throw new Error(i18n.t('error.modelsAlreadyExist'));
       }
 
       const keySaveOrder: string[] = [];
@@ -920,7 +921,7 @@ class DesktopHostService {
       const state = this.requireState();
 
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const name = request.name.trim();
@@ -934,13 +935,13 @@ class DesktopHostService {
       const apiKey = request.apiKey.trim();
 
       if (!name) {
-        throw new Error('模型名称不能为空。');
+        throw new Error(i18n.t('error.modelNameRequired'));
       }
       if (!apiKey) {
-        throw new Error('API Key 不能为空。');
+        throw new Error(i18n.t('error.apiKeyRequired'));
       }
       if (state.config.models.some((model) => model.name === name)) {
-        throw new Error(`模型已存在: ${name}`);
+        throw new Error(i18n.t('error.modelExists', { name }));
       }
 
       const catalogEntry = await findCatalogEntryForModel({
@@ -1012,16 +1013,16 @@ class DesktopHostService {
 
       const name = request.name.trim();
       if (!name) {
-        throw new Error('模型名称不能为空。');
+        throw new Error(i18n.t('error.modelNameRequired'));
       }
       if (name === state.config.activeModel) {
-        throw new Error('不能删除当前模型，请先切换到其他模型。');
+        throw new Error(i18n.t('error.cannotDeleteActiveModel'));
       }
 
       const before = state.config.models.length;
       state.config.models = state.config.models.filter((model) => model.name !== name);
       if (state.config.models.length === before) {
-        throw new Error(`模型不存在: ${name}`);
+        throw new Error(i18n.t('error.modelNotFound', { name }));
       }
 
       return this.finalizeModelRemoval(state, [name]);
@@ -1035,18 +1036,18 @@ class DesktopHostService {
 
       const provider = parsePresetModelProviderId(request.provider);
       if (!provider) {
-        throw new Error('仅支持按预设提供商删除模型组。');
+        throw new Error(i18n.t('error.providerDeleteOnly'));
       }
 
       const { matched: targets, unmatched } = partitionModelsByProvider(state.config.models, provider);
       if (targets.length === 0) {
-        throw new Error('该提供商下没有模型。');
+        throw new Error(i18n.t('error.noModelsInProvider'));
       }
 
       const active = state.config.activeModel;
       const hasActive = targets.some((model) => model.name === active);
       if (hasActive) {
-        throw new Error('不能删除包含当前模型的提供商组，请先切换到其他模型。');
+        throw new Error(i18n.t('error.cannotDeleteProviderWithActive'));
       }
 
       const namesToRemove = targets.map((model) => model.name);
@@ -1075,7 +1076,7 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有回复或审批在进行，请稍后再添加 Skill。');
+        throw new Error(i18n.t('error.runtimeBusySkill'));
       }
       const state = this.requireState();
       await createSkillFile(state.workspaceRoot, request);
@@ -1093,20 +1094,20 @@ class DesktopHostService {
 
       const name = request.name.trim();
       if (!name) {
-        throw new Error('MCP server 名称不能为空。');
+        throw new Error(i18n.t('error.mcpNameRequired'));
       }
       if (/\s/u.test(name)) {
-        throw new Error('MCP server 名称不能包含空白字符。');
+        throw new Error(i18n.t('error.mcpNameWhitespace'));
       }
 
       const endpoint = request.endpoint.trim();
       if (!endpoint) {
-        throw new Error(request.transportType === 'http' ? 'URL 不能为空。' : '命令不能为空。');
+        throw new Error(request.transportType === 'http' ? i18n.t('error.urlRequired') : i18n.t('error.commandRequired'));
       }
 
       const configFile = loadMcpConfigFileFromDisk();
       if (configFile.servers[name]) {
-        throw new Error(`MCP server 已存在：${name}`);
+        throw new Error(i18n.t('error.mcpExists', { name }));
       }
 
       configFile.servers[name] = buildMcpServerConfigFromRequest(request);
@@ -1122,12 +1123,12 @@ class DesktopHostService {
 
       const name = request.name.trim();
       if (!name) {
-        throw new Error('MCP server 名称不能为空。');
+        throw new Error(i18n.t('error.mcpNameRequired'));
       }
 
       const configFile = loadMcpConfigFileFromDisk();
       if (!configFile.servers[name]) {
-        throw new Error(`MCP server 不存在：${name}`);
+        throw new Error(i18n.t('error.mcpNotFound', { name }));
       }
 
       delete configFile.servers[name];
@@ -1142,7 +1143,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const trimmedName = name.trim();
       if (!trimmedName) {
-        throw new Error('MCP server 名称不能为空。');
+        throw new Error(i18n.t('error.mcpNameRequired'));
       }
 
       const inspection = await this.requireToolExecutor().inspectMcpServer(trimmedName) as Record<string, unknown>;
@@ -1167,7 +1168,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const archiveBase64 = request.archiveBase64.trim();
       if (!archiveBase64) {
-        throw new Error('扩展 ZIP 内容不能为空。');
+        throw new Error(i18n.t('error.extensionZipRequired'));
       }
 
       const installed = await this.extensionManager().importArchive({
@@ -1204,7 +1205,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const trimmedId = extensionId.trim();
       if (!trimmedId) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       const detail = await this.marketplace().getDetail(trimmedId);
@@ -1217,7 +1218,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const trimmedId = extensionId.trim();
       if (!trimmedId) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       return this.marketplace().getReadme(trimmedId);
@@ -1231,7 +1232,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const extensionId = request.extensionId.trim();
       if (!extensionId) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       const prepared = await this.marketplace().prepareInstall({
@@ -1249,7 +1250,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const extensionId = request.extensionId.trim();
       if (!extensionId) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       const installed = await this.marketplace().install({
@@ -1279,7 +1280,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const id = request.id.trim();
       if (!id) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       await this.extensionManager().remove(id);
@@ -1294,7 +1295,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const id = request.id.trim();
       if (!id) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       await this.extensionManager().run({
@@ -1311,7 +1312,7 @@ class DesktopHostService {
       await this.ensureInitialized();
       const id = request.id.trim();
       if (!id) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
 
       await this.extensionManager().setSettingsValues({
@@ -1330,10 +1331,10 @@ class DesktopHostService {
       const id = request.id.trim();
       const key = request.key.trim();
       if (!id) {
-        throw new Error('扩展 id 不能为空。');
+        throw new Error(i18n.t('error.extensionIdRequired'));
       }
       if (!key) {
-        throw new Error('secret key 不能为空。');
+        throw new Error(i18n.t('error.secretKeyRequired'));
       }
 
       await this.extensionManager().setSecretValue({
@@ -1351,7 +1352,7 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有回复或审批在进行，请稍后再删除 Skill。');
+        throw new Error(i18n.t('error.runtimeBusyDeleteSkill'));
       }
       const state = this.requireState();
       await deleteSkillDir(state.workspaceRoot, request);
@@ -1368,12 +1369,12 @@ class DesktopHostService {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const skillName = request.skillName.trim();
       if (!skillName) {
-        throw new Error('Skill 名称不能为空。');
+        throw new Error(i18n.t('error.skillNameRequired'));
       }
 
       const skill = this.requireEnabledSkillEntry(skillName);
@@ -1394,12 +1395,12 @@ class DesktopHostService {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const rawText = request.rawText.trim();
       if (!rawText) {
-        throw new Error('消息不能为空。');
+        throw new Error(i18n.t('error.messageRequired'));
       }
 
       const prompt = parseCreateSkillSlashPrompt(rawText);
@@ -1426,7 +1427,7 @@ class DesktopHostService {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const state = this.requireState();
@@ -1447,13 +1448,13 @@ class DesktopHostService {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (this.activeBundle().activeSession?.readOnly) {
-        throw new Error('当前调试会话为只读，无法压缩历史。');
+        throw new Error(i18n.t('error.readonlySessionCompact'));
       }
       if (runtime.currentPendingApproval() || runtime.currentPendingQuestions()) {
-        throw new Error('当前正在等待审批或问卷，无法压缩历史。');
+        throw new Error(i18n.t('error.pendingApprovalCompact'));
       }
       if (runtime.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       // Match CLI `/compact`: start async compaction and let poll() stream aux updates.
@@ -1525,7 +1526,7 @@ class DesktopHostService {
           ...(dreamsSystemPrompt === undefined ? {} : { dreams: dreamsSystemPrompt }),
           ...(basicInfoSystemPrompt === undefined ? {} : { basicInfo: basicInfoSystemPrompt }),
         },
-        note: 'messages: 内存 llm_history 的 API 形态。api_request_trace: 每步模型推理均为一次 tool_agent_chat_completions，stream=true，含 tools；多轮工具时会有多条 trace（每轮一次 HTTP），失败轮次也会保留最后一次请求体。system_prompts 为 transport 导出的 system 文案（如 tool_agent），供调试与导出。',
+        note: i18n.t('error.logSessionNote'),
         message_count: runtime.history().length,
         messages: this.runtimeTransport.llmHistoryAsApiMessages([...runtime.history()]),
         api_request_trace_count: runtime.requestTrace().length,
@@ -1537,7 +1538,7 @@ class DesktopHostService {
       const snapshot = await this.appendInlineAssistantReply(
         '/log-session',
         [
-          '已导出：llm_history、完整 API 请求轨迹（含 tools 与 system）、system 全文：',
+          i18n.t('error.logSessionExported'),
           filePath,
         ].join('\n'),
       );
@@ -1556,7 +1557,7 @@ class DesktopHostService {
       const bundle = this.activeBundle();
       const hasLocalFiles = Array.isArray(request.localFilePaths) && request.localFilePaths.length > 0;
       if (!trimmed && !hasLocalFiles) {
-        throw new Error('消息不能为空。');
+        throw new Error(i18n.t('error.messageRequired'));
       }
 
       const isFirstTurn = bundle.messages.length === 0;
@@ -1603,13 +1604,13 @@ class DesktopHostService {
       const state = this.requireState();
       const normalized = branch.trim();
       if (!state.git.isRepository) {
-        throw new Error('当前工作区不是 Git 仓库。');
+        throw new Error(i18n.t('error.notGitRepo'));
       }
       if (!normalized) {
-        throw new Error('分支名称不能为空。');
+        throw new Error(i18n.t('error.branchNameRequired'));
       }
       if (!state.git.branches.includes(normalized)) {
-        throw new Error(`分支不存在：${normalized}`);
+        throw new Error(i18n.t('error.branchNotFound', { branch: normalized }));
       }
       this.activeBundle().pendingGitBranch = normalized;
       return this.buildSnapshot();
@@ -1628,19 +1629,19 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const state = this.requireState();
       const normalized = request.branch.trim();
       if (!state.git.isRepository) {
-        throw new Error('当前工作区不是 Git 仓库。');
+        throw new Error(i18n.t('error.notGitRepo'));
       }
       if (!normalized) {
-        throw new Error('分支名称不能为空。');
+        throw new Error(i18n.t('error.branchNameRequired'));
       }
       if (!state.git.branches.includes(normalized)) {
-        throw new Error(`分支不存在：${normalized}`);
+        throw new Error(i18n.t('error.branchNotFound', { branch: normalized }));
       }
 
       state.git = await checkoutWorkspaceGitBranch(state.workspaceRoot, normalized, {
@@ -1658,13 +1659,13 @@ class DesktopHostService {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
       if (this.runtime?.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
 
       const state = this.requireState();
       const git = state.git;
       if (!git.isWorktreeSession || !git.primaryRepoRoot || !git.worktreeBranch) {
-        throw new Error('当前会话不在 Worktree 中，无法合并。');
+        throw new Error(i18n.t('error.notInWorktree'));
       }
 
       await mergeWorktreeBranchToMain(git.primaryRepoRoot, git.worktreeBranch);
@@ -1716,22 +1717,22 @@ class DesktopHostService {
       await this.ensureInitialized(undefined, { fastPath: true });
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
       if (!Number.isFinite(messageId)) {
-        throw new Error('消息 id 无效。');
+        throw new Error(i18n.t('error.invalidMessageId'));
       }
 
       const state = this.requireState();
       if (this.activeBundle().activeSession?.readOnly) {
-        throw new Error('当前调试会话为只读，无法继续补全。');
+        throw new Error(i18n.t('error.readonlySessionContinue'));
       }
 
       await this.ensureToolExecutor();
 
       const continuable = this.latestContinuableAssistantMessage();
       if (!continuable || continuable.id !== messageId) {
-        throw new Error('当前消息已不可继续补全。');
+        throw new Error(i18n.t('error.messageNotContinuable'));
       }
 
       const previousContinuationIds = this.activeBundle().messages
@@ -1772,17 +1773,17 @@ class DesktopHostService {
       const state = this.requireState();
       const runtime = this.requireRuntime();
       if (runtime.isBusy()) {
-        throw new Error('当前已有响应或审批在处理中，请稍候。');
+        throw new Error(i18n.t('error.runtimeBusy'));
       }
       if (!Number.isFinite(request.messageId)) {
-        throw new Error('消息 id 无效。');
+        throw new Error(i18n.t('error.invalidMessageId'));
       }
 
       const checkpoint = this.activeBundle().rewind.checkpoints.find(
         (candidate) => candidate.messageId === request.messageId,
       );
       if (!checkpoint) {
-        throw new Error('该消息没有可用的回溯检查点。');
+        throw new Error(i18n.t('error.noCheckpoint'));
       }
 
       const snapshot = await loadRewindCheckpointSnapshot(
@@ -1791,7 +1792,7 @@ class DesktopHostService {
         checkpoint.id,
       );
       if (!snapshot) {
-        throw new Error('回溯检查点文件不存在，无法回溯。');
+        throw new Error(i18n.t('error.checkpointFileMissing'));
       }
 
       const changesToRestore = this.activeBundle().rewind.fileChanges
@@ -1812,7 +1813,7 @@ class DesktopHostService {
             changeId: metadata.id,
             path: metadata.resolvedPath,
             action: metadata.kind,
-            message: '文件变更快照缺失，已跳过该项回溯。',
+            message: i18n.t('error.fileChangeSnapshotMissing'),
           });
         }
       }
@@ -1850,15 +1851,15 @@ class DesktopHostService {
     const explicitWorkspaceFiles = options.explicitWorkspaceFiles ?? [];
     const displayText = (options.displayText ?? defaultDisplayTextForUserTurn(text, explicitWorkspaceFiles)).trim();
     if (!trimmed && explicitWorkspaceFiles.length === 0) {
-      throw new Error('消息不能为空。');
+      throw new Error(i18n.t('error.messageRequired'));
     }
     if (!displayText) {
-      throw new Error('消息不能为空。');
+      throw new Error(i18n.t('error.messageRequired'));
     }
 
     const state = this.requireState();
     if (this.activeBundle().activeSession?.readOnly) {
-      throw new Error('当前调试会话为只读，无法继续发送消息。');
+      throw new Error(i18n.t('error.readonlySessionSend'));
     }
     if (!options.preserveRewindWarnings) {
       this.activeBundle().rewindWarnings = [];
@@ -2210,7 +2211,7 @@ class DesktopHostService {
       if (isEphemeralDebugSessionPath(filePath)) {
         const ephemeral = this.findEphemeralSession(filePath);
         if (!ephemeral) {
-          throw new Error('临时调试会话不存在或已过期。');
+          throw new Error(i18n.t('error.ephemeralSessionExpired'));
         }
         await this.ensureInitialized(ephemeral.workspaceRoot);
         const restored = restoreEphemeralSessionState(ephemeral);
@@ -2636,7 +2637,7 @@ class DesktopHostService {
       if (bundle.id === this.sessionRegistry.activeSessionId()) {
         this.runtime = undefined;
       }
-      this.lastRuntimeError = '未配置 API Key，请在设置中填写。';
+      this.lastRuntimeError = i18n.t('error.apiKeyNotConfigured');
       await this.refreshModelKeyPresence();
       return;
     }
@@ -2740,7 +2741,7 @@ class DesktopHostService {
       this.toolExecutor = bundle.toolExecutor;
     }
     if (!bundle.toolExecutor) {
-      throw new Error('Desktop MCP tool executor 尚未初始化。');
+      throw new Error(i18n.t('error.mcpExecutorNotInitialized'));
     }
     bundle.toolExecutor.setApprovalLevel(bundle.approvalLevel);
     bundle.toolExecutor.setLoopToolExposure(bundle.loopEnabled);
@@ -2780,7 +2781,7 @@ class DesktopHostService {
         getHost: () => {
           const adapter = desktopExtensionHostAdapter;
           if (!adapter) {
-            throw new Error('当前桌面宿主尚未连接扩展 host adapter。');
+            throw new Error(i18n.t('error.extensionHostNotConnected'));
           }
           return adapter;
         },
@@ -2830,7 +2831,7 @@ class DesktopHostService {
     if (!settings.collectorModel) {
       this.setDreamCollectorStatus({
         ...emptyDreamCollectorSnapshot('missing-model'),
-        lastError: '梦境收集模型未配置。',
+        lastError: i18n.t('error.dreamCollectorModelNotConfigured'),
       });
       return;
     }
@@ -2880,7 +2881,7 @@ class DesktopHostService {
         [
           {
             extensionId: 'dream-collector',
-            extensionName: '梦境收集器',
+            extensionName: i18n.t('error.dreamCollector'),
             content: buildDreamCollectorSystemMessage(),
           },
         ],
@@ -3297,7 +3298,7 @@ class DesktopHostService {
     const activeProfile = state.config.models.find((model) => model.name === state.config.activeModel);
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     if (!apiKey) {
-      throw new Error('自动生成提交信息失败：当前模型未配置 API Key。');
+      throw new Error(i18n.t('error.autoCommitFailedNoKey'));
     }
 
     const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
@@ -3357,7 +3358,7 @@ class DesktopHostService {
         );
 
         if (completion.kind !== 'success') {
-          throw new Error(`自动生成提交信息失败：${completion.error}`);
+          throw new Error(i18n.t('error.autoCommitFailed', { error: completion.error }));
         }
 
         toolState = completion.result.state;
@@ -3365,7 +3366,7 @@ class DesktopHostService {
         if (completion.result.step.kind === 'final-response-ready') {
           const assistantText = extractLastLlmAssistantText(toolState)?.trim();
           if (!assistantText) {
-            throw new Error('自动生成提交信息失败：模型未返回正文。');
+            throw new Error(i18n.t('error.autoCommitFailedNoBody'));
           }
 
           const message = parseGeneratedCommitMessageResponse(assistantText);
@@ -3398,7 +3399,7 @@ class DesktopHostService {
             : request;
           const authorization = await toolExecutor.authorize(requestWithMetadata);
           if (authorization.kind !== 'allowed') {
-            throw new Error(`自动生成提交信息失败：提交信息生成不支持交互式工具请求（${call.name}）。`);
+            throw new Error(i18n.t('error.autoCommitFailedInteractiveTool', { name: call.name }));
           }
           const output = await toolExecutor.execute(requestWithMetadata);
           toolResults.push({
@@ -3410,9 +3411,9 @@ class DesktopHostService {
         toolState = appendLlmToolResultMessages(toolState, toolResults);
       }
 
-      throw new Error('自动生成提交信息失败：模型在限定轮次内未完成。');
+      throw new Error(i18n.t('error.autoCommitFailedIncomplete'));
     } catch (error) {
-      const failureMessage = `生成失败：${error instanceof Error ? error.message : String(error)}`;
+      const failureMessage = i18n.t('error.generationFailed', { message: error instanceof Error ? error.message : String(error) });
       const finalMessages = [
         ...baseMessages,
         {
@@ -3424,7 +3425,7 @@ class DesktopHostService {
       ];
       this.rememberEphemeralSession(buildCommitEphemeralSessionRecord({
         path: sessionPath,
-        displayName: '[Commit] 自动生成失败',
+        displayName: i18n.t('error.commitAutoGenFailed'),
         workspaceRoot: state.workspaceRoot,
         messages: finalMessages,
       }));
@@ -3442,21 +3443,21 @@ class DesktopHostService {
     const bundle = this.activeBundle();
 
     if (!state.git.isRepository) {
-      throw new Error('当前工作区不是 Git 仓库，无法创建 Worktree。');
+      throw new Error(i18n.t('error.notGitRepoForWorktree'));
     }
 
     const repoRoot = await readPrimaryRepoRoot(state.workspaceRoot);
     const worktreeContext = await readWorkspaceGitSnapshot(state.workspaceRoot);
     if (worktreeContext.isWorktreeSession) {
-      throw new Error('当前已在 Worktree 中，请新建会话后再创建 Worktree。');
+      throw new Error(i18n.t('error.alreadyInWorktree'));
     }
 
     const baseBranch = bundle.pendingGitBranch ?? state.git.branch;
     if (!baseBranch) {
-      throw new Error('无法确定 Worktree 的基础分支。');
+      throw new Error(i18n.t('error.cannotDetermineBaseBranch'));
     }
     if (!state.git.branches.includes(baseBranch)) {
-      throw new Error(`基础分支不存在：${baseBranch}`);
+      throw new Error(i18n.t('error.baseBranchNotFound', { branch: baseBranch }));
     }
 
     const names = await this.generateWorktreeNamesFromModel(userPrompt, baseBranch, repoRoot);
@@ -3513,7 +3514,7 @@ class DesktopHostService {
     const activeProfile = state.config.models.find((model) => model.name === state.config.activeModel);
     const apiKey = await resolveApiKeyForModel(state.config.activeModel);
     if (!apiKey) {
-      throw new Error('自动生成 Worktree 名称失败：当前模型未配置 API Key。');
+      throw new Error(i18n.t('error.autoWorktreeNameFailedNoKey'));
     }
 
     const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
@@ -3570,7 +3571,7 @@ class DesktopHostService {
         );
 
         if (completion.kind !== 'success') {
-          throw new Error(`自动生成 Worktree 名称失败：${completion.error}`);
+          throw new Error(i18n.t('error.autoWorktreeNameFailed', { error: completion.error }));
         }
 
         toolState = completion.result.state;
@@ -3578,7 +3579,7 @@ class DesktopHostService {
         if (completion.result.step.kind === 'final-response-ready') {
           const assistantText = extractLastLlmAssistantText(toolState)?.trim();
           if (!assistantText) {
-            throw new Error('自动生成 Worktree 名称失败：模型未返回正文。');
+            throw new Error(i18n.t('error.autoWorktreeNameFailedNoBody'));
           }
 
           const names = parseGeneratedWorktreeNamingResponse(assistantText);
@@ -3612,7 +3613,7 @@ class DesktopHostService {
             : request;
           const authorization = await toolExecutor.authorize(requestWithMetadata);
           if (authorization.kind !== 'allowed') {
-            throw new Error(`自动生成 Worktree 名称失败：命名生成不支持交互式工具请求（${call.name}）。`);
+            throw new Error(i18n.t('error.autoWorktreeNameFailedInteractiveTool', { name: call.name }));
           }
           const output = await toolExecutor.execute(requestWithMetadata);
           toolResults.push({
@@ -3624,9 +3625,9 @@ class DesktopHostService {
         toolState = appendLlmToolResultMessages(toolState, toolResults);
       }
 
-      throw new Error('自动生成 Worktree 名称失败：模型在限定轮次内未完成。');
+      throw new Error(i18n.t('error.autoWorktreeNameFailedIncomplete'));
     } catch (error) {
-      const failureMessage = `生成失败：${error instanceof Error ? error.message : String(error)}`;
+      const failureMessage = i18n.t('error.generationFailed', { message: error instanceof Error ? error.message : String(error) });
       const finalMessages = [
         ...baseMessages,
         {
@@ -3638,7 +3639,7 @@ class DesktopHostService {
       ];
       this.rememberEphemeralWorktreeSession(buildWorktreeEphemeralSessionRecord({
         path: sessionPath,
-        displayName: '[Worktree] 自动生成失败',
+        displayName: i18n.t('error.worktreeAutoGenFailed'),
         workspaceRoot: state.workspaceRoot,
         messages: finalMessages,
       }));
@@ -3825,7 +3826,7 @@ class DesktopHostService {
       if (tool.phase !== 'preview' && tool.phase !== 'running' && tool.phase !== 'pending-approval') {
         continue;
       }
-      const headline = `已中断: ${tool.toolName}`;
+      const headline = i18n.t('error.interrupted', { toolName: tool.toolName });
       const failedTool = applyToolCallSummaryCopy(
         {
           ...tool,
@@ -4390,7 +4391,7 @@ class DesktopHostService {
 
   private requireState(): HostState {
     if (!this.state) {
-      throw new Error('宿主尚未初始化。');
+      throw new Error(i18n.t('error.hostNotInitialized'));
     }
     return this.state;
   }
@@ -4398,7 +4399,7 @@ class DesktopHostService {
   private requireRuntime(): DesktopRuntime {
     const runtime = this.activeBundle().runtime ?? this.runtime;
     if (!runtime) {
-      throw new Error(this.lastRuntimeError || '运行时尚未就绪。');
+      throw new Error(this.lastRuntimeError || i18n.t('error.runtimeNotReady'));
     }
     return runtime;
   }
@@ -4478,7 +4479,7 @@ class DesktopHostService {
       (candidate) => candidate.enabled && candidate.source.name === normalized,
     );
     if (!entry) {
-      throw new Error(`未找到已启用 Skill：${normalized}`);
+      throw new Error(i18n.t('error.skillNotFound', { name: normalized }));
     }
     return entry;
   }
@@ -4486,14 +4487,14 @@ class DesktopHostService {
   private requireToolExecutor(): DesktopToolExecutor {
     const executor = this.activeBundle().toolExecutor ?? this.toolExecutor;
     if (!executor) {
-      throw new Error('Desktop MCP tool executor 尚未初始化。');
+      throw new Error(i18n.t('error.mcpExecutorNotInitialized'));
     }
     return executor;
   }
 
   private requireExtensionHostAdapter(): DesktopExtensionHostAdapter {
     if (!desktopExtensionHostAdapter) {
-      throw new Error('当前宿主未提供扩展运行环境；请在 Electron Desktop 中运行该扩展。');
+      throw new Error(i18n.t('error.extensionHostNotAvailable'));
     }
     return desktopExtensionHostAdapter;
   }
@@ -4537,7 +4538,7 @@ function normalizeApprovalDecision(
     case 'guidance': {
       const userMessage = decision.userMessage.trim();
       if (!userMessage) {
-        throw new Error('请输入要发给模型的说明。');
+        throw new Error(i18n.t('error.enterGuidance'));
       }
       return {
         kind: 'guidance',
@@ -4546,7 +4547,7 @@ function normalizeApprovalDecision(
       };
     }
     default:
-      throw new Error('审批结果无效。');
+      throw new Error(i18n.t('error.invalidApproval'));
   }
 }
 
