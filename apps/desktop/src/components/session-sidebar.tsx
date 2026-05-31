@@ -22,6 +22,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
 import { cn } from "@/lib/utils";
+import i18n from "@/lib/i18n";
 import type { DesktopSnapshot, SessionListItem } from "@/types";
 
 function samePath(a: string, b: string): boolean {
@@ -84,7 +85,7 @@ function normalizePath(value: string): string {
 function deriveWorkspaceLabel(workspaceRoot: string | null | undefined): string {
   const trimmed = workspaceRoot?.trim();
   if (!trimmed) {
-    return "__current_workspace__";
+    return i18n.t('sidebar.currentWorkspace');
   }
   const normalized = trimmed.replace(/\\/g, "/").replace(/\/+$/g, "");
   const lastSlash = normalized.lastIndexOf("/");
@@ -456,14 +457,14 @@ export function SessionSidebar({
                           "text-sidebar-foreground/90",
                           sessionRowHoverClass(micaStyle),
                         )}
-                        title={group.rootPath ?? (group.label === "__current_workspace__" ? t('sidebar.currentWorkspace') : group.label)}
+                        title={group.rootPath ?? group.label}
                       >
                         {expanded ? (
                           <FolderOpen className="size-3.5 shrink-0" aria-hidden />
                         ) : (
                           <FolderClosed className="size-3.5 shrink-0" aria-hidden />
                         )}
-                        <span className="min-w-0 flex-1 truncate text-xs font-medium">{group.label === "__current_workspace__" ? t('sidebar.currentWorkspace') : group.label}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium">{group.label}</span>
                       </button>
 
                       <div id={panelId} className={cn("min-w-0", !expanded && "hidden") }>
