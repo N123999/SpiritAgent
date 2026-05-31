@@ -19,6 +19,11 @@ import {
 } from '../openai/json-schema.js';
 import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
 import {
+  hostToolArgumentsReadyForEarlyStreamingPreview,
+  hostToolArgumentsReadyForPreview,
+  resolveStreamingToolPreviewEmit,
+} from '../tool-streaming-preview-gate.js';
+import {
   buildToolAgentHostPrompt,
   cloneJsonValue,
   isJsonObject,
@@ -69,6 +74,7 @@ interface StreamingToolCallAccumulator {
   toolName: string;
   argumentsJson: string;
   readyPreviewEmitted: boolean;
+  lastPreviewArgsLen?: number;
 }
 
 type AnthropicToolCallStreamingStartPart = {
@@ -745,19 +751,32 @@ async function* anthropicEventStreamToRuntimeEvents(
           readyPreviewEmitted: false,
         };
         current.argumentsJson += toolCallDelta.argsTextDelta;
-        maybeEmitStreamingPreview(current);
-        toolCalls.set(toolCallDelta.toolCallId, current);
-        if (!toolCallOrder.includes(toolCallDelta.toolCallId)) {
-          toolCallOrder.push(toolCallDelta.toolCallId);
-        }
-        if (current.readyPreviewEmitted) {
+        const previewState = {
+          readyPreviewEmitted: current.readyPreviewEmitted,
+          ...(current.lastPreviewArgsLen === undefined
+            ? {}
+            : { lastPreviewArgsLen: current.lastPreviewArgsLen }),
+        };
+        const previewDecision = resolveStreamingToolPreviewEmit(
+          current.toolName,
+          current.argumentsJson,
+          previewState,
+        );
+        if (previewDecision.emit) {
+          current.readyPreviewEmitted = previewDecision.nextState.readyPreviewEmitted;
+          if (previewDecision.nextState.lastPreviewArgsLen !== undefined) {
+            current.lastPreviewArgsLen = previewDecision.nextState.lastPreviewArgsLen;
+          }
           yield {
             kind: 'streaming-tool-preview',
             toolCallId: current.toolCallId,
             toolName: current.toolName,
             argumentsJson: current.argumentsJson,
           };
-          current.readyPreviewEmitted = false;
+        }
+        toolCalls.set(toolCallDelta.toolCallId, current);
+        if (!toolCallOrder.includes(toolCallDelta.toolCallId)) {
+          toolCallOrder.push(toolCallDelta.toolCallId);
         }
         continue;
       }
@@ -850,18 +869,10 @@ function toolArgumentsReadyForStreamingPreview(name: string, argumentsJson: stri
   if (name === 'finish_task') {
     return finishTaskStreamingPreviewReady(name, argumentsJson);
   }
-  return hostToolArgumentsReadyForPreview(name, argumentsJson);
-}
-
-function maybeEmitStreamingPreview(current: StreamingToolCallAccumulator): void {
-  if (
-    current.readyPreviewEmitted ||
-    !toolArgumentsReadyForStreamingPreview(current.toolName, current.argumentsJson)
-  ) {
-    return;
-  }
-
-  current.readyPreviewEmitted = true;
+  return (
+    hostToolArgumentsReadyForEarlyStreamingPreview(name, argumentsJson) ||
+    hostToolArgumentsReadyForPreview(name, argumentsJson)
+  );
 }
 
 function buildStreamingAssistantMessage(
@@ -1076,58 +1087,6 @@ function normalizeAnthropicReasoningProviderOptions(value: unknown): JsonObject 
   return {
     anthropic: anthropicMetadata,
   };
-}
-
-function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): boolean {
-  const trimmed = argumentsJson.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  let parsed: JsonValue;
-  try {
-    parsed = JSON.parse(trimmed) as JsonValue;
-  } catch {
-    return false;
-  }
-
-  if (!isJsonObject(parsed)) {
-    return false;
-  }
-
-  const nonEmpty = (key: string): boolean => {
-    const value = parsed[key];
-    return typeof value === 'string' && value.trim().length > 0;
-  };
-
-  switch (name) {
-    case 'run_shell_command':
-      return nonEmpty('command');
-    case 'web_fetch':
-      return nonEmpty('url');
-    case 'list_directory_files':
-      return nonEmpty('path');
-    case 'read_file':
-      return nonEmpty('path');
-    case 'glob':
-      return nonEmpty('pattern');
-    case 'grep':
-      return nonEmpty('query');
-    case 'run_subagent':
-      return nonEmpty('task');
-    case 'create_file':
-      return nonEmpty('path') && nonEmpty('content');
-    case 'edit_file':
-      return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
-    case 'delete_file':
-      return nonEmpty('path');
-    case 'ask_questions':
-      return Array.isArray(parsed.questions) && parsed.questions.length > 0;
-    default:
-      return Object.values(parsed).some(
-        (value) => typeof value === 'string' && value.trim().length > 0,
-      );
-  }
 }
 
 function tryCountContentLines(argumentsJson: string): number | undefined {

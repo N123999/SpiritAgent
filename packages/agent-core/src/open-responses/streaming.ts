@@ -1,7 +1,7 @@
 import type { TextStreamPart } from 'ai';
 
 import type { JsonObject, JsonValue, LlmStreamEvent, ToolAgentRoundCompletion } from '../ports.js';
-import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
+import { resolveStreamingToolPreviewEmit } from '../tool-streaming-preview-gate.js';
 import { cloneJsonValue, isJsonObject, type ToolAgentState } from '../tool-agent.js';
 import { attachResponseIdToAssistantMessage } from './provider-state.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
@@ -15,6 +15,7 @@ interface AggregatedStreamingToolCall {
   functionName: string;
   functionArguments: string;
   readyPreviewEmitted: boolean;
+  lastPreviewArgsLen?: number;
 }
 
 interface Deferred<T> {
@@ -302,15 +303,20 @@ function findToolCallByItemId(
 }
 
 function maybeEmitPreview(events: LlmStreamEvent[], call: AggregatedStreamingToolCall): void {
-  if (call.readyPreviewEmitted || !call.functionName) {
+  if (!call.functionName) {
     return;
   }
 
-  if (call.functionName === 'finish_task') {
-    if (!finishTaskStreamingPreviewReady(call.functionName, call.functionArguments)) {
-      return;
-    }
-  } else if (call.functionArguments.trim().length === 0) {
+  const previewState = {
+    readyPreviewEmitted: call.readyPreviewEmitted,
+    ...(call.lastPreviewArgsLen === undefined ? {} : { lastPreviewArgsLen: call.lastPreviewArgsLen }),
+  };
+  const decision = resolveStreamingToolPreviewEmit(
+    call.functionName,
+    call.functionArguments,
+    previewState,
+  );
+  if (!decision.emit) {
     return;
   }
 
@@ -320,7 +326,10 @@ function maybeEmitPreview(events: LlmStreamEvent[], call: AggregatedStreamingToo
     toolName: call.functionName,
     argumentsJson: call.functionArguments,
   });
-  call.readyPreviewEmitted = true;
+  call.readyPreviewEmitted = decision.nextState.readyPreviewEmitted;
+  if (decision.nextState.lastPreviewArgsLen !== undefined) {
+    call.lastPreviewArgsLen = decision.nextState.lastPreviewArgsLen;
+  }
 }
 
 /** OpenAI / Open Responses SSE：reasoning summary 与部分模型的 reasoning_text。 */

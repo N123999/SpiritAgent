@@ -24,6 +24,7 @@ import {
   type TextStreamPart,
 } from 'ai';
 
+import { resolveStreamingToolPreviewEmit } from '../tool-streaming-preview-gate.js';
 import {
   DEFAULT_IMAGE_GENERATION_SIZE,
   createLlmMessageContentFromTextAndImages,
@@ -89,6 +90,7 @@ interface AggregatedStreamingToolCall {
   functionName: string;
   functionArguments: string;
   readyPreviewEmitted: boolean;
+  lastPreviewArgsLen?: number;
 }
 
 interface Deferred<T> {
@@ -1139,17 +1141,31 @@ function accumulateStreamingToolCallProgressFromRawChunk(
         }
       } else if (
         current.functionName &&
-        !current.readyPreviewEmitted &&
-        !isGeneratedStreamingToolCallId(current.id) &&
-        hostToolArgumentsReadyForPreview(current.functionName, current.functionArguments)
+        !isGeneratedStreamingToolCallId(current.id)
       ) {
-        updates.push({
-          kind: 'streaming-tool-preview',
-          toolCallId: current.id,
-          toolName: current.functionName,
-          argumentsJson: current.functionArguments,
-        });
-        current.readyPreviewEmitted = true;
+        const previewState = {
+          readyPreviewEmitted: current.readyPreviewEmitted,
+          ...(current.lastPreviewArgsLen === undefined
+            ? {}
+            : { lastPreviewArgsLen: current.lastPreviewArgsLen }),
+        };
+        const decision = resolveStreamingToolPreviewEmit(
+          current.functionName,
+          current.functionArguments,
+          previewState,
+        );
+        if (decision.emit) {
+          updates.push({
+            kind: 'streaming-tool-preview',
+            toolCallId: current.id,
+            toolName: current.functionName,
+            argumentsJson: current.functionArguments,
+          });
+          current.readyPreviewEmitted = decision.nextState.readyPreviewEmitted;
+          if (decision.nextState.lastPreviewArgsLen !== undefined) {
+            current.lastPreviewArgsLen = decision.nextState.lastPreviewArgsLen;
+          }
+        }
       }
 
       toolCalls.set(delta.index, current);
@@ -1255,58 +1271,6 @@ function extractAssistantReasoningContentFromJson(message: JsonObject): string {
   ]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
     .join('');
-}
-
-function hostToolArgumentsReadyForPreview(name: string, argumentsJson: string): boolean {
-  const trimmed = argumentsJson.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  let parsed: JsonValue;
-  try {
-    parsed = JSON.parse(trimmed) as JsonValue;
-  } catch {
-    return false;
-  }
-
-  if (!isJsonObject(parsed)) {
-    return false;
-  }
-
-  const nonEmpty = (key: string): boolean => {
-    const value = parsed[key];
-    return typeof value === 'string' && value.trim().length > 0;
-  };
-
-  switch (name) {
-    case 'run_shell_command':
-      return nonEmpty('command');
-    case 'web_fetch':
-      return nonEmpty('url');
-    case 'list_directory_files':
-      return nonEmpty('path');
-    case 'read_file':
-      return nonEmpty('path');
-    case 'glob':
-      return nonEmpty('pattern');
-    case 'grep':
-      return nonEmpty('query');
-    case 'run_subagent':
-      return nonEmpty('task');
-    case 'create_file':
-      return nonEmpty('path') && nonEmpty('content');
-    case 'edit_file':
-      return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
-    case 'delete_file':
-      return nonEmpty('path');
-    case 'ask_questions':
-      return Array.isArray(parsed.questions) && parsed.questions.length > 0;
-    default:
-      return Object.values(parsed).some(
-        (value) => typeof value === 'string' && value.trim().length > 0,
-      );
-  }
 }
 
 function tryCountContentLines(argumentsJson: string): number | undefined {

@@ -3725,9 +3725,41 @@ fn is_retired_builtin_host_method(method: &str) -> bool {
     )
 }
 
+fn extract_path_from_partial_tool_json(arguments_json: &str) -> Option<String> {
+    let marker = "\"path\"";
+    let start = arguments_json.find(marker)? + marker.len();
+    let after = arguments_json.get(start..)?.trim_start();
+    let after = after.strip_prefix(':')?.trim_start();
+    let after = after.strip_prefix('"')?;
+    let mut escaped = String::new();
+    let mut chars = after.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            escaped.push(chars.next()?);
+        } else if ch == '"' {
+            break;
+        } else {
+            escaped.push(ch);
+        }
+    }
+    if escaped.is_empty() {
+        None
+    } else {
+        Some(escaped)
+    }
+}
+
 fn tool_request_from_streaming_preview(tool_name: &str, arguments_json: &str) -> ToolUiRequest {
-    let arguments = serde_json::from_str(arguments_json).unwrap_or(Value::Null);
-    ToolUiRequest::new(tool_name, arguments)
+    match serde_json::from_str::<Value>(arguments_json) {
+        Ok(arguments) => ToolUiRequest::new(tool_name, arguments),
+        Err(_) => {
+            let mut object = serde_json::Map::new();
+            if let Some(path) = extract_path_from_partial_tool_json(arguments_json) {
+                object.insert("path".to_string(), Value::String(path));
+            }
+            ToolUiRequest::new(tool_name, Value::Object(object))
+        }
+    }
 }
 
 fn tool_request_from_host_value(value: Value) -> anyhow::Result<ToolUiRequest> {
