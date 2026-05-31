@@ -4631,7 +4631,11 @@ function buildPrimaryTransportConfig(input: {
       },
     );
     const responsesProvider =
-      input.profile?.provider === 'openai' ? 'openai' : 'open-responses-compatible';
+      input.profile?.provider === 'openai'
+        ? 'openai'
+        : input.profile?.provider === 'xai'
+          ? 'xai'
+          : 'open-responses-compatible';
     const reasoningSummary = resolveOpenResponsesReasoningSummary({
       ...(llmVendor ? { llmVendor } : {}),
       model: input.model,

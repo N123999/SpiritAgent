@@ -1756,10 +1756,7 @@ impl TsBridgeRuntime {
                     "workspaceRoot": self.workspace_root,
                 })
             } else if active.transport_kind() == crate::model_registry::ModelTransportKind::OpenResponses {
-                let responses_provider = match active.provider {
-                    Some(crate::model_registry::ModelProvider::Openai) => "openai",
-                    _ => "open-responses-compatible",
-                };
+                let responses_provider = open_responses_sdk_provider(active.provider);
                 serde_json::json!({
                     "transportKind": "open-responses",
                     "responsesProvider": responses_provider,
@@ -2959,6 +2956,14 @@ fn approval_decision_from_input(message: &str) -> Value {
     }
 }
 
+fn open_responses_sdk_provider(provider: Option<ModelProvider>) -> &'static str {
+    match provider {
+        Some(ModelProvider::Openai) => "openai",
+        Some(ModelProvider::Xai) => "xai",
+        _ => "open-responses-compatible",
+    }
+}
+
 fn model_provider_vendor(provider: ModelProvider) -> &'static str {
     match provider {
         ModelProvider::Deepseek => "deepseek",
@@ -3305,6 +3310,39 @@ mod tests {
                 .and_then(|capabilities| capabilities.get("imageGeneration"))
                 .and_then(Value::as_bool),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn resolve_transport_config_json_uses_xai_official_responses_provider() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let mut next = runtime.config().clone();
+        let active = next
+            .active_model_profile_mut()
+            .expect("active model should exist");
+        active.provider = Some(ModelProvider::Xai);
+        active
+            .extra
+            .insert("transportKind".to_string(), json!("open-responses"));
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport.get("transportKind").and_then(Value::as_str),
+            Some("open-responses")
+        );
+        assert_eq!(
+            transport.get("responsesProvider").and_then(Value::as_str),
+            Some("xai")
+        );
+        assert_eq!(
+            transport.get("llmVendor").and_then(Value::as_str),
+            Some("xai")
         );
     }
 
