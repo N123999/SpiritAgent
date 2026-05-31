@@ -34,6 +34,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org/
 
       - name: Verify versions
         run: npm run release:verify-version -- --version "$RELEASE_TAG"
@@ -84,6 +85,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org/
           cache: npm
           cache-dependency-path: |
             packages/agent-core/package-lock.json
@@ -170,6 +172,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org/
           cache: npm
           cache-dependency-path: |
             packages/agent-core/package-lock.json
@@ -189,6 +192,10 @@ jobs:
       - name: Package Desktop
         working-directory: apps/desktop
         env:
+          npm_config_registry: https://registry.npmjs.org/
+          npm_config_electron_mirror: https://github.com/electron/electron/releases/download/
+          npm_config_electron_builder_binaries_mirror: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+          ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
         run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --${{ matrix.arch }} --publish never
 
