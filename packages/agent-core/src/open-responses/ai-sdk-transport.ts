@@ -117,6 +117,14 @@ export class AiSdkOpenResponsesTransport
       traceExtras,
     );
 
+    if (xaiResponsesHasLocalTools(config, normalizedTools)) {
+      return {
+        kind: 'failure',
+        error: xaiResponsesLocalToolsUnsupportedMessage(),
+        requestTrace: tracedRequest,
+      };
+    }
+
     try {
       const result = await generateText({
         model: createResponsesLanguageModel(config) as any,
@@ -201,6 +209,18 @@ export class AiSdkOpenResponsesTransport
     );
 
     const abortController = new AbortController();
+
+    if (xaiResponsesHasLocalTools(config, normalizedTools)) {
+      return {
+        eventStream: emptyResponsesEventStream(),
+        completion: Promise.resolve({
+          kind: 'failure',
+          error: xaiResponsesLocalToolsUnsupportedMessage(),
+          requestTrace,
+        }),
+        cancel: () => abortController.abort(),
+      };
+    }
 
     try {
       const result: { fullStream: AsyncIterable<unknown> } = streamText({
@@ -395,3 +415,14 @@ async function* emptyResponsesEventStream(): AsyncGenerator<
   void,
   undefined
 > {}
+
+function xaiResponsesHasLocalTools(
+  config: OpenResponsesTransportConfig,
+  normalizedTools: readonly unknown[],
+): boolean {
+  return config.llmVendor === 'xai' && normalizedTools.length > 0;
+}
+
+function xaiResponsesLocalToolsUnsupportedMessage(): string {
+  return 'xAI Responses API 暂不支持本地 function tools，请改用 Chat Completions transport。';
+}
