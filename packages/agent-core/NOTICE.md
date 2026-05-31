@@ -6,7 +6,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- Apache-2.0: 10 package(s)
+- Apache-2.0: 11 package(s)
 - MIT: 2 package(s)
 - BSD-3-Clause: 1 package(s)
 
@@ -27,6 +27,8 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 - **@ai-sdk/openai** 2.0.106 — Apache-2.0
   - https://github.com/vercel/ai
 - **@ai-sdk/openai-compatible** 2.0.46 — Apache-2.0
+  - https://github.com/vercel/ai
+- **@ai-sdk/xai** 3.0.93 — Apache-2.0
   - https://github.com/vercel/ai
 - **@modelcontextprotocol/sdk** 1.29.0 — MIT
   - https://github.com/modelcontextprotocol/typescript-sdk
@@ -52,6 +54,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 - @ai-sdk/open-responses 1.0.16
 - @ai-sdk/openai 2.0.106
 - @ai-sdk/openai-compatible 2.0.46
+- @ai-sdk/xai 3.0.93
 - ai 6.0.175
 
 ```
