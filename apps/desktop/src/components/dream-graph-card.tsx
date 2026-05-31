@@ -66,7 +66,7 @@ const DREAM_GRAPH_DEFAULT_ANCHOR_CENTER_Y = DREAM_GRAPH_LOGO_Y + DREAM_GRAPH_LOG
 function deriveWorkspaceLabel(workspaceRoot?: string): string {
   const trimmed = workspaceRoot?.trim();
   if (!trimmed) {
-    return "__current_workspace__";
+    return i18n.t('sidebar.currentWorkspace');
   }
   const normalized = trimmed.replace(/\\/g, "/").replace(/\/+$/g, "");
   const lastSlash = normalized.lastIndexOf("/");

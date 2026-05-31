@@ -1609,7 +1609,7 @@ function WebHostPairingGate({
               }}
             />
           </div>
-          {localError || (error && !error.includes(t('app.pairingRequired'))) ? (
+          {localError || (error && !error.includes('需要完成首次配对')) ? (
             <p className="text-sm text-destructive">{localError || error}</p>
           ) : null}
           <Button type="button" className="w-full" disabled={busy} onClick={submit}>

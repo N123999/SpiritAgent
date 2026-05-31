@@ -94,7 +94,7 @@ function MarkdownImage({
   if (managedRef && !readManagedImagePreviewDataUrl) {
     return (
       <div className="my-3 flex min-h-28 w-full items-center justify-center rounded-md border border-dashed border-border/50 bg-muted/20 px-3 text-xs text-muted-foreground">
-        {t('imagePreview.hostNotSupported')}
+        {t('error.hostNotSupported')}
       </div>
     );
   }
@@ -102,7 +102,7 @@ function MarkdownImage({
   if (managedRef && managedLoadState === "loading") {
     return (
       <div className="my-3 flex min-h-28 w-full items-center justify-center rounded-md border border-dashed border-border/50 bg-muted/20 px-3 text-xs text-muted-foreground">
-        {t('imagePreview.loading')}
+        {t('error.loading')}
       </div>
     );
   }
@@ -110,7 +110,7 @@ function MarkdownImage({
   if (managedRef && managedLoadState === "unavailable") {
     return (
       <div className="my-3 flex min-h-28 w-full items-center justify-center rounded-md border border-dashed border-border/50 bg-muted/20 px-3 text-xs text-muted-foreground">
-        {t('imagePreview.unavailable')}
+        {t('error.unavailable')}
       </div>
     );
   }
