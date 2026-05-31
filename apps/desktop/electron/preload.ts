@@ -191,6 +191,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   }) {
     return ipcRenderer.invoke('desktop:sync-window-frame', request);
   },
+  syncLanguage(lang: string) {
+    return ipcRenderer.invoke('desktop:sync-language', lang);
+  },
   popupApplicationMenu(
     section: 'file' | 'edit' | 'view' | 'window' | 'help',
     clientX: number,

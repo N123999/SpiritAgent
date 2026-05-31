@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ChevronsUpDown, LoaderCircle, RefreshCw, Sparkles, X } from "lucide-react";
 
@@ -32,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { FontPreference } from "@/lib/font";
+import { changeLanguage, VALID_LANGUAGES } from "@/lib/i18n";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import type {
@@ -126,21 +128,21 @@ type SettingsViewProps = {
   onStartCompactionUiDemo?: () => void;
 };
 
-const themeSelectOptions: Array<{ value: ThemePreference; label: string }> = [
-  { value: "system", label: "跟随系统" },
-  { value: "light", label: "浅色" },
-  { value: "dark", label: "深色" },
+const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = [
+  { value: "system", labelKey: "settings.themeSystem" },
+  { value: "light", labelKey: "settings.themeLight" },
+  { value: "dark", labelKey: "settings.themeDark" },
 ];
 
-const settingsPageTitle: Record<SettingsSidebarTab, string> = {
-  basic: "工作区与连接",
-  models: "模型",
-  extensions: "扩展",
-  mcps: "MCP 服务",
-  skills: "Skills",
-  dreams: "梦境",
-  appearance: "外观与字体",
-  developer: "开发者",
+const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
+  basic: "settings.basic",
+  models: "settings.models",
+  extensions: "settings.extensions",
+  mcps: "settings.mcps",
+  skills: "settings.skills",
+  dreams: "settings.dreams",
+  appearance: "settings.appearance",
+  developer: "settings.developer",
 };
 
 function formatExtensionInstalledAt(unixMs: number): string {
@@ -639,6 +641,7 @@ function BasicSettingsPanel({
   SettingsViewProps,
   "settings" | "snapshot" | "onSavePatch" | "onResetWebHostPairing"
 >) {
+  const { t } = useTranslation();
   const webHost = snapshot?.webHost;
   const webHostUrl =
     webHost?.status.url ?? `http://${settings.webHostHost}:${settings.webHostPort}`;
@@ -657,14 +660,25 @@ function BasicSettingsPanel({
 
   return (
     <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
-      <SettingsRow label="UI locale" description="界面语言区域，如 zh-CN。" htmlFor="settings-locale">
-        <Input
-          id="settings-locale"
-          className="sm:text-right"
+      <SettingsRow label={t('settings.uiLocale')} description={t('settings.uiLocaleDescription')} htmlFor="settings-locale">
+        <Select
           value={settings.uiLocale}
-          onChange={(event) => void onSavePatch({ uiLocale: event.target.value })}
-          placeholder="zh-CN / en"
-        />
+          onValueChange={(value) => {
+            void changeLanguage(value);
+            void onSavePatch({ uiLocale: value });
+          }}
+        >
+          <SelectTrigger id="settings-locale" className="w-40 sm:text-right">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {VALID_LANGUAGES.map((lang) => (
+              <SelectItem key={lang} value={lang}>
+                {lang === 'zh-CN' ? '简体中文' : 'English'}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </SettingsRow>
 
       <SettingsRow
@@ -2945,6 +2959,7 @@ function AppearanceSettingsPanel({
   SettingsViewProps,
   "theme" | "onThemeChange" | "font" | "onFontChange" | "settings" | "isElectronShell" | "onSavePatch"
 >) {
+  const { t } = useTranslation();
   return (
     <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
       <SettingsRow
@@ -2959,7 +2974,7 @@ function AppearanceSettingsPanel({
           <SelectContent>
             {themeSelectOptions.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
+                {t(opt.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -3183,6 +3198,7 @@ export function SettingsView({
   onGenerateSkillNavigate,
   onStartCompactionUiDemo,
 }: SettingsViewProps) {
+  const { t } = useTranslation();
   const extensionSettingsItem = extensionSettingsId
     ? snapshot?.extensionsList.find((item) => item.id === extensionSettingsId)
     : undefined;
@@ -3194,7 +3210,7 @@ export function SettingsView({
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
             {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "mcps" && tab !== "extensions" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
-                {settingsPageTitle[tab]}
+                {t(settingsPageTitleKey[tab])}
               </h1>
             ) : null}
 

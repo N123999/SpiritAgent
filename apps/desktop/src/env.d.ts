@@ -109,6 +109,7 @@ declare global {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';
     }): Promise<void>;
+    syncLanguage(lang: string): Promise<void>;
     popupApplicationMenu(
       section: 'file' | 'edit' | 'view' | 'window' | 'help',
       clientX: number,

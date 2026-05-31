@@ -617,6 +617,10 @@ app.whenReady().then(async () => {
     },
   );
 
+  ipcMain.handle('desktop:sync-language', (_event, lang: string) => {
+    console.log('[spirit-desktop] language synced:', lang);
+  });
+
   ipcMain.handle(
     'desktop:pty-create',
     (
