@@ -254,11 +254,11 @@ export function SessionSidebar({
   sessionNavigationBusy = false,
   disabled,
 }: SessionSidebarProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const settingsMode = mode === "settings";
   const workspaceGroups = useMemo(
     () => buildWorkspaceGroups(sessions, workspaceRoot),
-    [sessions, workspaceRoot],
+    [sessions, workspaceRoot, i18n.language],
   );
   const [collapsedWorkspaceIds, setCollapsedWorkspaceIds] = useState<Record<string, boolean>>({});
 

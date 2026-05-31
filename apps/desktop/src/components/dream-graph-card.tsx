@@ -448,6 +448,7 @@ function DreamGraphCanvas({
   workspaceRoot?: string;
   gitBranch?: string;
 }) {
+  const { i18n } = useTranslation();
   const [selectedDreamId, setSelectedDreamId] = useState<string | null>(null);
   const [pinnedNodeIds, setPinnedNodeIds] = useState<string[]>([]);
   const iconSrc = theme === "light" ? "/spirit-agent-icon-light.png" : "/spirit-agent-icon.png";
@@ -485,7 +486,7 @@ function DreamGraphCanvas({
         workspaceRoot,
         gitBranch,
       ),
-    [gitBranch, iconSrc, items, workspaceRoot],
+    [gitBranch, iconSrc, items, workspaceRoot, i18n.language],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
