@@ -6,6 +6,7 @@ import { cloneJsonValue } from '../tool-agent.js';
 /** 与宿主 `ModelProfile.provider` 对齐；用于在 OpenAI 形态 API 上附加厂商扩展字段。 */
 export type OpenAiLlmVendor =
   | 'deepseek'
+  | 'xai'
   | 'moonshot-ai'
   | 'minimax'
   | 'alibaba'
@@ -80,6 +81,7 @@ export interface OpenAiRequestTrace extends JsonObject {
   kind:
     | 'openai_sdk_chat_completions'
     | 'deepseek_sdk_chat_completions'
+    | 'xai_sdk_chat_completions'
     | 'moonshot_sdk_chat_completions'
     | 'alibaba_sdk_chat_completions'
     | 'gateway_sdk_chat_completions'

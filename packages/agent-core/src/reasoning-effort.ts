@@ -4,6 +4,7 @@ import type { OpenAiTransportConfig } from './openai/openai-compat.js';
 
 export type ModelReasoningProvider =
   | 'deepseek'
+  | 'xai'
   | 'moonshot-ai'
   | 'minimax'
   | 'alibaba'
