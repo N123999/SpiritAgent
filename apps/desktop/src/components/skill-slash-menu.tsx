@@ -38,15 +38,16 @@ export function SkillSlashMenu({
   onApplySuggestion,
 }: SkillSlashMenuProps) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
+    <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
       {suggestions.length > 0 ? (
-        <div className="grid gap-0.5 p-1.5" onMouseLeave={() => onSelectIndex(-1)}>
+        <div className="grid w-full min-w-0 gap-0.5 p-1.5" onMouseLeave={() => onSelectIndex(-1)}>
           {suggestions.map((suggestion, index) => (
             <button
               key={suggestion.id}
               type="button"
+              title={`${suggestion.name} — ${suggestion.description}`}
               className={cn(
-                'rounded-xl bg-transparent px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
+                'w-full min-w-0 max-w-full overflow-hidden rounded-xl bg-transparent px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
                 instantHoverMotionClass,
                 index === selectedIndex
                   ? 'bg-foreground/[0.06] text-foreground'
@@ -59,10 +60,10 @@ export function SkillSlashMenu({
             >
               <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
                 <SlashSuggestionIcon kind={suggestion.kind} />
-                <span className="shrink-0 text-sm font-medium leading-6 text-foreground">
+                <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-foreground">
                   {suggestion.name}
                 </span>
-                <span className="min-w-0 truncate text-xs leading-6 text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate text-xs leading-6 text-muted-foreground">
                   {suggestion.description}
                 </span>
               </div>
