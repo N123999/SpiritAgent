@@ -222,7 +222,12 @@
     "lastRun": "Last Run: ",
     "lastSuccess": "Last Success: ",
     "backoffUntil": "Backoff Until: ",
-    "selectCollectorModelHint": "Please select a collector model."
+    "selectCollectorModelHint": "Please select a collector model.",
+    "searchFont": "Search fonts...",
+    "loadingFonts": "Loading fonts...",
+    "noMatchingFonts": "No matching fonts",
+    "fontEnumerationFailed": "Unable to enumerate system fonts; please try again in the Desktop client.",
+    "newSkillDescription": "Create a SKILL.md at the selected save location."
   },
   "sidebar": {
     "currentWorkspace": "Current Workspace",
@@ -409,11 +414,7 @@
     "approvalBypass": "Bypass Approval",
     "approvalLevel": "Approval Level",
     "workLocation": "Work Location",
-    "removeAttachment": "Remove {{name}}",
-    "searchFont": "Search fonts...",
-    "loadingFonts": "Loading fonts...",
-    "noMatchingFonts": "No matching fonts",
-    "fontEnumerationFailed": "Unable to enumerate system fonts; please try again in the Desktop client."
+    "removeAttachment": "Remove {{name}}"
   },
   "error": {
     "runtimeBusy": "A response or approval is already being processed. Please wait.",

@@ -222,7 +222,12 @@
     "lastRun": "上次运行：",
     "lastSuccess": "上次成功：",
     "backoffUntil": "退避到：",
-    "selectCollectorModelHint": "请选择收集者模型。"
+    "selectCollectorModelHint": "请选择收集者模型。",
+    "searchFont": "搜索字体...",
+    "loadingFonts": "正在加载字体...",
+    "noMatchingFonts": "没有匹配的字体",
+    "fontEnumerationFailed": "无法枚举本机字体；请在桌面客户端中重试。",
+    "newSkillDescription": "在选定的保存位置创建一个 SKILL.md。"
   },
   "sidebar": {
     "currentWorkspace": "当前工作区",
@@ -409,11 +414,7 @@
     "approvalBypass": "绕过审批",
     "approvalLevel": "审批级别",
     "workLocation": "工作地点",
-    "removeAttachment": "移除 {{name}}",
-    "searchFont": "搜索字体...",
-    "loadingFonts": "正在加载字体...",
-    "noMatchingFonts": "没有匹配的字体",
-    "fontEnumerationFailed": "无法枚举本机字体；请在桌面客户端中重试。"
+    "removeAttachment": "移除 {{name}}"
   },
   "error": {
     "runtimeBusy": "当前已有响应或审批在处理中，请稍候。",
