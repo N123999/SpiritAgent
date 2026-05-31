@@ -67,17 +67,10 @@ export async function* responsesEventStreamToRuntimeEvents(
           break;
         }
         case 'tool-call': {
+          // Parity with openai/ai-sdk-transport: tool calls are aggregated from raw
+          // response.output_item.* chunks only. Also handling tool-call here duplicates
+          // the same function_call when the SDK emits both raw and normalized parts.
           sawAnswerOrToolOutput = true;
-          const index = nextToolIndex;
-          nextToolIndex += 1;
-          toolCalls.set(index, {
-            index,
-            id: part.toolCallId,
-            type: 'function',
-            functionName: part.toolName,
-            functionArguments: JSON.stringify(part.input ?? {}),
-            readyPreviewEmitted: true,
-          });
           break;
         }
         case 'tool-input-delta': {
