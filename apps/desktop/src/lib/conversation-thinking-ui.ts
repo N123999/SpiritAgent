@@ -148,8 +148,10 @@ export function shouldShowAssistantThinkingCollapsible(
     return false;
   }
 
-  if (isStandaloneThinkingMessage(message)) {
-    return hasDisplayableThinkingAux;
+  // Keep finalized or in-flight substantive reasoning visible while tools run in the
+  // same turn. Only suppress the empty pending placeholder row (see test below).
+  if (hasDisplayableThinkingAux) {
+    return true;
   }
 
   return assistantReasoningLive(message, pendingAuxState);

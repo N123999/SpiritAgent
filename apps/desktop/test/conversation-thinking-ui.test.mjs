@@ -72,6 +72,37 @@ test('shouldShowAssistantThinkingCollapsible hides placeholder when tool follows
   );
 });
 
+test('shouldShowAssistantThinkingCollapsible keeps substantive thinking when tool follows and row has body text', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'hi', pending: false },
+    {
+      id: 2,
+      role: 'assistant',
+      content: 'Let me read the referenced docs.',
+      pending: false,
+      aux: { thinking: 'I will read copilot-instructions and boundary docs in parallel.' },
+    },
+    {
+      id: 3,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      tool: {
+        toolCallId: 't1',
+        toolName: 'read_file',
+        phase: 'running',
+        headline: '调用中: read_file',
+        detailLines: [],
+      },
+    },
+  ];
+
+  assert.equal(
+    shouldShowAssistantThinkingCollapsible(messages[1], undefined, messages, 1),
+    true,
+  );
+});
+
 test('shouldShowAssistantThinkingCollapsible keeps substantive standalone thinking', () => {
   const messages = [
     { id: 1, role: 'user', content: 'hi', pending: false },
