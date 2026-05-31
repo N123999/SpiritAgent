@@ -1,11 +1,34 @@
+import type { LucideIcon } from 'lucide-react'
+import {
+  FoldVertical,
+  Rocket,
+  ScrollText,
+  Sparkles,
+  Wand2,
+} from 'lucide-react'
+
+import { instantHoverMotionClass } from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
-import type { SkillSlashSuggestion } from '@/lib/skill-slash'
+import type { SkillSlashSuggestion, SkillSlashSuggestionKind } from '@/lib/skill-slash'
 
 type SkillSlashMenuProps = {
   suggestions: SkillSlashSuggestion[]
   selectedIndex: number
   onSelectIndex(index: number): void
   onApplySuggestion(suggestion: SkillSlashSuggestion): void
+}
+
+const SLASH_SUGGESTION_ICONS: Record<SkillSlashSuggestionKind, LucideIcon> = {
+  'create-skill': Wand2,
+  'log-session': ScrollText,
+  'start-implementing': Rocket,
+  compact: FoldVertical,
+  skill: Sparkles,
+}
+
+function SlashSuggestionIcon({ kind }: { kind: SkillSlashSuggestionKind }) {
+  const Icon = SLASH_SUGGESTION_ICONS[kind]
+  return <Icon className="size-3.5 shrink-0 text-muted-foreground/75" aria-hidden />
 }
 
 export function SkillSlashMenu({
@@ -23,7 +46,8 @@ export function SkillSlashMenu({
               key={suggestion.id}
               type="button"
               className={cn(
-                'rounded-xl bg-transparent px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
+                'rounded-xl bg-transparent px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
+                instantHoverMotionClass,
                 index === selectedIndex
                   ? 'bg-foreground/[0.06] text-foreground'
                   : 'text-foreground hover:bg-foreground/[0.05]',
@@ -33,7 +57,8 @@ export function SkillSlashMenu({
               onFocus={() => onSelectIndex(index)}
               onClick={() => onApplySuggestion(suggestion)}
             >
-              <div className="flex items-baseline gap-2 overflow-hidden">
+              <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
+                <SlashSuggestionIcon kind={suggestion.kind} />
                 <span className="shrink-0 text-sm font-medium leading-6 text-foreground">
                   {suggestion.name}
                 </span>
