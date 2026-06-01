@@ -309,6 +309,7 @@ export function WorkspaceBrowserTab({
         <Input
           value={addressDraft}
           aria-label={t("workspace.browserAddressBar")}
+          placeholder={t("workspace.browserAddressBarPlaceholder")}
           className={cn(
             "h-7 min-w-0 flex-1 border-0 bg-transparent px-2 text-xs shadow-none",
             "focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",

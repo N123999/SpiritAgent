@@ -422,6 +422,7 @@
     "browserNoLocalPorts": "No local web pages responded.",
     "browserScanPortsFailed": "Failed to scan local ports.",
     "browserAddressBar": "Address",
+    "browserAddressBarPlaceholder": "Enter a URL",
     "browserBack": "Back",
     "browserForward": "Forward",
     "browserReload": "Reload",
