@@ -55,6 +55,7 @@ export type WorkspaceToolsDockProps = {
   onTabsChange(tabs: WorkspaceToolTab[]): void;
   onActiveTabIdChange(id: string): void;
   onBrowserElementPicked?: WorkspaceBrowserTabProps['onElementPicked'];
+  onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -93,6 +94,7 @@ export function WorkspaceToolsDock({
   onTabsChange,
   onActiveTabIdChange,
   onBrowserElementPicked,
+  onBrowserOpenInNewTab,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -375,6 +377,7 @@ export function WorkspaceToolsDock({
                       <WorkspaceBrowserTab
                         browserUrl={item.browserUrl}
                         onBrowserUrlChange={(url) => handleBrowserUrlChange(item.id, url)}
+                        onOpenUrlInNewTab={onBrowserOpenInNewTab}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                         onElementPicked={onBrowserElementPicked}
                       />

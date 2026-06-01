@@ -219,6 +219,18 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openExternalUrl(url: string) {
     return ipcRenderer.invoke('desktop:open-external-url', { url });
   },
+  subscribeBrowserOpenUrl(callback: (url: string) => void) {
+    const onOpen = (_event: Electron.IpcRendererEvent, payload: { url?: string }) => {
+      const url = typeof payload?.url === 'string' ? payload.url.trim() : '';
+      if (url) {
+        callback(url);
+      }
+    };
+    ipcRenderer.on('desktop:browser-open-url', onOpen);
+    return () => {
+      ipcRenderer.removeListener('desktop:browser-open-url', onOpen);
+    };
+  },
   listLocalListeningEndpoints() {
     return ipcRenderer.invoke('desktop:list-local-listeners');
   },

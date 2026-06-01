@@ -156,11 +156,13 @@ import {
 } from "@/components/session-sidebar";
 import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import {
+  addWorkspaceBrowserTabWithUrl,
   addWorkspaceToolTab,
   createInitialWorkspaceToolsState,
   findWorkspaceToolTab,
   focusFirstTabOfKind,
 } from "@/lib/workspace-tool-tabs";
+import { normalizeBrowserUrl } from "@/lib/browser-url";
 import type {
   AskQuestionsQuestionSpec,
   DesktopCommitMode,
@@ -1886,6 +1888,31 @@ export default function App() {
     string | null
   >(null);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
+
+  const openBrowserUrlInNewTab = useCallback((rawUrl: string) => {
+    const url = normalizeBrowserUrl(rawUrl);
+    if (!url) {
+      return;
+    }
+    setWorkspaceToolsOpen(true);
+    let nextActiveId = "";
+    setWorkspaceToolTabs((prev) => {
+      const next = addWorkspaceBrowserTabWithUrl(prev, url);
+      nextActiveId = next.activeId;
+      return next.tabs;
+    });
+    if (nextActiveId) {
+      setActiveWorkspaceToolTabId(nextActiveId);
+    }
+  }, []);
+
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeBrowserOpenUrl) {
+      return;
+    }
+    return bridge.subscribeBrowserOpenUrl(openBrowserUrlInNewTab);
+  }, [openBrowserUrlInNewTab]);
   const [composerCursorCodeUnits, setComposerCursorCodeUnits] = useState(0);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const [fileReferenceSuggestions, setFileReferenceSuggestions] =
@@ -3159,6 +3186,7 @@ export default function App() {
               onTabsChange={setWorkspaceToolTabs}
               onActiveTabIdChange={setActiveWorkspaceToolTabId}
               onBrowserElementPicked={handleBrowserElementPicked}
+              onBrowserOpenInNewTab={openBrowserUrlInNewTab}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

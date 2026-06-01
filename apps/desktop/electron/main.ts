@@ -3,13 +3,77 @@ import { copyFile, lstat, mkdir, readFile, realpath, stat, writeFile } from 'nod
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, IpcMainInvokeEvent, Menu, app, clipboard, dialog, ipcMain, nativeTheme, net, shell, webContents } from 'electron';
+import {
+  BrowserWindow,
+  IpcMainInvokeEvent,
+  Menu,
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  net,
+  shell,
+  webContents,
+  type WebContents,
+} from 'electron';
 
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
 import { isAllowedExternalUrl, getCachedLocalListeningEndpoints, getScanningPromise, startLocalListenersScan } from './local-listeners.js';
 
 import type { DesktopSnapshot } from '../src/types.js';
+
+const spiritWebviewHooksAttached = new WeakSet<WebContents>();
+
+function sendBrowserOpenUrlToHost(guestContents: WebContents, url: string): void {
+  if (!isAllowedExternalUrl(url)) {
+    return;
+  }
+  const host = guestContents.hostWebContents;
+  if (!host || host.isDestroyed()) {
+    return;
+  }
+  host.send('desktop:browser-open-url', { url });
+}
+
+function attachSpiritWebviewGuestHandlers(guestContents: WebContents): void {
+  if (spiritWebviewHooksAttached.has(guestContents)) {
+    return;
+  }
+  spiritWebviewHooksAttached.add(guestContents);
+
+  guestContents.setWindowOpenHandler((details) => {
+    if (details.url) {
+      sendBrowserOpenUrlToHost(guestContents, details.url);
+    }
+    return { action: 'deny' };
+  });
+
+  guestContents.on('will-navigate', (event, url) => {
+    const current = guestContents.getURL();
+    if (!current || current === 'about:blank') {
+      return;
+    }
+    try {
+      const currentOrigin = new URL(current).origin;
+      const nextOrigin = new URL(url).origin;
+      if (currentOrigin !== nextOrigin) {
+        event.preventDefault();
+        sendBrowserOpenUrlToHost(guestContents, url);
+      }
+    } catch {
+      // ignore malformed URLs
+    }
+  });
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() !== 'webview') {
+    return;
+  }
+  attachSpiritWebviewGuestHandlers(contents);
+});
 import {
   invokeDesktopHostCommand,
   setDesktopMarketplaceFetchImplementation,

@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 export type WorkspaceBrowserTabProps = {
   browserUrl: string | undefined;
   onBrowserUrlChange(url: string): void;
+  /** 站外 / 新窗口链接：在工作区新建浏览器标签并打开 */
+  onOpenUrlInNewTab?: (url: string) => void;
   /** 当前网页标题变化时通知父层；切到新标签页时传 undefined */
   onTitleChange?: (title: string | undefined) => void;
   /** 用户选中元素后的回调 */
@@ -57,6 +59,18 @@ function isElectronDesktop(): boolean {
 
 function canUseEmbeddedBrowser(): boolean {
   return isElectronDesktop();
+}
+
+function safeWebviewCall<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function safeWebviewGetUrl(el: WebviewElement): string {
+  return safeWebviewCall(() => el.getURL?.() ?? "", "");
 }
 
 function BrowserNewTabPage({
@@ -163,6 +177,7 @@ function BrowserNewTabPage({
 export function WorkspaceBrowserTab({
   browserUrl,
   onBrowserUrlChange,
+  onOpenUrlInNewTab,
   onTitleChange,
   onElementPicked,
 }: WorkspaceBrowserTabProps) {
@@ -185,6 +200,10 @@ export function WorkspaceBrowserTab({
     onTitleChangeRef.current = onTitleChange;
   });
   const prevBrowserUrlRef = useRef(browserUrl);
+  const onOpenUrlInNewTabRef = useRef(onOpenUrlInNewTab);
+  useLayoutEffect(() => {
+    onOpenUrlInNewTabRef.current = onOpenUrlInNewTab;
+  });
 
   const syncNavState = useCallback(() => {
     const el = webviewRef.current;
@@ -193,8 +212,8 @@ export function WorkspaceBrowserTab({
       setCanGoForward(false);
       return;
     }
-    const back = el.canGoBack?.() ?? false;
-    const forward = el.canGoForward?.() ?? false;
+    const back = safeWebviewCall(() => el.canGoBack?.() ?? false, false);
+    const forward = safeWebviewCall(() => el.canGoForward?.() ?? false, false);
     setCanGoBack((prev) => (prev === back ? prev : back));
     setCanGoForward((prev) => (prev === forward ? prev : forward));
   }, []);
@@ -246,7 +265,7 @@ export function WorkspaceBrowserTab({
     };
 
     const onDidStopLoading = () => {
-      const url = el.getURL?.() ?? "";
+      const url = safeWebviewGetUrl(el);
       if (url && url !== "about:blank") {
         setAddressDraft(url);
       }
@@ -258,7 +277,7 @@ export function WorkspaceBrowserTab({
       detail.preventDefault?.();
       const url = detail.url;
       if (url) {
-        void window.spiritDesktop?.openExternalUrl(url);
+        onOpenUrlInNewTabRef.current?.(url);
       }
     };
 
@@ -282,7 +301,7 @@ export function WorkspaceBrowserTab({
       el.removeEventListener("dom-ready", scheduleSyncNavState);
       el.removeEventListener("page-title-updated", onPageTitleUpdated);
     };
-  }, [canEmbed, showNewTab, syncNavState]);
+  }, [browserUrl, canEmbed, showNewTab, syncNavState]);
 
   const exitPicker = useCallback(() => {
     setIsPickerActive(false);
@@ -350,7 +369,7 @@ export function WorkspaceBrowserTab({
           await el.executeJavaScript?.('if(window.__spiritPickerCleanup){window.__spiritPickerCleanup();window.__spiritPickerCleanup=null;}window.__spiritPickerDone=false;');
           const r = result as { x: number; y: number; width: number; height: number; tagName: string; outerHTML: string } | null;
           if (r && !cancelled) {
-            const webContentsId = el.getWebContentsId?.();
+            const webContentsId = safeWebviewCall(() => el.getWebContentsId?.(), undefined);
             const bridge = window.spiritDesktop;
             if (webContentsId && bridge?.captureWebviewRect) {
               try {
@@ -366,7 +385,7 @@ export function WorkspaceBrowserTab({
                     tagName: r.tagName.toLowerCase(),
                     outerHtml: truncateOuterHtml(r.outerHTML),
                     screenshotDataUrl: `data:image/png;base64,${base64}`,
-                    pageUrl: el.getURL?.() ?? browserUrl ?? '',
+                    pageUrl: safeWebviewGetUrl(el) || browserUrl || "",
                   });
                 }
               } catch (err) {
@@ -405,8 +424,10 @@ export function WorkspaceBrowserTab({
 
   const handleGoBack = useCallback(() => {
     const el = webviewRef.current;
-    if (el?.canGoBack?.()) {
-      el.goBack?.();
+    if (safeWebviewCall(() => el?.canGoBack?.() ?? false, false)) {
+      safeWebviewCall(() => {
+        el?.goBack?.();
+      }, undefined);
     } else {
       onBrowserUrlChange(BROWSER_NEW_TAB_SENTINEL);
     }
@@ -515,7 +536,7 @@ export function WorkspaceBrowserTab({
             <webview
               ref={webviewRef as React.RefObject<HTMLElement>}
               src={browserUrl}
-              allowpopups
+              allowpopups=""
               className={cn(
                 "electron-no-drag h-full w-full flex-1 border-0 bg-background",
                 isPickerActive && "cursor-crosshair",

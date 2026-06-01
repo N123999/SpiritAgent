@@ -100,6 +100,16 @@ export function addWorkspaceToolTab(
   return { tabs: [...tabs, tab], activeId: tab.id };
 }
 
+/** 新建浏览器子标签并直接带上目标 URL（避免先落在新标签页 sentinel 再二次更新）。 */
+export function addWorkspaceBrowserTabWithUrl(
+  tabs: readonly WorkspaceToolTab[],
+  url: string,
+): { tabs: WorkspaceToolTab[]; activeId: string } {
+  const tab = createWorkspaceToolTab("browser");
+  tab.browserUrl = url;
+  return { tabs: [...tabs, tab], activeId: tab.id };
+}
+
 export function closeWorkspaceToolTab(
   tabs: readonly WorkspaceToolTab[],
   activeId: string,
