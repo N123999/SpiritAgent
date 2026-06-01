@@ -118,7 +118,8 @@ export class DesktopToolExecutor
   setActiveTransportConfig(config: LlmTransportConfig): void {
     this.activeTransportConfig = config;
     this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config as any);
-    this.imageGenerationAvailable = config.imageGeneration !== undefined;
+    this.imageGenerationAvailable =
+      'imageGeneration' in config && config.imageGeneration !== undefined;
   }
 
   setApprovalLevel(level: ApprovalLevel): void {
