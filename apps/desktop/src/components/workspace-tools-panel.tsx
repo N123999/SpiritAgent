@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { FileText, GitBranch, Globe, Plus, Terminal, X } from "lucide-react";
 import { ActionPopover, type ActionPopoverItem } from "@/components/ui/action-popover";
-import { WorkspaceBrowserTab } from "@/components/workspace-browser-tab";
+import { WorkspaceBrowserTab, type WorkspaceBrowserTabProps } from "@/components/workspace-browser-tab";
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import { instantHoverMotionClass } from "@/lib/desktop-chrome";
@@ -54,6 +54,7 @@ export type WorkspaceToolsDockProps = {
   activeTabId: string;
   onTabsChange(tabs: WorkspaceToolTab[]): void;
   onActiveTabIdChange(id: string): void;
+  onBrowserElementPicked?: WorkspaceBrowserTabProps['onElementPicked'];
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -91,6 +92,7 @@ export function WorkspaceToolsDock({
   activeTabId,
   onTabsChange,
   onActiveTabIdChange,
+  onBrowserElementPicked,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -374,6 +376,7 @@ export function WorkspaceToolsDock({
                         browserUrl={item.browserUrl}
                         onBrowserUrlChange={(url) => handleBrowserUrlChange(item.id, url)}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                        onElementPicked={onBrowserElementPicked}
                       />
                     </div>
                   ) : (

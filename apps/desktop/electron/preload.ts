@@ -248,6 +248,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   ): Promise<string> {
     return ipcRenderer.invoke('desktop:capture-webview-rect', { webContentsId, rect });
   },
+  ingestBrowserElementScreenshot(base64: string): Promise<string | null> {
+    return ipcRenderer.invoke('desktop:ingest-browser-element-screenshot', { base64 });
+  },
   readClipboardText() {
     return clipboard.readText();
   },

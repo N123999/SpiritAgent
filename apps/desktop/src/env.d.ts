@@ -141,6 +141,7 @@ declare global {
       webContentsId: number,
       rect: { x: number; y: number; width: number; height: number },
     ): Promise<string>;
+    ingestBrowserElementScreenshot(base64: string): Promise<string | null>;
     readClipboardText(): string;
     writeClipboardText(text: string): void;
   }

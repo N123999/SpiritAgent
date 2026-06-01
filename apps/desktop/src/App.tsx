@@ -79,6 +79,9 @@ import {
   ComposerLocalFileStrip,
   type ComposerLocalFileAttachmentView,
 } from "@/components/composer-local-file-strip";
+import { BrowserElementStrip } from "@/components/browser-element-card";
+import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
+import { browserElementContextText } from "@/lib/browser-element-attachment";
 import { ComposerInsertMenu } from "@/components/composer-insert-menu";
 import { ApprovalLevelMenu } from "@/components/approval-level-menu";
 import { BranchSelectMenu } from "@/components/branch-select-menu";
@@ -643,6 +646,8 @@ type ComposerSurfaceProps = {
   onRemoveLocalFileAttachment?(path: string): void;
   onPaste?(event: ReactClipboardEvent<HTMLTextAreaElement>): void;
   showLoopSwitch?: boolean;
+  browserElementAttachments?: readonly BrowserElementAttachment[];
+  onRemoveBrowserElementAttachment?(id: string): void;
 };
 
 function ComposerSurface({
@@ -676,6 +681,8 @@ function ComposerSurface({
   onRemoveLocalFileAttachment,
   onPaste,
   showLoopSwitch = true,
+  browserElementAttachments,
+  onRemoveBrowserElementAttachment,
 }: ComposerSurfaceProps) {
   const { t } = useTranslation();
   const [modelFilter, setModelFilter] = useState("");
@@ -710,6 +717,10 @@ function ComposerSurface({
       data-spirit-surface="composer-surface"
       className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-0 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
     >
+      <BrowserElementStrip
+        attachments={browserElementAttachments ?? []}
+        onRemove={onRemoveBrowserElementAttachment}
+      />
       <ComposerLocalFileStrip
         attachments={localFileAttachments}
         onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
@@ -1827,6 +1838,9 @@ export default function App() {
     runtime.setComposerLocalFileAttachments,
     runtime.readLocalImagePreviewDataUrl,
   );
+
+  const [composerBrowserElementAttachments, setComposerBrowserElementAttachments] = useState<BrowserElementAttachment[]>([]);
+
   const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
   const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
   const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
@@ -2209,6 +2223,23 @@ export default function App() {
       });
     },
     [runtime.setComposerLocalFileAttachments],
+  );
+
+  const handleBrowserElementPicked = useCallback(
+    async (attachment: BrowserElementAttachment) => {
+      setComposerBrowserElementAttachments((prev) => [...prev, attachment]);
+      const base64 = attachment.screenshotDataUrl.replace(/^data:image\/png;base64,/, '');
+      const bridge = window.spiritDesktop;
+      if (bridge?.ingestBrowserElementScreenshot) {
+        const filePath = await bridge.ingestBrowserElementScreenshot(base64);
+        if (filePath) {
+          attachLocalFilePath(filePath);
+        }
+      }
+      const contextText = browserElementContextText(attachment);
+      runtime.setComposer((prev) => (prev ? `${prev}\n\n${contextText}` : contextText));
+    },
+    [attachLocalFilePath, runtime],
   );
 
   const attachRewindLocalFilePath = useCallback((filePath: string) => {
@@ -3061,6 +3092,10 @@ export default function App() {
                     value={runtime.composer}
                     onChange={runtime.setComposer}
                     onSubmit={submitComposerMessage}
+                    browserElementAttachments={composerBrowserElementAttachments}
+                    onRemoveBrowserElementAttachment={(id) =>
+                      setComposerBrowserElementAttachments((prev) => prev.filter((a) => a.id !== id))
+                    }
                     onAbort={() => void runtime.abortConversation()}
                     placeholder={activeSessionReadOnly ? t('app.readOnlySession') : t('app.typeMessage')}
                     localFileAttachments={runtime.composerLocalFileAttachments}
@@ -3139,6 +3174,7 @@ export default function App() {
               activeTabId={activeWorkspaceToolTabId}
               onTabsChange={setWorkspaceToolTabs}
               onActiveTabIdChange={setActiveWorkspaceToolTabId}
+              onBrowserElementPicked={handleBrowserElementPicked}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

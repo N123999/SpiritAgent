@@ -528,6 +528,16 @@ app.whenReady().then(async () => {
     return result.filePaths[0] ?? null;
   });
 
+  ipcMain.handle('desktop:ingest-browser-element-screenshot', async (_event: IpcMainInvokeEvent, payload: { base64: string }) => {
+    const base64 = typeof payload?.base64 === 'string' ? payload.base64 : '';
+    if (!base64) return null;
+    const dir = path.join(spiritAgentDataDir(), 'clipboard-paste');
+    await mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `element-${Date.now()}.png`);
+    await writeFile(filePath, Buffer.from(base64, 'base64'));
+    return filePath;
+  });
+
   ipcMain.handle('desktop:ingest-clipboard-image', async () => {
     const image = clipboard.readImage();
     if (image.isEmpty()) {
