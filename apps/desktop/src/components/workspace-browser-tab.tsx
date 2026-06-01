@@ -29,13 +29,18 @@ type WebviewElement = HTMLElement & {
   getURL?(): string;
 };
 
+function isElectronDesktop(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (window.spiritDesktop) {
+    return true;
+  }
+  return typeof navigator !== "undefined" && /\bElectron\//.test(navigator.userAgent);
+}
+
 function canUseEmbeddedBrowser(): boolean {
-  return Boolean(
-    typeof window !== "undefined" &&
-      window.spiritDesktop?.listLocalListeningEndpoints &&
-      typeof document !== "undefined" &&
-      "Webview" in window,
-  );
+  return isElectronDesktop();
 }
 
 function BrowserNewTabPage({
@@ -51,7 +56,7 @@ function BrowserNewTabPage({
   const scan = useCallback(async () => {
     const bridge = window.spiritDesktop;
     if (!bridge?.listLocalListeningEndpoints) {
-      setError(t("workspace.browserElectronOnly"));
+      setError(t("workspace.browserScanPortsFailed"));
       setLoading(false);
       return;
     }
