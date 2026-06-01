@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -7,6 +9,8 @@ export type LocalListeningEndpoint = {
   port: number;
   address?: string;
   processName?: string;
+  /** 探测到的可访问 URL（http 或 https） */
+  url?: string;
 };
 
 type RawListener = {
@@ -16,6 +20,149 @@ type RawListener = {
 };
 
 const SCAN_TIMEOUT_MS = 5_000;
+const HTTP_PROBE_TIMEOUT_MS = 900;
+const HTTP_PROBE_BATCH_SIZE = 16;
+const PROBE_BODY_LIMIT_BYTES = 64 * 1024;
+
+export function isHtmlContentType(contentType: string | undefined): boolean {
+  if (!contentType) {
+    return false;
+  }
+  const base = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
+  return base === 'text/html' || base === 'application/xhtml+xml';
+}
+
+export function extractHtmlTitle(html: string): string | null {
+  const match = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  if (!match?.[1]) {
+    return null;
+  }
+  const text = match[1]
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+  if (!text) {
+    return null;
+  }
+  return decodeHtmlEntities(text);
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+}
+
+export function isLikelyWebPage(contentType: string | undefined, body: string): boolean {
+  if (isHtmlContentType(contentType)) {
+    return true;
+  }
+  return extractHtmlTitle(body) != null;
+}
+
+export function probeHttpUrl(url: string, timeoutMs = HTTP_PROBE_TIMEOUT_MS): Promise<string | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    };
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      finish(null);
+      return;
+    }
+
+    const lib = parsed.protocol === 'https:' ? https : http;
+    const req = lib.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: `${parsed.pathname}${parsed.search}`,
+        method: 'GET',
+        timeout: timeoutMs,
+        rejectUnauthorized: false,
+        headers: {
+          Accept: 'text/html,application/xhtml+xml,*/*',
+          'User-Agent': 'SpiritAgent-Desktop-LocalProbe/1.0',
+        },
+      },
+      (res) => {
+        const contentTypeHeader = res.headers['content-type'];
+        const contentType = Array.isArray(contentTypeHeader)
+          ? contentTypeHeader[0]
+          : contentTypeHeader;
+        const chunks: Buffer[] = [];
+        let size = 0;
+
+        res.on('data', (chunk: Buffer) => {
+          if (size >= PROBE_BODY_LIMIT_BYTES) {
+            return;
+          }
+          chunks.push(chunk);
+          size += chunk.length;
+        });
+
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          finish(isLikelyWebPage(contentType, body) ? url : null);
+        });
+
+        res.on('error', () => finish(null));
+      },
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      finish(null);
+    });
+    req.on('error', () => finish(null));
+    req.end();
+  });
+}
+
+/** 依次尝试 http / https，返回首个像网页的 URL。 */
+export async function probeLocalHttpPort(port: number): Promise<string | null> {
+  const candidates = [`http://127.0.0.1:${port}/`, `https://127.0.0.1:${port}/`];
+  for (const url of candidates) {
+    const matched = await probeHttpUrl(url);
+    if (matched) {
+      return matched;
+    }
+  }
+  return null;
+}
+
+export async function filterHttpListeningEndpoints(
+  endpoints: readonly LocalListeningEndpoint[],
+): Promise<LocalListeningEndpoint[]> {
+  const verified: LocalListeningEndpoint[] = [];
+  for (let index = 0; index < endpoints.length; index += HTTP_PROBE_BATCH_SIZE) {
+    const batch = endpoints.slice(index, index + HTTP_PROBE_BATCH_SIZE);
+    const probed = await Promise.all(
+      batch.map(async (endpoint) => {
+        const url = await probeLocalHttpPort(endpoint.port);
+        return url ? { ...endpoint, url } : null;
+      }),
+    );
+    for (const item of probed) {
+      if (item) {
+        verified.push(item);
+      }
+    }
+  }
+  return verified.sort((a, b) => a.port - b.port);
+}
 
 export function isLocalhostReachableAddress(address: string): boolean {
   const normalized = address.trim().toLowerCase();
@@ -265,7 +412,8 @@ export async function listLocalListeningEndpoints(): Promise<LocalListeningEndpo
     } else {
       raw = await scanLinuxListeners();
     }
-    return mergeLocalListeningEndpoints(raw.filter((item) => item.port > 0));
+    const merged = mergeLocalListeningEndpoints(raw.filter((item) => item.port > 0));
+    return filterHttpListeningEndpoints(merged);
   } catch (error) {
     console.warn('[spirit-desktop] listLocalListeningEndpoints failed:', error);
     return [];

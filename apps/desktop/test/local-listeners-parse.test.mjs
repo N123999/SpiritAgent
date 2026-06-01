@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  extractHtmlTitle,
+  isHtmlContentType,
+  isLikelyWebPage,
   isLocalhostReachableAddress,
   mergeLocalListeningEndpoints,
   parseSsOutput,
   parseWindowsNetstat,
   parseWindowsPowerShellListeners,
   parseUnixNetstat,
+  probeHttpUrl,
 } from "../electron/local-listeners.ts";
 
 test("isLocalhostReachableAddress accepts localhost bindings", () => {
@@ -72,4 +76,31 @@ test("mergeLocalListeningEndpoints dedupes by port", () => {
   assert.equal(merged.length, 1);
   assert.equal(merged[0]?.port, 3000);
   assert.equal(merged[0]?.processName, "node");
+});
+
+test("probeHttpUrl rejects invalid url", async () => {
+  assert.equal(await probeHttpUrl("not-a-url"), null);
+});
+
+test("isHtmlContentType accepts html and xhtml", () => {
+  assert.equal(isHtmlContentType("text/html; charset=utf-8"), true);
+  assert.equal(isHtmlContentType("application/xhtml+xml"), true);
+  assert.equal(isHtmlContentType("application/json"), false);
+});
+
+test("extractHtmlTitle reads non-empty title", () => {
+  assert.equal(
+    extractHtmlTitle("<html><head><title>Spirit Agent</title></head></html>"),
+    "Spirit Agent",
+  );
+  assert.equal(extractHtmlTitle("<html><head><title>  </title></head></html>"), null);
+});
+
+test("isLikelyWebPage accepts html content-type or titled body", () => {
+  assert.equal(isLikelyWebPage("text/html", ""), true);
+  assert.equal(
+    isLikelyWebPage("application/json", '<html><title>Dashboard</title></html>'),
+    true,
+  );
+  assert.equal(isLikelyWebPage("application/json", '{"ok":true}'), false);
 });

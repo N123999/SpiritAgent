@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Home, RefreshCw } from "lucide-react";
@@ -21,11 +21,11 @@ type LocalListeningEndpoint = {
   port: number;
   address?: string;
   processName?: string;
+  url?: string;
 };
 
 type WebviewElement = HTMLElement & {
   src?: string;
-  loadURL?(url: string): void;
   getURL?(): string;
 };
 
@@ -102,10 +102,10 @@ function BrowserNewTabPage({
       ) : (
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto">
           {endpoints.map((item) => {
-            const url = toLocalHostUrl(item.port);
+            const url = item.url ?? toLocalHostUrl(item.port);
             const subtitle = [item.address, item.processName].filter(Boolean).join(" · ");
             return (
-              <li key={item.port}>
+              <li key={`${item.port}-${url}`}>
                 <button
                   type="button"
                   className={cn(
@@ -156,7 +156,7 @@ export function WorkspaceBrowserTab({
     onBrowserUrlChange(normalized);
   }, [addressDraft, onBrowserUrlChange]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (showNewTab || !canEmbed) {
       return;
     }
@@ -165,17 +165,17 @@ export function WorkspaceBrowserTab({
       return;
     }
 
-    const syncUrl = (url: string) => {
-      if (url) {
+    const onDidNavigate = (event: Event) => {
+      const url = (event as Event & { url?: string }).url;
+      if (url && url !== "about:blank") {
         setAddressDraft(url);
-        onBrowserUrlChange(url);
       }
     };
 
-    const onDidNavigate = (event: Event) => {
-      const url = (event as Event & { url?: string }).url;
-      if (url) {
-        syncUrl(url);
+    const onDidStopLoading = () => {
+      const url = el.getURL?.() ?? "";
+      if (url && url !== "about:blank") {
+        setAddressDraft(url);
       }
     };
 
@@ -190,14 +190,16 @@ export function WorkspaceBrowserTab({
 
     el.addEventListener("did-navigate", onDidNavigate);
     el.addEventListener("did-navigate-in-page", onDidNavigate);
+    el.addEventListener("did-stop-loading", onDidStopLoading);
     el.addEventListener("new-window", onNewWindow);
 
     return () => {
       el.removeEventListener("did-navigate", onDidNavigate);
       el.removeEventListener("did-navigate-in-page", onDidNavigate);
+      el.removeEventListener("did-stop-loading", onDidStopLoading);
       el.removeEventListener("new-window", onNewWindow);
     };
-  }, [canEmbed, onBrowserUrlChange, showNewTab, browserUrl]);
+  }, [canEmbed, showNewTab]);
 
   if (!canEmbed) {
     return (

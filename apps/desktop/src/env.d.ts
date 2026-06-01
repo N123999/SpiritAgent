@@ -126,7 +126,7 @@ declare global {
     openSystemTerminal(cwd: string): Promise<void>;
     openExternalUrl(url: string): Promise<void>;
     listLocalListeningEndpoints(): Promise<
-      Array<{ port: number; address?: string; processName?: string }>
+      Array<{ port: number; address?: string; processName?: string; url?: string }>
     >;
     ptySubscribe(callbacks: {
       onData: (payload: { id: string; data: string }) => void;
