@@ -82,6 +82,55 @@ test("probeHttpUrl rejects invalid url", async () => {
   assert.equal(await probeHttpUrl("not-a-url"), null);
 });
 
+test("probeHttpUrl follows localhost redirects and rejects external redirects", async () => {
+  const http = await import("node:http");
+
+  let targetServer;
+  let redirectServer;
+  try {
+    await new Promise((resolve) => {
+      targetServer = http.createServer((req, res) => {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end("<html><head><title>Redirected Page</title></head></html>");
+      });
+      targetServer.listen(0, "127.0.0.1", resolve);
+    });
+    const targetPort = targetServer.address().port;
+
+    await new Promise((resolve) => {
+      redirectServer = http.createServer((req, res) => {
+        res.writeHead(301, { Location: `http://127.0.0.1:${targetPort}/` });
+        res.end();
+      });
+      redirectServer.listen(0, "127.0.0.1", resolve);
+    });
+    const redirectPort = redirectServer.address().port;
+
+    const result = await probeHttpUrl(`http://127.0.0.1:${redirectPort}/`);
+    assert.ok(result !== null, "should follow localhost redirect");
+    assert.equal(result.title, "Redirected Page");
+  } finally {
+    targetServer?.close();
+    redirectServer?.close();
+  }
+
+  let externalRedirectServer;
+  try {
+    await new Promise((resolve) => {
+      externalRedirectServer = http.createServer((req, res) => {
+        res.writeHead(301, { Location: "http://example.com/" });
+        res.end();
+      });
+      externalRedirectServer.listen(0, "127.0.0.1", resolve);
+    });
+    const port = externalRedirectServer.address().port;
+    const result = await probeHttpUrl(`http://127.0.0.1:${port}/`);
+    assert.equal(result, null, "should reject external redirect");
+  } finally {
+    externalRedirectServer?.close();
+  }
+});
+
 test("isHtmlContentType accepts html and xhtml", () => {
   assert.equal(isHtmlContentType("text/html; charset=utf-8"), true);
   assert.equal(isHtmlContentType("application/xhtml+xml"), true);

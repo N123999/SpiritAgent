@@ -66,7 +66,7 @@ export function isLikelyWebPage(contentType: string | undefined, body: string): 
   return extractHtmlTitle(body) != null;
 }
 
-export function probeHttpUrl(url: string, timeoutMs = HTTP_PROBE_TIMEOUT_MS): Promise<{ url: string; title?: string } | null> {
+export function probeHttpUrl(url: string, timeoutMs = HTTP_PROBE_TIMEOUT_MS, _redirectsLeft = 3): Promise<{ url: string; title?: string } | null> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value: { url: string; title?: string } | null) => {
@@ -101,6 +101,32 @@ export function probeHttpUrl(url: string, timeoutMs = HTTP_PROBE_TIMEOUT_MS): Pr
         },
       },
       (res) => {
+        const status = res.statusCode ?? 0;
+        if (status >= 300 && status < 400) {
+          const location = Array.isArray(res.headers.location)
+            ? res.headers.location[0]
+            : res.headers.location;
+          res.resume();
+          if (location && _redirectsLeft > 0) {
+            let redirectUrl: URL;
+            try {
+              redirectUrl = new URL(location, url);
+            } catch {
+              finish(null);
+              return;
+            }
+            const host = redirectUrl.hostname.toLowerCase();
+            if (host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]') {
+              resolve(probeHttpUrl(redirectUrl.toString(), timeoutMs, _redirectsLeft - 1));
+            } else {
+              finish(null);
+            }
+          } else {
+            finish(null);
+          }
+          return;
+        }
+
         const contentTypeHeader = res.headers['content-type'];
         const contentType = Array.isArray(contentTypeHeader)
           ? contentTypeHeader[0]
@@ -140,7 +166,12 @@ export function probeHttpUrl(url: string, timeoutMs = HTTP_PROBE_TIMEOUT_MS): Pr
 
 /** 依次尝试 http / https，返回首个像网页的 URL。 */
 export async function probeLocalHttpPort(port: number): Promise<{ url: string; title?: string } | null> {
-  const candidates = [`http://127.0.0.1:${port}/`, `https://127.0.0.1:${port}/`];
+  const candidates = [
+    `http://127.0.0.1:${port}/`,
+    `http://[::1]:${port}/`,
+    `https://127.0.0.1:${port}/`,
+    `https://[::1]:${port}/`,
+  ];
   for (const url of candidates) {
     const matched = await probeHttpUrl(url);
     if (matched) {
