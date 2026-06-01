@@ -162,6 +162,7 @@ export function WorkspaceBrowserTab({
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;
   });
+  const prevBrowserUrlRef = useRef(browserUrl);
 
   const syncNavState = useCallback(() => {
     const el = webviewRef.current;
@@ -177,9 +178,14 @@ export function WorkspaceBrowserTab({
   }, []);
 
   useEffect(() => {
+    const prevUrl = prevBrowserUrlRef.current;
+    prevBrowserUrlRef.current = browserUrl;
     if (showNewTab) {
       setAddressDraft("");
-      onTitleChangeRef.current?.(undefined);
+      const prevWasRealUrl = prevUrl && !isBrowserNewTabUrl(prevUrl);
+      if (prevWasRealUrl) {
+        onTitleChangeRef.current?.(undefined);
+      }
       return;
     }
     setAddressDraft(browserUrl ?? "");

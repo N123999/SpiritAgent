@@ -149,11 +149,18 @@ export function WorkspaceToolsDock({
 
   const handleAddTab = useCallback(
     (kind: WorkspaceToolTabKind) => {
-      const next = addWorkspaceToolTab(tabs, kind);
+      const vacant = tabs.find((tab) => tab.kind === kind && !tab.tabTitle);
+      if (vacant) {
+        onActiveTabIdChange(vacant.id);
+        return;
+      }
+      const meta = TAB_KIND_META[kind];
+      const defaultTitle = t(meta.labelKey);
+      const next = addWorkspaceToolTab(tabs, kind, defaultTitle);
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [onActiveTabIdChange, onTabsChange, tabs],
+    [onActiveTabIdChange, onTabsChange, tabs, t],
   );
 
   const handleCloseTab = useCallback(
@@ -259,9 +266,8 @@ export function WorkspaceToolsDock({
                   <div
                     key={item.id}
                     className={cn(
-                      "flex shrink-0 items-stretch rounded-t-md border border-transparent",
+                      "group/tab relative flex shrink-0 items-stretch rounded-t-md border border-transparent",
                       displayTitle ? "max-w-[9rem]" : "max-w-[3rem]",
-                      instantHoverMotionClass,
                       selected
                         ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-foreground/10",
@@ -275,26 +281,30 @@ export function WorkspaceToolsDock({
                       aria-controls={`workspace-tool-panel-${item.id}`}
                       tabIndex={selected ? 0 : -1}
                       title={displayTitle ?? label}
-                      className="flex min-w-0 flex-1 items-center gap-1 rounded-tl-md bg-transparent py-2 pl-2 pr-0.5 text-xs font-medium outline-none"
+                      className="flex min-w-0 flex-1 items-center gap-1 rounded-t-md bg-transparent py-2 pl-2 pr-2 text-xs font-medium outline-none"
                       onClick={() => onActiveTabIdChange(item.id)}
                     >
                       <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
                       {displayTitle ? <span className="truncate">{displayTitle}</span> : null}
                     </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "flex shrink-0 items-center justify-center rounded-tr-md bg-transparent p-1 pr-1.5 outline-none",
-                        selected ? "text-foreground/70" : "text-inherit",
-                      )}
-                      aria-label={t('workspace.closeTab', { label })}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleCloseTab(item.id);
-                      }}
-                    >
-                      <X className="size-3" aria-hidden />
-                    </button>
+                    {displayTitle ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          "absolute inset-y-0 right-0 hidden items-center justify-center rounded-tr-md px-1 outline-none group-hover/tab:flex",
+                          selected
+                            ? "bg-background text-foreground/70"
+                            : "bg-muted/60 text-inherit dark:bg-muted/40",
+                        )}
+                        aria-label={t('workspace.closeTab', { label })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleCloseTab(item.id);
+                        }}
+                      >
+                        <X className="size-3" aria-hidden />
+                      </button>
+                    ) : null}
                   </div>
                 );
               })}

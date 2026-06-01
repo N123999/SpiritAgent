@@ -91,8 +91,12 @@ export function findWorkspaceToolTab(
 export function addWorkspaceToolTab(
   tabs: readonly WorkspaceToolTab[],
   kind: WorkspaceToolTabKind,
+  tabTitle?: string,
 ): { tabs: WorkspaceToolTab[]; activeId: string } {
   const tab = createWorkspaceToolTab(kind);
+  if (tabTitle) {
+    tab.tabTitle = tabTitle;
+  }
   return { tabs: [...tabs, tab], activeId: tab.id };
 }
 

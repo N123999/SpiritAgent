@@ -91,10 +91,15 @@ export function WorkspaceFilesTab({
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;
   });
+  const prevSelectedEntryRef = useRef(selectedEntry);
 
   useEffect(() => {
+    const prev = prevSelectedEntryRef.current;
+    prevSelectedEntryRef.current = selectedEntry;
     if (!selectedEntry) {
-      onTitleChangeRef.current?.(undefined);
+      if (prev !== null) {
+        onTitleChangeRef.current?.(undefined);
+      }
     } else if (selectedEntry.kind === "plan") {
       onTitleChangeRef.current?.("Plan");
     } else {
