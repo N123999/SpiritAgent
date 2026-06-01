@@ -1337,6 +1337,7 @@ async function createRuntime(
   const basicInfo = buildRuntimeBasicInfo(workspaceRoot, hostInternal?.service);
   const todosContextText = await buildTodosContextTextForSession(currentTodoSessionKey);
   toolExecutor.setImageGenerationAvailable('imageGeneration' in config && config.imageGeneration !== undefined);
+  toolExecutor.setTransportConfigForToolDefinitions(config);
   await toolExecutor.refreshCaches();
   logBridge('createRuntime', {
     workspaceRoot,

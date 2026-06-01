@@ -15,3 +15,16 @@ export {
   openResponsesPostUrl,
 } from './responses-compat.js';
 export { AiSdkOpenResponsesTransport } from './ai-sdk-transport.js';
+export {
+  APPLY_PATCH_HOST_TOOL_NAME,
+  type ApplyPatchOperation,
+  type ApplyPatchOperationType,
+  filterBuiltinFileToolsForApplyPatch,
+  filterLegacyHostFileToolDefinitions,
+  isLegacyHostFileToolName,
+  isOpenAiGptModelAtLeast51,
+  normalizeGatewayOpenAiModelId,
+  parseOpenAiGptModelVersion,
+  shouldUseApplyPatchFileTools,
+  shouldUseOpenAiApplyPatchTool,
+} from './apply-patch-eligibility.js';

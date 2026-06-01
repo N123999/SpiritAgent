@@ -10,6 +10,12 @@ import type {
   ToolExecutor,
 } from '../ports.js';
 import { createToolExecutionTextOutput } from '../ports.js';
+import type { LlmTransportConfig } from '../provider-config.js';
+import {
+  filterLegacyHostFileToolDefinitions,
+  shouldUseApplyPatchFileTools,
+} from '../open-responses/apply-patch-eligibility.js';
+import { isOpenResponsesTransportConfig } from '../provider-config.js';
 import {
   assertFinishTaskToolAllowed,
   buildBuiltinHostToolDefinitions,
@@ -54,8 +60,14 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private readonly mcp = new McpService();
   private localHostService: LocalHostToolService | undefined;
   private imageGenerationAvailable = false;
+  private transportConfigForToolDefinitions: LlmTransportConfig | undefined;
 
   constructor(protected readonly peer: JsonRpcPeer) {}
+
+  setTransportConfigForToolDefinitions(config: LlmTransportConfig | undefined): void {
+    this.transportConfigForToolDefinitions = config;
+    this.refreshMergedToolDefinitions();
+  }
 
   setLocalHostService(service: LocalHostToolService | undefined): void {
     this.localHostService = service;
@@ -402,9 +414,16 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   private refreshMergedToolDefinitions(): void {
-    const hostDefinitions = this.imageGenerationAvailable
+    let hostDefinitions = this.imageGenerationAvailable
       ? this.hostToolDefinitionsCache
       : filterToolDefinitionByName(this.hostToolDefinitionsCache, 'generate_image');
+    if (
+      isOpenResponsesTransportConfig(this.transportConfigForToolDefinitions)
+      && shouldUseApplyPatchFileTools(this.transportConfigForToolDefinitions)
+      && Array.isArray(hostDefinitions)
+    ) {
+      hostDefinitions = filterLegacyHostFileToolDefinitions(hostDefinitions);
+    }
     const mergedHostDefinitions = Array.isArray(hostDefinitions)
       ? [...hostDefinitions, ...this.loopToolDefinitionsCache, ...this.todoToolDefinitionsCache]
       : [...this.loopToolDefinitionsCache, ...this.todoToolDefinitionsCache];

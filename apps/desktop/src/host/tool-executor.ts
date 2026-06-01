@@ -16,6 +16,9 @@ import {
   toolNamesFromDefinitions,
   buildFinishTaskHostToolDefinitions,
   buildTodoHostToolDefinitions,
+  filterLegacyHostFileToolDefinitions,
+  isOpenResponsesTransportConfig,
+  shouldUseApplyPatchFileTools,
   AuthorizationDecision,
   createToolExecutionTextOutput,
   JsonValue,
@@ -68,6 +71,7 @@ export class DesktopToolExecutor
   private loopToolDefinitions: JsonValue[] = [];
   private loopToolExposureEnabled = false;
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
+  private activeTransportConfig: LlmTransportConfig | undefined;
   private imageGenerationAvailable = false;
   private approvalLevel: ApprovalLevel = 'default';
 
@@ -111,12 +115,8 @@ export class DesktopToolExecutor
     });
   }
 
-  setActiveTransportConfig(
-    config: Pick<LlmTransportConfig, 'model' | 'modelCapabilities'> & {
-      llmVendor?: OpenAiTransportConfig['llmVendor'];
-      imageGeneration?: unknown;
-    },
-  ): void {
+  setActiveTransportConfig(config: LlmTransportConfig): void {
+    this.activeTransportConfig = config;
     this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config as any);
     this.imageGenerationAvailable = config.imageGeneration !== undefined;
   }
@@ -156,10 +156,18 @@ export class DesktopToolExecutor
   }
 
   toolDefinitionsJson(): JsonValue {
-    const builtinDefinitions = this.imageGenerationAvailable
+    let builtinDefinitions = this.imageGenerationAvailable
       ? buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
       : buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
           .filter((definition) => toolDefinitionName(definition) !== 'generate_image');
+
+    if (
+      this.activeTransportConfig !== undefined
+      && isOpenResponsesTransportConfig(this.activeTransportConfig)
+      && shouldUseApplyPatchFileTools(this.activeTransportConfig)
+    ) {
+      builtinDefinitions = filterLegacyHostFileToolDefinitions(builtinDefinitions);
+    }
 
     return mergeToolDefinitions(
       ...builtinDefinitions,
