@@ -270,7 +270,7 @@ export function WorkspaceToolsDock({
                       displayTitle ? "max-w-[9rem]" : "max-w-[3rem]",
                       selected
                         ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-foreground/10",
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     )}
                   >
                     <button
@@ -290,19 +290,20 @@ export function WorkspaceToolsDock({
                     {displayTitle ? (
                       <button
                         type="button"
-                        className={cn(
-                          "absolute inset-y-0 right-0 hidden items-center justify-center rounded-tr-md px-1 outline-none group-hover/tab:flex",
-                          selected
-                            ? "bg-background text-foreground/70"
-                            : "bg-muted/60 text-inherit dark:bg-muted/40",
-                        )}
+                        className="absolute inset-y-0 right-0 hidden items-center justify-end rounded-tr-md pr-1 outline-none group-hover/tab:flex"
+                        style={{
+                          maskImage: "linear-gradient(to right, transparent, black 50%)",
+                          WebkitMaskImage: "linear-gradient(to right, transparent, black 50%)",
+                          width: "2rem",
+                          background: "inherit",
+                        }}
                         aria-label={t('workspace.closeTab', { label })}
                         onClick={(event) => {
                           event.stopPropagation();
                           handleCloseTab(item.id);
                         }}
                       >
-                        <X className="size-3" aria-hidden />
+                        <X className="size-3 opacity-70" aria-hidden />
                       </button>
                     ) : null}
                   </div>
