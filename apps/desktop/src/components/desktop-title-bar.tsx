@@ -48,7 +48,7 @@ function TitleBarMenuCluster() {
   return (
     <>
       <img
-        src="/favicon.ico"
+        src="./favicon.ico"
         alt=""
         width={20}
         height={20}

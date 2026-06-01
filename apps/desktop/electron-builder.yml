@@ -1,5 +1,6 @@
 appId: ai.spiritagent.desktop
 productName: Spirit Agent
+icon: public/favicon.ico
 artifactName: SpiritAgent-Desktop-${version}-${os}-${arch}.${ext}
 directories:
   output: release
@@ -28,7 +29,6 @@ win:
   target:
     - nsis
     - zip
-  signAndEditExecutable: false
   verifyUpdateCodeSignature: false
 nsis:
   oneClick: false

@@ -7,7 +7,7 @@ const EXIT_MS = 520;
 /** 加载结束后延迟再播退场（毫秒），0 表示立即退场 */
 const EXIT_DELAY_BEFORE_MS = 0;
 
-const ICON_SRC = "/spirit-agent-icon.png";
+const ICON_SRC = "./spirit-agent-icon.png";
 
 type Phase = "running" | "leaving" | "gone";
 

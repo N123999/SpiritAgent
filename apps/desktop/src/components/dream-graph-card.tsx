@@ -451,7 +451,7 @@ function DreamGraphCanvas({
   const { i18n } = useTranslation();
   const [selectedDreamId, setSelectedDreamId] = useState<string | null>(null);
   const [pinnedNodeIds, setPinnedNodeIds] = useState<string[]>([]);
-  const iconSrc = theme === "light" ? "/spirit-agent-icon-light.png" : "/spirit-agent-icon.png";
+  const iconSrc = theme === "light" ? "./spirit-agent-icon-light.png" : "./spirit-agent-icon.png";
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const graphNodeIds = useMemo(() => new Set(["context", "logo", ...items.map((item) => item.id)]), [items]);
   const pinnedNodeIdSet = useMemo(() => new Set(pinnedNodeIds), [pinnedNodeIds]);

@@ -266,9 +266,13 @@ function isDesktopSnapshot(value: unknown): value is DesktopSnapshot {
 
 /** Windows 任务栏 / 窗口角标：与 Vite 页 `public/favicon.ico` 同源（main 位于 dist-electron/electron）。 */
 function resolveWindowIconPath(): string | undefined {
-  const fromMain = path.join(__dirname, '..', '..', 'public', 'favicon.ico');
-  if (existsSync(fromMain)) {
-    return fromMain;
+  const fromDist = path.join(__dirname, '..', '..', 'dist', 'favicon.ico');
+  if (existsSync(fromDist)) {
+    return fromDist;
+  }
+  const fromPublic = path.join(__dirname, '..', '..', 'public', 'favicon.ico');
+  if (existsSync(fromPublic)) {
+    return fromPublic;
   }
   const fromCwd = path.join(process.cwd(), 'public', 'favicon.ico');
   if (existsSync(fromCwd)) {
