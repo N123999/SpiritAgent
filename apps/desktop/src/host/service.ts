@@ -2214,7 +2214,7 @@ class DesktopHostService {
         if (!ephemeral) {
           throw new Error(i18n.t('error.ephemeralSessionExpired'));
         }
-        await this.ensureInitialized(ephemeral.workspaceRoot);
+        await this.ensureInitialized(ephemeral.workspaceRoot, { preserveRecentWorkspaces: true });
         const restored = restoreEphemeralSessionState(ephemeral);
         const bundle = this.sessionRegistry.upsertFromRestored(
           ephemeral.workspaceRoot,
@@ -2250,7 +2250,10 @@ class DesktopHostService {
         this.initialized
         && Boolean(this.state?.workspaceRoot)
         && sameWorkspaceRoot(this.state!.workspaceRoot, workspaceRoot);
-      await this.ensureInitialized(workspaceRoot, sameWorkspace ? { fastPath: true } : {});
+      await this.ensureInitialized(workspaceRoot, {
+        ...(sameWorkspace ? { fastPath: true } : {}),
+        preserveRecentWorkspaces: true,
+      });
       const restored = restoreStoredSessionState({
         filePath,
         loaded,
@@ -2514,7 +2517,7 @@ class DesktopHostService {
 
   private async ensureInitialized(
     workspaceRootOverride?: string,
-    options: { fastPath?: boolean } = {},
+    options: { fastPath?: boolean; preserveRecentWorkspaces?: boolean } = {},
   ): Promise<void> {
     const requestedWorkspaceRoot = workspaceRootOverride?.trim()
       ? path.resolve(workspaceRootOverride.trim())
@@ -2536,17 +2539,20 @@ class DesktopHostService {
     const git = await readWorkspaceGitSnapshot(workspaceRoot);
     const config = {
       ...loadedConfig,
-      recentWorkspaces: mergeRecentWorkspaceRoots(
-        loadedConfig.recentWorkspaces,
-        git.primaryRepoRoot ?? workspaceRoot,
-      ),
+      recentWorkspaces:
+        options.preserveRecentWorkspaces === true
+          ? (loadedConfig.recentWorkspaces ?? [])
+          : mergeRecentWorkspaceRoots(
+              loadedConfig.recentWorkspaces,
+              git.primaryRepoRoot ?? workspaceRoot,
+            ),
     } satisfies DesktopConfigFile;
 
-    if (
+    const recentWorkspacesChanged =
       !loadedConfig.recentWorkspaces ||
       config.recentWorkspaces.length !== loadedConfig.recentWorkspaces.length ||
-      config.recentWorkspaces.some((entry, index) => entry !== loadedConfig.recentWorkspaces?.[index])
-    ) {
+      config.recentWorkspaces.some((entry, index) => entry !== loadedConfig.recentWorkspaces?.[index]);
+    if (recentWorkspacesChanged) {
       await saveConfig(config);
     }
 

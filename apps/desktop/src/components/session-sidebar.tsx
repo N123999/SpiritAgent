@@ -99,10 +99,6 @@ function buildWorkspaceGroups(
   const currentWorkspaceRoot = workspaceRoot?.trim() || null;
   const groups = new Map<string, SessionWorkspaceGroup>();
 
-  const currentGroupingRoot = currentWorkspaceRoot
-    ? resolveWorkspaceGroupingRoot(currentWorkspaceRoot)
-    : null;
-
   for (const session of sessions) {
     const rootPath = session.workspaceRoot?.trim() || currentWorkspaceRoot;
     if (!rootPath) {
@@ -130,14 +126,9 @@ function buildWorkspaceGroups(
     });
   }
 
-  return [...groups.values()].sort((left, right) => {
-    const leftIsCurrent = Boolean(currentGroupingRoot && samePath(left.rootPath ?? "", currentGroupingRoot));
-    const rightIsCurrent = Boolean(currentGroupingRoot && samePath(right.rootPath ?? "", currentGroupingRoot));
-    if (leftIsCurrent !== rightIsCurrent) {
-      return leftIsCurrent ? -1 : 1;
-    }
-    return right.latestModifiedAtUnixMs - left.latestModifiedAtUnixMs;
-  });
+  return [...groups.values()].sort(
+    (left, right) => right.latestModifiedAtUnixMs - left.latestModifiedAtUnixMs,
+  );
 }
 
 const settingsTabs: Array<{
