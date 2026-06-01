@@ -124,6 +124,10 @@ declare global {
     ptyResize(id: string, cols: number, rows: number): void;
     ptyKill(id: string): Promise<void>;
     openSystemTerminal(cwd: string): Promise<void>;
+    openExternalUrl(url: string): Promise<void>;
+    listLocalListeningEndpoints(): Promise<
+      Array<{ port: number; address?: string; processName?: string }>
+    >;
     ptySubscribe(callbacks: {
       onData: (payload: { id: string; data: string }) => void;
       onExit: (payload: { id: string; exitCode: number; signal?: number }) => void;
@@ -134,6 +138,19 @@ declare global {
 
   interface Window {
     spiritDesktop?: SpiritDesktopApi;
+  }
+
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & {
+          src?: string;
+          allowpopups?: boolean | string;
+          partition?: string;
+        },
+        HTMLElement
+      >;
+    }
   }
 }
 

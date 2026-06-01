@@ -216,6 +216,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openSystemTerminal(cwd: string) {
     return ipcRenderer.invoke('desktop:open-system-terminal', cwd);
   },
+  openExternalUrl(url: string) {
+    return ipcRenderer.invoke('desktop:open-external-url', { url });
+  },
+  listLocalListeningEndpoints() {
+    return ipcRenderer.invoke('desktop:list-local-listeners');
+  },
   readClipboardText() {
     return clipboard.readText();
   },

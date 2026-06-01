@@ -7,6 +7,7 @@ import { BrowserWindow, Menu, app, clipboard, dialog, ipcMain, nativeTheme, net,
 
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
+import { isAllowedExternalUrl, listLocalListeningEndpoints } from './local-listeners.js';
 
 import type { DesktopSnapshot } from '../src/types.js';
 import {
@@ -437,7 +438,15 @@ async function createMainWindow(): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      webviewTag: true,
     },
+  });
+
+  window.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
   });
 
   if (DEV_SERVER_URL) {
@@ -654,6 +663,16 @@ app.whenReady().then(async () => {
   ipcMain.handle('desktop:open-system-terminal', (_event, cwd: string) => {
     openSystemTerminalInDirectory(cwd);
   });
+
+  ipcMain.handle('desktop:open-external-url', async (_event, payload: { url?: string }) => {
+    const url = typeof payload?.url === 'string' ? payload.url.trim() : '';
+    if (!url || !isAllowedExternalUrl(url)) {
+      throw new Error('Invalid external URL');
+    }
+    await shell.openExternal(url);
+  });
+
+  ipcMain.handle('desktop:list-local-listeners', () => listLocalListeningEndpoints());
 
   await syncInitialDesktopWebHost();
   await createMainWindow();
