@@ -79,7 +79,7 @@ import {
   ComposerLocalFileStrip,
   type ComposerLocalFileAttachmentView,
 } from "@/components/composer-local-file-strip";
-import { BrowserElementStrip } from "@/components/browser-element-card";
+import { ComposerRichInput, segmentsToPlainText, segmentsToAttachments, type ComposerRichInputHandle } from "@/components/composer-rich-input";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import { browserElementContextText } from "@/lib/browser-element-attachment";
 import { ComposerInsertMenu } from "@/components/composer-insert-menu";
@@ -635,7 +635,7 @@ type ComposerSurfaceProps = {
   onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
   onLoopEnabledChange(enabled: boolean): void;
-  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  richInputRef?: React.RefObject<ComposerRichInputHandle | null>;
   onKeyDown?(event: ReactKeyboardEvent<HTMLTextAreaElement>): void;
   onSelectionChange?(selectionStart: number | null): void;
   showInsertButton?: boolean;
@@ -647,7 +647,7 @@ type ComposerSurfaceProps = {
   onPaste?(event: ReactClipboardEvent<HTMLTextAreaElement>): void;
   showLoopSwitch?: boolean;
   browserElementAttachments?: readonly BrowserElementAttachment[];
-  onRemoveBrowserElementAttachment?(id: string): void;
+  onElementAttachmentsChange?(attachments: BrowserElementAttachment[]): void;
 };
 
 function ComposerSurface({
@@ -670,7 +670,7 @@ function ComposerSurface({
   onModelReasoningEffortSelect,
   onPlanModeChange,
   onLoopEnabledChange,
-  textareaRef,
+  richInputRef,
   onKeyDown,
   onSelectionChange,
   showInsertButton = false,
@@ -682,7 +682,7 @@ function ComposerSurface({
   onPaste,
   showLoopSwitch = true,
   browserElementAttachments,
-  onRemoveBrowserElementAttachment,
+  onElementAttachmentsChange,
 }: ComposerSurfaceProps) {
   const { t } = useTranslation();
   const [modelFilter, setModelFilter] = useState("");
@@ -717,40 +717,25 @@ function ComposerSurface({
       data-spirit-surface="composer-surface"
       className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-0 dark:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
     >
-      <BrowserElementStrip
-        attachments={browserElementAttachments ?? []}
-        onRemove={onRemoveBrowserElementAttachment}
-      />
       <ComposerLocalFileStrip
         attachments={localFileAttachments}
         onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
       />
-      <Textarea
-        ref={textareaRef}
+      <ComposerRichInput
+        ref={richInputRef}
         value={value}
-        onChange={(event) => {
-          onChange(event.target.value);
-          onSelectionChange?.(event.target.selectionStart);
-        }}
-        onSelect={(event) => {
-          onSelectionChange?.(event.currentTarget.selectionStart);
-        }}
-        onPaste={(event) => {
-          onPaste?.(event);
-        }}
-        disabled={readOnly}
+        elementAttachments={browserElementAttachments}
         placeholder={placeholder}
-        className="spirit-scroll block max-h-[12rem] min-h-[3rem] w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-2.5 pb-1.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none dark:bg-transparent dark:disabled:bg-transparent md:min-h-[3.5rem]"
-        onKeyDown={(event) => {
-          onKeyDown?.(event);
-          if (event.defaultPrevented) {
-            return;
-          }
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            if (canSend) {
-              onSubmit();
-            }
+        readOnly={readOnly}
+        onTextChange={onChange}
+        onElementAttachmentsChange={(atts) => onElementAttachmentsChange?.(atts)}
+        onPaste={(e) => onPaste?.(e as unknown as ReactClipboardEvent<HTMLTextAreaElement>)}
+        onKeyDown={(e) => {
+          onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLTextAreaElement>);
+          if (e.defaultPrevented) return;
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            if (canSend) onSubmit();
           }
         }}
       />
@@ -1934,7 +1919,7 @@ export default function App() {
     snapshot?.git.hasChanges !== true ||
     commitBusy;
   const mergeActionDisabled = !canOpenMergeDialog || commitBusy;
-  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRichInputRef = useRef<ComposerRichInputHandle | null>(null);
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
   const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
   const planAutoOpenInitializedRef = useRef(false);
@@ -2146,7 +2131,7 @@ export default function App() {
     runtime.setComposer(replacement);
     setSlashSelectedIndex(-1);
     queueMicrotask(() => {
-      composerTextareaRef.current?.focus();
+      composerRichInputRef.current?.focus();
     });
   };
 
@@ -2163,16 +2148,13 @@ export default function App() {
     setFileReferenceSelectedIndex(-1);
     setDismissedFileReferenceKey(null);
     queueMicrotask(() => {
-      const textarea = composerTextareaRef.current;
-      textarea?.focus();
-      textarea?.setSelectionRange(nextCursorCodeUnits, nextCursorCodeUnits);
+      composerRichInputRef.current?.focus();
     });
   };
 
   const insertComposerText = (text: string) => {
-    const textarea = composerTextareaRef.current;
-    const selectionStart = textarea?.selectionStart ?? composerCursorCodeUnits;
-    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    const selectionStart = composerCursorCodeUnits;
+    const selectionEnd = selectionStart;
     const nextValue = `${runtime.composer.slice(0, selectionStart)}${text}${runtime.composer.slice(selectionEnd)}`;
     const nextCursorCodeUnits = selectionStart + text.length;
     runtime.setComposer(nextValue);
@@ -2182,9 +2164,7 @@ export default function App() {
     setFileReferenceSuggestions(null);
     setDismissedFileReferenceKey(null);
     queueMicrotask(() => {
-      const nextTextarea = composerTextareaRef.current;
-      nextTextarea?.focus();
-      nextTextarea?.setSelectionRange(nextCursorCodeUnits, nextCursorCodeUnits);
+      composerRichInputRef.current?.focus();
     });
   };
 
@@ -2217,7 +2197,7 @@ export default function App() {
       appendComposerLocalFileAttachment(runtime.setComposerLocalFileAttachments, filePath, {
         onAfterAttach: () => {
           queueMicrotask(() => {
-            composerTextareaRef.current?.focus();
+            composerRichInputRef.current?.focus();
           });
         },
       });
@@ -2227,7 +2207,7 @@ export default function App() {
 
   const handleBrowserElementPicked = useCallback(
     async (attachment: BrowserElementAttachment) => {
-      setComposerBrowserElementAttachments((prev) => [...prev, attachment]);
+      composerRichInputRef.current?.insertAttachment(attachment);
       const base64 = attachment.screenshotDataUrl.replace(/^data:image\/png;base64,/, '');
       const bridge = window.spiritDesktop;
       if (bridge?.ingestBrowserElementScreenshot) {
@@ -2236,10 +2216,8 @@ export default function App() {
           attachLocalFilePath(filePath);
         }
       }
-      const contextText = browserElementContextText(attachment);
-      runtime.setComposer((prev) => (prev ? `${prev}\n\n${contextText}` : contextText));
     },
-    [attachLocalFilePath, runtime],
+    [attachLocalFilePath],
   );
 
   const attachRewindLocalFilePath = useCallback((filePath: string) => {
@@ -2330,8 +2308,16 @@ export default function App() {
   };
 
   const submitComposerMessage = () => {
+    const segs = composerRichInputRef.current?.getSegments() ?? [];
+    const plainText = segmentsToPlainText(segs);
+    const elementParts = segmentsToAttachments(segs)
+      .map((a) => browserElementContextText(a))
+      .join('\n\n');
+    const fullText = elementParts
+      ? (plainText ? `${elementParts}\n\n${plainText}` : elementParts)
+      : plainText;
     const payload = {
-      text: runtime.composer,
+      text: fullText || runtime.composer,
       ...(runtime.composerLocalFileAttachments.length > 0
         ? {
             localFilePaths: runtime.composerLocalFileAttachments.map((item) => item.path),
@@ -3093,9 +3079,7 @@ export default function App() {
                     onChange={runtime.setComposer}
                     onSubmit={submitComposerMessage}
                     browserElementAttachments={composerBrowserElementAttachments}
-                    onRemoveBrowserElementAttachment={(id) =>
-                      setComposerBrowserElementAttachments((prev) => prev.filter((a) => a.id !== id))
-                    }
+                    onElementAttachmentsChange={setComposerBrowserElementAttachments}
                     onAbort={() => void runtime.abortConversation()}
                     placeholder={activeSessionReadOnly ? t('app.readOnlySession') : t('app.typeMessage')}
                     localFileAttachments={runtime.composerLocalFileAttachments}
@@ -3112,7 +3096,7 @@ export default function App() {
                     onLoopEnabledChange={(enabled) => {
                       void runtime.setLoopEnabled(enabled);
                     }}
-                    textareaRef={composerTextareaRef}
+                    richInputRef={composerRichInputRef}
                     onKeyDown={handleComposerSuggestionKeyDown}
                     onSelectionChange={(selectionStart) => {
                       if (selectionStart !== null) {
