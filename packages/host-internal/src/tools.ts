@@ -17,11 +17,13 @@ import { promisify } from 'node:util';
 import { glob as globPaths } from 'glob';
 
 import {
+  APPLY_PATCH_HOST_TOOL_NAME,
   throwUnknownToolError,
   toolNamesFromDefinitions,
   type JsonValue,
 } from '@spirit-agent/agent-core';
 
+import { applyDiff } from './apply-diff.js';
 import {
   readHostFileSnapshot,
   type HostFileChangeKind,
@@ -249,6 +251,14 @@ export interface RunSubagentRequest {
   expected_output?: string;
 }
 
+export type ApplyPatchOperationType = 'create_file' | 'update_file' | 'delete_file';
+
+export interface ApplyPatchOperation {
+  type: ApplyPatchOperationType;
+  path: string;
+  diff?: string;
+}
+
 export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { name: 'finish_task'; summary?: string }
   | { name: 'run_shell_command'; command: string; reason: string }
@@ -292,6 +302,7 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { name: 'create_file'; path: string; content: string }
   | { name: 'edit_file'; path: string; old_text: string; new_text: string }
   | { name: 'delete_file'; path: string }
+  | { name: typeof APPLY_PATCH_HOST_TOOL_NAME; operation: ApplyPatchOperation }
   | { name: 'dream_list'; include_deleted: boolean; include_expired: boolean }
   | { name: 'dream_read'; id: string }
   | { name: 'dream_record'; title: string; summary: string; details?: string; tags: string[] }
@@ -366,6 +377,10 @@ export type HostFileToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> = E
   HostToolRequest<QuestionSpec>,
   { name: 'create_file' | 'edit_file' | 'delete_file' }
 >;
+
+export type HostWritableFileToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
+  | HostFileToolRequest<QuestionSpec>
+  | Extract<HostToolRequest<QuestionSpec>, { name: typeof APPLY_PATCH_HOST_TOOL_NAME }>;
 
 export interface HostMcpAdapter {
   startBackgroundRefresh(): void;
@@ -727,6 +742,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           name,
           path: requiredString(parsed, 'path'),
         };
+      case APPLY_PATCH_HOST_TOOL_NAME:
+        return {
+          name: APPLY_PATCH_HOST_TOOL_NAME,
+          operation: parseApplyPatchOperation(parsed),
+        };
       case 'dream_list':
         return {
           name,
@@ -896,6 +916,17 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           kind: 'need-approval',
           prompt: `高风险工具调用: 删除文件\n路径: ${request.path}`,
         };
+      case APPLY_PATCH_HOST_TOOL_NAME: {
+        const diffLines =
+          request.operation.diff === undefined ? 0 : request.operation.diff.split(/\r?\n/).length;
+        return {
+          kind: 'need-approval',
+          prompt:
+            `高风险工具调用: apply_patch (${request.operation.type})\n` +
+            `路径: ${request.operation.path}` +
+            (request.operation.type === 'update_file' ? `\nDiff 行数: ${diffLines}` : ''),
+        };
+      }
       case 'dream_list':
       case 'dream_read':
       case 'dream_record':
@@ -982,6 +1013,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         return this.executeEditFile(request);
       case 'delete_file':
         return this.executeDeleteFile(request);
+      case APPLY_PATCH_HOST_TOOL_NAME:
+        return this.executeApplyPatch(request);
       case 'dream_list':
         return JSON.stringify({
           dreams: await this.requireDreamStore().list({
@@ -1858,6 +1891,58 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     return `[write]\naction: edit_file\npath: ${target}\nreplaced_once: true\nold_chars: ${[...oldText].length}\nnew_chars: ${[...newText].length}`;
   }
 
+  private async executeApplyPatch(
+    request: Extract<HostToolRequest<QuestionSpec>, { name: typeof APPLY_PATCH_HOST_TOOL_NAME }>,
+  ): Promise<string> {
+    const { operation } = request;
+    switch (operation.type) {
+      case 'create_file': {
+        if (operation.diff === undefined || operation.diff.trim().length === 0) {
+          throw new Error('apply_patch create_file 需要非空 diff');
+        }
+        const content = applyDiff('', operation.diff, 'create');
+        return this.executeCreateFile({
+          name: 'create_file',
+          path: operation.path,
+          content,
+        });
+      }
+      case 'update_file': {
+        if (operation.diff === undefined || operation.diff.trim().length === 0) {
+          throw new Error('apply_patch update_file 需要非空 diff');
+        }
+        const inputPath = operation.path;
+        const target = this.resolveWorkspaceWriteTarget(inputPath);
+        if (!existsSync(target)) {
+          throw new Error(`路径不存在或无法访问: ${target}`);
+        }
+        const st = await lstat(target);
+        if (!st.isFile()) {
+          throw new Error(`目标不是文件: ${target}`);
+        }
+        const source = await readFile(target, 'utf8');
+        const before = await readHostFileSnapshot(target);
+        const updated = applyDiff(source, operation.diff);
+        await writeFile(target, updated, 'utf8');
+        const after = await readHostFileSnapshot(target);
+        await this.recordWritableFileChange(request, target, before, after, 'edit_file', {
+          name: 'edit_file',
+          path: operation.path,
+          oldChars: [...source].length,
+          newChars: [...updated].length,
+        });
+        return `[write]\naction: apply_patch\noperation: update_file\npath: ${target}\nold_chars: ${[...source].length}\nnew_chars: ${[...updated].length}`;
+      }
+      case 'delete_file':
+        return this.executeDeleteFile({
+          name: 'delete_file',
+          path: operation.path,
+        });
+      default:
+        throw new Error(`不支持的 apply_patch 操作: ${(operation as ApplyPatchOperation).type}`);
+    }
+  }
+
   private async executeDeleteFile(
     request: Extract<HostToolRequest<QuestionSpec>, { name: 'delete_file' }>,
   ): Promise<string> {
@@ -1877,30 +1962,31 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     return `[write]\naction: delete_file\npath: ${target}`;
   }
 
-  private async recordFileChange(
-    request: HostFileToolRequest<QuestionSpec>,
+  private async recordWritableFileChange(
+    request: HostWritableFileToolRequest<QuestionSpec>,
     resolvedPath: string,
     before: HostRecordedFileChange['before'],
     after: HostRecordedFileChange['after'],
+    kind: HostFileChangeKind,
+    summary: HostFileChangeRequestSummary,
   ): Promise<void> {
     if (!this.fileChangeObserver) {
       return;
     }
 
     const metadata = this.requestMetadataFor(request);
-    const requestSummary = summarizeFileToolRequest(request);
     const change: HostRecordedFileChange = {
-      kind: request.name,
-      path: request.path,
+      kind,
+      path: summary.path,
       resolvedPath,
       toolName: metadata?.toolName ?? request.name,
       ...(metadata?.toolCallId ? { toolCallId: metadata.toolCallId } : {}),
       ...(metadata?.subagentSessionId ? { subagentSessionId: metadata.subagentSessionId } : {}),
       ...(metadata?.subagentTitle ? { subagentTitle: metadata.subagentTitle } : {}),
-      request: requestSummary,
+      request: summary,
       before,
       after,
-      createdAtUnixMs: Math.trunc(Date.now()),
+      createdAtUnixMs: Date.now(),
     };
 
     try {
@@ -1909,6 +1995,22 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`文件变更已写入，但记录回溯快照失败: ${message}`);
     }
+  }
+
+  private async recordFileChange(
+    request: HostFileToolRequest<QuestionSpec>,
+    resolvedPath: string,
+    before: HostRecordedFileChange['before'],
+    after: HostRecordedFileChange['after'],
+  ): Promise<void> {
+    await this.recordWritableFileChange(
+      request,
+      resolvedPath,
+      before,
+      after,
+      request.name,
+      summarizeFileToolRequest(request),
+    );
   }
 
   private requestMetadataFor(
@@ -1990,6 +2092,27 @@ function parseTodoCreateItems(parsed: HostJsonObject): HostTodoCreateItem[] {
     }
     return { title: requiredString(entry, 'title') };
   });
+}
+
+function parseApplyPatchOperation(parsed: HostJsonObject): ApplyPatchOperation {
+  const operationRaw = parsed.operation;
+  if (typeof operationRaw !== 'object' || operationRaw === null || Array.isArray(operationRaw)) {
+    throw new Error('apply_patch 需要 operation 对象');
+  }
+
+  const operation = operationRaw as HostJsonObject;
+  const type = requiredString(operation, 'type');
+  if (type !== 'create_file' && type !== 'update_file' && type !== 'delete_file') {
+    throw new Error(`apply_patch operation.type 无效: ${type}`);
+  }
+
+  const path = requiredString(operation, 'path');
+  const diff = optionalStringStrict(operation, 'diff');
+  return {
+    type,
+    path,
+    ...(diff !== undefined ? { diff } : {}),
+  };
 }
 
 function requiredString(obj: HostJsonObject, key: string): string {
