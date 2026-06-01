@@ -135,6 +135,7 @@ export function buildToolAgentMessages(input: {
   dreamsContextText?: string;
   todosContextText?: string;
   basicInfo?: ToolAgentBasicInfo;
+  applyPatchFileToolsPromptSection?: string;
 }): JsonValue[] {
   const rulesSystemMessage = buildRulesSystemMessage(input.enabledRules ?? []);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(input.enabledSkillCatalog ?? []);
@@ -158,6 +159,7 @@ export function buildToolAgentMessages(input: {
         dreamsSystemMessage,
         todosSystemMessage,
         basicInfoSystemMessage,
+        input.applyPatchFileToolsPromptSection,
       ),
     },
     ...input.historyMessages.map((message) => cloneJsonValue(message)),

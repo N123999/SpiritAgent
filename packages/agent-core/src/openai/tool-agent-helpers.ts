@@ -74,6 +74,7 @@ export function startOpenAiToolAgentState(
   dreamsContextText?: string,
   todosContextText?: string,
   basicInfo?: OpenAiToolAgentBasicInfo,
+  applyPatchFileToolsPromptSection?: string,
 ): OpenAiToolAgentState {
   return startToolAgentState(
     buildOpenAiToolAgentMessages(
@@ -88,6 +89,7 @@ export function startOpenAiToolAgentState(
       dreamsContextText,
       todosContextText,
       basicInfo,
+      applyPatchFileToolsPromptSection,
     ),
     userInput,
   );
@@ -105,6 +107,7 @@ export function continueOpenAiToolAgentState(
   dreamsContextText?: string,
   todosContextText?: string,
   basicInfo?: OpenAiToolAgentBasicInfo,
+  applyPatchFileToolsPromptSection?: string,
 ): OpenAiToolAgentState {
   return continueToolAgentState(
     buildOpenAiToolAgentMessages(
@@ -119,6 +122,7 @@ export function continueOpenAiToolAgentState(
       dreamsContextText,
       todosContextText,
       basicInfo,
+      applyPatchFileToolsPromptSection,
     ),
   );
 }
@@ -135,6 +139,7 @@ function buildOpenAiToolAgentMessages(
   dreamsContextText: string | undefined,
   todosContextText: string | undefined,
   basicInfo: OpenAiToolAgentBasicInfo | undefined,
+  applyPatchFileToolsPromptSection: string | undefined,
 ): JsonValue[] {
   return buildToolAgentMessages({
     historyMessages: llmHistoryToOpenAiMessages(history, assetRoot),
@@ -147,6 +152,9 @@ function buildOpenAiToolAgentMessages(
     ...(dreamsContextText === undefined ? {} : { dreamsContextText }),
     ...(todosContextText === undefined ? {} : { todosContextText }),
     ...(basicInfo === undefined ? {} : { basicInfo }),
+    ...(applyPatchFileToolsPromptSection === undefined
+      ? {}
+      : { applyPatchFileToolsPromptSection }),
   });
 }
 

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   isOpenAiGptModelAtLeast51,
+  buildApplyPatchFileToolsPromptSection,
   normalizeGatewayOpenAiModelId,
   shouldUseApplyPatchFileTools,
 } from './apply-patch-eligibility.js';
@@ -103,4 +104,11 @@ test('shouldUseApplyPatchFileTools rejects other vendors', () => {
     } as any),
     false,
   );
+});
+
+test('buildApplyPatchFileToolsPromptSection mentions apply_patch and V4A', () => {
+  const section = buildApplyPatchFileToolsPromptSection();
+  assert.match(section, /apply_patch/);
+  assert.match(section, /V4A/);
+  assert.match(section, /create_file/);
 });

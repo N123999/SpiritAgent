@@ -34,6 +34,10 @@ import {
 } from './llm-tool-agent.js';
 import { buildContributedHostToolDefinitions, buildTodoHostToolDefinitions } from './host-tools.js';
 import { buildTodosSystemMessage } from './tool-agent.js';
+import {
+  buildApplyPatchFileToolsPromptSection,
+  shouldUseApplyPatchFileTools,
+} from './open-responses/apply-patch-eligibility.js';
 import type { LlmTransportConfig } from './provider-config.js';
 import { createLlmTransport } from './transport-factory.js';
 import type {
@@ -138,6 +142,7 @@ interface CliHostInternalModule {
   planMetadataSnapshot: (
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
+    options?: { useApplyPatchFileTools?: boolean },
   ) => LlmPlanMetadata;
   listWorkspaceFileReferenceSuggestions?: (
     workspaceRoot: string,
@@ -759,6 +764,33 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   return cliHostInternal;
 }
 
+function transportUsesApplyPatchFileTools(
+  config: LlmTransportConfig | undefined,
+): boolean {
+  return (
+    config !== undefined
+    && config.transportKind === 'open-responses'
+    && shouldUseApplyPatchFileTools(config)
+  );
+}
+
+function applyPatchPlanMetadataOptions():
+  | { useApplyPatchFileTools: boolean }
+  | undefined {
+  if (!transportUsesApplyPatchFileTools(transportConfig)) {
+    return undefined;
+  }
+  return { useApplyPatchFileTools: true };
+}
+
+function applyPatchFileToolsPromptSectionForConfig(
+  config: LlmTransportConfig,
+): string | undefined {
+  return transportUsesApplyPatchFileTools(config)
+    ? buildApplyPatchFileToolsPromptSection()
+    : undefined;
+}
+
 async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolean> {
   const hostInternal = await ensureCliHostInternal(currentWorkspaceRoot());
   if (!hostInternal) {
@@ -770,7 +802,7 @@ async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolea
       workspaceRoot: hostInternal.workspaceRoot,
       spiritDataDir: hostInternal.spiritDataDir,
     },
-    { planMode },
+    { planMode, ...applyPatchPlanMetadataOptions() },
   );
   enabledRules = [...metadata.rules.enabledRules];
   enabledSkillCatalog = [...metadata.skills.enabledSkillCatalog];
@@ -1346,6 +1378,7 @@ async function createRuntime(
     configuredServers: toolExecutor.mcpStatusSnapshot().configuredServers,
     cachedTools: toolExecutor.mcpStatusSnapshot().cachedTools,
   });
+  const applyPatchPromptSection = applyPatchFileToolsPromptSectionForConfig(config);
   const createToolAgentState = (messages: LlmMessage[], userInput: string) =>
     startLlmToolAgentState(
       messages,
@@ -1360,6 +1393,7 @@ async function createRuntime(
       undefined,
       todosContextText,
       basicInfo,
+      applyPatchPromptSection,
     );
   const llmTransport = createLlmTransport(config);
 
@@ -1381,6 +1415,7 @@ async function createRuntime(
         undefined,
         todosContextText,
         basicInfo,
+        applyPatchPromptSection,
       ),
     appendToolResultMessage: appendLlmToolResultMessage,
     assistantToolCallMessageFromState: assistantToolCallMessageFromLlmState,
@@ -1606,6 +1641,7 @@ peer.on('hostInternal.loadCliMetadata', async (rawParams) => {
         spiritDataDir: hostInternal.spiritDataDir,
       },
       params.planMode === true,
+      applyPatchPlanMetadataOptions(),
     ),
   };
 });
@@ -1619,6 +1655,7 @@ peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
       spiritDataDir: hostInternal.spiritDataDir,
     },
     params.planMode === true,
+    applyPatchPlanMetadataOptions(),
   );
 });
 
