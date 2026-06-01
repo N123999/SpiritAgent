@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 
+import { useTheme } from "@/hooks/useTheme";
+import { spiritAgentBrandIconSrc } from "@/lib/brand-icon";
 import { cn } from "@/lib/utils";
 
 const MENU_ENTRIES = [
@@ -43,18 +45,35 @@ function titleBarSurfaceClass(
   );
 }
 
+/** 顶栏菜单区图标显示边长（PNG 画布较大，需小于旧 favicon 的 20px 观感） */
+const TITLE_BAR_ICON_PX = 14;
+
+function TitleBarAppIcon() {
+  const { resolvedDark } = useTheme();
+  const iconSrc = spiritAgentBrandIconSrc(resolvedDark);
+  return (
+    <span
+      className="electron-no-drag ml-1 inline-flex shrink-0 items-center justify-center"
+      style={{ width: TITLE_BAR_ICON_PX, height: TITLE_BAR_ICON_PX }}
+    >
+      <img
+        key={iconSrc}
+        src={iconSrc}
+        alt=""
+        width={TITLE_BAR_ICON_PX}
+        height={TITLE_BAR_ICON_PX}
+        draggable={false}
+        className="max-h-full max-w-full object-contain select-none"
+      />
+    </span>
+  );
+}
+
 function TitleBarMenuCluster() {
   const { t } = useTranslation();
   return (
     <>
-      <img
-        src="./favicon.ico"
-        alt=""
-        width={20}
-        height={20}
-        draggable={false}
-        className="electron-no-drag size-5 shrink-0 rounded-sm opacity-90"
-      />
+      <TitleBarAppIcon />
       <nav
         className="electron-no-drag flex items-center gap-0.5 text-[13px] leading-none"
         aria-label={t('titleBar.appMenu')}

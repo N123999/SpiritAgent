@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import './lib/i18n';
 import App from './App';
+import { ThemeProvider } from './hooks/useTheme';
 import { applyFontToDocument, getStoredFont } from './lib/font';
 import { applyThemeToDocument, getStoredTheme } from './lib/theme';
 import './styles.css';
@@ -27,6 +28,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 );
