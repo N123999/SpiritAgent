@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Home, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { normalizeBrowserUrl, toLocalHostUrl } from "@/lib/browser-url";
 import {
-  BROWSER_NEW_TAB_SENTINEL,
   isBrowserNewTabUrl,
 } from "@/lib/workspace-tool-tabs";
 import { cn } from "@/lib/utils";
@@ -27,6 +26,11 @@ type LocalListeningEndpoint = {
 type WebviewElement = HTMLElement & {
   src?: string;
   getURL?(): string;
+  canGoBack?(): boolean;
+  canGoForward?(): boolean;
+  goBack?(): void;
+  goForward?(): void;
+  reload?(): void;
 };
 
 function isElectronDesktop(): boolean {
@@ -138,11 +142,28 @@ export function WorkspaceBrowserTab({
   const webviewRef = useRef<WebviewElement | null>(null);
   const showNewTab = isBrowserNewTabUrl(browserUrl);
   const [addressDraft, setAddressDraft] = useState("");
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
   const canEmbed = canUseEmbeddedBrowser();
+
+  const syncNavState = useCallback(() => {
+    const el = webviewRef.current;
+    if (!el) {
+      setCanGoBack(false);
+      setCanGoForward(false);
+      return;
+    }
+    const back = el.canGoBack?.() ?? false;
+    const forward = el.canGoForward?.() ?? false;
+    setCanGoBack((prev) => (prev === back ? prev : back));
+    setCanGoForward((prev) => (prev === forward ? prev : forward));
+  }, []);
 
   useEffect(() => {
     if (showNewTab) {
       setAddressDraft("");
+      setCanGoBack(false);
+      setCanGoForward(false);
       return;
     }
     setAddressDraft(browserUrl ?? "");
@@ -165,11 +186,16 @@ export function WorkspaceBrowserTab({
       return;
     }
 
+    const scheduleSyncNavState = () => {
+      queueMicrotask(() => syncNavState());
+    };
+
     const onDidNavigate = (event: Event) => {
       const url = (event as Event & { url?: string }).url;
       if (url && url !== "about:blank") {
         setAddressDraft(url);
       }
+      scheduleSyncNavState();
     };
 
     const onDidStopLoading = () => {
@@ -177,6 +203,7 @@ export function WorkspaceBrowserTab({
       if (url && url !== "about:blank") {
         setAddressDraft(url);
       }
+      scheduleSyncNavState();
     };
 
     const onNewWindow = (event: Event) => {
@@ -192,14 +219,33 @@ export function WorkspaceBrowserTab({
     el.addEventListener("did-navigate-in-page", onDidNavigate);
     el.addEventListener("did-stop-loading", onDidStopLoading);
     el.addEventListener("new-window", onNewWindow);
+    el.addEventListener("dom-ready", scheduleSyncNavState);
 
     return () => {
       el.removeEventListener("did-navigate", onDidNavigate);
       el.removeEventListener("did-navigate-in-page", onDidNavigate);
       el.removeEventListener("did-stop-loading", onDidStopLoading);
       el.removeEventListener("new-window", onNewWindow);
+      el.removeEventListener("dom-ready", scheduleSyncNavState);
     };
-  }, [canEmbed, showNewTab]);
+  }, [canEmbed, showNewTab, syncNavState]);
+
+  const handleGoBack = useCallback(() => {
+    webviewRef.current?.goBack?.();
+  }, []);
+
+  const handleGoForward = useCallback(() => {
+    webviewRef.current?.goForward?.();
+  }, []);
+
+  const handleReload = useCallback(() => {
+    if (showNewTab) {
+      return;
+    }
+    webviewRef.current?.reload?.();
+  }, [showNewTab]);
+
+  const navDisabled = showNewTab;
 
   if (!canEmbed) {
     return (
@@ -211,21 +257,47 @@ export function WorkspaceBrowserTab({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="electron-no-drag flex shrink-0 items-center gap-1 border-b border-border/40 px-2 py-1.5">
+      <div className="electron-no-drag flex shrink-0 items-center gap-0.5 border-b border-border/40 px-1.5 py-1.5">
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
           className="size-7 shrink-0"
-          aria-label={t("workspace.browserGoHome")}
-          onClick={() => onBrowserUrlChange(BROWSER_NEW_TAB_SENTINEL)}
+          aria-label={t("workspace.browserBack")}
+          disabled={navDisabled || !canGoBack}
+          onClick={handleGoBack}
         >
-          <Home className="size-3.5" aria-hidden />
+          <ArrowLeft className="size-3.5" aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 shrink-0"
+          aria-label={t("workspace.browserForward")}
+          disabled={navDisabled || !canGoForward}
+          onClick={handleGoForward}
+        >
+          <ArrowRight className="size-3.5" aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 shrink-0"
+          aria-label={t("workspace.browserReload")}
+          disabled={navDisabled}
+          onClick={handleReload}
+        >
+          <RefreshCw className="size-3.5" aria-hidden />
         </Button>
         <Input
           value={addressDraft}
           aria-label={t("workspace.browserAddressBar")}
-          className="h-7 min-w-0 flex-1 text-xs"
+          className={cn(
+            "h-7 min-w-0 flex-1 border-0 bg-transparent px-2 text-xs shadow-none",
+            "focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",
+          )}
           onChange={(event) => setAddressDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
