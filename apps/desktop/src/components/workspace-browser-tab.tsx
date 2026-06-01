@@ -290,6 +290,11 @@ export function WorkspaceBrowserTab({
   }, []);
 
   useEffect(() => {
+    if (isPickerActive) exitPicker();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browserUrl]);
+
+  useEffect(() => {
     const el = webviewRef.current;
     if (!isPickerActive || showNewTab || !canEmbed || !el) return;
 
@@ -324,6 +329,14 @@ export function WorkspaceBrowserTab({
     `;
 
     void el.executeJavaScript?.(INJECT_MOUSEMOVE);
+
+    let cssKey: string | undefined;
+    void el.insertCSS?.('* { cursor: crosshair !important; }').then((key) => { cssKey = key; });
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitPicker();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
 
     let rafId: number;
     let cancelled = false;
@@ -383,7 +396,9 @@ export function WorkspaceBrowserTab({
     return () => {
       cancelled = true;
       clearTimeout(rafId);
+      window.removeEventListener('keydown', handleKeyDown, true);
       void el.executeJavaScript?.('if(window.__spiritPickerCleanup){window.__spiritPickerCleanup();window.__spiritPickerCleanup=null;}window.__spiritPickerDone=false;');
+      if (cssKey) void el.removeInsertedCSS?.(cssKey);
       setOverlayRect(null);
     };
   }, [isPickerActive, showNewTab, canEmbed, browserUrl, exitPicker]);
