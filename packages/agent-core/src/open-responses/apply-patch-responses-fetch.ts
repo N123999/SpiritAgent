@@ -21,13 +21,16 @@ export function createApplyPatchAwareFetch(
   }
 
   return async (input, init) => {
-    const patchedInit = patchRequestInitBody(init);
+    const patchedInit = patchRequestInitBody(init, config);
     const response = await baseFetch(input, patchedInit);
     return patchResponsesJsonResponse(response);
   };
 }
 
-function patchRequestInitBody(init: RequestInit | undefined): RequestInit | undefined {
+function patchRequestInitBody(
+  init: RequestInit | undefined,
+  config: OpenResponsesTransportConfig,
+): RequestInit | undefined {
   if (!init?.body || typeof init.body !== 'string') {
     return init;
   }
@@ -38,7 +41,7 @@ function patchRequestInitBody(init: RequestInit | undefined): RequestInit | unde
       return init;
     }
 
-    patchResponsesRequestBodyForApplyPatch(body);
+    patchResponsesRequestBodyForApplyPatch(body, config);
     return {
       ...init,
       body: JSON.stringify(body),

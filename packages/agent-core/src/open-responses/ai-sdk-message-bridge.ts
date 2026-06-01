@@ -2,6 +2,8 @@ import { jsonSchema, tool } from 'ai';
 
 import type { JsonObject, JsonValue, ToolCallRequest } from '../ports.js';
 import { cloneJsonValue, isJsonObject } from '../tool-agent.js';
+import { prepareApplyPatchRequestBodyStash } from './apply-patch-bridge.js';
+import { APPLY_PATCH_HOST_TOOL_NAME } from './apply-patch-eligibility.js';
 
 type AiSdkToolCall = {
   toolCallId: string;
@@ -50,6 +52,7 @@ export function buildResponsesAiSdkTools(
 export function openAiMessagesToResponsesAiSdkMessages(
   messages: JsonValue[],
 ): Array<Record<string, unknown>> {
+  prepareApplyPatchRequestBodyStash(messages);
   const toolCallNames = buildToolCallNameIndex(messages);
 
   return messages.flatMap((message) => {
@@ -195,6 +198,9 @@ function openAiToolMessageToAiSdkMessage(
   }
 
   const toolName = toolCallNames.get(toolCallId) ?? 'unknown_tool';
+  if (toolName === APPLY_PATCH_HOST_TOOL_NAME) {
+    return undefined;
+  }
   const result = tryParseJsonValue(message.content);
   const output =
     result === undefined
@@ -258,11 +264,18 @@ function extractAssistantToolCallParts(message: JsonObject): Array<Record<string
       return [];
     }
 
+    const toolName = toolCall.function.name;
+    if (toolName === APPLY_PATCH_HOST_TOOL_NAME) {
+      return [];
+    }
+
+    const input = tryParseJsonValue(toolCall.function.arguments) ?? toolCall.function.arguments ?? {};
+
     return [{
       type: 'tool-call',
       toolCallId: toolCall.id,
-      toolName: toolCall.function.name,
-      input: tryParseJsonValue(toolCall.function.arguments) ?? toolCall.function.arguments ?? {},
+      toolName,
+      input,
     }];
   });
 }

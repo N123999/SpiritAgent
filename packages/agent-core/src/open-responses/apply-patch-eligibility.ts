@@ -101,6 +101,13 @@ function isEligibleResponsesProvider(
   return config.llmVendor === 'vercel-ai-gateway';
 }
 
+/** OpenAI 官方 Responses 使用 apply_patch_call/output；Gateway 等兼容端点用 function_call 对。 */
+export function shouldUseNativeApplyPatchRequestItems(
+  config: Pick<OpenResponsesTransportConfig, 'llmVendor' | 'responsesProvider'>,
+): boolean {
+  return resolveOpenResponsesSdkProvider(config) === 'openai';
+}
+
 export function shouldUseApplyPatchFileTools(
   config: Pick<
     OpenResponsesTransportConfig,

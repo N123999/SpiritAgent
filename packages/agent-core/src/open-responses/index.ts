@@ -22,6 +22,7 @@ export {
   type ApplyPatchOperationType,
   filterBuiltinFileToolsForApplyPatch,
   buildApplyPatchFileToolsPromptSection,
+  shouldUseNativeApplyPatchRequestItems,
   filterLegacyHostFileToolDefinitions,
   isLegacyHostFileToolName,
   isOpenAiGptModelAtLeast51,

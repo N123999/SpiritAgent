@@ -1,6 +1,7 @@
 import { generateObject, generateText, jsonSchema, streamText } from 'ai';
 
 import type {
+  JsonObject,
   JsonValue,
   LlmMessage,
   LlmTransport,
@@ -30,6 +31,7 @@ import {
   renderResponsesTransportError,
 } from './ai-sdk-message-bridge.js';
 import {
+  appendApplyPatchToolCallsToAssistantMessage,
   buildResponsesTraceTools,
   mergeToolCallsWithApplyPatch,
   registerPendingApplyPatchCallIds,
@@ -146,6 +148,7 @@ export class AiSdkOpenResponsesTransport
         maxRetries: 0,
       });
 
+      const applyPatchCalls = takeLastExtractedApplyPatchCalls();
       const assistantMessage = attachResponseIdToAssistantMessage(
         config,
         buildAssistantMessageFromResponsesGenerateText(
@@ -155,9 +158,11 @@ export class AiSdkOpenResponsesTransport
         ),
         extractResponseIdFromGenerateTextResult(result),
       );
+      if (applyPatchCalls.length > 0 && isJsonObject(assistantMessage as JsonValue)) {
+        appendApplyPatchToolCallsToAssistantMessage(assistantMessage as JsonObject, applyPatchCalls);
+      }
       nextState.messages.push(assistantMessage);
 
-      const applyPatchCalls = takeLastExtractedApplyPatchCalls();
       if (applyPatchCalls.length > 0) {
         registerPendingApplyPatchCallIds(applyPatchCalls.map((call) => call.id));
       }
