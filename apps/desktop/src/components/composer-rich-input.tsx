@@ -68,6 +68,17 @@ function normalizeDOM(root: HTMLElement): void {
     }
   });
   toRemoveBr.forEach((n) => n.remove());
+
+  // Remove comment nodes and whitespace-only text nodes introduced by HTML paste
+  const toRemoveMisc: ChildNode[] = [];
+  root.childNodes.forEach((node) => {
+    if (node.nodeType === Node.COMMENT_NODE) {
+      toRemoveMisc.push(node);
+    } else if (node.nodeType === Node.TEXT_NODE && /^[\r\n\s]*$/.test(node.textContent ?? '')) {
+      toRemoveMisc.push(node);
+    }
+  });
+  toRemoveMisc.forEach((n) => n.remove());
 }
 
 /** Serialize contenteditable DOM → RichSegment[] (DOM must be normalized first) */
@@ -320,6 +331,9 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           range.deleteContents();
           const frag = document.createDocumentFragment();
           parsed.body.childNodes.forEach((node) => {
+            // Skip comment nodes and whitespace-only text nodes from HTML boilerplate
+            if (node.nodeType === Node.COMMENT_NODE) return;
+            if (node.nodeType === Node.TEXT_NODE && /^[\r\n\s]*$/.test(node.textContent ?? '')) return;
             if ((node as HTMLElement).dataset?.elementChip === "true") {
               const span = node as HTMLElement;
               const id = span.dataset.elementId ?? "";
@@ -335,6 +349,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           sel.removeAllRanges();
           sel.addRange(range);
         }
+        normalizeDOM(div);
         notify();
       } catch {
         // fall through to default paste
