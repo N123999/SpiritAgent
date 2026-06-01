@@ -88,6 +88,7 @@ export interface ToolAgentState {
 export interface ToolAgentToolResult {
   toolCallId: string;
   content: string;
+  providerState?: JsonObject;
 }
 
 export function buildToolAgentHostPrompt(model: string): string {
@@ -205,6 +206,9 @@ export function appendToolResultMessages(
         role: 'tool',
         tool_call_id: result.toolCallId,
         content: result.content,
+        ...(result.providerState !== undefined
+          ? { providerState: cloneLlmProviderState(result.providerState) }
+          : {}),
       })),
     ],
     steps: state.steps,

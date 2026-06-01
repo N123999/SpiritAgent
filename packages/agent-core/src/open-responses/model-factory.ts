@@ -6,6 +6,7 @@ import {
 } from '@ai-sdk/xai';
 
 import type { JsonObject } from '../ports.js';
+import { createApplyPatchAwareFetch } from './apply-patch-responses-fetch.js';
 import {
   openResponsesPostUrl,
   openResponsesReasoningEffort,
@@ -13,10 +14,18 @@ import {
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
 } from './responses-compat.js';
+import { shouldUseApplyPatchFileTools } from './apply-patch-eligibility.js';
 
 const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 
+function responsesFetchForConfig(config: OpenResponsesTransportConfig): typeof fetch | undefined {
+  return shouldUseApplyPatchFileTools(config)
+    ? createApplyPatchAwareFetch(config)
+    : undefined;
+}
+
 export function createResponsesLanguageModel(config: OpenResponsesTransportConfig): unknown {
+  const applyPatchFetch = responsesFetchForConfig(config);
   const provider = resolveOpenResponsesSdkProvider(config);
   if (provider === 'openai') {
     const openai = createOpenAI({
@@ -24,6 +33,7 @@ export function createResponsesLanguageModel(config: OpenResponsesTransportConfi
       ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
       ...(config.organization ? { organization: config.organization } : {}),
       ...(config.project ? { project: config.project } : {}),
+      ...(applyPatchFetch ? { fetch: applyPatchFetch } : {}),
     });
     return openai.responses(config.model);
   }
@@ -40,6 +50,7 @@ export function createResponsesLanguageModel(config: OpenResponsesTransportConfi
     name: config.llmVendor ?? 'spirit-agent',
     url: openResponsesPostUrl(config.baseUrl),
     apiKey: config.apiKey,
+    ...(applyPatchFetch ? { fetch: applyPatchFetch } : {}),
   });
   return openResponses(config.model);
 }

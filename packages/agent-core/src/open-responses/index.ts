@@ -15,6 +15,7 @@ export {
   openResponsesPostUrl,
 } from './responses-compat.js';
 export { AiSdkOpenResponsesTransport } from './ai-sdk-transport.js';
+export { createApplyPatchAwareFetch } from './apply-patch-responses-fetch.js';
 export {
   APPLY_PATCH_HOST_TOOL_NAME,
   type ApplyPatchOperation,

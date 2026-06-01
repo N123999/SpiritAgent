@@ -1,6 +1,8 @@
 import type { TextStreamPart } from 'ai';
 
 import type { JsonObject, JsonValue, LlmStreamEvent, ToolAgentRoundCompletion } from '../ports.js';
+import { APPLY_PATCH_HOST_TOOL_NAME } from './apply-patch-eligibility.js';
+import { registerPendingApplyPatchCallIds } from './apply-patch-bridge.js';
 import { resolveStreamingToolPreviewEmit } from '../tool-streaming-preview-gate.js';
 import { cloneJsonValue, isJsonObject, type ToolAgentState } from '../tool-agent.js';
 import { attachResponseIdToAssistantMessage } from './provider-state.js';
@@ -129,6 +131,12 @@ export async function* responsesEventStreamToRuntimeEvents(
     nextState.messages.push(assistantMessage);
 
     const calls = extractToolCallsFromAggregatedMap(toolCalls);
+    const applyPatchCallIds = calls
+      .filter((call) => call.name === APPLY_PATCH_HOST_TOOL_NAME)
+      .map((call) => call.id);
+    if (applyPatchCallIds.length > 0) {
+      registerPendingApplyPatchCallIds(applyPatchCallIds);
+    }
     completion.resolve({
       kind: 'success',
       result: {
@@ -219,6 +227,26 @@ function accumulateOpenResponsesToolCallProgressFromRawChunk(
   if (
     chunk.type === 'response.output_item.added' &&
     isJsonObject(chunk.item) &&
+    chunk.item.type === 'apply_patch_call'
+  ) {
+    const item = chunk.item;
+    const index = toolIndex;
+    toolIndex += 1;
+    const operation = isJsonObject(item.operation as JsonValue) ? item.operation : {};
+    toolCalls.set(index, {
+      index,
+      id: typeof item.call_id === 'string' ? item.call_id : `stream-apply-patch-${index}`,
+      ...(typeof item.id === 'string' ? { streamItemId: item.id } : {}),
+      type: 'function',
+      functionName: APPLY_PATCH_HOST_TOOL_NAME,
+      functionArguments: JSON.stringify({ operation }),
+      readyPreviewEmitted: false,
+    });
+  }
+
+  if (
+    chunk.type === 'response.output_item.added' &&
+    isJsonObject(chunk.item) &&
     chunk.item.type === 'function_call'
   ) {
     const item = chunk.item;
@@ -241,6 +269,40 @@ function accumulateOpenResponsesToolCallProgressFromRawChunk(
       existing.functionArguments += chunk.delta;
       maybeEmitPreview(events, existing);
     }
+  }
+
+  if (
+    chunk.type === 'response.output_item.done' &&
+    isJsonObject(chunk.item) &&
+    chunk.item.type === 'apply_patch_call'
+  ) {
+    const item = chunk.item;
+    const existing = findToolCallByItemId(toolCalls, typeof item.id === 'string' ? item.id : '');
+    const target =
+      existing ??
+      (() => {
+        const index = toolIndex;
+        toolIndex += 1;
+        const created: AggregatedStreamingToolCall = {
+          index,
+          id: typeof item.call_id === 'string' ? item.call_id : `stream-apply-patch-${index}`,
+          type: 'function',
+          functionName: APPLY_PATCH_HOST_TOOL_NAME,
+          functionArguments: '{}',
+          readyPreviewEmitted: false,
+        };
+        toolCalls.set(index, created);
+        return created;
+      })();
+
+    if (typeof item.call_id === 'string') {
+      target.id = item.call_id;
+    }
+    const operation = isJsonObject(item.operation as JsonValue) ? item.operation : undefined;
+    if (operation) {
+      target.functionArguments = JSON.stringify({ operation });
+    }
+    maybeEmitPreview(events, target);
   }
 
   if (

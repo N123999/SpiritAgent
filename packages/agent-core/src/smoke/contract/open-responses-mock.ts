@@ -9,6 +9,30 @@ function openResponsesUsage(): JsonObject {
   };
 }
 
+export function buildOpenResponsesApplyPatchCallBody(model: string): JsonObject {
+  return {
+    id: 'resp-apply-patch',
+    object: 'response',
+    created_at: 0,
+    model,
+    status: 'completed',
+    usage: openResponsesUsage(),
+    output: [
+      {
+        type: 'apply_patch_call',
+        id: 'apc_1',
+        call_id: 'call_apply_patch_1',
+        status: 'completed',
+        operation: {
+          type: 'create_file',
+          path: 'demo.txt',
+          diff: '+hello apply patch\n',
+        },
+      },
+    ],
+  };
+}
+
 export function buildOpenResponsesToolCallBody(model: string): JsonObject {
   return {
     id: 'resp-tool-call',

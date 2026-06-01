@@ -14,6 +14,13 @@ import {
   cloneLlmProviderState,
   createLlmMessageContentFromText,
 } from '../ports.js';
+import { isOpenResponsesTransportConfig } from '../provider-config.js';
+import {
+  buildApplyPatchToolResultProviderState,
+  registerPendingApplyPatchCallIds,
+} from '../open-responses/apply-patch-bridge.js';
+import { APPLY_PATCH_HOST_TOOL_NAME } from '../open-responses/apply-patch-eligibility.js';
+import { appendToolResultMessages } from '../tool-agent.js';
 import { buildEarlyExecutableArgumentsJson } from '../tool-streaming-preview-gate.js';
 import {
   applyDeferredUserGuidance,
@@ -700,16 +707,53 @@ export async function executeAuthorizedToolCall<
     output: execution.output,
     failed: execution.failed,
   });
-  const resumedState = runtime.options.appendToolResultMessage(
+  const resumedState = appendToolResultForRound(
+    runtime,
     state,
     toolCallId,
+    toolName,
     execution.output.summaryText,
+    execution.failed,
   );
   if (remainingCalls.length > 0) {
     return processToolCalls(runtime, resumedState, pendingUserInput, remainingCalls, turn);
   }
 
   return runTurnLoop(runtime, resumedState, pendingUserInput, turn);
+}
+
+function appendToolResultForRound<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+  state: State,
+  toolCallId: string,
+  toolName: string,
+  content: string,
+  failed = false,
+): State {
+  if (
+    toolName === APPLY_PATCH_HOST_TOOL_NAME
+    && isOpenResponsesTransportConfig(runtime.options.config as any)
+  ) {
+    registerPendingApplyPatchCallIds([toolCallId]);
+    return appendToolResultMessages(state as any, [
+      {
+        toolCallId,
+        content,
+        providerState: buildApplyPatchToolResultProviderState(
+          toolCallId,
+          failed ? 'failed' : 'completed',
+          failed ? content : undefined,
+        ),
+      },
+    ]) as State;
+  }
+
+  return runtime.options.appendToolResultMessage(state, toolCallId, content);
 }
 
 async function continueAfterQuestionsFailure<

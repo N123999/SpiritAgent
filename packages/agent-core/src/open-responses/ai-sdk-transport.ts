@@ -29,6 +29,12 @@ import {
   openAiMessagesToResponsesAiSdkMessages,
   renderResponsesTransportError,
 } from './ai-sdk-message-bridge.js';
+import {
+  buildResponsesTraceTools,
+  mergeToolCallsWithApplyPatch,
+  registerPendingApplyPatchCallIds,
+  takeLastExtractedApplyPatchCalls,
+} from './apply-patch-bridge.js';
 import { buildResponsesProviderOptions, createResponsesLanguageModel } from './model-factory.js';
 import {
   attachResponseIdToAssistantMessage,
@@ -112,7 +118,7 @@ export class AiSdkOpenResponsesTransport
       config,
       nextState.steps,
       requestMessages,
-      normalizedTools,
+      buildResponsesTraceTools(config, normalizedTools),
       false,
       traceExtras,
     );
@@ -151,7 +157,14 @@ export class AiSdkOpenResponsesTransport
       );
       nextState.messages.push(assistantMessage);
 
-      const calls = extractToolCallsFromAiSdk(result.toolCalls);
+      const applyPatchCalls = takeLastExtractedApplyPatchCalls();
+      if (applyPatchCalls.length > 0) {
+        registerPendingApplyPatchCallIds(applyPatchCalls.map((call) => call.id));
+      }
+      const calls = mergeToolCallsWithApplyPatch(
+        extractToolCallsFromAiSdk(result.toolCalls),
+        applyPatchCalls,
+      );
       if (calls.length > 0) {
         return {
           kind: 'success',
@@ -203,7 +216,7 @@ export class AiSdkOpenResponsesTransport
       config,
       nextState.steps,
       requestMessages,
-      normalizedTools,
+      buildResponsesTraceTools(config, normalizedTools),
       true,
       traceExtras,
     );
