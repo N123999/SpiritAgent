@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 
 import {
   layoutGitCommitGraph,
+  orderCommitsForGraph,
   parseGitLogDecorations,
   parseGitLogRecordLine,
   readGitCommitHistory,
@@ -51,6 +52,139 @@ test('parseGitLogRecordLine and decorations', () => {
   assert.equal(record.oid, 'abc123');
   assert.deepEqual(record.parents, ['def456']);
   assert.deepEqual(parseGitLogDecorations('HEAD -> main, tag: v1'), ['main', 'v1']);
+});
+
+test('orderCommitsForGraph lists merge branch before first-parent continuation', () => {
+  const commits = [
+    {
+      oid: 'merge',
+      parents: ['main-tip', 'feat-tip'],
+      subject: 'merge feature',
+      author: 'a',
+      authoredAt: 't4',
+      refs: [],
+    },
+    {
+      oid: 'feat-tip',
+      parents: ['base'],
+      subject: 'feature tip',
+      author: 'a',
+      authoredAt: 't3',
+      refs: [],
+    },
+    {
+      oid: 'main-tip',
+      parents: ['base'],
+      subject: 'main tip',
+      author: 'a',
+      authoredAt: 't2',
+      refs: [],
+    },
+    {
+      oid: 'base',
+      parents: [],
+      subject: 'init',
+      author: 'a',
+      authoredAt: 't1',
+      refs: [],
+    },
+  ];
+
+  const ordered = orderCommitsForGraph(commits);
+  const mergeIndex = ordered.findIndex((commit) => commit.oid === 'merge');
+  const featIndex = ordered.findIndex((commit) => commit.oid === 'feat-tip');
+  const mainIndex = ordered.findIndex((commit) => commit.oid === 'main-tip');
+  assert.ok(mergeIndex >= 0);
+  assert.ok(featIndex > mergeIndex);
+  assert.ok(mainIndex > featIndex);
+});
+
+test('layoutGitCommitGraph omits lanes for parents outside the loaded commit window', () => {
+  const commits = [
+    {
+      oid: 'merge',
+      parents: ['main-tip', 'feature-missing'],
+      subject: 'merge feature',
+      author: 'a',
+      authoredAt: 't3',
+      refs: [],
+    },
+    {
+      oid: 'main-tip',
+      parents: ['base'],
+      subject: 'main work',
+      author: 'a',
+      authoredAt: 't2',
+      refs: [],
+    },
+    {
+      oid: 'base',
+      parents: [],
+      subject: 'init',
+      author: 'a',
+      authoredAt: 't1',
+      refs: [],
+    },
+  ];
+
+  const rows = layoutGitCommitGraph(commits);
+  const mergeRow = rows[0];
+  assert.equal(mergeRow?.commit.oid, 'merge');
+  assert.deepEqual(mergeRow?.mergeLanes, []);
+  assert.deepEqual(mergeRow?.passingLanes, []);
+  const tailRow = rows[rows.length - 1];
+  assert.deepEqual(tailRow?.passingLanes, []);
+});
+
+test('layoutGitCommitGraph prunes stale passing lanes after interleaved walk', () => {
+  const commits = [
+    {
+      oid: 'merge',
+      parents: ['main-tip', 'feat-tip'],
+      subject: 'merge feature',
+      author: 'a',
+      authoredAt: 't4',
+      refs: [],
+    },
+    {
+      oid: 'feat-tip',
+      parents: ['base'],
+      subject: 'feature tip',
+      author: 'a',
+      authoredAt: 't3',
+      refs: [],
+    },
+    {
+      oid: 'stray-main',
+      parents: ['base'],
+      subject: 'other main-line commit',
+      author: 'a',
+      authoredAt: 't2b',
+      refs: [],
+    },
+    {
+      oid: 'main-tip',
+      parents: ['base'],
+      subject: 'main tip',
+      author: 'a',
+      authoredAt: 't2',
+      refs: [],
+    },
+    {
+      oid: 'base',
+      parents: [],
+      subject: 'init',
+      author: 'a',
+      authoredAt: 't1',
+      refs: [],
+    },
+  ];
+
+  const rows = layoutGitCommitGraph(commits);
+  const maxPassing = rows.reduce((max, row) => Math.max(max, row.passingLanes.length), 0);
+  assert.ok(maxPassing <= 2, `too many concurrent passing lanes: ${maxPassing}`);
+  const tailRow = rows[rows.length - 1];
+  assert.deepEqual(tailRow?.passingLanes, []);
 });
 
 test('layoutGitCommitGraph assigns merge lanes for a merge commit', () => {

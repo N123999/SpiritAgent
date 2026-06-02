@@ -121,10 +121,85 @@ export function parseGitLogRecordLine(line: string): GitCommitRecord | undefined
   };
 }
 
+/**
+ * walk first-parent spines; after each merge, emit the merged-in
+ * branch subgraph (newest-first) before continuing down the mainline.
+ */
+export function orderCommitsForGraph(commits: readonly GitCommitRecord[]): GitCommitRecord[] {
+  if (commits.length === 0) {
+    return [];
+  }
+
+  const byOid = new Map(commits.map((commit) => [commit.oid, commit]));
+  const logIndex = new Map(commits.map((commit, index) => [commit.oid, index]));
+  const added = new Set<string>();
+  const ordered: GitCommitRecord[] = [];
+
+  const append = (oid: string): void => {
+    if (added.has(oid) || !byOid.has(oid)) {
+      return;
+    }
+    added.add(oid);
+    ordered.push(byOid.get(oid)!);
+  };
+
+  const appendBranchSubgraph = (startOid: string): void => {
+    const reachable = new Set<string>();
+    const stack = [startOid];
+    while (stack.length > 0) {
+      const oid = stack.pop()!;
+      if (reachable.has(oid) || !byOid.has(oid)) {
+        continue;
+      }
+      reachable.add(oid);
+      const commit = byOid.get(oid)!;
+      for (const parent of commit.parents) {
+        if (!reachable.has(parent)) {
+          stack.push(parent);
+        }
+      }
+    }
+    const branchCommits = [...reachable]
+      .map((oid) => byOid.get(oid)!)
+      .sort((left, right) => (logIndex.get(left.oid) ?? 0) - (logIndex.get(right.oid) ?? 0));
+    for (const commit of branchCommits) {
+      append(commit.oid);
+    }
+  };
+
+  const walkFirstParent = (startOid: string): void => {
+    let oid: string | undefined = startOid;
+    while (oid !== undefined && byOid.has(oid)) {
+      if (added.has(oid)) {
+        break;
+      }
+      const commit: GitCommitRecord = byOid.get(oid)!;
+      append(oid);
+      if (commit.parents.length > 1) {
+        for (let parentIndex = 1; parentIndex < commit.parents.length; parentIndex += 1) {
+          appendBranchSubgraph(commit.parents[parentIndex]!);
+        }
+      }
+      oid = commit.parents[0];
+    }
+  };
+
+  walkFirstParent(commits[0]!.oid);
+  for (const commit of commits) {
+    append(commit.oid);
+  }
+
+  return ordered;
+}
+
 export function layoutGitCommitGraph(commits: readonly GitCommitRecord[]): GitCommitGraphRow[] {
   if (commits.length === 0) {
     return [];
   }
+
+  const commitOids = new Set(commits.map((entry) => entry.oid));
+  const parentInWindow = (oid: string): boolean => commitOids.has(oid);
+  const oidToIndex = new Map(commits.map((entry, index) => [entry.oid, index]));
 
   /** lane index -> next expected commit oid on that lane */
   const lanes: Array<string | null> = [];
@@ -137,44 +212,79 @@ export function layoutGitCommitGraph(commits: readonly GitCommitRecord[]): GitCo
     }
   };
 
+  const trimTrailingEmptyLanes = (): void => {
+    while (lanes.length > 0 && lanes[lanes.length - 1] === null) {
+      lanes.pop();
+    }
+  };
+
   const findFreeLane = (): number => {
-    const empty = lanes.findIndex((value) => value === null);
-    if (empty >= 0) {
-      return empty;
+    for (let laneIndex = lanes.length - 1; laneIndex >= 1; laneIndex -= 1) {
+      if (lanes[laneIndex] === null) {
+        return laneIndex;
+      }
     }
     const next = lanes.length;
     lanes.push(null);
     return next;
   };
 
+  /** Lane 0 is the main trunk; only the first commit may occupy it when unassigned. */
+  const allocateLaneForUnmappedCommit = (): number => {
+    if (lanes.length === 0) {
+      lanes.push(null);
+      return 0;
+    }
+    return findFreeLane();
+  };
+
   const rows: GitCommitGraphRow[] = [];
 
-  for (const commit of commits) {
+  /** Drop lane reservations whose commit already appeared above (date-order interleaving). */
+  const pruneStaleLanes = (throughIndex: number): void => {
+    for (let laneIndex = 0; laneIndex < lanes.length; laneIndex += 1) {
+      const expected = lanes[laneIndex];
+      if (expected == null) {
+        continue;
+      }
+      const expectedAt = oidToIndex.get(expected);
+      if (expectedAt !== undefined && expectedAt < throughIndex) {
+        lanes[laneIndex] = null;
+      }
+    }
+    trimTrailingEmptyLanes();
+  };
+
+  for (let rowIndex = 0; rowIndex < commits.length; rowIndex += 1) {
+    const commit = commits[rowIndex]!;
+    pruneStaleLanes(rowIndex);
+
     let lane = lanes.findIndex((expected) => expected === commit.oid);
     let branchFromLane: number | undefined;
 
     if (lane < 0) {
-      const emptyLane = lanes.findIndex((value) => value === null);
-      if (emptyLane >= 0) {
-        lane = emptyLane;
-      } else {
-        lane = lanes.length;
-        lanes.push(null);
-        if (rows.length > 0) {
-          branchFromLane = 0;
-        }
+      lane = allocateLaneForUnmappedCommit();
+      if (lane > 0 && rows.length > 0) {
+        branchFromLane = 0;
       }
     }
 
     ensureLane(lane);
     oidToLane.set(commit.oid, lane);
 
+    for (let laneIndex = 0; laneIndex < lanes.length; laneIndex += 1) {
+      if (laneIndex !== lane && lanes[laneIndex] === commit.oid) {
+        lanes[laneIndex] = null;
+      }
+    }
+
     const passingLanes: number[] = [];
     for (let laneIndex = 0; laneIndex < lanes.length; laneIndex += 1) {
       if (laneIndex === lane) {
         continue;
       }
-      if (lanes[laneIndex] !== null) {
+      const expected = lanes[laneIndex];
+      if (expected != null && parentInWindow(expected)) {
         passingLanes.push(laneIndex);
       }
     }
@@ -186,12 +296,17 @@ export function layoutGitCommitGraph(commits: readonly GitCommitRecord[]): GitCo
 
     if (parents.length > 0) {
       const primaryParent = parents[0]!;
-      lanes[lane] = primaryParent;
-      oidToLane.set(primaryParent, lane);
+      if (parentInWindow(primaryParent)) {
+        lanes[lane] = primaryParent;
+        oidToLane.set(primaryParent, lane);
+      }
     }
 
     for (let parentIndex = 1; parentIndex < parents.length; parentIndex += 1) {
       const parentOid = parents[parentIndex]!;
+      if (!parentInWindow(parentOid)) {
+        continue;
+      }
       let parentLane = lanes.findIndex((expected) => expected === parentOid);
       if (parentLane < 0) {
         parentLane = findFreeLane();
@@ -204,6 +319,7 @@ export function layoutGitCommitGraph(commits: readonly GitCommitRecord[]): GitCo
       oidToLane.set(parentOid, parentLane);
     }
 
+    trimTrailingEmptyLanes();
     maxLaneCount = Math.max(maxLaneCount, lanes.length);
     rows.push({
       commit,
@@ -236,7 +352,7 @@ export async function readGitCommitHistory(
     const { stdout } = await runGit(repoRoot, [
       'log',
       '--all',
-      '--date-order',
+      '--topo-order',
       `-n${String(maxCount)}`,
       `--format=format:%H${FIELD_SEP}%P${FIELD_SEP}%s${FIELD_SEP}%an${FIELD_SEP}%ai${FIELD_SEP}%D`,
     ]);
@@ -246,8 +362,9 @@ export async function readGitCommitHistory(
       .map((line) => parseGitLogRecordLine(line))
       .filter((record): record is GitCommitRecord => record !== undefined);
 
-    const rows = layoutGitCommitGraph(commits);
-    return { isRepository: true, commits, rows };
+    const orderedCommits = orderCommitsForGraph(commits);
+    const rows = layoutGitCommitGraph(orderedCommits);
+    return { isRepository: true, commits: orderedCommits, rows };
   } catch {
     return { isRepository: false, commits: [], rows: [] };
   }
