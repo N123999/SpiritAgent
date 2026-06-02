@@ -11,6 +11,7 @@ import {
   defaultActiveWorkspaceToolTabId,
   focusFirstTabOfKind,
   isBrowserNewTabUrl,
+  normalizeWorkspaceToolTabsForHost,
   workspaceToolTabLabel,
 } from "../src/lib/workspace-tool-tabs.ts";
 
@@ -93,6 +94,32 @@ test("closeWorkspaceToolTab prefers left neighbor for active tab", () => {
 test("defaultActiveWorkspaceToolTabId prefers files", () => {
   const tabs = createDefaultWorkspaceToolTabs();
   assert.equal(defaultActiveWorkspaceToolTabId(tabs), tabs[0].id);
+});
+
+test("createDefaultWorkspaceToolTabs can include browser on Electron", () => {
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser: true });
+  assert.equal(tabs.length, 4);
+  assert.deepEqual(
+    tabs.map((t) => t.kind),
+    ["files", "shell", "git", "browser"],
+  );
+});
+
+test("normalizeWorkspaceToolTabsForHost strips browser on web host", () => {
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser: true });
+  const browserTab = tabs.find((t) => t.kind === "browser");
+  assert.ok(browserTab);
+  const normalized = normalizeWorkspaceToolTabsForHost(tabs, browserTab.id, false);
+  assert.equal(normalized.tabs.some((t) => t.kind === "browser"), false);
+  assert.equal(normalized.tabs.length, 3);
+  assert.equal(normalized.activeId, normalized.tabs[0].id);
+});
+
+test("normalizeWorkspaceToolTabsForHost adds browser on electron host", () => {
+  const tabs = createDefaultWorkspaceToolTabs();
+  const normalized = normalizeWorkspaceToolTabsForHost(tabs, tabs[0].id, true);
+  assert.equal(normalized.tabs.length, 4);
+  assert.equal(normalized.tabs.some((t) => t.kind === "browser"), true);
 });
 
 test("createInitialWorkspaceToolsState uses same tabs for active id", () => {

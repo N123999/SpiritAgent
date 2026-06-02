@@ -168,6 +168,7 @@ import {
   addWorkspaceBrowserTabWithUrl,
   addWorkspaceToolTab,
   createInitialWorkspaceToolsState,
+  normalizeWorkspaceToolTabsForHost,
   findWorkspaceToolTab,
   focusFirstTabOfKind,
 } from "@/lib/workspace-tool-tabs";
@@ -1906,13 +1907,17 @@ export default function App() {
     typeof createInitialWorkspaceToolsState
   > | null>(null);
   if (initialWorkspaceToolsRef.current === null) {
-    initialWorkspaceToolsRef.current = createInitialWorkspaceToolsState();
+    initialWorkspaceToolsRef.current = createInitialWorkspaceToolsState(false);
   }
   const initialWorkspaceTools = initialWorkspaceToolsRef.current;
   const [workspaceToolTabs, setWorkspaceToolTabs] = useState(() => initialWorkspaceTools.tabs);
   const [activeWorkspaceToolTabId, setActiveWorkspaceToolTabId] = useState(
     () => initialWorkspaceTools.activeTabId,
   );
+  const activeWorkspaceToolTabIdRef = useRef(activeWorkspaceToolTabId);
+  activeWorkspaceToolTabIdRef.current = activeWorkspaceToolTabId;
+  const workspaceToolsHostSyncedRef = useRef<typeof runtime.hostKind | null>(null);
+  const browserTabEnabled = runtime.hostKind === "electron";
   const [workspaceFilesPlanRevealNonce, setWorkspaceFilesPlanRevealNonce] = useState(0);
   const [workspaceFilesPlanRevealTargetId, setWorkspaceFilesPlanRevealTargetId] = useState<
     string | null
@@ -1920,6 +1925,9 @@ export default function App() {
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
 
   const openBrowserUrlInNewTab = useCallback((rawUrl: string) => {
+    if (runtime.hostKind !== "electron") {
+      return;
+    }
     const url = normalizeBrowserUrl(rawUrl);
     if (!url) {
       return;
@@ -1934,7 +1942,29 @@ export default function App() {
     if (nextActiveId) {
       setActiveWorkspaceToolTabId(nextActiveId);
     }
-  }, []);
+  }, [runtime.hostKind]);
+
+  useEffect(() => {
+    if (!runtime.apiReady || runtime.hostKind == null) {
+      return;
+    }
+    if (workspaceToolsHostSyncedRef.current === runtime.hostKind) {
+      return;
+    }
+    workspaceToolsHostSyncedRef.current = runtime.hostKind;
+    const includeBrowser = runtime.hostKind === "electron";
+    setWorkspaceToolTabs((prev) => {
+      const normalized = normalizeWorkspaceToolTabsForHost(
+        prev,
+        activeWorkspaceToolTabIdRef.current,
+        includeBrowser,
+      );
+      if (normalized.activeId !== activeWorkspaceToolTabIdRef.current) {
+        setActiveWorkspaceToolTabId(normalized.activeId);
+      }
+      return normalized.tabs;
+    });
+  }, [runtime.apiReady, runtime.hostKind]);
 
   useEffect(() => {
     const bridge = window.spiritDesktop;
@@ -3234,6 +3264,7 @@ export default function App() {
               onActiveTabIdChange={setActiveWorkspaceToolTabId}
               onBrowserElementPicked={handleBrowserElementPicked}
               onBrowserOpenInNewTab={openBrowserUrlInNewTab}
+              browserTabEnabled={browserTabEnabled}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

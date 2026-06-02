@@ -33,6 +33,8 @@ export type WorkspaceBrowserTabProps = {
   onTitleChange?: (title: string | undefined) => void;
   /** 用户选中元素后的回调 */
   onElementPicked?: (attachment: BrowserElementAttachment) => void;
+  /** Electron 桌面宿主为 true；Web Host 为 false（即使 UA 为 Electron 也不嵌入 webview） */
+  browserTabEnabled?: boolean;
 };
 
 type LocalListeningEndpoint = {
@@ -190,6 +192,7 @@ export function WorkspaceBrowserTab({
   onOpenUrlInNewTab,
   onTitleChange,
   onElementPicked,
+  browserTabEnabled = false,
 }: WorkspaceBrowserTabProps) {
   const { t } = useTranslation();
   const webviewRef = useRef<WebviewElement | null>(null);
@@ -206,7 +209,7 @@ export function WorkspaceBrowserTab({
   useLayoutEffect(() => {
     onElementPickedRef.current = onElementPicked;
   });
-  const canEmbed = canUseEmbeddedBrowser();
+  const canEmbed = browserTabEnabled && canUseEmbeddedBrowser();
   const onTitleChangeRef = useRef(onTitleChange);
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;

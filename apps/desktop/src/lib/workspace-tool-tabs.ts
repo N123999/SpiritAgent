@@ -37,21 +37,29 @@ export function createWorkspaceToolTab(kind: WorkspaceToolTabKind): WorkspaceToo
   return tab;
 }
 
-/** 默认四个选项卡：文件、Shell、Git、浏览器各一。 */
-export function createDefaultWorkspaceToolTabs(): WorkspaceToolTab[] {
-  return [
-    createWorkspaceToolTab("files"),
-    createWorkspaceToolTab("shell"),
-    createWorkspaceToolTab("git"),
-    createWorkspaceToolTab("browser"),
-  ];
+export type WorkspaceToolTabsDefaultsOptions = {
+  /** Electron 桌面版默认包含浏览器选项卡；Web 宿主仅文件 / Shell / Git。 */
+  includeBrowser?: boolean;
+};
+
+/** 默认工作区选项卡：文件、Shell、Git；Electron 可额外包含浏览器。 */
+export function createDefaultWorkspaceToolTabs(
+  options: WorkspaceToolTabsDefaultsOptions = {},
+): WorkspaceToolTab[] {
+  const kinds: WorkspaceToolTabKind[] = ["files", "shell", "git"];
+  if (options.includeBrowser) {
+    kinds.push("browser");
+  }
+  return kinds.map((kind) => createWorkspaceToolTab(kind));
 }
 
-export function createInitialWorkspaceToolsState(): {
+export function createInitialWorkspaceToolsState(
+  includeBrowser = false,
+): {
   tabs: WorkspaceToolTab[];
   activeTabId: string;
 } {
-  const tabs = createDefaultWorkspaceToolTabs();
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser });
   return { tabs, activeTabId: defaultActiveWorkspaceToolTabId(tabs) };
 }
 
@@ -110,10 +118,41 @@ export function addWorkspaceBrowserTabWithUrl(
   return { tabs: [...tabs, tab], activeId: tab.id };
 }
 
+/** 按宿主能力补齐或移除浏览器选项卡，并修正 activeId。 */
+export function normalizeWorkspaceToolTabsForHost(
+  tabs: readonly WorkspaceToolTab[],
+  activeId: string,
+  includeBrowser: boolean,
+): { tabs: WorkspaceToolTab[]; activeId: string } {
+  if (includeBrowser) {
+    if (tabs.some((t) => t.kind === "browser")) {
+      return { tabs: [...tabs], activeId };
+    }
+    return { tabs: [...tabs, createWorkspaceToolTab("browser")], activeId };
+  }
+
+  const withoutBrowser = tabs.filter((t) => t.kind !== "browser");
+  if (withoutBrowser.length === tabs.length) {
+    return { tabs: [...tabs], activeId };
+  }
+
+  const nextTabs =
+    withoutBrowser.length > 0
+      ? withoutBrowser
+      : createDefaultWorkspaceToolTabs({ includeBrowser: false });
+
+  const activeStillValid = nextTabs.some((t) => t.id === activeId);
+  return {
+    tabs: nextTabs,
+    activeId: activeStillValid ? activeId : defaultActiveWorkspaceToolTabId(nextTabs),
+  };
+}
+
 export function closeWorkspaceToolTab(
   tabs: readonly WorkspaceToolTab[],
   activeId: string,
   closeId: string,
+  options: WorkspaceToolTabsDefaultsOptions = {},
 ): { tabs: WorkspaceToolTab[]; activeId: string } {
   const closeIndex = tabs.findIndex((t) => t.id === closeId);
   if (closeIndex < 0) {
@@ -122,7 +161,7 @@ export function closeWorkspaceToolTab(
 
   const nextTabs = tabs.filter((t) => t.id !== closeId);
   if (nextTabs.length === 0) {
-    const defaults = createDefaultWorkspaceToolTabs();
+    const defaults = createDefaultWorkspaceToolTabs(options);
     return { tabs: defaults, activeId: defaultActiveWorkspaceToolTabId(defaults) };
   }
 

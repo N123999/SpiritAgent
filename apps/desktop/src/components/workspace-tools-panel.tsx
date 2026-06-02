@@ -56,6 +56,8 @@ export type WorkspaceToolsDockProps = {
   onActiveTabIdChange(id: string): void;
   onBrowserElementPicked?: WorkspaceBrowserTabProps['onElementPicked'];
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
+  /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
+  browserTabEnabled?: boolean;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -95,6 +97,7 @@ export function WorkspaceToolsDock({
   onActiveTabIdChange,
   onBrowserElementPicked,
   onBrowserOpenInNewTab,
+  browserTabEnabled = false,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -153,6 +156,9 @@ export function WorkspaceToolsDock({
 
   const handleAddTab = useCallback(
     (kind: WorkspaceToolTabKind) => {
+      if (kind === "browser" && !browserTabEnabled) {
+        return;
+      }
       const vacant = tabs.find((tab) => tab.kind === kind && !tab.tabTitle);
       if (vacant) {
         onActiveTabIdChange(vacant.id);
@@ -164,16 +170,18 @@ export function WorkspaceToolsDock({
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [onActiveTabIdChange, onTabsChange, tabs, t],
+    [browserTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
   );
 
   const handleCloseTab = useCallback(
     (closeId: string) => {
-      const next = closeWorkspaceToolTab(tabs, activeTabId, closeId);
+      const next = closeWorkspaceToolTab(tabs, activeTabId, closeId, {
+        includeBrowser: browserTabEnabled,
+      });
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [activeTabId, onActiveTabIdChange, onTabsChange, tabs],
+    [activeTabId, browserTabEnabled, onActiveTabIdChange, onTabsChange, tabs],
   );
 
   const handleBrowserUrlChange = useCallback(
@@ -197,14 +205,17 @@ export function WorkspaceToolsDock({
       (["files", "shell", "git", "browser"] as const).map((kind) => {
         const meta = TAB_KIND_META[kind];
         const Icon = meta.icon;
+        const browserDisabled = kind === "browser" && !browserTabEnabled;
         return {
           id: `new-${kind}`,
           icon: <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />,
           label: t(meta.labelKey),
+          disabled: browserDisabled,
+          title: browserDisabled ? t("workspace.browserElectronOnly") : undefined,
           onSelect: () => handleAddTab(kind),
         };
       }),
-    [handleAddTab, t],
+    [browserTabEnabled, handleAddTab, t],
   );
 
   const shellWidth = open ? `calc(0.25rem + ${widthPx}px)` : "0px";
@@ -376,6 +387,7 @@ export function WorkspaceToolsDock({
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                       <WorkspaceBrowserTab
                         browserUrl={item.browserUrl}
+                        browserTabEnabled={browserTabEnabled}
                         onBrowserUrlChange={(url) => handleBrowserUrlChange(item.id, url)}
                         onOpenUrlInNewTab={onBrowserOpenInNewTab}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
