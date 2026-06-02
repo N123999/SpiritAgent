@@ -32,6 +32,16 @@ test('edit_file early preview when only path is streamed', () => {
   const partial = '{"path":"README.md","old_text":"';
   assert.equal(hostToolArgumentsReadyForEarlyStreamingPreview('edit_file', partial), true);
   assert.equal(hostToolArgumentsReadyForPreview('edit_file', partial), false);
+  assert.deepEqual(previewRequestFromStreamingArguments('edit_file', partial), {
+    path: 'README.md',
+  });
+});
+
+test('create_file partial preview exposes path before content streams', () => {
+  const partial = '{"path":"src/messages.ts","content":"';
+  assert.deepEqual(previewRequestFromStreamingArguments('create_file', partial), {
+    path: 'src/messages.ts',
+  });
 });
 
 test('create_plan early preview when only name is streamed', () => {

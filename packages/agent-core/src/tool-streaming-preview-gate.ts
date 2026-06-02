@@ -338,7 +338,12 @@ export function previewRequestFromStreamingArguments(
       const fields = tryExtractPartialReadFileFields(argumentsJson);
       return fields.path ? fields : undefined;
     }
-    if (toolName === 'list_directory_files' || toolName === 'delete_file') {
+    if (
+      toolName === 'list_directory_files'
+      || toolName === 'delete_file'
+      || toolName === 'create_file'
+      || toolName === 'edit_file'
+    ) {
       const path = tryExtractPartialToolPath(argumentsJson);
       return path ? { path } : undefined;
     }
