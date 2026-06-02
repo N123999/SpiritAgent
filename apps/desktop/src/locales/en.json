@@ -333,6 +333,7 @@
     "noMatches": "No matches",
     "addWorkspace": "Add Workspace",
     "noWorkspace": "No workspace",
+    "noWorkspaceBindingHint": "Workspace binding is off; only user-level MCP and Skills apply.",
     "previewUnavailable": "Preview unavailable",
     "downloadImage": "Download Image",
     "viewLargeImage": "View Large Image",

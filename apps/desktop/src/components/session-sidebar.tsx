@@ -35,6 +35,8 @@ type SessionSidebarProps = {
   narrow: boolean;
   mode?: "sessions" | "settings";
   workspaceRoot?: string | null;
+  /** `flat`：无工作区分组，直接列出当前 cwd 下的会话。 */
+  sessionListLayout?: "grouped" | "flat";
   sessions: SessionListItem[];
   activeFilePath: string | null;
   onSelectSession: (path: string) => void;
@@ -220,11 +222,28 @@ function sessionRowHoverClass(micaStyle?: boolean) {
   return micaStyle ? sidebarMicaMenuHoverClass : sidebarSessionListHoverClass;
 }
 
+function filterSessionsForWorkspace(
+  sessions: SessionListItem[],
+  workspaceRoot: string | null | undefined,
+): SessionListItem[] {
+  const currentRoot = workspaceRoot?.trim();
+  if (!currentRoot) {
+    return [];
+  }
+  return sessions
+    .filter((session) => {
+      const sessionRoot = session.workspaceRoot?.trim() || currentRoot;
+      return samePath(sessionRoot, currentRoot);
+    })
+    .sort((left, right) => right.modifiedAtUnixMs - left.modifiedAtUnixMs);
+}
+
 export function SessionSidebar({
   className,
   narrow,
   mode = "sessions",
   workspaceRoot,
+  sessionListLayout = "grouped",
   sessions,
   activeFilePath,
   onSelectSession,
@@ -250,6 +269,10 @@ export function SessionSidebar({
   const workspaceGroups = useMemo(
     () => buildWorkspaceGroups(sessions, workspaceRoot),
     [sessions, workspaceRoot, i18n.language],
+  );
+  const flatSessions = useMemo(
+    () => filterSessionsForWorkspace(sessions, workspaceRoot),
+    [sessions, workspaceRoot],
   );
   const [collapsedWorkspaceIds, setCollapsedWorkspaceIds] = useState<Record<string, boolean>>({});
 
@@ -353,7 +376,7 @@ export function SessionSidebar({
         )}
         aria-hidden={!settingsMode && narrow}
       >
-        {settingsMode ? null : (
+        {settingsMode || sessionListLayout === "flat" ? null : (
           <div className="shrink-0 px-1.5 pt-3 pb-2.5">
             <p className="px-2.5 text-[0.65rem] text-sidebar-faint-foreground">{t('sidebar.workspace')}</p>
           </div>
@@ -425,6 +448,48 @@ export function SessionSidebar({
                 </>
               ) : null}
             </nav>
+          ) : sessionListLayout === "flat" ? (
+            <div className="min-w-0 px-1.5 pb-1.5">
+              <nav className="flex min-w-0 flex-col gap-0.5" aria-label={t('sidebar.sessionNavAria')}>
+                {flatSessions.map((session) => {
+                  const sessionRowSelected =
+                    !marketplaceActive
+                    && activeFilePath !== null
+                    && samePath(session.path, activeFilePath);
+                  return (
+                    <button
+                      key={session.path}
+                      type="button"
+                      disabled={disabled}
+                      aria-current={sessionRowSelected ? "true" : undefined}
+                      onClick={() => onSelectSession(session.path)}
+                      className={cn(
+                        "group flex h-8 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2.5 text-left text-sm",
+                        "outline-none",
+                        sidebarInteractionMotionClass,
+                        "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
+                        sessionRowSelected
+                          ? sessionRowSelectedClass(micaStyle)
+                          : cn("text-sidebar-foreground/90", sessionRowHoverClass(micaStyle)),
+                      )}
+                    >
+                      <span
+                        className="min-w-0 flex-1 truncate text-xs font-medium"
+                        title={session.displayName}
+                      >
+                        {session.displayName}
+                      </span>
+                      {session.isBusy ? (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full bg-primary animate-pulse"
+                          aria-label={t('common.running')}
+                        />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
           ) : (
             <div className="min-w-0 px-1.5 pb-1.5">
               <nav className="flex min-w-0 flex-col gap-0.5" aria-label={t('sidebar.workspaceSessionsAria')}>

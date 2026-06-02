@@ -2737,6 +2737,7 @@ export default function App() {
               narrow={false}
               mode={settingsMode ? "settings" : "sessions"}
               workspaceRoot={snapshot?.workspaceRoot ?? null}
+              sessionListLayout={snapshot?.workspaceBinding === "none" ? "flat" : "grouped"}
               sessions={runtime.sessions}
               activeFilePath={activeFilePath}
               onNewSession={() => {
