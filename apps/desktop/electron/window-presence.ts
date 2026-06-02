@@ -1,5 +1,7 @@
 import { BrowserWindow } from 'electron';
 
+import { refreshDesktopAttention } from './desktop-attention.js';
+
 let mainWindowRef: BrowserWindow | undefined;
 let rendererHidden = false;
 
@@ -14,6 +16,7 @@ function broadcastAwayChanged(away: boolean): void {
 function recomputeAway(): boolean {
   const away = isAppAwayFromUser();
   broadcastAwayChanged(away);
+  refreshDesktopAttention(away);
   return away;
 }
 

@@ -149,6 +149,11 @@ declare global {
     showNotification(request: import('./lib/desktop-notification-types.js').DesktopShowNotificationRequest): Promise<boolean>;
     getAppAwayFromUser(): Promise<boolean>;
     reportRendererVisibility(hidden: boolean): Promise<boolean>;
+    syncAttentionPending(flags: {
+      needsApproval: boolean;
+      needsQuestions: boolean;
+      needsTaskComplete: boolean;
+    }): Promise<void>;
     subscribeAppAwayChanged(callback: (away: boolean) => void): () => void;
     subscribeNotifyRefresh(callback: () => void): () => void;
   }

@@ -24,6 +24,11 @@ import {
   type DesktopNotificationPayload,
 } from './desktop-notifications.js';
 import {
+  registerDesktopAttention,
+  setDesktopAttentionPending,
+  refreshDesktopAttention,
+} from './desktop-attention.js';
+import {
   getAppAwayFromUser,
   registerWindowPresence,
   setRendererVisibility,
@@ -558,6 +563,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   registerDesktopNotifications(window, {
     onApprovalAction: handleApprovalNotificationAction,
   });
+  registerDesktopAttention(window);
   registerWindowPresence(window);
 
   return window;
@@ -834,6 +840,21 @@ app.whenReady().then(async () => {
     setRendererVisibility(payload?.hidden === true);
     return getAppAwayFromUser();
   });
+
+  ipcMain.handle(
+    'desktop:sync-attention-pending',
+    (
+      _event,
+      payload: { needsApproval?: boolean; needsQuestions?: boolean; needsTaskComplete?: boolean },
+    ) => {
+      setDesktopAttentionPending({
+        needsApproval: payload?.needsApproval === true,
+        needsQuestions: payload?.needsQuestions === true,
+        needsTaskComplete: payload?.needsTaskComplete === true,
+      });
+      refreshDesktopAttention(getAppAwayFromUser());
+    },
+  );
 
   await syncInitialDesktopWebHost();
   await createMainWindow();

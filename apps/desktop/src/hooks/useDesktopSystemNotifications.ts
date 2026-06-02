@@ -11,6 +11,16 @@ import i18n from '@/lib/i18n';
 
 type NotificationBridge = NonNullable<Window['spiritDesktop']>;
 
+type AttentionFlags = {
+  needsApproval: boolean;
+  needsQuestions: boolean;
+  needsTaskComplete: boolean;
+};
+
+function attentionFlagsKey(flags: AttentionFlags): string {
+  return `${flags.needsApproval}:${flags.needsQuestions}:${flags.needsTaskComplete}`;
+}
+
 function sessionDisplayName(snapshot: DesktopSnapshot | null | undefined): string {
   return snapshot?.activeSession?.displayName?.trim() || i18n.t('notification.defaultSessionName');
 }
@@ -90,10 +100,61 @@ export function useDesktopSystemNotifications(options: {
   const sessionBusyGenRef = useRef<Map<string, number>>(new Map());
   const bgNotifiedGenRef = useRef<Map<string, number>>(new Map());
   const isWindowsRef = useRef(false);
+  const taskCompleteAttentionRef = useRef(false);
+  const lastAttentionSyncKeyRef = useRef('');
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+
+  const syncAttentionPending = (bridge: NotificationBridge, flags: AttentionFlags) => {
+    if (!bridge.syncAttentionPending) {
+      return;
+    }
+    const key = attentionFlagsKey(flags);
+    if (lastAttentionSyncKeyRef.current === key) {
+      return;
+    }
+    lastAttentionSyncKeyRef.current = key;
+    void bridge.syncAttentionPending(flags);
+  };
+
+  const markTaskCompleteAttention = (bridge: NotificationBridge) => {
+    taskCompleteAttentionRef.current = true;
+    const current = snapshotRef.current;
+    syncAttentionPending(bridge, {
+      needsApproval: Boolean(current?.conversation.pendingToolApproval),
+      needsQuestions: Boolean(current?.conversation.pendingQuestions),
+      needsTaskComplete: true,
+    });
+  };
 
   useEffect(() => {
     isWindowsRef.current = window.spiritDesktop?.platform === 'win32';
   }, []);
+
+  useEffect(() => {
+    if (apiKind !== 'electron') {
+      return;
+    }
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeAppAwayChanged) {
+      return;
+    }
+    return bridge.subscribeAppAwayChanged((away) => {
+      if (away) {
+        return;
+      }
+      if (!taskCompleteAttentionRef.current) {
+        return;
+      }
+      taskCompleteAttentionRef.current = false;
+      const current = snapshotRef.current;
+      syncAttentionPending(bridge, {
+        needsApproval: Boolean(current?.conversation.pendingToolApproval),
+        needsQuestions: Boolean(current?.conversation.pendingQuestions),
+        needsTaskComplete: false,
+      });
+    });
+  }, [apiKind]);
 
   useEffect(() => {
     if (apiKind !== 'electron' || !window.spiritDesktop?.showNotification) {
@@ -105,6 +166,12 @@ export function useDesktopSystemNotifications(options: {
     const approval = snapshot?.conversation.pendingToolApproval;
     const questions = snapshot?.conversation.pendingQuestions;
     const isBusy = snapshot?.conversation.isBusy === true;
+
+    syncAttentionPending(bridge, {
+      needsApproval: Boolean(approval),
+      needsQuestions: Boolean(questions),
+      needsTaskComplete: taskCompleteAttentionRef.current,
+    });
 
     if (isBusy && prevBusyRef.current !== true) {
       busyCycleRef.current += 1;
@@ -124,6 +191,12 @@ export function useDesktopSystemNotifications(options: {
           kind: 'task-complete',
           tag: `spirit-task-complete-${dedupeKey}`,
           title: formatSessionPrefixedTitle(sessionName, i18n.t('notification.taskComplete.title')),
+        }).then(() => {
+          void bridge.getAppAwayFromUser?.().then((away) => {
+            if (away) {
+              markTaskCompleteAttention(bridge);
+            }
+          });
         });
       }
     }
@@ -169,6 +242,12 @@ export function useDesktopSystemNotifications(options: {
               session.displayName,
               i18n.t('notification.taskComplete.title'),
             ),
+          }).then(() => {
+            void bridge.getAppAwayFromUser?.().then((away) => {
+              if (away) {
+                markTaskCompleteAttention(bridge);
+              }
+            });
           });
         }
       }

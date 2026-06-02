@@ -306,6 +306,13 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   reportRendererVisibility(hidden: boolean) {
     return ipcRenderer.invoke('desktop:report-renderer-visibility', { hidden }) as Promise<boolean>;
   },
+  syncAttentionPending(flags: {
+    needsApproval: boolean;
+    needsQuestions: boolean;
+    needsTaskComplete: boolean;
+  }) {
+    return ipcRenderer.invoke('desktop:sync-attention-pending', flags) as Promise<void>;
+  },
   subscribeAppAwayChanged(callback: (away: boolean) => void) {
     const onAway = (_event: Electron.IpcRendererEvent, payload: { away?: boolean }) => {
       callback(payload?.away === true);
