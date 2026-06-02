@@ -29,7 +29,7 @@ use crate::{
         McpServerInspection,
     },
     model_registry::{AppConfig, ModelProvider, normalize_reasoning_effort_value},
-    plan::PlanMetadata,
+    plan::{self, PlanMetadata},
     ports::{
         ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
         McpStatusSnapshot, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
@@ -59,6 +59,7 @@ pub struct TsBridgeRuntime {
     enabled_rules: Vec<EnabledRule>,
     enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
     plan_metadata: PlanMetadata,
+    active_plan_path: Option<PathBuf>,
     pending_aux_state: Option<PendingAssistantAux>,
     pending_approval_kind: Option<PendingApprovalKind>,
     current_pending_approval: Option<BridgePendingApproval>,
@@ -505,7 +506,6 @@ fn bootstrap_plan_metadata() -> PlanMetadata {
         path: PathBuf::new(),
         exists: false,
         plan_mode: false,
-        plan_mode_host_instructions: String::new(),
     }
 }
 
@@ -597,6 +597,7 @@ impl TsBridgeRuntime {
             enabled_rules: Vec::new(),
             enabled_skill_catalog: Vec::new(),
             plan_metadata: bootstrap_plan_metadata(),
+            active_plan_path: None,
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
@@ -634,6 +635,7 @@ impl TsBridgeRuntime {
             enabled_rules: Vec::new(),
             enabled_skill_catalog: Vec::new(),
             plan_metadata: bootstrap_plan_metadata(),
+            active_plan_path: None,
             pending_aux_state: None,
             pending_approval_kind: None,
             current_pending_approval: None,
@@ -742,6 +744,9 @@ impl TsBridgeRuntime {
 
     pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {
         self.plan_metadata = metadata;
+        if !self.plan_metadata.path.as_os_str().is_empty() {
+            self.active_plan_path = Some(self.plan_metadata.path.clone());
+        }
         if self.bridge_failed {
             return;
         }
@@ -783,11 +788,22 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
+    pub fn has_active_plan(&self) -> bool {
+        self.active_plan_path
+            .as_ref()
+            .is_some_and(|path| !path.as_os_str().is_empty())
+    }
+
+    pub fn active_plan_path(&self) -> Option<&Path> {
+        self.active_plan_path.as_deref()
+    }
+
     pub fn load_cli_host_metadata(&mut self, plan_mode: bool) -> Result<CliHostMetadataSnapshot> {
         let value = self.call_bridge(
             "hostInternal.loadCliMetadata",
             Some(json!({
                 "planMode": plan_mode,
+                "activePlanPath": self.active_plan_path.as_ref().map(|path| path.display().to_string()),
             })),
         )?;
         let metadata: CliHostMetadataSnapshot = serde_json::from_value(value)?;
@@ -800,6 +816,7 @@ impl TsBridgeRuntime {
             "hostInternal.loadPlanMetadata",
             Some(json!({
                 "planMode": plan_mode,
+                "activePlanPath": self.active_plan_path.as_ref().map(|path| path.display().to_string()),
             })),
         )?;
         Ok(serde_json::from_value(value)?)
@@ -962,6 +979,7 @@ impl TsBridgeRuntime {
             "runtime.reloadHostMetadata",
             Some(json!({
                 "planMode": plan_mode,
+                "activePlanPath": self.active_plan_path.as_ref().map(|path| path.display().to_string()),
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(value)?);
@@ -1655,6 +1673,12 @@ impl TsBridgeRuntime {
             return;
         }
         self.rewind = rewind::normalize_desktop_rewind_metadata(archive.rewind.as_ref());
+        self.active_plan_path =
+            plan::extract_active_plan_path_from_archived_llm_history(&archive.llm_history);
+        self.plan_metadata = plan::plan_metadata_snapshot(
+            self.plan_metadata.plan_mode,
+            self.active_plan_path.as_deref(),
+        );
     }
 
     pub fn add_pending_image(&mut self, path: String) {
@@ -2129,6 +2153,14 @@ impl TsBridgeRuntime {
     }
 
     fn record_host_file_change(&mut self, change: rewind::HostRecordedFileChange) -> Result<()> {
+        if change.tool_name == "create_plan" && change.after.exists {
+            self.active_plan_path = Some(PathBuf::from(change.resolved_path.clone()));
+            self.plan_metadata = plan::plan_metadata_snapshot(
+                self.plan_metadata.plan_mode,
+                self.active_plan_path.as_deref(),
+            );
+        }
+
         let spirit_data_dir = spirit_agent_data_dir();
         let stored = rewind::to_desktop_file_change(change, self.rewind.next_sequence());
         rewind::save_rewind_file_change(&spirit_data_dir, &self.rewind.session_id, &stored)?;

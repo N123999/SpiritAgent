@@ -148,7 +148,6 @@ import {
   buildSkillSlashSuggestions,
   CREATE_SKILL_SLASH_ALIAS,
   currentSkillSlashQuery,
-  START_IMPLEMENTING_SLASH_ALIAS,
   type SkillSlashSuggestion,
 } from "@/lib/skill-slash";
 import {
@@ -3274,9 +3273,11 @@ export default function App() {
               readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
               plan={snapshot?.plan ?? { path: "", exists: false }}
               onStartImplementing={() => {
-                void runtime.sendMessage({ text: START_IMPLEMENTING_SLASH_ALIAS });
+                void runtime.submitStartImplementing();
               }}
-              startImplementingDisabled={startImplementingDisabled}
+              startImplementingDisabled={
+                startImplementingDisabled || !snapshot?.plan?.exists
+              }
               autoRevealPlanNonce={workspaceFilesPlanRevealNonce}
               planRevealTabId={workspaceFilesPlanRevealTargetId}
               tabs={workspaceToolTabs}

@@ -13,7 +13,7 @@ export const WORKSPACE_SPIRIT_RULE_FILE_NAME = path.join(SPIRIT_DIR_NAME, 'rule.
 export const WORKSPACE_SPIRIT_SKILLS_DIR = path.join(SPIRIT_DIR_NAME, SKILLS_DIR_NAME);
 export const WORKSPACE_SPIRIT_MCP_CONFIG = path.join(SPIRIT_DIR_NAME, 'mcp.json');
 export const WORKSPACE_AGENTS_SKILLS_DIR = path.join(AGENTS_DIR_NAME, SKILLS_DIR_NAME);
-export const PLAN_FILE_NAME = 'plan.md';
+export const PLANS_DIR_NAME = 'plans';
 export const RULES_STATE_FILE_NAME = 'rules-state.json';
 export const SKILLS_STATE_FILE_NAME = 'skills-state.json';
 export const EXTENSIONS_DIR_NAME = 'extensions';
@@ -44,7 +44,6 @@ export interface HostStoragePaths {
   appDataDir: string;
   configFile: string;
   chatsDir: string;
-  planFile: string;
 }
 
 export interface HostSessionIndexEntry {
@@ -81,7 +80,7 @@ export interface InstructionPaths {
   userSkillsDir: string;
   rulesStateFile: string;
   skillsStateFile: string;
-  planFile: string;
+  plansDir: string;
 }
 
 export interface HostToggleState {
@@ -104,7 +103,7 @@ export function resolveInstructionPaths(context: InstructionDiscoveryContext): I
     userSkillsDir: path.join(context.spiritDataDir, SKILLS_DIR_NAME),
     rulesStateFile: path.join(context.spiritDataDir, RULES_STATE_FILE_NAME),
     skillsStateFile: path.join(context.spiritDataDir, SKILLS_STATE_FILE_NAME),
-    planFile: path.join(context.spiritDataDir, PLAN_FILE_NAME),
+    plansDir: path.join(context.spiritDataDir, PLANS_DIR_NAME),
   };
 }
 

@@ -100,6 +100,7 @@ let enabledRules: LlmEnabledRule[] = [];
 let enabledSkillCatalog: LlmEnabledSkillCatalogEntry[] = [];
 let activeSkills: LlmActiveSkill[] = [];
 let planMetadata: LlmPlanMetadata | undefined;
+let activePlanPath: string | undefined;
 let extensionSystemPrompts: LlmExtensionSystemPrompt[] = [];
 let currentTodoSessionKey: string | undefined;
 
@@ -131,7 +132,7 @@ interface CliHostInternalModule {
   buildTodoContextText?: (records: unknown[]) => string | undefined;
   loadHostInstructionMetadata: (
     context: { workspaceRoot: string; spiritDataDir: string },
-    options?: { planMode?: boolean },
+    options?: { planMode?: boolean; activePlanPath?: string },
   ) => Promise<{
     rules: { enabledRules: LlmEnabledRule[] };
     skills: { enabledSkillCatalog: LlmEnabledSkillCatalogEntry[] };
@@ -142,7 +143,7 @@ interface CliHostInternalModule {
   planMetadataSnapshot: (
     context: { workspaceRoot: string; spiritDataDir: string },
     planMode: boolean,
-    options?: { useApplyPatchFileTools?: boolean },
+    options?: { useApplyPatchFileTools?: boolean; activePlanPath?: string },
   ) => LlmPlanMetadata;
   listWorkspaceFileReferenceSuggestions?: (
     workspaceRoot: string,
@@ -783,6 +784,17 @@ function applyPatchPlanMetadataOptions():
   return { useApplyPatchFileTools: true };
 }
 
+function planMetadataSnapshotOptions(activePath?: string): {
+  useApplyPatchFileTools?: boolean;
+  activePlanPath?: string;
+} {
+  const trimmed = activePath?.trim();
+  return {
+    ...(applyPatchPlanMetadataOptions() ?? {}),
+    ...(trimmed ? { activePlanPath: trimmed } : {}),
+  };
+}
+
 function applyPatchFileToolsPromptSectionForConfig(
   config: LlmTransportConfig,
 ): string | undefined {
@@ -791,7 +803,13 @@ function applyPatchFileToolsPromptSectionForConfig(
     : undefined;
 }
 
-async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolean> {
+async function reloadHostMetadataFromInternal(
+  planMode: boolean,
+  nextActivePlanPath?: string,
+): Promise<boolean> {
+  if (nextActivePlanPath !== undefined) {
+    activePlanPath = nextActivePlanPath.trim() || undefined;
+  }
   const hostInternal = await ensureCliHostInternal(currentWorkspaceRoot());
   if (!hostInternal) {
     return false;
@@ -802,7 +820,10 @@ async function reloadHostMetadataFromInternal(planMode: boolean): Promise<boolea
       workspaceRoot: hostInternal.workspaceRoot,
       spiritDataDir: hostInternal.spiritDataDir,
     },
-    { planMode, ...applyPatchPlanMetadataOptions() },
+    {
+      planMode,
+      ...planMetadataSnapshotOptions(activePlanPath),
+    },
   );
   enabledRules = [...metadata.rules.enabledRules];
   enabledSkillCatalog = [...metadata.skills.enabledSkillCatalog];
@@ -1565,7 +1586,10 @@ peer.on('runtime.init', async (rawParams) => {
   const params = rawParams as RuntimeInitParams;
   logBridge('runtime.init', { historyCount: params.history?.length ?? 0 });
   transportConfig = params.transportConfig;
-  const loadedFromInternal = await reloadHostMetadataFromInternal(params.planMetadata?.planMode ?? false);
+  const loadedFromInternal = await reloadHostMetadataFromInternal(
+    params.planMetadata?.planMode ?? false,
+    params.planMetadata?.path?.trim() || undefined,
+  );
   await refreshExtensionToolDefinitions(
     Array.isArray(params.extensionToolDefinitions) ? params.extensionToolDefinitions : undefined,
   );
@@ -1582,6 +1606,7 @@ peer.on('runtime.init', async (rawParams) => {
   }
   runtime = await createRuntime(params.transportConfig, params.history ?? []);
   toolExecutor.setLoopToolExposure(params.loopEnabled === true);
+  toolExecutor.setPlanModeToolExposure(params.planMetadata?.planMode === true);
   runtime.setLoopEnabled(params.loopEnabled === true);
   const workspaceRoot =
     params.transportConfig.workspaceRoot?.trim() || currentWorkspaceRoot();
@@ -1603,6 +1628,7 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   const loopEnabled = target.loopEnabled();
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   runtime.setLoopEnabled(loopEnabled);
+  toolExecutor.setPlanModeToolExposure(planMetadata?.planMode === true);
   return buildSnapshot(runtime);
 });
 
@@ -1610,21 +1636,26 @@ peer.on('runtime.replacePlanMetadata', async (rawParams) => {
   const params = rawParams as RuntimeReplacePlanMetadataParams;
   const loadedFromInternal = await reloadHostMetadataFromInternal(
     params.planMetadata.planMode === true,
+    params.planMetadata.path?.trim() || activePlanPath,
   );
   if (!loadedFromInternal) {
     planMetadata = params.planMetadata;
   }
+  toolExecutor.setPlanModeToolExposure(params.planMetadata.planMode === true);
   return buildSnapshot(requireRuntime());
 });
 
 peer.on('runtime.reloadHostMetadata', async (rawParams) => {
-  const params = (rawParams ?? {}) as { planMode?: boolean };
-  await reloadHostMetadataFromInternal(params.planMode === true);
+  const params = (rawParams ?? {}) as { planMode?: boolean; activePlanPath?: string };
+  await reloadHostMetadataFromInternal(
+    params.planMode === true,
+    params.activePlanPath,
+  );
   return buildSnapshot(requireRuntime());
 });
 
 peer.on('hostInternal.loadCliMetadata', async (rawParams) => {
-  const params = (rawParams ?? {}) as { planMode?: boolean };
+  const params = (rawParams ?? {}) as { planMode?: boolean; activePlanPath?: string };
   const hostInternal = await requireCliHostInternal();
   return {
     ruleEntries: await hostInternal.module.discoverRuleEntries({
@@ -1641,13 +1672,13 @@ peer.on('hostInternal.loadCliMetadata', async (rawParams) => {
         spiritDataDir: hostInternal.spiritDataDir,
       },
       params.planMode === true,
-      applyPatchPlanMetadataOptions(),
+      planMetadataSnapshotOptions(params.activePlanPath ?? activePlanPath),
     ),
   };
 });
 
 peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
-  const params = (rawParams ?? {}) as { planMode?: boolean };
+  const params = (rawParams ?? {}) as { planMode?: boolean; activePlanPath?: string };
   const hostInternal = await requireCliHostInternal();
   return hostInternal.module.planMetadataSnapshot(
     {
@@ -1655,7 +1686,7 @@ peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
       spiritDataDir: hostInternal.spiritDataDir,
     },
     params.planMode === true,
-    applyPatchPlanMetadataOptions(),
+    planMetadataSnapshotOptions(params.activePlanPath ?? activePlanPath),
   );
 });
 

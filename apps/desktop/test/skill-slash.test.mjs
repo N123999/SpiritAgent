@@ -3,6 +3,11 @@ import { test } from "node:test";
 
 import { buildSkillSlashSuggestions } from "../src/lib/skill-slash.ts";
 
+test("buildSkillSlashSuggestions excludes start-implementing slash", () => {
+  const suggestions = buildSkillSlashSuggestions("/", []);
+  assert.equal(suggestions.some((item) => item.alias === "/start-implementing"), false);
+});
+
 test("buildSkillSlashSuggestions includes loop command", () => {
   const suggestions = buildSkillSlashSuggestions("/loop", []);
   assert.ok(suggestions.some((item) => item.kind === "loop" && item.alias === "/loop"));

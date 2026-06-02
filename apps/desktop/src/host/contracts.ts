@@ -70,6 +70,7 @@ export interface StoredDesktopSession extends ChatArchive {
   sessionDisplayName?: string;
   workspaceRoot?: string;
   gitBranch?: string;
+  activePlanPath?: string;
   desktopMessages?: ConversationMessageSnapshot[];
   desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind?: StoredDesktopRewindMetadata;

@@ -521,6 +521,7 @@ export interface ToolExecutor<
   toolDefinitionsJson(): JsonValue;
   /** When Loop is off, omit finish_task from toolDefinitionsJson(). */
   setLoopToolExposure?(loopEnabled: boolean): void;
+  setPlanModeToolExposure?(planMode: boolean): void;
   parseCommand(message: string): Promise<ToolRequest>;
   requestFromFunctionCall(name: string, argumentsJson: string): Promise<ToolRequest>;
   authorize(request: ToolRequest): Promise<AuthorizationDecision<TrustTarget>>;

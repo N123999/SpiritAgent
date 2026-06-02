@@ -398,7 +398,7 @@
     "supplementOption": "Supplement an unlisted option"
   },
   "workspace": {
-    "planNotCreated": "Plan has not been created yet. A managed plan.md will appear here once actual writes are detected.",
+    "planNotCreated": "Plan has not been created yet. After create_plan writes a file, the plan under plans/ will appear here.",
     "unsavedChangesCloseConfirm": "There are unsaved changes. Close anyway?",
     "markdownPreview": "Markdown Preview",
     "preview": "Preview",
@@ -634,7 +634,7 @@
   "slash": {
     "createSkill": "Create or tighten a SKILL.md in natural language",
     "logSession": "Export current session llm_history and full API request traces and open automatically",
-    "startImplementing": "Read Spirit-managed plan.md and start implementing directly",
+    "startImplementing": "Read the active Spirit plan and start implementing",
     "compact": "Proactively compress current session context history",
     "loop": "Enable autonomous loop until finish_task or remove the chip with Backspace",
     "activateSkillPrompt": "Please handle the current task according to skill \"{{skillName}}\"."

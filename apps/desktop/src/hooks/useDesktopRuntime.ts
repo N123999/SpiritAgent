@@ -17,7 +17,6 @@ import {
   isCreateSkillSlashInput,
   isCompactSlashInput,
   isLogSessionSlashInput,
-  isStartImplementingSlashInput,
   matchSkillSlashInput,
 } from "@/lib/skill-slash";
 import type {
@@ -1501,7 +1500,6 @@ export function useDesktopRuntime() {
       if (
         hasLocalFiles &&
         (isCreateSkillSlashInput(text) ||
-          isStartImplementingSlashInput(text) ||
           isCompactSlashInput(text) ||
           skillSlash)
       ) {
@@ -1512,8 +1510,6 @@ export function useDesktopRuntime() {
         ? await api.submitCreateSkillSlash({
             rawText: text,
           })
-        : isStartImplementingSlashInput(text)
-        ? await api.submitStartImplementing()
         : skillSlash
         ? await api.submitSkillSlash({
             skillName: skillSlash.skillName,
@@ -1536,6 +1532,27 @@ export function useDesktopRuntime() {
       setBusyAction("");
     }
   }, [api, applySnapshot, clearActiveComposerDraft, composer, refreshSessions, snapshot]);
+
+  const submitStartImplementing = useCallback(async (): Promise<boolean> => {
+    if (!api) {
+      return false;
+    }
+
+    try {
+      setBusyAction("send");
+      const next = await api.submitStartImplementing();
+      applySnapshot(next);
+      clearActiveComposerDraft();
+      setRuntimeError("");
+      void refreshSessions();
+      return true;
+    } catch (error) {
+      setRuntimeError(describeError(error));
+      return false;
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot, clearActiveComposerDraft, refreshSessions]);
 
   const abortConversation = useCallback(async (): Promise<boolean> => {
     if (!api) {
@@ -1986,6 +2003,7 @@ export function useDesktopRuntime() {
     saveSettingsPatch,
     resetWebHostPairing,
     sendMessage,
+    submitStartImplementing,
     skipQuestions,
     submitApproval,
     submitQuestions,

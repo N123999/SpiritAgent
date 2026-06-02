@@ -173,6 +173,16 @@ export interface ToolCallSummaryCopy {
 const SUMMARY_DETAIL_MAX = 80;
 const SUBAGENT_TASK_PREVIEW_MAX = 48;
 
+/** Parsed host request uses `plan_name`; streaming preview JSON uses tool arg `name`. */
+function planSlugFromCreatePlanRequest(record: Record<string, unknown>): string {
+  const planName = typeof record.plan_name === 'string' ? record.plan_name.trim() : '';
+  if (planName) {
+    return planName;
+  }
+  const streamedName = typeof record.name === 'string' ? record.name.trim() : '';
+  return streamedName === 'create_plan' ? '' : streamedName;
+}
+
 export function toolCallSummaryCopyForRequest(
   toolName: string,
   request: unknown,
@@ -203,6 +213,13 @@ export function toolCallSummaryCopyForRequest(
       const verb =
         toolName === 'create_file' ? i18n.t('tool.create') : toolName === 'edit_file' ? i18n.t('tool.edit') : i18n.t('tool.delete');
       return { headline: `${verb} ${basename}` };
+    }
+    case 'create_plan': {
+      const planSlug = planSlugFromCreatePlanRequest(record);
+      const label = planSlug
+        ? `plans/${planSlug.endsWith('.md') ? planSlug : `${planSlug}.md`}`
+        : 'plans/';
+      return { headline: `${i18n.t('tool.create')} ${displayBasename(label)}` };
     }
     case 'apply_patch': {
       const operation =

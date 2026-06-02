@@ -390,6 +390,10 @@ impl TuiShell {
         self.last_turn_can_continue
     }
 
+    pub fn has_active_plan(&self) -> bool {
+        self.runtime.has_active_plan()
+    }
+
     pub fn clear_interrupt_escape_arm(&mut self) {
         self.interrupt_escape_armed_at = None;
     }

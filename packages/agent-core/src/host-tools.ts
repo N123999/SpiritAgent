@@ -581,6 +581,32 @@ export function buildTodoHostToolDefinitions(): JsonValue[] {
   ];
 }
 
+export function buildPlanModeHostToolDefinitions(): JsonValue[] {
+  return [
+    functionTool(
+      'create_plan',
+      'Create a named implementation plan stored as plans/{name}.md for a later Agent turn to execute.',
+      {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description:
+              'Short plan slug used as the file stem only: letters, digits, hyphens, underscores. No directories, no .md suffix, no spaces (example: desktop-plans-dir).',
+          },
+          content: {
+            type: 'string',
+            description:
+              'Full markdown body of the implementation plan—the document a coding agent will follow in a later turn.\n\nUnless the user explicitly asks for another shape (one-pager, ADR-only, research notes), write an execution-ready plan, not a roadmap deck:\n\n- Start with a "# Title" and one short paragraph: goal, non-goals, and what "done" means.\n- Split work into ordered phases: "## Phase 1: <short title>", "## Phase 2: ...", and so on.\n- Under each phase use markdown task checkboxes only for actionable work: "- [ ] <imperative task>". Each task should be specific enough to implement or verify in one sitting; name files, modules, or APIs when known from the repo.\n- End each phase with a "**Verify**" bullet list: commands, tests, or observable checks that prove the phase is complete.\n- Phase 1 must state workspace assumptions that affect implementation (e.g. target git branch name, feature flags, or "no schema migrations") when relevant; do not invent repo facts—read the codebase first when unsure.\n- Prefer depth on the current user request over generic process filler; skip empty checklist boilerplate.\n\nAfter creation, revise this plan with edit_file on the same path (old_text/new_text), not another create_plan call.',
+          },
+        },
+        required: ['name', 'content'],
+        additionalProperties: false,
+      },
+    ),
+  ];
+}
+
 export function buildDreamCollectorSystemMessage(): string {
   return [
     '[SPIRIT_DREAM_COLLECTOR]',

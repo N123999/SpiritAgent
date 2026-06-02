@@ -22,7 +22,6 @@ import {
   type ExtensionStateStore,
   loadHostInstructionMetadata,
   parseModelProviderId,
-  resolveInstructionPaths,
   type HostInstructionMetadataSummary,
   type HostRuleDiscoveryResult,
   type HostSkillDiscoveryResult,
@@ -111,13 +110,6 @@ export function chatsDirPath(): string {
 
 export function configFilePath(): string {
   return path.join(spiritAgentDataDir(), CONFIG_FILE_NAME);
-}
-
-export function planFilePath(): string {
-  return resolveInstructionPaths({
-    workspaceRoot: path.resolve('.'),
-    spiritDataDir: spiritAgentDataDir(),
-  }).planFile;
 }
 
 function readModelKeyFromKeyring(modelName: string): string | undefined {
@@ -297,12 +289,14 @@ export function createDesktopExtensionStateStore(
 export async function loadHostMetadata(
   workspaceRoot: string,
   planMode = false,
+  options?: { activePlanPath?: string },
 ): Promise<HostMetadataSummary> {
   return loadHostInstructionMetadata({
     workspaceRoot,
     spiritDataDir: spiritAgentDataDir(),
   }, {
     planMode,
+    activePlanPath: options?.activePlanPath,
   });
 }
 
@@ -323,6 +317,9 @@ function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDe
       ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
       : {}),
     ...(normalizeGitBranch(parsed.gitBranch) ? { gitBranch: normalizeGitBranch(parsed.gitBranch) } : {}),
+    ...(typeof parsed.activePlanPath === 'string' && parsed.activePlanPath.trim()
+      ? { activePlanPath: parsed.activePlanPath.trim() }
+      : {}),
     ...(Array.isArray(parsed.desktopMessages)
       ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
       : {}),

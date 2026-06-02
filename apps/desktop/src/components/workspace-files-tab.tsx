@@ -424,7 +424,11 @@ export function WorkspaceFilesTab({
                 <WorkspaceMonacoEditor
                   key={selectedEntryKey}
                   ref={editorRef}
-                  relativePath={doc.readOnly ? "plan.md" : doc.subtitle}
+                  relativePath={
+                    doc.readOnly
+                      ? (plan.path.split(/[/\\]/).pop() ?? "plan")
+                      : doc.subtitle
+                  }
                   initialText={draftText}
                   baselineText={savedText}
                   onSave={onEditorSave}

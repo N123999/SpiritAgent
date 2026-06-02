@@ -76,6 +76,14 @@ impl RuntimeHandle {
         self.runtime.load_plan_metadata(plan_mode)
     }
 
+    pub fn has_active_plan(&self) -> bool {
+        self.runtime.has_active_plan()
+    }
+
+    pub fn active_plan_path(&self) -> Option<&std::path::Path> {
+        self.runtime.active_plan_path()
+    }
+
     pub fn list_workspace_file_reference_suggestions(
         &mut self,
         input: &str,

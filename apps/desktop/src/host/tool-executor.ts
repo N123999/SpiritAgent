@@ -15,6 +15,7 @@ import {
   enrichUnknownToolError,
   toolNamesFromDefinitions,
   buildFinishTaskHostToolDefinitions,
+  buildPlanModeHostToolDefinitions,
   buildTodoHostToolDefinitions,
   filterLegacyHostFileToolDefinitions,
   isOpenResponsesTransportConfig,
@@ -70,6 +71,8 @@ export class DesktopToolExecutor
   private extensionToolDefinitions: JsonValue[];
   private loopToolDefinitions: JsonValue[] = [];
   private loopToolExposureEnabled = false;
+  private planToolDefinitions: JsonValue[] = [];
+  private planToolExposureEnabled = false;
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
   private activeTransportConfig: LlmTransportConfig | undefined;
   private imageGenerationAvailable = false;
@@ -131,6 +134,11 @@ export class DesktopToolExecutor
     this.loopToolDefinitions = loopEnabled ? buildFinishTaskHostToolDefinitions() : [];
   }
 
+  setPlanModeToolExposure(planMode: boolean): void {
+    this.planToolExposureEnabled = planMode;
+    this.planToolDefinitions = planMode ? buildPlanModeHostToolDefinitions() : [];
+  }
+
   approvalLevelSnapshot(): ApprovalLevel {
     return this.approvalLevel;
   }
@@ -173,6 +181,7 @@ export class DesktopToolExecutor
     return mergeToolDefinitions(
       ...builtinDefinitions,
       ...this.loopToolDefinitions,
+      ...this.planToolDefinitions,
       ...this.dreamToolDefinitions,
       ...this.todoToolDefinitions,
       ...this.extensionToolDefinitions,

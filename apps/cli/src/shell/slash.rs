@@ -33,6 +33,8 @@ pub(crate) struct PromptSlashCommand {
     pub(crate) prompt: McpDiscoveredPrompt,
 }
 
+const START_IMPLEMENTING_SLASH: &str = "/start-implementing";
+
 const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/help",
     "/clear",
@@ -40,7 +42,6 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/exit",
     "/continue",
     "/loop",
-    "/start-implementing",
     "/model",
     "/compact",
     "/sessions",
@@ -64,7 +65,7 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/exit",
     "/continue",
     "/loop",
-    "/start-implementing",
+    START_IMPLEMENTING_SLASH,
     "/model",
     "/compact",
     "/sessions",
@@ -86,6 +87,14 @@ pub(crate) fn default_commands() -> Vec<String> {
         .iter()
         .map(|command| (*command).to_string())
         .collect()
+}
+
+pub(crate) fn slash_commands_for_shell(shell: &TuiShell) -> Vec<String> {
+    let mut commands = default_commands();
+    if shell.has_active_plan() {
+        commands.insert(7, START_IMPLEMENTING_SLASH.to_string());
+    }
+    commands
 }
 
 pub(crate) fn current_query(input: &str) -> Option<&str> {
@@ -163,10 +172,10 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
         return vec![primary_help_suggestion("/loop", query)];
     }
 
-    if command_visible_in_mode("/start-implementing", shell.input_mode())
-        && (query == "/start-implementing" || query.starts_with("/start-implementing "))
+    if shell.has_active_plan()
+        && (query == START_IMPLEMENTING_SLASH || query.starts_with(format!("{START_IMPLEMENTING_SLASH} ").as_str()))
     {
-        return vec![primary_help_suggestion("/start-implementing", query)];
+        return vec![primary_help_suggestion(START_IMPLEMENTING_SLASH, query)];
     }
 
     if query == "/sessions" || query.starts_with("/sessions ") {
@@ -337,11 +346,12 @@ fn command_visible_in_mode(_command: &str, _input_mode: MainInputMode) -> bool {
 fn command_visible(shell: &TuiShell, command: &str) -> bool {
     match command {
         "/continue" => shell.can_continue_last_turn(),
+        START_IMPLEMENTING_SLASH => shell.has_active_plan(),
         _ => command_visible_in_mode(command, shell.input_mode()),
     }
 }
 
-pub(crate) fn help_text(_input_mode: MainInputMode, can_continue_last_turn: bool) -> String {
+pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> String {
     let mut lines = vec![
         "可用指令:".to_string(),
         "- /help".to_string(),
@@ -353,7 +363,9 @@ pub(crate) fn help_text(_input_mode: MainInputMode, can_continue_last_turn: bool
         lines.push("- /continue".to_string());
     }
 
-    lines.push("- /start-implementing".to_string());
+    if has_active_plan {
+        lines.push(format!("- {START_IMPLEMENTING_SLASH}"));
+    }
     lines.push("- /loop [on|off|status]".to_string());
 
     lines.extend([
@@ -433,13 +445,13 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
             shell.request_quit();
         }
         "/help" => shell.push_agent_message(help_text(
-            shell.input_mode(),
+            shell.has_active_plan(),
             shell.can_continue_last_turn(),
         )),
         "/clear" => shell.clear_chat_for_slash(),
         "/continue" => shell.handle_continue_slash(),
         "/loop" => shell.handle_loop_slash(&parts[1..]),
-        "/start-implementing" => shell.handle_start_implementing_slash(),
+        START_IMPLEMENTING_SLASH => shell.handle_start_implementing_slash(),
         "/model" => shell.handle_model_slash(&parts[1..]),
         "/compact" => shell.compact_history_for_slash(),
         "/sessions" => shell.handle_sessions_slash(message),
@@ -487,7 +499,7 @@ mod tests {
 
     #[test]
     fn help_text_mentions_bottom_form_shortcuts() {
-        let help = help_text(MainInputMode::Agent, false);
+        let help = help_text(false, false);
 
         assert!(help.contains("/mcp add"));
         assert!(help.contains("/model add"));
@@ -518,23 +530,15 @@ mod tests {
     }
 
     #[test]
-    fn start_implementing_command_is_visible_in_all_modes() {
-        assert!(command_visible_in_mode(
-            "/start-implementing",
-            MainInputMode::Agent,
-        ));
-        assert!(command_visible_in_mode(
-            "/start-implementing",
-            MainInputMode::Plan,
-        ));
-        assert!(help_text(MainInputMode::Agent, false).contains("/start-implementing"));
-        assert!(help_text(MainInputMode::Plan, false).contains("/start-implementing"));
+    fn start_implementing_command_only_appears_with_active_plan() {
+        assert!(!help_text(false, false).contains(START_IMPLEMENTING_SLASH));
+        assert!(help_text(true, false).contains(START_IMPLEMENTING_SLASH));
     }
 
     #[test]
     fn continue_command_only_appears_when_available() {
-        assert!(!help_text(MainInputMode::Agent, false).contains("/continue"));
-        assert!(help_text(MainInputMode::Agent, true).contains("/continue"));
+        assert!(!help_text(false, false).contains("/continue"));
+        assert!(help_text(false, true).contains("/continue"));
     }
 
     #[test]

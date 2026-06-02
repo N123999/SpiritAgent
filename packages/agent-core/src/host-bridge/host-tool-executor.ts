@@ -20,6 +20,7 @@ import {
   assertFinishTaskToolAllowed,
   buildBuiltinHostToolDefinitions,
   buildFinishTaskHostToolDefinitions,
+  buildPlanModeHostToolDefinitions,
   type BuiltinHostToolDefinitionEnvironment,
 } from '../host-tools.js';
 import { enrichUnknownToolError, toolNamesFromDefinitions } from '../unknown-tool-error.js';
@@ -54,6 +55,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private todoToolDefinitionsCache: JsonValue[] = [];
   private loopToolDefinitionsCache: JsonValue[] = [];
   private loopToolExposureEnabled = false;
+  private planToolDefinitionsCache: JsonValue[] = [];
+  private planToolExposureEnabled = false;
   private hostToolDefinitionsLoaded = false;
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
@@ -94,6 +97,12 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   setLoopToolExposure(loopEnabled: boolean): void {
     this.loopToolExposureEnabled = loopEnabled;
     this.loopToolDefinitionsCache = loopEnabled ? buildFinishTaskHostToolDefinitions() : [];
+    this.refreshMergedToolDefinitions();
+  }
+
+  setPlanModeToolExposure(planMode: boolean): void {
+    this.planToolExposureEnabled = planMode;
+    this.planToolDefinitionsCache = planMode ? buildPlanModeHostToolDefinitions() : [];
     this.refreshMergedToolDefinitions();
   }
 
@@ -425,8 +434,13 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       hostDefinitions = filterLegacyHostFileToolDefinitions(hostDefinitions);
     }
     const mergedHostDefinitions = Array.isArray(hostDefinitions)
-      ? [...hostDefinitions, ...this.loopToolDefinitionsCache, ...this.todoToolDefinitionsCache]
-      : [...this.loopToolDefinitionsCache, ...this.todoToolDefinitionsCache];
+      ? [
+          ...hostDefinitions,
+          ...this.loopToolDefinitionsCache,
+          ...this.planToolDefinitionsCache,
+          ...this.todoToolDefinitionsCache,
+        ]
+      : [...this.loopToolDefinitionsCache, ...this.planToolDefinitionsCache, ...this.todoToolDefinitionsCache];
     this.toolDefinitionsCache = mergeToolDefinitions(
       mergedHostDefinitions,
       this.extensionToolDefinitionsCache,

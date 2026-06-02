@@ -23,9 +23,6 @@ const SKILL_PREVIEW_MAX_LINES = 8;
 const SKILL_PREVIEW_MAX_CHARS = 1_200;
 const SKILL_NAME_MAX_CHARS = 64;
 
-export const START_IMPLEMENTING_REMINDER =
-  '确定此方案后，请输入"/start-implementing" 或手动切换至 Agent 模式后要求开始实现。';
-
 export type HostRuleScope = 'workspace' | 'user';
 export type HostSkillScope = 'workspace' | 'user';
 export type HostSkillRootKind = 'workspaceSpirit' | 'workspaceAgents' | 'user';
@@ -107,7 +104,6 @@ export interface HostPlanMetadata {
   path: string;
   exists: boolean;
   planMode: boolean;
-  planModeHostInstructions: string;
 }
 
 export interface HostInstructionMetadataSummary {
@@ -131,6 +127,7 @@ export interface HostInstructionDiscovery<Rule, Skill, PlanMetadata> {
 export interface LoadHostInstructionMetadataOptions {
   planMode?: boolean;
   useApplyPatchFileTools?: boolean;
+  activePlanPath?: string;
   log?: (message: string) => void;
 }
 
@@ -159,6 +156,9 @@ export async function loadHostInstructionMetadata(
     skills,
     planMetadata: planMetadataSnapshot(context, options.planMode === true, {
       useApplyPatchFileTools: options.useApplyPatchFileTools === true,
+      ...(options.activePlanPath?.trim()
+        ? { activePlanPath: options.activePlanPath.trim() }
+        : {}),
     }),
   };
 }
@@ -311,45 +311,31 @@ export async function loadSkillDiscoveryResult(
 
 export interface PlanMetadataSnapshotOptions {
   useApplyPatchFileTools?: boolean;
+  activePlanPath?: string;
 }
 
 export function planMetadataSnapshot(
-  context: InstructionDiscoveryContext,
+  _context: InstructionDiscoveryContext,
   planMode: boolean,
   options?: PlanMetadataSnapshotOptions,
 ): HostPlanMetadata {
-  const paths = resolveInstructionPaths(context);
+  const activePath = options?.activePlanPath?.trim() ?? '';
   return {
-    path: paths.planFile,
-    exists: existsSync(paths.planFile),
+    path: activePath,
+    exists: activePath.length > 0 && existsSync(activePath),
     planMode,
-    planModeHostInstructions: planMode
-      ? buildPlanModeHostSection(context, options)
-      : '',
   };
 }
 
-export function buildPlanModeHostSection(
-  context: InstructionDiscoveryContext,
-  options?: PlanMetadataSnapshotOptions,
+export function buildStartImplementingUserTurn(
+  _context: InstructionDiscoveryContext,
+  activePlanPath?: string,
 ): string {
-  const paths = resolveInstructionPaths(context);
-  const useApplyPatch = options?.useApplyPatchFileTools === true;
-  const targetNote = existsSync(paths.planFile)
-    ? useApplyPatch
-      ? '目标文件已存在：若与本次需求完全不相干，应删除后新建（apply_patch delete_file 再 create_file），勿在同一文件里堆 unrelated 内容；若仍相关则先读原文，再按最新需求压缩重写。'
-      : '目标文件已存在：若与本次需求完全不相干，应删除后新建（delete_file 再 create_file），勿在同一文件里堆 unrelated 内容；若仍相关则先读原文，再按最新需求压缩重写。'
-    : '目标文件目前不存在；如果内容确定且路径可写，直接创建即可。';
-  const writeToolsNote = useApplyPatch
-    ? '你可以在内容确认后使用 apply_patch（V4A diff，operation 类型 create_file / update_file / delete_file）写入'
-    : '你可以在内容确认后使用 create_file 或 edit_file 写入';
-
-  return `你现在在处理一个 Plan 模式规划请求。\n\n目标:\n- target_path: ${paths.planFile}\n- workspace_root: ${context.workspaceRoot}\n\n要求:\n- 仅当用户明确要做方案、设计或可落地的实现计划时，才撰写或重写 plan.md；除非用户主动要求交付「项目计划书/路线图」类文档，否则不要自行拟一份对整体项目的规划文档。\n- 最终 plan.md 是给后续实现阶段的 LLM 和宿主看的执行文档，不是给人类做项目管理汇报的。\n- 计划要详细到可执行：优先写目标拆解、关键文件、实现顺序、验证方式、风险点与回退策略。\n- 需要事实时先读取仓库内相关文件，不要臆造项目结构、技术栈或现有行为。\n- 避免空话、治理废话和泛泛 checklist；内容应直接影响后续实现行为。\n- 目标文件位于 Spirit 托管的用户目录：${paths.planFile}。${writeToolsNote}；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已写入计划”。\n- ${targetNote}\n- 如果你成功写入或更新 plan.md，后续在同一轮对话中还要再复述一遍最终方案，确保用户无需打开文件也能确认。\n- 在对话结尾必须原样输出这句话：${START_IMPLEMENTING_REMINDER}\n\n交付方式:\n- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。\n- 如果不能直接落盘，就把最终 plan.md 完整贴在回复里，并明确说明未写入。`;
-}
-
-export function buildStartImplementingUserTurn(context: InstructionDiscoveryContext): string {
-  const paths = resolveInstructionPaths(context);
-  return `用户已确认方案并要求开始实现。开始实现前，先读取 Spirit 托管的计划文件 ${paths.planFile}，理解其中执行方案后再开始编码与验证。若该文件不存在、无法读取，或内容与当前需求明显不一致，先明确说明并请求用户重新生成或确认计划，不要假设计划内容。`;
+  const trimmed = activePlanPath?.trim();
+  if (!trimmed) {
+    return '用户已确认方案并要求开始实现。本会话尚未记录可用的实施计划路径；请先使用 create_plan 创建计划后再开始实现。';
+  }
+  return `用户已确认方案并要求开始实现。开始实现前，先读取 Spirit 托管的计划文件 ${trimmed}，理解其中执行方案后再开始编码与验证。若该文件不存在、无法读取，或内容与当前需求明显不一致，先明确说明并请求用户重新生成或确认计划，不要假设计划内容。`;
 }
 
 async function buildRuleSource(

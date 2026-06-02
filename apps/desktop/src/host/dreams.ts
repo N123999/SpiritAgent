@@ -135,9 +135,8 @@ export async function buildDreamCommitContext(input: {
 export function buildDreamCollectorPlanMetadata(
   planMetadata: LlmPlanMetadata,
 ): LlmPlanMetadata {
-  const { planModeHostInstructions: _planModeHostInstructions, ...rest } = planMetadata;
   return {
-    ...rest,
+    ...planMetadata,
     planMode: false,
   };
 }

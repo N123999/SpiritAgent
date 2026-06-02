@@ -7,8 +7,8 @@ import type {
   ConversationMessageSnapshot,
   SessionListItem,
 } from '../types.js';
+import { extractActivePlanPathFromLlmHistory, normalizeApprovalLevel } from '@spirit-agent/host-internal';
 import type { ApprovalLevel } from '@spirit-agent/host-internal';
-import { normalizeApprovalLevel } from '@spirit-agent/host-internal';
 import type { StoredDesktopSession } from './contracts.js';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import {
@@ -44,6 +44,7 @@ export interface RestoredSessionState {
   rewind: StoredDesktopRewindMetadata;
   loopEnabled: boolean;
   approvalLevel: ApprovalLevel;
+  activePlanPath?: string;
 }
 
 export function isEphemeralCommitSessionPath(filePath: string): boolean {
@@ -157,6 +158,12 @@ export function restoreStoredSessionState(input: {
     ? cloneConversationMessages(input.loaded.desktopMessages)
     : cloneConversationMessages(input.fallbackMessages);
   const desktopMessageTimeline = tryCloneDesktopMessageTimeline(input.loaded.desktopMessageTimeline);
+  const storedActivePlanPath = typeof input.loaded.activePlanPath === 'string'
+    ? input.loaded.activePlanPath.trim()
+    : '';
+  const activePlanPath = storedActivePlanPath.length > 0
+    ? storedActivePlanPath
+    : extractActivePlanPathFromLlmHistory(input.loaded.llmHistory);
   return {
     messages,
     ...(desktopMessageTimeline ? { desktopMessageTimeline } : {}),
@@ -170,6 +177,7 @@ export function restoreStoredSessionState(input: {
     rewind: input.loaded.rewind ?? createDesktopRewindMetadata(),
     loopEnabled: input.loaded.loopEnabled === true,
     approvalLevel: normalizeApprovalLevel(input.loaded.approvalLevel),
+    ...(activePlanPath ? { activePlanPath } : {}),
   };
 }
 
@@ -179,6 +187,7 @@ export function buildStoredDesktopSession(input: {
   sessionDisplayName: string;
   workspaceRoot: string;
   gitBranch?: string;
+  activePlanPath?: string;
   desktopMessages: ConversationMessageSnapshot[];
   desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind: StoredDesktopRewindMetadata;
@@ -193,6 +202,7 @@ export function buildStoredDesktopSession(input: {
     sessionDisplayName: input.sessionDisplayName,
     workspaceRoot: input.workspaceRoot,
     ...(input.gitBranch ? { gitBranch: input.gitBranch } : {}),
+    ...(input.activePlanPath ? { activePlanPath: input.activePlanPath } : {}),
     desktopMessages: sanitizeConversationMessagesForPersistence(input.desktopMessages),
     ...(input.desktopMessageTimeline
       ? { desktopMessageTimeline: cloneDesktopMessageTimeline(input.desktopMessageTimeline) }

@@ -95,20 +95,15 @@ test('desktop dreams context is injected into the main agent system message', as
 
 test('dream collector plan metadata is always normalized to agent mode', () => {
   const collectorPlanMetadata = buildDreamCollectorPlanMetadata({
-    path: 'D:/SpiritAgent/PLAN.md',
+    path: 'D:/SpiritAgent/plans/demo-plan.md',
     exists: true,
     planMode: true,
-    planModeHostInstructions: '确定此方案后，请输入"/start-implementing" 或手动切换至 Agent 模式后要求开始实现。',
   });
 
   assert.equal(collectorPlanMetadata.planMode, false);
-  assert.equal(collectorPlanMetadata.planModeHostInstructions, undefined);
 
   const planSystemMessage = buildPlanSystemMessage(collectorPlanMetadata);
-  assert.equal(typeof planSystemMessage, 'string');
-  assert.match(planSystemMessage, /<plan path="D:\/SpiritAgent\/PLAN\.md" \/>/);
-  assert.doesNotMatch(planSystemMessage, /start-implementing/);
-  assert.doesNotMatch(planSystemMessage, /Agent 模式/);
+  assert.equal(planSystemMessage, undefined);
 });
 
 test('desktop runtime exposes Dreams as read-only tools', async () => {

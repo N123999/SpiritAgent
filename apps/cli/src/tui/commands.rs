@@ -806,7 +806,7 @@ impl TuiShell {
         }
 
         self.set_input_mode(MainInputMode::Agent);
-        let user_turn = plan::build_start_implementing_user_turn();
+        let user_turn = plan::build_start_implementing_user_turn(self.runtime.active_plan_path());
         let _ = self.submit_runtime_user_turn(user_turn, None);
     }
 

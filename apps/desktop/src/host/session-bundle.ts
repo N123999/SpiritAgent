@@ -58,6 +58,8 @@ export interface SessionBundle {
   cachedTodoSnapshot?: import('../types.js').ConversationTodoSnapshot;
   /** Bumped on rewind restore; exposed as `conversation.revision` in snapshots. */
   conversationRevision: number;
+  /** Last successful create_plan absolute path for this session. */
+  activePlanPath?: string;
 }
 
 export function createEmptySessionBundle(workspaceRoot: string, id = '__draft__'): SessionBundle {
@@ -126,6 +128,7 @@ export function sessionBundleFromRestored(
     deferredRuntimeRefreshWhileBusy: false,
     deferredRuntimeHostEvents: [],
     conversationRevision: 0,
+    ...(restored.activePlanPath ? { activePlanPath: restored.activePlanPath } : {}),
   };
 }
 
@@ -153,4 +156,5 @@ export function resetSessionBundleInPlace(bundle: SessionBundle): void {
   bundle.cachedTodoSnapshot = undefined;
   bundle.todoSessionScopeKey = createTodoSessionScopeKey();
   bundle.conversationRevision = 0;
+  bundle.activePlanPath = undefined;
 }

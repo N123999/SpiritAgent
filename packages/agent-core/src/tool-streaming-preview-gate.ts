@@ -3,6 +3,7 @@ import type { JsonValue } from './ports.js';
 import { isJsonObject } from './tool-agent.js';
 
 const PARTIAL_PATH_PATTERN = /"path"\s*:\s*"((?:\\.|[^"\\])*)"/;
+const PARTIAL_PLAN_NAME_PATTERN = /"name"\s*:\s*"((?:\\.|[^"\\])*)"/;
 const PARTIAL_APPLY_PATCH_OPERATION_TYPE_PATTERN =
   /"type"\s*:\s*"(create_file|update_file|delete_file)"/;
 const PARTIAL_POSITIVE_INT_FIELD_PATTERN = (key: string): RegExp =>
@@ -97,6 +98,30 @@ export function tryExtractPartialToolPath(argumentsJson: string): string | undef
   return decodePartialJsonString(match[1]);
 }
 
+/** Extract `name` (plan slug) from complete or in-flight create_plan argument JSON. */
+export function tryExtractPartialPlanName(argumentsJson: string): string | undefined {
+  const trimmed = argumentsJson.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as JsonValue;
+    if (isJsonObject(parsed) && typeof parsed.name === 'string' && parsed.name.trim()) {
+      return parsed.name.trim();
+    }
+  } catch {
+    // Streaming JSON may be incomplete.
+  }
+
+  const match = trimmed.match(PARTIAL_PLAN_NAME_PATTERN);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  return decodePartialJsonString(match[1]);
+}
+
 export function hostToolArgumentsReadyForEarlyStreamingPreview(
   name: string,
   argumentsJson: string,
@@ -106,6 +131,9 @@ export function hostToolArgumentsReadyForEarlyStreamingPreview(
       return tryExtractPartialApplyPatchPath(argumentsJson) !== undefined;
     case 'edit_file':
     case 'create_file':
+      return tryExtractPartialToolPath(argumentsJson) !== undefined;
+    case 'create_plan':
+      return tryExtractPartialPlanName(argumentsJson) !== undefined;
     case 'read_file':
     case 'list_directory_files':
     case 'delete_file':
@@ -179,6 +207,8 @@ export function hostToolArgumentsReadyForPreview(name: string, argumentsJson: st
     }
     case 'create_file':
       return nonEmpty('path') && nonEmpty('content');
+    case 'create_plan':
+      return nonEmpty('name') && nonEmpty('content');
     case 'edit_file':
       return nonEmpty('path') && nonEmpty('old_text') && nonEmpty('new_text');
     case 'delete_file':
@@ -212,7 +242,12 @@ export function shouldRepeatStreamingToolPreview(
     }
     return options?.previousDetailSignature !== nextSignature;
   }
-  if (toolName !== 'edit_file' && toolName !== 'create_file' && toolName !== 'apply_patch') {
+  if (
+    toolName !== 'edit_file'
+    && toolName !== 'create_file'
+    && toolName !== 'create_plan'
+    && toolName !== 'apply_patch'
+  ) {
     return false;
   }
   return nextArgsLen >= previousArgsLen + STREAMING_PREVIEW_UPDATE_MIN_DELTA_CHARS;
@@ -318,6 +353,10 @@ export function previewRequestFromStreamingArguments(
         operation.type = typeMatch[1];
       }
       return { operation };
+    }
+    if (toolName === 'create_plan') {
+      const name = tryExtractPartialPlanName(argumentsJson);
+      return name ? { name } : undefined;
     }
     return undefined;
   }

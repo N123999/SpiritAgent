@@ -300,7 +300,8 @@ impl TuiShell {
             return;
         };
 
-        let commands = self.slash.commands.clone();
+        let commands = slash::slash_commands_for_shell(self);
+        self.slash.commands = commands.clone();
         self.slash.suggestions = slash::compute_suggestions(self, &query, &commands);
 
         if self.slash.selected_suggestion >= self.slash.suggestions.len() {
