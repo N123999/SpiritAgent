@@ -75,12 +75,17 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     ref,
   ) {
     const divRef = useRef<HTMLDivElement>(null);
-    const [segments, setSegments] = useState<RichSegment[]>(emptySegments);
+    const [segments, setSegments] = useState<RichSegment[]>(() =>
+      initialSegments?.length
+        ? mergeAdjacentTextSegments([...initialSegments])
+        : emptySegments(),
+    );
     const segmentsRef = useRef(segments);
+    segmentsRef.current = segments;
     const pendingCaretRef = useRef<SegmentCaret | null>(null);
-    const skipExternalValueSyncRef = useRef(false);
+    const skipExternalValueSyncRef = useRef(Boolean(initialSegments?.length));
     const skipRenderRef = useRef(false);
-    const initialSegmentsHydratedRef = useRef(false);
+    const initialSegmentsHydratedRef = useRef(Boolean(initialSegments?.length));
     const onElementAttachmentsChangeRef = useRef(onElementAttachmentsChange);
 
     useEffect(() => {
@@ -101,11 +106,18 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     );
 
     const commitSegments = useCallback(
-      (next: RichSegment[], caret?: SegmentCaret | null) => {
+      (
+        next: RichSegment[],
+        caret?: SegmentCaret | null,
+        options?: { notifyParent?: boolean },
+      ) => {
         const merged = mergeAdjacentTextSegments(next);
+        segmentsRef.current = merged;
         pendingCaretRef.current = caret ?? null;
         setSegments(merged);
-        notifyParents(merged);
+        if (options?.notifyParent !== false) {
+          notifyParents(merged);
+        }
       },
       [notifyParents],
     );
@@ -133,8 +145,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     );
 
     const applySegments = useCallback(
-      (next: RichSegment[], caret?: SegmentCaret | null) => {
-        commitSegments(next, caret ?? caretAtEnd(mergeAdjacentTextSegments(next)));
+      (next: RichSegment[], caret?: SegmentCaret | null, notifyParent = true) => {
+        commitSegments(next, caret ?? caretAtEnd(mergeAdjacentTextSegments(next)), {
+          notifyParent,
+        });
       },
       [commitSegments],
     );
@@ -151,11 +165,15 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     );
 
     useLayoutEffect(() => {
-      if (!initialSegments || initialSegmentsHydratedRef.current) {
+      if (!initialSegments?.length || initialSegmentsHydratedRef.current) {
         return;
       }
       initialSegmentsHydratedRef.current = true;
-      applySegments([...initialSegments]);
+      const merged = mergeAdjacentTextSegments([...initialSegments]);
+      if (!segmentsEqual(merged, segmentsRef.current)) {
+        skipExternalValueSyncRef.current = true;
+        applySegments(merged, caretAtEnd(merged), false);
+      }
     }, [initialSegments, applySegments]);
 
     useLayoutEffect(() => {
@@ -192,6 +210,17 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       const hasElements = current.some((s) => s.kind === "element");
       const attachmentCount = elementAttachments?.length ?? 0;
 
+      if (
+        attachmentCount > 0 &&
+        !hasElements &&
+        initialSegments?.some((s) => s.kind === "element")
+      ) {
+        skipExternalValueSyncRef.current = true;
+        const merged = mergeAdjacentTextSegments([...initialSegments]);
+        applySegments(merged, caretAtEnd(merged), false);
+        return;
+      }
+
       // Parent cleared composer after send: empty value AND no attachments prop.
       if (!value && attachmentCount === 0 && (plain || hasElements)) {
         commitSegments(emptySegments(), { segmentIndex: 0, offset: 0 });
@@ -203,9 +232,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       const next = syncSegmentsFromExternalValue(current, value);
       if (!segmentsEqual(next, current)) {
         pendingCaretRef.current = null;
+        segmentsRef.current = next;
         setSegments(next);
       }
-    }, [value, elementAttachments?.length, commitSegments]);
+    }, [value, elementAttachments?.length, initialSegments, applySegments, commitSegments]);
 
     const handleInput = useCallback(() => {
       const div = divRef.current;
@@ -214,6 +244,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       const caret = selectionToCaret(div, segmentsRef.current);
       const next = mergeAdjacentTextSegments(domToSegments(div));
       pendingCaretRef.current = caret;
+      segmentsRef.current = next;
       setSegments(next);
       notifyParents(next);
     }, [notifyParents]);
