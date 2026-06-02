@@ -25,6 +25,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CornerDownLeft,
   Download,
   FolderPlus,
   LoaderCircle,
@@ -2573,6 +2574,24 @@ export default function App() {
     }
   };
 
+  const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    handleComposerSuggestionKeyDown(event);
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (
+      pendingApproval &&
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      runtime.busyAction !== "approve"
+    ) {
+      event.preventDefault();
+      void runtime.submitApproval({ kind: "allow" });
+    }
+  };
+
   const submitCommitDialog = () => {
     void runtime.commitChanges({
       mode: commitMode,
@@ -3092,6 +3111,7 @@ export default function App() {
                         >
                           <Check data-icon="inline-start" />
                           {t('app.allow')}
+                          <CornerDownLeft className="ml-auto size-3.5 shrink-0 opacity-70" aria-hidden />
                         </Button>
                         <Button
                           size="sm"
@@ -3207,7 +3227,7 @@ export default function App() {
                       void runtime.setLoopEnabled(enabled);
                     }}
                     richInputRef={composerRichInputRef}
-                    onKeyDown={handleComposerSuggestionKeyDown}
+                    onKeyDown={handleComposerKeyDown}
                     onSelectionChange={(selectionStart) => {
                       if (selectionStart !== null) {
                         setComposerCursorCodeUnits(selectionStart);
