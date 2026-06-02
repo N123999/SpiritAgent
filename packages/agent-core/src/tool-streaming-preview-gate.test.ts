@@ -9,6 +9,7 @@ import {
   readFilePartialAllowsEarlyExecution,
   readFileStreamingPreviewSignature,
   resolveStreamingToolPreviewEmit,
+  tryExtractPartialPlanName,
   tryExtractPartialReadFileFields,
   tryExtractPartialToolPath,
 } from './tool-streaming-preview-gate.js';
@@ -31,6 +32,28 @@ test('edit_file early preview when only path is streamed', () => {
   const partial = '{"path":"README.md","old_text":"';
   assert.equal(hostToolArgumentsReadyForEarlyStreamingPreview('edit_file', partial), true);
   assert.equal(hostToolArgumentsReadyForPreview('edit_file', partial), false);
+});
+
+test('create_plan early preview when only name is streamed', () => {
+  const partial = '{"name":"random-fun-plan","content":"# Title';
+  assert.equal(tryExtractPartialPlanName(partial), 'random-fun-plan');
+  assert.equal(hostToolArgumentsReadyForEarlyStreamingPreview('create_plan', partial), true);
+  assert.equal(hostToolArgumentsReadyForPreview('create_plan', partial), false);
+  assert.deepEqual(previewRequestFromStreamingArguments('create_plan', partial), {
+    name: 'random-fun-plan',
+  });
+});
+
+test('resolveStreamingToolPreviewEmit repeats for growing create_plan args', () => {
+  const partial = '{"name":"demo-plan","content":"# ';
+  const first = resolveStreamingToolPreviewEmit('create_plan', partial, {
+    readyPreviewEmitted: false,
+  });
+  assert.equal(first.emit, true);
+
+  const longer = `${partial}${'x'.repeat(500)}`;
+  const second = resolveStreamingToolPreviewEmit('create_plan', longer, first.nextState);
+  assert.equal(second.emit, true);
 });
 
 test('buildEarlyExecutableArgumentsJson builds read_file path from partial JSON', () => {

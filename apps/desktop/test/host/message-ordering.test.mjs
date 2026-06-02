@@ -26,6 +26,21 @@ test('toolCallSummaryCopyForRequest: write tools use basename', () => {
   );
 });
 
+test('toolCallSummaryCopyForRequest: create_plan uses plan slug not tool name', () => {
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('create_plan', {
+      name: 'create_plan',
+      plan_name: 'multilingual-cat',
+      content: '# Plan',
+    }),
+    { headline: '创建 multilingual-cat.md' },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('create_plan', { name: 'demo-plan', content: '# Plan' }),
+    { headline: '创建 demo-plan.md' },
+  );
+});
+
 test('toolCallSummaryCopyForRequest: search tools use Chinese headline + detail', () => {
   assert.deepEqual(toolCallSummaryCopyForRequest('grep', { query: 'TODO' }), {
     headline: '搜索',
