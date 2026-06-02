@@ -338,7 +338,42 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
     transform: translateZ(0);
   }
 
+  @keyframes spirit-edit-delta-enter-up {
+    from {
+      transform: translateY(100%);
+      opacity: 0.35;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes spirit-edit-delta-enter-down {
+    from {
+      transform: translateY(-100%);
+      opacity: 0.35;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .spirit-edit-delta-slide-up {
+    animation: spirit-edit-delta-enter-up 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .spirit-edit-delta-slide-down {
+    animation: spirit-edit-delta-enter-down 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .spirit-edit-delta-slide-up,
+    .spirit-edit-delta-slide-down {
+      animation: none;
+    }
+
     .spirit-launch-shimmer-sweep {
       animation: none;
       opacity: 0;

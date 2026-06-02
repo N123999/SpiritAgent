@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 
 import { ChevronRight } from "lucide-react";
 
+import { EditFileLineDeltaBadge } from "@/components/edit-file-line-delta-badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { resolveToolLineDelta } from "@/lib/edit-file-line-delta";
 import {
   genericExpandableDetailLines,
   getToolCallSummaryParts,
@@ -15,6 +17,31 @@ import { cn } from "@/lib/utils";
 import type { ToolBlockSnapshot } from "@/types";
 
 const summaryClass = "text-xs leading-relaxed text-muted-foreground";
+
+function ToolCallSummaryRow({
+  tool,
+  headline,
+  detail,
+  shimmerActive = false,
+}: {
+  tool: ToolBlockSnapshot;
+  headline: string;
+  detail?: string;
+  shimmerActive?: boolean;
+}) {
+  const editLineDelta = useMemo(() => resolveToolLineDelta(tool), [
+    tool.toolName,
+    tool.editLineDelta,
+    tool.argsExcerpt,
+  ]);
+
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-2">
+      <MinimalToolSummary headline={headline} detail={detail} shimmerActive={shimmerActive} />
+      {editLineDelta ? <EditFileLineDeltaBadge delta={editLineDelta} /> : null}
+    </span>
+  );
+}
 
 export function MinimalToolSummary({
   headline,
@@ -121,7 +148,8 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
   if (!expandable) {
     return (
       <p className={shimmerActive ? undefined : summaryClass}>
-        <MinimalToolSummary
+        <ToolCallSummaryRow
+          tool={tool}
           headline={summary.headline}
           detail={summary.detail}
           shimmerActive={shimmerActive}
@@ -140,7 +168,8 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
             "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
           )}
         >
-          <MinimalToolSummary
+          <ToolCallSummaryRow
+            tool={tool}
             headline={summary.headline}
             detail={summary.detail}
             shimmerActive={shimmerActive}

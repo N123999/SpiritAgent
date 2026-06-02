@@ -726,6 +726,8 @@ export interface ToolBlockSnapshot {
   headline: string;
   /** Muted secondary line shown after headline (e.g. shell command, grep query). */
   headlineDetail?: string;
+  /** edit_file / create_file / create_plan: line +/- counts on tool card headline. */
+  editLineDelta?: { added: number; removed: number };
   detailLines: string[];
   argsExcerpt?: string;
   outputExcerpt?: string;

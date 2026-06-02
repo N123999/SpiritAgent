@@ -242,11 +242,26 @@ export function shouldRepeatStreamingToolPreview(
     }
     return options?.previousDetailSignature !== nextSignature;
   }
+  if (toolName === 'edit_file') {
+    const nextSignature = options?.nextArgumentsJson
+      ? editFileStreamingPreviewSignature(options.nextArgumentsJson)
+      : undefined;
+    if (!nextSignature) {
+      return false;
+    }
+    return options?.previousDetailSignature !== nextSignature;
+  }
+  if (toolName === 'create_file' || toolName === 'create_plan') {
+    const nextSignature = options?.nextArgumentsJson
+      ? createContentStreamingPreviewSignature(options.nextArgumentsJson)
+      : undefined;
+    if (!nextSignature) {
+      return false;
+    }
+    return options?.previousDetailSignature !== nextSignature;
+  }
   if (
-    toolName !== 'edit_file'
-    && toolName !== 'create_file'
-    && toolName !== 'create_plan'
-    && toolName !== 'apply_patch'
+    toolName !== 'apply_patch'
   ) {
     return false;
   }
@@ -367,6 +382,147 @@ export function previewRequestFromStreamingArguments(
   }
 }
 
+/** Re-emit when create_file / create_plan `content` grows (line count + length). */
+function createContentStreamingPreviewSignature(argumentsJson: string): string | undefined {
+  const content = tryExtractPartialEditFileStringField(argumentsJson, 'content');
+  if (content === undefined) {
+    return undefined;
+  }
+  const lines = content ? content.split(/\r?\n/u).length : 0;
+  if (lines === 0 && content.length === 0) {
+    return undefined;
+  }
+  return `${lines}:${content.length}`;
+}
+
+/** Re-emit streaming preview when edit_file +/- line counts change (host/UI computes display). */
+function editFileStreamingPreviewSignature(argumentsJson: string): string | undefined {
+  const oldText = tryExtractPartialEditFileStringField(argumentsJson, 'old_text');
+  const newText = tryExtractPartialEditFileStringField(argumentsJson, 'new_text');
+  if (oldText === undefined && newText === undefined) {
+    return undefined;
+  }
+  const { added, removed } = editFileLineChangeCounts(oldText ?? '', newText ?? '');
+  if (added === 0 && removed === 0) {
+    return undefined;
+  }
+  return `${added}:${removed}`;
+}
+
+function tryExtractPartialEditFileStringField(
+  argumentsJson: string,
+  key: string,
+): string | undefined {
+  const marker = `"${key}"`;
+  const keyIdx = argumentsJson.indexOf(marker);
+  if (keyIdx < 0) {
+    return undefined;
+  }
+
+  let i = keyIdx + marker.length;
+  while (i < argumentsJson.length && /\s/u.test(argumentsJson[i]!)) {
+    i += 1;
+  }
+  if (argumentsJson[i] !== ':') {
+    return undefined;
+  }
+  i += 1;
+  while (i < argumentsJson.length && /\s/u.test(argumentsJson[i]!)) {
+    i += 1;
+  }
+  if (argumentsJson[i] !== '"') {
+    return undefined;
+  }
+  i += 1;
+
+  let result = '';
+  while (i < argumentsJson.length) {
+    const ch = argumentsJson[i]!;
+    if (ch === '"') {
+      return result;
+    }
+    if (ch === '\\') {
+      i += 1;
+      if (i >= argumentsJson.length) {
+        break;
+      }
+      const esc = argumentsJson[i]!;
+      if (esc === 'u') {
+        const hex = argumentsJson.slice(i + 1, i + 5);
+        if (/^[0-9a-fA-F]{4}$/u.test(hex)) {
+          result += String.fromCodePoint(Number.parseInt(hex, 16));
+          i += 5;
+          continue;
+        }
+      }
+      result += decodeEditFileJsonEscape(esc);
+      i += 1;
+      continue;
+    }
+    result += ch;
+    i += 1;
+  }
+
+  return result.length > 0 ? result : undefined;
+}
+
+function decodeEditFileJsonEscape(esc: string): string {
+  switch (esc) {
+    case 'n':
+      return '\n';
+    case 'r':
+      return '\r';
+    case 't':
+      return '\t';
+    case '"':
+      return '"';
+    case '\\':
+      return '\\';
+    default:
+      return esc;
+  }
+}
+
+function editFileLineChangeCounts(
+  oldText: string,
+  newText: string,
+): { added: number; removed: number } {
+  const oldLines = oldText ? oldText.split(/\r?\n/u) : [];
+  const newLines = newText ? newText.split(/\r?\n/u) : [];
+  const lcs = editFileLongestCommonSubsequenceLength(oldLines, newLines);
+  return {
+    removed: oldLines.length - lcs,
+    added: newLines.length - lcs,
+  };
+}
+
+function editFileLongestCommonSubsequenceLength(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) {
+    return 0;
+  }
+
+  const rows = b.length + 1;
+  let prev = new Uint32Array(rows);
+  let curr = new Uint32Array(rows);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const aLine = a[i - 1]!;
+    for (let j = 1; j <= b.length; j += 1) {
+      if (aLine === b[j - 1]) {
+        curr[j] = (prev[j - 1] ?? 0) + 1;
+      } else {
+        curr[j] = Math.max(prev[j] ?? 0, curr[j - 1] ?? 0);
+      }
+    }
+    const swap = prev;
+    prev = curr;
+    curr = swap;
+    curr.fill(0);
+  }
+
+  return prev[b.length] ?? 0;
+}
+
 export interface StreamingToolPreviewEmitState {
   readyPreviewEmitted: boolean;
   lastPreviewArgsLen?: number;
@@ -387,9 +543,14 @@ export function resolveStreamingToolPreviewEmit(
     return { emit: false, nextState: state };
   }
 
-  const nextDetailSignature = toolName === 'read_file'
-    ? readFileStreamingPreviewSignature(argumentsJson)
-    : undefined;
+  const nextDetailSignature =
+    toolName === 'read_file'
+      ? readFileStreamingPreviewSignature(argumentsJson)
+      : toolName === 'edit_file'
+        ? editFileStreamingPreviewSignature(argumentsJson)
+        : toolName === 'create_file' || toolName === 'create_plan'
+          ? createContentStreamingPreviewSignature(argumentsJson)
+          : undefined;
 
   const emit =
     !state.readyPreviewEmitted ||

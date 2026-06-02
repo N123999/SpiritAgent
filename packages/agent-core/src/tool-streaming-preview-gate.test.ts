@@ -107,14 +107,34 @@ test('resolveStreamingToolPreviewEmit repeats read_file preview when line range 
   assert.equal(unchanged.emit, false);
 });
 
-test('resolveStreamingToolPreviewEmit repeats for growing edit_file args', () => {
-  const partial = '{"path":"README.md","old_text":"x","new_text":"';
+test('resolveStreamingToolPreviewEmit repeats create_file when content grows', () => {
+  const partial = '{"path":"a.ts","content":"line';
+  const first = resolveStreamingToolPreviewEmit('create_file', partial, {
+    readyPreviewEmitted: false,
+  });
+  assert.equal(first.emit, true);
+
+  const longer = `${partial} one\\nline two`;
+  const second = resolveStreamingToolPreviewEmit('create_file', longer, first.nextState);
+  assert.equal(second.emit, true);
+
+  const paddedSameShape = `${longer}${'x'.repeat(80)}`;
+  const third = resolveStreamingToolPreviewEmit('create_file', paddedSameShape, second.nextState);
+  assert.equal(third.emit, true);
+});
+
+test('resolveStreamingToolPreviewEmit repeats edit_file when line delta changes', () => {
+  const partial = '{"path":"README.md","old_text":"a\\nb","new_text":"a\\nb\\nc';
   const first = resolveStreamingToolPreviewEmit('edit_file', partial, {
     readyPreviewEmitted: false,
   });
   assert.equal(first.emit, true);
 
-  const longer = `${partial}${'y'.repeat(500)}`;
-  const second = resolveStreamingToolPreviewEmit('edit_file', longer, first.nextState);
+  const withExtraLine = `${partial}\\nd`;
+  const second = resolveStreamingToolPreviewEmit('edit_file', withExtraLine, first.nextState);
   assert.equal(second.emit, true);
+
+  const paddedSameDelta = `${withExtraLine}${'x'.repeat(500)}`;
+  const third = resolveStreamingToolPreviewEmit('edit_file', paddedSameDelta, second.nextState);
+  assert.equal(third.emit, false);
 });
