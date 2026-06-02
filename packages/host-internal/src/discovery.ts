@@ -163,6 +163,10 @@ export async function loadHostInstructionMetadata(
   };
 }
 
+function includesWorkspaceScope(context: InstructionDiscoveryContext): boolean {
+  return context.includeWorkspaceScope !== false;
+}
+
 export async function discoverRuleEntries(
   context: InstructionDiscoveryContext,
   state?: HostToggleState,
@@ -170,19 +174,24 @@ export async function discoverRuleEntries(
   const paths = resolveInstructionPaths(context);
   const loadedState = state ?? (await loadToggleState(paths.rulesStateFile));
   const overrides = loadedState.enabledOverrides ?? {};
+  const workspaceSources = includesWorkspaceScope(context)
+    ? [
+        buildRuleSource(
+          paths.workspaceSpiritRuleFile,
+          'workspace',
+          '工作区 Spirit 规则',
+          WORKSPACE_SPIRIT_RULE_FILE_NAME.replace(/\\/gu, '/'),
+        ),
+        buildRuleSource(
+          paths.workspaceAgentsRuleFile,
+          'workspace',
+          '工作区 AGENTS 规则',
+          WORKSPACE_RULE_FILE_NAME,
+        ),
+      ]
+    : [];
   const sources = await Promise.all([
-    buildRuleSource(
-      paths.workspaceSpiritRuleFile,
-      'workspace',
-      '工作区 Spirit 规则',
-      WORKSPACE_SPIRIT_RULE_FILE_NAME.replace(/\\/gu, '/'),
-    ),
-    buildRuleSource(
-      paths.workspaceAgentsRuleFile,
-      'workspace',
-      '工作区 AGENTS 规则',
-      WORKSPACE_RULE_FILE_NAME,
-    ),
+    ...workspaceSources,
     buildRuleSource(paths.userRuleFile, 'user', '用户规则', USER_RULE_FILE_NAME),
   ]);
 
@@ -241,16 +250,20 @@ export async function discoverSkillEntries(
   const loadedState = state ?? (await loadToggleState(paths.skillsStateFile));
   const overrides = loadedState.enabledOverrides ?? {};
   const roots = [
-    {
-      rootPath: paths.workspaceSpiritSkillsDir,
-      scope: 'workspace' as const,
-      rootKind: 'workspaceSpirit' as const,
-    },
-    {
-      rootPath: paths.workspaceAgentsSkillsDir,
-      scope: 'workspace' as const,
-      rootKind: 'workspaceAgents' as const,
-    },
+    ...(includesWorkspaceScope(context)
+      ? [
+          {
+            rootPath: paths.workspaceSpiritSkillsDir,
+            scope: 'workspace' as const,
+            rootKind: 'workspaceSpirit' as const,
+          },
+          {
+            rootPath: paths.workspaceAgentsSkillsDir,
+            scope: 'workspace' as const,
+            rootKind: 'workspaceAgents' as const,
+          },
+        ]
+      : []),
     {
       rootPath: paths.userSkillsDir,
       scope: 'user' as const,

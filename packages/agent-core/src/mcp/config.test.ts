@@ -71,3 +71,12 @@ test('findMcpServerNameConflict detects existing names in either scope', () => {
   assert.equal(findMcpServerNameConflict(user, workspace, 'local'), 'workspace');
   assert.equal(findMcpServerNameConflict(user, workspace, 'missing'), undefined);
 });
+
+test('mergeMcpConfigFiles with empty workspace yields user-only servers', () => {
+  const user: McpConfigFile = { servers: { github: stdioServer } };
+  const workspace: McpConfigFile = { servers: { local: stdioServer } };
+
+  const merged = mergeMcpConfigFiles(user, { servers: {} });
+  assert.deepEqual(Object.keys(merged.servers), ['github']);
+  assert.deepEqual(mcpServerScopesFromFiles(user, { servers: {} }), { github: 'user' });
+});
