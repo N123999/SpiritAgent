@@ -31,9 +31,13 @@ export function WorkspaceShellTab({
   const canEmbed = Boolean(bridge?.ptyCreate);
   const trimmed = workspaceRoot.trim();
   const onTitleChangeRef = useRef(onTitleChange);
+  const tRef = useRef(t);
   const suspendResizeRef = useRef(suspendTerminalResize);
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;
+  });
+  useLayoutEffect(() => {
+    tRef.current = t;
   });
   useLayoutEffect(() => {
     suspendResizeRef.current = suspendTerminalResize;
@@ -58,7 +62,8 @@ export function WorkspaceShellTab({
       bridge: b,
       onTitleChange: (title) => onTitleChangeRef.current?.(title),
       onEmbedError: setEmbedError,
-      shellExitedMessage: (exitCode) => t("workspace.shellExited", { exitCode }),
+      shellExitedMessage: (exitCode) =>
+        tRef.current("workspace.shellExited", { exitCode }),
       isResizeSuspended: () => suspendResizeRef.current,
     });
     termRef.current = session.terminal;
@@ -69,7 +74,7 @@ export function WorkspaceShellTab({
       termRef.current = null;
       sessionScheduleFitRef.current = null;
     };
-  }, [trimmed, canEmbed, retryNonce, t]);
+  }, [trimmed, canEmbed, retryNonce]);
 
   useEffect(() => {
     if (!suspendTerminalResize) {
