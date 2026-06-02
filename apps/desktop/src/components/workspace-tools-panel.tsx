@@ -17,6 +17,7 @@ import {
   type WorkspaceToolTabKind,
 } from "@/lib/workspace-tool-tabs";
 import type {
+  CommitChangesRequest,
   DesktopGitSnapshot,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
@@ -70,8 +71,12 @@ export type WorkspaceToolsDockProps = {
   onWidthPxChange(next: number): void;
   open: boolean;
   gitSnapshot?: DesktopGitSnapshot;
+  gitCommitBusy?: boolean;
+  gitRuntimeError?: string;
   readGitWorkingTree: () => Promise<GitWorkingTreeSnapshot>;
   readGitHistory: (request?: ReadGitHistoryRequest) => Promise<GitHistorySnapshot>;
+  commitChanges: (request: CommitChangesRequest) => Promise<boolean>;
+  mergeWorktreeToMain: () => Promise<boolean>;
   gitRefreshNonce?: number;
   className?: string;
 };
@@ -111,8 +116,12 @@ export function WorkspaceToolsDock({
   onWidthPxChange,
   open,
   gitSnapshot,
+  gitCommitBusy = false,
+  gitRuntimeError = "",
   readGitWorkingTree,
   readGitHistory,
+  commitChanges,
+  mergeWorktreeToMain,
   gitRefreshNonce = 0,
   className,
 }: WorkspaceToolsDockProps) {
@@ -434,8 +443,12 @@ export function WorkspaceToolsDock({
                         gitSnapshot={gitSnapshot}
                         isActive={selected}
                         refreshNonce={gitRefreshNonce}
+                        commitBusy={gitCommitBusy}
+                        runtimeError={gitRuntimeError}
                         readGitWorkingTree={readGitWorkingTree}
                         readGitHistory={readGitHistory}
+                        commitChanges={commitChanges}
+                        mergeWorktreeToMain={mergeWorktreeToMain}
                       />
                     </div>
                   )}

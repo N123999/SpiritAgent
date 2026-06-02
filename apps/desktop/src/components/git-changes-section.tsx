@@ -2,7 +2,9 @@ import { useTranslation } from "react-i18next";
 
 import { LoaderCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DESKTOP_CHROME_COMMIT_BTN } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 import type { DesktopGitSnapshot, GitWorkingTreeChange, GitWorkingTreeSnapshot } from "@/types";
 
@@ -11,6 +13,15 @@ export type GitChangesSectionProps = {
   workingTree: GitWorkingTreeSnapshot | null;
   loading: boolean;
   error?: string;
+  showCommitButton?: boolean;
+  commitDisabled?: boolean;
+  commitBusy?: boolean;
+  onOpenCommitDialog?: () => void;
+  showMergeButton?: boolean;
+  mergeDisabled?: boolean;
+  mergeBusy?: boolean;
+  mergeButtonFlashMerged?: boolean;
+  onOpenMergeDialog?: () => void;
   className?: string;
 };
 
@@ -48,6 +59,15 @@ export function GitChangesSection({
   workingTree,
   loading,
   error,
+  showCommitButton = false,
+  commitDisabled = false,
+  commitBusy = false,
+  onOpenCommitDialog,
+  showMergeButton = false,
+  mergeDisabled = false,
+  mergeBusy = false,
+  mergeButtonFlashMerged = false,
+  onOpenMergeDialog,
   className,
 }: GitChangesSectionProps) {
   const { t } = useTranslation();
@@ -59,11 +79,39 @@ export function GitChangesSection({
     <section className={cn("flex min-h-0 flex-col", className)}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/40 px-2 py-1.5">
         <h3 className="text-xs font-medium text-foreground">{t("workspace.git.changes")}</h3>
-        {branchLabel ? (
-          <span className="max-w-[55%] truncate rounded-md bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-            {branchLabel}
-          </span>
-        ) : null}
+        <div className="flex min-w-0 items-center gap-1">
+          {branchLabel ? (
+            <span className="max-w-[7rem] truncate rounded-md bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              {branchLabel}
+            </span>
+          ) : null}
+          {showMergeButton ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={DESKTOP_CHROME_COMMIT_BTN}
+              disabled={mergeDisabled}
+              onClick={onOpenMergeDialog}
+            >
+              {mergeBusy ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}
+              <span>{mergeButtonFlashMerged ? "Merged" : "Merge"}</span>
+            </Button>
+          ) : null}
+          {showCommitButton ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={DESKTOP_CHROME_COMMIT_BTN}
+              disabled={commitDisabled}
+              onClick={onOpenCommitDialog}
+            >
+              {commitBusy ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}
+              <span>Commit</span>
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div className="relative min-h-0 flex-1">
         {loading ? (

@@ -139,7 +139,6 @@ import {
   snapshotsToComposerAttachmentViews,
 } from "@/lib/local-file-attachments";
 import {
-  DESKTOP_CHROME_COMMIT_BTN,
   DESKTOP_CHROME_TOGGLE_ICON_BTN,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
@@ -176,7 +175,6 @@ import {
 import { normalizeBrowserUrl } from "@/lib/browser-url";
 import type {
   AskQuestionsQuestionSpec,
-  DesktopCommitMode,
   DesktopModelReasoningEffort,
   ConversationMessageSnapshot,
   DesktopSnapshot,
@@ -219,23 +217,6 @@ const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
 function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReasoningEffort): string {
   return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
 }
-
-const commitModeOptions: Array<{
-  value: DesktopCommitMode;
-  labelKey: string;
-  hintKey: string;
-}> = [
-  {
-    value: "commit",
-    labelKey: "app.commit",
-    hintKey: "app.commitHint",
-  },
-  {
-    value: "commit-and-push",
-    labelKey: "app.commitAndPush",
-    hintKey: "app.commitAndPushHint",
-  },
-];
 
 function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
@@ -1669,15 +1650,6 @@ function DesktopLayoutChromeBar({
   sessionSidebarOpen,
   onToggleSessionSidebar,
   showWorkspaceToggle,
-  showCommitButton = false,
-  commitDisabled = false,
-  commitBusy = false,
-  onOpenCommitDialog,
-  showMergeButton = false,
-  mergeDisabled = false,
-  mergeBusy = false,
-  mergeButtonFlashMerged = false,
-  onOpenMergeDialog,
   workspaceToolsOpen = false,
   onToggleWorkspaceTools,
 }: {
@@ -1685,20 +1657,11 @@ function DesktopLayoutChromeBar({
   sessionSidebarOpen: boolean;
   onToggleSessionSidebar(): void;
   showWorkspaceToggle: boolean;
-  showCommitButton?: boolean;
-  commitDisabled?: boolean;
-  commitBusy?: boolean;
-  onOpenCommitDialog?: () => void;
-  showMergeButton?: boolean;
-  mergeDisabled?: boolean;
-  mergeBusy?: boolean;
-  mergeButtonFlashMerged?: boolean;
-  onOpenMergeDialog?: () => void;
   workspaceToolsOpen?: boolean;
   onToggleWorkspaceTools?: () => void;
 }) {
   const { t } = useTranslation();
-  const showTrailingActions = showWorkspaceToggle || showCommitButton || showMergeButton;
+  const showTrailingActions = showWorkspaceToggle;
   return (
     <div
       role="toolbar"
@@ -1723,32 +1686,6 @@ function DesktopLayoutChromeBar({
       </Button>
       {showTrailingActions ? (
         <div className="flex items-center gap-1">
-          {showMergeButton ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={DESKTOP_CHROME_COMMIT_BTN}
-              disabled={mergeDisabled}
-              onClick={onOpenMergeDialog}
-            >
-              {mergeBusy ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}
-              <span>{mergeButtonFlashMerged ? "Merged" : "Merge"}</span>
-            </Button>
-          ) : null}
-          {showCommitButton ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={DESKTOP_CHROME_COMMIT_BTN}
-              disabled={commitDisabled}
-              onClick={onOpenCommitDialog}
-            >
-              {commitBusy ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : null}
-              <span>Commit</span>
-            </Button>
-          ) : null}
           {showWorkspaceToggle ? (
             <Button
               type="button"
@@ -1996,33 +1933,16 @@ export default function App() {
     useState<WorkspaceFileReferenceSuggestionsResponse>(null);
   const [fileReferenceSelectedIndex, setFileReferenceSelectedIndex] = useState(-1);
   const [dismissedFileReferenceKey, setDismissedFileReferenceKey] = useState<string | null>(null);
-  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
-  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
-  const [mergeButtonFlashMerged, setMergeButtonFlashMerged] = useState(false);
-  const mergeFlashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [branchCheckoutDialogOpen, setBranchCheckoutDialogOpen] = useState(false);
   const [branchCheckoutBlockedByChanges, setBranchCheckoutBlockedByChanges] = useState(false);
   const pendingComposerSendRef = useRef<{
     text: string;
     localFilePaths?: string[];
   } | null>(null);
-  const [commitMessageDraft, setCommitMessageDraft] = useState("");
-  const [commitMode, setCommitMode] = useState<DesktopCommitMode>("commit");
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
-  const canOpenCommitDialog = snapshot?.git.isRepository === true;
-  const isWorktreeSession = snapshot?.git.isWorktreeSession === true;
-  const canOpenMergeDialog =
-    isWorktreeSession &&
-    Boolean(snapshot?.git.worktreeBranch) &&
-    Boolean(snapshot?.git.primaryRepoRoot);
   const commitBusy = runtime.busyAction === "git";
   const sessionNavigationBusy = runtime.busyAction === "session";
   const newSessionBusy = runtime.busyAction === "reset";
-  const commitActionDisabled =
-    !canOpenCommitDialog ||
-    snapshot?.git.hasChanges !== true ||
-    commitBusy;
-  const mergeActionDisabled = !canOpenMergeDialog || commitBusy;
   const composerRichInputRef = useRef<ComposerRichInputHandle | null>(null);
   const rewindRichInputRef = useRef<ComposerRichInputHandle | null>(null);
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
@@ -2627,61 +2547,6 @@ export default function App() {
     }
   };
 
-  const submitCommitDialog = () => {
-    void runtime.commitChanges({
-      mode: commitMode,
-      ...(commitMessageDraft.trim() ? { message: commitMessageDraft.trim() } : {}),
-    }).then((ok) => {
-      if (!ok) {
-        return;
-      }
-      setCommitDialogOpen(false);
-      setCommitMode("commit");
-      setCommitMessageDraft("");
-    });
-  };
-
-  useEffect(() => {
-    return () => {
-      if (mergeFlashTimerRef.current !== undefined) {
-        clearTimeout(mergeFlashTimerRef.current);
-      }
-    };
-  }, []);
-
-  const flashMergeButtonSucceeded = useCallback(() => {
-    if (mergeFlashTimerRef.current !== undefined) {
-      clearTimeout(mergeFlashTimerRef.current);
-    }
-    setMergeButtonFlashMerged(true);
-    mergeFlashTimerRef.current = setTimeout(() => {
-      mergeFlashTimerRef.current = undefined;
-      setMergeButtonFlashMerged(false);
-    }, 1000);
-  }, []);
-
-  const submitMergeDialog = () => {
-    void runtime.mergeWorktreeToMain().then((ok) => {
-      if (!ok) {
-        return;
-      }
-      setMergeDialogOpen(false);
-      flashMergeButtonSucceeded();
-    });
-  };
-
-  const chromeBarGitActions = {
-    showCommitButton: canOpenCommitDialog,
-    commitDisabled: commitActionDisabled,
-    commitBusy,
-    onOpenCommitDialog: () => setCommitDialogOpen(true),
-    showMergeButton: canOpenMergeDialog,
-    mergeDisabled: mergeActionDisabled,
-    mergeBusy: commitBusy,
-    mergeButtonFlashMerged,
-    onOpenMergeDialog: () => setMergeDialogOpen(true),
-  };
-
   const launchSplashActive =
     snapshot === null &&
     !runtime.hostConnectionError.trim() &&
@@ -2797,7 +2662,6 @@ export default function App() {
               sessionSidebarOpen={sessionSidebarOpen}
               onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
               showWorkspaceToggle={false}
-              {...chromeBarGitActions}
             />
             <SettingsView
               tab={settingsTab}
@@ -2853,7 +2717,6 @@ export default function App() {
               sessionSidebarOpen={sessionSidebarOpen}
               onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
               showWorkspaceToggle={false}
-              {...chromeBarGitActions}
             />
             <MarketplaceView
               snapshot={snapshot}
@@ -2875,7 +2738,6 @@ export default function App() {
                 sessionSidebarOpen={sessionSidebarOpen}
                 onToggleSessionSidebar={() => setSessionSidebarOpen((o) => !o)}
                 showWorkspaceToggle
-                {...chromeBarGitActions}
                 workspaceToolsOpen={workspaceToolsOpen}
                 onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
               />
@@ -3345,8 +3207,12 @@ export default function App() {
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}
               gitSnapshot={snapshot?.git}
+              gitCommitBusy={commitBusy}
+              gitRuntimeError={runtime.runtimeError}
               readGitWorkingTree={runtime.readGitWorkingTree}
               readGitHistory={runtime.readGitHistory}
+              commitChanges={runtime.commitChanges}
+              mergeWorktreeToMain={runtime.mergeWorktreeToMain}
             />
             </div>
           </div>
@@ -3512,141 +3378,6 @@ export default function App() {
                 {t('app.switchAndSend')}
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={commitDialogOpen}
-        onOpenChange={(open) => {
-          setCommitDialogOpen(open);
-          if (!open) {
-            setCommitMode("commit");
-            setCommitMessageDraft("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>{t('app.commitChanges')}</DialogTitle>
-            <DialogDescription>
-              {snapshot?.git.branch
-                ? t('app.currentBranch', { branch: snapshot.git.branch })
-                : t('app.commitDialogDescription')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-1">
-            <div className="grid gap-2">
-              <Label htmlFor="commit-message-input">{t('app.commitMessage')}</Label>
-              <Textarea
-                id="commit-message-input"
-                value={commitMessageDraft}
-                onChange={(event) => setCommitMessageDraft(event.target.value)}
-                placeholder={t('app.commitMessagePlaceholder')}
-                className="min-h-28"
-                autoComplete="off"
-                disabled={runtime.busyAction === "git"}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>{t('app.mode')}</Label>
-              <div
-                role="tablist"
-                aria-label={t('app.commitMode')}
-                className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
-              >
-                {commitModeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={commitMode === option.value}
-                    className={cn(
-                      "rounded-md px-2.5 text-xs font-medium transition-colors",
-                      commitMode === option.value
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    disabled={runtime.busyAction === "git"}
-                    onClick={() => setCommitMode(option.value)}
-                  >
-                    {t(option.labelKey)}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t(commitModeOptions.find((option) => option.value === commitMode)?.hintKey ?? '')}
-              </p>
-            </div>
-            {runtime.runtimeError ? (
-              <p className="text-sm leading-relaxed text-destructive">{runtime.runtimeError}</p>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setCommitDialogOpen(false)}
-              disabled={runtime.busyAction === "git"}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={submitCommitDialog}
-              disabled={commitActionDisabled || commitBusy}
-            >
-              {commitBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-              {commitMode === "commit-and-push" ? t('app.commitAndPush') : t('app.commit')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={mergeDialogOpen}
-        onOpenChange={(open) => {
-          setMergeDialogOpen(open);
-        }}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>{t('app.mergeToDefaultBranch')}</DialogTitle>
-            <DialogDescription>
-              {snapshot?.git.worktreeBranch && snapshot?.git.defaultBranch
-                ? t('app.mergeBranchDescription', { from: snapshot.git.worktreeBranch, to: snapshot.git.defaultBranch })
-                : t('app.mergeToDefaultBranchDescription')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-1">
-            <p className="text-sm text-muted-foreground">
-              {t('app.mergeWarning')}
-            </p>
-            {runtime.runtimeError && mergeDialogOpen ? (
-              <p className="text-sm leading-relaxed text-destructive">{runtime.runtimeError}</p>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setMergeDialogOpen(false)}
-              disabled={commitBusy}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={submitMergeDialog}
-              disabled={mergeActionDisabled || commitBusy}
-            >
-              {commitBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-              {t('app.merge')}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
