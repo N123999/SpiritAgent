@@ -1,6 +1,7 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('spiritDesktop', {
+  platform: process.platform,
   bootstrap(request?: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'bootstrap', { request });
   },
@@ -287,6 +288,40 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
     return () => {
       ipcRenderer.removeListener('desktop:pty-data', onData);
       ipcRenderer.removeListener('desktop:pty-exit', onExit);
+    };
+  },
+  showNotification(request: {
+    title: string;
+    body?: string;
+    tag?: string;
+    silent?: boolean;
+    actions?: Array<{ type: 'button'; text: string }>;
+    kind?: 'task-complete' | 'approval' | 'ask-questions' | 'generic';
+  }) {
+    return ipcRenderer.invoke('desktop:show-notification', request);
+  },
+  getAppAwayFromUser() {
+    return ipcRenderer.invoke('desktop:get-app-away') as Promise<boolean>;
+  },
+  reportRendererVisibility(hidden: boolean) {
+    return ipcRenderer.invoke('desktop:report-renderer-visibility', { hidden }) as Promise<boolean>;
+  },
+  subscribeAppAwayChanged(callback: (away: boolean) => void) {
+    const onAway = (_event: Electron.IpcRendererEvent, payload: { away?: boolean }) => {
+      callback(payload?.away === true);
+    };
+    ipcRenderer.on('desktop:app-away-changed', onAway);
+    return () => {
+      ipcRenderer.removeListener('desktop:app-away-changed', onAway);
+    };
+  },
+  subscribeNotifyRefresh(callback: () => void) {
+    const onRefresh = () => {
+      callback();
+    };
+    ipcRenderer.on('desktop:notify-refresh', onRefresh);
+    return () => {
+      ipcRenderer.removeListener('desktop:notify-refresh', onRefresh);
     };
   },
 });

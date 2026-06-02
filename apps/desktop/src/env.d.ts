@@ -43,6 +43,7 @@ import type {
 
 declare global {
   interface SpiritDesktopApi {
+    platform: NodeJS.Platform;
     bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
     rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
     commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot>;
@@ -145,6 +146,11 @@ declare global {
     ingestBrowserElementScreenshot(base64: string): Promise<string | null>;
     readClipboardText(): string;
     writeClipboardText(text: string): void;
+    showNotification(request: import('./lib/desktop-notification-types.js').DesktopShowNotificationRequest): Promise<boolean>;
+    getAppAwayFromUser(): Promise<boolean>;
+    reportRendererVisibility(hidden: boolean): Promise<boolean>;
+    subscribeAppAwayChanged(callback: (away: boolean) => void): () => void;
+    subscribeNotifyRefresh(callback: () => void): () => void;
   }
 
   interface Window {

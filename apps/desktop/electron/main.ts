@@ -18,6 +18,16 @@ import {
   type WebContents,
 } from 'electron';
 
+import {
+  registerDesktopNotifications,
+  showDesktopNotification,
+  type DesktopNotificationPayload,
+} from './desktop-notifications.js';
+import {
+  getAppAwayFromUser,
+  registerWindowPresence,
+  setRendererVisibility,
+} from './window-presence.js';
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
 import { isAllowedExternalUrl, getCachedLocalListeningEndpoints, getScanningPromise, startLocalListenersScan } from './local-listeners.js';
@@ -199,6 +209,25 @@ async function stopDesktopWebHostIfRunning(): Promise<void> {
     return;
   }
   await desktopWebHost.stop();
+}
+
+async function handleApprovalNotificationAction(decision: 'allow' | 'deny'): Promise<void> {
+  try {
+    const polled = await invokeMainDesktopHostCommand('poll');
+    if (!isDesktopSnapshot(polled) || !polled.conversation.pendingToolApproval) {
+      return;
+    }
+    await invokeMainDesktopHostCommand('replyPendingApproval', {
+      decision: { kind: decision },
+    });
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('desktop:notify-refresh');
+      }
+    }
+  } catch (error) {
+    console.error('[spirit-desktop] approval notification action failed:', error);
+  }
 }
 
 async function invokeMainDesktopHostCommand(
@@ -526,6 +555,11 @@ async function createMainWindow(): Promise<BrowserWindow> {
     workspacePtyManager.disposeAllForWebContents(webContentsId);
   });
 
+  registerDesktopNotifications(window, {
+    onApprovalAction: handleApprovalNotificationAction,
+  });
+  registerWindowPresence(window);
+
   return window;
 }
 
@@ -782,6 +816,23 @@ app.whenReady().then(async () => {
         sender.send('desktop:local-listeners-done');
       }
     });
+  });
+
+  ipcMain.handle('desktop:show-notification', async (_event, payload: DesktopNotificationPayload) => {
+    if (!getAppAwayFromUser()) {
+      return false;
+    }
+    if (!payload || typeof payload.title !== 'string' || !payload.title.trim()) {
+      return false;
+    }
+    return showDesktopNotification(payload);
+  });
+
+  ipcMain.handle('desktop:get-app-away', () => getAppAwayFromUser());
+
+  ipcMain.handle('desktop:report-renderer-visibility', (_event, payload: { hidden?: boolean }) => {
+    setRendererVisibility(payload?.hidden === true);
+    return getAppAwayFromUser();
   });
 
   await syncInitialDesktopWebHost();
