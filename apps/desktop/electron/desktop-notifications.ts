@@ -1,5 +1,12 @@
 import { app, BrowserWindow, Notification } from 'electron';
 
+import {
+  buildWindowsToastXml,
+  parseWindowsToastActivation,
+  resolveNotificationActionIndex,
+  shouldUseWindowsToastXml,
+} from '../src/lib/windows-toast-xml.js';
+
 const DESKTOP_APP_USER_MODEL_ID = 'ai.spiritagent.desktop';
 
 export type DesktopNotificationAction = {
@@ -24,6 +31,8 @@ export type ApprovalNotificationHandler = (
 let mainWindowRef: BrowserWindow | undefined;
 let approvalHandler: ApprovalNotificationHandler | undefined;
 let permissionRequested = false;
+let windowsActivationHandlerRegistered = false;
+let approvalActionInFlight = false;
 
 const activeTags = new Map<string, Notification>();
 
@@ -37,6 +46,72 @@ function focusMainWindow(): void {
   }
   window.show();
   window.focus();
+}
+
+function handleApprovalActionIndex(index: number | undefined): void {
+  if (index !== 0 && index !== 1) {
+    focusMainWindow();
+    return;
+  }
+  void (async () => {
+    if (approvalActionInFlight) {
+      return;
+    }
+    approvalActionInFlight = true;
+    try {
+      if (index === 0) {
+        await approvalHandler?.('allow');
+      } else {
+        await approvalHandler?.('deny');
+      }
+    } finally {
+      approvalActionInFlight = false;
+      focusMainWindow();
+    }
+  })();
+}
+
+function handleWindowsToastActivation(details: {
+  type?: string;
+  actionIndex?: number;
+  arguments?: string;
+}): void {
+  const parsed = parseWindowsToastActivation(details);
+  if (parsed.kind === 'action') {
+    handleApprovalActionIndex(parsed.actionIndex);
+    return;
+  }
+  focusMainWindow();
+}
+
+function registerWindowsNotificationActivationHandler(): void {
+  if (windowsActivationHandlerRegistered || process.platform !== 'win32') {
+    return;
+  }
+  const notificationWithActivation = Notification as typeof Notification & {
+    handleActivation?: (
+      callback: (details: {
+        type?: string;
+        actionIndex?: number;
+        arguments?: string;
+      }) => void,
+    ) => void;
+  };
+  if (typeof notificationWithActivation.handleActivation !== 'function') {
+    return;
+  }
+  windowsActivationHandlerRegistered = true;
+  notificationWithActivation.handleActivation((details) => {
+    handleWindowsToastActivation(details);
+  });
+}
+
+/** Register early in `app.whenReady()` so toast button clicks are not missed. */
+export function registerWindowsToastActivationHandler(): void {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(DESKTOP_APP_USER_MODEL_ID);
+    registerWindowsNotificationActivationHandler();
+  }
 }
 
 async function ensureNotificationPermission(): Promise<boolean> {
@@ -66,10 +141,7 @@ export function registerDesktopNotifications(
 ): void {
   mainWindowRef = mainWindow;
   approvalHandler = options?.onApprovalAction;
-
-  if (process.platform === 'win32') {
-    app.setAppUserModelId(DESKTOP_APP_USER_MODEL_ID);
-  }
+  registerWindowsToastActivationHandler();
 }
 
 export function setApprovalNotificationHandler(handler: ApprovalNotificationHandler | undefined): void {
@@ -90,30 +162,32 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
     }
   }
 
-  const notification = new Notification({
-    title: payload.title,
-    body: payload.body,
-    silent: payload.silent === true,
-    ...(tag ? { tag } : {}),
-    ...(payload.actions && payload.actions.length > 0
-      ? { actions: payload.actions }
-      : {}),
-  });
+  const useWindowsToastXml =
+    process.platform === 'win32' && shouldUseWindowsToastXml(payload);
+
+  const notification = useWindowsToastXml
+    ? new Notification({
+        toastXml: buildWindowsToastXml(payload),
+        silent: payload.silent === true,
+        ...(tag ? { tag } : {}),
+      })
+    : new Notification({
+        title: payload.title,
+        body: payload.body,
+        silent: payload.silent === true,
+        ...(tag ? { tag } : {}),
+        ...(payload.actions && payload.actions.length > 0
+          ? { actions: payload.actions }
+          : {}),
+      });
 
   notification.on('click', () => {
     focusMainWindow();
   });
 
   if (payload.kind === 'approval' && payload.actions && payload.actions.length > 0) {
-    notification.on('action', (_event, index) => {
-      void (async () => {
-        if (index === 0) {
-          await approvalHandler?.('allow');
-        } else if (index === 1) {
-          await approvalHandler?.('deny');
-        }
-        focusMainWindow();
-      })();
+    notification.on('action', (event, legacyIndex) => {
+      handleApprovalActionIndex(resolveNotificationActionIndex(event, legacyIndex));
     });
   }
 

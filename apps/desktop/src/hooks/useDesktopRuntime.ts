@@ -1764,6 +1764,16 @@ export function useDesktopRuntime() {
     }
   }, [api, applySnapshot]);
 
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeApprovalFromNotification) {
+      return;
+    }
+    return bridge.subscribeApprovalFromNotification(({ decision }) => {
+      void submitApproval({ kind: decision });
+    });
+  }, [submitApproval]);
+
   const submitQuestions = useCallback(async () => {
     if (!api || !pendingQuestions) {
       return;

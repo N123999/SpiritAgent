@@ -28,7 +28,7 @@
     "dist": "npm run build && electron-builder --config electron-builder.yml",
     "dist:dir": "npm run build && electron-builder --config electron-builder.yml --dir",
     "test:host": "npm run build:electron && node --test test/host/*.test.mjs",
-    "test:lib": "node --experimental-strip-types --test test/workspace-tool-tabs.test.mjs test/browser-url.test.mjs test/browser-element-picker.test.mjs test/local-listeners-parse.test.mjs test/lib/tool-call-display.test.mjs test/lib/conversation-continue-ui.test.mjs test/lib/desktop-notification-copy.test.mjs test/lib/edit-file-line-delta.test.mjs && npx --yes tsx --test test/composer-segments.test.mjs test/skill-slash.test.mjs && npm run build:electron && node --test test/conversation-thinking-ui.test.mjs",
+    "test:lib": "node --experimental-strip-types --test test/workspace-tool-tabs.test.mjs test/browser-url.test.mjs test/browser-element-picker.test.mjs test/local-listeners-parse.test.mjs test/lib/tool-call-display.test.mjs test/lib/conversation-continue-ui.test.mjs test/lib/desktop-notification-copy.test.mjs test/lib/windows-toast-xml.test.mjs test/lib/spirit-notification-protocol.test.mjs test/lib/edit-file-line-delta.test.mjs && npx --yes tsx --test test/composer-segments.test.mjs test/skill-slash.test.mjs && npm run build:electron && node --test test/conversation-thinking-ui.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "start": "electron dist-electron/electron/main.js",
     "gen:icons": "node scripts/gen-app-icons.mjs",

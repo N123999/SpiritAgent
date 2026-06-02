@@ -156,6 +156,9 @@ declare global {
     }): Promise<void>;
     subscribeAppAwayChanged(callback: (away: boolean) => void): () => void;
     subscribeNotifyRefresh(callback: () => void): () => void;
+    subscribeApprovalFromNotification(
+      callback: (payload: { decision: 'allow' | 'deny' }) => void,
+    ): () => void;
   }
 
   interface Window {

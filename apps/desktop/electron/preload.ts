@@ -331,4 +331,18 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       ipcRenderer.removeListener('desktop:notify-refresh', onRefresh);
     };
   },
+  subscribeApprovalFromNotification(callback: (payload: { decision: 'allow' | 'deny' }) => void) {
+    const onApproval = (
+      _event: Electron.IpcRendererEvent,
+      payload: { decision?: string },
+    ) => {
+      if (payload?.decision === 'allow' || payload?.decision === 'deny') {
+        callback({ decision: payload.decision });
+      }
+    };
+    ipcRenderer.on('desktop:approval-from-notification', onApproval);
+    return () => {
+      ipcRenderer.removeListener('desktop:approval-from-notification', onApproval);
+    };
+  },
 });
