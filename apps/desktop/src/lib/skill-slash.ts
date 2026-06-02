@@ -61,8 +61,8 @@ const STATIC_SLASH_SUGGESTIONS: readonly SkillSlashSuggestion[] = [
   },
 ] as const
 
-export function currentSkillSlashQuery(input: string): string | undefined {
-  if (!input.startsWith('/') || input.includes('\n')) {
+export function currentSkillSlashQuery(input: string | undefined): string | undefined {
+  if (!input || !input.startsWith('/') || input.includes('\n')) {
     return undefined
   }
 
@@ -71,62 +71,44 @@ export function currentSkillSlashQuery(input: string): string | undefined {
     return undefined
   }
 
+  if (/\s/u.test(trimmedRight.slice(1))) {
+    return undefined
+  }
+
   return trimmedRight
 }
 
 export function buildSkillSlashSuggestions(
   query: string | undefined,
-  skills: readonly DesktopSkillListItem[],
+  skills: readonly DesktopSkillListItem[] = [],
 ): SkillSlashSuggestion[] {
   if (!query) {
     return []
   }
-  const normalized = query.trim().toLowerCase()
-  const staticMatches = STATIC_SLASH_SUGGESTIONS.filter((item) =>
-    item.alias.toLowerCase().startsWith(normalized),
-  )
-  const skillMatches = skills
-    .filter((skill) => skillSlashAlias(skill.name).toLowerCase().startsWith(normalized))
-    .map(
-      (skill): SkillSlashSuggestion => ({
-        id: `skill:${skill.id}`,
+
+  return [
+    ...STATIC_SLASH_SUGGESTIONS.filter((suggestion) => suggestion.alias.startsWith(query)),
+    ...skills
+      .filter((skill) => skill.enabled)
+      .filter((skill) => skillSlashAlias(skill.name).startsWith(query))
+      .map((skill) => ({
+        id: skill.id,
         alias: skillSlashAlias(skill.name),
         name: skill.name,
         description: skill.description,
-        kind: 'skill',
-      }),
-    )
-
-  return [...staticMatches, ...skillMatches]
-}
-
-export function matchSkillSlashInput(
-  input: string,
-  skills: readonly DesktopSkillListItem[],
-): SkillSlashMatch | undefined {
-  const trimmed = input.trim()
-  if (!trimmed.startsWith('/')) {
-    return undefined
-  }
-
-  const firstLine = trimmed.split('\n')[0]?.trim() ?? ''
-  const spaceIndex = firstLine.indexOf(' ')
-  const alias = spaceIndex >= 0 ? firstLine.slice(0, spaceIndex) : firstLine
-  const extraNote = spaceIndex >= 0 ? firstLine.slice(spaceIndex + 1).trim() : ''
-
-  const skill = skills.find((item) => skillSlashAlias(item.name) === alias)
-  if (!skill) {
-    return undefined
-  }
-
-  return {
-    skillName: skill.name,
-    extraNote,
-  }
+        kind: 'skill' as const,
+      })),
+  ]
 }
 
 export function isCreateSkillSlashInput(input: string): boolean {
-  return input.trim() === CREATE_SKILL_SLASH_ALIAS
+  const trimmed = input.trim()
+  if (!trimmed.startsWith(CREATE_SKILL_SLASH_ALIAS)) {
+    return false
+  }
+
+  const remainder = trimmed.slice(CREATE_SKILL_SLASH_ALIAS.length)
+  return remainder.length === 0 || /^\s/u.test(remainder)
 }
 
 export function isLogSessionSlashInput(input: string): boolean {
@@ -140,4 +122,30 @@ export function isCompactSlashInput(input: string): boolean {
 export function isLoopSlashInput(input: string): boolean {
   const trimmed = input.trim()
   return trimmed === LOOP_SLASH_ALIAS || trimmed.startsWith(`${LOOP_SLASH_ALIAS} `)
+}
+
+export function matchSkillSlashInput(
+  input: string,
+  skills: readonly DesktopSkillListItem[],
+): SkillSlashMatch | undefined {
+  const trimmed = input.trim()
+  if (!trimmed.startsWith('/')) {
+    return undefined
+  }
+
+  const firstWhitespace = trimmed.search(/\s/u)
+  const command = firstWhitespace === -1 ? trimmed : trimmed.slice(0, firstWhitespace)
+  const extraNote = firstWhitespace === -1 ? '' : trimmed.slice(firstWhitespace).trim()
+  const skill = skills.find(
+    (item) => item.enabled && skillSlashAlias(item.name) === command,
+  )
+
+  if (!skill) {
+    return undefined
+  }
+
+  return {
+    skillName: skill.name,
+    extraNote,
+  }
 }
