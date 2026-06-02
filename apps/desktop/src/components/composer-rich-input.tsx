@@ -295,10 +295,6 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const handleKeyDown = useCallback(
       (e: KeyboardEvent<HTMLDivElement>) => {
         onKeyDown?.(e);
-        if (e.defaultPrevented) return;
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-          e.preventDefault();
-        }
       },
       [onKeyDown],
     );

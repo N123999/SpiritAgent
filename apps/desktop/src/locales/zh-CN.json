@@ -339,7 +339,7 @@
     "filterModels": "筛选模型",
     "noModelsAvailable": "无可用模型",
     "abort": "中止",
-    "send": "发送（Ctrl+Enter）",
+    "send": "发送（Enter）",
     "continue": "继续",
     "required": "必答",
     "firstTimePairing": "首次配对",

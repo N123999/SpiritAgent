@@ -748,7 +748,12 @@ function ComposerSurface({
         onKeyDown={(e) => {
           onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLTextAreaElement>);
           if (e.defaultPrevented) return;
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          if (
+            e.key === 'Enter' &&
+            !e.shiftKey &&
+            !e.ctrlKey &&
+            !e.metaKey
+          ) {
             e.preventDefault();
             if (canSend) onSubmit();
           }
