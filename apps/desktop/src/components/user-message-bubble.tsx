@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { Pen } from "lucide-react";
+import { PenTool } from "lucide-react";
 
 import { BROWSER_ELEMENT_CHIP_CLASS } from "@/components/browser-element-card";
 import { ComposerLocalFileStrip } from "@/components/composer-local-file-strip";
@@ -24,7 +24,7 @@ function ElementCard({ tagName, url }: { tagName: string; url: string }) {
       title={url}
       className={BROWSER_ELEMENT_CHIP_CLASS}
     >
-      <Pen className="size-[10px] shrink-0" aria-hidden />
+      <PenTool className="size-[10px] shrink-0" aria-hidden />
       {`<${tagName}>`}
     </span>
   );

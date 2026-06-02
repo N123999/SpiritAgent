@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ArrowLeft, ArrowRight, Pen, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, PenTool, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -523,7 +523,7 @@ export function WorkspaceBrowserTab({
             aria-pressed={isPickerActive}
             onClick={() => setIsPickerActive((v) => !v)}
           >
-            <Pen className="size-3.5" aria-hidden />
+            <PenTool className="size-3.5" aria-hidden />
           </Button>
         ) : null}
       </div>

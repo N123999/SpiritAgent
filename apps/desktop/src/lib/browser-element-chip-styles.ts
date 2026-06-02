@@ -32,7 +32,7 @@ export function makeChipNode(a: BrowserElementAttachment, doc: Document): HTMLEl
   icon.setAttribute("stroke-linejoin", "round");
   icon.setAttribute("aria-hidden", "true");
   icon.innerHTML =
-    '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>';
+    '<path d="M13 6 6.126 7.375a1 1 0 0 0-.776.746L2.028 20.765a1 1 0 0 0 1.207 1.207l12.644-3.322a1 1 0 0 0 .746-.776L18 11"/><path d="m2.3 21.7 7.286-7.286"/><path d="M21.293 8.293a1 1 0 0 1 0 1.414l-1.586 1.586a1 1 0 0 1-1.414 0l-5.586-5.586a1 1 0 0 1 0-1.414l1.586-1.586a1 1 0 0 1 1.414 0z"/><circle cx="11" cy="13" r="2"/>';
   span.appendChild(icon);
   span.appendChild(doc.createTextNode(`<${a.tagName}>`));
   return span;
