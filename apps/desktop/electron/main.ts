@@ -3,12 +3,77 @@ import { copyFile, lstat, mkdir, readFile, realpath, stat, writeFile } from 'nod
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, Menu, app, clipboard, dialog, ipcMain, nativeTheme, net, shell } from 'electron';
+import {
+  BrowserWindow,
+  IpcMainInvokeEvent,
+  Menu,
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  net,
+  shell,
+  webContents,
+  type WebContents,
+} from 'electron';
 
 import { openSystemTerminalInDirectory } from './open-system-terminal.js';
 import { WorkspacePtyManager } from './workspace-pty.js';
+import { isAllowedExternalUrl, getCachedLocalListeningEndpoints, getScanningPromise, startLocalListenersScan } from './local-listeners.js';
 
 import type { DesktopSnapshot } from '../src/types.js';
+
+const spiritWebviewHooksAttached = new WeakSet<WebContents>();
+
+function sendBrowserOpenUrlToHost(guestContents: WebContents, url: string): void {
+  if (!isAllowedExternalUrl(url)) {
+    return;
+  }
+  const host = guestContents.hostWebContents;
+  if (!host || host.isDestroyed()) {
+    return;
+  }
+  host.send('desktop:browser-open-url', { url });
+}
+
+function attachSpiritWebviewGuestHandlers(guestContents: WebContents): void {
+  if (spiritWebviewHooksAttached.has(guestContents)) {
+    return;
+  }
+  spiritWebviewHooksAttached.add(guestContents);
+
+  guestContents.setWindowOpenHandler((details) => {
+    if (details.url) {
+      sendBrowserOpenUrlToHost(guestContents, details.url);
+    }
+    return { action: 'deny' };
+  });
+
+  guestContents.on('will-navigate', (event, url) => {
+    const current = guestContents.getURL();
+    if (!current || current === 'about:blank') {
+      return;
+    }
+    try {
+      const currentOrigin = new URL(current).origin;
+      const nextOrigin = new URL(url).origin;
+      if (currentOrigin !== nextOrigin) {
+        event.preventDefault();
+        sendBrowserOpenUrlToHost(guestContents, url);
+      }
+    } catch {
+      // ignore malformed URLs
+    }
+  });
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() !== 'webview') {
+    return;
+  }
+  attachSpiritWebviewGuestHandlers(contents);
+});
 import {
   invokeDesktopHostCommand,
   setDesktopMarketplaceFetchImplementation,
@@ -437,7 +502,15 @@ async function createMainWindow(): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      webviewTag: true,
     },
+  });
+
+  window.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
   });
 
   if (DEV_SERVER_URL) {
@@ -517,6 +590,16 @@ app.whenReady().then(async () => {
       return null;
     }
     return result.filePaths[0] ?? null;
+  });
+
+  ipcMain.handle('desktop:ingest-browser-element-screenshot', async (_event: IpcMainInvokeEvent, payload: { base64: string }) => {
+    const base64 = typeof payload?.base64 === 'string' ? payload.base64 : '';
+    if (!base64) return null;
+    const dir = path.join(spiritAgentDataDir(), 'clipboard-paste');
+    await mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `element-${Date.now()}.png`);
+    await writeFile(filePath, Buffer.from(base64, 'base64'));
+    return filePath;
   });
 
   ipcMain.handle('desktop:ingest-clipboard-image', async () => {
@@ -653,6 +736,52 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('desktop:open-system-terminal', (_event, cwd: string) => {
     openSystemTerminalInDirectory(cwd);
+  });
+
+  ipcMain.handle('desktop:open-external-url', async (_event, payload: { url?: string }) => {
+    const url = typeof payload?.url === 'string' ? payload.url.trim() : '';
+    if (!url || !isAllowedExternalUrl(url)) {
+      throw new Error('Invalid external URL');
+    }
+    await shell.openExternal(url);
+  });
+
+  ipcMain.handle(
+    'desktop:capture-webview-rect',
+    async (
+      _event: IpcMainInvokeEvent,
+      payload: { webContentsId: number; rect: { x: number; y: number; width: number; height: number } },
+    ) => {
+      const { webContentsId, rect } = payload ?? {};
+      if (typeof webContentsId !== 'number') {
+        throw new Error('Invalid webContentsId');
+      }
+      const wc = webContents.fromId(webContentsId);
+      if (!wc) {
+        throw new Error(`No webContents found for id ${webContentsId}`);
+      }
+      const image = await wc.capturePage(rect);
+      return image.toPNG().toString('base64');
+    },
+  );
+
+  ipcMain.handle('desktop:list-local-listeners', () => {
+    const cached = getCachedLocalListeningEndpoints();
+    if (cached !== null) return cached;
+    return getScanningPromise() ?? [];
+  });
+
+  ipcMain.on('desktop:scan-local-listeners', (event) => {
+    const { sender } = event;
+    void startLocalListenersScan((item) => {
+      if (!sender.isDestroyed()) {
+        sender.send('desktop:local-listener-found', item);
+      }
+    }).then(() => {
+      if (!sender.isDestroyed()) {
+        sender.send('desktop:local-listeners-done');
+      }
+    });
   });
 
   await syncInitialDesktopWebHost();

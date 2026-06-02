@@ -216,6 +216,53 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openSystemTerminal(cwd: string) {
     return ipcRenderer.invoke('desktop:open-system-terminal', cwd);
   },
+  openExternalUrl(url: string) {
+    return ipcRenderer.invoke('desktop:open-external-url', { url });
+  },
+  subscribeBrowserOpenUrl(callback: (url: string) => void) {
+    const onOpen = (_event: Electron.IpcRendererEvent, payload: { url?: string }) => {
+      const url = typeof payload?.url === 'string' ? payload.url.trim() : '';
+      if (url) {
+        callback(url);
+      }
+    };
+    ipcRenderer.on('desktop:browser-open-url', onOpen);
+    return () => {
+      ipcRenderer.removeListener('desktop:browser-open-url', onOpen);
+    };
+  },
+  listLocalListeningEndpoints() {
+    return ipcRenderer.invoke('desktop:list-local-listeners');
+  },
+  scanLocalListeners() {
+    ipcRenderer.send('desktop:scan-local-listeners');
+  },
+  subscribeLocalListeners(callbacks: {
+    onFound: (item: { port: number; address?: string; processName?: string; url?: string; title?: string }) => void;
+    onDone: () => void;
+  }) {
+    const onFound = (_event: Electron.IpcRendererEvent, item: { port: number; address?: string; processName?: string; url?: string; title?: string }) => {
+      callbacks.onFound(item);
+    };
+    const onDone = () => {
+      callbacks.onDone();
+    };
+    ipcRenderer.on('desktop:local-listener-found', onFound);
+    ipcRenderer.on('desktop:local-listeners-done', onDone);
+    return () => {
+      ipcRenderer.removeListener('desktop:local-listener-found', onFound);
+      ipcRenderer.removeListener('desktop:local-listeners-done', onDone);
+    };
+  },
+  captureWebviewRect(
+    webContentsId: number,
+    rect: { x: number; y: number; width: number; height: number },
+  ): Promise<string> {
+    return ipcRenderer.invoke('desktop:capture-webview-rect', { webContentsId, rect });
+  },
+  ingestBrowserElementScreenshot(base64: string): Promise<string | null> {
+    return ipcRenderer.invoke('desktop:ingest-browser-element-screenshot', { base64 });
+  },
   readClipboardText() {
     return clipboard.readText();
   },

@@ -79,6 +79,18 @@ import {
   ComposerLocalFileStrip,
   type ComposerLocalFileAttachmentView,
 } from "@/components/composer-local-file-strip";
+import {
+  ComposerRichInput,
+  segmentsToMessageText,
+  type ComposerRichInputHandle,
+  type RichSegment,
+} from "@/components/composer-rich-input";
+import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
+import {
+  messageContentToRichSegments,
+  segmentsToAttachments,
+  segmentsToPlainText,
+} from "@/lib/composer-segment-model";
 import { ComposerInsertMenu } from "@/components/composer-insert-menu";
 import { ApprovalLevelMenu } from "@/components/approval-level-menu";
 import { BranchSelectMenu } from "@/components/branch-select-menu";
@@ -153,11 +165,14 @@ import {
 } from "@/components/session-sidebar";
 import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import {
+  addWorkspaceBrowserTabWithUrl,
   addWorkspaceToolTab,
   createInitialWorkspaceToolsState,
+  normalizeWorkspaceToolTabsForHost,
   findWorkspaceToolTab,
   focusFirstTabOfKind,
 } from "@/lib/workspace-tool-tabs";
+import { normalizeBrowserUrl } from "@/lib/browser-url";
 import type {
   AskQuestionsQuestionSpec,
   DesktopCommitMode,
@@ -632,7 +647,7 @@ type ComposerSurfaceProps = {
   onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
   onPlanModeChange(planMode: boolean): void;
   onLoopEnabledChange(enabled: boolean): void;
-  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  richInputRef?: React.RefObject<ComposerRichInputHandle | null>;
   onKeyDown?(event: ReactKeyboardEvent<HTMLTextAreaElement>): void;
   onSelectionChange?(selectionStart: number | null): void;
   showInsertButton?: boolean;
@@ -643,6 +658,9 @@ type ComposerSurfaceProps = {
   onRemoveLocalFileAttachment?(path: string): void;
   onPaste?(event: ReactClipboardEvent<HTMLTextAreaElement>): void;
   showLoopSwitch?: boolean;
+  browserElementAttachments?: readonly BrowserElementAttachment[];
+  onElementAttachmentsChange?(attachments: BrowserElementAttachment[]): void;
+  initialSegments?: readonly RichSegment[] | null;
 };
 
 function ComposerSurface({
@@ -665,7 +683,7 @@ function ComposerSurface({
   onModelReasoningEffortSelect,
   onPlanModeChange,
   onLoopEnabledChange,
-  textareaRef,
+  richInputRef,
   onKeyDown,
   onSelectionChange,
   showInsertButton = false,
@@ -676,6 +694,9 @@ function ComposerSurface({
   onRemoveLocalFileAttachment,
   onPaste,
   showLoopSwitch = true,
+  browserElementAttachments,
+  onElementAttachmentsChange,
+  initialSegments,
 }: ComposerSurfaceProps) {
   const { t } = useTranslation();
   const [modelFilter, setModelFilter] = useState("");
@@ -714,34 +735,25 @@ function ComposerSurface({
         attachments={localFileAttachments}
         onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
       />
-      <Textarea
-        ref={textareaRef}
+      <ComposerRichInput
+        ref={richInputRef}
         value={value}
-        onChange={(event) => {
-          onChange(event.target.value);
-          onSelectionChange?.(event.target.selectionStart);
-        }}
-        onSelect={(event) => {
-          onSelectionChange?.(event.currentTarget.selectionStart);
-        }}
-        onPaste={(event) => {
-          onPaste?.(event);
-        }}
-        disabled={readOnly}
+        elementAttachments={browserElementAttachments}
+        initialSegments={initialSegments}
         placeholder={placeholder}
-        className="spirit-scroll block max-h-[12rem] min-h-[3rem] w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-2.5 pb-1.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none dark:bg-transparent dark:disabled:bg-transparent md:min-h-[3.5rem]"
-        onKeyDown={(event) => {
-          onKeyDown?.(event);
-          if (event.defaultPrevented) {
-            return;
-          }
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            if (canSend) {
-              onSubmit();
-            }
+        readOnly={readOnly}
+        onTextChange={onChange}
+        onElementAttachmentsChange={(atts) => onElementAttachmentsChange?.(atts)}
+        onPaste={(e) => onPaste?.(e as unknown as ReactClipboardEvent<HTMLTextAreaElement>)}
+        onKeyDown={(e) => {
+          onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLTextAreaElement>);
+          if (e.defaultPrevented) return;
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            if (canSend) onSubmit();
           }
         }}
+        onSelectionChange={onSelectionChange}
       />
       <div className="flex justify-center px-3 pt-0.5 pb-2">
         <div className="flex w-full max-w-full items-center justify-between gap-2">
@@ -1208,9 +1220,12 @@ function MessageCard({
   continueBusy,
   rewindText,
   rewindLocalFileAttachments,
+  rewindBrowserElementAttachments,
   rewindSelected,
   rewindCanSubmit,
   rewindBusy,
+  rewindRichInputRef,
+  onRewindElementAttachmentsChange,
   canPickLocalFile,
   models,
   catalogHints,
@@ -1243,9 +1258,12 @@ function MessageCard({
   continueBusy: boolean;
   rewindText: string;
   rewindLocalFileAttachments: readonly ComposerLocalFileAttachmentView[];
+  rewindBrowserElementAttachments: readonly BrowserElementAttachment[];
   rewindSelected: boolean;
   rewindCanSubmit: boolean;
   rewindBusy: boolean;
+  rewindRichInputRef: React.RefObject<ComposerRichInputHandle | null>;
+  onRewindElementAttachmentsChange(attachments: BrowserElementAttachment[]): void;
   canPickLocalFile: boolean;
   models: DesktopSnapshot["config"]["models"];
   catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
@@ -1286,6 +1304,13 @@ function MessageCard({
     messages,
     listIndex,
   );
+  const rewindInitialSegments = useMemo(
+    () =>
+      rewindSelected
+        ? messageContentToRichSegments(message.content, String(message.id))
+        : null,
+    [rewindSelected, message.content, message.id],
+  );
   const nextMessage = messages[listIndex + 1];
 
   return (
@@ -1315,7 +1340,12 @@ function MessageCard({
       >
         {rewindSelected && isUser ? (
           <ComposerSurface
+            key={`rewind-composer-${message.id}`}
+            richInputRef={rewindRichInputRef}
             value={rewindText}
+            initialSegments={rewindInitialSegments}
+            browserElementAttachments={rewindBrowserElementAttachments}
+            onElementAttachmentsChange={onRewindElementAttachmentsChange}
             localFileAttachments={rewindLocalFileAttachments}
             onChange={onRewindChange}
             onSubmit={onRewindSubmit}
@@ -1827,6 +1857,9 @@ export default function App() {
     runtime.setComposerLocalFileAttachments,
     runtime.readLocalImagePreviewDataUrl,
   );
+
+  const [composerBrowserElementAttachments, setComposerBrowserElementAttachments] = useState<BrowserElementAttachment[]>([]);
+
   const activeSessionReadOnly = snapshot?.activeSession?.readOnly === true;
   const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
   const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
@@ -1875,18 +1908,72 @@ export default function App() {
     typeof createInitialWorkspaceToolsState
   > | null>(null);
   if (initialWorkspaceToolsRef.current === null) {
-    initialWorkspaceToolsRef.current = createInitialWorkspaceToolsState();
+    initialWorkspaceToolsRef.current = createInitialWorkspaceToolsState(false);
   }
   const initialWorkspaceTools = initialWorkspaceToolsRef.current;
   const [workspaceToolTabs, setWorkspaceToolTabs] = useState(() => initialWorkspaceTools.tabs);
   const [activeWorkspaceToolTabId, setActiveWorkspaceToolTabId] = useState(
     () => initialWorkspaceTools.activeTabId,
   );
+  const activeWorkspaceToolTabIdRef = useRef(activeWorkspaceToolTabId);
+  activeWorkspaceToolTabIdRef.current = activeWorkspaceToolTabId;
+  const workspaceToolsHostSyncedRef = useRef<typeof runtime.hostKind | null>(null);
+  const browserTabEnabled = runtime.hostKind === "electron";
   const [workspaceFilesPlanRevealNonce, setWorkspaceFilesPlanRevealNonce] = useState(0);
   const [workspaceFilesPlanRevealTargetId, setWorkspaceFilesPlanRevealTargetId] = useState<
     string | null
   >(null);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(420);
+
+  const openBrowserUrlInNewTab = useCallback((rawUrl: string) => {
+    if (runtime.hostKind !== "electron") {
+      return;
+    }
+    const url = normalizeBrowserUrl(rawUrl);
+    if (!url) {
+      return;
+    }
+    setWorkspaceToolsOpen(true);
+    let nextActiveId = "";
+    setWorkspaceToolTabs((prev) => {
+      const next = addWorkspaceBrowserTabWithUrl(prev, url);
+      nextActiveId = next.activeId;
+      return next.tabs;
+    });
+    if (nextActiveId) {
+      setActiveWorkspaceToolTabId(nextActiveId);
+    }
+  }, [runtime.hostKind]);
+
+  useEffect(() => {
+    if (!runtime.apiReady || runtime.hostKind == null) {
+      return;
+    }
+    if (workspaceToolsHostSyncedRef.current === runtime.hostKind) {
+      return;
+    }
+    workspaceToolsHostSyncedRef.current = runtime.hostKind;
+    const includeBrowser = runtime.hostKind === "electron";
+    setWorkspaceToolTabs((prev) => {
+      const normalized = normalizeWorkspaceToolTabsForHost(
+        prev,
+        activeWorkspaceToolTabIdRef.current,
+        includeBrowser,
+      );
+      if (normalized.activeId !== activeWorkspaceToolTabIdRef.current) {
+        setActiveWorkspaceToolTabId(normalized.activeId);
+      }
+      return normalized.tabs;
+    });
+  }, [runtime.apiReady, runtime.hostKind]);
+
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeBrowserOpenUrl) {
+      return;
+    }
+    return bridge.subscribeBrowserOpenUrl(openBrowserUrlInNewTab);
+  }, [openBrowserUrlInNewTab]);
   const [composerCursorCodeUnits, setComposerCursorCodeUnits] = useState(0);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const [fileReferenceSuggestions, setFileReferenceSuggestions] =
@@ -1920,7 +2007,8 @@ export default function App() {
     snapshot?.git.hasChanges !== true ||
     commitBusy;
   const mergeActionDisabled = !canOpenMergeDialog || commitBusy;
-  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRichInputRef = useRef<ComposerRichInputHandle | null>(null);
+  const rewindRichInputRef = useRef<ComposerRichInputHandle | null>(null);
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
   const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
   const planAutoOpenInitializedRef = useRef(false);
@@ -2101,10 +2189,12 @@ export default function App() {
     if (!runtime.summary.canSend || runtime.busyAction || message.canRewind !== true) {
       return;
     }
+    const segments = messageContentToRichSegments(message.content, String(message.id));
     setRewindDraft({
       messageId: message.id,
       listIndex,
-      text: message.content,
+      text: segmentsToPlainText(segments),
+      browserElementAttachments: segmentsToAttachments(segments),
       localFileAttachments: snapshotsToComposerAttachmentViews(message.localFileAttachments),
     });
   };
@@ -2113,10 +2203,12 @@ export default function App() {
     if (!rewindDraft) {
       return;
     }
+    const segs = rewindRichInputRef.current?.getSegments() ?? [];
+    const wireText = segmentsToMessageText(segs) || rewindDraft.text;
     void runtime
       .rewindAndSubmitMessage({
         messageId: rewindDraft.messageId,
-        text: rewindDraft.text,
+        text: wireText,
         ...(rewindDraft.localFileAttachments.length > 0
           ? { localFilePaths: rewindDraft.localFileAttachments.map((item) => item.path) }
           : {}),
@@ -2132,7 +2224,7 @@ export default function App() {
     runtime.setComposer(replacement);
     setSlashSelectedIndex(-1);
     queueMicrotask(() => {
-      composerTextareaRef.current?.focus();
+      composerRichInputRef.current?.focus();
     });
   };
 
@@ -2149,16 +2241,13 @@ export default function App() {
     setFileReferenceSelectedIndex(-1);
     setDismissedFileReferenceKey(null);
     queueMicrotask(() => {
-      const textarea = composerTextareaRef.current;
-      textarea?.focus();
-      textarea?.setSelectionRange(nextCursorCodeUnits, nextCursorCodeUnits);
+      composerRichInputRef.current?.focus();
     });
   };
 
   const insertComposerText = (text: string) => {
-    const textarea = composerTextareaRef.current;
-    const selectionStart = textarea?.selectionStart ?? composerCursorCodeUnits;
-    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    const selectionStart = composerCursorCodeUnits;
+    const selectionEnd = selectionStart;
     const nextValue = `${runtime.composer.slice(0, selectionStart)}${text}${runtime.composer.slice(selectionEnd)}`;
     const nextCursorCodeUnits = selectionStart + text.length;
     runtime.setComposer(nextValue);
@@ -2168,9 +2257,7 @@ export default function App() {
     setFileReferenceSuggestions(null);
     setDismissedFileReferenceKey(null);
     queueMicrotask(() => {
-      const nextTextarea = composerTextareaRef.current;
-      nextTextarea?.focus();
-      nextTextarea?.setSelectionRange(nextCursorCodeUnits, nextCursorCodeUnits);
+      composerRichInputRef.current?.focus();
     });
   };
 
@@ -2203,12 +2290,27 @@ export default function App() {
       appendComposerLocalFileAttachment(runtime.setComposerLocalFileAttachments, filePath, {
         onAfterAttach: () => {
           queueMicrotask(() => {
-            composerTextareaRef.current?.focus();
+            composerRichInputRef.current?.focus();
           });
         },
       });
     },
     [runtime.setComposerLocalFileAttachments],
+  );
+
+  const handleBrowserElementPicked = useCallback(
+    async (attachment: BrowserElementAttachment) => {
+      composerRichInputRef.current?.insertAttachment(attachment);
+      const base64 = attachment.screenshotDataUrl.replace(/^data:image\/png;base64,/, '');
+      const bridge = window.spiritDesktop;
+      if (bridge?.ingestBrowserElementScreenshot) {
+        const filePath = await bridge.ingestBrowserElementScreenshot(base64);
+        if (filePath) {
+          attachLocalFilePath(filePath);
+        }
+      }
+    },
+    [attachLocalFilePath],
   );
 
   const attachRewindLocalFilePath = useCallback((filePath: string) => {
@@ -2299,8 +2401,10 @@ export default function App() {
   };
 
   const submitComposerMessage = () => {
+    const segs = composerRichInputRef.current?.getSegments() ?? [];
+    const fullText = segmentsToMessageText(segs) || runtime.composer;
     const payload = {
-      text: runtime.composer,
+      text: fullText,
       ...(runtime.composerLocalFileAttachments.length > 0
         ? {
             localFilePaths: runtime.composerLocalFileAttachments.map((item) => item.path),
@@ -2321,7 +2425,11 @@ export default function App() {
       }
     }
 
-    void runtime.sendMessage(payload);
+    void runtime.sendMessage(payload).then((ok) => {
+      if (ok) {
+        setComposerBrowserElementAttachments([]);
+      }
+    });
   };
 
   const confirmBranchCheckoutAndSend = () => {
@@ -2802,12 +2910,26 @@ export default function App() {
                                   ? rewindDraft.localFileAttachments
                                   : []
                               }
+                              rewindBrowserElementAttachments={
+                                rewindDraft?.listIndex === index
+                                  ? rewindDraft.browserElementAttachments
+                                  : []
+                              }
+                              rewindRichInputRef={rewindRichInputRef}
+                              onRewindElementAttachmentsChange={(attachments) => {
+                                setRewindDraft((current) =>
+                                  current && current.listIndex === index
+                                    ? { ...current, browserElementAttachments: attachments }
+                                    : current,
+                                );
+                              }}
                               rewindCanSubmit={
                                 runtime.summary.canSend &&
                                 runtime.busyAction !== "rewind" &&
                                 runtime.busyAction !== "session" &&
                                 rewindDraft?.listIndex === index &&
                                 (Boolean(rewindDraft.text.trim()) ||
+                                  rewindDraft.browserElementAttachments.length > 0 ||
                                   rewindDraft.localFileAttachments.length > 0)
                               }
                               canPickLocalFile={runtime.hostKind === "electron"}
@@ -3061,6 +3183,8 @@ export default function App() {
                     value={runtime.composer}
                     onChange={runtime.setComposer}
                     onSubmit={submitComposerMessage}
+                    browserElementAttachments={composerBrowserElementAttachments}
+                    onElementAttachmentsChange={setComposerBrowserElementAttachments}
                     onAbort={() => void runtime.abortConversation()}
                     placeholder={activeSessionReadOnly ? t('app.readOnlySession') : t('app.typeMessage')}
                     localFileAttachments={runtime.composerLocalFileAttachments}
@@ -3077,7 +3201,7 @@ export default function App() {
                     onLoopEnabledChange={(enabled) => {
                       void runtime.setLoopEnabled(enabled);
                     }}
-                    textareaRef={composerTextareaRef}
+                    richInputRef={composerRichInputRef}
                     onKeyDown={handleComposerSuggestionKeyDown}
                     onSelectionChange={(selectionStart) => {
                       if (selectionStart !== null) {
@@ -3139,6 +3263,9 @@ export default function App() {
               activeTabId={activeWorkspaceToolTabId}
               onTabsChange={setWorkspaceToolTabs}
               onActiveTabIdChange={setActiveWorkspaceToolTabId}
+              onBrowserElementPicked={handleBrowserElementPicked}
+              onBrowserOpenInNewTab={openBrowserUrlInNewTab}
+              browserTabEnabled={browserTabEnabled}
               open={workspaceToolsOpen}
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}

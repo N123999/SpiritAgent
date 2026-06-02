@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { PenTool } from "lucide-react";
 
+import { BROWSER_ELEMENT_CHIP_CLASS } from "@/components/browser-element-card";
 import { ComposerLocalFileStrip } from "@/components/composer-local-file-strip";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import {
@@ -9,8 +11,24 @@ import {
   snapshotsToComposerAttachmentViews,
   type ComposerLocalFileAttachmentView,
 } from "@/lib/local-file-attachments";
+import {
+  parseMessageContentParts,
+  trimMessageTextAroundElements,
+} from "@/lib/composer-segment-model";
 import { cn } from "@/lib/utils";
 import type { ConversationMessageSnapshot } from "@/types";
+
+function ElementCard({ tagName, url }: { tagName: string; url: string }) {
+  return (
+    <span
+      title={url}
+      className={BROWSER_ELEMENT_CHIP_CLASS}
+    >
+      <PenTool className="size-[10px] shrink-0" aria-hidden />
+      {`<${tagName}>`}
+    </span>
+  );
+}
 
 type ReadLocalImagePreview = (filePath: string) => Promise<string | null>;
 
@@ -43,8 +61,13 @@ export function UserMessageBubble({
 
   useLocalFileAttachmentPreviews(attachmentViews, setAttachmentViews, readLocalImagePreviewDataUrl);
 
+  const contentParts = useMemo(
+    () => parseMessageContentParts(message.content),
+    [message.content],
+  );
+  const visibleText = contentParts.filter((p) => p.kind === 'text').map((p) => p.value).join('');
   const showText =
-    message.content.trim().length > 0 &&
+    (visibleText.trim().length > 0 || contentParts.some((p) => p.kind === 'element')) &&
     !isAttachmentOnlyDisplayText(message.content, message.localFileAttachments);
   const hasAttachments = attachmentViews.length > 0;
 
@@ -76,7 +99,18 @@ export function UserMessageBubble({
           onKeyDown={canStartRewind ? handleRewindKeyDown : undefined}
         >
           <pre className="m-0 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground">
-            {message.content}
+            {contentParts.map((part, i) => {
+              if (part.kind === "element") {
+                return <ElementCard key={i} tagName={part.tagName} url={part.url} />;
+              }
+              const prev = i > 0 ? contentParts[i - 1] : null;
+              const next = i < contentParts.length - 1 ? contentParts[i + 1] : null;
+              const display = trimMessageTextAroundElements(part.value, {
+                afterElement: prev?.kind === "element",
+                beforeElement: next?.kind === "element",
+              });
+              return display;
+            })}
           </pre>
         </div>
       ) : null}

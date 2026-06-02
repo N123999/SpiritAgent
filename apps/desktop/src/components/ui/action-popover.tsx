@@ -10,6 +10,8 @@ export type ActionPopoverItem = {
   icon: ReactNode
   label: string
   disabled?: boolean
+  /** 悬停提示，常用于禁用项说明原因 */
+  title?: string
   onSelect(): void | Promise<void>
 }
 
@@ -28,6 +30,7 @@ type ActionPopoverItemButtonProps = {
   disabled?: boolean
   icon: ReactNode
   label: string
+  title?: string
   onClick(): void
 }
 
@@ -35,6 +38,7 @@ function ActionPopoverItemButton({
   disabled = false,
   icon,
   label,
+  title,
   onClick,
 }: ActionPopoverItemButtonProps) {
   return (
@@ -42,6 +46,7 @@ function ActionPopoverItemButton({
       type="button"
       role="menuitem"
       disabled={disabled}
+      title={title}
       className={cn(
         'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none',
         'text-foreground hover:bg-accent hover:text-accent-foreground',
@@ -143,6 +148,7 @@ export function ActionPopover({
                 disabled={item.disabled}
                 icon={item.icon}
                 label={item.label}
+                title={item.title}
                 onClick={() => closeAndRun(item.onSelect)}
               />
             ))}

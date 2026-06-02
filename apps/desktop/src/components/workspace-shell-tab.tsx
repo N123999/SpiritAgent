@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { FitAddon } from "@xterm/addon-fit";
@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 export type WorkspaceShellTabProps = {
   workspaceRoot: string;
+  /** 终端标题变化时通知父层（来自 OSC 0/2 序列）；无标题时传 undefined */
+  onTitleChange?: (title: string | undefined) => void;
 };
 
 /** 与 `.dark` 下 `--background`（oklch(0.145 0 0) ≈ #0a0a0a）一致。 */
@@ -61,7 +63,7 @@ function readClipboardSync(): string | null {
   return null;
 }
 
-export function WorkspaceShellTab({ workspaceRoot }: WorkspaceShellTabProps) {
+export function WorkspaceShellTab({ workspaceRoot, onTitleChange }: WorkspaceShellTabProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -71,6 +73,10 @@ export function WorkspaceShellTab({ workspaceRoot }: WorkspaceShellTabProps) {
   const bridge = typeof window !== "undefined" ? window.spiritDesktop : undefined;
   const canEmbed = Boolean(bridge?.ptyCreate);
   const trimmed = workspaceRoot.trim();
+  const onTitleChangeRef = useRef(onTitleChange);
+  useLayoutEffect(() => {
+    onTitleChangeRef.current = onTitleChange;
+  });
 
   useEffect(() => {
     setEmbedError(null);
@@ -102,6 +108,9 @@ export function WorkspaceShellTab({ workspaceRoot }: WorkspaceShellTabProps) {
       scrollback: 8000,
     });
     termRef.current = term;
+    term.onTitleChange((title) => {
+      onTitleChangeRef.current?.(title || undefined);
+    });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(el);

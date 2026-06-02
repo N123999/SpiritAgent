@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Eye, Loader2, Play, Save, SquarePen, X } from "lucide-react";
@@ -60,6 +60,8 @@ export type WorkspaceFilesTabProps = {
   autoRevealPlanNonce?: number;
   /** 为 false 时不响应 Plan 自动展开（多 files 选项卡时仅目标 tab 为 true） */
   planRevealEnabled?: boolean;
+  /** 当前打开文件名变化时通知父层，用于选项卡标题显示；无选中时传 undefined */
+  onTitleChange?: (title: string | undefined) => void;
 };
 
 export function WorkspaceFilesTab({
@@ -73,6 +75,7 @@ export function WorkspaceFilesTab({
   startImplementingDisabled = false,
   autoRevealPlanNonce = 0,
   planRevealEnabled = true,
+  onTitleChange,
 }: WorkspaceFilesTabProps) {
   const { t } = useTranslation();
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
@@ -84,6 +87,25 @@ export function WorkspaceFilesTab({
   const [savedText, setSavedText] = useState("");
   const [markdownViewMode, setMarkdownViewMode] = useState<MarkdownViewMode>("edit");
   const editorRef = useRef<WorkspaceMonacoEditorHandle>(null);
+  const onTitleChangeRef = useRef(onTitleChange);
+  useLayoutEffect(() => {
+    onTitleChangeRef.current = onTitleChange;
+  });
+  const prevSelectedEntryRef = useRef(selectedEntry);
+
+  useEffect(() => {
+    const prev = prevSelectedEntryRef.current;
+    prevSelectedEntryRef.current = selectedEntry;
+    if (!selectedEntry) {
+      if (prev !== null) {
+        onTitleChangeRef.current?.(undefined);
+      }
+    } else if (selectedEntry.kind === "plan") {
+      onTitleChangeRef.current?.("Plan");
+    } else {
+      onTitleChangeRef.current?.(pathBasename(selectedEntry.relativePath));
+    }
+  }, [selectedEntry]);
 
   const selectedPath =
     selectedEntry?.kind === "plan"

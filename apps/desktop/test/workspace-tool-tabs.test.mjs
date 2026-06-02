@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  BROWSER_NEW_TAB_SENTINEL,
   addWorkspaceToolTab,
   closeWorkspaceToolTab,
   createDefaultWorkspaceToolTabs,
@@ -9,8 +10,17 @@ import {
   createWorkspaceToolTab,
   defaultActiveWorkspaceToolTabId,
   focusFirstTabOfKind,
+  isBrowserNewTabUrl,
+  normalizeWorkspaceToolTabsForHost,
   workspaceToolTabLabel,
 } from "../src/lib/workspace-tool-tabs.ts";
+
+const t = (key) =>
+  ({
+    "workspace.files": "文件",
+    "workspace.shell": "Shell",
+    "workspace.browser": "浏览器",
+  })[key] ?? key;
 
 test("createDefaultWorkspaceToolTabs has files, shell, and git", () => {
   const tabs = createDefaultWorkspaceToolTabs();
@@ -24,9 +34,24 @@ test("workspaceToolTabLabel numbers duplicate kinds", () => {
   const a = createWorkspaceToolTab("files");
   const b = createWorkspaceToolTab("files");
   const tabs = [a, b];
-  assert.equal(workspaceToolTabLabel("files", tabs, a.id), "文件");
-  assert.equal(workspaceToolTabLabel("files", tabs, b.id), "文件 2");
-  assert.equal(workspaceToolTabLabel("shell", tabs, createWorkspaceToolTab("shell").id), "Shell");
+  assert.equal(workspaceToolTabLabel("files", tabs, a.id, t), "文件");
+  assert.equal(workspaceToolTabLabel("files", tabs, b.id, t), "文件 2");
+  assert.equal(workspaceToolTabLabel("shell", tabs, createWorkspaceToolTab("shell").id, t), "Shell");
+});
+
+test("createWorkspaceToolTab browser defaults to new-tab sentinel", () => {
+  const tab = createWorkspaceToolTab("browser");
+  assert.equal(tab.kind, "browser");
+  assert.equal(tab.browserUrl, BROWSER_NEW_TAB_SENTINEL);
+  assert.equal(isBrowserNewTabUrl(tab.browserUrl), true);
+});
+
+test("addWorkspaceToolTab browser includes sentinel url", () => {
+  const tabs = createDefaultWorkspaceToolTabs();
+  const { tabs: next, activeId } = addWorkspaceToolTab(tabs, "browser");
+  const browserTab = next.find((item) => item.id === activeId);
+  assert.equal(browserTab?.kind, "browser");
+  assert.equal(browserTab?.browserUrl, BROWSER_NEW_TAB_SENTINEL);
 });
 
 test("focusFirstTabOfKind returns first matching id", () => {
@@ -69,6 +94,32 @@ test("closeWorkspaceToolTab prefers left neighbor for active tab", () => {
 test("defaultActiveWorkspaceToolTabId prefers files", () => {
   const tabs = createDefaultWorkspaceToolTabs();
   assert.equal(defaultActiveWorkspaceToolTabId(tabs), tabs[0].id);
+});
+
+test("createDefaultWorkspaceToolTabs can include browser on Electron", () => {
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser: true });
+  assert.equal(tabs.length, 4);
+  assert.deepEqual(
+    tabs.map((t) => t.kind),
+    ["files", "shell", "git", "browser"],
+  );
+});
+
+test("normalizeWorkspaceToolTabsForHost strips browser on web host", () => {
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser: true });
+  const browserTab = tabs.find((t) => t.kind === "browser");
+  assert.ok(browserTab);
+  const normalized = normalizeWorkspaceToolTabsForHost(tabs, browserTab.id, false);
+  assert.equal(normalized.tabs.some((t) => t.kind === "browser"), false);
+  assert.equal(normalized.tabs.length, 3);
+  assert.equal(normalized.activeId, normalized.tabs[0].id);
+});
+
+test("normalizeWorkspaceToolTabsForHost adds browser on electron host", () => {
+  const tabs = createDefaultWorkspaceToolTabs();
+  const normalized = normalizeWorkspaceToolTabsForHost(tabs, tabs[0].id, true);
+  assert.equal(normalized.tabs.length, 4);
+  assert.equal(normalized.tabs.some((t) => t.kind === "browser"), true);
 });
 
 test("createInitialWorkspaceToolsState uses same tabs for active id", () => {

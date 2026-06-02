@@ -2,6 +2,7 @@ import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider
 import type { ModelReasoningEffort } from '@spirit-agent/agent-core/reasoning-effort';
 import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult, ApprovalLevel } from '@spirit-agent/host-internal';
 
+import type { BrowserElementAttachment } from './lib/browser-element-attachment.js';
 import type { ComposerLocalFileAttachmentView } from './lib/local-file-attachments.js';
 
 export interface BootstrapRequest {
@@ -696,6 +697,7 @@ export interface MessageRewindDraftState {
   /** List index in the visible conversation; disambiguates duplicate `messageId`s in the timeline. */
   listIndex: number;
   text: string;
+  browserElementAttachments: BrowserElementAttachment[];
   localFileAttachments: ComposerLocalFileAttachmentView[];
 }
 

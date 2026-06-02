@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 
-import { FileText, GitBranch, Plus, Terminal, X } from "lucide-react";
+import { FileText, GitBranch, Globe, Plus, Terminal, X } from "lucide-react";
 import { ActionPopover, type ActionPopoverItem } from "@/components/ui/action-popover";
+import { WorkspaceBrowserTab, type WorkspaceBrowserTabProps } from "@/components/workspace-browser-tab";
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import { instantHoverMotionClass } from "@/lib/desktop-chrome";
@@ -33,6 +34,7 @@ const TAB_KIND_META: Record<
   files: { labelKey: 'workspace.files', icon: FileText },
   shell: { labelKey: 'workspace.shell', icon: Terminal },
   git: { labelKey: 'workspace.git', icon: GitBranch },
+  browser: { labelKey: 'workspace.browser', icon: Globe },
 };
 
 export type WorkspaceToolsDockProps = {
@@ -50,8 +52,12 @@ export type WorkspaceToolsDockProps = {
   planRevealTabId?: string | null;
   tabs: WorkspaceToolTab[];
   activeTabId: string;
-  onTabsChange(tabs: WorkspaceToolTab[]): void;
+  onTabsChange: Dispatch<SetStateAction<WorkspaceToolTab[]>>;
   onActiveTabIdChange(id: string): void;
+  onBrowserElementPicked?: WorkspaceBrowserTabProps['onElementPicked'];
+  onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
+  /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
+  browserTabEnabled?: boolean;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -89,6 +95,9 @@ export function WorkspaceToolsDock({
   activeTabId,
   onTabsChange,
   onActiveTabIdChange,
+  onBrowserElementPicked,
+  onBrowserOpenInNewTab,
+  browserTabEnabled = false,
   widthPx,
   minWidthPx = DEFAULT_MIN,
   maxWidthPx = DEFAULT_MAX,
@@ -147,35 +156,68 @@ export function WorkspaceToolsDock({
 
   const handleAddTab = useCallback(
     (kind: WorkspaceToolTabKind) => {
-      const next = addWorkspaceToolTab(tabs, kind);
+      if (kind === "browser" && !browserTabEnabled) {
+        return;
+      }
+      const vacant = tabs.find((tab) => tab.kind === kind && !tab.tabTitle);
+      if (vacant) {
+        onActiveTabIdChange(vacant.id);
+        return;
+      }
+      const meta = TAB_KIND_META[kind];
+      const defaultTitle = t(meta.labelKey);
+      const next = addWorkspaceToolTab(tabs, kind, defaultTitle);
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [onActiveTabIdChange, onTabsChange, tabs],
+    [browserTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
   );
 
   const handleCloseTab = useCallback(
     (closeId: string) => {
-      const next = closeWorkspaceToolTab(tabs, activeTabId, closeId);
+      const next = closeWorkspaceToolTab(tabs, activeTabId, closeId, {
+        includeBrowser: browserTabEnabled,
+      });
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [activeTabId, onActiveTabIdChange, onTabsChange, tabs],
+    [activeTabId, browserTabEnabled, onActiveTabIdChange, onTabsChange, tabs],
+  );
+
+  const handleBrowserUrlChange = useCallback(
+    (tabId: string, url: string) => {
+      onTabsChange((prev) =>
+        prev.map((item) => (item.id === tabId ? { ...item, browserUrl: url } : item)),
+      );
+    },
+    [onTabsChange],
+  );
+
+  const handleTabTitleChange = useCallback(
+    (tabId: string, title: string | undefined) => {
+      onTabsChange((prev) =>
+        prev.map((item) => (item.id === tabId ? { ...item, tabTitle: title || undefined } : item)),
+      );
+    },
+    [onTabsChange],
   );
 
   const newTabItems = useMemo<readonly ActionPopoverItem[]>(
     () =>
-      (["files", "shell", "git"] as const).map((kind) => {
+      (["files", "shell", "git", "browser"] as const).map((kind) => {
         const meta = TAB_KIND_META[kind];
         const Icon = meta.icon;
+        const browserDisabled = kind === "browser" && !browserTabEnabled;
         return {
           id: `new-${kind}`,
           icon: <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />,
           label: t(meta.labelKey),
+          disabled: browserDisabled,
+          title: browserDisabled ? t("workspace.browserElectronOnly") : undefined,
           onSelect: () => handleAddTab(kind),
         };
       }),
-    [handleAddTab, t],
+    [browserTabEnabled, handleAddTab, t],
   );
 
   const shellWidth = open ? `calc(0.25rem + ${widthPx}px)` : "0px";
@@ -236,15 +278,16 @@ export function WorkspaceToolsDock({
                 const Icon = meta.icon;
                 const selected = item.id === activeTabId;
                 const label = workspaceToolTabLabel(item.kind, tabs, item.id, t);
+                const displayTitle = item.tabTitle;
                 return (
                   <div
                     key={item.id}
                     className={cn(
-                      "flex max-w-[9rem] shrink-0 items-stretch rounded-t-md border border-transparent",
-                      instantHoverMotionClass,
+                      "group/tab relative flex shrink-0 items-stretch rounded-t-md border border-transparent",
+                      displayTitle ? "max-w-[9rem]" : "max-w-[3rem]",
                       selected
                         ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground dark:hover:bg-foreground/10",
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     )}
                   >
                     <button
@@ -254,25 +297,36 @@ export function WorkspaceToolsDock({
                       aria-selected={selected}
                       aria-controls={`workspace-tool-panel-${item.id}`}
                       tabIndex={selected ? 0 : -1}
-                      className="flex min-w-0 flex-1 items-center gap-1 rounded-tl-md bg-transparent py-2 pl-2 pr-0.5 text-xs font-medium outline-none"
+                      title={displayTitle ?? label}
+                      className="flex min-w-0 flex-1 items-center gap-1 rounded-t-md bg-transparent py-2 pl-2 pr-2 text-xs font-medium outline-none"
                       onClick={() => onActiveTabIdChange(item.id)}
                     >
                       <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
-                      <span className="truncate">{label}</span>
+                      {displayTitle ? <span className="truncate">{displayTitle}</span> : null}
                     </button>
                     <button
                       type="button"
                       className={cn(
-                        "flex shrink-0 items-center justify-center rounded-tr-md bg-transparent p-1 pr-1.5 outline-none",
-                        selected ? "text-foreground/70" : "text-inherit",
+                        "absolute inset-y-0 right-0 hidden items-center justify-end rounded-tr-md pr-1 outline-none group-hover/tab:flex",
+                        !displayTitle && "flex",
                       )}
+                      style={
+                        displayTitle
+                          ? {
+                              maskImage: "linear-gradient(to right, transparent, black 50%)",
+                              WebkitMaskImage: "linear-gradient(to right, transparent, black 50%)",
+                              width: "2rem",
+                              background: "inherit",
+                            }
+                          : undefined
+                      }
                       aria-label={t('workspace.closeTab', { label })}
                       onClick={(event) => {
                         event.stopPropagation();
                         handleCloseTab(item.id);
                       }}
                     >
-                      <X className="size-3" aria-hidden />
+                      <X className="size-3 opacity-70" aria-hidden />
                     </button>
                   </div>
                 );
@@ -326,11 +380,26 @@ export function WorkspaceToolsDock({
                         startImplementingDisabled={startImplementingDisabled}
                         autoRevealPlanNonce={planRevealEnabled ? autoRevealPlanNonce : 0}
                         planRevealEnabled={planRevealEnabled}
+                        onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                       />
                     </div>
                   ) : item.kind === "shell" ? (
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
-                      <WorkspaceShellTab workspaceRoot={workspaceRoot} />
+                      <WorkspaceShellTab
+                        workspaceRoot={workspaceRoot}
+                        onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                      />
+                    </div>
+                  ) : item.kind === "browser" ? (
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                      <WorkspaceBrowserTab
+                        browserUrl={item.browserUrl}
+                        browserTabEnabled={browserTabEnabled}
+                        onBrowserUrlChange={(url) => handleBrowserUrlChange(item.id, url)}
+                        onOpenUrlInNewTab={onBrowserOpenInNewTab}
+                        onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                        onElementPicked={onBrowserElementPicked}
+                      />
                     </div>
                   ) : (
                     <WorkspaceGitTabPlaceholder />
