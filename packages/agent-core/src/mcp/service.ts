@@ -23,6 +23,7 @@ import type {
   McpCapabilityToggles,
   McpConfigFile,
   McpServerConfig,
+  McpServerRuntimeState,
   ResolvedMcpHttpTransportConfig,
   ResolvedMcpServerConfig,
   ResolvedMcpStdioTransportConfig,
@@ -82,6 +83,21 @@ interface LoadedMcpConfig {
 }
 
 type EnvLookupStore = Map<string, string>;
+
+interface UserMcpToolingCacheEntry {
+  digest: string;
+  definitions: JsonValue[];
+  routes: Map<string, McpToolRoute>;
+  prompts: Map<string, McpPromptCatalogEntry[]>;
+  serverStates: Map<string, { state: McpServerRuntimeState; cachedTools: number; lastError?: string }>;
+}
+
+/** User-scope MCP tooling is shared across workspace McpService instances (desktop session switches). */
+let sharedUserMcpToolingCache: UserMcpToolingCacheEntry | undefined;
+
+export function invalidateSharedUserMcpToolingCache(): void {
+  sharedUserMcpToolingCache = undefined;
+}
 
 export class McpService {
   private readonly registry = new McpRegistry();
@@ -158,9 +174,13 @@ export class McpService {
 
   async refreshConfig(): Promise<void> {
     try {
-      const { merged, serverScopes } = await loadMergedMcpConfigForWorkspace(this.workspaceRootStore);
+      const { merged, serverScopes, user } = await loadMergedMcpConfigForWorkspace(this.workspaceRootStore);
       const raw = merged;
       const nextDigest = mcpConfigDigest(raw);
+      const nextUserDigest = mcpConfigDigest(user);
+      if (sharedUserMcpToolingCache && sharedUserMcpToolingCache.digest !== nextUserDigest) {
+        sharedUserMcpToolingCache = undefined;
+      }
       const configChanged = nextDigest !== this.configDigestStore;
       if (configChanged) {
         this.registry.replaceConfig(raw);
@@ -566,85 +586,84 @@ export class McpService {
 
   private async refreshToolingCaches(): Promise<void> {
     await this.refreshConfig();
-    console.error('[mcp-service] refreshToolingCaches.start', {
-      servers: Object.keys(this.loadedConfigStore.resolved).length,
-    });
+    const userServers: ResolvedMcpServerConfig[] = [];
+    const workspaceServers: ResolvedMcpServerConfig[] = [];
+    for (const server of Object.values(this.loadedConfigStore.resolved)) {
+      if (!server.enabled) {
+        continue;
+      }
+      const scope = this.loadedConfigStore.serverScopes[server.name] ?? 'workspace';
+      if (scope === 'user') {
+        userServers.push(server);
+      } else {
+        workspaceServers.push(server);
+      }
+    }
 
     const definitions: JsonValue[] = [];
     const routes = new Map<string, McpToolRoute>();
     const prompts = new Map<string, McpPromptCatalogEntry[]>();
 
-    for (const server of Object.values(this.loadedConfigStore.resolved)) {
-      if (!server.enabled) {
-        continue;
+    const { user: userConfigFile } = await loadMergedMcpConfigForWorkspace(this.workspaceRootStore);
+    const currentUserDigest = mcpConfigDigest(userConfigFile);
+
+    let userCacheHit = false;
+    if (
+      userServers.length > 0
+      && sharedUserMcpToolingCache
+      && sharedUserMcpToolingCache.digest === currentUserDigest
+    ) {
+      userCacheHit = true;
+      definitions.push(...sharedUserMcpToolingCache.definitions);
+      for (const [functionName, route] of sharedUserMcpToolingCache.routes) {
+        routes.set(functionName, route);
       }
-
-      this.registry.setServerState(server.name, 'loading', { cachedTools: 0 });
-      const connection = new SdkMcpConnection();
-      try {
-        await connection.connect(server);
-        const capabilities = connection.serverCapabilities;
-        const discoveredTools =
-          server.capabilities.tools && capabilities?.tools !== undefined
-            ? (await connection.listTools()).tools
-            : [];
-        const discoveredPrompts =
-          server.capabilities.prompts && capabilities?.prompts !== undefined
-            ? (await connection.listPrompts()).prompts
-            : [];
-
-        for (const tool of discoveredTools) {
-          const functionName = syntheticMcpFunctionName(server.name, tool.name);
-          const description = tool.description ?? `MCP tool ${tool.name} from server ${server.displayName}.`;
-          const parameters = isJsonRecord(tool.inputSchema)
-            ? (tool.inputSchema as JsonValue)
-            : {
-                type: 'object',
-                additionalProperties: true,
-              };
-
-          definitions.push({
-            type: 'function',
-            function: {
-              name: functionName,
-              description: `[MCP ${server.displayName}] ${description}`,
-              parameters,
-            },
-          });
-          routes.set(functionName, {
-            functionName,
-            server: server.name,
-            displayName: server.displayName,
-            toolName: tool.name,
-          });
-        }
-
-        prompts.set(
-          server.name,
-          discoveredPrompts.map((prompt) => ({
-            name: prompt.name,
-            ...(prompt.title === undefined ? {} : { title: prompt.title }),
-            ...(prompt.description === undefined ? {} : { description: prompt.description }),
-            arguments: (prompt.arguments ?? []).map((argument) => ({
-              name: argument.name,
-              ...(argument.description === undefined ? {} : { description: argument.description }),
-              required: argument.required ?? false,
-            })),
-          })),
-        );
-
-        this.registry.clearServerError(server.name);
-        this.registry.setServerState(server.name, 'ready', {
-          cachedTools: discoveredTools.length,
-        });
-      } catch (error) {
-        this.registry.setServerState(server.name, 'error', {
-          cachedTools: 0,
-          lastError: describeError(error),
-        });
-      } finally {
-        await closeConnectionQuietly(connection, `refreshToolingCaches:${server.name}`);
+      for (const [serverName, entries] of sharedUserMcpToolingCache.prompts) {
+        prompts.set(serverName, entries);
       }
+      for (const [serverName, status] of sharedUserMcpToolingCache.serverStates) {
+        this.registry.setServerState(serverName, status.state, {
+          cachedTools: status.cachedTools,
+          ...(status.lastError === undefined ? {} : { lastError: status.lastError }),
+        });
+      }
+    } else if (userServers.length > 0) {
+      const userDefinitions: JsonValue[] = [];
+      const userRoutes = new Map<string, McpToolRoute>();
+      const userPrompts = new Map<string, McpPromptCatalogEntry[]>();
+      const userServerStates = new Map<
+        string,
+        { state: McpServerRuntimeState; cachedTools: number; lastError?: string }
+      >();
+      for (const server of userServers) {
+        const status = await this.discoverServerTooling(server, userDefinitions, userRoutes, userPrompts);
+        userServerStates.set(server.name, status);
+      }
+      sharedUserMcpToolingCache = {
+        digest: currentUserDigest,
+        definitions: [...userDefinitions],
+        routes: new Map(userRoutes),
+        prompts: new Map(userPrompts),
+        serverStates: new Map(userServerStates),
+      };
+      definitions.push(...userDefinitions);
+      for (const [functionName, route] of userRoutes) {
+        routes.set(functionName, route);
+      }
+      for (const [serverName, entries] of userPrompts) {
+        prompts.set(serverName, entries);
+      }
+    }
+
+    console.error('[mcp-service] refreshToolingCaches.start', {
+      servers: userServers.length + workspaceServers.length,
+      userCacheHit,
+      userServers: userServers.length,
+      workspaceServers: workspaceServers.length,
+    });
+
+    for (const server of workspaceServers) {
+      await this.discoverServerTooling(server, definitions, routes, prompts);
     }
 
     this.toolCatalogStore = {
@@ -656,7 +675,85 @@ export class McpService {
     console.error('[mcp-service] refreshToolingCaches.done', {
       definitions: definitions.length,
       promptServers: prompts.size,
+      userCacheHit,
     });
+  }
+
+  private async discoverServerTooling(
+    server: ResolvedMcpServerConfig,
+    definitions: JsonValue[],
+    routes: Map<string, McpToolRoute>,
+    prompts: Map<string, McpPromptCatalogEntry[]>,
+  ): Promise<{ state: McpServerRuntimeState; cachedTools: number; lastError?: string }> {
+    this.registry.setServerState(server.name, 'loading', { cachedTools: 0 });
+    const connection = new SdkMcpConnection();
+    try {
+      await connection.connect(server);
+      const capabilities = connection.serverCapabilities;
+      const discoveredTools =
+        server.capabilities.tools && capabilities?.tools !== undefined
+          ? (await connection.listTools()).tools
+          : [];
+      const discoveredPrompts =
+        server.capabilities.prompts && capabilities?.prompts !== undefined
+          ? (await connection.listPrompts()).prompts
+          : [];
+
+      for (const tool of discoveredTools) {
+        const functionName = syntheticMcpFunctionName(server.name, tool.name);
+        const description = tool.description ?? `MCP tool ${tool.name} from server ${server.displayName}.`;
+        const parameters = isJsonRecord(tool.inputSchema)
+          ? (tool.inputSchema as JsonValue)
+          : {
+              type: 'object',
+              additionalProperties: true,
+            };
+
+        definitions.push({
+          type: 'function',
+          function: {
+            name: functionName,
+            description: `[MCP ${server.displayName}] ${description}`,
+            parameters,
+          },
+        });
+        routes.set(functionName, {
+          functionName,
+          server: server.name,
+          displayName: server.displayName,
+          toolName: tool.name,
+        });
+      }
+
+      prompts.set(
+        server.name,
+        discoveredPrompts.map((prompt) => ({
+          name: prompt.name,
+          ...(prompt.title === undefined ? {} : { title: prompt.title }),
+          ...(prompt.description === undefined ? {} : { description: prompt.description }),
+          arguments: (prompt.arguments ?? []).map((argument) => ({
+            name: argument.name,
+            ...(argument.description === undefined ? {} : { description: argument.description }),
+            required: argument.required ?? false,
+          })),
+        })),
+      );
+
+      this.registry.clearServerError(server.name);
+      this.registry.setServerState(server.name, 'ready', {
+        cachedTools: discoveredTools.length,
+      });
+      return { state: 'ready', cachedTools: discoveredTools.length };
+    } catch (error) {
+      const lastError = describeError(error);
+      this.registry.setServerState(server.name, 'error', {
+        cachedTools: 0,
+        lastError,
+      });
+      return { state: 'error', cachedTools: 0, lastError };
+    } finally {
+      await closeConnectionQuietly(connection, `refreshToolingCaches:${server.name}`);
+    }
   }
 
   private launchBackgroundRefresh(force: boolean): void {
@@ -726,6 +823,7 @@ function resolveMcpConfigPaths(workspaceRoot: string): { userPath: string; works
 async function loadMergedMcpConfigForWorkspace(workspaceRoot: string): Promise<{
   merged: McpConfigFile;
   serverScopes: Record<string, McpConfigScope>;
+  user: McpConfigFile;
 }> {
   const { userPath, workspacePath } = resolveMcpConfigPaths(workspaceRoot);
   const user = await loadMcpConfigFile(userPath);
@@ -733,6 +831,7 @@ async function loadMergedMcpConfigForWorkspace(workspaceRoot: string): Promise<{
   return {
     merged: mergeMcpConfigFiles(user, workspace),
     serverScopes: mcpServerScopesFromFiles(user, workspace),
+    user,
   };
 }
 

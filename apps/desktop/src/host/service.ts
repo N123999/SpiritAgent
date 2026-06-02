@@ -16,6 +16,7 @@ import {
   buildToolAgentHostPrompt,
   createLlmTransport,
   McpService,
+  invalidateSharedUserMcpToolingCache,
   extractLastLlmAssistantText,
   buildDreamReadHostToolDefinitions,
   startLlmToolAgentState,
@@ -1113,6 +1114,9 @@ class DesktopHostService {
       const scope = request.scope ?? 'workspace';
       const serverConfig = buildMcpServerConfigFromRequest({ ...request, scope });
       await addMcpServerToDisk(scope, state.workspaceRoot, name, serverConfig);
+      if (scope === 'user') {
+        invalidateSharedUserMcpToolingCache();
+      }
       this.sharedMcpServiceForWorkspace(state.workspaceRoot).startBackgroundRefreshInBackground(true);
       this.toolExecutor?.startMcpBackgroundRefresh();
       return this.buildSnapshot();
@@ -1131,6 +1135,9 @@ class DesktopHostService {
 
       const scope = request.scope ?? 'user';
       await deleteMcpServerFromDisk(scope, state.workspaceRoot, name);
+      if (scope === 'user') {
+        invalidateSharedUserMcpToolingCache();
+      }
       this.sharedMcpServiceForWorkspace(state.workspaceRoot).startBackgroundRefreshInBackground(true);
       this.toolExecutor?.startMcpBackgroundRefresh();
       return this.buildSnapshot();
@@ -2220,7 +2227,15 @@ class DesktopHostService {
         if (!ephemeral) {
           throw new Error(i18n.t('error.ephemeralSessionExpired'));
         }
-        await this.ensureInitialized(ephemeral.workspaceRoot, { preserveRecentWorkspaces: true });
+        const ephemeralSameWorkspace = Boolean(
+          this.initialized
+          && this.state?.workspaceRoot
+          && sameWorkspaceRoot(this.state.workspaceRoot, ephemeral.workspaceRoot),
+        );
+        await this.ensureInitialized(ephemeral.workspaceRoot, {
+          preserveRecentWorkspaces: true,
+          ...(ephemeralSameWorkspace ? { fastPath: true } : { deferRuntimeRefresh: true }),
+        });
         const restored = restoreEphemeralSessionState(ephemeral);
         const bundle = this.sessionRegistry.upsertFromRestored(
           ephemeral.workspaceRoot,
@@ -2257,7 +2272,7 @@ class DesktopHostService {
         && Boolean(this.state?.workspaceRoot)
         && sameWorkspaceRoot(this.state!.workspaceRoot, workspaceRoot);
       await this.ensureInitialized(workspaceRoot, {
-        ...(sameWorkspace ? { fastPath: true } : {}),
+        ...(sameWorkspace ? { fastPath: true } : { deferRuntimeRefresh: true }),
         preserveRecentWorkspaces: true,
       });
       const restored = restoreStoredSessionState({
@@ -2524,7 +2539,12 @@ class DesktopHostService {
 
   private async ensureInitialized(
     workspaceRootOverride?: string,
-    options: { fastPath?: boolean; preserveRecentWorkspaces?: boolean } = {},
+    options: {
+      fastPath?: boolean;
+      preserveRecentWorkspaces?: boolean;
+      /** Skip global runtime rebuild after workspace switch; caller will activate a session bundle. */
+      deferRuntimeRefresh?: boolean;
+    } = {},
   ): Promise<void> {
     const requestedWorkspaceRoot = workspaceRootOverride?.trim()
       ? path.resolve(workspaceRootOverride.trim())
@@ -2588,7 +2608,6 @@ class DesktopHostService {
     if (switchingWorkspace) {
       this.lastRuntimeError = '';
       this.toolExecutor = undefined;
-      this.mcpServiceByWorkspaceRoot.clear();
       this.sessionRegistry.clearForWorkspaceSwitch(workspaceRoot);
       this.resetStreamingPlacementState(true);
     } else if (!this.sessionRegistry.hasActive()) {
@@ -2609,7 +2628,10 @@ class DesktopHostService {
     };
     this.initialized = true;
     await this.refreshExtensionsList();
-    await this.refreshRuntime();
+    const skipRuntimeRefresh = switchingWorkspace && options.deferRuntimeRefresh === true;
+    if (!skipRuntimeRefresh) {
+      await this.refreshRuntime();
+    }
     await this.dispatchExtensionEvent({
       type: 'onStartup',
       detail: {
@@ -2788,7 +2810,7 @@ class DesktopHostService {
     let service = this.mcpServiceByWorkspaceRoot.get(key);
     if (!service) {
       service = new McpService(key);
-      service.startBackgroundRefreshInBackground(true);
+      service.startBackgroundRefreshInBackground(false);
       this.mcpServiceByWorkspaceRoot.set(key, service);
     }
     return service;
