@@ -3,6 +3,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 
 import { configureWorkspaceTerminalLinks } from "@/lib/workspace-terminal-links";
+import { attachWorkspaceTerminalResizeObserver } from "@/lib/workspace-terminal-resize";
 import {
   readTerminalThemeFromDocument,
   trackTerminalTheme,
@@ -17,7 +18,7 @@ const WORKSPACE_TERMINAL_LINE_HEIGHT = 1;
 const WORKSPACE_TERMINAL_LETTER_SPACING = 0;
 
 /** 在 open + fit 之后加载 WebGL；失败或上下文丢失时回退默认渲染器。 */
-export function loadWorkspaceTerminalWebgl(term: Terminal): void {
+export function loadWorkspaceTerminalWebgl(term: Terminal): WebglAddon | null {
   try {
     const webgl = new WebglAddon();
     webgl.onContextLoss(() => {
@@ -25,8 +26,10 @@ export function loadWorkspaceTerminalWebgl(term: Terminal): void {
       webgl.dispose();
     });
     term.loadAddon(webgl);
+    return webgl;
   } catch (error) {
     console.warn("[workspace-xterm] WebGL addon failed to load; using default renderer.", error);
+    return null;
   }
 }
 
@@ -64,22 +67,35 @@ export type CreateWorkspaceTerminalOptions = {
   onTitleChange?: (title: string | undefined) => void;
   onEmbedError: (message: string) => void;
   shellExitedMessage: (exitCode: number) => string;
+  /** 侧栏拖拽等连续布局变化期间暂停 fit，避免 PTY 与渲染器尺寸不同步。 */
+  isResizeSuspended?: () => boolean;
 };
 
 export type WorkspaceTerminalSession = {
   terminal: Terminal;
   fitAddon: FitAddon;
+  /** 在布局稳定后手动触发 fit（例如侧栏拖拽结束）。 */
+  scheduleFit: () => void;
   dispose: () => void;
 };
 
 export function createWorkspaceTerminalSession(
   options: CreateWorkspaceTerminalOptions,
 ): WorkspaceTerminalSession {
-  const { container, cwd, bridge, onTitleChange, onEmbedError, shellExitedMessage } = options;
+  const {
+    container,
+    cwd,
+    bridge,
+    onTitleChange,
+    onEmbedError,
+    shellExitedMessage,
+    isResizeSuspended,
+  } = options;
 
   let termDisposed = false;
   let ptyId: string | undefined;
-  let ro: ResizeObserver | undefined;
+  let resizeController: ReturnType<typeof attachWorkspaceTerminalResizeObserver> | undefined;
+  let resizePtyDisposable: { dispose(): void } | undefined;
   let unsubPty: (() => void) | undefined;
   let sessionAlive = true;
   let activePtyId: string | null = null;
@@ -106,7 +122,16 @@ export function createWorkspaceTerminalSession(
   term.loadAddon(fitAddon);
   term.open(container);
   fitAddon.fit();
-  loadWorkspaceTerminalWebgl(term);
+  const webglAddon = loadWorkspaceTerminalWebgl(term);
+  fitAddon.fit();
+
+  resizeController = attachWorkspaceTerminalResizeObserver({
+    container,
+    terminal: term,
+    fitAddon,
+    webglAddon,
+    isSuspended: isResizeSuspended,
+  });
 
   const onContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
@@ -159,8 +184,10 @@ export function createWorkspaceTerminalSession(
     container.removeEventListener("contextmenu", onContextMenu, true);
     unsubPty?.();
     unsubPty = undefined;
-    ro?.disconnect();
-    ro = undefined;
+    resizeController?.dispose();
+    resizeController = undefined;
+    resizePtyDisposable?.dispose();
+    resizePtyDisposable = undefined;
     if (ptyId) {
       void bridge.ptyKill(ptyId);
       ptyId = undefined;
@@ -182,7 +209,8 @@ export function createWorkspaceTerminalSession(
       }
       container.removeEventListener("contextmenu", onContextMenu, true);
       unsubPty?.();
-      ro?.disconnect();
+      resizeController?.dispose();
+      resizeController = undefined;
       disposeTerminal();
       activePtyId = null;
       return;
@@ -200,11 +228,10 @@ export function createWorkspaceTerminalSession(
       bridge.ptyWrite(created.id, data);
     });
 
-    ro = new ResizeObserver(() => {
-      fitAddon.fit();
-      bridge.ptyResize(created.id, term.cols, term.rows);
+    resizePtyDisposable = term.onResize(({ cols, rows }) => {
+      bridge.ptyResize(created.id, cols, rows);
     });
-    ro.observe(container);
+    resizeController?.scheduleFit();
 
     queueMicrotask(() => {
       if (sessionAlive) {
@@ -216,6 +243,9 @@ export function createWorkspaceTerminalSession(
   return {
     terminal: term,
     fitAddon,
+    scheduleFit: () => {
+      resizeController?.scheduleFit();
+    },
     dispose: teardown,
   };
 }

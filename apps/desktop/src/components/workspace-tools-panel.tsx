@@ -383,6 +383,7 @@ export function WorkspaceToolsDock({
                       <WorkspaceShellTab
                         workspaceRoot={workspaceRoot}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                        suspendTerminalResize={isResizing}
                       />
                     </div>
                   ) : item.kind === "browser" ? (

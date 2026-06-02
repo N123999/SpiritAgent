@@ -12,20 +12,31 @@ export type WorkspaceShellTabProps = {
   workspaceRoot: string;
   /** 终端标题变化时通知父层（来自 OSC 0/2 序列）；无标题时传 undefined */
   onTitleChange?: (title: string | undefined) => void;
+  /** 侧栏连续拖拽调整宽度时为 true，暂停终端 fit 直至松手。 */
+  suspendTerminalResize?: boolean;
 };
 
-export function WorkspaceShellTab({ workspaceRoot, onTitleChange }: WorkspaceShellTabProps) {
+export function WorkspaceShellTab({
+  workspaceRoot,
+  onTitleChange,
+  suspendTerminalResize = false,
+}: WorkspaceShellTabProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const sessionScheduleFitRef = useRef<(() => void) | null>(null);
   const [embedError, setEmbedError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const bridge = typeof window !== "undefined" ? window.spiritDesktop : undefined;
   const canEmbed = Boolean(bridge?.ptyCreate);
   const trimmed = workspaceRoot.trim();
   const onTitleChangeRef = useRef(onTitleChange);
+  const suspendResizeRef = useRef(suspendTerminalResize);
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;
+  });
+  useLayoutEffect(() => {
+    suspendResizeRef.current = suspendTerminalResize;
   });
 
   useEffect(() => {
@@ -48,14 +59,23 @@ export function WorkspaceShellTab({ workspaceRoot, onTitleChange }: WorkspaceShe
       onTitleChange: (title) => onTitleChangeRef.current?.(title),
       onEmbedError: setEmbedError,
       shellExitedMessage: (exitCode) => t("workspace.shellExited", { exitCode }),
+      isResizeSuspended: () => suspendResizeRef.current,
     });
     termRef.current = session.terminal;
+    sessionScheduleFitRef.current = session.scheduleFit;
 
     return () => {
       session.dispose();
       termRef.current = null;
+      sessionScheduleFitRef.current = null;
     };
   }, [trimmed, canEmbed, retryNonce, t]);
+
+  useEffect(() => {
+    if (!suspendTerminalResize) {
+      sessionScheduleFitRef.current?.();
+    }
+  }, [suspendTerminalResize]);
 
   const openExternal = (): void => {
     if (!bridge?.openSystemTerminal || !trimmed) {

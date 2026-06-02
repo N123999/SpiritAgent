@@ -22,14 +22,56 @@ function resolveValidatedCwd(raw: string): string {
   return resolved;
 }
 
-/** 与系统登录环境一致：Windows 用 ComSpec，Unix 用 SHELL。 */
+function firstExistingFile(candidates: string[]): string | undefined {
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    if (trimmed && existsSync(trimmed)) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 集成终端默认 Shell。
+ * Windows：优先 pwsh（PowerShell 7+），其次 Windows PowerShell，最后 cmd。
+ * 可通过环境变量 SPIRIT_TERMINAL_SHELL 指定可执行文件完整路径。
+ */
 export function defaultShellForPty(): { file: string; args: string[] } {
+  const override = process.env.SPIRIT_TERMINAL_SHELL?.trim();
+  if (override) {
+    if (!existsSync(override)) {
+      throw new Error(`SPIRIT_TERMINAL_SHELL 不存在: ${override}`);
+    }
+    return { file: override, args: [] };
+  }
+
   if (process.platform === 'win32') {
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+    const pwsh =
+      firstExistingFile([
+        process.env.PWSH_PATH || '',
+        path.join(programFiles, 'PowerShell', '7', 'pwsh.exe'),
+        path.join(programFiles, 'PowerShell', '7-preview', 'pwsh.exe'),
+        path.join(
+          process.env.LOCALAPPDATA || '',
+          'Microsoft',
+          'WindowsApps',
+          'pwsh.exe',
+        ),
+      ]) ||
+      firstExistingFile([
+        path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      ]);
+    if (pwsh) {
+      return { file: pwsh, args: [] };
+    }
     const comspec =
-      process.env.ComSpec ||
-      path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
+      process.env.ComSpec || path.join(systemRoot, 'System32', 'cmd.exe');
     return { file: comspec, args: [] };
   }
+
   const shellPath = process.env.SHELL || '/bin/bash';
   return { file: shellPath, args: [] };
 }
@@ -52,15 +94,30 @@ export class WorkspacePtyManager {
     try {
       const mod = loadPtyModule();
       const { file, args } = defaultShellForPty();
-      pty = mod.spawn(file, args, {
+      const spawnOptions = {
         name: 'xterm-256color',
         cols,
         rows,
         cwd,
         env: process.env as Record<string, string>,
-        // 部分 Electron 宿主下 ConPTY 会触发 conpty_console_list_agent 的 AttachConsole 失败，改用 WinPTY。
-        useConpty: false,
-      });
+      };
+      const preferConpty =
+        process.platform === 'win32' && process.env.SPIRIT_PTY_USE_WINPTY !== '1';
+      try {
+        pty = mod.spawn(file, args, {
+          ...spawnOptions,
+          // ConPTY 在 Windows 上 resize/reflow 明显优于 WinPTY；失败时回退 WinPTY。
+          useConpty: preferConpty,
+        });
+      } catch (firstErr) {
+        if (!preferConpty) {
+          throw firstErr;
+        }
+        pty = mod.spawn(file, args, {
+          ...spawnOptions,
+          useConpty: false,
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { ok: false, error: message };
