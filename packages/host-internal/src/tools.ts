@@ -2572,6 +2572,22 @@ function replaceSingleMatchAllowingNewlineDifferences(
   return { updated: `${prefix}${replacement}${suffix}` };
 }
 
+function combineShellToolOutput(stdout: string, stderr: string): string {
+  const hasStdout = stdout.length > 0;
+  const hasStderr = stderr.length > 0;
+  if (!hasStdout && !hasStderr) {
+    return '';
+  }
+  if (!hasStdout) {
+    return stderr;
+  }
+  if (!hasStderr) {
+    return stdout;
+  }
+  const separator = stdout.endsWith('\n') || stderr.startsWith('\n') ? '' : '\n';
+  return `${stdout}${separator}${stderr}`;
+}
+
 function formatShellToolTranscript(
   shellName: string,
   workspace: string,
@@ -2586,8 +2602,7 @@ function formatShellToolTranscript(
   s += `命令      ${command}\n`;
   s += `退出码    ${exitCode}\n`;
   s += '\n';
-  s += appendShellSectionChunk('标准输出', stdout, '（无输出）');
-  s += appendShellSectionChunk('标准错误', stderr, '（无输出）');
+  s += appendShellSectionChunk('输出', combineShellToolOutput(stdout, stderr), '（无输出）');
   return s;
 }
 
