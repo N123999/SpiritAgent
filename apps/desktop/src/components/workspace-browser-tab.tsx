@@ -12,6 +12,16 @@ import {
 } from "@/lib/workspace-tool-tabs";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import { truncateOuterHtml } from "@/lib/browser-element-attachment";
+import {
+  applyPickerOverlayBox,
+  buildPickerInjectScript,
+  clearPickerOverlayInlineStyles,
+  hidePickerOverlayBox,
+  PICKER_INJECT_CSS,
+  pickerRectsEqual,
+  type PickerMarqueeResult,
+  type PickerOverlayMode,
+} from "@/lib/browser-element-picker";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceBrowserTabProps = {
@@ -183,6 +193,7 @@ export function WorkspaceBrowserTab({
 }: WorkspaceBrowserTabProps) {
   const { t } = useTranslation();
   const webviewRef = useRef<WebviewElement | null>(null);
+  const pickerOverlayRef = useRef<HTMLDivElement>(null);
   const showNewTab = isBrowserNewTabUrl(browserUrl);
   const [addressDraft, setAddressDraft] = useState("");
   const [canGoBack, setCanGoBack] = useState(false);
@@ -190,6 +201,7 @@ export function WorkspaceBrowserTab({
   const [lastVisitedUrl, setLastVisitedUrl] = useState<string | undefined>(undefined);
   const [isPickerActive, setIsPickerActive] = useState(false);
   const [overlayRect, setOverlayRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [overlayMode, setOverlayMode] = useState<PickerOverlayMode | null>(null);
   const onElementPickedRef = useRef(onElementPicked);
   useLayoutEffect(() => {
     onElementPickedRef.current = onElementPicked;
@@ -306,6 +318,7 @@ export function WorkspaceBrowserTab({
   const exitPicker = useCallback(() => {
     setIsPickerActive(false);
     setOverlayRect(null);
+    setOverlayMode(null);
   }, []);
 
   useEffect(() => {
@@ -317,108 +330,113 @@ export function WorkspaceBrowserTab({
     const el = webviewRef.current;
     if (!isPickerActive || showNewTab || !canEmbed || !el) return;
 
-    const INJECT_MOUSEMOVE = `
-      (function() {
-        if (window.__spiritPickerCleanup) window.__spiritPickerCleanup();
-        function onMove(e) {
-          var el = document.elementFromPoint(e.clientX, e.clientY);
-          if (!el) return;
-          var r = el.getBoundingClientRect();
-          window.__spiritPickerRect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), tagName: el.tagName, outerHTML: el.outerHTML };
-        }
-        function onClick(e) {
-          e.preventDefault(); e.stopPropagation();
-          var el = document.elementFromPoint(e.clientX, e.clientY);
-          if (!el) return;
-          var r = el.getBoundingClientRect();
-          window.__spiritPickerResult = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), tagName: el.tagName, outerHTML: el.outerHTML };
-          window.__spiritPickerDone = true;
-        }
-        document.addEventListener('mousemove', onMove, true);
-        document.addEventListener('click', onClick, true);
-        window.__spiritPickerDone = false;
-        window.__spiritPickerRect = null;
-        window.__spiritPickerResult = null;
-        window.__spiritPickerCleanup = function() {
-          document.removeEventListener('mousemove', onMove, true);
-          document.removeEventListener('click', onClick, true);
-        };
-        true;
-      })();
-    `;
-
-    void el.executeJavaScript?.(INJECT_MOUSEMOVE);
+    void el.executeJavaScript?.(buildPickerInjectScript());
 
     let cssKey: string | undefined;
-    void el.insertCSS?.('* { cursor: crosshair !important; }').then((key) => { cssKey = key; });
+    void el.insertCSS?.(PICKER_INJECT_CSS).then((key) => {
+      cssKey = key;
+    });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') exitPicker();
     };
     window.addEventListener('keydown', handleKeyDown, true);
 
-    let rafId: number;
+    let frameId = 0;
     let cancelled = false;
+    let syncInFlight = false;
 
-    const poll = async () => {
+    const tick = () => {
       if (cancelled) return;
-      try {
-        const done = await el.executeJavaScript?.('window.__spiritPickerDone || false');
-        if (done) {
-          const result = await el.executeJavaScript?.('window.__spiritPickerResult');
-          await el.executeJavaScript?.('if(window.__spiritPickerCleanup){window.__spiritPickerCleanup();window.__spiritPickerCleanup=null;}window.__spiritPickerDone=false;');
-          const r = result as { x: number; y: number; width: number; height: number; tagName: string; outerHTML: string } | null;
-          if (r && !cancelled) {
-            const webContentsId = safeWebviewCall(() => el.getWebContentsId?.(), undefined);
-            const bridge = window.spiritDesktop;
-            if (webContentsId && bridge?.captureWebviewRect) {
-              try {
-                const base64 = await bridge.captureWebviewRect(webContentsId, {
-                  x: r.x,
-                  y: r.y,
-                  width: Math.max(r.width, 1),
-                  height: Math.max(r.height, 1),
-                });
-                if (!cancelled) {
-                  onElementPickedRef.current?.({
-                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                    tagName: r.tagName.toLowerCase(),
-                    outerHtml: truncateOuterHtml(r.outerHTML),
-                    screenshotDataUrl: `data:image/png;base64,${base64}`,
-                    pageUrl: safeWebviewGetUrl(el) || browserUrl || "",
+      frameId = requestAnimationFrame(tick);
+      if (syncInFlight) return;
+
+      syncInFlight = true;
+      void (async () => {
+        try {
+          const done = await el.executeJavaScript?.("window.__spiritPickerDone || false");
+          if (done) {
+            const result = await el.executeJavaScript?.("window.__spiritPickerResult");
+            await el.executeJavaScript?.(
+              "if(window.__spiritPickerCleanup){window.__spiritPickerCleanup();window.__spiritPickerCleanup=null;}window.__spiritPickerDone=false;",
+            );
+            const r = result as PickerMarqueeResult | null;
+            if (r && r.tagName && r.outerHTML && !cancelled) {
+              const webContentsId = safeWebviewCall(() => el.getWebContentsId?.(), undefined);
+              const bridge = window.spiritDesktop;
+              if (webContentsId && bridge?.captureWebviewRect) {
+                try {
+                  const base64 = await bridge.captureWebviewRect(webContentsId, {
+                    x: r.x,
+                    y: r.y,
+                    width: Math.max(r.width, 1),
+                    height: Math.max(r.height, 1),
                   });
+                  if (!cancelled) {
+                    onElementPickedRef.current?.({
+                      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                      tagName: r.tagName.toLowerCase(),
+                      outerHtml: truncateOuterHtml(r.outerHTML),
+                      screenshotDataUrl: `data:image/png;base64,${base64}`,
+                      pageUrl: safeWebviewGetUrl(el) || browserUrl || "",
+                    });
+                  }
+                } catch (err) {
+                  console.warn("[picker] capturePage failed:", err);
                 }
-              } catch (err) {
-                console.warn('[picker] capturePage failed:', err);
               }
+              exitPicker();
+              return;
             }
-            exitPicker();
-            return;
+          } else {
+            const snapshot = await el.executeJavaScript?.(
+              "({ rect: window.__spiritPickerRect, mode: window.__spiritPickerRectMode })",
+            );
+            const { rect, mode } = (snapshot ?? {}) as {
+              rect: { x: number; y: number; width: number; height: number } | null;
+              mode: PickerOverlayMode | null;
+            };
+            if (cancelled) return;
+
+            const overlayEl = pickerOverlayRef.current;
+
+            if (rect && overlayEl && (mode === "element" || mode === "marquee")) {
+              applyPickerOverlayBox(overlayEl, rect);
+              setOverlayMode((prev) => (prev === mode ? prev : mode));
+              if (mode === "element") {
+                setOverlayRect((prev) => (pickerRectsEqual(prev, rect) ? prev : rect));
+              }
+              return;
+            }
+
+            if (overlayEl) {
+              hidePickerOverlayBox(overlayEl);
+            }
+            setOverlayRect((prev) => (prev === null ? prev : null));
+            setOverlayMode((prev) => (prev === null ? prev : null));
           }
-        } else {
-          const rect = await el.executeJavaScript?.('window.__spiritPickerRect');
-          const r = rect as { x: number; y: number; width: number; height: number } | null;
-          if (r && !cancelled) {
-            setOverlayRect({ x: r.x, y: r.y, width: r.width, height: r.height });
-          }
+        } catch {
+          // webview may not be ready
+        } finally {
+          syncInFlight = false;
         }
-      } catch {
-        // webview may not be ready
-      }
-      if (!cancelled) {
-        rafId = window.setTimeout(poll, 50);
-      }
+      })();
     };
 
-    rafId = window.setTimeout(poll, 50);
+    frameId = requestAnimationFrame(tick);
 
     return () => {
       cancelled = true;
-      clearTimeout(rafId);
-      window.removeEventListener('keydown', handleKeyDown, true);
-      void el.executeJavaScript?.('if(window.__spiritPickerCleanup){window.__spiritPickerCleanup();window.__spiritPickerCleanup=null;}window.__spiritPickerDone=false;');
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      void el.executeJavaScript?.(
+        "if(window.__spiritPickerCleanup){window.__spiritPickerCleanup();window.__spiritPickerCleanup=null;}window.__spiritPickerDone=false;",
+      );
       if (cssKey) void el.removeInsertedCSS?.(cssKey);
+      const overlayEl = pickerOverlayRef.current;
+      if (overlayEl) clearPickerOverlayInlineStyles(overlayEl);
       setOverlayRect(null);
+      setOverlayMode(null);
     };
   }, [isPickerActive, showNewTab, canEmbed, browserUrl, exitPicker]);
 
@@ -544,22 +562,13 @@ export function WorkspaceBrowserTab({
             />
             {isPickerActive ? (
               <div
+                ref={pickerOverlayRef}
                 aria-hidden
                 className={cn(
-                  "pointer-events-none absolute z-10 box-border",
-                  "transition-[left,top,width,height,opacity] duration-200 ease-out",
-                  !overlayRect && "opacity-0",
+                  "pointer-events-none absolute z-10 box-border opacity-0",
+                  overlayMode === "element" &&
+                    "transition-[left,top,width,height,opacity] duration-200 ease-out",
                 )}
-                style={{
-                  left: overlayRect?.x ?? 0,
-                  top: overlayRect?.y ?? 0,
-                  width: overlayRect?.width ?? 0,
-                  height: overlayRect?.height ?? 0,
-                  // Inset ring: outer box-shadow is clipped when the highlight fills the webview (overflow-hidden).
-                  boxShadow: "inset 0 0 0 2px #60a5fa",
-                  background: "rgba(147,197,253,0.15)",
-                  borderRadius: 2,
-                }}
               />
             ) : null}
           </>

@@ -426,7 +426,7 @@
     "browserBack": "Back",
     "browserForward": "Forward",
     "browserReload": "Reload",
-    "browserPickerToggle": "Pick element",
+    "browserPickerToggle": "Pick / marquee",
     "gitPlaceholder": "Git area placeholder",
     "resizeToolsWidth": "Resize Tools Width",
     "workspaceTools": "Workspace Tools",
