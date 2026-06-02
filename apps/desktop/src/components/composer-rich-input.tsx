@@ -12,7 +12,7 @@ import {
 
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-selection";
-import { caretAtEnd } from "@/lib/composer-segment-model";
+import { caretAtEnd, caretToPlainTextOffset } from "@/lib/composer-segment-model";
 import {
   domToSegments,
   emptySegments,
@@ -49,6 +49,8 @@ type Props = {
   onElementAttachmentsChange(attachments: BrowserElementAttachment[]): void;
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
   onPaste?(e: ClipboardEvent<HTMLDivElement>): void;
+  /** UTF-16 offset in plain composer text (`segmentsToPlainText`), for @-file suggestions. */
+  onSelectionChange?(selectionStart: number | null): void;
 };
 
 export type ComposerRichInputHandle = {
@@ -71,6 +73,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       onElementAttachmentsChange,
       onKeyDown,
       onPaste,
+      onSelectionChange,
     },
     ref,
   ) {
@@ -87,6 +90,45 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const skipRenderRef = useRef(false);
     const initialSegmentsHydratedRef = useRef(Boolean(initialSegments?.length));
     const onElementAttachmentsChangeRef = useRef(onElementAttachmentsChange);
+    const onSelectionChangeRef = useRef(onSelectionChange);
+
+    useEffect(() => {
+      onSelectionChangeRef.current = onSelectionChange;
+    }, [onSelectionChange]);
+
+    const reportSelectionChange = useCallback(() => {
+      const report = onSelectionChangeRef.current;
+      if (!report) {
+        return;
+      }
+      const div = divRef.current;
+      if (!div) {
+        report(null);
+        return;
+      }
+      const caret = selectionToCaret(div, segmentsRef.current);
+      if (!caret) {
+        report(null);
+        return;
+      }
+      report(caretToPlainTextOffset(segmentsRef.current, caret));
+    }, []);
+
+    useEffect(() => {
+      const div = divRef.current;
+      if (!div || !onSelectionChange) {
+        return;
+      }
+      const report = () => reportSelectionChange();
+      div.addEventListener("mouseup", report);
+      div.addEventListener("keyup", report);
+      document.addEventListener("selectionchange", report);
+      return () => {
+        div.removeEventListener("mouseup", report);
+        div.removeEventListener("keyup", report);
+        document.removeEventListener("selectionchange", report);
+      };
+    }, [onSelectionChange, reportSelectionChange]);
 
     useEffect(() => {
       segmentsRef.current = segments;
@@ -247,7 +289,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       segmentsRef.current = next;
       setSegments(next);
       notifyParents(next);
-    }, [notifyParents]);
+      reportSelectionChange();
+    }, [notifyParents, reportSelectionChange]);
 
     const handleKeyDown = useCallback(
       (e: KeyboardEvent<HTMLDivElement>) => {

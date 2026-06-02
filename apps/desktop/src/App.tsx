@@ -753,6 +753,7 @@ function ComposerSurface({
             if (canSend) onSubmit();
           }
         }}
+        onSelectionChange={onSelectionChange}
       />
       <div className="flex justify-center px-3 pt-0.5 pb-2">
         <div className="flex w-full max-w-full items-center justify-between gap-2">
@@ -2403,7 +2404,7 @@ export default function App() {
     const segs = composerRichInputRef.current?.getSegments() ?? [];
     const fullText = segmentsToMessageText(segs) || runtime.composer;
     const payload = {
-      text: fullText || runtime.composer,
+      text: fullText,
       ...(runtime.composerLocalFileAttachments.length > 0
         ? {
             localFilePaths: runtime.composerLocalFileAttachments.map((item) => item.path),

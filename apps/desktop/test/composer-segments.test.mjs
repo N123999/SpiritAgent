@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  caretToPlainTextOffset,
   insertSegmentAtCaret,
   mergeAdjacentTextSegments,
   messageSegmentSeparator,
@@ -77,6 +78,16 @@ test("messageSegmentSeparator uses single newline between element and inline tex
 test("trimMessageTextAroundElements removes one structural newline after element", () => {
   assert.equal(trimMessageTextAroundElements("\n你好啊", { afterElement: true }), "你好啊");
   assert.equal(trimMessageTextAroundElements("你好啊\n", { beforeElement: true }), "你好啊");
+});
+
+test("caretToPlainTextOffset skips element segments in plain text", () => {
+  const segs = [
+    { kind: "text", value: "ab" },
+    { kind: "element", attachment: sampleAttachment },
+    { kind: "text", value: "cd" },
+  ];
+  assert.equal(caretToPlainTextOffset(segs, { segmentIndex: 0, offset: 1 }), 1);
+  assert.equal(caretToPlainTextOffset(segs, { segmentIndex: 2, offset: 1 }), 3);
 });
 
 test("insertSegmentAtCaret splits text and leaves trailing text segment", () => {

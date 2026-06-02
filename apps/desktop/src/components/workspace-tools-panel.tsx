@@ -302,25 +302,30 @@ export function WorkspaceToolsDock({
                       <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
                       {displayTitle ? <span className="truncate">{displayTitle}</span> : null}
                     </button>
-                    {displayTitle ? (
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 hidden items-center justify-end rounded-tr-md pr-1 outline-none group-hover/tab:flex"
-                        style={{
-                          maskImage: "linear-gradient(to right, transparent, black 50%)",
-                          WebkitMaskImage: "linear-gradient(to right, transparent, black 50%)",
-                          width: "2rem",
-                          background: "inherit",
-                        }}
-                        aria-label={t('workspace.closeTab', { label })}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleCloseTab(item.id);
-                        }}
-                      >
-                        <X className="size-3 opacity-70" aria-hidden />
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      className={cn(
+                        "absolute inset-y-0 right-0 hidden items-center justify-end rounded-tr-md pr-1 outline-none group-hover/tab:flex",
+                        !displayTitle && "flex",
+                      )}
+                      style={
+                        displayTitle
+                          ? {
+                              maskImage: "linear-gradient(to right, transparent, black 50%)",
+                              WebkitMaskImage: "linear-gradient(to right, transparent, black 50%)",
+                              width: "2rem",
+                              background: "inherit",
+                            }
+                          : undefined
+                      }
+                      aria-label={t('workspace.closeTab', { label })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleCloseTab(item.id);
+                      }}
+                    >
+                      <X className="size-3 opacity-70" aria-hidden />
+                    </button>
                   </div>
                 );
               })}

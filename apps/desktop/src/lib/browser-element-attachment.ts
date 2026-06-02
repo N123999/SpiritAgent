@@ -13,6 +13,4 @@ export function truncateOuterHtml(html: string): string {
   return html.slice(0, OUTER_HTML_MAX_BYTES) + '…';
 }
 
-export function browserElementContextText(attachment: BrowserElementAttachment): string {
-  return `Selected element from ${attachment.pageUrl}:\n\`\`\`html\n${attachment.outerHtml}\n\`\`\``;
-}
+export { browserElementContextText } from "./composer-segment-model";

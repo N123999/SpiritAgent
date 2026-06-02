@@ -1,7 +1,6 @@
 import type { BrowserElementAttachment } from "./browser-element-attachment";
 
-/** Keep in sync with browserElementContextText in browser-element-attachment.ts */
-function elementContextText(attachment: BrowserElementAttachment): string {
+export function browserElementContextText(attachment: BrowserElementAttachment): string {
   return `Selected element from ${attachment.pageUrl}:\n\`\`\`html\n${attachment.outerHtml}\n\`\`\``;
 }
 
@@ -71,7 +70,7 @@ export function segmentsToMessageText(segs: RichSegment[]): string {
   for (let i = 0; i < merged.length; i++) {
     const seg = merged[i]!;
     const piece =
-      seg.kind === "text" ? seg.value : elementContextText(seg.attachment);
+      seg.kind === "text" ? seg.value : browserElementContextText(seg.attachment);
     if (seg.kind === "text" && !piece) continue;
 
     if (!out) {
@@ -213,6 +212,24 @@ export function insertSegmentAtCaret(
     segments: normalized,
     caret: { segmentIndex: afterIndex, offset: caretOffset },
   };
+}
+
+/** Plain-text offset (UTF-16 code units) for file-reference / insert-at-cursor APIs. */
+export function caretToPlainTextOffset(segments: RichSegment[], caret: SegmentCaret): number {
+  const merged = mergeAdjacentTextSegments(segments);
+  let offset = 0;
+  const index = Math.min(Math.max(caret.segmentIndex, 0), merged.length);
+  for (let i = 0; i < index; i++) {
+    const seg = merged[i]!;
+    if (seg.kind === "text") {
+      offset += seg.value.length;
+    }
+  }
+  const at = merged[index];
+  if (at?.kind === "text") {
+    offset += Math.min(Math.max(caret.offset, 0), at.value.length);
+  }
+  return offset;
 }
 
 export function caretAtEnd(segs: RichSegment[]): SegmentCaret {
