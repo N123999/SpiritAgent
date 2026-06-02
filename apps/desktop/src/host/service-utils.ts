@@ -25,7 +25,9 @@ import type { GeneratedWorktreeNames } from './worktree-naming.js';
 import {
   type DesktopConfigFile,
   type DesktopWebHostConfigFile,
+  type DesktopWorkspaceBinding,
   mergeRecentWorkspaceRoots,
+  resolveDesktopHomeDirectory,
 } from './storage.js';
 import {
   DESKTOP_WEB_HOST_POLICY,
@@ -40,20 +42,59 @@ export function sameWorkspaceRoot(left: string, right: string): boolean {
   return normalizeWorkspaceRootKey(left) === normalizeWorkspaceRootKey(right);
 }
 
+/** Sessions whose cwd is the user home directory are "unbound" (no project workspace). */
+export function isNoWorkspaceSessionRoot(workspaceRoot: string): boolean {
+  return sameWorkspaceRoot(workspaceRoot, resolveDesktopHomeDirectory());
+}
+
+export function resolveWorkspaceBindingForRequestedRoot(input: {
+  requestedWorkspaceRoot?: string;
+  explicitBinding?: DesktopWorkspaceBinding;
+  previousBinding: DesktopWorkspaceBinding;
+  persistedBinding: DesktopWorkspaceBinding;
+}): DesktopWorkspaceBinding {
+  if (input.explicitBinding === 'none') {
+    return 'none';
+  }
+  if (input.explicitBinding === 'project') {
+    return 'project';
+  }
+  if (!input.requestedWorkspaceRoot?.trim()) {
+    return input.previousBinding;
+  }
+  if (isNoWorkspaceSessionRoot(input.requestedWorkspaceRoot)) {
+    return 'none';
+  }
+  return 'project';
+}
+
 export function deriveWorkspaceLabel(workspaceRoot: string): string {
   const normalized = workspaceRoot.replace(/\\/g, '/').replace(/\/+$/g, '');
   const lastSlash = normalized.lastIndexOf('/');
   return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
 }
 
-export function buildAvailableWorkspaces(currentWorkspaceRoot: string, recentWorkspaces?: string[]) {
-  const groupingCurrent = resolveWorkspaceGroupingRoot(currentWorkspaceRoot);
-  const merged = mergeRecentWorkspaceRoots(recentWorkspaces, groupingCurrent);
+export function buildAvailableWorkspaces(
+  currentWorkspaceRoot: string,
+  recentWorkspaces?: string[],
+  workspaceBinding: DesktopWorkspaceBinding = 'project',
+) {
+  const homeKey = normalizeWorkspaceRootKey(resolveDesktopHomeDirectory());
+  const merged =
+    workspaceBinding === 'none'
+      ? (recentWorkspaces ?? [])
+      : mergeRecentWorkspaceRoots(
+          recentWorkspaces,
+          resolveWorkspaceGroupingRoot(currentWorkspaceRoot),
+        );
   const seen = new Set<string>();
   const items: Array<{ path: string; label: string }> = [];
   for (const workspaceRoot of merged) {
     const groupingRoot = resolveWorkspaceGroupingRoot(workspaceRoot);
-    const key = groupingRoot.replace(/\\/g, '/').toLowerCase();
+    const key = normalizeWorkspaceRootKey(groupingRoot);
+    if (key === homeKey) {
+      continue;
+    }
     if (seen.has(key)) {
       continue;
     }

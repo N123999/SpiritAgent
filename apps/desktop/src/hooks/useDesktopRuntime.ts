@@ -519,7 +519,7 @@ export function useDesktopRuntime() {
       setBusyAction("bootstrap");
       try {
         stashSessionUi(snapshotRef.current);
-        const next = await api.bootstrap({ workspaceRoot });
+        const next = await api.bootstrap({ workspaceRoot, workspaceBinding: 'project' });
         applySnapshot(next);
         restoreSessionUi(next);
         setQuestionError("");
@@ -535,6 +535,29 @@ export function useDesktopRuntime() {
     },
     [api, applySnapshot, refreshSessions, restoreSessionUi, stashSessionUi],
   );
+
+  const switchToNoWorkspaceBinding = useCallback(async (): Promise<boolean> => {
+    if (!api) {
+      return false;
+    }
+
+    setBusyAction("bootstrap");
+    try {
+      stashSessionUi(snapshotRef.current);
+      const next = await api.bootstrap({ workspaceBinding: 'none' });
+      applySnapshot(next);
+      restoreSessionUi(next);
+      setQuestionError("");
+      setRuntimeError("");
+      void refreshSessions();
+      return true;
+    } catch (error) {
+      setRuntimeError(describeError(error));
+      return false;
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot, refreshSessions, restoreSessionUi, stashSessionUi]);
 
   const rememberWorkspaceRoot = useCallback(
     async (workspaceRoot: string): Promise<boolean> => {
@@ -1987,6 +2010,7 @@ export function useDesktopRuntime() {
     updateQuestionDraft,
     bootstrap,
     switchWorkspaceRoot,
+    switchToNoWorkspaceBinding,
     rememberWorkspaceRoot,
     pickWorkspaceDirectory,
     pickLocalFile,

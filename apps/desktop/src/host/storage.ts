@@ -7,6 +7,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
@@ -51,16 +52,30 @@ const MAX_RECENT_WORKSPACES = 20;
 const MODEL_CAPABILITIES = ['chat', 'image', 'video', 'imageGeneration'] as const;
 const DEFAULT_CUSTOM_MODEL_CAPABILITIES: DesktopModelCapability[] = ['chat', 'image'];
 
+export type DesktopWorkspaceBinding = 'project' | 'none';
+
 export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
   activeModel: string;
   imageGenerationModel?: string;
   recentWorkspaces?: string[];
+  /** When `none`, cwd is the user home directory and workspace-scoped instructions/MCP are skipped. */
+  workspaceBinding?: DesktopWorkspaceBinding;
+  /** Last project workspace root before switching to `none`; used when re-selecting a workspace. */
+  lastProjectWorkspaceRoot?: string;
   uiLocale?: string;
   windowsMica?: boolean;
   planMode?: boolean;
   webHost: DesktopWebHostConfigFile;
   dreams: DesktopDreamConfigFile;
+}
+
+export function normalizeWorkspaceBinding(value: unknown): DesktopWorkspaceBinding {
+  return value === 'none' ? 'none' : 'project';
+}
+
+export function resolveDesktopHomeDirectory(): string {
+  return path.resolve(homedir());
 }
 
 export interface DesktopWebHostConfigFile {
@@ -289,11 +304,13 @@ export function createDesktopExtensionStateStore(
 export async function loadHostMetadata(
   workspaceRoot: string,
   planMode = false,
-  options?: { activePlanPath?: string },
+  options?: { activePlanPath?: string; workspaceBinding?: DesktopWorkspaceBinding },
 ): Promise<HostMetadataSummary> {
+  const workspaceBinding = options?.workspaceBinding ?? 'project';
   return loadHostInstructionMetadata({
     workspaceRoot,
     spiritDataDir: spiritAgentDataDir(),
+    includeWorkspaceScope: workspaceBinding === 'project',
   }, {
     planMode,
     activePlanPath: options?.activePlanPath,
@@ -466,6 +483,10 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
     activeModel,
     ...(imageGenerationModel ? { imageGenerationModel } : {}),
     recentWorkspaces: normalizeRecentWorkspaceRoots(raw.recentWorkspaces),
+    workspaceBinding: normalizeWorkspaceBinding(raw.workspaceBinding),
+    ...(typeof raw.lastProjectWorkspaceRoot === 'string' && raw.lastProjectWorkspaceRoot.trim()
+      ? { lastProjectWorkspaceRoot: path.resolve(raw.lastProjectWorkspaceRoot.trim()) }
+      : {}),
     ...(typeof raw.uiLocale === 'string' && raw.uiLocale.trim()
       ? { uiLocale: raw.uiLocale.trim() }
       : {}),
@@ -623,6 +644,9 @@ function normalizeRecentWorkspaceRoots(value: unknown): string[] {
       continue;
     }
     const key = normalizeWorkspaceKey(workspaceRoot);
+    if (key === normalizeWorkspaceKey(resolveDesktopHomeDirectory())) {
+      continue;
+    }
     if (seen.has(key)) {
       continue;
     }
@@ -642,6 +666,9 @@ export function mergeRecentWorkspaceRoots(
 ): string[] {
   const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
   const targetKey = normalizeWorkspaceKey(resolvedWorkspaceRoot);
+  if (targetKey === normalizeWorkspaceKey(resolveDesktopHomeDirectory())) {
+    return normalizeRecentWorkspaceRoots(existing);
+  }
   return [
     resolvedWorkspaceRoot,
     ...normalizeRecentWorkspaceRoots(existing).filter(

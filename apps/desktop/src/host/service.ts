@@ -172,6 +172,8 @@ import {
   provisionalNewSessionPath,
   loadConfig,
   loadHostMetadata,
+  normalizeWorkspaceBinding,
+  resolveDesktopHomeDirectory,
   loadStoredSession,
   modelSecretKeyPresence,
   mergeRecentWorkspaceRoots,
@@ -189,6 +191,7 @@ import {
   normalizeWebHostConfig,
   type DesktopConfigFile,
   type DesktopWebHostConfigFile,
+  type DesktopWorkspaceBinding,
   type HostMetadataSummary,
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
@@ -249,6 +252,7 @@ import {
   parseGeneratedCommitMessageResponse,
   parseGeneratedWorktreeNamingResponse,
   sameDreamCollectorSnapshot,
+  resolveWorkspaceBindingForRequestedRoot,
   sameWorkspaceRoot,
   toRuntimeAskQuestionsResult,
 } from './service-utils.js';
@@ -406,6 +410,7 @@ type CommandPayloads = {
 
 interface HostState {
   workspaceRoot: string;
+  workspaceBinding: DesktopWorkspaceBinding;
   config: DesktopConfigFile;
   git: DesktopGitSnapshot;
   metadata: HostMetadataSummary;
@@ -603,7 +608,10 @@ class DesktopHostService {
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
-      await this.ensureInitialized(request?.workspaceRoot);
+      await this.ensureInitialized(request?.workspaceRoot, {
+        workspaceBinding: request?.workspaceBinding,
+        ...(request?.workspaceBinding === 'none' ? { preserveRecentWorkspaces: true } : {}),
+      });
       this.startDreamCollectorMonitorIfNeeded();
       return this.buildSnapshot();
     });
@@ -756,6 +764,7 @@ class DesktopHostService {
       if (planModeNow !== prevPlanMode) {
         state.metadata = await loadHostMetadata(state.workspaceRoot, planModeNow, {
           activePlanPath: this.activeBundle().activePlanPath,
+          workspaceBinding: state.workspaceBinding,
         });
       }
 
@@ -1084,6 +1093,15 @@ class DesktopHostService {
         throw new Error(i18n.t('error.runtimeBusySkill'));
       }
       const state = this.requireState();
+      const rootKind = request.rootKind ?? 'workspaceSpirit';
+      if (
+        state.workspaceBinding === 'none'
+        && (rootKind === 'workspaceSpirit' || rootKind === 'workspaceAgents')
+      ) {
+        throw new Error(
+          'Workspace-scoped skills are unavailable when workspace binding is disabled.',
+        );
+      }
       await createSkillFile(state.workspaceRoot, request);
 
       await this.refreshRuntime();
@@ -1112,12 +1130,18 @@ class DesktopHostService {
       }
 
       const scope = request.scope ?? 'workspace';
+      if (scope === 'workspace' && state.workspaceBinding === 'none') {
+        throw new Error(
+          'Workspace-scoped MCP servers are unavailable when workspace binding is disabled.',
+        );
+      }
       const serverConfig = buildMcpServerConfigFromRequest({ ...request, scope });
       await addMcpServerToDisk(scope, state.workspaceRoot, name, serverConfig);
       if (scope === 'user') {
         invalidateSharedUserMcpToolingCache();
       }
-      this.sharedMcpServiceForWorkspace(state.workspaceRoot).startBackgroundRefreshInBackground(true);
+      this.sharedMcpServiceForWorkspace(state.workspaceRoot, state.workspaceBinding)
+        .startBackgroundRefreshInBackground(true);
       this.toolExecutor?.startMcpBackgroundRefresh();
       return this.buildSnapshot();
     });
@@ -1138,7 +1162,8 @@ class DesktopHostService {
       if (scope === 'user') {
         invalidateSharedUserMcpToolingCache();
       }
-      this.sharedMcpServiceForWorkspace(state.workspaceRoot).startBackgroundRefreshInBackground(true);
+      this.sharedMcpServiceForWorkspace(state.workspaceRoot, state.workspaceBinding)
+        .startBackgroundRefreshInBackground(true);
       this.toolExecutor?.startMcpBackgroundRefresh();
       return this.buildSnapshot();
     });
@@ -2544,63 +2569,106 @@ class DesktopHostService {
       preserveRecentWorkspaces?: boolean;
       /** Skip global runtime rebuild after workspace switch; caller will activate a session bundle. */
       deferRuntimeRefresh?: boolean;
+      workspaceBinding?: DesktopWorkspaceBinding;
     } = {},
   ): Promise<void> {
     const requestedWorkspaceRoot = workspaceRootOverride?.trim()
       ? path.resolve(workspaceRootOverride.trim())
       : undefined;
+
+    const loadedConfig = await loadConfig();
+    const previousState = this.state;
+    const previousBinding = normalizeWorkspaceBinding(
+      previousState?.workspaceBinding ?? loadedConfig.workspaceBinding,
+    );
+    const workspaceBinding = resolveWorkspaceBindingForRequestedRoot({
+      requestedWorkspaceRoot,
+      explicitBinding: options.workspaceBinding,
+      previousBinding,
+      persistedBinding: normalizeWorkspaceBinding(loadedConfig.workspaceBinding),
+    });
+
+    const workspaceRoot =
+      workspaceBinding === 'none'
+        ? resolveDesktopHomeDirectory()
+        : requestedWorkspaceRoot
+          ?? (previousState?.workspaceBinding === 'project' ? previousState.workspaceRoot : undefined)
+          ?? loadedConfig.lastProjectWorkspaceRoot
+          ?? loadedConfig.recentWorkspaces?.[0]
+          ?? discoverWorkspaceRoot();
+
     if (
       options.fastPath === true &&
       this.initialized &&
-      this.state?.workspaceRoot &&
-      (!requestedWorkspaceRoot || sameWorkspaceRoot(this.state.workspaceRoot, requestedWorkspaceRoot))
+      previousState?.workspaceRoot &&
+      sameWorkspaceRoot(previousState.workspaceRoot, workspaceRoot) &&
+      previousBinding === workspaceBinding
     ) {
       return;
     }
 
-    const loadedConfig = await loadConfig();
-    const workspaceRoot = requestedWorkspaceRoot
-      ?? (this.initialized && this.state?.workspaceRoot ? this.state.workspaceRoot : undefined)
-      ?? loadedConfig.recentWorkspaces?.[0]
-      ?? discoverWorkspaceRoot();
     const git = await readWorkspaceGitSnapshot(workspaceRoot);
+    let lastProjectWorkspaceRoot = loadedConfig.lastProjectWorkspaceRoot;
+    if (
+      workspaceBinding === 'none'
+      && previousBinding === 'project'
+      && previousState?.workspaceRoot
+      && !sameWorkspaceRoot(previousState.workspaceRoot, resolveDesktopHomeDirectory())
+    ) {
+      lastProjectWorkspaceRoot = previousState.workspaceRoot;
+    }
+
+    const preserveRecent =
+      workspaceBinding === 'none'
+      || options.preserveRecentWorkspaces === true;
     const config = {
       ...loadedConfig,
-      recentWorkspaces:
-        options.preserveRecentWorkspaces === true
-          ? (loadedConfig.recentWorkspaces ?? [])
-          : mergeRecentWorkspaceRoots(
-              loadedConfig.recentWorkspaces,
-              git.primaryRepoRoot ?? workspaceRoot,
-            ),
+      workspaceBinding,
+      ...(lastProjectWorkspaceRoot ? { lastProjectWorkspaceRoot } : {}),
+      recentWorkspaces: preserveRecent
+        ? (loadedConfig.recentWorkspaces ?? [])
+        : mergeRecentWorkspaceRoots(
+            loadedConfig.recentWorkspaces,
+            git.primaryRepoRoot ?? workspaceRoot,
+          ),
     } satisfies DesktopConfigFile;
 
     const recentWorkspacesChanged =
       !loadedConfig.recentWorkspaces ||
       config.recentWorkspaces.length !== loadedConfig.recentWorkspaces.length ||
       config.recentWorkspaces.some((entry, index) => entry !== loadedConfig.recentWorkspaces?.[index]);
-    if (recentWorkspacesChanged) {
+    const bindingChanged = normalizeWorkspaceBinding(loadedConfig.workspaceBinding) !== workspaceBinding;
+    const lastProjectChanged = loadedConfig.lastProjectWorkspaceRoot !== config.lastProjectWorkspaceRoot;
+    if (recentWorkspacesChanged || bindingChanged || lastProjectChanged) {
       await saveConfig(config);
     }
 
-    if (this.initialized && this.state?.workspaceRoot && sameWorkspaceRoot(this.state.workspaceRoot, workspaceRoot)) {
-      this.state.config = config;
-      this.state.git = git;
-      this.state.plan = await loadDesktopPlanSnapshot(
-        this.state.metadata.planMetadata.path,
-        this.state.metadata.planMetadata.exists,
+    if (
+      this.initialized
+      && previousState?.workspaceRoot
+      && sameWorkspaceRoot(previousState.workspaceRoot, workspaceRoot)
+      && previousBinding === workspaceBinding
+    ) {
+      const currentState = this.requireState();
+      currentState.config = config;
+      currentState.git = git;
+      currentState.workspaceBinding = workspaceBinding;
+      currentState.plan = await loadDesktopPlanSnapshot(
+        currentState.metadata.planMetadata.path,
+        currentState.metadata.planMetadata.exists,
       );
       return;
     }
 
-    const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true);
+    const metadata = await loadHostMetadata(workspaceRoot, config.planMode === true, {
+      workspaceBinding,
+    });
     const plan = await loadDesktopPlanSnapshot(metadata.planMetadata.path, metadata.planMetadata.exists);
     const state = this.state;
     const previousWorkspaceRoot = state?.workspaceRoot;
     const switchingWorkspace = Boolean(
       previousWorkspaceRoot && !sameWorkspaceRoot(previousWorkspaceRoot, workspaceRoot),
     );
-
     if (switchingWorkspace) {
       await this.extensionManager().deactivateAll();
     }
@@ -2618,6 +2686,7 @@ class DesktopHostService {
 
     this.state = {
       workspaceRoot,
+      workspaceBinding,
       config,
       git,
       metadata,
@@ -2663,7 +2732,7 @@ class DesktopHostService {
     state.metadata = await loadHostMetadata(
       state.workspaceRoot,
       state.config.planMode === true,
-      { activePlanPath },
+      { activePlanPath, workspaceBinding: state.workspaceBinding },
     );
     state.plan = await loadDesktopPlanSnapshot(
       state.metadata.planMetadata.path,
@@ -2805,11 +2874,15 @@ class DesktopHostService {
     return bundle.toolExecutor;
   }
 
-  private sharedMcpServiceForWorkspace(workspaceRoot: string): McpService {
-    const key = path.resolve(workspaceRoot);
+  private sharedMcpServiceForWorkspace(
+    workspaceRoot: string,
+    workspaceBinding: DesktopWorkspaceBinding = 'project',
+  ): McpService {
+    const includeWorkspaceConfig = workspaceBinding === 'project';
+    const key = `${path.resolve(workspaceRoot)}|${includeWorkspaceConfig ? 'project' : 'none'}`;
     let service = this.mcpServiceByWorkspaceRoot.get(key);
     if (!service) {
-      service = new McpService(key);
+      service = new McpService(path.resolve(workspaceRoot), includeWorkspaceConfig);
       service.startBackgroundRefreshInBackground(false);
       this.mcpServiceByWorkspaceRoot.set(key, service);
     }
@@ -2825,7 +2898,7 @@ class DesktopHostService {
     const workspaceRoot = bundle.workspaceRoot || state.workspaceRoot;
     const extensions = await this.extensionManager().list();
     return new DesktopToolExecutor(workspaceRoot, {
-      mcp: this.sharedMcpServiceForWorkspace(workspaceRoot),
+      mcp: this.sharedMcpServiceForWorkspace(workspaceRoot, state.workspaceBinding),
       extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
       fileChangeObserver: {
         recordFileChange: (change) => {
@@ -3282,7 +3355,7 @@ class DesktopHostService {
         this.activeBundle().toolExecutor?.mcpStatusSnapshot()
         ?? this.toolExecutor?.mcpStatusSnapshot()
         ?? emptyMcpStatusSnapshot(),
-      mcpServers: listDesktopMcpServersFromDisk(state.workspaceRoot),
+      mcpServers: listDesktopMcpServersFromDisk(state.workspaceRoot, state.workspaceBinding),
       conversation: {
         revision: activeBundle.conversationRevision,
         messages: conversationMessages,
@@ -4237,6 +4310,7 @@ class DesktopHostService {
       if (bundle.activePlanPath && sameFsPath(change.resolvedPath, bundle.activePlanPath)) {
         state.metadata = await loadHostMetadata(state.workspaceRoot, state.config.planMode === true, {
           activePlanPath: bundle.activePlanPath,
+          workspaceBinding: state.workspaceBinding,
         });
       }
       state.metadata.planMetadata.exists = change.after.exists && change.after.file;

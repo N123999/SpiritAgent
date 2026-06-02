@@ -255,6 +255,7 @@
     "newSession": "New Session",
     "extensions": "Extensions",
     "workspace": "Workspace",
+    "noWorkspaceSessions": "No workspace",
     "settingsTabsAria": "Settings Tabs",
     "extensionSettings": "Extension Settings",
     "workspaceSessionsAria": "Workspace Sessions"
@@ -332,6 +333,8 @@
     "searchWorkspace": "Search workspaces",
     "noMatches": "No matches",
     "addWorkspace": "Add Workspace",
+    "noWorkspace": "No workspace",
+    "noWorkspaceBindingHint": "Workspace binding is off; only user-level MCP and Skills apply.",
     "previewUnavailable": "Preview unavailable",
     "downloadImage": "Download Image",
     "viewLargeImage": "View Large Image",

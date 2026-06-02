@@ -255,6 +255,7 @@
     "newSession": "新会话",
     "extensions": "扩展",
     "workspace": "工作区",
+    "noWorkspaceSessions": "无工作区",
     "settingsTabsAria": "设置页签",
     "extensionSettings": "扩展设置",
     "workspaceSessionsAria": "工作区会话"
@@ -332,6 +333,8 @@
     "searchWorkspace": "搜索工作区",
     "noMatches": "无匹配项",
     "addWorkspace": "添加工作区",
+    "noWorkspace": "不使用工作区",
+    "noWorkspaceBindingHint": "当前未绑定工作区，仅使用用户级 MCP 与 Skills。",
     "previewUnavailable": "预览不可用",
     "downloadImage": "下载图片",
     "viewLargeImage": "查看大图",

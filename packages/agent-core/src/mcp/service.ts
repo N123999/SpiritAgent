@@ -117,7 +117,10 @@ export class McpService {
   private toolingRefreshPromise: Promise<void> | undefined;
   private toolingCacheInitialized = false;
 
-  constructor(private readonly workspaceRootStore = process.cwd()) {
+  constructor(
+    private readonly workspaceRootStore = process.cwd(),
+    private readonly includeWorkspaceConfig = true,
+  ) {
     this.registry.replaceConfig({ servers: {} });
   }
 
@@ -174,7 +177,10 @@ export class McpService {
 
   async refreshConfig(): Promise<void> {
     try {
-      const { merged, serverScopes, user } = await loadMergedMcpConfigForWorkspace(this.workspaceRootStore);
+      const { merged, serverScopes, user } = await loadMergedMcpConfigForWorkspace(
+        this.workspaceRootStore,
+        { includeWorkspace: this.includeWorkspaceConfig },
+      );
       const raw = merged;
       const nextDigest = mcpConfigDigest(raw);
       const nextUserDigest = mcpConfigDigest(user);
@@ -604,7 +610,10 @@ export class McpService {
     const routes = new Map<string, McpToolRoute>();
     const prompts = new Map<string, McpPromptCatalogEntry[]>();
 
-    const { user: userConfigFile } = await loadMergedMcpConfigForWorkspace(this.workspaceRootStore);
+    const { user: userConfigFile } = await loadMergedMcpConfigForWorkspace(
+      this.workspaceRootStore,
+      { includeWorkspace: this.includeWorkspaceConfig },
+    );
     const currentUserDigest = mcpConfigDigest(userConfigFile);
 
     let userCacheHit = false;
@@ -783,7 +792,10 @@ export class McpService {
 
   private primeRegistryFromDisk(): void {
     try {
-      const { merged, serverScopes } = loadMergedMcpConfigForWorkspaceSync(this.workspaceRootStore);
+      const { merged, serverScopes } = loadMergedMcpConfigForWorkspaceSync(
+        this.workspaceRootStore,
+        { includeWorkspace: this.includeWorkspaceConfig },
+      );
       const raw = merged;
       const nextDigest = mcpConfigDigest(raw);
       this.loadedConfigStore = {
@@ -820,14 +832,24 @@ function resolveMcpConfigPaths(workspaceRoot: string): { userPath: string; works
   };
 }
 
-async function loadMergedMcpConfigForWorkspace(workspaceRoot: string): Promise<{
+type LoadMergedMcpConfigOptions = {
+  includeWorkspace?: boolean;
+};
+
+async function loadMergedMcpConfigForWorkspace(
+  workspaceRoot: string,
+  options: LoadMergedMcpConfigOptions = {},
+): Promise<{
   merged: McpConfigFile;
   serverScopes: Record<string, McpConfigScope>;
   user: McpConfigFile;
 }> {
+  const includeWorkspace = options.includeWorkspace !== false;
   const { userPath, workspacePath } = resolveMcpConfigPaths(workspaceRoot);
   const user = await loadMcpConfigFile(userPath);
-  const workspace = await loadMcpConfigFile(workspacePath);
+  const workspace = includeWorkspace
+    ? await loadMcpConfigFile(workspacePath)
+    : { servers: {} };
   return {
     merged: mergeMcpConfigFiles(user, workspace),
     serverScopes: mcpServerScopesFromFiles(user, workspace),
@@ -835,13 +857,19 @@ async function loadMergedMcpConfigForWorkspace(workspaceRoot: string): Promise<{
   };
 }
 
-function loadMergedMcpConfigForWorkspaceSync(workspaceRoot: string): {
+function loadMergedMcpConfigForWorkspaceSync(
+  workspaceRoot: string,
+  options: LoadMergedMcpConfigOptions = {},
+): {
   merged: McpConfigFile;
   serverScopes: Record<string, McpConfigScope>;
 } {
+  const includeWorkspace = options.includeWorkspace !== false;
   const { userPath, workspacePath } = resolveMcpConfigPaths(workspaceRoot);
   const user = loadMcpConfigFileSync(userPath);
-  const workspace = loadMcpConfigFileSync(workspacePath);
+  const workspace = includeWorkspace
+    ? loadMcpConfigFileSync(workspacePath)
+    : { servers: {} };
   return {
     merged: mergeMcpConfigFiles(user, workspace),
     serverScopes: mcpServerScopesFromFiles(user, workspace),

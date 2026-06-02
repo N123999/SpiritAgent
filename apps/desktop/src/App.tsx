@@ -257,17 +257,21 @@ function normalizeSlashPath(value: string): string {
 
 type EmptyStateWorkspaceSelectorProps = {
   currentWorkspaceRoot: string;
+  workspaceBinding: DesktopSnapshot["workspaceBinding"];
   availableWorkspaces: DesktopSnapshot["availableWorkspaces"];
   disabled?: boolean;
   onSelectWorkspace(workspaceRoot: string): void;
+  onSelectNoWorkspace(): void;
   onAddWorkspace(): void;
 };
 
 function EmptyStateWorkspaceSelector({
   currentWorkspaceRoot,
+  workspaceBinding,
   availableWorkspaces,
   disabled,
   onSelectWorkspace,
+  onSelectNoWorkspace,
   onAddWorkspace,
 }: EmptyStateWorkspaceSelectorProps) {
   const { t } = useTranslation();
@@ -282,11 +286,14 @@ function EmptyStateWorkspaceSelector({
     );
   }, [availableWorkspaces, workspaceFilter]);
   const currentWorkspaceLabel = useMemo(() => {
+    if (workspaceBinding === "none") {
+      return t("app.noWorkspace");
+    }
     const matched = availableWorkspaces.find((workspace) =>
       sameWorkspacePath(workspace.path, currentWorkspaceRoot),
     );
     return matched?.label ?? deriveWorkspaceLabel(currentWorkspaceRoot);
-  }, [availableWorkspaces, currentWorkspaceRoot]);
+  }, [availableWorkspaces, currentWorkspaceRoot, t, workspaceBinding]);
 
   return (
     <div className="flex justify-start px-0.5">
@@ -310,9 +317,9 @@ function EmptyStateWorkspaceSelector({
         <DropdownMenuContent
           align="start"
           side="top"
-          className="w-[min(24rem,calc(100vw-1.25rem))] p-0 text-xs"
+          className="flex h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-[min(24rem,calc(100vw-1.25rem))] flex-col overflow-hidden p-0 text-xs"
         >
-          <div className="border-b border-border/40 p-1.5">
+          <div className="shrink-0 border-b border-border/40 p-1.5">
             <Input
               value={workspaceFilter}
               onChange={(event) => setWorkspaceFilter(event.target.value)}
@@ -322,35 +329,58 @@ function EmptyStateWorkspaceSelector({
               autoComplete="off"
             />
           </div>
-          <div className="max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto p-1">
-            {filteredWorkspaces.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
-            ) : (
-              filteredWorkspaces.map((workspace) => {
-                const selected = sameWorkspacePath(workspace.path, currentWorkspaceRoot);
-                return (
-                  <DropdownMenuItem
-                    key={workspace.path}
-                    onSelect={() => onSelectWorkspace(workspace.path)}
-                    className={cn("items-start px-2 py-2", selected && "bg-accent/40")}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-foreground" title={workspace.label}>
-                        {workspace.label}
+          <ScrollArea
+            type="always"
+            className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:h-full [&>[data-radix-scroll-area-viewport]]:overscroll-contain"
+            onWheel={(event) => {
+              event.stopPropagation();
+            }}
+            onTouchMove={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="p-1 pr-2">
+              {filteredWorkspaces.length === 0 ? (
+                <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
+              ) : (
+                filteredWorkspaces.map((workspace) => {
+                  const selected =
+                    workspaceBinding === "project"
+                    && sameWorkspacePath(workspace.path, currentWorkspaceRoot);
+                  return (
+                    <DropdownMenuItem
+                      key={workspace.path}
+                      onSelect={() => onSelectWorkspace(workspace.path)}
+                      className={cn("items-start px-2 py-2", selected && "bg-accent/40")}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-foreground" title={workspace.label}>
+                          {workspace.label}
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground" title={workspace.path}>
+                          {workspace.path}
+                        </div>
                       </div>
-                      <div className="truncate text-[11px] text-muted-foreground" title={workspace.path}>
-                        {workspace.path}
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                );
-              })
-            )}
-          </div>
-          <div className="border-t border-border/40 p-1">
+                    </DropdownMenuItem>
+                  );
+                })
+              )}
+            </div>
+          </ScrollArea>
+          <div className="shrink-0 border-t border-border/40 p-1">
             <DropdownMenuItem onSelect={onAddWorkspace} className="gap-2 px-2 py-2 text-sm">
               <FolderPlus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
               <span>{t('app.addWorkspace')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={onSelectNoWorkspace}
+              className={cn(
+                "gap-2 px-2 py-2 text-sm",
+                workspaceBinding === "none" && "bg-accent/40",
+              )}
+            >
+              <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span>{t('app.noWorkspace')}</span>
             </DropdownMenuItem>
           </div>
         </DropdownMenuContent>
@@ -1830,6 +1860,8 @@ export default function App() {
     [compactionDemo.active, messages],
   );
   const isEmptySession = !compactionDemo.active && sessionMessages.length === 0;
+  const showWorkspaceBindingControls =
+    isEmptySession || snapshot?.workspaceBinding === "none";
   const conversationPendingAuxState = compactionDemo.active
     ? compactionDemo.pendingAuxState
     : snapshot?.conversation.pendingAuxState;
@@ -2714,7 +2746,7 @@ export default function App() {
             <SessionSidebar
               narrow={false}
               mode={settingsMode ? "settings" : "sessions"}
-              workspaceRoot={snapshot?.workspaceRoot ?? null}
+              userHomeDirectory={snapshot?.userHomeDirectory ?? null}
               sessions={runtime.sessions}
               activeFilePath={activeFilePath}
               onNewSession={() => {
@@ -3016,17 +3048,28 @@ export default function App() {
                   </p>
                 ) : null}
                 <div className="space-y-2">
-                {isEmptySession ? (
+                {showWorkspaceBindingControls ? (
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-0.5">
                     <EmptyStateWorkspaceSelector
                       currentWorkspaceRoot={snapshot?.workspaceRoot ?? ""}
+                      workspaceBinding={snapshot?.workspaceBinding ?? "project"}
                       availableWorkspaces={snapshot?.availableWorkspaces ?? []}
                       disabled={runtime.busyAction === "bootstrap" || runtime.busyAction === "session"}
                       onSelectWorkspace={(workspaceRoot) => {
-                        if (!snapshot?.workspaceRoot || sameWorkspacePath(snapshot.workspaceRoot, workspaceRoot)) {
+                        if (
+                          snapshot?.workspaceBinding === "project"
+                          && snapshot.workspaceRoot
+                          && sameWorkspacePath(snapshot.workspaceRoot, workspaceRoot)
+                        ) {
                           return;
                         }
                         void runtime.switchWorkspaceRoot(workspaceRoot);
+                      }}
+                      onSelectNoWorkspace={() => {
+                        if (snapshot?.workspaceBinding === "none") {
+                          return;
+                        }
+                        void runtime.switchToNoWorkspaceBinding();
                       }}
                       onAddWorkspace={() => {
                         void (async () => {
@@ -3038,6 +3081,8 @@ export default function App() {
                         })();
                       }}
                     />
+                    {isEmptySession ? (
+                    <>
                     <BranchSelectMenu
                       branches={snapshot?.git.branches ?? []}
                       selectedBranch={snapshot?.git.selectedBranch}
@@ -3070,6 +3115,8 @@ export default function App() {
                         void runtime.setApprovalLevel(level);
                       }}
                     />
+                    </>
+                    ) : null}
                   </div>
                 ) : null}
                 {runtime.runtimeError ? (

@@ -13,6 +13,7 @@ import type {
 import { readModelCatalogCacheSync } from './model-catalog-cache.js';
 import {
   DEFAULT_API_BASE,
+  normalizeWorkspaceBinding,
   type DesktopConfigFile,
   type HostMetadataSummary,
 } from './storage.js';
@@ -20,6 +21,7 @@ import {
   buildAvailableWorkspaces,
   buildWebHostSnapshot,
 } from './service-utils.js';
+import { resolveDesktopHomeDirectory } from './storage.js';
 
 export interface BuildDesktopSnapshotInput {
   workspaceRoot: string;
@@ -44,9 +46,12 @@ export interface BuildDesktopSnapshotInput {
 export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopSnapshot {
   return {
     workspaceRoot: input.workspaceRoot,
+    userHomeDirectory: resolveDesktopHomeDirectory(),
+    workspaceBinding: normalizeWorkspaceBinding(input.config.workspaceBinding),
     availableWorkspaces: buildAvailableWorkspaces(
       input.workspaceRoot,
       input.config.recentWorkspaces,
+      normalizeWorkspaceBinding(input.config.workspaceBinding),
     ),
     git: { ...input.git },
     dreams: {

@@ -111,13 +111,19 @@ function mapServerListItem(
   }
 }
 
-export function listDesktopMcpServersFromDisk(workspaceRoot: string): DesktopMcpServerListItem[] {
+export function listDesktopMcpServersFromDisk(
+  workspaceRoot: string,
+  workspaceBinding: 'project' | 'none' = 'project',
+): DesktopMcpServerListItem[] {
   try {
     const userConfig = loadMcpConfigFileAt(desktopUserMcpConfigPath());
-    const workspaceConfig = loadMcpConfigFileAt(desktopWorkspaceMcpConfigPath(workspaceRoot));
     const userItems = Object.entries(userConfig.servers).map(([name, server]) =>
       mapServerListItem(name, server, 'user'),
     );
+    if (workspaceBinding === 'none') {
+      return userItems;
+    }
+    const workspaceConfig = loadMcpConfigFileAt(desktopWorkspaceMcpConfigPath(workspaceRoot));
     const workspaceItems = Object.entries(workspaceConfig.servers).map(([name, server]) =>
       mapServerListItem(name, server, 'workspace'),
     );

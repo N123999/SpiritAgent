@@ -63,6 +63,8 @@ export interface HostStateStorage<Config, Session> {
 export interface InstructionDiscoveryContext {
   workspaceRoot: string;
   spiritDataDir: string;
+  /** When false, skip workspace-scoped rules and skills (user-level only). Defaults to true. */
+  includeWorkspaceScope?: boolean;
 }
 
 export interface ExtensionManagementContext {

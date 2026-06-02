@@ -872,8 +872,14 @@ function SkillsSettingsPanel({
   const [newDescription, setNewDescription] = useState("");
   const [createRootKind, setCreateRootKind] = useState<DesktopSkillRootKind>("user");
 
-  const items = snapshot?.skillsList ?? [];
-  const localizedSkillCreateRootOptions = skillCreateRootOptions.map((option) => ({
+  const workspaceBindingDisabled = snapshot?.workspaceBinding === "none";
+  const items = (snapshot?.skillsList ?? []).filter(
+    (item) => !workspaceBindingDisabled || item.scope === "user",
+  );
+  const availableSkillCreateRootOptions = workspaceBindingDisabled
+    ? skillCreateRootOptions.filter((option) => option.kind === "user")
+    : skillCreateRootOptions;
+  const localizedSkillCreateRootOptions = availableSkillCreateRootOptions.map((option) => ({
     ...option,
     label: option.labelKey ? t(option.labelKey) : option.labelFallback,
     hint: t(option.hintKey),
@@ -891,6 +897,9 @@ function SkillsSettingsPanel({
         <div className="min-w-0 flex-1 space-y-1">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Skills</h1>
           <p className="text-sm text-muted-foreground">{t('settings.skillsDescription')}</p>
+          {workspaceBindingDisabled ? (
+            <p className="text-xs text-muted-foreground">{t('app.noWorkspaceBindingHint')}</p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {onGenerateSkillNavigate ? (
@@ -1651,9 +1660,12 @@ function McpsSettingsPanel({
   "snapshot" | "mcpsBusy" | "onAddMcpServer" | "onDeleteMcpServer" | "onInspectMcpServer"
 >) {
   const { t } = useTranslation();
+  const workspaceBindingDisabled = snapshot?.workspaceBinding === "none";
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteMcpServerRequest | null>(null);
-  const [createScope, setCreateScope] = useState<DesktopMcpScope>("workspace");
+  const [createScope, setCreateScope] = useState<DesktopMcpScope>(
+    workspaceBindingDisabled ? "user" : "workspace",
+  );
   const [transportType, setTransportType] = useState<DesktopMcpTransportType>("stdio");
   const [newName, setNewName] = useState("");
   const [newEndpoint, setNewEndpoint] = useState("");
@@ -1662,7 +1674,10 @@ function McpsSettingsPanel({
   const [runtimeInfo, setRuntimeInfo] = useState<Record<string, McpServerRuntimeInfo>>({});
 
   const items = snapshot?.mcpServers ?? [];
-  const localizedMcpCreateScopeOptions = mcpCreateScopeOptions.map((option) => ({
+  const availableMcpCreateScopeOptions = workspaceBindingDisabled
+    ? mcpCreateScopeOptions.filter((option) => option.scope === "user")
+    : mcpCreateScopeOptions;
+  const localizedMcpCreateScopeOptions = availableMcpCreateScopeOptions.map((option) => ({
     ...option,
     label: t(option.labelKey),
     hint: t(option.hintKey),
@@ -1731,7 +1746,7 @@ function McpsSettingsPanel({
   }, [items, onInspectMcpServer]);
 
   const resetForm = () => {
-    setCreateScope("workspace");
+    setCreateScope(workspaceBindingDisabled ? "user" : "workspace");
     setTransportType("stdio");
     setNewName("");
     setNewEndpoint("");
@@ -1745,6 +1760,9 @@ function McpsSettingsPanel({
         <div className="min-w-0 flex-1 space-y-1">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">MCPs</h1>
           <p className="text-sm text-muted-foreground">{t('settings.mcpsDescription')}</p>
+          {workspaceBindingDisabled ? (
+            <p className="text-xs text-muted-foreground">{t('app.noWorkspaceBindingHint')}</p>
+          ) : null}
         </div>
         <Button
           type="button"
