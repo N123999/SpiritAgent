@@ -1,3 +1,4 @@
+export * from './plans.js';
 export * from './apply-diff.js';
 export * from './discovery.js';
 export * from './git-workspace.js';

@@ -38,6 +38,7 @@ import {
   type HostExtensionToolExecutionMode,
 } from './extensions.js';
 import { resolveInstructionPaths, type InstructionDiscoveryContext } from './storage.js';
+import { isPathUnderPlansDir, resolvePlanFilePath } from './plans.js';
 import {
   createHostDreamStore,
   type HostDreamScope,
@@ -300,6 +301,7 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       questions_result?: HostJsonValue;
     }
   | { name: 'create_file'; path: string; content: string }
+  | { name: 'create_plan'; plan_name: string; content: string }
   | { name: 'edit_file'; path: string; old_text: string; new_text: string }
   | { name: 'delete_file'; path: string }
   | { name: typeof APPLY_PATCH_HOST_TOOL_NAME; operation: ApplyPatchOperation }
@@ -375,7 +377,7 @@ export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionS
 
 export type HostFileToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> = Extract<
   HostToolRequest<QuestionSpec>,
-  { name: 'create_file' | 'edit_file' | 'delete_file' }
+  { name: 'create_file' | 'create_plan' | 'edit_file' | 'delete_file' }
 >;
 
 export type HostWritableFileToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
@@ -730,6 +732,12 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           path: requiredString(parsed, 'path'),
           content: requiredString(parsed, 'content'),
         };
+      case 'create_plan':
+        return {
+          name,
+          plan_name: requiredString(parsed, 'name'),
+          content: requiredString(parsed, 'content'),
+        };
       case 'edit_file':
         return {
           name,
@@ -906,6 +914,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           kind: 'need-approval',
           prompt: `高风险工具调用: 创建文件\n路径: ${request.path}\n内容长度: ${[...request.content].length} 字符`,
         };
+      case 'create_plan':
+        return {
+          kind: 'need-approval',
+          prompt: `高风险工具调用: 创建计划\n名称: ${request.plan_name}\n内容长度: ${[...request.content].length} 字符`,
+        };
       case 'edit_file':
         return {
           kind: 'need-approval',
@@ -1009,6 +1022,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         });
       case 'create_file':
         return this.executeCreateFile(request);
+      case 'create_plan':
+        return this.executeCreatePlan(request);
       case 'edit_file':
         return this.executeEditFile(request);
       case 'delete_file':
@@ -1826,12 +1841,21 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }
   }
 
+  private assertCreateFileAllowed(resolvedPath: string): void {
+    if (isPathUnderPlansDir(resolvedPath, this.context)) {
+      throw new Error(
+        'plans/ 目录下新建文件请使用 create_plan；已存在的计划文件可用 edit_file 修改。',
+      );
+    }
+  }
+
   private async executeCreateFile(
     request: Extract<HostToolRequest<QuestionSpec>, { name: 'create_file' }>,
   ): Promise<string> {
     const inputPath = request.path;
     const content = request.content;
     const target = this.resolveWorkspaceWriteTarget(inputPath);
+    this.assertCreateFileAllowed(target);
     if (existsSync(target)) {
       throw new Error(`文件已存在: ${target}`);
     }
@@ -1841,6 +1865,22 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const after = await readHostFileSnapshot(target);
     await this.recordFileChange(request, target, before, after);
     return `[write]\naction: create_file\npath: ${target}\nchars: ${[...content].length}`;
+  }
+
+  private async executeCreatePlan(
+    request: Extract<HostToolRequest<QuestionSpec>, { name: 'create_plan' }>,
+  ): Promise<string> {
+    const content = request.content;
+    const target = resolvePlanFilePath(this.context, request.plan_name);
+    if (existsSync(target)) {
+      throw new Error(`计划文件已存在: ${target}`);
+    }
+    const before = await readHostFileSnapshot(target);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content, 'utf8');
+    const after = await readHostFileSnapshot(target);
+    await this.recordFileChange(request, target, before, after);
+    return `[plan]\npath: ${target}\naction: create_plan\nchars: ${[...content].length}`;
   }
 
   private async executeEditFile(
@@ -2003,12 +2043,14 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     before: HostRecordedFileChange['before'],
     after: HostRecordedFileChange['after'],
   ): Promise<void> {
+    const changeKind: HostFileChangeKind =
+      request.name === 'create_plan' ? 'create_file' : request.name;
     await this.recordWritableFileChange(
       request,
       resolvedPath,
       before,
       after,
-      request.name,
+      changeKind,
       summarizeFileToolRequest(request),
     );
   }
@@ -2026,11 +2068,17 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 function summarizeFileToolRequest<QuestionSpec>(
   request: HostFileToolRequest<QuestionSpec>,
 ): HostFileChangeRequestSummary {
-  switch (request.name) {
+    switch (request.name) {
     case 'create_file':
       return {
         name: request.name,
         path: request.path,
+        contentChars: [...request.content].length,
+      };
+    case 'create_plan':
+      return {
+        name: 'create_file',
+        path: request.plan_name,
         contentChars: [...request.content].length,
       };
     case 'edit_file':
@@ -2706,7 +2754,7 @@ function isInsideSpiritManagedUserArea(
     workspaceRoot: context.workspaceRoot,
     spiritDataDir: context.spiritDataDir,
   });
-  return [paths.userRuleFile, paths.planFile, paths.userSkillsDir]
+  return [paths.userRuleFile, paths.plansDir, paths.userSkillsDir]
     .map((allowed) => path.resolve(allowed))
     .some((allowed) => pathHasPrefix(resolvedPath, allowed));
 }

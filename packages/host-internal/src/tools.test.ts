@@ -621,6 +621,64 @@ test('requestFromFunctionCall accepts empty arguments for finish_task', async ()
   }
 });
 
+test('create_plan writes plans/{name}.md and rejects duplicate names', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-create-plan-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const request = await service.requestFromFunctionCall(
+      'create_plan',
+      JSON.stringify({ name: 'demo-plan', content: '# Demo\n\n- [ ] ship it' }),
+    );
+
+    assert.deepEqual(request, {
+      name: 'create_plan',
+      plan_name: 'demo-plan',
+      content: '# Demo\n\n- [ ] ship it',
+    });
+
+    const output = await service.execute(request);
+    assert.match(String(output), /\[plan\]\npath: .*plans[\\/]+demo-plan\.md/);
+
+    await assert.rejects(
+      () =>
+        service.execute({
+          name: 'create_plan',
+          plan_name: 'demo-plan',
+          content: '# Again',
+        }),
+      /已存在/,
+    );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('create_file is rejected for new files under plans/', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-plans-whitelist-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(join(spiritDataDir, 'plans'), { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    await assert.rejects(
+      () =>
+        service.execute({
+          name: 'create_file',
+          path: join(spiritDataDir, 'plans', 'blocked.md'),
+          content: 'nope',
+        }),
+      /create_plan/,
+    );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 function assertHostToolExecutionOutput(
   output: HostToolExecutionOutput | string,
 ): asserts output is HostToolExecutionOutput {
