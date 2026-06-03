@@ -34,14 +34,14 @@ export function buildGitChangesMenuItems(input: {
     if (id === "push") {
       return {
         id,
-        icon: <Upload className="size-3.5 shrink-0 opacity-80" aria-hidden />,
+        icon: <Upload className="size-3 shrink-0 opacity-80" aria-hidden />,
         label: input.labels.push,
         onSelect: input.onPush,
       };
     }
     return {
       id,
-      icon: <GitMerge className="size-3.5 shrink-0 opacity-80" aria-hidden />,
+      icon: <GitMerge className="size-3 shrink-0 opacity-80" aria-hidden />,
       label: input.mergeFlashMerged ? input.labels.merged : input.labels.merge,
       onSelect: input.onMerge,
     };
@@ -102,7 +102,7 @@ export function GitChangesActions({
   }
 
   const busyIcon = gitBusy ? (
-    <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+    <LoaderCircle className="size-3 animate-spin" aria-hidden />
   ) : null;
 
   if (!hasChanges) {
@@ -111,7 +111,7 @@ export function GitChangesActions({
         <Button
           type="button"
           variant="default"
-          size="sm"
+          size="xs"
           className={DESKTOP_GIT_ACTION_BTN}
           disabled={!needsPush || gitBusy}
           title={!needsPush ? pushDisabledTitle : undefined}
@@ -129,7 +129,7 @@ export function GitChangesActions({
       <Button
         type="button"
         variant="default"
-        size="sm"
+        size="xs"
         className={DESKTOP_GIT_ACTION_BTN}
         disabled={gitBusy}
         onClick={onCommit}
@@ -145,8 +145,8 @@ export function GitChangesActions({
             title={t("workspace.git.moreActions")}
             disabled={gitBusy}
             triggerVariant="default"
-            triggerSize="sm"
-            triggerIcon={<ChevronDown className="size-3.5" aria-hidden />}
+            triggerSize="xs"
+            triggerIcon={<ChevronDown className="size-3" aria-hidden />}
             items={menuItems}
             triggerClassName={DESKTOP_GIT_ACTION_MENU_TRIGGER}
             contentClassName="text-xs"

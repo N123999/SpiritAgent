@@ -25,7 +25,7 @@ type ActionPopoverProps = {
   items: readonly ActionPopoverItem[]
   triggerClassName?: string
   contentClassName?: string
-  /** 默认 ghost + 圆形，适合工具栏独立图标；ButtonGroup 分段请用 default + sm */
+  /** 默认 ghost + 圆形，适合工具栏独立图标；ButtonGroup 分段请用 default + xs */
   triggerVariant?: VariantProps<typeof buttonVariants>['variant']
   triggerSize?: VariantProps<typeof buttonVariants>['size']
 }

@@ -124,26 +124,31 @@ export function GitChangesSection({
   return (
     <section className={cn("flex min-h-0 flex-col", className)} style={style}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/40 px-2 py-1.5">
-        <h3 className="text-xs font-medium text-foreground">{t("workspace.git.changes")}</h3>
         <div className="flex min-w-0 items-center gap-1">
+          <h3 className="m-0 shrink-0 text-xs font-medium leading-none text-foreground">
+            {t("workspace.git.changes")}
+          </h3>
           {branchLabel ? (
-            <span className="max-w-[7rem] truncate font-mono text-[10px] text-muted-foreground">
+            <span
+              className="max-w-[7rem] truncate text-xs font-normal leading-none text-muted-foreground"
+              title={branchLabel}
+            >
               {branchLabel}
             </span>
           ) : null}
-          <GitChangesActions
-            isRepository={isRepository}
-            hasChanges={hasChanges}
-            needsPush={needsPush}
-            canMerge={canMerge}
-            gitBusy={gitBusy}
-            mergeFlashMerged={mergeFlashMerged}
-            pushDisabledTitle={pushDisabledTitle}
-            onCommit={() => onCommit?.()}
-            onPush={() => onPush?.()}
-            onMerge={() => onMerge?.()}
-          />
         </div>
+        <GitChangesActions
+          isRepository={isRepository}
+          hasChanges={hasChanges}
+          needsPush={needsPush}
+          canMerge={canMerge}
+          gitBusy={gitBusy}
+          mergeFlashMerged={mergeFlashMerged}
+          pushDisabledTitle={pushDisabledTitle}
+          onCommit={() => onCommit?.()}
+          onPush={() => onPush?.()}
+          onMerge={() => onMerge?.()}
+        />
       </div>
       <div className="relative min-h-0 flex-1">
         {loading ? (

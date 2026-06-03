@@ -18,9 +18,9 @@ export const DESKTOP_CHROME_COMMIT_BTN = cn(
   instantHoverMotionClass,
 );
 
-/** Git 更改区 primary 按钮（ButtonGroup 分段）；`border-r-0` 避免透明右边框叠在分割线上显得过粗 */
+/** Git 更改区 primary 按钮（ButtonGroup 分段，配合 `size="xs"`）；`border-r-0` 避免透明右边框叠在分割线上显得过粗 */
 export const DESKTOP_GIT_ACTION_BTN = cn(
-  "h-7 border-r-0 shadow-none",
+  "border-r-0 shadow-none",
   instantHoverMotionClass,
 );
 
@@ -32,5 +32,5 @@ export const DESKTOP_GIT_ACTION_SPLIT = cn(
 /** Git ButtonGroup 右侧下拉触发器 */
 export const DESKTOP_GIT_ACTION_MENU_TRIGGER = cn(
   DESKTOP_GIT_ACTION_BTN,
-  "w-7 min-w-7 rounded-l-none rounded-r-md px-0",
+  "w-6 min-w-6 max-w-6 rounded-l-none rounded-r-md px-0",
 );
