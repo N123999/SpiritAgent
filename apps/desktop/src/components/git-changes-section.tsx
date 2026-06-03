@@ -19,6 +19,7 @@ export type GitChangesSectionProps = {
   canMerge?: boolean;
   gitBusy?: boolean;
   mergeFlashMerged?: boolean;
+  pushDisabledTitle?: string;
   onCommit?: () => void;
   onPush?: () => void;
   onMerge?: () => void;
@@ -107,6 +108,7 @@ export function GitChangesSection({
   canMerge = false,
   gitBusy = false,
   mergeFlashMerged = false,
+  pushDisabledTitle,
   onCommit,
   onPush,
   onMerge,
@@ -136,6 +138,7 @@ export function GitChangesSection({
             canMerge={canMerge}
             gitBusy={gitBusy}
             mergeFlashMerged={mergeFlashMerged}
+            pushDisabledTitle={pushDisabledTitle}
             onCommit={() => onCommit?.()}
             onPush={() => onPush?.()}
             onMerge={() => onMerge?.()}

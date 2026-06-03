@@ -449,7 +449,9 @@
       "copiedSha": "已复制",
       "resizeChangesHistory": "调整更改与历史区域高度",
       "push": "推送",
-      "moreActions": "更多 Git 操作"
+      "moreActions": "更多 Git 操作",
+      "pushDisabledNoRemote": "当前仓库未配置远端，无法推送。",
+      "pushDisabledUpToDate": "当前分支已与远端同步，无需推送。"
     },
     "resizeToolsWidth": "调整工具区宽度",
     "workspaceTools": "工作区工具",

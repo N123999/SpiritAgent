@@ -7,6 +7,7 @@ import { ActionPopover, type ActionPopoverItem } from "@/components/ui/action-po
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { DESKTOP_CHROME_COMMIT_BTN } from "@/lib/desktop-chrome";
+import { buildGitChangesMenuItemIds } from "@/lib/git-changes-menu-items";
 import { cn } from "@/lib/utils";
 
 export type GitChangesMenuLabels = {
@@ -23,24 +24,25 @@ export function buildGitChangesMenuItems(input: {
   onPush: () => void;
   onMerge: () => void;
 }): ActionPopoverItem[] {
-  const items: ActionPopoverItem[] = [];
-  if (input.needsPush) {
-    items.push({
-      id: "push",
-      icon: <Upload className="size-3.5 shrink-0 opacity-80" aria-hidden />,
-      label: input.labels.push,
-      onSelect: input.onPush,
-    });
-  }
-  if (input.canMerge) {
-    items.push({
-      id: "merge",
+  return buildGitChangesMenuItemIds({
+    needsPush: input.needsPush,
+    canMerge: input.canMerge,
+  }).map((id) => {
+    if (id === "push") {
+      return {
+        id,
+        icon: <Upload className="size-3.5 shrink-0 opacity-80" aria-hidden />,
+        label: input.labels.push,
+        onSelect: input.onPush,
+      };
+    }
+    return {
+      id,
       icon: <GitMerge className="size-3.5 shrink-0 opacity-80" aria-hidden />,
       label: input.mergeFlashMerged ? input.labels.merged : input.labels.merge,
       onSelect: input.onMerge,
-    });
-  }
-  return items;
+    };
+  });
 }
 
 export type GitChangesActionsProps = {
@@ -50,6 +52,7 @@ export type GitChangesActionsProps = {
   canMerge: boolean;
   gitBusy: boolean;
   mergeFlashMerged?: boolean;
+  pushDisabledTitle?: string;
   onCommit: () => void;
   onPush: () => void;
   onMerge: () => void;
@@ -62,6 +65,7 @@ export function GitChangesActions({
   canMerge,
   gitBusy,
   mergeFlashMerged = false,
+  pushDisabledTitle,
   onCommit,
   onPush,
   onMerge,
@@ -107,6 +111,7 @@ export function GitChangesActions({
           size="sm"
           className={DESKTOP_CHROME_COMMIT_BTN}
           disabled={!needsPush || gitBusy}
+          title={!needsPush ? pushDisabledTitle : undefined}
           onClick={onPush}
         >
           {busyIcon}

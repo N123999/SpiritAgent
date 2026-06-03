@@ -449,7 +449,9 @@
       "copiedSha": "Copied",
       "resizeChangesHistory": "Resize Changes and History height",
       "push": "Push",
-      "moreActions": "More Git actions"
+      "moreActions": "More Git actions",
+      "pushDisabledNoRemote": "No remote is configured for this repository.",
+      "pushDisabledUpToDate": "This branch is already up to date with its remote."
     },
     "resizeToolsWidth": "Resize Tools Width",
     "workspaceTools": "Workspace Tools",
