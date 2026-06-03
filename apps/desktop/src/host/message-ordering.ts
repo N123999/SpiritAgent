@@ -270,8 +270,7 @@ export function toolCallSummaryCopyForRequest(
         ...(url ? { headlineDetail: truncateSummaryDetail(url) } : {}),
       };
     }
-    case 'web_search':
-    case '$web_search': {
+    case 'web_search': {
       const query = webSearchQueryFromArguments(record);
       return {
         headline: i18n.t('tool.webSearch'),

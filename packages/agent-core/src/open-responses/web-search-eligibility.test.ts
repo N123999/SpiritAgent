@@ -3,13 +3,12 @@ import test from 'node:test';
 
 import {
   buildProviderWebSearchPromptSection,
-  MOONSHOT_WEB_SEARCH_API_TOOL_NAME,
   resolveProviderWebSearchMode,
   shouldUseProviderWebSearch,
   XAI_WEB_SEARCH_WITH_LOCAL_TOOLS_ENABLED,
 } from './web-search-eligibility.js';
 
-test('resolveProviderWebSearchMode moonshot-ai chat', () => {
+test('resolveProviderWebSearchMode excludes moonshot-ai chat', () => {
   assert.equal(
     resolveProviderWebSearchMode({
       transportKind: 'openai-compatible',
@@ -17,7 +16,7 @@ test('resolveProviderWebSearchMode moonshot-ai chat', () => {
       model: 'kimi-k2.5',
       llmVendor: 'moonshot-ai',
     }),
-    'moonshot-builtin',
+    undefined,
   );
 });
 
@@ -82,5 +81,4 @@ test('resolveProviderWebSearchMode excludes openai-compatible openai vendor', ()
 test('buildProviderWebSearchPromptSection mentions web search', () => {
   const section = buildProviderWebSearchPromptSection();
   assert.match(section, /web search/i);
-  assert.equal(section.includes(MOONSHOT_WEB_SEARCH_API_TOOL_NAME), false);
 });

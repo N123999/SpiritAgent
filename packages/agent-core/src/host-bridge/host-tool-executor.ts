@@ -15,12 +15,6 @@ import {
   filterLegacyHostFileToolDefinitions,
   shouldUseApplyPatchFileTools,
 } from '../open-responses/apply-patch-eligibility.js';
-import {
-  createProviderBuiltinWebSearchToolRequest,
-  isMoonshotBuiltinWebSearchToolName,
-  isProviderBuiltinWebSearchToolRequest,
-  shouldUseProviderWebSearch,
-} from '../open-responses/web-search-eligibility.js';
 import { isOpenResponsesTransportConfig } from '../provider-config.js';
 import {
   assertFinishTaskToolAllowed,
@@ -143,14 +137,6 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   async requestFromFunctionCall(name: string, argumentsJson: string): Promise<JsonValue> {
     const availableDefinitions = this.toolDefinitionsJson();
     assertFinishTaskToolAllowed(name, this.loopToolExposureEnabled, availableDefinitions);
-    const transportConfig = this.transportConfigForToolDefinitions;
-    if (
-      transportConfig !== undefined
-      && shouldUseProviderWebSearch(transportConfig)
-      && isMoonshotBuiltinWebSearchToolName(name)
-    ) {
-      return createProviderBuiltinWebSearchToolRequest(name, argumentsJson);
-    }
     try {
       const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
       if (localMcpRequest) {
@@ -176,10 +162,6 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>> {
-    if (isProviderBuiltinWebSearchToolRequest(request)) {
-      return { kind: 'allowed' };
-    }
-
     if (this.mcp.isToolRequest(request)) {
       await this.mcp.authorizeToolRequest(request);
       return { kind: 'allowed' };
@@ -204,13 +186,6 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   async execute(request: JsonValue): Promise<ToolExecutionOutput> {
-    if (isProviderBuiltinWebSearchToolRequest(request)) {
-      const record = request as Record<string, unknown>;
-      const argumentsJson =
-        typeof record.argumentsJson === 'string' ? record.argumentsJson : '{}';
-      return createToolExecutionTextOutput(argumentsJson);
-    }
-
     if (this.mcp.isToolRequest(request)) {
       return this.executeLocalMcpTool(request);
     }

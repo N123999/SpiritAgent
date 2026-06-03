@@ -1,6 +1,5 @@
 import type { JsonObject } from '../ports.js';
 import {
-  isOpenAiCompatibleTransportConfig,
   isOpenResponsesTransportConfig,
   type LlmTransportConfig,
 } from '../provider-config.js';
@@ -9,21 +8,13 @@ import {
   type OpenResponsesTransportConfig,
 } from './responses-compat.js';
 
-export const MOONSHOT_WEB_SEARCH_API_TOOL_NAME = '$web_search';
-export const WEB_SEARCH_DISPLAY_TOOL_NAME = 'web_search';
-
-export const PROVIDER_BUILTIN_WEB_SEARCH_REQUEST_KIND = 'spirit-provider-builtin-web-search';
-
-export type ProviderWebSearchMode =
-  | 'moonshot-builtin'
-  | 'openai-sdk-web-search'
-  | 'xai-sdk-web-search';
-
 /**
  * Set true when xAI Responses accepts `xai.tools.webSearch()` alongside host function tools.
  * Phase 3 enables this after the coexistence spike.
  */
 export const XAI_WEB_SEARCH_WITH_LOCAL_TOOLS_ENABLED = true;
+
+export type ProviderWebSearchMode = 'openai-sdk-web-search' | 'xai-sdk-web-search';
 
 export function shouldUseProviderWebSearch(config: LlmTransportConfig): boolean {
   return resolveProviderWebSearchMode(config) !== undefined;
@@ -32,15 +23,11 @@ export function shouldUseProviderWebSearch(config: LlmTransportConfig): boolean 
 export function resolveProviderWebSearchMode(
   config: LlmTransportConfig,
 ): ProviderWebSearchMode | undefined {
-  if (isOpenResponsesTransportConfig(config)) {
-    return resolveOpenResponsesWebSearchMode(config);
+  if (!isOpenResponsesTransportConfig(config)) {
+    return undefined;
   }
 
-  if (isOpenAiCompatibleTransportConfig(config) && config.llmVendor === 'moonshot-ai') {
-    return 'moonshot-builtin';
-  }
-
-  return undefined;
+  return resolveOpenResponsesWebSearchMode(config);
 }
 
 function resolveOpenResponsesWebSearchMode(
@@ -62,10 +49,6 @@ function resolveOpenResponsesWebSearchMode(
   return undefined;
 }
 
-export function shouldDisableMoonshotThinkingForWebSearch(config: LlmTransportConfig): boolean {
-  return resolveProviderWebSearchMode(config) === 'moonshot-builtin';
-}
-
 /** Model-visible guidance when provider-native web search is available. */
 export function buildProviderWebSearchPromptSection(): string {
   return [
@@ -76,41 +59,8 @@ export function buildProviderWebSearchPromptSection(): string {
   ].join('\n');
 }
 
-export function isMoonshotBuiltinWebSearchToolName(name: string): boolean {
-  return name === MOONSHOT_WEB_SEARCH_API_TOOL_NAME || name === WEB_SEARCH_DISPLAY_TOOL_NAME;
-}
-
-export function buildMoonshotBuiltinWebSearchToolDefinition(): JsonObject {
-  return {
-    type: 'builtin_function',
-    function: {
-      name: MOONSHOT_WEB_SEARCH_API_TOOL_NAME,
-    },
-  };
-}
-
 export function buildWebSearchResponsesTraceToolEntry(): JsonObject {
   return { type: 'web_search' };
-}
-
-export function isProviderBuiltinWebSearchToolRequest(request: unknown): boolean {
-  return (
-    typeof request === 'object'
-    && request !== null
-    && !Array.isArray(request)
-    && (request as JsonObject).kind === PROVIDER_BUILTIN_WEB_SEARCH_REQUEST_KIND
-  );
-}
-
-export function createProviderBuiltinWebSearchToolRequest(
-  toolName: string,
-  argumentsJson: string,
-): JsonObject {
-  return {
-    kind: PROVIDER_BUILTIN_WEB_SEARCH_REQUEST_KIND,
-    toolName,
-    argumentsJson,
-  };
 }
 
 /** xAI Responses rejects host function tools unless provider web search is enabled. */
