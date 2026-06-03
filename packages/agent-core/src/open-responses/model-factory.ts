@@ -17,6 +17,7 @@ import {
   shouldUseApplyPatchFunctionTool,
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
+import { resolveProviderWebSearchMode } from './web-search-eligibility.js';
 import {
   openResponsesPostUrl,
   openResponsesReasoningEffort,
@@ -67,11 +68,7 @@ export function createResponsesLanguageModel(config: OpenResponsesTransportConfi
   }
 
   if (provider === 'xai') {
-    const xai = createXai({
-      apiKey: config.apiKey,
-      baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
-    });
-    return xai.responses(languageModelId);
+    return createXaiResponsesProvider(config).responses(languageModelId);
   }
 
   const applyPatchFetch = responsesFetchForConfig(config);
@@ -84,33 +81,55 @@ export function createResponsesLanguageModel(config: OpenResponsesTransportConfi
   return openResponses(config.model);
 }
 
+function createXaiResponsesProvider(config: OpenResponsesTransportConfig) {
+  return createXai({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
+  });
+}
+
 export function buildResponsesGenerateTools(
   config: OpenResponsesTransportConfig,
   normalizedTools: readonly OpenAiFunctionToolDefinition[],
 ): Record<string, unknown> {
-  const tools = buildResponsesAiSdkTools([...normalizedTools]) as Record<string, unknown>;
+  let merged = buildResponsesAiSdkTools([...normalizedTools]) as Record<string, unknown>;
   if (shouldUseApplyPatchFunctionTool(config)) {
-    return {
-      ...tools,
+    merged = {
+      ...merged,
       ...buildResponsesAiSdkTools([
         buildApplyPatchFunctionToolDefinition() as OpenAiFunctionToolDefinition,
       ]),
     };
   }
 
-  if (!shouldUseOpenAiSdkApplyPatchTool(config)) {
-    return tools;
+  const webSearchMode = resolveProviderWebSearchMode(config);
+  const provider = resolveOpenResponsesSdkProvider(config);
+
+  if (provider === 'openai') {
+    const openai = createOpenAIResponsesProvider(config);
+    if (openai) {
+      const sdkTools: Record<string, unknown> = {};
+      if (shouldUseOpenAiSdkApplyPatchTool(config)) {
+        sdkTools.apply_patch = openai.tools.applyPatch({});
+      }
+      if (webSearchMode === 'openai-sdk-web-search') {
+        sdkTools.web_search = openai.tools.webSearch({});
+      }
+      if (Object.keys(sdkTools).length > 0) {
+        return { ...merged, ...sdkTools };
+      }
+    }
   }
 
-  const openai = createOpenAIResponsesProvider(config);
-  if (!openai) {
-    return tools;
+  if (provider === 'xai' && webSearchMode === 'xai-sdk-web-search') {
+    const xai = createXaiResponsesProvider(config);
+    return {
+      ...merged,
+      web_search: xai.tools.webSearch({}),
+    };
   }
 
-  return {
-    ...tools,
-    apply_patch: openai.tools.applyPatch({}),
-  };
+  return merged;
 }
 
 export function buildResponsesProviderOptions(

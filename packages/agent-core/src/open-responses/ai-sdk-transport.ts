@@ -40,6 +40,7 @@ import {
   takeLastExtractedApplyPatchCalls,
 } from './apply-patch-bridge.js';
 import { shouldUseOpenAiSdkApplyPatchTool } from './apply-patch-eligibility.js';
+import { xaiResponsesRejectsLocalFunctionTools } from './web-search-eligibility.js';
 import {
   buildResponsesGenerateTools,
   buildResponsesProviderOptions,
@@ -132,7 +133,7 @@ export class AiSdkOpenResponsesTransport
       traceExtras,
     );
 
-    if (xaiResponsesHasLocalTools(config, normalizedTools)) {
+    if (xaiResponsesRejectsLocalFunctionTools(config, normalizedTools.length)) {
       return {
         kind: 'failure',
         error: xaiResponsesLocalToolsUnsupportedMessage(),
@@ -241,7 +242,7 @@ export class AiSdkOpenResponsesTransport
 
     const abortController = new AbortController();
 
-    if (xaiResponsesHasLocalTools(config, normalizedTools)) {
+    if (xaiResponsesRejectsLocalFunctionTools(config, normalizedTools.length)) {
       return {
         eventStream: emptyResponsesEventStream(),
         completion: Promise.resolve({
@@ -452,13 +453,6 @@ async function* emptyResponsesEventStream(): AsyncGenerator<
   void,
   undefined
 > {}
-
-function xaiResponsesHasLocalTools(
-  config: OpenResponsesTransportConfig,
-  normalizedTools: readonly unknown[],
-): boolean {
-  return config.llmVendor === 'xai' && normalizedTools.length > 0;
-}
 
 function xaiResponsesLocalToolsUnsupportedMessage(): string {
   return 'xAI Responses API 暂不支持本地 function tools，请改用 Chat Completions transport。';

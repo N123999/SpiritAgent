@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { JsonValue } from '../ports.js';
-import { AiSdkOpenResponsesTransport } from './ai-sdk-transport.js';
+import { buildResponsesTraceTools } from './apply-patch-bridge.js';
 import { buildResponsesProviderOptions } from './model-factory.js';
+import {
+  XAI_WEB_SEARCH_WITH_LOCAL_TOOLS_ENABLED,
+  xaiResponsesRejectsLocalFunctionTools,
+} from './web-search-eligibility.js';
 import {
   buildOpenResponsesRequestTrace,
   resolveOpenResponsesSdkProvider,
@@ -37,20 +41,21 @@ test('xAI responses provider resolves official SDK, options, and trace kind', ()
   );
 });
 
-test('xAI responses transport rejects local function tools with clear guidance', async () => {
-  const transport = new AiSdkOpenResponsesTransport();
-  const result = await transport.startToolAgentRound(
-    xaiConfig,
-    { messages: [{ role: 'user', content: 'call a tool' }], steps: 0 },
-    [demoToolDefinition()],
-  );
+test('xAI responses allows local function tools when provider web search is enabled', () => {
+  assert.equal(XAI_WEB_SEARCH_WITH_LOCAL_TOOLS_ENABLED, true);
+  assert.equal(xaiResponsesRejectsLocalFunctionTools(xaiConfig, 1), false);
+});
 
-  assert.equal(result.kind, 'failure');
-  assert.match(result.kind === 'failure' ? result.error : '', /不支持本地 function tools/u);
-  const trace = result.requestTrace[0];
-  assert.equal(
-    trace && typeof trace === 'object' && !Array.isArray(trace) ? trace.kind : undefined,
-    'xai_sdk_responses',
+test('xAI responses trace lists web_search alongside host tools when eligible', () => {
+  const traceTools = buildResponsesTraceTools(xaiConfig, [demoToolDefinition()]);
+  assert.ok(
+    traceTools.some(
+      (tool) =>
+        typeof tool === 'object'
+        && tool !== null
+        && !Array.isArray(tool)
+        && (tool as { type?: string }).type === 'web_search',
+    ),
   );
 });
 

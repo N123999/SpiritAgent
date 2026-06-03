@@ -15,6 +15,10 @@ import {
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
+import {
+  buildWebSearchResponsesTraceToolEntry,
+  shouldUseProviderWebSearch,
+} from './web-search-eligibility.js';
 
 export const APPLY_PATCH_NATIVE_TOOL = { type: 'apply_patch' } as const;
 
@@ -178,6 +182,9 @@ export function buildResponsesTraceTools(
     } else {
       traceTools.push(cloneJsonValue(APPLY_PATCH_NATIVE_TOOL as JsonValue));
     }
+  }
+  if (shouldUseProviderWebSearch(config)) {
+    traceTools.push(cloneJsonValue(buildWebSearchResponsesTraceToolEntry() as JsonValue));
   }
   return traceTools;
 }
