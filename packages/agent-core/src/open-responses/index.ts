@@ -63,6 +63,7 @@ export {
 } from './web-search-eligibility.js';
 export {
   buildResponsesProviderBuiltinToolCardData,
+  createResponsesProviderBuiltinPreviewStreamState,
   isGenericProviderWebSearchQuery,
   isResponsesProviderBuiltinToolName,
   parseProviderBuiltinToolUiFromArgumentsJson,

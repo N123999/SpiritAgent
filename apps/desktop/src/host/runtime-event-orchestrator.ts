@@ -414,6 +414,9 @@ export class DesktopRuntimeEventOrchestrator {
       );
       this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
       this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
+      if (isProviderBuiltin) {
+        this.options.requestLiveSnapshotUpdate?.();
+      }
     }
     this.logMessageOrderApplyBatch(
       batchId,
@@ -855,6 +858,66 @@ function truncateText(value: string, maxChars: number): string {
     return value;
   }
   return `${chars.slice(0, maxChars).join('')}...<truncated>`;
+}
+
+export function splitRuntimeEventsForIncrementalProviderBuiltinToolPreview(
+  events: RuntimeEvent<DesktopToolRequest>[],
+  previewSeenCallIds: ReadonlySet<string> = new Set(),
+): {
+  toApply: RuntimeEvent<DesktopToolRequest>[];
+  deferred: RuntimeEvent<DesktopToolRequest>[];
+} {
+  const inProgressCallIds = new Set<string>();
+  const hasTerminal = new Set<string>();
+
+  for (const event of events) {
+    if (event.kind !== 'streaming-tool-preview' || !isResponsesProviderBuiltinToolName(event.toolName)) {
+      continue;
+    }
+    const phase = resolveResponsesProviderBuiltinToolStreamPhaseFromArgumentsJson(event.argumentsJson);
+    if (phase === 'succeeded' || phase === 'failed') {
+      hasTerminal.add(event.toolCallId);
+      continue;
+    }
+    inProgressCallIds.add(event.toolCallId);
+  }
+
+  if (hasTerminal.size === 0) {
+    return { toApply: events, deferred: [] };
+  }
+
+  const toApply: RuntimeEvent<DesktopToolRequest>[] = [];
+  const deferred: RuntimeEvent<DesktopToolRequest>[] = [];
+
+  for (const event of events) {
+    if (event.kind !== 'streaming-tool-preview' || !isResponsesProviderBuiltinToolName(event.toolName)) {
+      toApply.push(event);
+      continue;
+    }
+    const phase = resolveResponsesProviderBuiltinToolStreamPhaseFromArgumentsJson(event.argumentsJson);
+    if (phase === 'succeeded' || phase === 'failed') {
+      const deferTerminal =
+        inProgressCallIds.has(event.toolCallId) || !previewSeenCallIds.has(event.toolCallId);
+      if (deferTerminal) {
+        deferred.push(event);
+        continue;
+      }
+    }
+    toApply.push(event);
+  }
+
+  return { toApply, deferred };
+}
+
+export function runtimeEventsIncludeAppliedProviderBuiltinToolPreview(
+  events: RuntimeEvent<DesktopToolRequest>[],
+): boolean {
+  return events.some(
+    (event) =>
+      event.kind === 'streaming-tool-preview'
+      && isResponsesProviderBuiltinToolName(event.toolName)
+      && resolveResponsesProviderBuiltinToolStreamPhaseFromArgumentsJson(event.argumentsJson) === 'preview',
+  );
 }
 
 export function splitRuntimeEventsForIncrementalFinishTaskPreview(

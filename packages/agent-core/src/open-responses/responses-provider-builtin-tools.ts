@@ -373,37 +373,97 @@ function truncateHeadlineDetail(value: string, max = HEADLINE_DETAIL_MAX): strin
   return `${normalized.slice(0, max)}…`;
 }
 
-export function accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
-  rawValue: unknown,
-  nextPreviewIndex: number,
-): { events: LlmStreamEvent[]; nextPreviewIndex: number } {
-  if (!isJsonObject(rawValue as JsonValue) || typeof (rawValue as JsonObject).type !== 'string') {
-    return { events: [], nextPreviewIndex };
-  }
+export type ResponsesProviderBuiltinPreviewStreamState = {
+  nextPreviewIndex: number;
+  items: Map<
+    string,
+    {
+      toolName: (typeof RESPONSES_PROVIDER_BUILTIN_TOOL_NAMES)[number];
+      item: JsonObject;
+    }
+  >;
+};
 
-  const chunk = rawValue as JsonObject;
-  const chunkType = chunk.type;
-  if (chunkType !== 'response.output_item.added' && chunkType !== 'response.output_item.done') {
-    return { events: [], nextPreviewIndex };
-  }
+export function createResponsesProviderBuiltinPreviewStreamState(
+  nextPreviewIndex = 0,
+): ResponsesProviderBuiltinPreviewStreamState {
+  return {
+    nextPreviewIndex,
+    items: new Map(),
+  };
+}
 
-  if (!isJsonObject(chunk.item as JsonValue)) {
-    return { events: [], nextPreviewIndex };
-  }
+const PROVIDER_BUILTIN_LIFECYCLE_CHUNK_TYPES: ReadonlyArray<{
+  chunkType: string;
+  toolName: (typeof RESPONSES_PROVIDER_BUILTIN_TOOL_NAMES)[number];
+  status: string;
+}> = [
+  {
+    chunkType: 'response.web_search_call.in_progress',
+    toolName: 'web_search',
+    status: 'in_progress',
+  },
+  {
+    chunkType: 'response.web_search_call.searching',
+    toolName: 'web_search',
+    status: 'searching',
+  },
+  {
+    chunkType: 'response.code_interpreter_call.in_progress',
+    toolName: 'code_interpreter',
+    status: 'in_progress',
+  },
+  {
+    chunkType: 'response.code_interpreter_call.interpreting',
+    toolName: 'code_interpreter',
+    status: 'interpreting',
+  },
+];
 
-  const item = chunk.item as JsonObject;
-  const itemType = typeof item.type === 'string' ? item.type : '';
-  const toolName = responsesProviderBuiltinToolNameFromOutputItemType(itemType);
-  if (!toolName) {
-    return { events: [], nextPreviewIndex };
+function readProviderBuiltinItemId(chunk: JsonObject): string | undefined {
+  const itemId = readStringField(chunk, 'item_id');
+  if (itemId) {
+    return itemId;
   }
+  if (isJsonObject(chunk.item as JsonValue)) {
+    const item = chunk.item as JsonObject;
+    return readStringField(item, 'id') ?? readStringField(item, 'call_id');
+  }
+  return undefined;
+}
 
+function providerBuiltinOutputItemTypeForToolName(
+  toolName: (typeof RESPONSES_PROVIDER_BUILTIN_TOOL_NAMES)[number],
+): string {
+  switch (toolName) {
+    case 'web_search':
+      return 'web_search_call';
+    case 'web_extractor':
+      return 'web_extractor_call';
+    case 'code_interpreter':
+      return 'code_interpreter_call';
+    default:
+      return toolName;
+  }
+}
+
+function emitProviderBuiltinToolPreview(
+  item: JsonObject,
+  toolName: (typeof RESPONSES_PROVIDER_BUILTIN_TOOL_NAMES)[number],
+  state: ResponsesProviderBuiltinPreviewStreamState,
+): { events: LlmStreamEvent[]; state: ResponsesProviderBuiltinPreviewStreamState } {
   const callId =
-    typeof item.id === 'string' && item.id.trim()
-      ? item.id
-      : typeof item.call_id === 'string' && item.call_id.trim()
-        ? item.call_id
-        : `provider-${toolName}-${nextPreviewIndex}`;
+    readStringField(item, 'id')
+    ?? readStringField(item, 'call_id')
+    ?? `provider-${toolName}-${state.nextPreviewIndex}`;
+
+  const mergedItem: JsonObject = {
+    ...(state.items.get(callId)?.item ?? {}),
+    ...item,
+    id: callId,
+    type: providerBuiltinOutputItemTypeForToolName(toolName),
+  };
+  state.items.set(callId, { toolName, item: mergedItem });
 
   return {
     events: [
@@ -411,9 +471,90 @@ export function accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
         kind: 'streaming-tool-preview',
         toolCallId: callId,
         toolName,
-        argumentsJson: buildResponsesProviderBuiltinToolArgumentsJson(item, toolName),
+        argumentsJson: buildResponsesProviderBuiltinToolArgumentsJson(mergedItem, toolName),
       },
     ],
-    nextPreviewIndex: chunkType === 'response.output_item.added' ? nextPreviewIndex + 1 : nextPreviewIndex,
+    state,
+  };
+}
+
+function coerceProviderBuiltinPreviewStreamState(
+  stateOrIndex: ResponsesProviderBuiltinPreviewStreamState | number,
+): ResponsesProviderBuiltinPreviewStreamState {
+  if (typeof stateOrIndex === 'number') {
+    return createResponsesProviderBuiltinPreviewStreamState(stateOrIndex);
+  }
+  return stateOrIndex;
+}
+
+export function accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
+  rawValue: unknown,
+  stateOrIndex: ResponsesProviderBuiltinPreviewStreamState | number = 0,
+): {
+  events: LlmStreamEvent[];
+  state: ResponsesProviderBuiltinPreviewStreamState;
+  /** @deprecated Use `state.nextPreviewIndex`. */
+  nextPreviewIndex: number;
+} {
+  const state = coerceProviderBuiltinPreviewStreamState(stateOrIndex);
+
+  if (!isJsonObject(rawValue as JsonValue) || typeof (rawValue as JsonObject).type !== 'string') {
+    return { events: [], state, nextPreviewIndex: state.nextPreviewIndex };
+  }
+
+  const chunk = rawValue as JsonObject;
+  const chunkType = chunk.type;
+
+  for (const lifecycle of PROVIDER_BUILTIN_LIFECYCLE_CHUNK_TYPES) {
+    if (chunkType !== lifecycle.chunkType) {
+      continue;
+    }
+    const itemId = readProviderBuiltinItemId(chunk);
+    if (!itemId) {
+      return { events: [], state, nextPreviewIndex: state.nextPreviewIndex };
+    }
+    const existing = state.items.get(itemId);
+    const item: JsonObject = {
+      ...(existing?.item ?? {}),
+      id: itemId,
+      type: providerBuiltinOutputItemTypeForToolName(lifecycle.toolName),
+      status: lifecycle.status,
+    };
+    const emitted = emitProviderBuiltinToolPreview(item, lifecycle.toolName, state);
+    return {
+      events: emitted.events,
+      state: emitted.state,
+      nextPreviewIndex: emitted.state.nextPreviewIndex,
+    };
+  }
+
+  if (chunkType !== 'response.output_item.added' && chunkType !== 'response.output_item.done') {
+    return { events: [], state, nextPreviewIndex: state.nextPreviewIndex };
+  }
+
+  if (!isJsonObject(chunk.item as JsonValue)) {
+    return { events: [], state, nextPreviewIndex: state.nextPreviewIndex };
+  }
+
+  const item = chunk.item as JsonObject;
+  const itemType = typeof item.type === 'string' ? item.type : '';
+  const toolName = responsesProviderBuiltinToolNameFromOutputItemType(itemType);
+  if (!toolName) {
+    return { events: [], state, nextPreviewIndex: state.nextPreviewIndex };
+  }
+
+  const emitted = emitProviderBuiltinToolPreview(item, toolName, state);
+  const finalizedState = {
+    ...emitted.state,
+    nextPreviewIndex:
+      chunkType === 'response.output_item.added'
+        ? emitted.state.nextPreviewIndex + 1
+        : emitted.state.nextPreviewIndex,
+  };
+
+  return {
+    events: emitted.events,
+    state: finalizedState,
+    nextPreviewIndex: finalizedState.nextPreviewIndex,
   };
 }

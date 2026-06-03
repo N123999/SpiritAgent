@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk } from './responses-provider-builtin-tools.js';
+import {
+  accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk,
+  createResponsesProviderBuiltinPreviewStreamState,
+  resolveResponsesProviderBuiltinToolStreamPhaseFromArgumentsJson,
+} from './responses-provider-builtin-tools.js';
 
 test('accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk emits preview for web_search_call', () => {
   const result = accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
@@ -27,7 +31,39 @@ test('accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk emits preview f
   assert.match(result.events[0].argumentsJson, /DeepSeek generation/);
 });
 
+test('accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk emits preview for web_search_call.in_progress', () => {
+  const result = accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
+    {
+      type: 'response.web_search_call.in_progress',
+      item_id: 'ws_1',
+      output_index: 1,
+    },
+    createResponsesProviderBuiltinPreviewStreamState(),
+  );
+
+  assert.equal(result.events.length, 1);
+  if (result.events[0]?.kind !== 'streaming-tool-preview') {
+    return;
+  }
+  assert.equal(result.events[0].toolName, 'web_search');
+  assert.equal(result.events[0].toolCallId, 'ws_1');
+  assert.equal(
+    resolveResponsesProviderBuiltinToolStreamPhaseFromArgumentsJson(result.events[0].argumentsJson),
+    'preview',
+  );
+});
+
 test('accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk preserves call id on output_item.done', () => {
+  let state = createResponsesProviderBuiltinPreviewStreamState(1);
+  const inProgress = accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
+    {
+      type: 'response.web_search_call.in_progress',
+      item_id: 'ws_1',
+    },
+    state,
+  );
+  state = inProgress.state;
+
   const result = accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk(
     {
       type: 'response.output_item.done',
@@ -38,7 +74,7 @@ test('accumulateResponsesProviderBuiltinToolPreviewsFromRawChunk preserves call 
         query: 'DeepSeek generation',
       },
     },
-    1,
+    state,
   );
 
   assert.equal(result.events.length, 1);

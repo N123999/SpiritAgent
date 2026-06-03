@@ -476,7 +476,19 @@ export class DesktopMessageTimeline {
       pending: false,
       tool: normalizedTool,
     });
-    segment.rows.push(row);
+    const insertBeforeActiveText =
+      (normalizedTool.phase === 'preview' || normalizedTool.phase === 'running')
+      && Boolean(activeText?.pending || activeText?.aux?.thinking?.trim());
+    if (insertBeforeActiveText && activeText) {
+      const activeIndex = segment.rows.findIndex((candidate) => candidate.rowId === activeText.rowId);
+      if (activeIndex >= 0) {
+        segment.rows.splice(activeIndex, 0, row);
+      } else {
+        segment.rows.push(row);
+      }
+    } else {
+      segment.rows.push(row);
+    }
     this.logSegmentRows(`upsert-tool-${normalizedTool.phase}`, segment);
     return rowToMessage(row);
   }

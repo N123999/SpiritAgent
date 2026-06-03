@@ -6,7 +6,11 @@ import { DesktopConversationSnapshotView } from '../../dist-electron/src/host/co
 import { DesktopMessageTimeline } from '../../dist-electron/src/host/message-timeline.js';
 import { buildVisibleMessageSnapshots } from '../../dist-electron/src/host/message-snapshots.js';
 import { createDesktopRewindMetadata } from '../../dist-electron/src/host/rewind.js';
-import { DesktopRuntimeEventOrchestrator, splitRuntimeEventsForIncrementalFinishTaskPreview } from '../../dist-electron/src/host/runtime-event-orchestrator.js';
+import {
+  DesktopRuntimeEventOrchestrator,
+  splitRuntimeEventsForIncrementalFinishTaskPreview,
+  splitRuntimeEventsForIncrementalProviderBuiltinToolPreview,
+} from '../../dist-electron/src/host/runtime-event-orchestrator.js';
 
 function createHarness() {
   let messages = [];
@@ -551,6 +555,43 @@ test('web_search provider builtin preview completes when output_item.done report
 
   const completedTool = harness.timeline.toMessages().find((message) => message.tool?.toolCallId === 'ws_1')?.tool;
   assert.equal(completedTool?.phase, 'succeeded');
+});
+
+test('splitRuntimeEventsForIncrementalProviderBuiltinToolPreview defers terminal preview after in-progress', () => {
+  const events = [
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'ws_1',
+      toolName: 'web_search',
+      argumentsJson: JSON.stringify({ status: 'in_progress' }),
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'ws_1',
+      toolName: 'web_search',
+      argumentsJson: JSON.stringify({ status: 'completed' }),
+    },
+    { kind: 'assistant-chunk', text: 'done' },
+  ];
+  const split = splitRuntimeEventsForIncrementalProviderBuiltinToolPreview(events);
+  assert.equal(split.toApply.length, 2);
+  assert.equal(split.deferred.length, 1);
+  assert.equal(split.toApply[0]?.toolCallId, 'ws_1');
+  assert.equal(split.deferred[0]?.argumentsJson, JSON.stringify({ status: 'completed' }));
+});
+
+test('splitRuntimeEventsForIncrementalProviderBuiltinToolPreview defers terminal until preview seen in prior drain', () => {
+  const events = [
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'ws_1',
+      toolName: 'web_search',
+      argumentsJson: JSON.stringify({ status: 'completed' }),
+    },
+  ];
+  const split = splitRuntimeEventsForIncrementalProviderBuiltinToolPreview(events, new Set());
+  assert.equal(split.toApply.length, 0);
+  assert.equal(split.deferred.length, 1);
 });
 
 test('splitRuntimeEventsForIncrementalFinishTaskPreview applies one finish_task preview per batch', () => {
