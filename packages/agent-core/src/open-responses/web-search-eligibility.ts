@@ -3,7 +3,7 @@ import {
   isOpenResponsesTransportConfig,
   type LlmTransportConfig,
 } from '../provider-config.js';
-import { buildAlibabaNativeToolsPromptSection, shouldUseAlibabaNativeTools } from './alibaba-native-tools.js';
+import { shouldUseAlibabaNativeTools } from './alibaba-native-tools.js';
 import {
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
@@ -57,10 +57,13 @@ function resolveOpenResponsesWebSearchMode(
   return undefined;
 }
 
-/** Model-visible guidance when provider-native web search is available. */
-export function buildProviderWebSearchPromptSection(config?: LlmTransportConfig): string {
-  if (config !== undefined && shouldUseAlibabaNativeTools(config)) {
-    return buildAlibabaNativeToolsPromptSection();
+/** Model-visible guidance when OpenAI/xAI SDK web search is available (not injected for Alibaba). */
+export function buildProviderWebSearchPromptSection(
+  config: LlmTransportConfig,
+): string | undefined {
+  const mode = resolveProviderWebSearchMode(config);
+  if (mode !== 'openai-sdk-web-search' && mode !== 'xai-sdk-web-search') {
+    return undefined;
   }
 
   return [

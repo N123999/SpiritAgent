@@ -12,7 +12,6 @@ import {
   extractLastLlmAssistantText,
   rebuildLlmToolAgentStateAfterCompaction,
   shouldUseApplyPatchFileTools,
-  shouldUseProviderWebSearch,
   startLlmToolAgentState,
   truncateLlmHistoryForCompaction,
   truncateLlmToolAgentStateForContextRetry,
@@ -151,7 +150,5 @@ function resolveApplyPatchFileToolsPromptSection(
 function resolveProviderWebSearchPromptSection(
   config: LlmTransportConfig,
 ): string | undefined {
-  return shouldUseProviderWebSearch(config)
-    ? buildProviderWebSearchPromptSection(config)
-    : undefined;
+  return buildProviderWebSearchPromptSection(config);
 }

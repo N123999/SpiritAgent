@@ -38,10 +38,7 @@ import {
   buildApplyPatchFileToolsPromptSection,
   shouldUseApplyPatchFileTools,
 } from './open-responses/apply-patch-eligibility.js';
-import {
-  buildProviderWebSearchPromptSection,
-  shouldUseProviderWebSearch,
-} from './open-responses/web-search-eligibility.js';
+import { buildProviderWebSearchPromptSection } from './open-responses/web-search-eligibility.js';
 import type { LlmTransportConfig } from './provider-config.js';
 import { createLlmTransport } from './transport-factory.js';
 import type {
@@ -810,9 +807,7 @@ function applyPatchFileToolsPromptSectionForConfig(
 function providerWebSearchPromptSectionForConfig(
   config: LlmTransportConfig,
 ): string | undefined {
-  return shouldUseProviderWebSearch(config)
-    ? buildProviderWebSearchPromptSection(config)
-    : undefined;
+  return buildProviderWebSearchPromptSection(config);
 }
 
 async function reloadHostMetadataFromInternal(

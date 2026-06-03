@@ -46,7 +46,6 @@ export {
 export {
   ALIBABA_RESPONSES_BUILTIN_TOOL_TYPES,
   buildAlibabaChatCompletionsExtraBody,
-  buildAlibabaNativeToolsPromptSection,
   buildAlibabaResponsesBuiltinTools,
   mergeAlibabaResponsesBuiltinTools,
   shouldUseAlibabaChatCompletionsNativeTools,

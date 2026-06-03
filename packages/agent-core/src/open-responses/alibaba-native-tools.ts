@@ -86,16 +86,6 @@ export function mergeAlibabaResponsesBuiltinTools(
   return merged;
 }
 
-export function buildAlibabaNativeToolsPromptSection(): string {
-  return [
-    'Provider-native capabilities on Alibaba (Bailian):',
-    'On Chat Completions, web search and code interpreter run via API-side flags (not host function tools). Do not call undeclared functions such as web_search.',
-    'On Open Responses, use the declared built-in tools (web_search, code_interpreter) when you need current public information or computation.',
-    'To fetch readable content from a specific URL, use the host web_fetch tool instead of a provider web-extraction builtin.',
-    'Prefer these provider capabilities over guessing facts that may have changed after your knowledge cutoff.',
-  ].join('\n');
-}
-
 function readResponsesBuiltinToolType(tool: JsonValue): string | undefined {
   if (typeof tool !== 'object' || tool === null || Array.isArray(tool)) {
     return undefined;
