@@ -141,6 +141,44 @@ export function tryExtractPartialJsonStringValue(
   return result.length > 0 ? result : undefined;
 }
 
+const PARTIAL_PLAN_NAME_PATTERN = /"name"\s*:\s*"((?:\\.|[^"\\])*)"/u;
+
+function decodePartialJsonStringMatch(match: string): string {
+  try {
+    return JSON.parse(`"${match}"`) as string;
+  } catch {
+    return match;
+  }
+}
+
+/** Extract create_plan `name` from complete or in-flight argument JSON (renderer-safe). */
+export function tryExtractPartialPlanName(argumentsJson: string): string | undefined {
+  const trimmed = argumentsJson.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      const name = (parsed as Record<string, unknown>).name;
+      if (typeof name === 'string' && name.trim()) {
+        return name.trim();
+      }
+    }
+  } catch {
+    // Streaming JSON may be incomplete.
+  }
+
+  const match = trimmed.match(PARTIAL_PLAN_NAME_PATTERN);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  const decoded = decodePartialJsonStringMatch(match[1]).trim();
+  return decoded || undefined;
+}
+
 function createContentLineDelta(content: string): EditFileLineDelta | undefined {
   const added = splitLines(content).length;
   if (added === 0) {

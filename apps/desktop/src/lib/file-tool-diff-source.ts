@@ -1,7 +1,6 @@
-import { tryExtractPartialPlanName } from '@spirit-agent/agent-core';
-
 import {
   tryExtractPartialJsonStringValue,
+  tryExtractPartialPlanName,
 } from './edit-file-line-delta.js';
 import { monacoLanguageId } from './monaco-language.js';
 import type { ToolBlockSnapshot } from '../types.js';

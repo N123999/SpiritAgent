@@ -14,11 +14,17 @@ import {
   toolLineDeltaFromArgumentsJson,
   toolLineDeltaFromRequest,
   tryExtractPartialJsonStringValue,
+  tryExtractPartialPlanName,
 } from '../../src/lib/edit-file-line-delta.ts';
 
 test('lineChangeCounts uses line-level LCS', () => {
   assert.deepEqual(lineChangeCounts('a\nb', 'a\nc\nd'), { removed: 1, added: 2 });
   assert.deepEqual(lineChangeCounts('same', 'same'), { removed: 0, added: 0 });
+});
+
+test('tryExtractPartialPlanName reads in-flight plan name', () => {
+  const partial = '{"name":"my-plan","content":"# ';
+  assert.equal(tryExtractPartialPlanName(partial), 'my-plan');
 });
 
 test('tryExtractPartialJsonStringValue reads in-flight old_text', () => {
