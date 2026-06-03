@@ -15,6 +15,7 @@ import {
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
+import { buildAlibabaResponsesBuiltinTools, shouldUseAlibabaResponsesNativeTools } from './alibaba-native-tools.js';
 import {
   buildWebSearchResponsesTraceToolEntry,
   shouldUseProviderWebSearch,
@@ -184,7 +185,13 @@ export function buildResponsesTraceTools(
     }
   }
   if (shouldUseProviderWebSearch(config)) {
-    traceTools.push(cloneJsonValue(buildWebSearchResponsesTraceToolEntry() as JsonValue));
+    if (shouldUseAlibabaResponsesNativeTools(config)) {
+      for (const tool of buildAlibabaResponsesBuiltinTools()) {
+        traceTools.push(cloneJsonValue(tool as JsonValue));
+      }
+    } else {
+      traceTools.push(cloneJsonValue(buildWebSearchResponsesTraceToolEntry() as JsonValue));
+    }
   }
   return traceTools;
 }
