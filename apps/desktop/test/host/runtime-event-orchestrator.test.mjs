@@ -10,6 +10,7 @@ import {
   DesktopRuntimeEventOrchestrator,
   splitRuntimeEventsForIncrementalFinishTaskPreview,
   splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview,
+  runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate,
 } from '../../dist-electron/src/host/runtime-event-orchestrator.js';
 
 function createHarness() {
@@ -592,6 +593,23 @@ test('splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview defers termina
   const split = splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview(events, new Set());
   assert.equal(split.toApply.length, 0);
   assert.equal(split.deferred.length, 1);
+});
+
+test('splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview applies deferred terminal after preview seen', () => {
+  const events = [
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'ws_1',
+      toolName: 'web_search',
+      argumentsJson: JSON.stringify({ status: 'completed', _spiritUi: { sourceCount: 3 } }),
+    },
+  ];
+  const split = splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview(events, new Set(['ws_1']));
+  assert.equal(split.toApply.length, 1);
+  assert.equal(split.deferred.length, 0);
+  assert.ok(
+    runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate(split.toApply),
+  );
 });
 
 test('splitRuntimeEventsForIncrementalFinishTaskPreview applies one finish_task preview per batch', () => {

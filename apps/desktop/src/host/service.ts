@@ -285,6 +285,7 @@ import {
   DesktopRuntimeEventOrchestrator,
   runtimeEventsIncludeAppliedFinishTaskPreview,
   runtimeEventsIncludeAppliedResponsesBuiltInToolPreview,
+  runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate,
   splitRuntimeEventsForIncrementalFinishTaskPreview,
   splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview,
 } from './runtime-event-orchestrator.js';
@@ -2096,7 +2097,7 @@ class DesktopHostService {
     }
     if (
       runtimeEventsIncludeAppliedFinishTaskPreview(splitBuiltin.toApply)
-      || runtimeEventsIncludeAppliedResponsesBuiltInToolPreview(splitBuiltin.toApply)
+      || runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate(splitBuiltin.toApply)
     ) {
       bundle.conversationRevision += 1;
       this.emitLiveSnapshotUpdate();
@@ -2113,7 +2114,14 @@ class DesktopHostService {
       if (!options.light) {
         await bundle.runtime.poll();
         this.applyDrainedRuntimeHostEvents(bundle, bundle.runtime.drainEvents());
+      } else {
+        const drained = bundle.runtime.drainEvents();
+        if (drained.length > 0 || bundle.deferredRuntimeHostEvents.length > 0) {
+          this.applyDrainedRuntimeHostEvents(bundle, drained);
+        }
       }
+    } else if (options.light && bundle.deferredRuntimeHostEvents.length > 0) {
+      this.applyDrainedRuntimeHostEvents(bundle, []);
     }
     if (options.light) {
       return;

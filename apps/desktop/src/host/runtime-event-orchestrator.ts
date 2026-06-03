@@ -920,6 +920,15 @@ export function runtimeEventsIncludeAppliedResponsesBuiltInToolPreview(
   );
 }
 
+export function runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate(
+  events: RuntimeEvent<DesktopToolRequest>[],
+): boolean {
+  return events.some(
+    (event) =>
+      event.kind === 'streaming-tool-preview' && isResponsesBuiltInToolName(event.toolName),
+  );
+}
+
 export function splitRuntimeEventsForIncrementalFinishTaskPreview(
   events: RuntimeEvent<DesktopToolRequest>[],
 ): {
