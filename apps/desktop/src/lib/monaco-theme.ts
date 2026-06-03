@@ -1,10 +1,8 @@
 import * as monaco from 'monaco-editor';
 
 export const SPIRIT_MONACO_DARK = 'spirit-desktop-dark';
-export const SPIRIT_MONACO_TOOL_CALL_DIFF = 'spirit-desktop-tool-call-diff';
 
 const FALLBACK_DARK_BG = '#252525';
-const FALLBACK_LIGHT_BG = '#ffffff';
 const MONACO_DARK_EDITOR_SURFACE = '#151515';
 const FALLBACK_DARK_FG = '#fafafa';
 const FALLBACK_MUTED_FG = '#a0a0a0';
@@ -77,70 +75,13 @@ function resolveCssColor(expression: string, fallback: string): string {
   return normalizeColorForMonaco(resolved, fallback);
 }
 
-/** 工具卡 Diff：低饱和、低透明度，接近 Cursor / GitHub 的淡色块风格。 */
-function resolveDiffEditorColors(subtle: boolean, isDark: boolean): {
-  insertedLine: string;
-  removedLine: string;
-  insertedText: string;
-  removedText: string;
-} {
-  if (!subtle) {
-    return {
-      insertedLine: resolveCssBackground(
-        'color-mix(in oklab, #22c55e 22%, transparent)',
-        'rgba(34, 197, 94, 0.18)',
-      ),
-      removedLine: resolveCssBackground(
-        'color-mix(in oklab, #ef4444 22%, transparent)',
-        'rgba(239, 68, 68, 0.18)',
-      ),
-      insertedText: resolveCssBackground(
-        'color-mix(in oklab, #22c55e 35%, transparent)',
-        'rgba(34, 197, 94, 0.28)',
-      ),
-      removedText: resolveCssBackground(
-        'color-mix(in oklab, #ef4444 35%, transparent)',
-        'rgba(239, 68, 68, 0.28)',
-      ),
-    };
-  }
-
-  const lineMix = isDark ? 7 : 9;
-  const textMix = isDark ? 11 : 13;
-  const add = '#6ee7b7';
-  const remove = '#fca5a5';
-
-  return {
-    insertedLine: resolveCssBackground(
-      `color-mix(in oklab, ${add} ${lineMix}%, transparent)`,
-      isDark ? 'rgba(110, 231, 183, 0.055)' : 'rgba(110, 231, 183, 0.09)',
-    ),
-    removedLine: resolveCssBackground(
-      `color-mix(in oklab, ${remove} ${lineMix}%, transparent)`,
-      isDark ? 'rgba(252, 165, 165, 0.055)' : 'rgba(252, 165, 165, 0.09)',
-    ),
-    insertedText: resolveCssBackground(
-      `color-mix(in oklab, ${add} ${textMix}%, transparent)`,
-      isDark ? 'rgba(110, 231, 183, 0.085)' : 'rgba(110, 231, 183, 0.12)',
-    ),
-    removedText: resolveCssBackground(
-      `color-mix(in oklab, ${remove} ${textMix}%, transparent)`,
-      isDark ? 'rgba(252, 165, 165, 0.085)' : 'rgba(252, 165, 165, 0.12)',
-    ),
-  };
-}
-
-function defineSpiritDesktopMonacoTheme(
-  themeId: string,
-  base: 'vs' | 'vs-dark',
-  editorSurface: string,
-  options?: { subtleDiff?: boolean },
-): void {
-  const isDark = base === 'vs-dark';
-  const fg = resolveCssColor('var(--foreground)', isDark ? FALLBACK_DARK_FG : '#0a0a0a');
-  const mutedFg = resolveCssColor('var(--muted-foreground)', isDark ? FALLBACK_MUTED_FG : '#737373');
+/** 深色下 Workspace 编辑区固定深灰底，与侧栏分界。 */
+export function registerSpiritDesktopDarkMonacoTheme(): void {
+  const editorSurface = MONACO_DARK_EDITOR_SURFACE;
+  const fg = resolveCssColor('var(--foreground)', FALLBACK_DARK_FG);
+  const mutedFg = resolveCssColor('var(--muted-foreground)', FALLBACK_MUTED_FG);
   const lineHighlight = resolveCssBackground(
-    `color-mix(in oklab, var(--foreground) 8%, ${editorSurface})`,
+    `color-mix(in oklab, var(--foreground) 8%, ${MONACO_DARK_EDITOR_SURFACE})`,
     editorSurface,
   );
   const selection = resolveCssBackground(
@@ -153,11 +94,10 @@ function defineSpiritDesktopMonacoTheme(
   );
   const widgetBg = resolveCssBackground('var(--popover)', editorSurface);
   const border = resolveCssBackground('var(--border)', 'rgba(128, 128, 128, 0.2)');
-  const diffColors = resolveDiffEditorColors(options?.subtleDiff ?? false, isDark);
 
   try {
-    monaco.editor.defineTheme(themeId, {
-      base,
+    monaco.editor.defineTheme(SPIRIT_MONACO_DARK, {
+      base: 'vs-dark',
       inherit: true,
       rules: [],
       colors: {
@@ -172,10 +112,6 @@ function defineSpiritDesktopMonacoTheme(
         'editorCursor.foreground': fg,
         'editorWidget.background': widgetBg,
         'editorWidget.border': border,
-        'diffEditor.insertedLineBackground': diffColors.insertedLine,
-        'diffEditor.removedLineBackground': diffColors.removedLine,
-        'diffEditor.insertedTextBackground': diffColors.insertedText,
-        'diffEditor.removedTextBackground': diffColors.removedText,
         'scrollbarSlider.background': resolveCssBackground(
           'color-mix(in oklab, var(--foreground) 18%, transparent)',
           'rgba(121, 121, 121, 0.4)',
@@ -191,33 +127,13 @@ function defineSpiritDesktopMonacoTheme(
       },
     });
   } catch {
-    monaco.editor.defineTheme(themeId, {
-      base,
+    monaco.editor.defineTheme(SPIRIT_MONACO_DARK, {
+      base: 'vs-dark',
       inherit: true,
       rules: [],
       colors: {},
     });
   }
-}
-
-/** 深色下 Workspace 编辑区固定深灰底，与侧栏分界。 */
-export function registerSpiritDesktopDarkMonacoTheme(): void {
-  defineSpiritDesktopMonacoTheme(SPIRIT_MONACO_DARK, 'vs-dark', MONACO_DARK_EDITOR_SURFACE);
-}
-
-/** 工具卡内联 Diff：画布与 `var(--background)` 一致。 */
-export function registerSpiritDesktopToolCallDiffMonacoTheme(): void {
-  const isDark = document.documentElement.classList.contains('dark');
-  const appSurface = resolveCssBackground(
-    'var(--background)',
-    isDark ? FALLBACK_DARK_BG : FALLBACK_LIGHT_BG,
-  );
-  defineSpiritDesktopMonacoTheme(
-    SPIRIT_MONACO_TOOL_CALL_DIFF,
-    isDark ? 'vs-dark' : 'vs',
-    appSurface,
-    { subtleDiff: true },
-  );
 }
 
 export function syncMonacoThemeFromDocument(): void {
@@ -228,9 +144,4 @@ export function syncMonacoThemeFromDocument(): void {
   }
   registerSpiritDesktopDarkMonacoTheme();
   monaco.editor.setTheme(SPIRIT_MONACO_DARK);
-}
-
-export function syncMonacoThemeForToolCallDiff(): void {
-  registerSpiritDesktopToolCallDiffMonacoTheme();
-  monaco.editor.setTheme(SPIRIT_MONACO_TOOL_CALL_DIFF);
 }

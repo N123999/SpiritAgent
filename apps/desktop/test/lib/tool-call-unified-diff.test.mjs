@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { parseDiff } from 'react-diff-view';
+
 import { buildToolCallUnifiedDiff } from '../../src/lib/tool-call-unified-diff.ts';
 import { refractorLanguageForPath } from '../../src/lib/refractor-tool-diff.ts';
 
@@ -23,6 +25,13 @@ test('buildToolCallUnifiedDiff shows edit replacements', () => {
   const patch = buildToolCallUnifiedDiff('m.ts', 'a\nb\n', 'a\nc\n');
   assert.match(patch, /^-b$/m);
   assert.match(patch, /^\+c$/m);
+});
+
+test('buildToolCallUnifiedDiff parses with react-diff-view', () => {
+  const patch = buildToolCallUnifiedDiff('a.ts', 'old\n', 'new\n');
+  const file = parseDiff(patch)[0];
+  assert.equal(file.type, 'modify');
+  assert.ok(file.hunks.length > 0);
 });
 
 test('refractorLanguageForPath maps aliases and plaintext', () => {

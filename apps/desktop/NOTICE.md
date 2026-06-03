@@ -6,9 +6,9 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- MIT: 36 package(s)
+- MIT: 39 package(s)
 - Apache-2.0: 3 package(s)
-- BSD-3-Clause: 1 package(s)
+- BSD-3-Clause: 2 package(s)
 - ISC: 1 package(s)
 - OFL-1.1: 1 package(s)
 
@@ -24,6 +24,8 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/radix-ui/primitives
 - **@tailwindcss/vite** 4.2.4 — MIT
   - https://github.com/tailwindlabs/tailwindcss
+- **@types/diff** 7.0.2 — MIT
+  - https://github.com/DefinitelyTyped/DefinitelyTyped
 - **@types/node** 25.6.0 — MIT
   - https://github.com/DefinitelyTyped/DefinitelyTyped
 - **@types/react** 19.2.14 — MIT
@@ -52,6 +54,8 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/open-cli-tools/concurrently
 - **cross-env** 10.1.0 — MIT
   - https://github.com/kentcdodds/cross-env
+- **diff** 7.0.0 — BSD-3-Clause
+  - https://github.com/kpdecker/jsdiff
 - **electron** 38.8.6 — MIT
   - https://github.com/electron/electron
 - **electron-builder** 26.12.1 — MIT
@@ -74,12 +78,16 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/radix-ui/primitives
 - **react** 19.2.5 — MIT
   - https://github.com/facebook/react
+- **react-diff-view** 3.3.3 — MIT
+  - https://github.com/otakustay/react-diff-view
 - **react-dom** 19.2.5 — MIT
   - https://github.com/facebook/react
 - **react-i18next** 17.0.8 — MIT
   - https://github.com/i18next/react-i18next
 - **react-markdown** 10.1.0 — MIT
   - https://github.com/remarkjs/react-markdown
+- **refractor** 3.6.0 — MIT
+  - https://github.com/wooorm/refractor
 - **remark-gfm** 4.0.1 — MIT
   - https://github.com/remarkjs/remark-gfm
 - **shadcn** 4.4.0 — MIT
@@ -564,6 +572,43 @@ END OF TERMS AND CONDITIONS
 ### BSD-3-Clause
 
 **Used by:**
+- diff 7.0.0
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### BSD-3-Clause
+
+**Used by:**
 - license-checker-rseidelsohn 4.4.2
 
 ```
@@ -764,6 +809,7 @@ SOFTWARE.
 ### MIT
 
 **Used by:**
+- @types/diff 7.0.2
 - @types/node 25.6.0
 - @types/react 19.2.14
 - @types/react-dom 19.2.3
@@ -1348,6 +1394,35 @@ SOFTWARE.
 ### MIT
 
 **Used by:**
+- react-diff-view 3.3.3
+
+```
+MIT License
+
+Copyright (c) 2017 Gray Zhang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### MIT
+
+**Used by:**
 - react-i18next 17.0.8
 
 ```
@@ -1401,6 +1476,36 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+### MIT
+
+**Used by:**
+- refractor 3.6.0
+
+```
+(The MIT License)
+
+Copyright (c) 2017 Titus Wormer <tituswormer@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### MIT
