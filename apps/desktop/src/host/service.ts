@@ -673,7 +673,7 @@ class DesktopHostService {
         ? request.message.trim()
         : await this.generateCommitMessageFromModel();
 
-      await commitWorkspaceChanges(state.workspaceRoot, commitMessage, request.mode);
+      await commitWorkspaceChanges(state.workspaceRoot, commitMessage);
       await this.refreshGitState();
       return this.buildSnapshot();
     });

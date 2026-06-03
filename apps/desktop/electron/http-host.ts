@@ -718,8 +718,6 @@ async function handleApiRequest({
       200,
       await runHostCommand('commitChanges', {
         request: {
-          mode:
-            jsonBody?.mode === 'commit-and-push' ? 'commit-and-push' : 'commit',
           ...(typeof jsonBody?.message === 'string' ? { message: jsonBody.message } : {}),
         },
       }),

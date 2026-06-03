@@ -21,7 +21,6 @@ import {
 } from '@spirit-agent/host-internal';
 
 import type {
-  DesktopCommitMode,
   DesktopGitSnapshot,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
@@ -218,7 +217,6 @@ export async function buildWorkspaceGitCommitMessageContext(
 export async function commitWorkspaceChanges(
   workspaceRoot: string,
   message: string,
-  mode: DesktopCommitMode,
 ): Promise<void> {
   const lines = message
     .split(/\r?\n/)
@@ -234,8 +232,4 @@ export async function commitWorkspaceChanges(
     'commit',
     ...lines.flatMap((line) => ['-m', line]),
   ]);
-
-  if (mode === 'commit-and-push') {
-    await runGit(workspaceRoot, ['push']);
-  }
 }

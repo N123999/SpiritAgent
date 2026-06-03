@@ -11,7 +11,6 @@ import type { WorkspaceEditorViewMode } from "@/lib/workspace-editor-navigation"
 import { cn } from "@/lib/utils";
 import type {
   CommitChangesRequest,
-  DesktopCommitMode,
   DesktopGitSnapshot,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
@@ -78,7 +77,6 @@ export function WorkspaceGitTab({
   const [mergeButtonFlashMerged, setMergeButtonFlashMerged] = useState(false);
   const mergeFlashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [commitMessageDraft, setCommitMessageDraft] = useState("");
-  const [commitMode, setCommitMode] = useState<DesktopCommitMode>("commit");
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [changesPaneHeightPx, setChangesPaneHeightPx] = useState<number | null>(null);
   const [isResizingSplit, setIsResizingSplit] = useState(false);
@@ -163,6 +161,11 @@ export function WorkspaceGitTab({
     commitBusy;
   const needsPush = gitSnapshot?.needsPush === true;
   const hasChanges = gitSnapshot?.hasChanges === true;
+  const pushDisabledTitle = !needsPush
+    ? gitSnapshot?.pushRemote
+      ? t("workspace.git.pushDisabledUpToDate")
+      : t("workspace.git.pushDisabledNoRemote")
+    : undefined;
 
   const loadWorkingTree = useCallback(async () => {
     setLoadingTree(true);
@@ -258,14 +261,12 @@ export function WorkspaceGitTab({
 
   const submitCommitDialog = () => {
     void commitChanges({
-      mode: commitMode,
       ...(commitMessageDraft.trim() ? { message: commitMessageDraft.trim() } : {}),
     }).then((ok) => {
       if (!ok) {
         return;
       }
       setCommitDialogOpen(false);
-      setCommitMode("commit");
       setCommitMessageDraft("");
       setLocalRefreshNonce((value) => value + 1);
     });
@@ -314,6 +315,7 @@ export function WorkspaceGitTab({
         canMerge={canOpenMergeDialog}
         gitBusy={commitBusy}
         mergeFlashMerged={mergeButtonFlashMerged}
+        pushDisabledTitle={pushDisabledTitle}
         onCommit={() => setCommitDialogOpen(true)}
         onPush={handlePush}
         onMerge={() => setMergeDialogOpen(true)}
@@ -357,15 +359,12 @@ export function WorkspaceGitTab({
         onOpenChange={(open) => {
           setCommitDialogOpen(open);
           if (!open) {
-            setCommitMode("commit");
             setCommitMessageDraft("");
           }
         }}
         gitSnapshot={gitSnapshot}
         commitMessageDraft={commitMessageDraft}
         onCommitMessageDraftChange={setCommitMessageDraft}
-        commitMode={commitMode}
-        onCommitModeChange={setCommitMode}
         commitBusy={commitBusy}
         commitActionDisabled={commitActionDisabled}
         runtimeError={commitDialogOpen ? runtimeError : ""}

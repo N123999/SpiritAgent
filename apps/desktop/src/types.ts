@@ -16,11 +16,8 @@ export interface RememberWorkspaceRequest {
   workspaceRoot: string;
 }
 
-export type DesktopCommitMode = 'commit' | 'commit-and-push';
-
 export interface CommitChangesRequest {
   message?: string;
-  mode: DesktopCommitMode;
 }
 
 export interface CheckoutGitBranchRequest {
