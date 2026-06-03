@@ -30,7 +30,7 @@ function AnimatedCount({
   return (
     <span
       className={cn(
-        "relative inline-flex h-[1.125em] min-w-[1.25ch] overflow-hidden tabular-nums leading-none",
+        "relative inline-flex h-[1.125em] min-w-[1.25ch] overflow-hidden font-sans leading-none",
         className,
       )}
       aria-hidden
@@ -55,7 +55,7 @@ export function EditFileLineDeltaBadge({ delta }: { delta: EditFileLineDelta }) 
   }
 
   return (
-    <span className="shrink-0 text-xs font-medium leading-none tabular-nums">
+    <span className="shrink-0 font-sans text-xs font-medium leading-none">
       {delta.added > 0 ? (
         <span className="inline-flex items-center text-emerald-600 dark:text-emerald-400">
           <span aria-hidden>+</span>
