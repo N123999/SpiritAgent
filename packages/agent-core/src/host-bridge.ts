@@ -1475,6 +1475,8 @@ async function createRuntime(
         undefined,
         todosContextText,
         basicInfo,
+        applyPatchPromptSection,
+        providerWebSearchPromptSection,
       ),
     generateImage: (request) =>
       llmTransport.generateImage(config, request, async (saveRequest: GeneratedImageSaveRequest) => {

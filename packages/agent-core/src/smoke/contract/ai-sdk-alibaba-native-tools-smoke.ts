@@ -161,6 +161,11 @@ async function runAlibabaResponsesSmoke(): Promise<void> {
   if (assistantText !== 'ALIBABA_RESPONSES_OK') {
     throw new Error(`alibaba responses smoke 未拿到预期文本: ${assistantText ?? '<empty>'}`);
   }
+
+  const trace = round.result.requestTrace[0];
+  if (!isJsonObject(trace) || trace.kind !== 'alibaba_open_responses') {
+    throw new Error('alibaba responses smoke 未写入 alibaba_open_responses trace。');
+  }
 }
 
 function isJsonObject(value: JsonValue | undefined): value is Record<string, JsonValue> {

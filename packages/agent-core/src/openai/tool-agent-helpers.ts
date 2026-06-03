@@ -238,6 +238,8 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   dreamsContextText?: string,
   todosContextText?: string,
   basicInfo?: OpenAiToolAgentBasicInfo,
+  applyPatchFileToolsPromptSection?: string,
+  providerWebSearchPromptSection?: string,
 ): OpenAiToolAgentState {
   const preservedSpiritSystemMessage = findSpiritSystemMessageContent(retryState.messages);
   const rebuilt = startOpenAiToolAgentState(
@@ -253,6 +255,8 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
     preservedSpiritSystemMessage === undefined ? dreamsContextText : undefined,
     preservedSpiritSystemMessage === undefined ? todosContextText : undefined,
     basicInfo,
+    applyPatchFileToolsPromptSection,
+    providerWebSearchPromptSection,
   );
   if (preservedSpiritSystemMessage !== undefined) {
     const preservedDreams = hasDreamsSystemMessage(preservedSpiritSystemMessage);
