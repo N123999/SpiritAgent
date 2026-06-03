@@ -3,6 +3,7 @@ import {
   isOpenResponsesTransportConfig,
   type LlmTransportConfig,
 } from '../provider-config.js';
+import { buildAlibabaNativeToolsPromptSection, shouldUseAlibabaNativeTools } from './alibaba-native-tools.js';
 import {
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
@@ -14,10 +15,13 @@ import {
  */
 export const XAI_WEB_SEARCH_WITH_LOCAL_TOOLS_ENABLED = true;
 
-export type ProviderWebSearchMode = 'openai-sdk-web-search' | 'xai-sdk-web-search';
+export type ProviderWebSearchMode =
+  | 'openai-sdk-web-search'
+  | 'xai-sdk-web-search'
+  | 'alibaba-responses-native-tools';
 
 export function shouldUseProviderWebSearch(config: LlmTransportConfig): boolean {
-  return resolveProviderWebSearchMode(config) !== undefined;
+  return resolveProviderWebSearchMode(config) !== undefined || shouldUseAlibabaNativeTools(config);
 }
 
 export function resolveProviderWebSearchMode(
@@ -46,11 +50,19 @@ function resolveOpenResponsesWebSearchMode(
     return 'xai-sdk-web-search';
   }
 
+  if (config.llmVendor === 'alibaba') {
+    return 'alibaba-responses-native-tools';
+  }
+
   return undefined;
 }
 
 /** Model-visible guidance when provider-native web search is available. */
-export function buildProviderWebSearchPromptSection(): string {
+export function buildProviderWebSearchPromptSection(config?: LlmTransportConfig): string {
+  if (config !== undefined && shouldUseAlibabaNativeTools(config)) {
+    return buildAlibabaNativeToolsPromptSection();
+  }
+
   return [
     'Web search on this transport:',
     'Use the provider web search capability when you need current public information.',

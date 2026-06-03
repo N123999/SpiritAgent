@@ -67,6 +67,27 @@ test('resolveProviderWebSearchMode excludes vercel gateway', () => {
   );
 });
 
+test('resolveProviderWebSearchMode alibaba open-responses', () => {
+  assert.equal(
+    resolveProviderWebSearchMode({
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'qwen3-max',
+      llmVendor: 'alibaba',
+    }),
+    'alibaba-responses-native-tools',
+  );
+  assert.equal(
+    shouldUseProviderWebSearch({
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'qwen3-max',
+      llmVendor: 'alibaba',
+    }),
+    true,
+  );
+});
+
 test('resolveProviderWebSearchMode excludes openai-compatible openai vendor', () => {
   assert.equal(
     resolveProviderWebSearchMode({

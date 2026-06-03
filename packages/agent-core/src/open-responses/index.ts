@@ -44,6 +44,17 @@ export {
   shouldUseOpenAiApplyPatchTool,
 } from './apply-patch-eligibility.js';
 export {
+  ALIBABA_RESPONSES_BUILTIN_TOOL_TYPES,
+  buildAlibabaChatCompletionsExtraBody,
+  buildAlibabaNativeToolsPromptSection,
+  buildAlibabaResponsesBuiltinTools,
+  mergeAlibabaResponsesBuiltinTools,
+  shouldUseAlibabaChatCompletionsNativeTools,
+  shouldUseAlibabaNativeTools,
+  shouldUseAlibabaResponsesNativeTools,
+  type AlibabaResponsesBuiltinToolType,
+} from './alibaba-native-tools.js';
+export {
   buildProviderWebSearchPromptSection,
   buildWebSearchResponsesTraceToolEntry,
   resolveProviderWebSearchMode,

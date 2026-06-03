@@ -811,7 +811,7 @@ function providerWebSearchPromptSectionForConfig(
   config: LlmTransportConfig,
 ): string | undefined {
   return shouldUseProviderWebSearch(config)
-    ? buildProviderWebSearchPromptSection()
+    ? buildProviderWebSearchPromptSection(config)
     : undefined;
 }
 
