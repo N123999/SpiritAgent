@@ -81,6 +81,11 @@ import {
 } from './openai-multimodal-messages.js';
 import { normalizeMoonshotApiBase } from './moonshot-files.js';
 import {
+  mergeMoonshotWebSearchIntoChatCompletionBody,
+  mergeMoonshotWebSearchToolsForTrace,
+  moonshotThinkingDisabledForWebSearch,
+} from './moonshot-web-search.js';
+import {
   buildJsonSchemaCompletionMessages,
   stringifyJsonSchemaCompletionOutput,
   type OpenAiJsonSchemaCompletionRequest,
@@ -572,7 +577,8 @@ function buildAiSdkRequestTrace(
   tools: readonly unknown[],
   stream = false,
 ): JsonValue[] {
-  const requestTrace = buildOpenAiRequestTrace(config, stepIndex, messages, tools, stream);
+  const tracedTools = mergeMoonshotWebSearchToolsForTrace(config, tools);
+  const requestTrace = buildOpenAiRequestTrace(config, stepIndex, messages, tracedTools, stream);
   if (
     !isDeepSeekOfficialAiSdkProvider(config) &&
     !isXaiOfficialAiSdkProvider(config) &&
@@ -700,11 +706,14 @@ function createAiSdkMoonshotProvider(config: OpenAiTransportConfig) {
     const moonshotMessages = requestUrl.includes('/chat/completions')
       ? takeMoonshotChatCompletionMessages()
       : undefined;
+    const mergedBody = requestUrl.includes('/chat/completions')
+      ? mergeMoonshotWebSearchIntoChatCompletionBody(config, body)
+      : body;
 
     return fetch(input, {
       ...init,
       body: JSON.stringify({
-        ...body,
+        ...mergedBody,
         ...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
         ...(moonshotMessages ? { messages: moonshotMessages } : {}),
       }),
@@ -791,9 +800,11 @@ function buildAiSdkProviderOptions(
   }
 
   if (isMoonshotOfficialAiSdkProvider(config)) {
+    const disableThinking =
+      config.vendorExtendedThinking === false || moonshotThinkingDisabledForWebSearch(config);
     const moonshotaiOptions = {
       thinking: {
-        type: config.vendorExtendedThinking === false ? 'disabled' : 'enabled',
+        type: disableThinking ? 'disabled' : 'enabled',
       },
     } satisfies MoonshotAILanguageModelOptions;
 
