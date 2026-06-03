@@ -13,7 +13,16 @@ export type ToolCallSummaryParts = {
 
 export { toolCallPhaseShowsShimmer } from './tool-call-shimmer.js';
 
+const RESPONSES_BUILT_IN_TOOL_NAMES = new Set([
+  'web_search',
+  'code_interpreter',
+]);
+
 const LEGACY_READ_FILE_HEADLINE = /^查看\s+(.+)$/u;
+
+export function isResponsesBuiltInToolCard(toolName: string): boolean {
+  return RESPONSES_BUILT_IN_TOOL_NAMES.has(toolName);
+}
 
 export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts {
   const headline = tool.headline.trim();
@@ -63,9 +72,24 @@ function fileDiffToolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
   return Boolean(tool.argsExcerpt?.trim());
 }
 
+function responsesBuiltInToolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
+  if (!isResponsesBuiltInToolCard(tool.toolName)) {
+    return false;
+  }
+  return (
+    Boolean(tool.outputExcerpt?.trim()) ||
+    Boolean(tool.argsExcerpt?.trim()) ||
+    tool.detailLines.some((line) => line.trim())
+  );
+}
+
 export function toolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
   if (FILE_DIFF_TOOL_NAMES.has(tool.toolName)) {
     return fileDiffToolHasExpandableContent(tool);
+  }
+
+  if (isResponsesBuiltInToolCard(tool.toolName)) {
+    return responsesBuiltInToolHasExpandableContent(tool);
   }
 
   if (tool.toolName === 'run_shell_command') {

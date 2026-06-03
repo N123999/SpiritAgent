@@ -1,9 +1,13 @@
 import {
+  isResponsesBuiltInToolName,
+  parseResponsesBuiltInToolUiFromArgumentsJson,
   previewRequestFromStreamingArguments,
+  resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson,
   type JsonObject,
   type RuntimeEvent,
   type RuntimeToolExecution,
 } from '@spirit-agent/agent-core';
+import { toolCallPhaseShowsShimmer } from '../lib/tool-call-shimmer.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 
 import {
@@ -36,6 +40,7 @@ import {
   applyToolCallSummaryCopy,
   hasActiveRunSubagentToolInMessages,
   isSubagentStatusSurfaceText,
+  toolCallSummaryCopyForResponsesBuiltInTool,
   toolCallSummaryForPhase,
   toolCallSummaryForStreamingPreview,
   isFinishTaskToolName,
@@ -255,6 +260,7 @@ export class DesktopRuntimeEventOrchestrator {
         continue;
       }
       if (event.kind === 'assistant-response-completed') {
+        this.finalizeResponsesBuiltInToolPreviews(messages);
         this.options.assistantMessages.completePendingAssistantMessage();
         this.options.messageTimeline?.()?.completeActiveAssistantSegment();
         continue;
@@ -266,8 +272,9 @@ export class DesktopRuntimeEventOrchestrator {
       }
       if (event.kind === 'assistant-thinking-segment-finalized') {
         if (event.text.trim()) {
+          const timeline = this.options.messageTimeline?.();
           this.options.assistantMessages.appendAssistantThinkingSegment(event.text);
-          this.options.messageTimeline?.()?.finalizeThinkingSegment(event.text);
+          timeline?.finalizeThinkingSegment(event.text, event.placement);
         }
         continue;
       }
@@ -351,38 +358,65 @@ export class DesktopRuntimeEventOrchestrator {
         }
         continue;
       }
+      const isResponsesBuiltIn = isResponsesBuiltInToolName(event.toolName);
+      const providerUi = isResponsesBuiltIn
+        ? parseResponsesBuiltInToolUiFromArgumentsJson(event.argumentsJson)
+        : undefined;
       const previewRequest = previewRequestFromStreamingArguments(
         event.toolName,
         event.argumentsJson,
       );
-      const argsExcerpt = previewRequest !== undefined
-        ? truncateJson(previewRequest)
-        : truncateText(event.argumentsJson, 4_000);
+      const argsExcerpt = providerUi?.inputExcerpt?.trim()
+        ? providerUi.inputExcerpt
+        : previewRequest !== undefined
+          ? truncateJson(previewRequest)
+          : truncateText(event.argumentsJson, 4_000);
       const previewSummary = toolCallSummaryForStreamingPreview(
         messages,
         event.toolCallId,
         event.toolName,
         previewRequest,
       );
+      const responsesBuiltInPhase = isResponsesBuiltIn
+        ? resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(event.argumentsJson)
+        : undefined;
+      const toolPhase: ToolBlockSnapshot['phase'] =
+        responsesBuiltInPhase === 'succeeded'
+          ? 'succeeded'
+          : responsesBuiltInPhase === 'failed'
+            ? 'failed'
+            : 'preview';
+      const summaryCopy = isResponsesBuiltIn
+        ? toolCallSummaryCopyForResponsesBuiltInTool(
+            event.toolName,
+            toolPhase,
+            previewSummary,
+            providerUi,
+          )
+        : previewSummary;
       const runningTool: ToolBlockSnapshot = this.attachLineDelta(
         applyToolCallSummaryCopy(
           {
             toolCallId: event.toolCallId,
             toolName: event.toolName,
-            phase: 'preview',
-            headline: previewSummary.headline,
-            detailLines: [],
+            phase: toolPhase,
+            headline: summaryCopy.headline,
+            detailLines: providerUi?.detailLines ?? [],
             argsExcerpt,
+            ...(providerUi?.outputExcerpt ? { outputExcerpt: providerUi.outputExcerpt } : {}),
             ...(FILE_DIFF_TOOL_NAMES.has(event.toolName)
               ? { streamingArgumentsJson: event.argumentsJson }
               : {}),
           },
-          previewSummary,
+          summaryCopy,
         ),
         { argumentsJson: event.argumentsJson },
       );
       this.options.assistantMessages.upsertToolMessage(event.toolCallId, runningTool, batchId);
       this.options.messageTimeline?.()?.upsertToolMessage(event.toolCallId, runningTool);
+      if (isResponsesBuiltIn) {
+        this.options.requestLiveSnapshotUpdate?.();
+      }
     }
     this.logMessageOrderApplyBatch(
       batchId,
@@ -672,6 +706,30 @@ export class DesktopRuntimeEventOrchestrator {
     );
   }
 
+  private finalizeResponsesBuiltInToolPreviews(
+    messages: ConversationMessageSnapshot[],
+  ): void {
+    for (const message of messages) {
+      const tool = message.tool;
+      if (!tool || !isResponsesBuiltInToolName(tool.toolName)) {
+        continue;
+      }
+      if (!toolCallPhaseShowsShimmer(tool.phase)) {
+        continue;
+      }
+      const toolCallId = tool.toolCallId?.trim();
+      if (!toolCallId) {
+        continue;
+      }
+      const succeededTool: ToolBlockSnapshot = {
+        ...tool,
+        phase: 'succeeded',
+      };
+      this.options.assistantMessages.upsertToolMessage(toolCallId, succeededTool, 0);
+      this.options.messageTimeline?.()?.upsertToolMessage(toolCallId, succeededTool);
+    }
+  }
+
   private integrateApprovalResolution(
     event: Extract<RuntimeEvent<DesktopToolRequest>, { kind: 'approval-resolved' }>,
     batchId: number,
@@ -800,6 +858,75 @@ function truncateText(value: string, maxChars: number): string {
     return value;
   }
   return `${chars.slice(0, maxChars).join('')}...<truncated>`;
+}
+
+export function splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview(
+  events: RuntimeEvent<DesktopToolRequest>[],
+  previewSeenCallIds: ReadonlySet<string> = new Set(),
+): {
+  toApply: RuntimeEvent<DesktopToolRequest>[];
+  deferred: RuntimeEvent<DesktopToolRequest>[];
+} {
+  const inProgressCallIds = new Set<string>();
+  const hasTerminal = new Set<string>();
+
+  for (const event of events) {
+    if (event.kind !== 'streaming-tool-preview' || !isResponsesBuiltInToolName(event.toolName)) {
+      continue;
+    }
+    const phase = resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(event.argumentsJson);
+    if (phase === 'succeeded' || phase === 'failed') {
+      hasTerminal.add(event.toolCallId);
+      continue;
+    }
+    inProgressCallIds.add(event.toolCallId);
+  }
+
+  if (hasTerminal.size === 0) {
+    return { toApply: events, deferred: [] };
+  }
+
+  const toApply: RuntimeEvent<DesktopToolRequest>[] = [];
+  const deferred: RuntimeEvent<DesktopToolRequest>[] = [];
+
+  for (const event of events) {
+    if (event.kind !== 'streaming-tool-preview' || !isResponsesBuiltInToolName(event.toolName)) {
+      toApply.push(event);
+      continue;
+    }
+    const phase = resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(event.argumentsJson);
+    if (phase === 'succeeded' || phase === 'failed') {
+      const deferTerminal =
+        inProgressCallIds.has(event.toolCallId) || !previewSeenCallIds.has(event.toolCallId);
+      if (deferTerminal) {
+        deferred.push(event);
+        continue;
+      }
+    }
+    toApply.push(event);
+  }
+
+  return { toApply, deferred };
+}
+
+export function runtimeEventsIncludeAppliedResponsesBuiltInToolPreview(
+  events: RuntimeEvent<DesktopToolRequest>[],
+): boolean {
+  return events.some(
+    (event) =>
+      event.kind === 'streaming-tool-preview'
+      && isResponsesBuiltInToolName(event.toolName)
+      && resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(event.argumentsJson) === 'preview',
+  );
+}
+
+export function runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate(
+  events: RuntimeEvent<DesktopToolRequest>[],
+): boolean {
+  return events.some(
+    (event) =>
+      event.kind === 'streaming-tool-preview' && isResponsesBuiltInToolName(event.toolName),
+  );
 }
 
 export function splitRuntimeEventsForIncrementalFinishTaskPreview(

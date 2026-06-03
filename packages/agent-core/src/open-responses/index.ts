@@ -28,7 +28,7 @@ export {
   type ApplyPatchOperationType,
   filterBuiltinFileToolsForApplyPatch,
   buildApplyPatchFileToolsPromptSection,
-  shouldUseNativeApplyPatchRequestItems,
+  shouldUseBuiltInApplyPatchRequestItems,
   shouldUseOpenAiSdkApplyPatchTool,
   filterLegacyHostFileToolDefinitions,
   isLegacyHostFileToolName,
@@ -44,9 +44,32 @@ export {
   shouldUseOpenAiApplyPatchTool,
 } from './apply-patch-eligibility.js';
 export {
+  ALIBABA_RESPONSES_BUILT_IN_TOOL_TYPES,
+  buildAlibabaChatCompletionsExtraBody,
+  buildAlibabaResponsesBuiltInTools,
+  mergeAlibabaResponsesBuiltInTools,
+  shouldUseAlibabaChatCompletionsBuiltInTools,
+  shouldUseAlibabaBuiltInTools,
+  shouldUseAlibabaResponsesBuiltInTools,
+  type AlibabaResponsesBuiltInToolType,
+} from './alibaba-built-in-tools.js';
+export {
   buildProviderWebSearchPromptSection,
   buildWebSearchResponsesTraceToolEntry,
   resolveProviderWebSearchMode,
   shouldUseProviderWebSearch,
   type ProviderWebSearchMode,
 } from './web-search-eligibility.js';
+export {
+  buildResponsesBuiltInToolCardData,
+  createResponsesBuiltInPreviewStreamState,
+  isGenericProviderWebSearchQuery,
+  isResponsesBuiltInToolName,
+  parseResponsesBuiltInToolUiFromArgumentsJson,
+  resolveResponsesBuiltInToolStreamPhase,
+  resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson,
+  RESPONSES_BUILT_IN_SPIRIT_UI_KEY,
+  type ResponsesBuiltInToolCardData,
+  type ResponsesBuiltInToolSpiritUi,
+  type ResponsesBuiltInToolStreamPhase,
+} from './responses-built-in-tools.js';

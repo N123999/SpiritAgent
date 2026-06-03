@@ -43,6 +43,8 @@ export interface SessionBundle {
   nextTimelineAssistantSegmentKind: DesktopTimelineSegmentKind;
   deferredRuntimeRefreshWhileBusy: boolean;
   deferredRuntimeHostEvents: RuntimeEvent<DesktopToolRequest>[];
+  /** Provider builtin preview callIds applied in a prior drain (for deferring terminal previews). */
+  responsesBuiltInPreviewSeenCallIds: Set<string>;
   lastPersistedAtUnixMs?: number;
   /** `savedAtUnixMs` from disk; used to avoid bumping list order on background/switch persist. */
   listSortSavedAtUnixMs?: number;
@@ -85,6 +87,7 @@ export function createEmptySessionBundle(workspaceRoot: string, id = '__draft__'
     nextTimelineAssistantSegmentKind: 'initial',
     deferredRuntimeRefreshWhileBusy: false,
     deferredRuntimeHostEvents: [],
+    responsesBuiltInPreviewSeenCallIds: new Set(),
     todoSessionScopeKey: createTodoSessionScopeKey(),
     conversationRevision: 0,
   };
@@ -127,6 +130,7 @@ export function sessionBundleFromRestored(
     nextTimelineAssistantSegmentKind: 'initial',
     deferredRuntimeRefreshWhileBusy: false,
     deferredRuntimeHostEvents: [],
+    responsesBuiltInPreviewSeenCallIds: new Set(),
     conversationRevision: 0,
     ...(restored.activePlanPath ? { activePlanPath: restored.activePlanPath } : {}),
   };
@@ -153,6 +157,7 @@ export function resetSessionBundleInPlace(bundle: SessionBundle): void {
   bundle.nextTimelineAssistantSegmentKind = 'initial';
   bundle.deferredRuntimeRefreshWhileBusy = false;
   bundle.deferredRuntimeHostEvents = [];
+  bundle.responsesBuiltInPreviewSeenCallIds = new Set();
   bundle.cachedTodoSnapshot = undefined;
   bundle.todoSessionScopeKey = createTodoSessionScopeKey();
   bundle.conversationRevision = 0;

@@ -62,6 +62,116 @@ test('continuation segments derive rows after previous segment rows', () => {
   ]);
 });
 
+test('post-tool thinking in the same segment stays below provider tool rows', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('search DeepSeek generation');
+  timeline.beginAssistantSegment('initial');
+  timeline.finalizeThinkingSegment('Need web search for current DeepSeek versions.');
+  timeline.upsertToolMessage('web-1', {
+    toolCallId: 'web-1',
+    toolName: 'web_search',
+    phase: 'preview',
+    headline: 'Web search',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  timeline.updatePendingAssistantAux('thinking', 'Based on search results, DeepSeek is at V4.');
+  timeline.finalizeThinkingSegment('Based on search results, DeepSeek is at V4.', 'after-stream');
+  timeline.appendAssistantTextChunk('DeepSeek 目前出到第 4 代。');
+  timeline.completeActiveAssistantSegment();
+
+  assert.deepEqual(visibleRowTokens(timeline.toMessages()), [
+    'user:search DeepSeek generation',
+    'thinking:Need web search for current DeepSeek versions.',
+    'tool:web-1:preview',
+    'thinking:Based on search results, DeepSeek is at V4.',
+    'assistant:DeepSeek 目前出到第 4 代。',
+  ]);
+});
+
+test('first answer text chunk settles in-flight post-tool thinking without duplicate rows', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('search DeepSeek');
+  timeline.beginAssistantSegment('initial');
+  timeline.finalizeThinkingSegment('Need web search first.');
+  timeline.upsertToolMessage('web-1', {
+    toolCallId: 'web-1',
+    toolName: 'web_search',
+    phase: 'succeeded',
+    headline: 'Web search',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  timeline.upsertToolMessage('fetch-1', {
+    toolCallId: 'fetch-1',
+    toolName: 'web_fetch',
+    phase: 'succeeded',
+    headline: 'Fetch',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  timeline.updatePendingAssistantAux('thinking', 'Fetched page content; can summarize now.');
+  timeline.appendAssistantTextChunk('DeepSeek is at V4.');
+  timeline.finalizeThinkingSegment('Fetched page content; can summarize now.', 'after-stream');
+  timeline.completeActiveAssistantSegment();
+
+  const tokens = visibleRowTokens(timeline.toMessages());
+  const thinkingCount = tokens.filter((token) =>
+    token.startsWith('thinking:Fetched page content'),
+  ).length;
+  assert.equal(thinkingCount, 1);
+  assert.deepEqual(tokens, [
+    'user:search DeepSeek',
+    'thinking:Need web search first.',
+    'tool:web-1:succeeded',
+    'tool:fetch-1:succeeded',
+    'thinking:Fetched page content; can summarize now.',
+    'assistant:DeepSeek is at V4.',
+  ]);
+});
+
+test('inter-tool thinking stays between provider builtin tool cards', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('search DeepSeek');
+  timeline.beginAssistantSegment('initial');
+  timeline.finalizeThinkingSegment('Need web search first.');
+  timeline.upsertToolMessage('web-1', {
+    toolCallId: 'web-1',
+    toolName: 'web_search',
+    phase: 'succeeded',
+    headline: 'Web search',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  timeline.updatePendingAssistantAux('thinking', 'Search results mention versions; need a page fetch.');
+  timeline.finalizeThinkingSegment(
+    'Search results mention versions; need a page fetch.',
+    'before-next-tool',
+  );
+  timeline.upsertToolMessage('fetch-1', {
+    toolCallId: 'fetch-1',
+    toolName: 'web_fetch',
+    phase: 'succeeded',
+    headline: 'Fetch',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  timeline.updatePendingAssistantAux('thinking', 'Fetched page content; can summarize now.');
+  timeline.finalizeThinkingSegment('Fetched page content; can summarize now.', 'after-stream');
+  timeline.appendAssistantTextChunk('DeepSeek is at V4.');
+  timeline.completeActiveAssistantSegment();
+
+  assert.deepEqual(visibleRowTokens(timeline.toMessages()), [
+    'user:search DeepSeek',
+    'thinking:Need web search first.',
+    'tool:web-1:succeeded',
+    'thinking:Search results mention versions; need a page fetch.',
+    'tool:fetch-1:succeeded',
+    'thinking:Fetched page content; can summarize now.',
+    'assistant:DeepSeek is at V4.',
+  ]);
+});
+
 test('fallback tool keys are scoped to the active segment', () => {
   const timeline = createTimeline();
   timeline.beginUserTurn('first turn');

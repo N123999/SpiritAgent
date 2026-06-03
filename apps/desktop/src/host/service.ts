@@ -284,7 +284,10 @@ import { DesktopAssistantMessageStateMachine } from './assistant-message-state.j
 import {
   DesktopRuntimeEventOrchestrator,
   runtimeEventsIncludeAppliedFinishTaskPreview,
+  runtimeEventsIncludeAppliedResponsesBuiltInToolPreview,
+  runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate,
   splitRuntimeEventsForIncrementalFinishTaskPreview,
+  splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview,
 } from './runtime-event-orchestrator.js';
 import {
   extractSubagentSessionStreamingText,
@@ -1989,7 +1992,7 @@ class DesktopHostService {
       this.refreshArchiveFromRuntime();
       await this.recordRewindCheckpoint(userMessage.id, beforeUserCheckpoint);
       await runtime.poll();
-      this.activeOrchestration().runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
+      this.applyDrainedRuntimeHostEvents(bundle, runtime.drainEvents());
     } catch (error) {
       this.activeBundle().currentTurnSkills = [];
       this.activeOrchestration().assistantMessages.handleMessageRemoved(this.activeBundle().messages.length - 1, userMessage.id, 'send-user-rollback');
@@ -2066,6 +2069,41 @@ class DesktopHostService {
     });
   }
 
+  private applyDrainedRuntimeHostEvents(
+    bundle: SessionBundle,
+    drained: RuntimeEvent<DesktopToolRequest>[],
+  ): void {
+    const orchestration = this.orchestrationFor(bundle);
+    const queued = [...bundle.deferredRuntimeHostEvents, ...drained];
+    bundle.deferredRuntimeHostEvents = [];
+    const splitFinish = splitRuntimeEventsForIncrementalFinishTaskPreview(queued);
+    const splitBuiltin = splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview(
+      splitFinish.toApply,
+      bundle.responsesBuiltInPreviewSeenCallIds,
+    );
+    bundle.deferredRuntimeHostEvents = [...splitFinish.deferred, ...splitBuiltin.deferred];
+    orchestration.runtimeEvents.applyRuntimeHostEvents(splitBuiltin.toApply);
+    for (const event of splitBuiltin.toApply) {
+      if (
+        event.kind === 'streaming-tool-preview'
+        && runtimeEventsIncludeAppliedResponsesBuiltInToolPreview([event])
+      ) {
+        bundle.responsesBuiltInPreviewSeenCallIds.add(event.toolCallId);
+      }
+    }
+    bundle.messages = bundle.messageTimeline.toMessages();
+    if (bundle.id !== this.sessionRegistry.activeSessionId()) {
+      return;
+    }
+    if (
+      runtimeEventsIncludeAppliedFinishTaskPreview(splitBuiltin.toApply)
+      || runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate(splitBuiltin.toApply)
+    ) {
+      bundle.conversationRevision += 1;
+      this.emitLiveSnapshotUpdate();
+    }
+  }
+
   private async tickSession(
     bundle: SessionBundle,
     options: { light?: boolean } = {},
@@ -2075,19 +2113,15 @@ class DesktopHostService {
       bundle.runtime.tickThinkingSpinner();
       if (!options.light) {
         await bundle.runtime.poll();
+        this.applyDrainedRuntimeHostEvents(bundle, bundle.runtime.drainEvents());
+      } else {
         const drained = bundle.runtime.drainEvents();
-        const queued = [...bundle.deferredRuntimeHostEvents, ...drained];
-        bundle.deferredRuntimeHostEvents = [];
-        const { toApply, deferred } = splitRuntimeEventsForIncrementalFinishTaskPreview(queued);
-        bundle.deferredRuntimeHostEvents = deferred;
-        orchestration.runtimeEvents.applyRuntimeHostEvents(toApply);
-        if (
-          runtimeEventsIncludeAppliedFinishTaskPreview(toApply) &&
-          bundle.id === this.sessionRegistry.activeSessionId()
-        ) {
-          this.emitLiveSnapshotUpdate();
+        if (drained.length > 0 || bundle.deferredRuntimeHostEvents.length > 0) {
+          this.applyDrainedRuntimeHostEvents(bundle, drained);
         }
       }
+    } else if (options.light && bundle.deferredRuntimeHostEvents.length > 0) {
+      this.applyDrainedRuntimeHostEvents(bundle, []);
     }
     if (options.light) {
       return;
@@ -3395,7 +3429,14 @@ class DesktopHostService {
           pendingAux.kind,
           auxText,
         );
-        if (!this.activeBundle().messageTimeline.hasFinalizedAuxInActiveSegment(pendingAux.kind, auxText)) {
+        const alreadyFinalized = this.activeBundle().messageTimeline.hasFinalizedAuxInActiveSegment(
+          pendingAux.kind,
+          auxText,
+        );
+        const skipDuplicatePendingThinking =
+          pendingAux.kind === 'thinking' &&
+          this.activeBundle().messageTimeline.hasPendingThinkingAuxInActiveSegment(auxText);
+        if (!alreadyFinalized && !skipDuplicatePendingThinking) {
           this.activeBundle().messageTimeline.updatePendingAssistantAux(
             pendingAux.kind,
             auxText,

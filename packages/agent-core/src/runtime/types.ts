@@ -29,6 +29,9 @@ export interface RuntimeToolExecution<ToolRequest> {
   artifacts?: RuntimeToolArtifact[];
 }
 
+/** Where the host should anchor a finalized thinking segment in the timeline. */
+export type AssistantThinkingSegmentPlacement = 'before-next-tool' | 'after-stream';
+
 export type PendingEarlyToolExecutionOutcome<ToolRequest> =
   | {
       kind: 'completed';
@@ -92,6 +95,11 @@ export type RuntimeEvent<ToolRequest> =
       /** 清空 `thinkingTextStore` 前发出，宿主可固化为一条独立 UI 消息。 */
       kind: 'assistant-thinking-segment-finalized';
       text: string;
+      /**
+       * `before-next-tool`：固化在下一工具卡片之前（同段多工具之间）。
+       * `after-stream`：流结束前的收尾思考，排在所有工具之后。
+       */
+      placement?: AssistantThinkingSegmentPlacement;
     }
   | {
       kind: 'update-pending-assistant-compaction';

@@ -55,6 +55,23 @@ test('toolCallSummaryCopyForRequest: web_search uses web search headline + query
     headline: '联网搜索',
     headlineDetail: 'latest news',
   });
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('web_search', {
+      action: { type: 'search', query: 'DeepSeek V4' },
+    }),
+    {
+      headline: '联网搜索',
+      headlineDetail: 'DeepSeek V4',
+    },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('web_search', {
+      action: { type: 'search', query: 'Web search' },
+    }),
+    {
+      headline: '联网搜索',
+    },
+  );
 });
 
 test('toolCallSummaryCopyForRequest: search tools use Chinese headline + detail', () => {

@@ -22,7 +22,7 @@
     "alibaba": {
       "openai-compatible": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "anthropic": "https://dashscope.aliyuncs.com/apps/anthropic",
-      "open-responses": "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1"
+      "open-responses": "https://dashscope.aliyuncs.com/compatible-mode/v1"
     }
   },
   "pickerOrder": ["openai", "xai", "anthropic", "deepseek", "vercel-ai-gateway", "moonshot-ai", "alibaba", "minimax", "custom"],

@@ -94,14 +94,14 @@ function isEligibleResponsesProvider(
 }
 
 /** OpenAI 官方 Responses 使用 apply_patch_call/output；Gateway 等兼容端点用 function_call 对。 */
-export function shouldUseNativeApplyPatchRequestItems(
+export function shouldUseBuiltInApplyPatchRequestItems(
   config: Pick<OpenResponsesTransportConfig, 'llmVendor' | 'responsesProvider' | 'model'>,
 ): boolean {
   return config.llmVendor === 'openai';
 }
 
 /**
- * Gateway / 第三方兼容端点：在 tools 中注册标准 function 工具（非原生 `type: apply_patch`），
+ * Gateway / 第三方兼容端点：在 tools 中注册标准 function 工具（非 built-in `type: apply_patch`），
  * 并与请求 input 中的 function_call 对保持一致。
  */
 export function shouldUseApplyPatchFunctionTool(

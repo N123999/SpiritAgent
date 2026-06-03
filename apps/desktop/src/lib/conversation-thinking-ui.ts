@@ -19,6 +19,25 @@ export function isStandaloneThinkingMessage(
   );
 }
 
+export function hasAssistantBodyTextLaterInTurn(
+  messages: readonly ConversationMessageSnapshot[],
+  messageIndex: number,
+): boolean {
+  for (let index = messageIndex + 1; index < messages.length; index += 1) {
+    const candidate = messages[index];
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.role === 'user') {
+      break;
+    }
+    if (candidate.role === 'assistant' && !candidate.tool && candidate.content.trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function hasAssistantToolLaterInTurn(
   messages: readonly ConversationMessageSnapshot[],
   messageIndex: number,
@@ -102,8 +121,17 @@ function isLiveReasoningPlaceholderMessage(
 function assistantReasoningLive(
   message: ConversationMessageSnapshot,
   pendingAuxState?: PendingAssistantAux,
+  messages?: readonly ConversationMessageSnapshot[],
+  messageIndex?: number,
 ): boolean {
   if (message.role !== 'assistant' || !message.pending || message.content.trim() || message.tool) {
+    return false;
+  }
+  if (
+    messages !== undefined &&
+    messageIndex !== undefined &&
+    hasAssistantBodyTextLaterInTurn(messages, messageIndex)
+  ) {
     return false;
   }
   const thinking = message.aux?.thinking?.trim();
@@ -119,6 +147,21 @@ export function shouldShowAssistantThinkingCollapsible(
   messages?: readonly ConversationMessageSnapshot[],
   listIndex?: number,
 ): boolean {
+  if (
+    messages !== undefined &&
+    listIndex !== undefined &&
+    hasAssistantBodyTextLaterInTurn(messages, listIndex)
+  ) {
+    const thinking = message.aux?.thinking?.trim();
+    if (
+      message.pending &&
+      !message.content.trim() &&
+      thinking &&
+      !isGenericPendingThinkingStatusText(thinking)
+    ) {
+      return false;
+    }
+  }
   if (message.role === 'user') {
     return false;
   }
@@ -154,7 +197,7 @@ export function shouldShowAssistantThinkingCollapsible(
     return true;
   }
 
-  return assistantReasoningLive(message, pendingAuxState);
+  return assistantReasoningLive(message, pendingAuxState, messages, listIndex);
 }
 
 export function shouldCollapseThinkingDuringToolPreview(

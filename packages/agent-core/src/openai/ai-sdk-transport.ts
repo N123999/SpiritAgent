@@ -69,6 +69,11 @@ import {
   type OpenAiImageGenerationConfig,
   type OpenAiTransportConfig,
 } from './openai-compat.js';
+import { createAlibabaChatCompletionsAwareFetch } from '../open-responses/alibaba-chat-completions-fetch.js';
+import {
+  buildAlibabaChatCompletionsExtraBody,
+  shouldUseAlibabaChatCompletionsBuiltInTools,
+} from '../open-responses/alibaba-built-in-tools.js';
 import {
   clearMoonshotChatCompletionMessages,
   openAiMessagesContainVideoUrl,
@@ -601,10 +606,16 @@ function buildAiSdkRequestTrace(
             ? 'gateway_sdk_chat_completions'
             : 'openai_official_sdk_chat_completions';
 
+  const alibabaExtraBody = isAlibabaOfficialAiSdkProvider(config)
+    && shouldUseAlibabaChatCompletionsBuiltInTools(config)
+    ? buildAlibabaChatCompletionsExtraBody({ streaming: stream })
+    : undefined;
+
   return [
     {
       ...firstTrace,
       kind,
+      ...(alibabaExtraBody ? { extra_body: alibabaExtraBody } : {}),
     },
     ...requestTrace.slice(1),
   ];
@@ -752,9 +763,14 @@ function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
 }
 
 function createAiSdkAlibabaProvider(config: OpenAiTransportConfig) {
+  const fetchWrapper = shouldUseAlibabaChatCompletionsBuiltInTools(config)
+    ? createAlibabaChatCompletionsAwareFetch(config)
+    : undefined;
+
   return createAlibaba({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+    ...(fetchWrapper ? { fetch: fetchWrapper } : {}),
   });
 }
 
@@ -777,6 +793,22 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
 function buildAiSdkProviderOptions(
   config: OpenAiTransportConfig,
 ): Record<string, JsonObject> {
+  if (isAlibabaOfficialAiSdkProvider(config)) {
+    const extraBody = shouldUseAlibabaChatCompletionsBuiltInTools(config)
+      ? buildAlibabaChatCompletionsExtraBody({ streaming: true })
+      : undefined;
+
+    if (extraBody === undefined) {
+      return {};
+    }
+
+    return {
+      alibaba: {
+        extraBody,
+      } as JsonObject,
+    };
+  }
+
   if (isDeepSeekOfficialAiSdkProvider(config)) {
     const deepseekOptions = {
       thinking: {

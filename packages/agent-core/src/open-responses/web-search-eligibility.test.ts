@@ -67,6 +67,27 @@ test('resolveProviderWebSearchMode excludes vercel gateway', () => {
   );
 });
 
+test('resolveProviderWebSearchMode alibaba open-responses', () => {
+  assert.equal(
+    resolveProviderWebSearchMode({
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'qwen3-max',
+      llmVendor: 'alibaba',
+    }),
+    'alibaba-responses-built-in-tools',
+  );
+  assert.equal(
+    shouldUseProviderWebSearch({
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'qwen3-max',
+      llmVendor: 'alibaba',
+    }),
+    true,
+  );
+});
+
 test('resolveProviderWebSearchMode excludes openai-compatible openai vendor', () => {
   assert.equal(
     resolveProviderWebSearchMode({
@@ -78,7 +99,25 @@ test('resolveProviderWebSearchMode excludes openai-compatible openai vendor', ()
   );
 });
 
-test('buildProviderWebSearchPromptSection mentions web search', () => {
-  const section = buildProviderWebSearchPromptSection();
-  assert.match(section, /web search/i);
+test('buildProviderWebSearchPromptSection mentions web search for openai responses', () => {
+  const section = buildProviderWebSearchPromptSection({
+    transportKind: 'open-responses',
+    apiKey: 'k',
+    model: 'gpt-5.4',
+    llmVendor: 'openai',
+    responsesProvider: 'openai',
+  });
+  assert.match(section ?? '', /web search/i);
+});
+
+test('buildProviderWebSearchPromptSection omits alibaba', () => {
+  assert.equal(
+    buildProviderWebSearchPromptSection({
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'qwen3-max',
+      llmVendor: 'alibaba',
+    }),
+    undefined,
+  );
 });

@@ -41,7 +41,8 @@ export interface OpenResponsesTransportConfig {
 export type OpenResponsesRequestTraceKind =
   | 'openai_sdk_responses'
   | 'xai_sdk_responses'
-  | 'open_responses_sdk_responses';
+  | 'open_responses_sdk_responses'
+  | 'alibaba_open_responses';
 
 export interface OpenResponsesRequestTrace extends JsonObject {
   kind: OpenResponsesRequestTraceKind;
@@ -189,11 +190,13 @@ export function buildOpenResponsesRequestTrace(
 ): JsonValue[] {
   const provider = resolveOpenResponsesSdkProvider(config);
   const kind: OpenResponsesRequestTraceKind =
-    provider === 'openai'
-      ? 'openai_sdk_responses'
-      : provider === 'xai'
-        ? 'xai_sdk_responses'
-        : 'open_responses_sdk_responses';
+    config.llmVendor === 'alibaba' && provider === 'open-responses-compatible'
+      ? 'alibaba_open_responses'
+      : provider === 'openai'
+        ? 'openai_sdk_responses'
+        : provider === 'xai'
+          ? 'xai_sdk_responses'
+          : 'open_responses_sdk_responses';
 
   const trace: OpenResponsesRequestTrace = {
     kind,

@@ -38,7 +38,7 @@ const gatewayAnthropicConfig = {
   responsesProvider: 'open-responses-compatible' as const,
 };
 
-test('patchResponsesRequestBodyForApplyPatch openai uses native apply_patch_call items', () => {
+test('patchResponsesRequestBodyForApplyPatch openai uses built-in apply_patch_call items', () => {
   runWithApplyPatchBridgeContext(() => {
     const callId = 'call_test_1';
     const operation = { type: 'update_file', path: 'README.md', diff: '+x\n' };

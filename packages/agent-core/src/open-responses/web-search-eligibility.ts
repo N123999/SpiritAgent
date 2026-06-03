@@ -3,6 +3,7 @@ import {
   isOpenResponsesTransportConfig,
   type LlmTransportConfig,
 } from '../provider-config.js';
+import { shouldUseAlibabaBuiltInTools } from './alibaba-built-in-tools.js';
 import {
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
@@ -14,10 +15,13 @@ import {
  */
 export const XAI_WEB_SEARCH_WITH_LOCAL_TOOLS_ENABLED = true;
 
-export type ProviderWebSearchMode = 'openai-sdk-web-search' | 'xai-sdk-web-search';
+export type ProviderWebSearchMode =
+  | 'openai-sdk-web-search'
+  | 'xai-sdk-web-search'
+  | 'alibaba-responses-built-in-tools';
 
 export function shouldUseProviderWebSearch(config: LlmTransportConfig): boolean {
-  return resolveProviderWebSearchMode(config) !== undefined;
+  return resolveProviderWebSearchMode(config) !== undefined || shouldUseAlibabaBuiltInTools(config);
 }
 
 export function resolveProviderWebSearchMode(
@@ -46,11 +50,22 @@ function resolveOpenResponsesWebSearchMode(
     return 'xai-sdk-web-search';
   }
 
+  if (config.llmVendor === 'alibaba') {
+    return 'alibaba-responses-built-in-tools';
+  }
+
   return undefined;
 }
 
-/** Model-visible guidance when provider-native web search is available. */
-export function buildProviderWebSearchPromptSection(): string {
+/** Model-visible guidance when OpenAI/xAI SDK web search is available (not injected for Alibaba). */
+export function buildProviderWebSearchPromptSection(
+  config: LlmTransportConfig,
+): string | undefined {
+  const mode = resolveProviderWebSearchMode(config);
+  if (mode !== 'openai-sdk-web-search' && mode !== 'xai-sdk-web-search') {
+    return undefined;
+  }
+
   return [
     'Web search on this transport:',
     'Use the provider web search capability when you need current public information.',

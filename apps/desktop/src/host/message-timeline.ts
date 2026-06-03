@@ -26,6 +26,8 @@ export type DesktopTimelineSegmentKind = 'initial' | 'continuation' | 'hydrated'
 export type DesktopTimelineSegmentStatus = 'streaming' | 'completed' | 'aborted';
 export type DesktopTimelineRowSection = 'before-tools' | 'tools' | 'after-tools';
 
+export type DesktopThinkingSegmentPlacement = 'before-next-tool' | 'after-stream';
+
 export interface DesktopTimelineRowSnapshot {
   rowId: string;
   messageId: number;
@@ -241,7 +243,19 @@ export class DesktopMessageTimeline {
 
   appendAssistantTextChunk(chunk: string): ConversationMessageSnapshot {
     const segment = this.ensureActiveSegment();
-    const row = segmentHasToolRows(segment)
+    const hasTools = segmentHasToolRows(segment);
+    if (hasTools) {
+      const existingAfterToolsText = segment.rows.some(
+        (candidate) =>
+          candidate.kind === 'assistant-text' &&
+          candidate.section === 'after-tools' &&
+          candidate.content.trim(),
+      );
+      if (!existingAfterToolsText) {
+        this.settlePendingThinkingBeforeAssistantText(segment);
+      }
+    }
+    const row = hasTools
       ? this.ensureStreamingAssistantTextRowAfterTools(segment)
       : this.ensureActiveAssistantTextRow('text');
     row.content += chunk;
@@ -282,6 +296,9 @@ export class DesktopMessageTimeline {
       row.aux = nextAux;
     } else {
       delete row.aux;
+    }
+    if (kind === 'thinking') {
+      this.pruneEmptyAssistantTextRows(segment);
     }
     this.logSegmentRows(`update-pending-${kind}`, segment);
     return rowToMessage(row);
@@ -366,17 +383,41 @@ export class DesktopMessageTimeline {
     });
   }
 
-  finalizeThinkingSegment(text: string): ConversationMessageSnapshot | undefined {
+  hasPendingThinkingAuxInActiveSegment(text: string): boolean {
+    const segment = this.activeSegment();
+    const normalized = text.trim();
+    if (!segment || !normalized) {
+      return false;
+    }
+    return segment.rows.some(
+      (row) =>
+        row.kind === 'assistant-text' &&
+        row.pending &&
+        row.aux?.thinking?.trim() === normalized,
+    );
+  }
+
+  finalizeThinkingSegment(
+    text: string,
+    placement?: DesktopThinkingSegmentPlacement,
+  ): ConversationMessageSnapshot | undefined {
     if (!text.trim()) {
       return undefined;
     }
     const segment = this.ensureActiveSegment();
+    if (this.hasFinalizedAuxInActiveSegment('thinking', text)) {
+      this.stripSegmentAuxKind(segment, 'thinking', text);
+      this.pruneEmptyAssistantTextRows(segment);
+      return undefined;
+    }
+    const section = resolveThinkingRowSection(segment, placement);
     this.stripSegmentAuxKind(segment, 'thinking', text);
+    this.pruneEmptyAssistantTextRows(segment);
     const row = this.createRow({
       turnId: segment.turnId,
       segmentId: segment.segmentId,
       kind: 'assistant-thinking',
-      section: 'before-tools',
+      section,
       content: text,
       pending: false,
       aux: { thinking: text },
@@ -396,7 +437,7 @@ export class DesktopMessageTimeline {
       turnId: segment.turnId,
       segmentId: segment.segmentId,
       kind: 'assistant-compaction',
-      section: 'before-tools',
+      section: resolveThinkingRowSection(segment, 'after-stream'),
       content: text,
       pending: false,
       aux: { compaction: text },
@@ -435,7 +476,19 @@ export class DesktopMessageTimeline {
       pending: false,
       tool: normalizedTool,
     });
-    segment.rows.push(row);
+    const insertBeforeActiveText =
+      (normalizedTool.phase === 'preview' || normalizedTool.phase === 'running')
+      && Boolean(activeText?.pending || activeText?.aux?.thinking?.trim());
+    if (insertBeforeActiveText && activeText) {
+      const activeIndex = segment.rows.findIndex((candidate) => candidate.rowId === activeText.rowId);
+      if (activeIndex >= 0) {
+        segment.rows.splice(activeIndex, 0, row);
+      } else {
+        segment.rows.push(row);
+      }
+    } else {
+      segment.rows.push(row);
+    }
     this.logSegmentRows(`upsert-tool-${normalizedTool.phase}`, segment);
     return rowToMessage(row);
   }
@@ -1009,20 +1062,25 @@ export class DesktopMessageTimeline {
             return row;
           }
           existing.section = 'after-tools';
+        } else if (mode === 'aux' && !existing.content.trim()) {
+          if (hasRowAux(existing)) {
+            const row = this.createAssistantTextRow(segment, 'tools', true);
+            segment.activeAssistantTextRowId = row.rowId;
+            return row;
+          }
+          existing.section = 'tools';
         }
         return existing;
       }
       return existing;
     }
-    const row = this.createAssistantTextRow(
-      segment,
-      mode === 'aux'
-        ? 'before-tools'
-        : segmentHasToolRows(segment)
-          ? 'after-tools'
-          : 'before-tools',
-      true,
-    );
+    const section: DesktopTimelineRowSection =
+      mode === 'text' && segmentHasToolRows(segment)
+        ? 'after-tools'
+        : mode === 'aux' && segmentHasToolRows(segment)
+          ? 'tools'
+          : 'before-tools';
+    const row = this.createAssistantTextRow(segment, section, true);
     segment.activeAssistantTextRowId = row.rowId;
     return row;
   }
@@ -1169,6 +1227,20 @@ export class DesktopMessageTimeline {
     return undefined;
   }
 
+  private pruneEmptyAssistantTextRows(segment: DesktopTimelineSegment): void {
+    const activeRowId = segment.activeAssistantTextRowId;
+    segment.rows = segment.rows.filter((row) => {
+      if (row.kind !== 'assistant-text') {
+        return true;
+      }
+      const keep = Boolean(row.content.trim() || hasRowAux(row));
+      if (!keep && row.rowId === activeRowId) {
+        segment.activeAssistantTextRowId = undefined;
+      }
+      return keep;
+    });
+  }
+
   private stripSegmentAuxKind(
     segment: DesktopTimelineSegment,
     kind: 'thinking' | 'compaction',
@@ -1194,9 +1266,32 @@ export class DesktopMessageTimeline {
       } else {
         delete row.aux;
       }
+      if (!row.content.trim()) {
+        row.pending = false;
+      }
       cleared.push(row.messageId);
     }
     this.logStripSegmentAux(kind, segment, text, cleared);
+  }
+
+  /** Finalize or drop in-flight thinking aux once answer text starts (after tools). */
+  private settlePendingThinkingBeforeAssistantText(segment: DesktopTimelineSegment): void {
+    for (const row of segment.rows) {
+      if (row.kind !== 'assistant-text') {
+        continue;
+      }
+      const pendingThinking = row.aux?.thinking?.trim();
+      if (!pendingThinking || row.content.trim()) {
+        continue;
+      }
+      if (!this.hasFinalizedAuxInActiveSegment('thinking', pendingThinking)) {
+        this.finalizeThinkingSegment(pendingThinking, 'after-stream');
+      } else {
+        this.stripSegmentAuxKind(segment, 'thinking', pendingThinking);
+        this.pruneEmptyAssistantTextRows(segment);
+      }
+      break;
+    }
   }
 
   private orderedTurns(): DesktopTimelineTurn[] {
@@ -1211,13 +1306,15 @@ export class DesktopMessageTimeline {
     return [...segment.rows].sort((left, right) => {
       const leftSection = left.section ? ROW_SECTION_ORDER[left.section] : 0;
       const rightSection = right.section ? ROW_SECTION_ORDER[right.section] : 0;
+      if (leftSection !== rightSection) {
+        return leftSection - rightSection;
+      }
+      if (left.section === 'tools' && right.section === 'tools') {
+        return left.createdOrder - right.createdOrder;
+      }
       const leftKind = ROW_KIND_ORDER[left.kind] ?? 99;
       const rightKind = ROW_KIND_ORDER[right.kind] ?? 99;
-      return (
-        leftSection - rightSection ||
-        leftKind - rightKind ||
-        left.createdOrder - right.createdOrder
-      );
+      return leftKind - rightKind || left.createdOrder - right.createdOrder;
     });
   }
 
@@ -1315,6 +1412,22 @@ function canReuseToolMessageAcrossTurns(tool: ToolBlockSnapshot | undefined): bo
 
 function segmentHasToolRows(segment: DesktopTimelineSegment): boolean {
   return segment.rows.some((row) => row.kind === 'tool');
+}
+
+function resolveThinkingRowSection(
+  segment: DesktopTimelineSegment,
+  placement?: DesktopThinkingSegmentPlacement,
+): DesktopTimelineRowSection {
+  if (!segmentHasToolRows(segment)) {
+    return 'before-tools';
+  }
+  if (placement === 'before-next-tool') {
+    return 'tools';
+  }
+  if (placement === 'after-stream') {
+    return 'after-tools';
+  }
+  return 'before-tools';
 }
 
 function hasRowAux(row: DesktopTimelineRow): boolean {

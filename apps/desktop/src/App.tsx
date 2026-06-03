@@ -113,6 +113,7 @@ import {
 } from "@/lib/conversation-compaction-ui";
 import { resolveTurnContinuePresentation } from "@/lib/conversation-continue-ui";
 import {
+  hasAssistantBodyTextLaterInTurn,
   shouldCollapseThinkingDuringToolPreview,
   shouldShowAssistantThinkingCollapsible,
 } from "@/lib/conversation-thinking-ui";
@@ -1038,8 +1039,17 @@ function isLiveReasoningPlaceholderMessage(
 function assistantReasoningLive(
   message: ConversationMessageSnapshot,
   pendingAuxState?: PendingAssistantAux,
+  messages?: readonly ConversationMessageSnapshot[],
+  messageIndex?: number,
 ): boolean {
   if (message.role !== "assistant" || !message.pending || message.content.trim() || message.tool) {
+    return false;
+  }
+  if (
+    messages !== undefined &&
+    messageIndex !== undefined &&
+    hasAssistantBodyTextLaterInTurn(messages, messageIndex)
+  ) {
     return false;
   }
   const thinking = message.aux?.thinking?.trim();
@@ -1059,16 +1069,20 @@ function isLiveStreamingThinkingMessage(
 function AssistantThinkingCollapsible({
   message,
   pendingAuxState,
+  messages,
+  listIndex,
   collapseDuringToolPreview,
   readManagedImagePreviewDataUrl,
 }: {
   message: ConversationMessageSnapshot;
   pendingAuxState?: PendingAssistantAux;
+  messages: readonly ConversationMessageSnapshot[];
+  listIndex: number;
   collapseDuringToolPreview: boolean;
   readManagedImagePreviewDataUrl: ReadManagedImagePreview;
 }) {
   const thinking = message.aux?.thinking?.trim() ?? "";
-  const reasoningLive = assistantReasoningLive(message, pendingAuxState);
+  const reasoningLive = assistantReasoningLive(message, pendingAuxState, messages, listIndex);
   if (!thinking && !reasoningLive) {
     return null;
   }
@@ -1376,6 +1390,8 @@ function MessageCard({
           <AssistantThinkingCollapsible
             message={message}
             pendingAuxState={pendingAuxState}
+            messages={messages}
+            listIndex={listIndex}
             collapseDuringToolPreview={collapseThinkingDuringToolPreview}
             readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
           />

@@ -11,16 +11,17 @@ import {
   isApplyPatchFunctionToolDefinition,
   shouldUseApplyPatchFileTools,
   shouldUseApplyPatchFunctionTool,
-  shouldUseNativeApplyPatchRequestItems,
+  shouldUseBuiltInApplyPatchRequestItems,
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
+import { buildAlibabaResponsesBuiltInTools, shouldUseAlibabaResponsesBuiltInTools } from './alibaba-built-in-tools.js';
 import {
   buildWebSearchResponsesTraceToolEntry,
   shouldUseProviderWebSearch,
 } from './web-search-eligibility.js';
 
-export const APPLY_PATCH_NATIVE_TOOL = { type: 'apply_patch' } as const;
+export const APPLY_PATCH_BUILT_IN_TOOL = { type: 'apply_patch' } as const;
 
 interface ApplyPatchRequestRound {
   callId: string;
@@ -33,7 +34,7 @@ interface ApplyPatchBridgeStore {
   pendingApplyPatchCallIds: Set<string>;
   lastExtractedApplyPatchCalls: ToolCallRequest[];
   applyPatchRequestRounds: ApplyPatchRequestRound[];
-  useNativeApplyPatchRequestItems: boolean;
+  useBuiltInApplyPatchRequestItems: boolean;
 }
 
 const applyPatchBridgeStorage = new AsyncLocalStorage<ApplyPatchBridgeStore>();
@@ -43,7 +44,7 @@ function createApplyPatchBridgeStore(): ApplyPatchBridgeStore {
     pendingApplyPatchCallIds: new Set(),
     lastExtractedApplyPatchCalls: [],
     applyPatchRequestRounds: [],
-    useNativeApplyPatchRequestItems: true,
+    useBuiltInApplyPatchRequestItems: true,
   };
 }
 
@@ -180,11 +181,17 @@ export function buildResponsesTraceTools(
     } else if (shouldUseApplyPatchFunctionTool(config)) {
       traceTools.push(cloneJsonValue(buildApplyPatchResponsesFunctionToolDefinition() as JsonValue));
     } else {
-      traceTools.push(cloneJsonValue(APPLY_PATCH_NATIVE_TOOL as JsonValue));
+      traceTools.push(cloneJsonValue(APPLY_PATCH_BUILT_IN_TOOL as JsonValue));
     }
   }
   if (shouldUseProviderWebSearch(config)) {
-    traceTools.push(cloneJsonValue(buildWebSearchResponsesTraceToolEntry() as JsonValue));
+    if (shouldUseAlibabaResponsesBuiltInTools(config)) {
+      for (const tool of buildAlibabaResponsesBuiltInTools()) {
+        traceTools.push(cloneJsonValue(tool as JsonValue));
+      }
+    } else {
+      traceTools.push(cloneJsonValue(buildWebSearchResponsesTraceToolEntry() as JsonValue));
+    }
   }
   return traceTools;
 }
@@ -307,7 +314,7 @@ export function patchResponsesRequestBodyForApplyPatch(
   config: OpenResponsesTransportConfig,
 ): void {
   const store = currentApplyPatchBridgeStore();
-  store.useNativeApplyPatchRequestItems = shouldUseNativeApplyPatchRequestItems(config);
+  store.useBuiltInApplyPatchRequestItems = shouldUseBuiltInApplyPatchRequestItems(config);
 
   const tools = body.tools;
   if (shouldUseApplyPatchFunctionTool(config)) {
@@ -319,10 +326,10 @@ export function patchResponsesRequestBodyForApplyPatch(
         body.tools = [definition];
       }
     }
-  } else if (Array.isArray(tools) && !tools.some((tool) => isApplyPatchNativeTool(tool))) {
-    tools.push(cloneJsonValue(APPLY_PATCH_NATIVE_TOOL as JsonValue));
+  } else if (Array.isArray(tools) && !tools.some((tool) => isApplyPatchBuiltInTool(tool))) {
+    tools.push(cloneJsonValue(APPLY_PATCH_BUILT_IN_TOOL as JsonValue));
   } else if (!Array.isArray(tools)) {
-    body.tools = [cloneJsonValue(APPLY_PATCH_NATIVE_TOOL as JsonValue)];
+    body.tools = [cloneJsonValue(APPLY_PATCH_BUILT_IN_TOOL as JsonValue)];
   }
 
   const input = body.input;
@@ -348,7 +355,7 @@ export function patchResponsesRequestBodyForApplyPatch(
       continue;
     }
 
-    if (store.useNativeApplyPatchRequestItems) {
+    if (store.useBuiltInApplyPatchRequestItems) {
       input[index] = {
         type: 'apply_patch_call',
         call_id: callId,
@@ -379,7 +386,7 @@ export function patchResponsesRequestBodyForApplyPatch(
       continue;
     }
 
-    if (!store.useNativeApplyPatchRequestItems) {
+    if (!store.useBuiltInApplyPatchRequestItems) {
       store.pendingApplyPatchCallIds.delete(callId);
       continue;
     }
@@ -431,7 +438,7 @@ function injectStashedApplyPatchRoundsIntoRequestInput(
   }
 
   for (const round of store.applyPatchRequestRounds) {
-    if (store.useNativeApplyPatchRequestItems) {
+    if (store.useBuiltInApplyPatchRequestItems) {
       input.push({
         type: 'apply_patch_call',
         call_id: round.callId,
@@ -577,7 +584,7 @@ function parseApplyPatchOperation(value: unknown): ApplyPatchOperation | undefin
   };
 }
 
-function isApplyPatchNativeTool(tool: unknown): boolean {
+function isApplyPatchBuiltInTool(tool: unknown): boolean {
   return isJsonObject(tool as JsonValue) && (tool as JsonObject).type === 'apply_patch';
 }
 

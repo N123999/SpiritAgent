@@ -27,6 +27,7 @@ import type {
 } from './types.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type { EarlyInternalToolCallResult, TurnMachineRuntime } from './turn-machine.js';
+import { isResponsesBuiltInToolName } from '../open-responses/responses-built-in-tools.js';
 import { startEarlyToolExecution } from './turn-machine.js';
 
 export interface StreamingRuntime<
@@ -339,6 +340,7 @@ export function clearStreamingUiState<
     runtime.emitEvent({
       kind: 'assistant-thinking-segment-finalized',
       text: runtime.thinkingTextStore,
+      placement: 'after-stream',
     });
   }
   runtime.pendingStartedAtStore = undefined;
@@ -406,25 +408,46 @@ export async function handlePendingStreamEvent<
   }
 
   if (event.kind === 'streaming-tool-preview') {
+    if (
+      isResponsesBuiltInToolName(event.toolName)
+      && runtime.thinkingTextStore.trim()
+    ) {
+      runtime.emitEvent({
+        kind: 'assistant-thinking-segment-finalized',
+        text: runtime.thinkingTextStore,
+        placement: 'before-next-tool',
+      });
+      runtime.thinkingTextStore = '';
+    }
     runtime.emitEvent({
       kind: 'streaming-tool-preview',
       toolCallId: event.toolCallId,
       toolName: event.toolName,
       argumentsJson: event.argumentsJson,
     });
-    startEarlyToolExecution(
-      runtime as unknown as TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
-      {
-        id: event.toolCallId,
-        name: event.toolName,
-        argumentsJson: event.argumentsJson,
-      },
-      pending.earlyToolExecutions,
-    );
+    if (!isResponsesBuiltInToolName(event.toolName)) {
+      startEarlyToolExecution(
+        runtime as unknown as TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+        {
+          id: event.toolCallId,
+          name: event.toolName,
+          argumentsJson: event.argumentsJson,
+        },
+        pending.earlyToolExecutions,
+      );
+    }
     return false;
   }
 
   if (event.kind === 'assistant-chunk') {
+    if (runtime.thinkingTextStore.trim()) {
+      runtime.emitEvent({
+        kind: 'assistant-thinking-segment-finalized',
+        text: runtime.thinkingTextStore,
+        placement: 'after-stream',
+      });
+      runtime.thinkingTextStore = '';
+    }
     runtime.streamChunkCounterStore += 1;
     runtime.pendingAssistantTextStore += event.text;
     runtime.emitEvent({

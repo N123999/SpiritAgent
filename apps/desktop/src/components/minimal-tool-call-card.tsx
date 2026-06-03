@@ -18,6 +18,7 @@ import {
 import {
   genericExpandableDetailLines,
   getToolCallSummaryParts,
+  isResponsesBuiltInToolCard,
   shellToolExpandableDetailLines,
   toolCallPhaseShowsShimmer,
   toolHasExpandableContent,
@@ -80,6 +81,42 @@ export function MinimalToolSummary({
         </>
       ) : null}
     </span>
+  );
+}
+
+function ResponsesBuiltInToolExpandedBody({
+  tool,
+  shimmerActive,
+}: {
+  tool: ToolBlockSnapshot;
+  shimmerActive: boolean;
+}) {
+  const input = tool.argsExcerpt?.trim() ?? "";
+  const output = tool.outputExcerpt?.trim() ?? "";
+
+  return (
+    <div className="space-y-3">
+      {input ? (
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Input</p>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/20 bg-muted/15 p-2 font-mono text-xs leading-relaxed text-muted-foreground">
+            {input}
+          </pre>
+        </div>
+      ) : null}
+      {output ? (
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Output</p>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/20 bg-muted/15 p-2 font-mono text-xs leading-relaxed text-muted-foreground">
+            {output}
+          </pre>
+        </div>
+      ) : shimmerActive ? (
+        <p className="text-xs leading-relaxed text-muted-foreground/70 spirit-thinking-shimmer-text">
+          Waiting for output…
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -260,6 +297,7 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
   const shimmerActive = toolCallPhaseShowsShimmer(tool.phase);
   const isShell = tool.toolName === "run_shell_command";
   const isFileDiff = isFileDiffTool(tool.toolName);
+  const isResponsesBuiltIn = isResponsesBuiltInToolCard(tool.toolName);
   const shellCommand = useMemo(
     () => (isShell ? tool.headlineDetail?.trim() || parseShellCommand(tool) : undefined),
     [isShell, tool.argsExcerpt, tool.detailLines, tool.headlineDetail],
@@ -312,6 +350,8 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
             <ShellToolExpandedBody tool={tool} command={shellCommand} />
           ) : isFileDiff ? (
             <FileToolDiffExpandedBody tool={tool} open={open} />
+          ) : isResponsesBuiltIn ? (
+            <ResponsesBuiltInToolExpandedBody tool={tool} shimmerActive={shimmerActive} />
           ) : (
             <GenericToolExpandedBody tool={tool} />
           )}
