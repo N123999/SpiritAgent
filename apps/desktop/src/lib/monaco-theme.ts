@@ -77,10 +77,64 @@ function resolveCssColor(expression: string, fallback: string): string {
   return normalizeColorForMonaco(resolved, fallback);
 }
 
+/** 工具卡 Diff：低饱和、低透明度，接近 Cursor / GitHub 的淡色块风格。 */
+function resolveDiffEditorColors(subtle: boolean, isDark: boolean): {
+  insertedLine: string;
+  removedLine: string;
+  insertedText: string;
+  removedText: string;
+} {
+  if (!subtle) {
+    return {
+      insertedLine: resolveCssBackground(
+        'color-mix(in oklab, #22c55e 22%, transparent)',
+        'rgba(34, 197, 94, 0.18)',
+      ),
+      removedLine: resolveCssBackground(
+        'color-mix(in oklab, #ef4444 22%, transparent)',
+        'rgba(239, 68, 68, 0.18)',
+      ),
+      insertedText: resolveCssBackground(
+        'color-mix(in oklab, #22c55e 35%, transparent)',
+        'rgba(34, 197, 94, 0.28)',
+      ),
+      removedText: resolveCssBackground(
+        'color-mix(in oklab, #ef4444 35%, transparent)',
+        'rgba(239, 68, 68, 0.28)',
+      ),
+    };
+  }
+
+  const lineMix = isDark ? 7 : 9;
+  const textMix = isDark ? 11 : 13;
+  const add = '#6ee7b7';
+  const remove = '#fca5a5';
+
+  return {
+    insertedLine: resolveCssBackground(
+      `color-mix(in oklab, ${add} ${lineMix}%, transparent)`,
+      isDark ? 'rgba(110, 231, 183, 0.055)' : 'rgba(110, 231, 183, 0.09)',
+    ),
+    removedLine: resolveCssBackground(
+      `color-mix(in oklab, ${remove} ${lineMix}%, transparent)`,
+      isDark ? 'rgba(252, 165, 165, 0.055)' : 'rgba(252, 165, 165, 0.09)',
+    ),
+    insertedText: resolveCssBackground(
+      `color-mix(in oklab, ${add} ${textMix}%, transparent)`,
+      isDark ? 'rgba(110, 231, 183, 0.085)' : 'rgba(110, 231, 183, 0.12)',
+    ),
+    removedText: resolveCssBackground(
+      `color-mix(in oklab, ${remove} ${textMix}%, transparent)`,
+      isDark ? 'rgba(252, 165, 165, 0.085)' : 'rgba(252, 165, 165, 0.12)',
+    ),
+  };
+}
+
 function defineSpiritDesktopMonacoTheme(
   themeId: string,
   base: 'vs' | 'vs-dark',
   editorSurface: string,
+  options?: { subtleDiff?: boolean },
 ): void {
   const isDark = base === 'vs-dark';
   const fg = resolveCssColor('var(--foreground)', isDark ? FALLBACK_DARK_FG : '#0a0a0a');
@@ -99,22 +153,7 @@ function defineSpiritDesktopMonacoTheme(
   );
   const widgetBg = resolveCssBackground('var(--popover)', editorSurface);
   const border = resolveCssBackground('var(--border)', 'rgba(128, 128, 128, 0.2)');
-  const insertedLine = resolveCssBackground(
-    'color-mix(in oklab, #22c55e 22%, transparent)',
-    'rgba(34, 197, 94, 0.18)',
-  );
-  const removedLine = resolveCssBackground(
-    'color-mix(in oklab, #ef4444 22%, transparent)',
-    'rgba(239, 68, 68, 0.18)',
-  );
-  const insertedText = resolveCssBackground(
-    'color-mix(in oklab, #22c55e 35%, transparent)',
-    'rgba(34, 197, 94, 0.28)',
-  );
-  const removedText = resolveCssBackground(
-    'color-mix(in oklab, #ef4444 35%, transparent)',
-    'rgba(239, 68, 68, 0.28)',
-  );
+  const diffColors = resolveDiffEditorColors(options?.subtleDiff ?? false, isDark);
 
   try {
     monaco.editor.defineTheme(themeId, {
@@ -133,10 +172,10 @@ function defineSpiritDesktopMonacoTheme(
         'editorCursor.foreground': fg,
         'editorWidget.background': widgetBg,
         'editorWidget.border': border,
-        'diffEditor.insertedLineBackground': insertedLine,
-        'diffEditor.removedLineBackground': removedLine,
-        'diffEditor.insertedTextBackground': insertedText,
-        'diffEditor.removedTextBackground': removedText,
+        'diffEditor.insertedLineBackground': diffColors.insertedLine,
+        'diffEditor.removedLineBackground': diffColors.removedLine,
+        'diffEditor.insertedTextBackground': diffColors.insertedText,
+        'diffEditor.removedTextBackground': diffColors.removedText,
         'scrollbarSlider.background': resolveCssBackground(
           'color-mix(in oklab, var(--foreground) 18%, transparent)',
           'rgba(121, 121, 121, 0.4)',
@@ -177,6 +216,7 @@ export function registerSpiritDesktopToolCallDiffMonacoTheme(): void {
     SPIRIT_MONACO_TOOL_CALL_DIFF,
     isDark ? 'vs-dark' : 'vs',
     appSurface,
+    { subtleDiff: true },
   );
 }
 
