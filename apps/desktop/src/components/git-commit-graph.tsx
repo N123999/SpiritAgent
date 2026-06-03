@@ -6,13 +6,14 @@ import {
   useRef,
   useState,
   type ComponentRef,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Copy, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { GitCommitGraphRow, GitHistorySnapshot } from "@/types";
@@ -434,15 +435,12 @@ function CommitGraphGutter({
   );
 }
 
-function CommitGraphRow({
-  row,
-  textInset,
-}: {
-  row: GitCommitGraphRow;
-  textInset: number;
-}) {
+const HOVER_CLOSE_DELAY_MS = 120;
+/** Keep the anchor row mounted long enough for Radix's close animation to finish. */
+const ANCHOR_LINGER_MS = 220;
+
+function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const shortOid = row.commit.oid.slice(0, 7);
 
@@ -457,67 +455,80 @@ function CommitGraphRow({
   }, [row.commit.oid]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <div
-        className="relative min-w-0 border-b border-border/20 last:border-b-0"
-        style={{ minHeight: ROW_HEIGHT_PX, paddingLeft: textInset }}
-      >
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full min-w-0 items-center py-1 pr-2 text-left hover:bg-muted/30"
-          >
-            <span className="min-w-0 flex-1 truncate text-xs leading-snug text-foreground">
-              {row.commit.subject}
-            </span>
-          </button>
-        </PopoverTrigger>
-      </div>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={6}
-        collisionPadding={12}
-        className="w-72 p-3"
-      >
-        <div className="space-y-2">
-          <p className="text-sm font-medium leading-snug text-foreground">{row.commit.subject}</p>
-          <p className="text-[11px] text-muted-foreground">
-            <span className="text-foreground/80">{row.commit.author}</span>
-            {" · "}
-            <span>{row.commit.authoredAt}</span>
-          </p>
-          {row.commit.refs.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {row.commit.refs.map((ref) => (
-                <span
-                  key={`${row.commit.oid}:${ref}`}
-                  className="rounded bg-primary/15 px-1 py-0 font-mono text-[10px] text-primary"
-                >
-                  {ref}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-            <span className="truncate" title={row.commit.oid}>
-              {shortOid}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0"
-              onClick={() => void copySha()}
-              aria-label={t("workspace.git.copySha")}
+    <div className="space-y-2">
+      <p className="text-sm font-medium leading-snug text-foreground">{row.commit.subject}</p>
+      <p className="text-[11px] text-muted-foreground">
+        <span className="text-foreground/80">{row.commit.author}</span>
+        {" · "}
+        <span>{row.commit.authoredAt}</span>
+      </p>
+      {row.commit.refs.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {row.commit.refs.map((ref) => (
+            <span
+              key={`${row.commit.oid}:${ref}`}
+              className="rounded bg-primary/15 px-1 py-0 font-mono text-[10px] text-primary"
             >
-              <Copy className="size-3" aria-hidden />
-            </Button>
-            {copied ? <span className="text-[10px] text-foreground">{t("workspace.git.copiedSha")}</span> : null}
-          </div>
+              {ref}
+            </span>
+          ))}
         </div>
-      </PopoverContent>
-    </Popover>
+      ) : null}
+      <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+        <span className="truncate" title={row.commit.oid}>
+          {shortOid}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          onClick={() => void copySha()}
+          aria-label={t("workspace.git.copySha")}
+        >
+          <Copy className="size-3" aria-hidden />
+        </Button>
+        {copied ? <span className="text-[10px] text-foreground">{t("workspace.git.copiedSha")}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function CommitGraphRow({
+  row,
+  textInset,
+  isHovered,
+  isPopoverAnchor,
+  onRowPointerEnter,
+}: {
+  row: GitCommitGraphRow;
+  textInset: number;
+  isHovered: boolean;
+  isPopoverAnchor: boolean;
+  onRowPointerEnter: (row: GitCommitGraphRow) => void;
+}) {
+  const rowButton = (
+    <button
+      type="button"
+      className={cn(
+        "flex w-full min-w-0 items-center py-1 pr-2 text-left",
+        isHovered ? "bg-muted/30" : "hover:bg-muted/30",
+      )}
+      onPointerEnter={() => onRowPointerEnter(row)}
+    >
+      <span className="min-w-0 flex-1 truncate text-xs leading-snug text-foreground">
+        {row.commit.subject}
+      </span>
+    </button>
+  );
+
+  return (
+    <div
+      className="relative min-w-0 border-b border-border/20 last:border-b-0"
+      style={{ minHeight: ROW_HEIGHT_PX, paddingLeft: textInset }}
+    >
+      {isPopoverAnchor ? <PopoverAnchor asChild>{rowButton}</PopoverAnchor> : rowButton}
+    </div>
   );
 }
 
@@ -538,6 +549,98 @@ export function GitCommitGraph({
   const scrollAreaRef = useRef<ComponentRef<typeof ScrollArea>>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const [geometry, setGeometry] = useState<RowGeometry | null>(null);
+  const [hoveredRow, setHoveredRow] = useState<GitCommitGraphRow | null>(null);
+  // Keeps the anchor row mounted through Radix's close animation so the
+  // PopoverContent never loses its anchor and snaps to (0,0).
+  const [lingerAnchorOid, setLingerAnchorOid] = useState<string | null>(null);
+  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lingerClearTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hoveredRowRef = useRef<GitCommitGraphRow | null>(null);
+  const popoverContentRef = useRef<HTMLDivElement>(null);
+
+  hoveredRowRef.current = hoveredRow;
+
+  const clearHoverCloseTimer = useCallback(() => {
+    if (hoverCloseTimerRef.current !== undefined) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = undefined;
+    }
+  }, []);
+
+  const commitClose = useCallback((closingOid: string) => {
+    setLingerAnchorOid(closingOid);
+    setHoveredRow(null);
+    if (lingerClearTimerRef.current !== undefined) {
+      clearTimeout(lingerClearTimerRef.current);
+    }
+    lingerClearTimerRef.current = setTimeout(() => {
+      lingerClearTimerRef.current = undefined;
+      setLingerAnchorOid(null);
+    }, ANCHOR_LINGER_MS);
+  }, []);
+
+  const scheduleHoverClose = useCallback(() => {
+    clearHoverCloseTimer();
+    const closingOid = hoveredRowRef.current?.commit.oid ?? null;
+    if (!closingOid) {
+      return;
+    }
+    hoverCloseTimerRef.current = setTimeout(() => {
+      hoverCloseTimerRef.current = undefined;
+      commitClose(closingOid);
+    }, HOVER_CLOSE_DELAY_MS);
+  }, [clearHoverCloseTimer, commitClose]);
+
+  const handleRowPointerEnter = useCallback(
+    (row: GitCommitGraphRow) => {
+      clearHoverCloseTimer();
+      if (lingerClearTimerRef.current !== undefined) {
+        clearTimeout(lingerClearTimerRef.current);
+        lingerClearTimerRef.current = undefined;
+      }
+      setLingerAnchorOid(null);
+      setHoveredRow(row);
+    },
+    [clearHoverCloseTimer],
+  );
+
+  // Pointer left the whole commit list. Close unless we are heading into the popover.
+  const handleListPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const related = event.relatedTarget;
+      if (related instanceof Node && popoverContentRef.current?.contains(related)) {
+        return;
+      }
+      scheduleHoverClose();
+    },
+    [scheduleHoverClose],
+  );
+
+  // Pointer left the popover. Close unless we are heading back into the list.
+  const handlePopoverPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const related = event.relatedTarget;
+      if (related instanceof Node && rowsContainerRef.current?.contains(related)) {
+        return;
+      }
+      scheduleHoverClose();
+    },
+    [scheduleHoverClose],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (hoverCloseTimerRef.current !== undefined) {
+        clearTimeout(hoverCloseTimerRef.current);
+      }
+      if (lingerClearTimerRef.current !== undefined) {
+        clearTimeout(lingerClearTimerRef.current);
+      }
+    };
+  }, []);
+
+  const popoverOpen = hoveredRow !== null;
+  const anchorOid = hoveredRow?.commit.oid ?? lingerAnchorOid;
 
   useEffect(() => {
     if (!hasMore || !onLoadMore || loadingMore) {
@@ -642,41 +745,81 @@ export function GitCommitGraph({
 
   return (
     <ScrollArea ref={scrollAreaRef} className={cn("min-h-0 flex-1", className)}>
-      <div className="relative min-w-0 pr-1">
-        <CommitGraphGutter rows={rows} graphWidth={graphWidth} geometry={geometry} />
-        <div className="relative" ref={rowsContainerRef}>
-          {rows.map((row, rowIndex) => (
-            <CommitGraphRow
-              key={row.commit.oid}
-              row={row}
-              textInset={textInsetForRow(row, rowIndex, rows)}
-            />
-          ))}
-        </div>
-        {showLoadMoreFooter ? (
+      <Popover open={popoverOpen} modal={false}>
+        <div className="relative min-w-0 pr-1">
+          <CommitGraphGutter rows={rows} graphWidth={graphWidth} geometry={geometry} />
           <div
-            ref={loadMoreSentinelRef}
-            className="flex min-h-10 items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
+            className="relative"
+            ref={rowsContainerRef}
+            onPointerLeave={handleListPointerLeave}
           >
-            {loadingMore ? (
-              <>
-                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                {t("workspace.git.loadingMoreHistory")}
-              </>
-            ) : hasMore && onLoadMore ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={onLoadMore}
-              >
-                {t("workspace.git.loadMoreHistory")}
-              </Button>
-            ) : null}
+            {rows.map((row, rowIndex) => (
+              <CommitGraphRow
+                key={row.commit.oid}
+                row={row}
+                textInset={textInsetForRow(row, rowIndex, rows)}
+                isHovered={hoveredRow?.commit.oid === row.commit.oid}
+                isPopoverAnchor={anchorOid === row.commit.oid}
+                onRowPointerEnter={handleRowPointerEnter}
+              />
+            ))}
           </div>
-        ) : null}
-      </div>
+          {showLoadMoreFooter ? (
+            <div
+              ref={loadMoreSentinelRef}
+              className="flex min-h-10 items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
+            >
+              {loadingMore ? (
+                <>
+                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                  {t("workspace.git.loadingMoreHistory")}
+                </>
+              ) : hasMore && onLoadMore ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={onLoadMore}
+                >
+                  {t("workspace.git.loadMoreHistory")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <PopoverContent
+          ref={popoverContentRef}
+          side="right"
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          className="w-72 p-3"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => {
+            const target = event.target as Node;
+            if (rowsContainerRef.current?.contains(target)) {
+              event.preventDefault();
+              return;
+            }
+            scheduleHoverClose();
+          }}
+          onFocusOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => {
+            const target = event.target as Node;
+            if (rowsContainerRef.current?.contains(target)) {
+              event.preventDefault();
+              return;
+            }
+            scheduleHoverClose();
+          }}
+          onPointerEnter={clearHoverCloseTimer}
+          onPointerLeave={handlePopoverPointerLeave}
+        >
+          {hoveredRow ? <CommitGraphRowDetail row={hoveredRow} /> : null}
+        </PopoverContent>
+      </Popover>
     </ScrollArea>
   );
 }
