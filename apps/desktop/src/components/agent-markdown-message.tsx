@@ -5,6 +5,7 @@ import { mermaid } from "@streamdown/mermaid";
 import { Streamdown } from "streamdown";
 
 import type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import {
   createMarkdownMessageComponents,
   markdownMessageRootClassName,
@@ -13,6 +14,13 @@ import {
 import { streamdownUrlTransform } from "@/lib/markdown-url-transform";
 
 const streamdownPlugins = { code, math, mermaid };
+
+const streamingAnimateOptions = {
+  animation: "slideUp" as const,
+  duration: 220,
+  easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+  sep: "char" as const,
+};
 
 export function AgentMarkdownMessage({
   content,
@@ -27,10 +35,13 @@ export function AgentMarkdownMessage({
   tone?: MarkdownTone;
   readManagedImagePreviewDataUrl?: ReadManagedImagePreviewDataUrl;
 }) {
+  const prefersReducedMotion = usePrefersReducedMotion();
   const components = useMemo(
     () => createMarkdownMessageComponents(readManagedImagePreviewDataUrl, tone),
     [readManagedImagePreviewDataUrl, tone],
   );
+
+  const motionActive = streaming && !prefersReducedMotion;
 
   return (
     <Streamdown
@@ -45,7 +56,8 @@ export function AgentMarkdownMessage({
         table: { copy: true, download: true, fullscreen: true },
       }}
       parseIncompleteMarkdown={streaming}
-      isAnimating={false}
+      isAnimating={motionActive}
+      animated={motionActive ? streamingAnimateOptions : false}
     >
       {content}
     </Streamdown>
