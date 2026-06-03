@@ -5,7 +5,12 @@ export type EditFileLineDelta = {
   removed: number;
 };
 
-const TOOLS_WITH_LINE_DELTA = new Set(['edit_file', 'create_file', 'create_plan']);
+const TOOLS_WITH_LINE_DELTA = new Set([
+  'edit_file',
+  'create_file',
+  'create_plan',
+  'delete_file',
+]);
 
 function splitLines(text: string): string[] {
   if (!text) {
@@ -144,6 +149,59 @@ function createContentLineDelta(content: string): EditFileLineDelta | undefined 
   return { added, removed: 0 };
 }
 
+export function deleteFileLineDeltaFromContent(content: string): EditFileLineDelta | undefined {
+  const removed = splitLines(content).length;
+  if (removed === 0) {
+    return undefined;
+  }
+  return { added: 0, removed };
+}
+
+function extractDeleteFilePath(
+  toolName: string,
+  request?: unknown,
+  argumentsJson?: string,
+): string | undefined {
+  if (toolName !== 'delete_file') {
+    return undefined;
+  }
+
+  if (request && typeof request === 'object') {
+    const pathValue = (request as Record<string, unknown>).path;
+    if (typeof pathValue === 'string' && pathValue.trim()) {
+      return pathValue.trim();
+    }
+  }
+
+  const trimmed = argumentsJson?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      const pathValue = (parsed as Record<string, unknown>).path;
+      if (typeof pathValue === 'string' && pathValue.trim()) {
+        return pathValue.trim();
+      }
+    }
+  } catch {
+    const partial = tryExtractPartialJsonStringValue(trimmed, 'path');
+    if (partial?.trim()) {
+      return partial.trim();
+    }
+  }
+
+  return undefined;
+}
+
+export type AttachEditFileLineDeltaSource = {
+  request?: unknown;
+  argumentsJson?: string;
+  resolveDeleteFileLines?: (inputPath: string) => EditFileLineDelta | undefined;
+};
+
 export function toolLineDeltaFromRequest(
   toolName: string,
   request: unknown,
@@ -157,6 +215,10 @@ export function toolLineDeltaFromRequest(
   if (toolName === 'create_file' || toolName === 'create_plan') {
     const content = typeof record.content === 'string' ? record.content : '';
     return createContentLineDelta(content);
+  }
+
+  if (toolName === 'delete_file') {
+    return undefined;
   }
 
   const oldText = typeof record.old_text === 'string' ? record.old_text : '';
@@ -192,6 +254,10 @@ export function toolLineDeltaFromArgumentsJson(
     if (toolName === 'create_file' || toolName === 'create_plan') {
       const content = tryExtractPartialJsonStringValue(trimmed, 'content');
       return content !== undefined ? createContentLineDelta(content) : undefined;
+    }
+
+    if (toolName === 'delete_file') {
+      return undefined;
     }
 
     const oldText = tryExtractPartialJsonStringValue(trimmed, 'old_text');
@@ -234,16 +300,27 @@ export function resolveEditFileLineDelta(tool: ToolBlockSnapshot): EditFileLineD
 
 export function attachEditFileLineDelta(
   tool: ToolBlockSnapshot,
-  source: { request?: unknown; argumentsJson?: string },
+  source: AttachEditFileLineDeltaSource,
 ): ToolBlockSnapshot {
   if (!TOOLS_WITH_LINE_DELTA.has(tool.toolName)) {
     return tool;
   }
 
-  const delta =
+  let delta =
     source.argumentsJson !== undefined
       ? toolLineDeltaFromArgumentsJson(tool.toolName, source.argumentsJson)
       : toolLineDeltaFromRequest(tool.toolName, source.request);
+
+  if (!delta && tool.toolName === 'delete_file' && source.resolveDeleteFileLines) {
+    const inputPath = extractDeleteFilePath(
+      tool.toolName,
+      source.request,
+      source.argumentsJson,
+    );
+    if (inputPath) {
+      delta = source.resolveDeleteFileLines(inputPath);
+    }
+  }
 
   if (!delta) {
     const { editLineDelta: _removed, ...rest } = tool;
@@ -251,4 +328,16 @@ export function attachEditFileLineDelta(
   }
 
   return { ...tool, editLineDelta: delta };
+}
+
+/** delete_file 完成后文件已不存在，须保留执行前算好的行数。 */
+export function preserveDeleteFileLineDelta(
+  toolName: string,
+  attached: ToolBlockSnapshot,
+  priorDelta?: EditFileLineDelta,
+): ToolBlockSnapshot {
+  if (toolName !== 'delete_file' || attached.editLineDelta || !priorDelta) {
+    return attached;
+  }
+  return { ...attached, editLineDelta: priorDelta };
 }

@@ -6,7 +6,12 @@ import {
 } from '@spirit-agent/agent-core';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 
-import { attachEditFileLineDelta } from '../lib/edit-file-line-delta.js';
+import {
+  attachEditFileLineDelta,
+  type AttachEditFileLineDeltaSource,
+  type EditFileLineDelta,
+  preserveDeleteFileLineDelta,
+} from '../lib/edit-file-line-delta.js';
 import i18n from '../lib/i18n-host.js';
 import type {
   ConversationMessageSnapshot,
@@ -59,6 +64,8 @@ export interface DesktopRuntimeEventOrchestratorOptions {
   ) => void;
   onTodoStoreMutated?: () => void;
   requestLiveSnapshotUpdate?: () => void;
+  /** delete_file：删除前按路径读取磁盘并统计行数 */
+  lineDeltaForDeleteFile?: (inputPath: string) => EditFileLineDelta | undefined;
 }
 
 function isMcpLikeToolName(toolName: string): boolean {
@@ -71,6 +78,35 @@ export class DesktopRuntimeEventOrchestrator {
   private activeGenerateImageTools = new Map<string, ToolBlockSnapshot>();
 
   constructor(private readonly options: DesktopRuntimeEventOrchestratorOptions) {}
+
+  private findExistingToolLineDelta(toolCallId: string | undefined): EditFileLineDelta | undefined {
+    if (!toolCallId) {
+      return undefined;
+    }
+    const messages = this.options.messages();
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.tool?.toolCallId === toolCallId && message.tool.editLineDelta) {
+        return message.tool.editLineDelta;
+      }
+    }
+    return undefined;
+  }
+
+  private attachLineDelta(
+    tool: ToolBlockSnapshot,
+    source: Omit<AttachEditFileLineDeltaSource, 'resolveDeleteFileLines'>,
+  ): ToolBlockSnapshot {
+    const attached = attachEditFileLineDelta(tool, {
+      ...source,
+      resolveDeleteFileLines: this.options.lineDeltaForDeleteFile,
+    });
+    return preserveDeleteFileLineDelta(
+      tool.toolName,
+      attached,
+      this.findExistingToolLineDelta(tool.toolCallId),
+    );
+  }
 
   reset(): void {
     this.lastApplyEventBatchId = 0;
@@ -232,7 +268,7 @@ export class DesktopRuntimeEventOrchestrator {
           event.toolName === 'generate_image'
             ? { headline: i18n.t('tool.generateImage') }
             : toolCallSummaryForPhase('running', event.toolName, event.request);
-        const runningTool: ToolBlockSnapshot = attachEditFileLineDelta(
+        const runningTool: ToolBlockSnapshot = this.attachLineDelta(
           applyToolCallSummaryCopy(
             {
               toolCallId: event.toolCallId,
@@ -317,7 +353,7 @@ export class DesktopRuntimeEventOrchestrator {
         event.toolName,
         previewRequest,
       );
-      const runningTool: ToolBlockSnapshot = attachEditFileLineDelta(
+      const runningTool: ToolBlockSnapshot = this.attachLineDelta(
         applyToolCallSummaryCopy(
           {
             toolCallId: event.toolCallId,
@@ -480,7 +516,7 @@ export class DesktopRuntimeEventOrchestrator {
         approval.toolName,
         approval.request,
       );
-      const pendingTool: ToolBlockSnapshot = attachEditFileLineDelta(
+      const pendingTool: ToolBlockSnapshot = this.attachLineDelta(
         applyToolCallSummaryCopy(
           {
             toolCallId: toolMessageKey(approval),
@@ -569,7 +605,7 @@ export class DesktopRuntimeEventOrchestrator {
               execution.toolName,
               execution.request,
             );
-      const toolBlock: ToolBlockSnapshot = attachEditFileLineDelta(
+      const toolBlock: ToolBlockSnapshot = this.attachLineDelta(
         applyToolCallSummaryCopy(
           {
             toolCallId: execution.toolCallId || `tool:${execution.toolName}`,
@@ -635,7 +671,7 @@ export class DesktopRuntimeEventOrchestrator {
     }
 
     const runningSummary = toolCallSummaryForPhase('running', event.toolName, event.request);
-    const runningTool: ToolBlockSnapshot = attachEditFileLineDelta(
+    const runningTool: ToolBlockSnapshot = this.attachLineDelta(
       applyToolCallSummaryCopy(
         {
           toolCallId: event.toolCallId,

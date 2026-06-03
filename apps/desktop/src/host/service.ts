@@ -2,6 +2,7 @@ import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { lineDeltaForDeleteFilePath } from './delete-file-line-delta.js';
 import i18n from '../lib/i18n-host.js';
 import {
   appendLlmToolResultMessages,
@@ -607,6 +608,11 @@ class DesktopHostService {
           this.emitLiveSnapshotUpdate();
         }
       },
+      lineDeltaForDeleteFile: (inputPath) =>
+        lineDeltaForDeleteFilePath(
+          { workspaceRoot: bundle.workspaceRoot, spiritDataDir: spiritAgentDataDir() },
+          inputPath,
+        ),
     });
     return { assistantMessages, runtimeEvents, conversationSnapshotView };
   }

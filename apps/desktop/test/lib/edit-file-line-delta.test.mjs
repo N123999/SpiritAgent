@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import {
+  deleteFileLineDeltaFromContent,
+  preserveDeleteFileLineDelta,
   editFileLineDeltaFromArgumentsJson,
   lineChangeCounts,
   toolLineDeltaFromArgumentsJson,
@@ -48,4 +54,33 @@ test('create_plan partial content streams in', () => {
     added: 1,
     removed: 0,
   });
+});
+
+test('deleteFileLineDeltaFromContent counts removed lines only', () => {
+  assert.deepEqual(deleteFileLineDeltaFromContent('one\ntwo\n'), { added: 0, removed: 3 });
+  assert.equal(deleteFileLineDeltaFromContent(''), undefined);
+});
+
+test('delete file line delta matches on-disk utf8 content', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'spirit-delete-delta-'));
+  const filePath = path.join(workspaceRoot, 'hello.txt');
+  writeFileSync(filePath, 'alpha\nbeta', 'utf8');
+  const content = readFileSync(filePath, 'utf8');
+  assert.deepEqual(deleteFileLineDeltaFromContent(content), { added: 0, removed: 2 });
+});
+
+test('toolLineDeltaFromRequest ignores delete_file without disk read', () => {
+  assert.equal(toolLineDeltaFromRequest('delete_file', { path: 'x.ts' }), undefined);
+});
+
+test('preserveDeleteFileLineDelta keeps prior removed count after file is gone', () => {
+  const prior = { added: 0, removed: 11 };
+  const attached = {
+    toolName: 'delete_file',
+    phase: 'succeeded',
+    headline: '删除 hello.txt',
+    detailLines: [],
+  };
+  assert.deepEqual(preserveDeleteFileLineDelta('delete_file', attached, prior).editLineDelta, prior);
+  assert.equal(preserveDeleteFileLineDelta('create_file', attached, prior).editLineDelta, undefined);
 });
