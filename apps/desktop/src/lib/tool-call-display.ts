@@ -17,7 +17,7 @@ const LEGACY_READ_FILE_HEADLINE = /^查看\s+(.+)$/u;
 
 export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts {
   const headline = tool.headline.trim();
-  let snapshotDetail = tool.headlineDetail?.trim();
+  const snapshotDetail = tool.headlineDetail?.trim();
 
   if (tool.toolName === 'read_file' && !snapshotDetail) {
     const legacy = LEGACY_READ_FILE_HEADLINE.exec(headline);

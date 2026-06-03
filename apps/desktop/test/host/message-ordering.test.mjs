@@ -11,18 +11,18 @@ import {
   toolCallSummaryForPhase,
 } from '../../dist-electron/src/host/message-ordering.js';
 
-test('toolCallSummaryCopyForRequest: write tools use basename', () => {
+test('toolCallSummaryCopyForRequest: write tools use verb headline + basename detail', () => {
   assert.deepEqual(
     toolCallSummaryCopyForRequest('edit_file', { path: 'D:/proj/src/foo.ts' }),
-    { headline: '编辑 foo.ts' },
+    { headline: '编辑', headlineDetail: 'foo.ts' },
   );
   assert.deepEqual(
     toolCallSummaryCopyForRequest('create_file', { path: 'notes/readme.md' }),
-    { headline: '创建 readme.md' },
+    { headline: '创建', headlineDetail: 'readme.md' },
   );
   assert.deepEqual(
     toolCallSummaryCopyForRequest('delete_file', { path: '/tmp/old.txt' }),
-    { headline: '删除 old.txt' },
+    { headline: '删除', headlineDetail: 'old.txt' },
   );
 });
 
@@ -33,11 +33,20 @@ test('toolCallSummaryCopyForRequest: create_plan uses plan slug not tool name', 
       plan_name: 'multilingual-cat',
       content: '# Plan',
     }),
-    { headline: '创建 multilingual-cat.md' },
+    { headline: '创建', headlineDetail: 'multilingual-cat.md' },
   );
   assert.deepEqual(
     toolCallSummaryCopyForRequest('create_plan', { name: 'demo-plan', content: '# Plan' }),
-    { headline: '创建 demo-plan.md' },
+    { headline: '创建', headlineDetail: 'demo-plan.md' },
+  );
+});
+
+test('toolCallSummaryCopyForRequest: apply_patch uses verb headline + basename detail', () => {
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('apply_patch', {
+      operation: { type: 'update_file', path: 'README.md' },
+    }),
+    { headline: '编辑', headlineDetail: 'README.md' },
   );
 });
 

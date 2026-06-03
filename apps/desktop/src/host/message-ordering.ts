@@ -212,14 +212,20 @@ export function toolCallSummaryCopyForRequest(
       const basename = displayBasename(rawPath);
       const verb =
         toolName === 'create_file' ? i18n.t('tool.create') : toolName === 'edit_file' ? i18n.t('tool.edit') : i18n.t('tool.delete');
-      return { headline: `${verb} ${basename}` };
+      return {
+        headline: verb,
+        headlineDetail: truncateSummaryDetail(basename),
+      };
     }
     case 'create_plan': {
       const planSlug = planSlugFromCreatePlanRequest(record);
       const label = planSlug
         ? `plans/${planSlug.endsWith('.md') ? planSlug : `${planSlug}.md`}`
         : 'plans/';
-      return { headline: `${i18n.t('tool.create')} ${displayBasename(label)}` };
+      return {
+        headline: i18n.t('tool.create'),
+        headlineDetail: truncateSummaryDetail(displayBasename(label)),
+      };
     }
     case 'apply_patch': {
       const operation =
@@ -237,7 +243,10 @@ export function toolCallSummaryCopyForRequest(
             : opType === 'delete_file'
               ? i18n.t('tool.delete')
               : 'Patch';
-      return { headline: `${verb} ${basename}` };
+      return {
+        headline: verb,
+        headlineDetail: truncateSummaryDetail(basename),
+      };
     }
     case 'grep': {
       const query = typeof record.query === 'string' ? record.query.trim() : '';
