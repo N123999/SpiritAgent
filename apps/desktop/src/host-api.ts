@@ -86,6 +86,7 @@ export interface HostApi {
   setWorkLocation(workLocation: import('@spirit-agent/host-internal').WorkLocationKind): Promise<DesktopSnapshot>;
   checkoutGitBranch(request: CheckoutGitBranchRequest): Promise<DesktopSnapshot>;
   mergeWorktreeToMain(): Promise<DesktopSnapshot>;
+  pushGitBranch(): Promise<DesktopSnapshot>;
   readGitWorkingTree(): Promise<GitWorkingTreeSnapshot>;
   readGitHistory(request?: ReadGitHistoryRequest): Promise<GitHistorySnapshot>;
   abortConversation(): Promise<DesktopSnapshot>;

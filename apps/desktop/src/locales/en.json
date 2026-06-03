@@ -508,6 +508,8 @@
     "noBranch": "No branch",
     "selectBranch": "Select branch",
     "noChangesToCommit": "There are no changes to commit in the current workspace.",
+    "nothingToPush": "The current branch is already up to date with its remote.",
+    "gitPushFailed": "git push failed: ",
     "branchNameRequired": "Branch name cannot be empty.",
     "branchNotFound": "Branch does not exist: {{branch}}",
     "notInWorktree": "The current session is not in a Worktree and cannot be merged.",

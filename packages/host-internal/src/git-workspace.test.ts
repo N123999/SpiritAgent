@@ -10,15 +10,19 @@ import {
   addGitWorktree,
   buildWorktreeRootPath,
   checkoutGitBranch,
+  computeGitNeedsPush,
   isGitCheckoutBlockedError,
   isSpiritBranchName,
   isSpiritWorktreeName,
   listGitBranches,
   listGitWorktrees,
   mergeSpiritBranchToMain,
+  parseGitShortBranchLine,
+  pushGitBranch,
   readGitWorkspaceSnapshot,
   readWorktreeContext,
   resolveDefaultBranch,
+  resolveGitPushRemote,
   resolvePrimaryRepoRoot,
   resolveWorkspaceGroupingRoot,
 } from './git-workspace.js';
@@ -101,6 +105,83 @@ test('checkoutGitBranch throws GitCheckoutBlockedError when local changes block 
   }
 });
 
+test('parseGitShortBranchLine parses upstream and ahead/behind counts', () => {
+  assert.deepEqual(parseGitShortBranchLine('## main...origin/main [ahead 2, behind 1]'), {
+    localBranch: 'main',
+    upstreamRemote: 'origin',
+    upstreamBranch: 'main',
+    aheadCount: 2,
+    behindCount: 1,
+  });
+  assert.deepEqual(parseGitShortBranchLine('## feature'), {
+    localBranch: 'feature',
+    aheadCount: 0,
+    behindCount: 0,
+  });
+  assert.equal(parseGitShortBranchLine(' M file.txt'), null);
+});
+
+test('computeGitNeedsPush and resolveGitPushRemote', () => {
+  assert.equal(
+    computeGitNeedsPush({
+      hasUpstream: true,
+      aheadCount: 1,
+      hasCommit: true,
+      pushRemote: 'origin',
+    }),
+    true,
+  );
+  assert.equal(
+    computeGitNeedsPush({
+      hasUpstream: true,
+      aheadCount: 0,
+      hasCommit: true,
+      pushRemote: 'origin',
+    }),
+    false,
+  );
+  assert.equal(
+    computeGitNeedsPush({
+      hasUpstream: false,
+      aheadCount: 0,
+      hasCommit: true,
+      pushRemote: 'origin',
+    }),
+    true,
+  );
+  assert.equal(resolveGitPushRemote(['upstream', 'origin'], 'upstream'), 'upstream');
+  assert.equal(resolveGitPushRemote(['upstream'], undefined), 'upstream');
+});
+
+test('pushGitBranch runs git push -u after local commit without upstream', async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-push-'));
+
+  try {
+    await runGit(repoRoot, ['init']);
+    await runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+    await runGit(repoRoot, ['config', 'user.name', 'Spirit Test']);
+    await writeFile(join(repoRoot, 'README.md'), '# hello\n');
+    await runGit(repoRoot, ['add', 'README.md']);
+    await runGit(repoRoot, ['commit', '-m', 'init']);
+
+    const snapshot = await readGitWorkspaceSnapshot(repoRoot);
+    assert.equal(snapshot.needsPush, false);
+    assert.equal(snapshot.pushRemote, undefined);
+
+    await runGit(repoRoot, ['remote', 'add', 'origin', repoRoot]);
+    const snapshotWithRemote = await readGitWorkspaceSnapshot(repoRoot);
+    assert.equal(snapshotWithRemote.needsPush, true);
+    assert.equal(snapshotWithRemote.pushRemote, 'origin');
+
+    await pushGitBranch(repoRoot);
+    const afterPush = await readGitWorkspaceSnapshot(repoRoot);
+    assert.equal(afterPush.needsPush, false);
+    assert.equal(afterPush.upstreamRemote, 'origin');
+  } finally {
+    await rm(repoRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  }
+});
+
 test('readGitWorkspaceSnapshot returns empty snapshot outside git repo', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'spirit-host-internal-non-git-'));
   try {
@@ -108,6 +189,8 @@ test('readGitWorkspaceSnapshot returns empty snapshot outside git repo', async (
     assert.equal(snapshot.isRepository, false);
     assert.equal(snapshot.hasChanges, false);
     assert.deepEqual(snapshot.branches, []);
+    assert.equal(snapshot.needsPush, false);
+    assert.equal(snapshot.aheadCount, 0);
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }

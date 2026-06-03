@@ -157,6 +157,9 @@ export function createWebHostApi(): HostApi {
     mergeWorktreeToMain() {
       return post<DesktopSnapshot>(baseUrl, '/api/git/merge-worktree');
     },
+    pushGitBranch() {
+      return post<DesktopSnapshot>(baseUrl, '/api/git/push');
+    },
     readGitWorkingTree() {
       return post<GitWorkingTreeSnapshot>(baseUrl, '/api/git/working-tree', {});
     },

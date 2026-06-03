@@ -110,6 +110,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   mergeWorktreeToMain() {
     return ipcRenderer.invoke('desktop:invoke', 'mergeWorktreeToMain');
   },
+  pushGitBranch() {
+    return ipcRenderer.invoke('desktop:invoke', 'pushGitBranch');
+  },
   abortConversation() {
     return ipcRenderer.invoke('desktop:invoke', 'abortConversation');
   },

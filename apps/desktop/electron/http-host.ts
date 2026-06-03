@@ -706,6 +706,11 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/git/push') {
+    writeJson(request, response, 200, await runHostCommand('pushGitBranch'));
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/git/commit') {
     writeJson(
       request,

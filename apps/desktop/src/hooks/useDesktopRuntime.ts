@@ -1717,6 +1717,26 @@ export function useDesktopRuntime() {
     }
   }, [api, applySnapshot, refreshSessions]);
 
+  const pushGitBranch = useCallback(async (): Promise<boolean> => {
+    if (!api) {
+      return false;
+    }
+
+    setBusyAction("git");
+    try {
+      const next = await api.pushGitBranch();
+      applySnapshot(next);
+      setRuntimeError("");
+      void refreshSessions();
+      return true;
+    } catch (error) {
+      setRuntimeError(sanitizeGitErrorMessage(error));
+      return false;
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot, refreshSessions]);
+
   const continueAssistantCompletion = useCallback(
     async (messageId: number): Promise<boolean> => {
       if (!api) {
@@ -2066,6 +2086,7 @@ export function useDesktopRuntime() {
     setWorkLocation,
     checkoutGitBranch,
     mergeWorktreeToMain,
+    pushGitBranch,
     continueAssistantCompletion,
     openSession,
     listWorkspaceFileReferenceSuggestions,

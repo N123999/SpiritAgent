@@ -601,6 +601,12 @@ export interface DesktopGitSnapshot {
   hasChanges: boolean;
   branch?: string;
   branches: string[];
+  upstreamRemote?: string;
+  upstreamBranch?: string;
+  aheadCount: number;
+  behindCount: number;
+  pushRemote?: string;
+  needsPush: boolean;
   /** User-selected branch for the next send; defaults to `branch` when unset. */
   selectedBranch?: string;
   /** Session work-location preference; populated on client snapshots. */

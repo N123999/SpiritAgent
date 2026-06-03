@@ -17,6 +17,110 @@ export interface GitWorkspaceSnapshot {
   hasChanges: boolean;
   branch?: string;
   branches: string[];
+  upstreamRemote?: string;
+  upstreamBranch?: string;
+  aheadCount: number;
+  behindCount: number;
+  /** Remote used for `git push -u` (upstream remote, else origin, else first remote). */
+  pushRemote?: string;
+  needsPush: boolean;
+}
+
+/** Parsed from the first line of `git status -sb` (`## …`). */
+export interface ParsedGitStatusBranchLine {
+  localBranch?: string;
+  upstreamRemote?: string;
+  upstreamBranch?: string;
+  aheadCount: number;
+  behindCount: number;
+}
+
+export function parseGitShortBranchLine(line: string): ParsedGitStatusBranchLine | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('## ')) {
+    return null;
+  }
+
+  let branchPart = trimmed.slice(3).trim();
+  let bracketPart = '';
+  const bracketStart = branchPart.indexOf(' [');
+  if (bracketStart >= 0) {
+    bracketPart = branchPart.slice(bracketStart + 2);
+    if (bracketPart.endsWith(']')) {
+      bracketPart = bracketPart.slice(0, -1);
+    }
+    branchPart = branchPart.slice(0, bracketStart).trim();
+  }
+
+  let localBranch: string | undefined;
+  let upstreamRemote: string | undefined;
+  let upstreamBranch: string | undefined;
+  const ellipsis = branchPart.indexOf('...');
+  if (ellipsis >= 0) {
+    localBranch = branchPart.slice(0, ellipsis) || undefined;
+    const upstream = branchPart.slice(ellipsis + 3);
+    const slash = upstream.indexOf('/');
+    if (slash >= 0) {
+      upstreamRemote = upstream.slice(0, slash) || undefined;
+      upstreamBranch = upstream.slice(slash + 1) || undefined;
+    }
+  } else {
+    localBranch = branchPart || undefined;
+  }
+
+  let aheadCount = 0;
+  let behindCount = 0;
+  for (const segment of bracketPart.split(',').map((part) => part.trim()).filter(Boolean)) {
+    const aheadMatch = /^ahead (\d+)$/u.exec(segment);
+    const behindMatch = /^behind (\d+)$/u.exec(segment);
+    if (aheadMatch) {
+      aheadCount = Number(aheadMatch[1]);
+    }
+    if (behindMatch) {
+      behindCount = Number(behindMatch[1]);
+    }
+  }
+
+  return {
+    ...(localBranch ? { localBranch } : {}),
+    ...(upstreamRemote ? { upstreamRemote } : {}),
+    ...(upstreamBranch ? { upstreamBranch } : {}),
+    aheadCount,
+    behindCount,
+  };
+}
+
+export function resolveGitPushRemote(
+  remotes: readonly string[],
+  upstreamRemote?: string,
+): string | undefined {
+  if (upstreamRemote && remotes.includes(upstreamRemote)) {
+    return upstreamRemote;
+  }
+  if (remotes.includes('origin')) {
+    return 'origin';
+  }
+  return remotes[0];
+}
+
+export function computeGitNeedsPush(input: {
+  hasUpstream: boolean;
+  aheadCount: number;
+  hasCommit: boolean;
+  pushRemote?: string;
+}): boolean {
+  if (!input.pushRemote) {
+    return false;
+  }
+  if (input.hasUpstream) {
+    return input.aheadCount > 0;
+  }
+  return input.hasCommit;
+}
+
+export interface PushGitBranchOptions {
+  remote?: string;
+  branch?: string;
 }
 
 function renderGitError(error: unknown): string {
@@ -236,36 +340,114 @@ export async function readGitWorkingTreeChanges(repoRoot: string): Promise<GitWo
   }
 }
 
-export async function readGitWorkspaceSnapshot(repoRoot: string): Promise<GitWorkspaceSnapshot> {
+async function listGitRemotes(workspaceRoot: string): Promise<string[]> {
   try {
-    const [{ stdout: repoFlag }, { stdout: statusOutput }, branch, branches] = await Promise.all([
+    const { stdout } = await runGit(workspaceRoot, ['remote']);
+    return stdout
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function gitHasCommit(workspaceRoot: string): Promise<boolean> {
+  try {
+    await runGit(workspaceRoot, ['rev-parse', '--verify', 'HEAD']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readGitWorkspaceSnapshot(repoRoot: string): Promise<GitWorkspaceSnapshot> {
+  const emptySnapshot = (): GitWorkspaceSnapshot => ({
+    isRepository: false,
+    hasChanges: false,
+    branches: [],
+    aheadCount: 0,
+    behindCount: 0,
+    needsPush: false,
+  });
+
+  try {
+    const [
+      { stdout: repoFlag },
+      { stdout: statusOutput },
+      { stdout: shortStatusOutput },
+      branch,
+      branches,
+      remotes,
+      hasCommit,
+    ] = await Promise.all([
       runGit(repoRoot, ['rev-parse', '--is-inside-work-tree']),
       runGit(repoRoot, ['status', '--porcelain', '--untracked-files=all']),
+      runGit(repoRoot, ['status', '-sb']),
       readBranchName(repoRoot),
       listGitBranches(repoRoot),
+      listGitRemotes(repoRoot),
+      gitHasCommit(repoRoot),
     ]);
 
     if (repoFlag.trim() !== 'true') {
-      return {
-        isRepository: false,
-        hasChanges: false,
-        branches: [],
-      };
+      return emptySnapshot();
     }
+
+    const shortBranchLine = shortStatusOutput
+      .split(/\r?\n/u)
+      .find((line) => line.startsWith('## '));
+    const parsedBranch = shortBranchLine ? parseGitShortBranchLine(shortBranchLine) : null;
+    const upstreamRemote = parsedBranch?.upstreamRemote;
+    const upstreamBranch = parsedBranch?.upstreamBranch;
+    const aheadCount = parsedBranch?.aheadCount ?? 0;
+    const behindCount = parsedBranch?.behindCount ?? 0;
+    const hasUpstream = Boolean(upstreamRemote && upstreamBranch);
+    const pushRemote = resolveGitPushRemote(remotes, upstreamRemote);
+    const needsPush = computeGitNeedsPush({
+      hasUpstream,
+      aheadCount,
+      hasCommit,
+      ...(pushRemote ? { pushRemote } : {}),
+    });
 
     return {
       isRepository: true,
       hasChanges: statusOutput.trim().length > 0,
       branches,
+      aheadCount,
+      behindCount,
+      needsPush,
       ...(branch ? { branch } : {}),
+      ...(upstreamRemote ? { upstreamRemote } : {}),
+      ...(upstreamBranch ? { upstreamBranch } : {}),
+      ...(pushRemote ? { pushRemote } : {}),
     };
   } catch {
-    return {
-      isRepository: false,
-      hasChanges: false,
-      branches: [],
-    };
+    return emptySnapshot();
   }
+}
+
+export async function pushGitBranch(
+  workspaceRoot: string,
+  options: PushGitBranchOptions = {},
+): Promise<void> {
+  const snapshot = await readGitWorkspaceSnapshot(workspaceRoot);
+  if (!snapshot.isRepository) {
+    throw new Error('Not a git repository');
+  }
+
+  const branch = options.branch?.trim() || snapshot.branch;
+  if (!branch) {
+    throw new Error('No branch to push');
+  }
+
+  const remote = options.remote?.trim() || snapshot.pushRemote;
+  if (!remote) {
+    throw new Error('No git remote configured');
+  }
+
+  await runGit(workspaceRoot, ['push', '-u', remote, branch]);
 }
 
 export function normalizeWorkLocationKind(value: unknown): WorkLocationKind {

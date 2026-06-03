@@ -508,6 +508,8 @@
     "noBranch": "无分支",
     "selectBranch": "选择分支",
     "noChangesToCommit": "当前工作区没有可提交的更改。",
+    "nothingToPush": "当前分支已与远端同步，无需推送。",
+    "gitPushFailed": "git push 失败：",
     "branchNameRequired": "分支名称不能为空。",
     "branchNotFound": "分支不存在：{{branch}}",
     "notInWorktree": "当前会话不在 Worktree 中，无法合并。",

@@ -10,6 +10,7 @@ import {
   isGitCheckoutBlockedError,
   mergeGitLogCommitPages,
   mergeSpiritBranchToMain as mergeSpiritBranchToMainInternal,
+  pushGitBranch as pushGitBranchInternal,
   readGitCommitHistory,
   readGitWorkingTreeChanges,
   readGitWorkspaceSnapshot,
@@ -93,7 +94,13 @@ export async function readWorkspaceGitSnapshot(
     isRepository: snapshot.isRepository,
     hasChanges: snapshot.hasChanges,
     branches: snapshot.branches,
+    aheadCount: snapshot.aheadCount,
+    behindCount: snapshot.behindCount,
+    needsPush: snapshot.needsPush,
     ...(snapshot.branch ? { branch: snapshot.branch } : {}),
+    ...(snapshot.upstreamRemote ? { upstreamRemote: snapshot.upstreamRemote } : {}),
+    ...(snapshot.upstreamBranch ? { upstreamBranch: snapshot.upstreamBranch } : {}),
+    ...(snapshot.pushRemote ? { pushRemote: snapshot.pushRemote } : {}),
     ...(worktreeContext.isWorktree
       ? {
           isWorktreeSession: true,
@@ -146,6 +153,15 @@ export async function createWorkspaceGitWorktree(
     worktreePath,
     branchName: names.branchName,
   };
+}
+
+export async function pushWorkspaceGitBranch(workspaceRoot: string): Promise<void> {
+  try {
+    await pushGitBranchInternal(workspaceRoot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message.replace(/^git push .* failed: /u, i18n.t('error.gitPushFailed')));
+  }
 }
 
 export async function mergeWorktreeBranchToMain(

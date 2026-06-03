@@ -47,6 +47,7 @@ export type HostCommandName =
   | 'setWorkLocation'
   | 'checkoutGitBranch'
   | 'mergeWorktreeToMain'
+  | 'pushGitBranch'
   | 'readGitWorkingTree'
   | 'readGitHistory'
   | 'abortConversation'

@@ -311,6 +311,7 @@ import {
   commitWorkspaceChanges,
   createWorkspaceGitWorktree,
   mergeWorktreeBranchToMain,
+  pushWorkspaceGitBranch,
   readPrimaryRepoRoot,
   readWorkspaceGitHistory,
   readWorkspaceGitSnapshot,
@@ -370,6 +371,7 @@ type CommandPayloads = {
   setWorkLocation: { workLocation: WorkLocationKind };
   checkoutGitBranch: CheckoutGitBranchRequest;
   mergeWorktreeToMain: undefined;
+  pushGitBranch: undefined;
   readGitWorkingTree: undefined;
   readGitHistory: { request?: ReadGitHistoryRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
@@ -1716,6 +1718,27 @@ class DesktopHostService {
     });
   }
 
+  async pushGitBranch(): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      if (this.runtime?.isBusy()) {
+        throw new Error(i18n.t('error.runtimeBusy'));
+      }
+
+      const state = this.requireState();
+      if (!state.git.isRepository) {
+        throw new Error(i18n.t('error.notGitRepo'));
+      }
+      if (!state.git.needsPush) {
+        throw new Error(i18n.t('error.nothingToPush'));
+      }
+
+      await pushWorkspaceGitBranch(state.workspaceRoot);
+      await this.refreshGitState();
+      return this.buildSnapshot();
+    });
+  }
+
   async abortConversation(): Promise<DesktopSnapshot> {
     return this.runSerialized(async () => {
       await this.ensureInitialized(undefined, { fastPath: true });
@@ -2534,6 +2557,8 @@ class DesktopHostService {
       }
       case 'mergeWorktreeToMain':
         return this.mergeWorktreeToMain();
+      case 'pushGitBranch':
+        return this.pushGitBranch();
       case 'abortConversation':
         return this.abortConversation();
       case 'continueAssistantCompletion': {
