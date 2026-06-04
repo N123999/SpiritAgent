@@ -8,6 +8,8 @@ import {
   syncSegmentsFromExternalValue,
 } from "@/lib/composer-segment-model";
 import { makeLoopChipNode } from "@/lib/loop-chip-styles";
+import { makePlanChipNode } from "@/lib/plan-chip-styles";
+import { makeAskChipNode } from "@/lib/ask-chip-styles";
 
 export {
   caretAtEnd,
@@ -35,7 +37,17 @@ export {
 
 export { makeChipNode } from "@/lib/browser-element-chip-styles";
 export { makeFileChipNode } from "@/lib/workspace-file-chip-styles";
-export { makeLoopChipNode } from "@/lib/loop-chip-styles";
+export {
+  ensureAgentModePinned,
+  hasAgentModeSegment,
+  insertAgentModeSegment,
+  isAgentModeChipKind,
+  isCaretAtAgentModeRemovalPoint,
+  removeAgentModeSegment,
+} from "@/lib/composer-agent-mode-segments";
+
+export { makePlanChipNode } from "@/lib/plan-chip-styles";
+export { makeAskChipNode } from "@/lib/ask-chip-styles";
 
 function mergeTextIntoLast(segs: RichSegment[], chunk: string): void {
   const last = segs[segs.length - 1];
@@ -78,6 +90,14 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
     segs.push({ kind: "loop" });
     return;
   }
+  if (el.dataset.planChip === "true" || el.getAttribute("data-plan-chip") === "true") {
+    segs.push({ kind: "plan" });
+    return;
+  }
+  if (el.dataset.askChip === "true" || el.getAttribute("data-ask-chip") === "true") {
+    segs.push({ kind: "ask" });
+    return;
+  }
   if (el.dataset.elementChip === "true" || el.getAttribute("data-element-chip") === "true") {
     const id = el.dataset.elementId;
     const tag = el.dataset.elementTag;
@@ -110,7 +130,7 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
 export function segmentsToDom(
   segs: RichSegment[],
   doc: Document,
-  opts?: { loopLabel?: string },
+  opts?: { loopLabel?: string; planLabel?: string; askLabel?: string },
 ): DocumentFragment {
   const frag = doc.createDocumentFragment();
   for (const seg of segs) {
@@ -124,6 +144,10 @@ export function segmentsToDom(
       });
     } else if (seg.kind === "loop") {
       frag.appendChild(makeLoopChipNode(doc, opts?.loopLabel ?? "Loop"));
+    } else if (seg.kind === "plan") {
+      frag.appendChild(makePlanChipNode(doc, opts?.planLabel ?? "Plan"));
+    } else if (seg.kind === "ask") {
+      frag.appendChild(makeAskChipNode(doc, opts?.askLabel ?? "Ask"));
     } else if (seg.kind === "workspaceFile") {
       frag.appendChild(makeFileChipNode(seg.path, doc));
     } else {
@@ -136,7 +160,7 @@ export function segmentsToDom(
 export function renderSegmentsToElement(
   root: HTMLElement,
   segs: RichSegment[],
-  opts?: { loopLabel?: string },
+  opts?: { loopLabel?: string; planLabel?: string; askLabel?: string },
 ): void {
   root.replaceChildren(segmentsToDom(segs, root.ownerDocument, opts));
 }

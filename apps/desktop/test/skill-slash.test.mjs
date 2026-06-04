@@ -18,3 +18,15 @@ test("buildSkillSlashSuggestions filters loop by prefix", () => {
   assert.ok(suggestions.some((item) => item.kind === "loop"));
   assert.equal(buildSkillSlashSuggestions("/compact", []).some((item) => item.kind === "loop"), false);
 });
+
+test("buildSkillSlashSuggestions includes plan and ask commands", () => {
+  const suggestions = buildSkillSlashSuggestions("/", []);
+  assert.ok(suggestions.some((item) => item.kind === "plan" && item.alias === "/plan"));
+  assert.ok(suggestions.some((item) => item.kind === "ask" && item.alias === "/ask"));
+});
+
+test("buildSkillSlashSuggestions filters plan by prefix", () => {
+  const suggestions = buildSkillSlashSuggestions("/p", []);
+  assert.ok(suggestions.some((item) => item.kind === "plan"));
+  assert.equal(buildSkillSlashSuggestions("/ask", []).some((item) => item.kind === "plan"), false);
+});

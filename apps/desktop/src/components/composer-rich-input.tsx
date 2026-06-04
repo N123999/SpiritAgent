@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
+import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-selection";
 import {
   caretAtEnd,
@@ -21,14 +22,20 @@ import {
 import {
   domToSegments,
   emptySegments,
+  ensureAgentModePinned,
   ensureLoopPinned,
-  isComposerPlainEmpty,
-  normalizeComposerPlain,
+  hasAgentModeSegment,
   hasLoopSegment,
+  insertAgentModeSegment,
   insertLoopSegment,
   insertSegmentAtCaret,
+  isAgentModeChipKind,
+  isCaretAtAgentModeRemovalPoint,
   isCaretAtLoopRemovalPoint,
+  isComposerPlainEmpty,
   mergeAdjacentTextSegments,
+  normalizeComposerPlain,
+  removeAgentModeSegment,
   removeLoopSegment,
   renderSegmentsToElement,
   segmentsEqual,
@@ -61,9 +68,13 @@ type Props = {
   className?: string;
   loopEnabled?: boolean;
   loopChipLabel?: string;
+  agentMode?: DesktopAgentMode;
+  planChipLabel?: string;
+  askChipLabel?: string;
   onTextChange(text: string): void;
   onElementAttachmentsChange(attachments: BrowserElementAttachment[]): void;
   onLoopEnabledChange?(enabled: boolean): void;
+  onAgentModeChange?(mode: DesktopAgentMode): void;
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
   onPaste?(e: ClipboardEvent<HTMLDivElement>): void;
   /** UTF-16 offset in plain composer text (`segmentsToPlainText`), for @-file suggestions. */
@@ -75,6 +86,8 @@ export type InsertLoopChipOptions = {
   clearText?: boolean;
 };
 
+export type InsertAgentModeChipOptions = InsertLoopChipOptions;
+
 export type ComposerRichInputHandle = {
   focus(): void;
   insertAttachment(a: BrowserElementAttachment): void;
@@ -85,6 +98,9 @@ export type ComposerRichInputHandle = {
   ): void;
   insertLoopChip(options?: InsertLoopChipOptions): void;
   removeLoopChip(): void;
+  insertPlanChip(options?: InsertAgentModeChipOptions): void;
+  insertAskChip(options?: InsertAgentModeChipOptions): void;
+  removeAgentModeChip(): void;
   getSegments(): RichSegment[];
   setSegments(segments: RichSegment[]): void;
 };
@@ -100,9 +116,13 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       className,
       loopEnabled = false,
       loopChipLabel = "Loop",
+      agentMode = "agent",
+      planChipLabel = "Plan",
+      askChipLabel = "Ask",
       onTextChange,
       onElementAttachmentsChange,
       onLoopEnabledChange,
+      onAgentModeChange,
       onKeyDown,
       onPaste,
       onSelectionChange,
@@ -110,13 +130,14 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     ref,
   ) {
     const divRef = useRef<HTMLDivElement>(null);
-    const [segments, setSegments] = useState<RichSegment[]>(() =>
-      initialSegments?.length
+    const [segments, setSegments] = useState<RichSegment[]>(() => {
+      const base = initialSegments?.length
         ? ensureLoopPinned(mergeAdjacentTextSegments([...initialSegments]))
         : loopEnabled
           ? insertLoopSegment(emptySegments()).segments
-          : emptySegments(),
-    );
+          : emptySegments();
+      return ensureAgentModePinned(base, agentMode);
+    });
     const segmentsRef = useRef(segments);
     segmentsRef.current = segments;
     const isComposingRef = useRef(false);
@@ -127,18 +148,30 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const initialSegmentsHydratedRef = useRef(Boolean(initialSegments?.length));
     const onElementAttachmentsChangeRef = useRef(onElementAttachmentsChange);
     const onLoopEnabledChangeRef = useRef(onLoopEnabledChange);
+    const onAgentModeChangeRef = useRef(onAgentModeChange);
     const onSelectionChangeRef = useRef(onSelectionChange);
     const loopEnabledRef = useRef(loopEnabled);
+    const agentModeRef = useRef(agentMode);
     const prevLoopEnabledRef = useRef(false);
+    const prevAgentModeRef = useRef(agentMode);
     const hadLoopRef = useRef(hasLoopSegment(segments));
+    const hadAgentModeRef = useRef(isAgentModeChipKind(agentMode));
 
     useEffect(() => {
       loopEnabledRef.current = loopEnabled;
     }, [loopEnabled]);
 
     useEffect(() => {
+      agentModeRef.current = agentMode;
+    }, [agentMode]);
+
+    useEffect(() => {
       onLoopEnabledChangeRef.current = onLoopEnabledChange;
     }, [onLoopEnabledChange]);
+
+    useEffect(() => {
+      onAgentModeChangeRef.current = onAgentModeChange;
+    }, [onAgentModeChange]);
 
     const syncLoopEnabledFromSegments = useCallback((next: RichSegment[]) => {
       const hasLoop = hasLoopSegment(next);
@@ -152,6 +185,31 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       hadLoopRef.current = hasLoop;
       onLoopEnabledChangeRef.current?.(hasLoop);
     }, []);
+
+    const syncAgentModeFromSegments = useCallback((next: RichSegment[]) => {
+      const mode = agentModeRef.current;
+      const hasChip = hasAgentModeSegment(next);
+      if (isAgentModeChipKind(mode)) {
+        if (hasChip) {
+          hadAgentModeRef.current = true;
+          return;
+        }
+        if (hadAgentModeRef.current) {
+          return;
+        }
+        return;
+      }
+      if (!hasChip && hadAgentModeRef.current) {
+        hadAgentModeRef.current = false;
+        onAgentModeChangeRef.current?.("agent");
+      }
+    }, []);
+
+    const pinComposerSegments = useCallback(
+      (next: RichSegment[], mode: DesktopAgentMode = agentModeRef.current): RichSegment[] =>
+        ensureAgentModePinned(ensureLoopPinned(mergeAdjacentTextSegments(next)), mode),
+      [],
+    );
 
     const reportSelectionChange = useCallback(() => {
       const report = onSelectionChangeRef.current;
@@ -208,20 +266,23 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       (
         next: RichSegment[],
         caret?: SegmentCaret | null,
-        options?: { notifyParent?: boolean; syncLoop?: boolean },
+        options?: { notifyParent?: boolean; syncLoop?: boolean; syncAgentMode?: boolean },
       ) => {
-        const merged = ensureLoopPinned(mergeAdjacentTextSegments(next));
+        const merged = pinComposerSegments(next);
         segmentsRef.current = merged;
         pendingCaretRef.current = caret ?? null;
         setSegments(merged);
         if (options?.syncLoop !== false && !loopEnabledRef.current) {
           syncLoopEnabledFromSegments(merged);
         }
+        if (options?.syncAgentMode !== false && !isAgentModeChipKind(agentModeRef.current)) {
+          syncAgentModeFromSegments(merged);
+        }
         if (options?.notifyParent !== false) {
           notifyParents(merged);
         }
       },
-      [notifyParents, syncLoopEnabledFromSegments],
+      [notifyParents, pinComposerSegments, syncAgentModeFromSegments, syncLoopEnabledFromSegments],
     );
 
     const getSegments = useCallback((): RichSegment[] => segmentsRef.current, []);
@@ -297,11 +358,45 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       if (!hasLoopSegment(segmentsRef.current)) {
         return;
       }
-      const next = removeLoopSegment(segmentsRef.current);
+      const next = pinComposerSegments(removeLoopSegment(segmentsRef.current));
       hadLoopRef.current = false;
       commitSegments(next, { segmentIndex: 0, offset: 0 }, { syncLoop: false });
       onLoopEnabledChangeRef.current?.(false);
-    }, [commitSegments, loopEnabled]);
+    }, [commitSegments, pinComposerSegments]);
+
+    const insertAgentModeChip = useCallback(
+      (mode: "plan" | "ask", options?: InsertAgentModeChipOptions) => {
+        const div = divRef.current;
+        if (div) {
+          div.focus();
+        }
+        const base = options?.clearText ? emptySegments() : segmentsRef.current;
+        const { segments: next, caret } = insertAgentModeSegment(base, mode);
+        hadAgentModeRef.current = true;
+        commitSegments(next, caret, { syncAgentMode: false });
+      },
+      [commitSegments],
+    );
+
+    const insertPlanChip = useCallback(
+      (options?: InsertAgentModeChipOptions) => insertAgentModeChip("plan", options),
+      [insertAgentModeChip],
+    );
+
+    const insertAskChip = useCallback(
+      (options?: InsertAgentModeChipOptions) => insertAgentModeChip("ask", options),
+      [insertAgentModeChip],
+    );
+
+    const removeAgentModeChip = useCallback(() => {
+      if (!hasAgentModeSegment(segmentsRef.current)) {
+        return;
+      }
+      const next = pinComposerSegments(removeAgentModeSegment(segmentsRef.current), "agent");
+      hadAgentModeRef.current = false;
+      commitSegments(next, { segmentIndex: 0, offset: 0 }, { syncAgentMode: false });
+      onAgentModeChangeRef.current?.("agent");
+    }, [commitSegments, pinComposerSegments]);
 
     useImperativeHandle(
       ref,
@@ -311,6 +406,9 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertWorkspaceFileReference,
         insertLoopChip,
         removeLoopChip,
+        insertPlanChip,
+        insertAskChip,
+        removeAgentModeChip,
         getSegments,
         setSegments: (next: RichSegment[]) => applySegments(next),
       }),
@@ -319,6 +417,9 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertWorkspaceFileReference,
         insertLoopChip,
         removeLoopChip,
+        insertPlanChip,
+        insertAskChip,
+        removeAgentModeChip,
         getSegments,
         applySegments,
       ],
@@ -338,6 +439,20 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertLoopChip();
       }
     }, [loopEnabled, insertLoopChip, removeLoopChip]);
+
+    useEffect(() => {
+      const prev = prevAgentModeRef.current;
+      prevAgentModeRef.current = agentMode;
+      if (!isAgentModeChipKind(agentMode)) {
+        if (isAgentModeChipKind(prev) && hasAgentModeSegment(segmentsRef.current)) {
+          removeAgentModeChip();
+        }
+        return;
+      }
+      if (prev !== agentMode || !hasAgentModeSegment(segmentsRef.current)) {
+        insertAgentModeChip(agentMode, { clearText: false });
+      }
+    }, [agentMode, insertAgentModeChip, removeAgentModeChip]);
 
     useLayoutEffect(() => {
       if (!initialSegments?.length || initialSegmentsHydratedRef.current) {
@@ -374,13 +489,17 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         return;
       }
 
-      renderSegmentsToElement(div, segments, { loopLabel: loopChipLabel });
+      renderSegmentsToElement(div, segments, {
+        loopLabel: loopChipLabel,
+        planLabel: planChipLabel,
+        askLabel: askChipLabel,
+      });
       if (pendingCaretRef.current) {
         caretToDomRange(div, segments, pendingCaretRef.current);
         pendingCaretRef.current = null;
         reportSelectionChange();
       }
-    }, [segments, loopChipLabel, reportSelectionChange, value.length]);
+    }, [segments, loopChipLabel, planChipLabel, askChipLabel, reportSelectionChange, value.length]);
 
     useEffect(() => {
       if (skipExternalValueSyncRef.current) {
@@ -405,10 +524,19 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       }
 
       // Parent cleared composer after send: empty value AND no attachments prop.
-      if (!value && attachmentCount === 0 && (plain || hasElements || hasLoopSegment(current))) {
+      if (!value && attachmentCount === 0 && (plain || hasElements || hasLoopSegment(current) || hasAgentModeSegment(current))) {
         if (loopEnabled || loopEnabledRef.current) {
           const { segments: next, caret } = insertLoopSegment(emptySegments());
-          commitSegments(next, caret, { syncLoop: false });
+          commitSegments(
+            ensureAgentModePinned(next, agentModeRef.current),
+            caret,
+            { syncLoop: false, syncAgentMode: false },
+          );
+          return;
+        }
+        if (isAgentModeChipKind(agentModeRef.current)) {
+          const { segments: next, caret } = insertAgentModeSegment(emptySegments(), agentModeRef.current);
+          commitSegments(next, caret, { syncLoop: false, syncAgentMode: false });
           return;
         }
         // Keep loop-only shell while host loopEnabled catches up (e.g. /loop).
@@ -429,7 +557,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         segmentsRef.current = next;
         setSegments(next);
       }
-    }, [value, elementAttachments?.length, initialSegments, applySegments, commitSegments, loopEnabled]);
+    }, [value, elementAttachments?.length, initialSegments, applySegments, commitSegments, loopEnabled, agentMode]);
 
     const syncFromDom = useCallback(() => {
       const div = divRef.current;
@@ -442,28 +570,63 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         next = ensureLoopPinned(next);
         if (!hasLoopSegment(next)) {
           const { segments: pinned, caret: pinCaret } = insertLoopSegment(next);
-          commitSegments(pinned, caret ?? pinCaret, { syncLoop: false });
+          commitSegments(
+            ensureAgentModePinned(pinned, agentModeRef.current),
+            caret ?? pinCaret,
+            { syncLoop: false, syncAgentMode: false },
+          );
+          reportSelectionChange();
+          return;
+        }
+        if (isAgentModeChipKind(agentModeRef.current)) {
+          next = ensureAgentModePinned(next, agentModeRef.current);
+        }
+        skipRenderRef.current = true;
+        pendingCaretRef.current = caret;
+        segmentsRef.current = next;
+        hadLoopRef.current = true;
+        if (hasAgentModeSegment(next)) {
+          hadAgentModeRef.current = true;
+        }
+        setSegments(next);
+        notifyParents(next);
+        reportSelectionChange();
+        return;
+      }
+      if (isAgentModeChipKind(agentModeRef.current)) {
+        next = ensureAgentModePinned(next, agentModeRef.current);
+        if (!hasAgentModeSegment(next)) {
+          const { segments: pinned, caret: pinCaret } = insertAgentModeSegment(next, agentModeRef.current);
+          commitSegments(pinned, caret ?? pinCaret, { syncLoop: false, syncAgentMode: false });
           reportSelectionChange();
           return;
         }
         skipRenderRef.current = true;
         pendingCaretRef.current = caret;
         segmentsRef.current = next;
-        hadLoopRef.current = true;
+        hadAgentModeRef.current = true;
         setSegments(next);
         notifyParents(next);
         reportSelectionChange();
         return;
       }
       skipRenderRef.current = true;
-      next = ensureLoopPinned(next);
+      next = pinComposerSegments(next);
       pendingCaretRef.current = caret;
       segmentsRef.current = next;
       setSegments(next);
       syncLoopEnabledFromSegments(next);
+      syncAgentModeFromSegments(next);
       notifyParents(next);
       reportSelectionChange();
-    }, [commitSegments, notifyParents, reportSelectionChange, syncLoopEnabledFromSegments]);
+    }, [
+      commitSegments,
+      notifyParents,
+      pinComposerSegments,
+      reportSelectionChange,
+      syncAgentModeFromSegments,
+      syncLoopEnabledFromSegments,
+    ]);
 
     const handleInput = useCallback(() => {
       syncFromDom();
@@ -491,11 +654,16 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
               removeLoopChip();
               return;
             }
+            if (caret && isCaretAtAgentModeRemovalPoint(segmentsRef.current, caret)) {
+              e.preventDefault();
+              removeAgentModeChip();
+              return;
+            }
           }
         }
         onKeyDown?.(e);
       },
-      [onKeyDown, removeLoopChip],
+      [onKeyDown, removeLoopChip, removeAgentModeChip],
     );
 
     const handleKeyUp = useCallback(
@@ -597,7 +765,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       !isComposing &&
       isComposerPlainEmpty(plainForEmptyCheck) &&
       !(elementAttachments?.length) &&
-      !hasLoopSegment(segments);
+      !hasLoopSegment(segments) &&
+      !hasAgentModeSegment(segments);
 
     return (
       <div className="relative">

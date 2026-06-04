@@ -24,6 +24,14 @@ import {
   insertLoopSegment,
   removeLoopSegment,
 } from "../src/lib/composer-loop-segments.ts";
+import {
+  currentAgentModeSegment,
+  ensureAgentModePinned,
+  hasAgentModeSegment,
+  insertAgentModeSegment,
+  isCaretAtAgentModeRemovalPoint,
+  removeAgentModeSegment,
+} from "../src/lib/composer-agent-mode-segments.ts";
 
 const sampleAttachment = {
   id: "el-1",
@@ -241,6 +249,65 @@ test("removeLoopSegment drops loop only", () => {
   ]);
   assert.equal(hasLoopSegment(next), false);
   assert.equal(next[0]?.kind === "text" && next[0].value, "keep");
+});
+
+test("insertAgentModeSegment pins plan after loop", () => {
+  const { segments } = insertAgentModeSegment(
+    [{ kind: "loop" }, { kind: "text", value: "work" }],
+    "plan",
+  );
+  assert.equal(segments[0]?.kind, "loop");
+  assert.equal(segments[1]?.kind, "plan");
+  assert.equal(segments[2]?.kind === "text" && segments[2].value, "work");
+});
+
+test("insertAgentModeSegment replaces plan with ask", () => {
+  const { segments } = insertAgentModeSegment(
+    [{ kind: "plan" }, { kind: "text", value: " " }],
+    "ask",
+  );
+  assert.equal(currentAgentModeSegment(segments), "ask");
+  assert.equal(segments.some((s) => s.kind === "plan"), false);
+});
+
+test("ensureAgentModePinned removes chip when agent mode", () => {
+  const pinned = ensureAgentModePinned(
+    [{ kind: "plan" }, { kind: "text", value: " " }],
+    "agent",
+  );
+  assert.equal(hasAgentModeSegment(pinned), false);
+});
+
+test("segmentsToMessageText ignores plan and ask chips", () => {
+  const message = segmentsToMessageText([
+    { kind: "plan" },
+    { kind: "ask" },
+    { kind: "text", value: "question" },
+  ]);
+  assert.equal(message, "question");
+});
+
+test("isCaretAtAgentModeRemovalPoint after plan chip", () => {
+  const segs = [{ kind: "plan" }, { kind: "text", value: " " }];
+  assert.equal(
+    isCaretAtAgentModeRemovalPoint(segs, { segmentIndex: 1, offset: 0 }),
+    true,
+  );
+  assert.equal(
+    isCaretAtAgentModeRemovalPoint(segs, { segmentIndex: 1, offset: 1 }),
+    false,
+  );
+});
+
+test("removeAgentModeSegment drops plan only", () => {
+  const next = removeAgentModeSegment([
+    { kind: "loop" },
+    { kind: "plan" },
+    { kind: "text", value: "keep" },
+  ]);
+  assert.equal(hasAgentModeSegment(next), false);
+  assert.equal(hasLoopSegment(next), true);
+  assert.equal(next[1]?.kind === "text" && next[1].value, "keep");
 });
 
 test("segmentsToPlainText includes workspace file token", () => {

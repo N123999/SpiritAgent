@@ -12,7 +12,11 @@ function isChip(el: HTMLElement): boolean {
     el.dataset.fileChip === "true" ||
     el.getAttribute("data-file-chip") === "true" ||
     el.dataset.loopChip === "true" ||
-    el.getAttribute("data-loop-chip") === "true"
+    el.getAttribute("data-loop-chip") === "true" ||
+    el.dataset.planChip === "true" ||
+    el.getAttribute("data-plan-chip") === "true" ||
+    el.dataset.askChip === "true" ||
+    el.getAttribute("data-ask-chip") === "true"
   );
 }
 
@@ -137,7 +141,13 @@ export function caretToDomRange(
     return;
   }
 
-  if (seg.kind === "element" || seg.kind === "workspaceFile" || seg.kind === "loop") {
+  if (
+    seg.kind === "element" ||
+    seg.kind === "workspaceFile" ||
+    seg.kind === "loop" ||
+    seg.kind === "plan" ||
+    seg.kind === "ask"
+  ) {
     targetSegment = index;
     targetOffset = 0;
   }
@@ -152,7 +162,9 @@ export function caretToDomRange(
     if (
       currentSeg.kind === "element" ||
       currentSeg.kind === "workspaceFile" ||
-      currentSeg.kind === "loop"
+      currentSeg.kind === "loop" ||
+      currentSeg.kind === "plan" ||
+      currentSeg.kind === "ask"
     ) {
       if (walkIndex === targetSegment && targetOffset === 0) {
         range.setStartBefore(node);

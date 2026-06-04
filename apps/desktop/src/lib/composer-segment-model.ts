@@ -7,7 +7,9 @@ export type RichSegment =
   | { kind: "text"; value: string }
   | { kind: "element"; attachment: BrowserElementAttachment }
   | { kind: "workspaceFile"; path: string }
-  | { kind: "loop" };
+  | { kind: "loop" }
+  | { kind: "plan" }
+  | { kind: "ask" };
 
 export type ActiveWorkspaceFileReferenceQuery = {
   start: number;
@@ -118,7 +120,9 @@ export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): s
 }
 
 export function segmentsToMessageText(segs: RichSegment[]): string {
-  const merged = mergeAdjacentTextSegments(segs).filter((s) => s.kind !== "loop");
+  const merged = mergeAdjacentTextSegments(segs).filter(
+    (s) => s.kind !== "loop" && s.kind !== "plan" && s.kind !== "ask",
+  );
   let out = "";
   for (let i = 0; i < merged.length; i++) {
     const seg = merged[i]!;
@@ -170,6 +174,12 @@ export function segmentsEqual(a: RichSegment[], b: RichSegment[]): boolean {
       return seg.path === other.path;
     }
     if (seg.kind === "loop" && other.kind === "loop") {
+      return true;
+    }
+    if (seg.kind === "plan" && other.kind === "plan") {
+      return true;
+    }
+    if (seg.kind === "ask" && other.kind === "ask") {
       return true;
     }
     return false;

@@ -19,6 +19,7 @@ import {
   isLogSessionSlashInput,
   matchSkillSlashInput,
 } from "@/lib/skill-slash";
+import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { useDesktopSystemNotifications } from "@/hooks/useDesktopSystemNotifications";
 import type {
   AddModelRequest,
@@ -283,7 +284,7 @@ export function useDesktopRuntime() {
     uiLocale: "",
     apiKey: "",
     windowsMica: true,
-    agentMode: "agent" as const,
+    agentMode: "agent" as DesktopAgentMode,
     webHostEnabled: false,
     webHostHost: "127.0.0.1",
     webHostPort: 7788,
@@ -463,7 +464,7 @@ export function useDesktopRuntime() {
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
         windowsMica: next.config.windowsMica !== false,
-        agentMode: next.config.agentMode ?? "agent",
+        agentMode: (next.config.agentMode ?? "agent") as DesktopAgentMode,
         webHostEnabled: next.webHost.config.enabled,
         webHostHost: next.webHost.config.host,
         webHostPort: next.webHost.config.port,

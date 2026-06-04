@@ -19,7 +19,7 @@ import {
   currentWorkspaceFileReferenceQuery,
 } from "@spirit-agent/host-internal/workspace-file-reference-query";
 
-import { runModeLabel, type DesktopAgentMode } from "@/lib/agent-mode";
+import { type DesktopAgentMode } from "@/lib/agent-mode";
 
 import {
   ArrowUp,
@@ -763,9 +763,13 @@ function ComposerSurface({
         readOnly={readOnly}
         loopEnabled={loopEnabled}
         loopChipLabel={t('composer.loopChipLabel')}
+        agentMode={agentMode}
+        planChipLabel={t('composer.planChipLabel')}
+        askChipLabel={t('composer.askChipLabel')}
         onTextChange={onChange}
         onElementAttachmentsChange={(atts) => onElementAttachmentsChange?.(atts)}
         onLoopEnabledChange={onLoopEnabledChange}
+        onAgentModeChange={onAgentModeChange}
         onPaste={(e) => onPaste?.(e as unknown as ReactClipboardEvent<HTMLTextAreaElement>)}
         onKeyDown={(e) => {
           onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLTextAreaElement>);
@@ -794,44 +798,6 @@ function ComposerSurface({
                 onInsertSkillTrigger={() => onInsertSkillTrigger?.()}
               />
             ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t('app.runMode')}
-                  disabled={readOnly}
-                  className={cn(
-                    "inline-flex h-7 max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left text-xs font-medium text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50",
-                    instantHoverMotionClass,
-                  )}
-                >
-                  <span className="min-w-0 flex-1 truncate" title={runModeLabel(agentMode)}>
-                    {runModeLabel(agentMode)}
-                  </span>
-                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="min-w-[8.5rem] text-xs">
-                <DropdownMenuItem
-                  onSelect={() => onAgentModeChange("agent")}
-                  className={cn(agentMode === "agent" && "bg-accent/40")}
-                >
-                  Agent
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onAgentModeChange("plan")}
-                  className={cn(agentMode === "plan" && "bg-accent/40")}
-                >
-                  Plan
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onAgentModeChange("ask")}
-                  className={cn(agentMode === "ask" && "bg-accent/40")}
-                >
-                  Ask
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
             {models.length > 0 ? (
               <FilteredOverlayMenu
                 open={modelMenuOpen}
@@ -2186,15 +2152,37 @@ export default function App() {
     composerRichInputRef.current?.insertLoopChip({ clearText: true });
   }, [runtime]);
 
+  const applyPlanSlash = useCallback(() => {
+    setSlashSelectedIndex(-1);
+    void runtime.saveSettingsPatch({ agentMode: "plan" });
+    runtime.setComposer("");
+    composerRichInputRef.current?.insertPlanChip({ clearText: true });
+  }, [runtime]);
+
+  const applyAskSlash = useCallback(() => {
+    setSlashSelectedIndex(-1);
+    void runtime.saveSettingsPatch({ agentMode: "ask" });
+    runtime.setComposer("");
+    composerRichInputRef.current?.insertAskChip({ clearText: true });
+  }, [runtime]);
+
   const applySlashSuggestionItem = useCallback(
     (suggestion: SkillSlashSuggestion) => {
       if (suggestion.kind === "loop") {
         applyLoopSlash();
         return;
       }
+      if (suggestion.kind === "plan") {
+        applyPlanSlash();
+        return;
+      }
+      if (suggestion.kind === "ask") {
+        applyAskSlash();
+        return;
+      }
       applySlashSuggestion(`${suggestion.alias} `);
     },
-    [applyLoopSlash],
+    [applyLoopSlash, applyPlanSlash, applyAskSlash],
   );
 
   const applyFileReferenceSuggestion = (path: string) => {

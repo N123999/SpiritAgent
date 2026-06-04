@@ -476,7 +476,9 @@
     "approvalLevel": "Approval Level",
     "workLocation": "Work Location",
     "removeAttachment": "Remove {{name}}",
-    "loopChipLabel": "Loop"
+    "loopChipLabel": "Loop",
+    "planChipLabel": "Plan",
+    "askChipLabel": "Ask"
   },
   "error": {
     "runtimeBusy": "A response or approval is already being processed. Please wait.",
@@ -688,6 +690,8 @@
     "startImplementing": "Read the active Spirit plan and start implementing",
     "compact": "Proactively compress current session context history",
     "loop": "Enable autonomous loop until finish_task or remove the chip with Backspace",
+    "plan": "Switch to Plan mode or remove the chip with Backspace",
+    "ask": "Switch to Ask mode or remove the chip with Backspace",
     "activateSkillPrompt": "Please handle the current task according to skill \"{{skillName}}\"."
   }
 }
