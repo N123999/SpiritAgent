@@ -296,7 +296,7 @@ import {
   ensureLspServiceReady,
   lspUserConfigFromEnabled,
   sharedLspServiceForWorkspace,
-} from './service-lsp.js';
+} from '@spirit-agent/host-internal/lsp';
 import { buildDesktopLspSnapshot, defaultDesktopLspSnapshot } from './lsp-snapshot.js';
 import { installLspProviderCommand } from './lsp-commands.js';
 import {
