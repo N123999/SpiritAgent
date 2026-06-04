@@ -10,12 +10,9 @@ import type {
 import type { DesktopRuntime } from './runtime.js';
 import type { SessionBundle } from './session-bundle.js';
 import type { SessionRegistry } from './session-registry.js';
+import { loadStoredSession, type DesktopConfigFile, type DesktopWorkspaceBinding } from './storage.js';
 import {
   isEphemeralDebugSessionPath,
-  loadStoredSession,
-} from './storage.js';
-import type { DesktopConfigFile, DesktopWorkspaceBinding } from './storage.js';
-import {
   restoreEphemeralSessionState,
   restoreStoredSessionState,
   type EphemeralSessionRecord,

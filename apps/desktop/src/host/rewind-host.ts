@@ -8,7 +8,6 @@ import type { ConversationMessageSnapshot, DesktopGitSnapshot, PlanSnapshot } fr
 import type { DesktopRuntime } from './runtime.js';
 import type { SessionBundle } from './session-bundle.js';
 import {
-  archiveBeforeLastUser,
   bindRewindFileChangesToToolMessage,
   createRewindCheckpointMetadata,
   fileChangeMetadata,
@@ -21,8 +20,13 @@ import {
   type DesktopRewindCheckpointSnapshot,
 } from './rewind.js';
 import type { DesktopMessageTimeline } from './message-timeline.js';
-import { cloneArchiveHistory, cloneArchiveSubagentSessions, sanitizeConversationMessagesForPersistence } from './sessions.js';
-import { cloneChatArchive } from './service-utils.js';
+import { sanitizeConversationMessagesForPersistence } from './sessions.js';
+import {
+  archiveBeforeLastUser,
+  cloneArchiveHistory,
+  cloneArchiveSubagentSessions,
+  cloneChatArchive,
+} from './service-utils.js';
 import { cloneHostTodoRecords, listSessionTodos, replaceSessionTodos } from './todos.js';
 import { loadHostMetadata, spiritAgentDataDir, type DesktopConfigFile, type DesktopWorkspaceBinding, type HostMetadataSummary } from './storage.js';
 import type { DesktopToolRequest } from './contracts.js';

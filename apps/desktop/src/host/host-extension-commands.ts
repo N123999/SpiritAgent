@@ -61,8 +61,8 @@ type HostExtensionManager = {
   }>;
   remove(id: string): Promise<void>;
   run(input: { id: string; host: DesktopExtensionHostAdapter; logger: Console }): Promise<void>;
-  setSettingsValues(input: { id: string; values: UpdateExtensionSettingsRequest['values'] }): Promise<void>;
-  setSecretValue(input: { id: string; key: string; value?: string }): Promise<void>;
+  setSettingsValues(input: { id: string; values: UpdateExtensionSettingsRequest['values'] }): Promise<unknown>;
+  setSecretValue(input: { id: string; key: string; value?: string }): Promise<unknown>;
 };
 
 type McpRefreshable = {
@@ -70,7 +70,7 @@ type McpRefreshable = {
 };
 
 type McpInspectable = {
-  inspectMcpServer(name: string): Promise<DesktopMcpServerInspection>;
+  inspectMcpServer(name: string): Promise<unknown>;
 };
 
 type McpBackgroundRefreshable = {

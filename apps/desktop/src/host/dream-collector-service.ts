@@ -76,7 +76,8 @@ export function startDreamCollectorIfNeeded(ctx: DreamCollectorServiceContext): 
   if (ctx.runtimeBusy() || ctx.running()) {
     return;
   }
-  if (ctx.status().backoffUntilUnixMs && now < ctx.status().backoffUntilUnixMs) {
+  const backoffUntilUnixMs = ctx.status().backoffUntilUnixMs;
+  if (backoffUntilUnixMs !== undefined && now < backoffUntilUnixMs) {
     ctx.setStatus({
       ...ctx.status(),
       state: 'backoff',
