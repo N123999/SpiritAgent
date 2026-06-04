@@ -41,6 +41,7 @@ import { userMessageContentMatchesInput } from '../runtime/user-turn-timestamp.j
 
 export {
   buildActiveSkillsSystemMessage,
+  buildAgentModeSystemMessage,
   buildBasicInfoSystemMessage,
   buildDreamsSystemMessage,
   buildTodosSystemMessage,

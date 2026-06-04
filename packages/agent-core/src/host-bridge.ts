@@ -14,6 +14,7 @@ import {
   buildActiveSkillsSystemMessage,
   buildBasicInfoSystemMessage,
   buildExtensionsSystemMessage,
+  buildAgentModeSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
@@ -2160,6 +2161,7 @@ peer.on('runtime.exportState', async () => {
   const rulesSystemPrompt = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
   const planSystemPrompt = buildPlanSystemMessage(planMetadata);
+  const agentModeSystemPrompt = buildAgentModeSystemMessage(planMetadata);
   const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(activeSkills);
   const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
   const workspaceRoot = config.workspaceRoot ?? currentWorkspaceRoot();
@@ -2178,6 +2180,7 @@ peer.on('runtime.exportState', async () => {
         ? {}
         : { skillsCatalog: skillsCatalogSystemPrompt }),
       ...(planSystemPrompt === undefined ? {} : { plan: planSystemPrompt }),
+      agentMode: agentModeSystemPrompt,
       ...(activeSkillsSystemPrompt === undefined
         ? {}
         : { activeSkills: activeSkillsSystemPrompt }),

@@ -1,5 +1,6 @@
 export {
   buildActiveSkillsSystemMessage,
+  buildAgentModeSystemMessage,
   buildBasicInfoSystemMessage,
   buildDreamsSystemMessage,
   buildTodosSystemMessage,

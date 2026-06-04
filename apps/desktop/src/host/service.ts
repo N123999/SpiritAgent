@@ -14,6 +14,7 @@ import {
   buildDreamCollectorSystemMessage,
   buildDreamsSystemMessage,
   buildExtensionsSystemMessage,
+  buildAgentModeSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
@@ -1564,6 +1565,7 @@ class DesktopHostService {
         state.metadata.skills.enabledSkillCatalog,
       );
       const planSystemPrompt = buildPlanSystemMessage(state.metadata.planMetadata);
+      const agentModeSystemPrompt = buildAgentModeSystemMessage(state.metadata.planMetadata);
       const activeSkillsSystemPrompt = buildActiveSkillsSystemMessage(this.activeBundle().currentTurnSkills);
       const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
       const dreamsSystemPrompt = buildDreamsSystemMessage(
@@ -1594,6 +1596,7 @@ class DesktopHostService {
             ? {}
             : { skillsCatalog: skillsCatalogSystemPrompt }),
           ...(planSystemPrompt === undefined ? {} : { plan: planSystemPrompt }),
+          agentMode: agentModeSystemPrompt,
           ...(activeSkillsSystemPrompt === undefined
             ? {}
             : { activeSkills: activeSkillsSystemPrompt }),
