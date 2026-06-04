@@ -25,6 +25,7 @@ pub enum ModelProvider {
     Anthropic,
     #[serde(rename = "vercel-ai-gateway", alias = "vercelaigateway")]
     VercelAiGateway,
+    Openrouter,
     Openai,
     Custom,
 }
@@ -39,6 +40,7 @@ impl ModelProvider {
             Self::Alibaba => "alibaba",
             Self::Anthropic => "anthropic",
             Self::VercelAiGateway => "vercel-ai-gateway",
+            Self::Openrouter => "openrouter",
             Self::Openai => "openai",
             Self::Custom => "custom",
         }
@@ -57,6 +59,7 @@ impl FromStr for ModelProvider {
             "alibaba" => Ok(Self::Alibaba),
             "anthropic" => Ok(Self::Anthropic),
             "vercel-ai-gateway" => Ok(Self::VercelAiGateway),
+            "openrouter" => Ok(Self::Openrouter),
             "openai" => Ok(Self::Openai),
             "custom" => Ok(Self::Custom),
             other => Err(format!("不支持的 provider: {other}")),
@@ -140,6 +143,7 @@ impl ModelProfile {
             | Some(ModelProvider::Alibaba)
             | Some(ModelProvider::Anthropic)
             | Some(ModelProvider::VercelAiGateway)
+            | Some(ModelProvider::Openrouter)
             | Some(ModelProvider::Openai)
             | Some(ModelProvider::Custom)
             | None => true,

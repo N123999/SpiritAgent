@@ -115,7 +115,8 @@ export function buildPrimaryTransportConfig(input: {
         ? 'openai'
         : input.profile?.provider === 'xai'
           ? 'xai'
-          : input.profile?.provider === 'vercel-ai-gateway'
+          : input.profile?.provider === 'vercel-ai-gateway' ||
+              input.profile?.provider === 'openrouter'
             ? undefined
             : 'open-responses-compatible';
     const reasoningSummary = resolveOpenResponsesReasoningSummary({

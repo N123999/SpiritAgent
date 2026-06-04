@@ -48,6 +48,7 @@
     "anthropic": "Anthropic",
     "deepseek": "DeepSeek",
     "vercelAiGateway": "Vercel AI Gateway",
+    "openrouter": "OpenRouter",
     "moonshotAi": "Moonshot AI",
     "alibaba": "Alibaba",
     "minimax": "MiniMax",

@@ -3064,7 +3064,7 @@ fn open_responses_sdk_provider(provider: Option<ModelProvider>) -> Option<&'stat
     match provider {
         Some(ModelProvider::Openai) => Some("openai"),
         Some(ModelProvider::Xai) => Some("xai"),
-        Some(ModelProvider::VercelAiGateway) => None,
+        Some(ModelProvider::VercelAiGateway) | Some(ModelProvider::Openrouter) => None,
         _ => Some("open-responses-compatible"),
     }
 }
@@ -3080,6 +3080,7 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
             unreachable!("Anthropic 不应映射到 openai-compatible llmVendor")
         }
         ModelProvider::VercelAiGateway => "vercel-ai-gateway",
+        ModelProvider::Openrouter => "openrouter",
         ModelProvider::Openai => "openai",
         ModelProvider::Custom => "custom",
     }

@@ -244,6 +244,7 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
         connectTransportOptionCatalog.openResponsesApi,
       ];
     case "vercel-ai-gateway":
+    case "openrouter":
     case "custom":
       return [
         connectTransportOptionCatalog.chatCompletions,
@@ -269,7 +270,8 @@ function providerSupportsConnectTransportPicker(
     provider === "deepseek" ||
     provider === "alibaba" ||
     provider === "custom" ||
-    provider === "vercel-ai-gateway"
+    provider === "vercel-ai-gateway" ||
+    provider === "openrouter"
   );
 }
 

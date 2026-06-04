@@ -79,17 +79,21 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(5).as_deref(),
-            Some("https://api.moonshot.cn/v1")
+            Some("https://openrouter.ai/api/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(6).as_deref(),
-            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+            Some("https://api.moonshot.cn/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(7).as_deref(),
+            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+        );
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(8).as_deref(),
             Some("https://api.minimaxi.com/v1")
         );
-        assert!(model_add_preset_api_base_by_choice_index(8).is_none());
+        assert!(model_add_preset_api_base_by_choice_index(9).is_none());
     }
 
     #[test]

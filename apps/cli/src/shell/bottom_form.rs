@@ -107,6 +107,7 @@ fn model_add_provider_choice_labels() -> Vec<String> {
         t!("form.model.provider.anthropic").into_owned(),
         t!("form.model.provider.deepseek").into_owned(),
         t!("form.model.provider.vercel_ai_gateway").into_owned(),
+        t!("form.model.provider.openrouter").into_owned(),
         t!("form.model.provider.moonshot-ai").into_owned(),
         t!("form.model.provider.alibaba").into_owned(),
         t!("form.model.provider.minimax").into_owned(),
@@ -271,10 +272,11 @@ fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
         2 => Some(ModelProvider::Anthropic),
         3 => Some(ModelProvider::Deepseek),
         4 => Some(ModelProvider::VercelAiGateway),
-        5 => Some(ModelProvider::Moonshot),
-        6 => Some(ModelProvider::Alibaba),
-        7 => Some(ModelProvider::Minimax),
-        8 => Some(ModelProvider::Custom),
+        5 => Some(ModelProvider::Openrouter),
+        6 => Some(ModelProvider::Moonshot),
+        7 => Some(ModelProvider::Alibaba),
+        8 => Some(ModelProvider::Minimax),
+        9 => Some(ModelProvider::Custom),
         _ => None,
     }
 }
