@@ -88,7 +88,7 @@ test('resolveProviderWebSearchMode alibaba open-responses', () => {
   );
 });
 
-test('resolveProviderWebSearchMode openrouter open-responses', () => {
+test('resolveProviderWebSearchMode excludes openrouter', () => {
   assert.equal(
     resolveProviderWebSearchMode({
       transportKind: 'open-responses',
@@ -96,7 +96,7 @@ test('resolveProviderWebSearchMode openrouter open-responses', () => {
       model: 'openai/gpt-4o',
       llmVendor: 'openrouter',
     }),
-    'openrouter-responses-built-in-tools',
+    undefined,
   );
   assert.equal(
     shouldUseProviderWebSearch({
@@ -105,7 +105,7 @@ test('resolveProviderWebSearchMode openrouter open-responses', () => {
       model: 'openai/gpt-4o',
       llmVendor: 'openrouter',
     }),
-    true,
+    false,
   );
 });
 

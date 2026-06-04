@@ -7,10 +7,8 @@ import {
 
 import type { JsonObject } from '../ports.js';
 import { createAlibabaResponsesAwareFetch } from './alibaba-responses-fetch.js';
-import { createOpenRouterResponsesAwareFetch } from './openrouter-responses-fetch.js';
 import { createApplyPatchAwareFetch } from './apply-patch-responses-fetch.js';
 import { shouldUseAlibabaResponsesBuiltInTools } from './alibaba-built-in-tools.js';
-import { shouldUseOpenRouterResponsesBuiltInTools } from './openrouter-built-in-tools.js';
 import {
   buildResponsesAiSdkTools,
   type OpenAiFunctionToolDefinition,
@@ -41,9 +39,6 @@ function responsesFetchForConfig(config: OpenResponsesTransportConfig): typeof f
   let fetchFn: typeof fetch | undefined;
   if (shouldUseAlibabaResponsesBuiltInTools(config)) {
     fetchFn = createAlibabaResponsesAwareFetch(config, fetchFn ?? globalThis.fetch);
-  }
-  if (shouldUseOpenRouterResponsesBuiltInTools(config)) {
-    fetchFn = createOpenRouterResponsesAwareFetch(config, fetchFn ?? globalThis.fetch);
   }
   if (shouldUseApplyPatchFileTools(config)) {
     fetchFn = createApplyPatchAwareFetch(config, fetchFn ?? globalThis.fetch);
