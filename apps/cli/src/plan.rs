@@ -14,22 +14,40 @@ pub const PLANS_DIR_NAME: &str = "plans";
 pub struct PlanMetadata {
     pub path: PathBuf,
     pub exists: bool,
+    #[serde(default = "default_agent_mode")]
+    pub agent_mode: String,
     #[serde(default)]
     pub plan_mode: bool,
+}
+
+fn default_agent_mode() -> String {
+    "agent".to_string()
 }
 
 pub fn user_plans_dir() -> PathBuf {
     spirit_agent_data_dir().join(PLANS_DIR_NAME)
 }
 
-pub fn plan_metadata_snapshot(plan_mode: bool, active_plan_path: Option<&Path>) -> PlanMetadata {
+impl PlanMetadata {
+    pub fn spirit_agent_mode(&self) -> &str {
+        match self.agent_mode.as_str() {
+            "agent" | "plan" | "ask" => self.agent_mode.as_str(),
+            _ if self.plan_mode => "plan",
+            _ => "agent",
+        }
+    }
+}
+
+pub fn plan_metadata_snapshot(agent_mode: &str, active_plan_path: Option<&Path>) -> PlanMetadata {
     let path = active_plan_path
         .filter(|candidate| !candidate.as_os_str().is_empty())
         .map(PathBuf::from)
         .unwrap_or_default();
+    let plan_mode = agent_mode == "plan";
     PlanMetadata {
         exists: !path.as_os_str().is_empty() && path.exists(),
         path,
+        agent_mode: agent_mode.to_string(),
         plan_mode,
     }
 }
@@ -112,7 +130,7 @@ mod tests {
         fs::create_dir_all(plan_path.parent().expect("plans parent")).expect("create plans dir");
         fs::write(&plan_path, "# Demo").expect("write plan");
 
-        let metadata = plan_metadata_snapshot(false, Some(&plan_path));
+        let metadata = plan_metadata_snapshot("agent", Some(&plan_path));
         assert_eq!(metadata.path, plan_path);
         assert!(metadata.exists);
     }

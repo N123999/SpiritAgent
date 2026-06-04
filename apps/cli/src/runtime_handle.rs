@@ -68,12 +68,12 @@ impl RuntimeHandle {
         self.runtime.activate_skill(skill)
     }
 
-    pub fn load_cli_host_metadata(&mut self, plan_mode: bool) -> Result<CliHostMetadataSnapshot> {
-        self.runtime.load_cli_host_metadata(plan_mode)
+    pub fn load_cli_host_metadata(&mut self, agent_mode: &str) -> Result<CliHostMetadataSnapshot> {
+        self.runtime.load_cli_host_metadata(agent_mode)
     }
 
-    pub fn load_plan_metadata(&mut self, plan_mode: bool) -> Result<PlanMetadata> {
-        self.runtime.load_plan_metadata(plan_mode)
+    pub fn load_plan_metadata(&mut self, agent_mode: &str) -> Result<PlanMetadata> {
+        self.runtime.load_plan_metadata(agent_mode)
     }
 
     pub fn has_active_plan(&self) -> bool {
@@ -107,8 +107,8 @@ impl RuntimeHandle {
         self.runtime.write_skill_state(enabled_overrides)
     }
 
-    pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
-        self.runtime.reload_host_metadata(plan_mode)
+    pub fn reload_host_metadata(&mut self, agent_mode: &str) -> Result<()> {
+        self.runtime.reload_host_metadata(agent_mode)
     }
 
     pub fn list_extensions(&mut self) -> Result<Vec<CliExtensionEntry>> {

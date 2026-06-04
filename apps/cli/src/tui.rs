@@ -135,7 +135,7 @@ impl TuiShell {
         )
         .context("初始化 TypeScript runtime bridge 失败")?;
         let cli_metadata = runtime
-            .load_cli_host_metadata(false)
+            .load_cli_host_metadata("agent")
             .context("读取共享宿主 metadata 失败")?;
         let rule_entries = cli_metadata.rule_entries;
         let skill_entries = cli_metadata.skill_entries;
@@ -231,11 +231,11 @@ impl TuiShell {
 
     pub fn refresh_rules_from_disk(&mut self) -> Result<()> {
         self.runtime
-            .reload_host_metadata(self.is_plan_mode_active())
+            .reload_host_metadata(self.spirit_agent_mode())
             .context("刷新共享规则 runtime metadata 失败")?;
         let metadata = self
             .runtime
-            .load_cli_host_metadata(self.is_plan_mode_active())
+            .load_cli_host_metadata(self.spirit_agent_mode())
             .context("读取共享规则 metadata 失败")?;
         self.rule_entries = metadata.rule_entries;
         self.skill_entries = metadata.skill_entries;
@@ -245,11 +245,11 @@ impl TuiShell {
 
     pub fn refresh_skills_from_disk(&mut self) -> Result<()> {
         self.runtime
-            .reload_host_metadata(self.is_plan_mode_active())
+            .reload_host_metadata(self.spirit_agent_mode())
             .context("刷新共享技能 runtime metadata 失败")?;
         let metadata = self
             .runtime
-            .load_cli_host_metadata(self.is_plan_mode_active())
+            .load_cli_host_metadata(self.spirit_agent_mode())
             .context("读取共享技能 metadata 失败")?;
         self.rule_entries = metadata.rule_entries;
         self.skill_entries = metadata.skill_entries;
@@ -843,7 +843,7 @@ impl TuiShell {
     }
 
     fn refresh_plan_metadata_from_disk(&mut self) {
-        let Ok(next) = self.runtime.load_plan_metadata(self.is_plan_mode_active()) else {
+        let Ok(next) = self.runtime.load_plan_metadata(self.spirit_agent_mode()) else {
             return;
         };
         if next == self.plan_metadata {
@@ -855,7 +855,7 @@ impl TuiShell {
     }
 
     fn push_plan_metadata_snapshot(&mut self) {
-        let Ok(next) = self.runtime.load_plan_metadata(self.is_plan_mode_active()) else {
+        let Ok(next) = self.runtime.load_plan_metadata(self.spirit_agent_mode()) else {
             return;
         };
         if next == self.plan_metadata {

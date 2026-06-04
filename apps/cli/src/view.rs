@@ -29,6 +29,17 @@ pub enum MainInputMode {
     #[default]
     Agent,
     Plan,
+    Ask,
+}
+
+impl MainInputMode {
+    pub fn spirit_agent_mode(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::Plan => "plan",
+            Self::Ask => "ask",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

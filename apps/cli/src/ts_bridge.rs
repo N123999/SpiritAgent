@@ -505,6 +505,7 @@ fn bootstrap_plan_metadata() -> PlanMetadata {
     PlanMetadata {
         path: PathBuf::new(),
         exists: false,
+        agent_mode: "agent".to_string(),
         plan_mode: false,
     }
 }
@@ -798,11 +799,11 @@ impl TsBridgeRuntime {
         self.active_plan_path.as_deref()
     }
 
-    pub fn load_cli_host_metadata(&mut self, plan_mode: bool) -> Result<CliHostMetadataSnapshot> {
+    pub fn load_cli_host_metadata(&mut self, agent_mode: &str) -> Result<CliHostMetadataSnapshot> {
         let value = self.call_bridge(
             "hostInternal.loadCliMetadata",
             Some(json!({
-                "planMode": plan_mode,
+                "agentMode": agent_mode,
                 "activePlanPath": self.active_plan_path.as_ref().map(|path| path.display().to_string()),
             })),
         )?;
@@ -811,11 +812,11 @@ impl TsBridgeRuntime {
         Ok(metadata)
     }
 
-    pub fn load_plan_metadata(&mut self, plan_mode: bool) -> Result<PlanMetadata> {
+    pub fn load_plan_metadata(&mut self, agent_mode: &str) -> Result<PlanMetadata> {
         let value = self.call_bridge(
             "hostInternal.loadPlanMetadata",
             Some(json!({
-                "planMode": plan_mode,
+                "agentMode": agent_mode,
                 "activePlanPath": self.active_plan_path.as_ref().map(|path| path.display().to_string()),
             })),
         )?;
@@ -974,11 +975,11 @@ impl TsBridgeRuntime {
         Ok(serde_json::from_value(value)?)
     }
 
-    pub fn reload_host_metadata(&mut self, plan_mode: bool) -> Result<()> {
+    pub fn reload_host_metadata(&mut self, agent_mode: &str) -> Result<()> {
         let value = self.call_bridge(
             "runtime.reloadHostMetadata",
             Some(json!({
-                "planMode": plan_mode,
+                "agentMode": agent_mode,
                 "activePlanPath": self.active_plan_path.as_ref().map(|path| path.display().to_string()),
             })),
         )?;
@@ -1676,7 +1677,7 @@ impl TsBridgeRuntime {
         self.active_plan_path =
             plan::extract_active_plan_path_from_archived_llm_history(&archive.llm_history);
         self.plan_metadata = plan::plan_metadata_snapshot(
-            self.plan_metadata.plan_mode,
+            self.plan_metadata.spirit_agent_mode(),
             self.active_plan_path.as_deref(),
         );
     }
@@ -2156,7 +2157,7 @@ impl TsBridgeRuntime {
         if change.tool_name == "create_plan" && change.after.exists {
             self.active_plan_path = Some(PathBuf::from(change.resolved_path.clone()));
             self.plan_metadata = plan::plan_metadata_snapshot(
-                self.plan_metadata.plan_mode,
+                self.plan_metadata.spirit_agent_mode(),
                 self.active_plan_path.as_deref(),
             );
         }

@@ -235,9 +235,14 @@ impl TuiShell {
     pub fn toggle_input_mode(&mut self) {
         let next = match self.input.mode {
             MainInputMode::Agent => MainInputMode::Plan,
-            MainInputMode::Plan => MainInputMode::Agent,
+            MainInputMode::Plan => MainInputMode::Ask,
+            MainInputMode::Ask => MainInputMode::Agent,
         };
         self.set_input_mode(next);
+    }
+
+    pub fn spirit_agent_mode(&self) -> &'static str {
+        self.input.mode.spirit_agent_mode()
     }
 
     pub fn can_enter_shell_mode(&self) -> bool {
