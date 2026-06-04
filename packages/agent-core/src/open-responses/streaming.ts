@@ -17,7 +17,6 @@ import {
   accumulateResponsesBuiltInToolPreviewsFromRawChunk,
   createResponsesBuiltInPreviewStreamState,
 } from './responses-built-in-tools.js';
-
 interface AggregatedStreamingToolCall {
   index: number;
   id: string;
@@ -61,12 +60,21 @@ export async function* responsesEventStreamToRuntimeEvents(
   let nextToolIndex = 0;
   let providerPreviewState = createResponsesBuiltInPreviewStreamState();
   let responseId: string | undefined;
+  /** Open Responses SDK 已发 reasoning-delta；raw SSE 为同内容镜像，再 yield 会 TheThe / says says。 */
+  let activeReasoningDeltaId: string | undefined;
 
   try {
     for await (const part of stream) {
       switch (part.type) {
         case 'reasoning-delta': {
           if (part.text) {
+            if (
+              activeReasoningDeltaId !== undefined &&
+              part.id !== activeReasoningDeltaId
+            ) {
+              break;
+            }
+            activeReasoningDeltaId = part.id;
             reasoningContent += part.text;
             yield { kind: 'thinking-chunk', text: part.text };
           }
@@ -129,11 +137,6 @@ export async function* responsesEventStreamToRuntimeEvents(
             responseId = rawResponseId;
           }
 
-          const reasoningText = extractOpenResponsesReasoningTextFromRawChunk(part.rawValue);
-          if (reasoningText) {
-            reasoningContent += reasoningText;
-            yield { kind: 'thinking-chunk', text: reasoningText };
-          }
           break;
         }
         default:
