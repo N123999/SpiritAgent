@@ -22,7 +22,6 @@ import {
   createLlmTransport,
   type AssistantAuxArchiveEntry,
   type ChatArchive,
-  type LlmActiveSkill,
   type LlmEnabledRule,
   type LlmEnabledSkillCatalogEntry,
   type LlmExtensionSystemPrompt,
@@ -65,7 +64,6 @@ import type {
   BootstrapRequest,
   CommitChangesRequest,
   CheckoutGitBranchRequest,
-  ConversationLocalFileAttachmentSnapshot,
   ConversationMessageSnapshot,
   ConversationTodoSnapshot,
   CreateSkillRequest,
@@ -160,6 +158,18 @@ import {
   type HostWorkspaceGitCommandContext,
 } from './host-workspace-git-commands.js';
 import {
+  abortConversationCommand,
+  applyDrainedRuntimeHostEvents,
+  continueAssistantCompletionCommand,
+  pollCommand,
+  replyPendingApprovalCommand,
+  replyPendingQuestionsCommand,
+  submitUserTurnAfterInitializedCommand,
+  tickSessionCommand,
+  type SessionTurnOrchestratorContext,
+  type SubmitUserTurnAfterInitializedOptions,
+} from './session-turn-orchestrator.js';
+import {
   buildArchiveAssistantAuxFromConversation,
   buildArchiveMessagesFromConversation,
   deriveDisplayNameFromSeed,
@@ -204,7 +214,6 @@ import {
 import { DesktopToolExecutor } from './tool-executor.js';
 import {
   buildDesktopRuntimeBasicInfo,
-  cloneActiveSkills,
   createDesktopRuntime,
   type DesktopRuntime,
 } from './runtime.js';
@@ -262,7 +271,6 @@ import {
   sameDreamCollectorSnapshot,
   resolveWorkspaceBindingForRequestedRoot,
   sameWorkspaceRoot,
-  toRuntimeAskQuestionsResult,
 } from './service-utils.js';
 import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot } from './snapshot.js';
@@ -276,7 +284,6 @@ import {
   restoreMessagesFromArchive,
   summarizeMessagesTailForOrderDebug,
   summarizeToolRowsForDebug,
-  toolMessageKey,
   truncateOneLineForDebug,
 } from './message-ordering.js';
 import {
@@ -287,11 +294,6 @@ import {
 import { DesktopAssistantMessageStateMachine } from './assistant-message-state.js';
 import {
   DesktopRuntimeEventOrchestrator,
-  runtimeEventsIncludeAppliedFinishTaskPreview,
-  runtimeEventsIncludeAppliedResponsesBuiltInToolPreview,
-  runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate,
-  splitRuntimeEventsForIncrementalFinishTaskPreview,
-  splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview,
 } from './runtime-event-orchestrator.js';
 import {
   extractSubagentSessionStreamingText,
@@ -344,32 +346,6 @@ interface HostState {
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
   ephemeralSessions: EphemeralSessionRecord[];
-}
-
-function defaultDisplayTextForUserTurn(
-  text: string,
-  explicitWorkspaceFiles: readonly PendingWorkspaceFile[],
-): string {
-  const trimmed = text.trim();
-  if (trimmed) {
-    return trimmed;
-  }
-
-  if (explicitWorkspaceFiles.length === 0) {
-    return '';
-  }
-
-  return i18n.t('error.attachedFiles', { files: explicitWorkspaceFiles.map((file) => path.basename(file.path)).join(', ') });
-}
-
-function pendingWorkspaceFilesToAttachmentSnapshots(
-  files: readonly PendingWorkspaceFile[],
-): ConversationLocalFileAttachmentSnapshot[] {
-  return files.map((file) => ({
-    path: file.path,
-    name: path.basename(file.path),
-    isImage: file.kind === 'image',
-  }));
 }
 
 function normalizeFsPath(value: string): string {
@@ -539,6 +515,62 @@ class DesktopHostService {
       runCoalescedGitRefresh: () => this.runCoalescedGitRefresh(),
       hasState: () => Boolean(this.state),
       buildSnapshot: () => this.buildSnapshot(),
+    };
+  }
+
+  private sessionTurnContext(): SessionTurnOrchestratorContext {
+    return {
+      runSerialized: (work) => this.runSerialized(work),
+      ensureInitialized: (workspaceRootOverride, options) => this.ensureInitialized(workspaceRootOverride, options),
+      requireRuntime: () => this.requireRuntime(),
+      requireState: () => this.requireState(),
+      activeBundle: () => this.activeBundle(),
+      allBundles: () => this.sessionRegistry.all(),
+      getActiveBundle: () => this.sessionRegistry.getActive(),
+      activeSessionId: () => this.sessionRegistry.activeSessionId(),
+      emitLiveSnapshotUpdate: () => this.emitLiveSnapshotUpdate(),
+      refreshRuntimeForBundle: (bundle) => this.refreshRuntimeForBundle(bundle),
+      syncActiveRuntimePointer: () => this.syncActiveRuntimePointer(),
+      clearAssistantContinuationMarkers: () => this.clearAssistantContinuationMarkers(),
+      resolveTodoSessionKeyForBundle: (bundle) => this.resolveTodoSessionKeyForBundle(bundle),
+      ensureActiveSession: (displayText) => this.ensureActiveSession(displayText),
+      reconcileTodoScopeAfterSessionPathChange: (bundle, previousSessionKey) =>
+        this.reconcileTodoScopeAfterSessionPathChange(bundle, previousSessionKey),
+      maybeRefreshRuntimeAfterTodoScopeChange: (bundle, previousSessionKey) =>
+        this.maybeRefreshRuntimeAfterTodoScopeChange(bundle, previousSessionKey),
+      buildRewindCheckpointSnapshot: () => this.buildRewindCheckpointSnapshot(),
+      allocateMessageId: () => this.allocateMessageId(),
+      resetStreamingPlacementState: (full) => this.resetStreamingPlacementState(full),
+      persistCurrentSessionIfNeeded: () => this.persistCurrentSessionIfNeeded(),
+      dispatchUserMessageExtensionEvent: (text, displayText, messageId) =>
+        this.dispatchExtensionEvent({
+          type: 'onUserMessage',
+          detail: {
+            text,
+            displayText,
+            messageId,
+          },
+        }),
+      ensureToolExecutor: (bundle) => this.ensureToolExecutor(bundle),
+      refreshArchiveFromRuntime: (bundle) => this.refreshArchiveFromRuntime(bundle),
+      recordRewindCheckpoint: (messageId, beforeUserCheckpoint) =>
+        this.recordRewindCheckpoint(messageId, beforeUserCheckpoint as DesktopRewindCheckpointSnapshot | undefined),
+      orchestrationFor: (bundle) => this.orchestrationFor(bundle),
+      rebuildMessageTimelineFromMessages: () => this.rebuildMessageTimelineFromMessages(),
+      flushDeferredRuntimeRefreshIfIdle: (bundle) => this.flushDeferredRuntimeRefreshIfIdle(bundle),
+      refreshTodoSnapshotForBundle: (bundle) => this.refreshTodoSnapshotForBundle(bundle),
+      buildSnapshot: () => this.buildSnapshot(),
+      startDreamCollectorIfNeeded: () => this.startDreamCollectorIfNeeded(),
+      persistSessionBundle: (bundle, options) => this.persistSessionBundle(bundle, options),
+      syncSubagentToolStreamingOutput: (bundle) => this.syncSubagentToolStreamingOutput(bundle),
+      markInterruptedToolsInCurrentTurn: () => this.markInterruptedToolsInCurrentTurn(),
+      markAssistantMessageContinuable: (content) => this.markAssistantMessageContinuable(content),
+      markLatestRenderableAssistantMessageContinuableInCurrentTurn: () =>
+        this.markLatestRenderableAssistantMessageContinuableInCurrentTurn(),
+      latestContinuableAssistantMessage: () => this.latestContinuableAssistantMessage(),
+      insertUserApprovalReplyMessage: (content, pendingToolCallId) =>
+        this.insertUserApprovalReplyMessage(content, pendingToolCallId),
+      normalizeApprovalDecision,
     };
   }
 
@@ -971,90 +1003,11 @@ class DesktopHostService {
   }
 
   async abortConversation(): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      await this.ensureInitialized(undefined, { fastPath: true });
-      const runtime = this.requireRuntime();
-      const interruptedAssistantText = runtime.pendingAssistantText().trim();
-      const interruptedAssistantAuxText =
-        runtime.thinkingText().trim() || runtime.compactionText().trim();
-      const interruptible =
-        runtime.isBusy() &&
-        !runtime.currentPendingApproval() &&
-        !runtime.currentPendingQuestions();
-
-      if (!interruptible) {
-        return this.buildSnapshot();
-      }
-
-      runtime.abort();
-      this.activeBundle().messageTimeline.abortActiveAssistantSegment();
-      this.activeBundle().currentTurnSkills = [];
-      this.activeOrchestration().runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
-      this.activeOrchestration().runtimeEvents.consumeCompletedTurnResult();
-      this.activeOrchestration().runtimeEvents.syncPendingToolStates();
-      this.activeOrchestration().runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-      this.markInterruptedToolsInCurrentTurn();
-      if (interruptedAssistantText || interruptedAssistantAuxText) {
-        this.markAssistantMessageContinuable(interruptedAssistantText);
-      } else {
-        this.markLatestRenderableAssistantMessageContinuableInCurrentTurn();
-      }
-      await this.persistCurrentSessionIfNeeded();
-      await this.flushDeferredRuntimeRefreshIfIdle();
-      return this.buildSnapshot();
-    });
+    return abortConversationCommand(this.sessionTurnContext());
   }
 
   async continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      await this.ensureInitialized(undefined, { fastPath: true });
-      const runtime = this.requireRuntime();
-      if (runtime.isBusy()) {
-        throw new Error(i18n.t('error.runtimeBusy'));
-      }
-      if (!Number.isFinite(messageId)) {
-        throw new Error(i18n.t('error.invalidMessageId'));
-      }
-
-      const state = this.requireState();
-      if (this.activeBundle().activeSession?.readOnly) {
-        throw new Error(i18n.t('error.readonlySessionContinue'));
-      }
-
-      await this.ensureToolExecutor();
-
-      const continuable = this.latestContinuableAssistantMessage();
-      if (!continuable || continuable.id !== messageId) {
-        throw new Error(i18n.t('error.messageNotContinuable'));
-      }
-
-      const previousContinuationIds = this.activeBundle().messages
-        .filter((message) => message.canContinue === true)
-        .map((message) => message.id);
-      try {
-        this.clearAssistantContinuationMarkers();
-        this.resetStreamingPlacementState(false);
-        await this.persistCurrentSessionIfNeeded();
-        this.activeBundle().nextTimelineAssistantSegmentKind = 'continuation';
-        await runtime.continueAssistantCompletionStreaming();
-      } catch (error) {
-        this.activeBundle().nextTimelineAssistantSegmentKind = 'initial';
-        for (const message of this.activeBundle().messages) {
-          if (previousContinuationIds.includes(message.id)) {
-            message.canContinue = true;
-          }
-        }
-        throw error;
-      }
-      this.refreshArchiveFromRuntime();
-      await runtime.poll();
-      this.activeOrchestration().runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
-      this.activeOrchestration().runtimeEvents.consumeCompletedTurnResult();
-      this.activeOrchestration().runtimeEvents.syncPendingToolStates();
-      this.activeOrchestration().runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-      await this.flushDeferredRuntimeRefreshIfIdle();
-      return this.buildSnapshot();
-    });
+    return continueAssistantCompletionCommand(this.sessionTurnContext(), messageId);
   }
 
   async rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot> {
@@ -1125,95 +1078,9 @@ class DesktopHostService {
 
   private async submitUserTurnAfterInitialized(
     text: string,
-    options: {
-      preserveRewindWarnings?: boolean;
-      displayText?: string;
-      turnSkills?: LlmActiveSkill[];
-      explicitWorkspaceFiles?: PendingWorkspaceFile[];
-    } = {},
+    options: SubmitUserTurnAfterInitializedOptions = {},
   ): Promise<DesktopSnapshot> {
-    const bundle = this.activeBundle();
-    if (!bundle.runtime) {
-      await this.refreshRuntimeForBundle(bundle);
-      this.syncActiveRuntimePointer();
-    }
-    const trimmed = text.trim();
-    const explicitWorkspaceFiles = options.explicitWorkspaceFiles ?? [];
-    const displayText = (options.displayText ?? defaultDisplayTextForUserTurn(text, explicitWorkspaceFiles)).trim();
-    if (!trimmed && explicitWorkspaceFiles.length === 0) {
-      throw new Error(i18n.t('error.messageRequired'));
-    }
-    if (!displayText) {
-      throw new Error(i18n.t('error.messageRequired'));
-    }
-
-    const state = this.requireState();
-    if (this.activeBundle().activeSession?.readOnly) {
-      throw new Error(i18n.t('error.readonlySessionSend'));
-    }
-    if (!options.preserveRewindWarnings) {
-      this.activeBundle().rewindWarnings = [];
-    }
-    this.clearAssistantContinuationMarkers();
-    bundle.currentTurnSkills = cloneActiveSkills(options.turnSkills ?? []);
-    const todoSessionKeyBeforeEnsure = this.resolveTodoSessionKeyForBundle(bundle);
-    this.ensureActiveSession(displayText);
-    await this.reconcileTodoScopeAfterSessionPathChange(bundle, todoSessionKeyBeforeEnsure);
-    await this.maybeRefreshRuntimeAfterTodoScopeChange(bundle, todoSessionKeyBeforeEnsure);
-    const beforeUserCheckpoint = await this.buildRewindCheckpointSnapshot();
-    const localFileAttachments =
-      explicitWorkspaceFiles.length > 0
-        ? pendingWorkspaceFilesToAttachmentSnapshots(explicitWorkspaceFiles)
-        : undefined;
-    const userMessage: ConversationMessageSnapshot = {
-      id: this.allocateMessageId(),
-      role: 'user',
-      content: displayText,
-      pending: false,
-      ...(localFileAttachments ? { localFileAttachments } : {}),
-    };
-    this.activeBundle().messages.push(userMessage);
-    this.activeBundle().messageTimeline.beginUserTurn(userMessage.content, {
-      messageId: userMessage.id,
-      ...(localFileAttachments ? { localFileAttachments } : {}),
-    });
-    this.resetStreamingPlacementState(false);
-    const todoSessionKeyBeforePersist = this.resolveTodoSessionKeyForBundle(bundle);
-    await this.persistCurrentSessionIfNeeded();
-    await this.reconcileTodoScopeAfterSessionPathChange(bundle, todoSessionKeyBeforePersist);
-    await this.maybeRefreshRuntimeAfterTodoScopeChange(bundle, todoSessionKeyBeforePersist);
-    await this.dispatchExtensionEvent({
-      type: 'onUserMessage',
-      detail: {
-        text: trimmed,
-        displayText,
-        messageId: userMessage.id,
-      },
-    });
-
-    // Re-resolve after promote/persist may have replaced bundle.runtime (todo scope refresh).
-    const runtime = this.requireRuntime();
-    await this.ensureToolExecutor(bundle);
-    try {
-      await runtime.startUserTurnStreaming(trimmed, [], explicitWorkspaceFiles);
-      this.refreshArchiveFromRuntime();
-      await this.recordRewindCheckpoint(userMessage.id, beforeUserCheckpoint);
-      await runtime.poll();
-      this.applyDrainedRuntimeHostEvents(bundle, runtime.drainEvents());
-    } catch (error) {
-      this.activeBundle().currentTurnSkills = [];
-      this.activeOrchestration().assistantMessages.handleMessageRemoved(this.activeBundle().messages.length - 1, userMessage.id, 'send-user-rollback');
-      this.activeBundle().messages.pop();
-      this.rebuildMessageTimelineFromMessages();
-      throw error;
-    }
-
-    this.activeOrchestration().runtimeEvents.consumeCompletedTurnResult();
-    this.activeOrchestration().runtimeEvents.syncPendingToolStates();
-    this.activeOrchestration().runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-    await this.flushDeferredRuntimeRefreshIfIdle(bundle);
-    await this.refreshTodoSnapshotForBundle(bundle);
-    return this.buildSnapshot();
+    return submitUserTurnAfterInitializedCommand(this.sessionTurnContext(), text, options);
   }
 
   private async resolveExplicitLocalFileAttachments(
@@ -1259,128 +1126,29 @@ class DesktopHostService {
   }
 
   async poll(): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      await this.ensureInitialized(undefined, { fastPath: true });
-      for (const bundle of this.sessionRegistry.all()) {
-        if (bundle.runtime?.isBusy()) {
-          await this.tickSession(bundle);
-        }
-      }
-      const active = this.sessionRegistry.getActive();
-      if (active && !active.runtime?.isBusy()) {
-        await this.tickSession(active, { light: true });
-      }
-      this.syncActiveRuntimePointer();
-      this.startDreamCollectorIfNeeded();
-      return this.buildSnapshot();
-    });
+    return pollCommand(this.sessionTurnContext());
   }
 
   private applyDrainedRuntimeHostEvents(
     bundle: SessionBundle,
     drained: RuntimeEvent<DesktopToolRequest>[],
   ): void {
-    const orchestration = this.orchestrationFor(bundle);
-    const queued = [...bundle.deferredRuntimeHostEvents, ...drained];
-    bundle.deferredRuntimeHostEvents = [];
-    const splitFinish = splitRuntimeEventsForIncrementalFinishTaskPreview(queued);
-    const splitBuiltin = splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview(
-      splitFinish.toApply,
-      bundle.responsesBuiltInPreviewSeenCallIds,
-    );
-    bundle.deferredRuntimeHostEvents = [...splitFinish.deferred, ...splitBuiltin.deferred];
-    orchestration.runtimeEvents.applyRuntimeHostEvents(splitBuiltin.toApply);
-    for (const event of splitBuiltin.toApply) {
-      if (
-        event.kind === 'streaming-tool-preview'
-        && runtimeEventsIncludeAppliedResponsesBuiltInToolPreview([event])
-      ) {
-        bundle.responsesBuiltInPreviewSeenCallIds.add(event.toolCallId);
-      }
-    }
-    bundle.messages = bundle.messageTimeline.toMessages();
-    if (bundle.id !== this.sessionRegistry.activeSessionId()) {
-      return;
-    }
-    if (
-      runtimeEventsIncludeAppliedFinishTaskPreview(splitBuiltin.toApply)
-      || runtimeEventsIncludeAppliedResponsesBuiltInToolStreamingUpdate(splitBuiltin.toApply)
-    ) {
-      bundle.conversationRevision += 1;
-      this.emitLiveSnapshotUpdate();
-    }
+    applyDrainedRuntimeHostEvents(this.sessionTurnContext(), bundle, drained);
   }
 
   private async tickSession(
     bundle: SessionBundle,
     options: { light?: boolean } = {},
   ): Promise<void> {
-    const orchestration = this.orchestrationFor(bundle);
-    if (bundle.runtime) {
-      bundle.runtime.tickThinkingSpinner();
-      if (!options.light) {
-        await bundle.runtime.poll();
-        this.applyDrainedRuntimeHostEvents(bundle, bundle.runtime.drainEvents());
-      } else {
-        const drained = bundle.runtime.drainEvents();
-        if (drained.length > 0 || bundle.deferredRuntimeHostEvents.length > 0) {
-          this.applyDrainedRuntimeHostEvents(bundle, drained);
-        }
-      }
-    } else if (options.light && bundle.deferredRuntimeHostEvents.length > 0) {
-      this.applyDrainedRuntimeHostEvents(bundle, []);
-    }
-    if (options.light) {
-      return;
-    }
-    orchestration.runtimeEvents.consumeCompletedTurnResult();
-    orchestration.runtimeEvents.syncPendingToolStates();
-    this.syncSubagentToolStreamingOutput(bundle);
-    orchestration.runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-    await this.persistSessionBundle(bundle, {
-      fromRuntime: bundle.runtime,
-      bumpListSortAt: false,
-    });
-    await this.flushDeferredRuntimeRefreshIfIdle(bundle);
-    await this.refreshTodoSnapshotForBundle(bundle);
+    return tickSessionCommand(this.sessionTurnContext(), bundle, options);
   }
 
   async replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      await this.ensureInitialized(undefined, { fastPath: true });
-      const runtime = this.requireRuntime();
-      const pendingApproval = runtime.currentPendingApproval();
-      const runtimeDecision = normalizeApprovalDecision(decision);
-      if (runtimeDecision.kind === 'guidance' && runtimeDecision.userMessage.trim()) {
-        this.insertUserApprovalReplyMessage(
-          runtimeDecision.userMessage.trim(),
-          pendingApproval ? toolMessageKey(pendingApproval) : undefined,
-        );
-        this.resetStreamingPlacementState(false);
-      }
-      await runtime.continuePendingApproval(runtimeDecision);
-      this.activeOrchestration().runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
-      this.activeOrchestration().runtimeEvents.consumeCompletedTurnResult();
-      this.activeOrchestration().runtimeEvents.syncPendingToolStates();
-      this.activeOrchestration().runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-      await this.flushDeferredRuntimeRefreshIfIdle();
-      return this.buildSnapshot();
-    });
+    return replyPendingApprovalCommand(this.sessionTurnContext(), decision);
   }
 
   async replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      await this.ensureInitialized(undefined, { fastPath: true });
-      const runtime = this.requireRuntime();
-      await runtime.continuePendingQuestions(toRuntimeAskQuestionsResult(result));
-      this.activeOrchestration().runtimeEvents.applyRuntimeHostEvents(runtime.drainEvents());
-      this.activeOrchestration().runtimeEvents.consumeCompletedTurnResult();
-      this.activeOrchestration().runtimeEvents.syncPendingToolStates();
-      this.activeOrchestration().runtimeEvents.syncAssistantPrefixFromHistoryBeforeToolRow();
-      await this.persistCurrentSessionIfNeeded();
-      await this.flushDeferredRuntimeRefreshIfIdle();
-      return this.buildSnapshot();
-    });
+    return replyPendingQuestionsCommand(this.sessionTurnContext(), result);
   }
 
   async resetSession(): Promise<DesktopSnapshot> {
