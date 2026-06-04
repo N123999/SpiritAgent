@@ -12,8 +12,8 @@ const MENU_ENTRIES = [
   { labelKey: "titleBar.help", section: "help" as const },
 ];
 
-/** 与 [`App.tsx`](../App.tsx) 侧栏壳层最小宽度一致；顶栏菜单区可 `w-max` 超出该值以免裁切 Help 等项 */
-const SESSION_SIDEBAR_WIDTH_MIN_CLASS = "min-w-[min(16rem,40vw)]";
+/** 与 [`App.tsx`](../App.tsx) `session-sidebar-shell` 展开宽度一致 */
+const SESSION_SIDEBAR_WIDTH_CLASS = "w-[min(16rem,40vw)]";
 
 function popupMenuAtAnchor(
   el: HTMLElement,
@@ -30,18 +30,10 @@ type DesktopTitleBarProps = {
   sessionSidebarOpen: boolean;
 };
 
-function titleBarSurfaceClass(
-  useMicaBackdrop: boolean,
-  withBorder: boolean,
-  zone: "sidebar" | "main",
-) {
+function titleBarSurfaceClass(useMicaBackdrop: boolean, withBorder: boolean) {
   return cn(
     withBorder && (useMicaBackdrop ? "border-black/5 dark:border-white/10" : "border-border/40"),
-    useMicaBackdrop
-      ? "bg-transparent"
-      : zone === "sidebar"
-        ? "bg-sidebar"
-        : "bg-background",
+    useMicaBackdrop ? "bg-transparent" : "bg-sidebar",
   );
 }
 
@@ -101,27 +93,18 @@ export function DesktopTitleBar({ useMicaBackdrop, sessionSidebarOpen }: Desktop
     <header
       className={cn(
         "electron-drag flex h-8 w-full shrink-0 overflow-hidden border-b",
-        titleBarSurfaceClass(useMicaBackdrop, true, "sidebar"),
+        titleBarSurfaceClass(useMicaBackdrop, true),
       )}
     >
       <div
         className={cn(
           "flex h-full min-h-0 shrink-0 items-center gap-1 pl-2",
-          sessionSidebarOpen
-            ? cn(SESSION_SIDEBAR_WIDTH_MIN_CLASS, "w-max max-w-[calc(100%-9rem)]")
-            : "min-w-0 flex-1",
-          titleBarSurfaceClass(useMicaBackdrop, false, "sidebar"),
+          sessionSidebarOpen ? SESSION_SIDEBAR_WIDTH_CLASS : "min-w-0 flex-1",
         )}
       >
         <TitleBarMenuCluster />
       </div>
-      <div
-        className={cn(
-          "electron-drag h-full min-w-0 flex-1",
-          titleBarSurfaceClass(useMicaBackdrop, false, sessionSidebarOpen ? "main" : "sidebar"),
-        )}
-        aria-hidden
-      />
+      <div className="electron-drag h-full min-w-0 flex-1" aria-hidden />
     </header>
   );
 }
