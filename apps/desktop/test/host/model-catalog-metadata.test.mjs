@@ -79,6 +79,36 @@ test('moonshot-ai provider consumes Moonshot model catalog metadata', () => {
   ]);
 });
 
+test('vercel-ai-gateway provider maps language and image model types to catalog capabilities', () => {
+  assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'vercel-ai-gateway' }), true);
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'vercel-ai-gateway',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'openai/gpt-5',
+        supportsImageInput: true,
+      },
+      {
+        id: 'google/imagen-4',
+        supportsImageGeneration: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'openai/gpt-5',
+      capabilities: ['chat', 'image'],
+    },
+    {
+      id: 'google/imagen-4',
+      capabilities: ['imageGeneration'],
+    },
+  ]);
+});
+
 test('openai-compatible transport does not treat metadata as Anthropic-specific catalog data', () => {
   assert.equal(
     usesAnthropicModelCatalogMetadata({ provider: 'custom', transportKind: 'openai-compatible' }),

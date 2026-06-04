@@ -1,6 +1,7 @@
 import type { ProviderListedModelEntry } from '@spirit-agent/host-internal';
 
 import type {
+  DesktopModelCapability,
   DesktopModelProvider,
   DesktopModelReasoningEffort,
   DesktopTransportKind,
@@ -19,6 +20,9 @@ export function usesProviderListedModelCatalogMetadata(input: {
   transportKind?: DesktopTransportKind;
 }): boolean {
   if (input.provider === 'moonshot-ai') {
+    return true;
+  }
+  if (input.provider === 'vercel-ai-gateway') {
     return true;
   }
   return usesAnthropicModelCatalogMetadata(input);
@@ -74,8 +78,12 @@ export function previewCatalogMapForTransport(input: {
 
 function previewCapabilitiesFromListedEntry(
   entry: ProviderListedModelEntry,
-): Array<'chat' | 'image' | 'video'> {
-  const capabilities: Array<'chat' | 'image' | 'video'> = ['chat'];
+): DesktopModelCapability[] {
+  if (entry.supportsImageGeneration === true) {
+    return ['imageGeneration'];
+  }
+
+  const capabilities: DesktopModelCapability[] = ['chat'];
   if (entry.supportsImageInput === true) {
     capabilities.push('image');
   }
