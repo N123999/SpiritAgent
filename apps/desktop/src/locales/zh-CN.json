@@ -625,6 +625,7 @@
   "tool": {
     "reasonPrefix": "理由:",
     "runCommand": "运行命令",
+    "runShellVerb": "运行",
     "create": "创建",
     "edit": "编辑",
     "delete": "删除",

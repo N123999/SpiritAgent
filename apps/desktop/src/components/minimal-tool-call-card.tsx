@@ -22,6 +22,7 @@ import {
   shellToolExpandableDetailLines,
   toolCallPhaseShowsShimmer,
   toolHasExpandableContent,
+  type ShellToolSummaryParts,
 } from "@/lib/tool-call-display";
 import { parseShellCommand } from "@/lib/shell-tool-display";
 import { cn } from "@/lib/utils";
@@ -29,16 +30,37 @@ import type { ToolBlockSnapshot } from "@/types";
 
 const summaryClass = "text-xs leading-relaxed text-muted-foreground";
 
+export type ToolSummaryDetailTone = "default" | "shell-command";
+
+/**
+ * Shell summary grey ramp (verb → reason → command), aligned across themes:
+ * light: 100% → 75% → 42% opacity; dark: 100% → 65% → 45%.
+ */
+const summaryShellReasonClass =
+  "text-muted-foreground/75 dark:text-muted-foreground/65";
+
+const summaryShellCommandClass =
+  "text-muted-foreground/42 dark:text-muted-foreground/45";
+
+const summaryDetailToneClass: Record<ToolSummaryDetailTone, string> = {
+  default: summaryShellCommandClass,
+  "shell-command": summaryShellCommandClass,
+};
+
 function ToolCallSummaryRow({
   tool,
   headline,
   detail,
+  shellSummary,
   shimmerActive = false,
+  detailTone = "default",
 }: {
   tool: ToolBlockSnapshot;
   headline: string;
   detail?: string;
+  shellSummary?: ShellToolSummaryParts;
   shimmerActive?: boolean;
+  detailTone?: ToolSummaryDetailTone;
 }) {
   const editLineDelta = useMemo(() => resolveToolLineDelta(tool), [
     tool.toolName,
@@ -48,7 +70,13 @@ function ToolCallSummaryRow({
 
   return (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-2">
-      <MinimalToolSummary headline={headline} detail={detail} shimmerActive={shimmerActive} />
+      <MinimalToolSummary
+        headline={headline}
+        detail={detail}
+        shellSummary={shellSummary}
+        shimmerActive={shimmerActive}
+        detailTone={detailTone}
+      />
       {editLineDelta ? <EditFileLineDeltaBadge delta={editLineDelta} /> : null}
     </span>
   );
@@ -57,27 +85,37 @@ function ToolCallSummaryRow({
 export function MinimalToolSummary({
   headline,
   detail,
+  shellSummary,
   shimmerActive = false,
+  detailTone = "default",
 }: {
   headline: string;
   detail?: string;
+  shellSummary?: ShellToolSummaryParts;
   shimmerActive?: boolean;
+  detailTone?: ToolSummaryDetailTone;
 }) {
+  const shimmerClass = shimmerActive
+    ? "spirit-thinking-shimmer-text font-medium tracking-wide"
+    : summaryClass;
+
   return (
     <span className={cn("min-w-0 break-words text-xs leading-relaxed")}>
-      <span
-        className={cn(
-          shimmerActive
-            ? "spirit-thinking-shimmer-text font-medium tracking-wide"
-            : summaryClass,
-        )}
-      >
-        {headline}
-      </span>
+      {shellSummary ? (
+        <>
+          <span className={shimmerClass}>{shellSummary.verb}</span>
+          {" "}
+          <span className={shimmerActive ? shimmerClass : summaryShellReasonClass}>
+            {shellSummary.reason}
+          </span>
+        </>
+      ) : (
+        <span className={shimmerClass}>{headline}</span>
+      )}
       {detail ? (
         <>
           {" "}
-          <span className="text-muted-foreground/45">{detail}</span>
+          <span className={summaryDetailToneClass[detailTone]}>{detail}</span>
         </>
       ) : null}
     </span>
@@ -313,7 +351,9 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
           tool={tool}
           headline={summary.headline}
           detail={summary.detail}
+          shellSummary={summary.shellSummary}
           shimmerActive={shimmerActive}
+          detailTone={isShell ? "shell-command" : "default"}
         />
       </p>
     );
@@ -333,7 +373,9 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
             tool={tool}
             headline={summary.headline}
             detail={summary.detail}
+            shellSummary={summary.shellSummary}
             shimmerActive={shimmerActive}
+            detailTone={isShell ? "shell-command" : "default"}
           />
           <ChevronRight
             className={cn(

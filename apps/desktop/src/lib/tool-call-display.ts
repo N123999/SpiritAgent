@@ -1,4 +1,5 @@
 import { FILE_DIFF_TOOL_NAMES } from '@/lib/file-tool-diff-source.js';
+import i18n from '@/lib/i18n';
 import {
   parseShellCommand,
   shellExpandableDetailLines,
@@ -6,9 +7,16 @@ import {
 } from '@/lib/shell-tool-display';
 import type { ToolBlockSnapshot } from '@/types';
 
+export type ShellToolSummaryParts = {
+  verb: string;
+  reason: string;
+};
+
 export type ToolCallSummaryParts = {
   headline: string;
   detail?: string;
+  /** When set, headline is split into verb (darkest) + reason (mid) for run_shell_command. */
+  shellSummary?: ShellToolSummaryParts;
 };
 
 export { toolCallPhaseShowsShimmer } from './tool-call-shimmer.js';
@@ -19,6 +27,19 @@ const RESPONSES_BUILT_IN_TOOL_NAMES = new Set([
 ]);
 
 const LEGACY_READ_FILE_HEADLINE = /^查看\s+(.+)$/u;
+
+function shellToolSummaryFromReason(reason: string): Pick<ToolCallSummaryParts, 'headline' | 'shellSummary'> {
+  const trimmed = reason.trim();
+  const defaultHeadline = i18n.t('tool.runCommand');
+  if (!trimmed || trimmed === defaultHeadline) {
+    return { headline: defaultHeadline };
+  }
+  const verb = i18n.t('tool.runShellVerb');
+  return {
+    headline: `${verb} ${trimmed}`,
+    shellSummary: { verb, reason: trimmed },
+  };
+}
 
 export function isResponsesBuiltInToolCard(toolName: string): boolean {
   return RESPONSES_BUILT_IN_TOOL_NAMES.has(toolName);
@@ -38,7 +59,7 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
   if (tool.toolName === 'run_shell_command') {
     const command = snapshotDetail || parseShellCommand(tool);
     return {
-      headline,
+      ...shellToolSummaryFromReason(headline),
       ...(command ? { detail: command } : {}),
     };
   }

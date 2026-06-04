@@ -625,6 +625,7 @@
   "tool": {
     "reasonPrefix": "Reason:",
     "runCommand": "Run command",
+    "runShellVerb": "Run",
     "create": "Create",
     "edit": "Edit",
     "delete": "Delete",
