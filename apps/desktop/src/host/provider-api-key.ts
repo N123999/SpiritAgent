@@ -29,6 +29,18 @@ export function modelExistsInProviderScope(
   );
 }
 
+/** After removing models, keep active if still valid; else first remaining or empty. */
+export function resolveActiveModelAfterRemoval(
+  currentActive: string,
+  remainingModels: readonly Pick<ModelKeyPresenceProfile, 'name'>[],
+  removedNames: readonly string[],
+): string {
+  if (!removedNames.some((name) => name === currentActive)) {
+    return currentActive;
+  }
+  return remainingModels[0]?.name ?? '';
+}
+
 /** Model ids from `modelIds` that are not already present under the target provider scope. */
 export function filterNewProviderModelIds(
   existingModels: readonly ExistingModelForProviderAdd[],

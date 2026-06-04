@@ -320,7 +320,9 @@ fn serialize_config(cfg: &AppConfig) -> Result<String> {
 
 fn normalize_config(cfg: &mut AppConfig) {
     if cfg.models.is_empty() {
-        cfg.models = AppConfig::default().models;
+        cfg.active_model.clear();
+        cfg.image_generation_model = None;
+        return;
     }
 
     if !cfg.models.iter().any(|m| m.name == cfg.active_model) {
@@ -531,10 +533,13 @@ mod tests {
                 .and_then(Value::as_bool),
             Some(true)
         );
-        assert!(
-            json.get("models")
-                .and_then(Value::as_array)
-                .is_some_and(|models| !models.is_empty())
+        assert_eq!(
+            json.get("models").and_then(Value::as_array).map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(
+            json.get("activeModel").and_then(Value::as_str),
+            Some("")
         );
     }
 

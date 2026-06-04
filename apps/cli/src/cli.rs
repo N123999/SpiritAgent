@@ -226,14 +226,14 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             }
         }
         ModelCommand::Remove { name } => {
-            if name == cfg.active_model {
-                return Err(anyhow!("不能删除当前模型，请先切换到其他模型"));
-            }
             let before = cfg.models.len();
             cfg.models.retain(|m| m.name != name);
             if cfg.models.len() == before {
                 println!("模型不存在: {}", name);
             } else {
+                if cfg.active_model == name {
+                    cfg.active_model = cfg.models.first().map(|m| m.name.clone()).unwrap_or_default();
+                }
                 if cfg.image_generation_model.as_deref() == Some(name.as_str()) {
                     cfg.image_generation_model = None;
                 }

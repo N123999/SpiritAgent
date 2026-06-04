@@ -113,15 +113,6 @@ impl TuiShell {
             }
             ["remove", model] => {
                 let mut config = self.runtime.config().clone();
-                if *model == config.active_model {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::Agent,
-                        content: "不能删除当前使用中的模型，请先 `/model use <name>` 切换。"
-                            .to_string(),
-                        tool_block: None,
-                    });
-                    return;
-                }
                 let before = config.models.len();
                 config.models.retain(|m| m.name != *model);
                 if config.models.len() == before {
@@ -131,6 +122,16 @@ impl TuiShell {
                         tool_block: None,
                     });
                     return;
+                }
+                if config.active_model == *model {
+                    config.active_model = config
+                        .models
+                        .first()
+                        .map(|m| m.name.clone())
+                        .unwrap_or_default();
+                }
+                if config.image_generation_model.as_deref() == Some(model) {
+                    config.image_generation_model = None;
                 }
                 if let Err(err) = self.config_store.save(&config) {
                     self.messages.push(ChatMessage {

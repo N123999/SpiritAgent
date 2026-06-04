@@ -171,7 +171,7 @@ import {
   previewModelCatalogForTransport,
   usesProviderListedModelCatalogMetadata,
 } from './model-catalog-metadata.js';
-import { modelExistsInProviderScope } from './provider-api-key.js';
+import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
 import {
   DEFAULT_API_BASE,
   defaultNewSessionPath,
@@ -1063,10 +1063,6 @@ class DesktopHostService {
       if (!name) {
         throw new Error(i18n.t('error.modelNameRequired'));
       }
-      if (name === state.config.activeModel) {
-        throw new Error(i18n.t('error.cannotDeleteActiveModel'));
-      }
-
       const before = state.config.models.length;
       state.config.models = state.config.models.filter((model) => model.name !== name);
       if (state.config.models.length === before) {
@@ -1092,12 +1088,6 @@ class DesktopHostService {
         throw new Error(i18n.t('error.noModelsInProvider'));
       }
 
-      const active = state.config.activeModel;
-      const hasActive = targets.some((model) => model.name === active);
-      if (hasActive) {
-        throw new Error(i18n.t('error.cannotDeleteProviderWithActive'));
-      }
-
       const namesToRemove = targets.map((model) => model.name);
       state.config.models = unmatched;
       return this.finalizeModelRemoval(state, namesToRemove, { removeProviderKey: provider });
@@ -1112,6 +1102,11 @@ class DesktopHostService {
       removeLegacyModelKeys?: boolean;
     },
   ): Promise<DesktopSnapshot> {
+    state.config.activeModel = resolveActiveModelAfterRemoval(
+      state.config.activeModel,
+      state.config.models,
+      namesToRemove,
+    );
     if (state.config.imageGenerationModel && namesToRemove.includes(state.config.imageGenerationModel)) {
       delete state.config.imageGenerationModel;
     }
@@ -1125,6 +1120,8 @@ class DesktopHostService {
       }
     }
     await this.refreshModelKeyPresence();
+    await this.refreshRuntime();
+    this.lastRuntimeError = '';
     await this.persistCurrentSessionIfNeeded();
     return this.buildSnapshot();
   }

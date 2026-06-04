@@ -2375,7 +2375,6 @@ function ModelsSettingsPanel({
         ) : (
           <>
             {Array.from(providerGroups.entries()).map(([provider, groupModels]) => {
-              const groupHasActive = groupModels.some((m) => m.name === activeModel);
               const groupHasKey = groupModels.some((m) => m.keyConfigured);
               return (
                 <div
@@ -2401,10 +2400,7 @@ function ModelsSettingsPanel({
                       variant="destructive"
                       size="sm"
                       className="shrink-0"
-                      disabled={modelsBusy || modelsPreviewBusy || groupHasActive}
-                      title={
-                        groupHasActive ? t('settings.cannotDeleteProviderGroup') : undefined
-                      }
+                      disabled={modelsBusy || modelsPreviewBusy}
                       onClick={() => setDeleteGroupTarget(provider)}
                     >
                       {t('settings.deleteGroup')}
@@ -2541,8 +2537,7 @@ function ModelsSettingsPanel({
                           variant="destructive"
                           size="sm"
                           className="shrink-0"
-                          disabled={modelsBusy || modelsPreviewBusy || isActive}
-                          title={isActive ? t('settings.cannotDeleteCurrentModel') : undefined}
+                          disabled={modelsBusy || modelsPreviewBusy}
                           onClick={(event) => {
                             event.stopPropagation();
                             setDeleteTarget(model.name);

@@ -547,10 +547,13 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
         })
     : [];
 
-  const normalizedModels = models.length > 0 ? models : defaultConfig().models;
-  const activeModel = normalizedModels.some((model) => model.name === raw.activeModel)
-    ? raw.activeModel!.trim()
-    : normalizedModels[0]!.name;
+  const normalizedModels = models;
+  const activeModel =
+    normalizedModels.length === 0
+      ? (typeof raw.activeModel === 'string' ? raw.activeModel.trim() : '')
+      : normalizedModels.some((model) => model.name === raw.activeModel?.trim())
+        ? raw.activeModel!.trim()
+        : normalizedModels[0]!.name;
   const imageGenerationModel = normalizeImageGenerationModel(raw.imageGenerationModel, normalizedModels);
 
   return {

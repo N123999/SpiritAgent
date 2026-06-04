@@ -7,6 +7,7 @@ import {
   modelExistsInProviderScope,
   modelProviderKeyScope,
   providerKeyAccount,
+  resolveActiveModelAfterRemoval,
 } from '../../dist-electron/src/host/provider-api-key.js';
 
 test('providerKeyAccount uses provider namespace', () => {
@@ -65,6 +66,22 @@ test('modelExistsInProviderScope only matches same provider scope', () => {
   assert.equal(modelExistsInProviderScope(existing, 'gpt-4', 'openai'), true);
   assert.equal(modelExistsInProviderScope(existing, 'gpt-4', 'anthropic'), false);
   assert.equal(modelExistsInProviderScope(existing, 'gpt-4'), false);
+});
+
+test('resolveActiveModelAfterRemoval switches to another model or clears active', () => {
+  const remaining = [{ name: 'b' }, { name: 'c' }];
+  assert.equal(
+    resolveActiveModelAfterRemoval('a', remaining, ['a']),
+    'b',
+  );
+  assert.equal(
+    resolveActiveModelAfterRemoval('a', [], ['a']),
+    '',
+  );
+  assert.equal(
+    resolveActiveModelAfterRemoval('b', remaining, ['a']),
+    'b',
+  );
 });
 
 test('filterNewProviderModelIds skips only duplicates within provider scope', () => {
