@@ -36,6 +36,7 @@ import {
   buildLspHostToolDefinitions,
   isLspDiagnosticsToolRequest,
   requestFromGetDiagnosticsFunctionCall,
+  appendLspDiagnosticsAfterWriteIfNeeded,
 } from '@spirit-agent/agent-core';
 import {
   type HostDreamScope,
@@ -290,22 +291,22 @@ export class DesktopToolExecutor
 
     this.assertAllowedDreamToolRequest(request);
     const output = await this.tools.execute(request);
-    if (typeof output === 'string') {
-      return createToolExecutionTextOutput(output);
-    }
-
-    return {
-      summaryText: output.summaryText,
-      content: output.content.map((part) => {
-        if (part.type === 'text') {
-          return createLlmTextContentPart(part.text);
-        }
-        if (part.type === 'video') {
-          return createLlmVideoContentPart(part.path);
-        }
-        return createLlmImageContentPart(part.path);
-      }),
-    };
+    const normalized =
+      typeof output === 'string'
+        ? createToolExecutionTextOutput(output)
+        : {
+            summaryText: output.summaryText,
+            content: output.content.map((part) => {
+              if (part.type === 'text') {
+                return createLlmTextContentPart(part.text);
+              }
+              if (part.type === 'video') {
+                return createLlmVideoContentPart(part.path);
+              }
+              return createLlmImageContentPart(part.path);
+            }),
+          };
+    return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request as JsonValue, normalized);
   }
 
   async saveGeneratedImage(request: HostGeneratedImageSaveRequest): Promise<HostGeneratedImageFile> {

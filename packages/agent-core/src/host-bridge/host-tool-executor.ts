@@ -34,6 +34,7 @@ import {
   isLspDiagnosticsToolRequest,
   requestFromGetDiagnosticsFunctionCall,
 } from '../lsp/tool-request.js';
+import { appendLspDiagnosticsAfterWriteIfNeeded } from '../lsp/write-append.js';
 import { McpService, type McpToolRequest } from '../mcp/service.js';
 import { JsonRpcPeer } from './framing.js';
 
@@ -239,14 +240,16 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     }
 
     if (this.localHostService) {
-      return normalizeToolExecutionOutput(await this.localHostService.execute(request));
+      const output = normalizeToolExecutionOutput(await this.localHostService.execute(request));
+      return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
     }
 
-    return normalizeToolExecutionOutput(
+    const output = normalizeToolExecutionOutput(
       await this.peer.call<ToolExecutionOutput | string>('host.execute', {
         request: this.serializeRequest(request),
       }),
     );
+    return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
   }
 
   attachRequestMetadata(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue {

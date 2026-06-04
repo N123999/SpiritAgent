@@ -706,6 +706,7 @@ function buildCliHostToolServiceOptions(
       : {}),
     fileChangeObserver: {
       async recordFileChange(change: unknown): Promise<void> {
+        await toolExecutor.lspServiceSnapshot()?.syncFromRecordedChange(change);
         await peer.call('host.recordFileChange', change);
       },
     },

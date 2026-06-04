@@ -1577,6 +1577,7 @@ class DesktopHostService {
       extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
       fileChangeObserver: {
         recordFileChange: (change) => {
+          void lsp?.syncFromRecordedChange(change);
           void this.recordHostFileChange(bundle, change);
         },
       },
