@@ -185,6 +185,17 @@ import {
   type DreamCollectorServiceContext,
 } from './dream-collector-service.js';
 import {
+  clearAssistantContinuationMarkers as clearAssistantContinuationMarkersFromService,
+  latestContinuableAssistantMessage as latestContinuableAssistantMessageFromService,
+  logContinuationSnapshotState as logContinuationSnapshotStateFromService,
+  logToolSnapshotState as logToolSnapshotStateFromService,
+  markAssistantMessageContinuable as markAssistantMessageContinuableFromService,
+  markLatestRenderableAssistantMessageContinuableInCurrentTurn as markLatestRenderableAssistantMessageContinuableInCurrentTurnFromService,
+  refreshArchiveFromRuntime as refreshArchiveFromRuntimeFromService,
+  syncSubagentToolStreamingOutput as syncSubagentToolStreamingOutputFromService,
+  type ConversationContinuationContext,
+} from './conversation-continuation.js';
+import {
   buildArchiveAssistantAuxFromConversation,
   buildArchiveMessagesFromConversation,
   deriveDisplayNameFromSeed,
@@ -281,14 +292,7 @@ import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot } from './snapshot.js';
 import {
   applyToolCallSummaryCopy,
-  messageOrderDebugLevel,
-  messageIndexIsInCurrentTurn,
-  hasActiveRunSubagentToolInMessages,
-  isSubagentStatusSurfaceMessage,
   parsePendingSubagentStatusText,
-  summarizeMessagesTailForOrderDebug,
-  summarizeToolRowsForDebug,
-  truncateOneLineForDebug,
 } from './message-ordering.js';
 import {
   mapPendingAuxState,
@@ -299,10 +303,6 @@ import { DesktopAssistantMessageStateMachine } from './assistant-message-state.j
 import {
   DesktopRuntimeEventOrchestrator,
 } from './runtime-event-orchestrator.js';
-import {
-  extractSubagentSessionStreamingText,
-  findRunSubagentToolPhase,
-} from './subagent-stream-sync.js';
 import {
   DesktopMessageTimeline,
   type DesktopTimelineSegmentKind,
@@ -641,6 +641,18 @@ class DesktopHostService {
       refreshRuntime: () => this.refreshRuntime(),
       clearLastRuntimeError: () => {
         this.lastRuntimeError = '';
+      },
+    };
+  }
+
+  private conversationContinuationContext(): ConversationContinuationContext {
+    return {
+      activeBundle: () => this.activeBundle(),
+      activeSessionId: () => this.sessionRegistry.activeSessionId(),
+      orchestrationFor: (bundle) => this.orchestrationFor(bundle),
+      lastToolSnapshotLogSignature: () => this.lastToolSnapshotLogSignature,
+      setLastToolSnapshotLogSignature: (signature) => {
+        this.lastToolSnapshotLogSignature = signature;
       },
     };
   }
@@ -2352,133 +2364,19 @@ class DesktopHostService {
   }
 
   private clearAssistantContinuationMarkers(): void {
-    const messages = this.activeBundle().messages;
-    for (const message of messages) {
-      delete message.canContinue;
-    }
-    this.activeBundle().messageTimeline.clearContinuationMarkers();
+    clearAssistantContinuationMarkersFromService(this.conversationContinuationContext());
   }
 
   private markAssistantMessageContinuable(content: string): void {
-    const normalized = content.trim();
-    this.clearAssistantContinuationMarkers();
-
-    const messages = this.activeBundle().messages;
-    const timelineMessage = this.activeBundle().messageTimeline.markLatestRenderableAssistantRowContinuable({
-      content: normalized,
-    });
-    if (timelineMessage) {
-      const cachedMessage = messages.find((message) => message.id === timelineMessage.id);
-      if (cachedMessage) {
-        cachedMessage.canContinue = true;
-      }
-      this.logContinuationMarker('marked', cachedMessage ?? timelineMessage, normalized, messages);
-      return;
-    }
-
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index]!;
-      const hasRenderableAux = Boolean(
-        message.aux?.thinking?.trim() || message.aux?.compaction?.trim(),
-      );
-      const hasRenderableTool = Boolean(message.tool);
-      if (
-        message.role !== 'assistant' ||
-        message.pending ||
-        (!message.content.trim() && !hasRenderableAux && !hasRenderableTool)
-      ) {
-        continue;
-      }
-      if (normalized && !message.tool && message.content.trim() !== normalized) {
-        continue;
-      }
-      message.canContinue = true;
-      this.activeBundle().messageTimeline.markRowContinuable(message.id);
-      this.logContinuationMarker('marked', message, normalized, messages);
-      return;
-    }
-
-    this.logContinuationMarker('missing', undefined, normalized, messages);
+    markAssistantMessageContinuableFromService(this.conversationContinuationContext(), content);
   }
 
   private latestContinuableAssistantMessage(): ConversationMessageSnapshot | undefined {
-    const timelineContinuable = this.activeBundle().messageTimeline.latestContinuableAssistantMessage();
-    if (timelineContinuable) {
-      return timelineContinuable;
-    }
-    const messages = this.activeBundle().messages;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index]!;
-      if (
-        message.role === 'assistant' &&
-        !message.pending &&
-        message.canContinue === true
-      ) {
-        return message;
-      }
-    }
-    return undefined;
+    return latestContinuableAssistantMessageFromService(this.conversationContinuationContext());
   }
 
   private markLatestRenderableAssistantMessageContinuableInCurrentTurn(): void {
-    this.clearAssistantContinuationMarkers();
-
-    const messages = this.activeBundle().messages;
-    const timelineMessage = this.activeBundle().messageTimeline.markLatestRenderableAssistantRowContinuableInActiveTurn();
-    if (timelineMessage) {
-      const cachedMessage = messages.find((message) => message.id === timelineMessage.id);
-      if (cachedMessage) {
-        cachedMessage.canContinue = true;
-      }
-      this.logContinuationMarker('marked-fallback', cachedMessage ?? timelineMessage, '', messages);
-      return;
-    }
-
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index]!;
-      if (!messageIndexIsInCurrentTurn(messages, index)) {
-        break;
-      }
-
-      const hasRenderableAux = Boolean(
-        message.aux?.thinking?.trim() || message.aux?.compaction?.trim(),
-      );
-      const hasRenderableTool = Boolean(message.tool);
-      if (
-        message.role !== 'assistant' ||
-        message.pending ||
-        (!message.content.trim() && !hasRenderableAux && !hasRenderableTool)
-      ) {
-        continue;
-      }
-
-      message.canContinue = true;
-      this.activeBundle().messageTimeline.markRowContinuable(message.id);
-      this.logContinuationMarker('marked-fallback', message, '', messages);
-      return;
-    }
-
-    this.logContinuationMarker('missing-fallback', undefined, '', messages);
-  }
-
-  private logContinuationMarker(
-    outcome: 'marked' | 'missing' | 'marked-fallback' | 'missing-fallback',
-    message: ConversationMessageSnapshot | undefined,
-    normalized: string,
-    messages: ConversationMessageSnapshot[],
-  ): void {
-    if (messageOrderDebugLevel() !== 'verbose') {
-      return;
-    }
-
-    const target = message
-      ? this.describeContinuationMessage(message)
-      : '∅';
-    const text = normalized ? truncateOneLineForDebug(normalized, 48) : '∅';
-    const tail = summarizeMessagesTailForOrderDebug(messages, 8);
-    console.log(
-      `[desktop-host][continue] mark outcome=${outcome} normalized≈${text}${normalized.length > 48 ? '…' : ''} target=${target} tail=${tail}`,
-    );
+    markLatestRenderableAssistantMessageContinuableInCurrentTurnFromService(this.conversationContinuationContext());
   }
 
   private logContinuationSnapshotState(input: {
@@ -2487,22 +2385,7 @@ class DesktopHostService {
     isBusy: boolean;
     pendingAux: PendingAssistantAux | undefined;
   }): void {
-    if (messageOrderDebugLevel() !== 'verbose') {
-      return;
-    }
-
-    const rawMarked = input.rawMessages.filter((message) => message.canContinue === true);
-    const visibleMarked = input.visibleMessages.filter((message) => message.canContinue === true);
-    if (rawMarked.length === 0 && visibleMarked.length === 0) {
-      return;
-    }
-
-    const pendingAux = input.pendingAux
-      ? `${input.pendingAux.kind}:${truncateOneLineForDebug(input.pendingAux.detailText ?? input.pendingAux.statusText, 36)}`
-      : 'none';
-    console.log(
-      `[desktop-host][continue] snapshot busy=${input.isBusy} pendingAux=${pendingAux} raw=${rawMarked.map((message) => this.describeContinuationMessage(message)).join(',') || '∅'} visible=${visibleMarked.map((message) => this.describeContinuationMessage(message)).join(',') || '∅'} rawTail=${summarizeMessagesTailForOrderDebug(input.rawMessages, 8)} visibleTail=${summarizeMessagesTailForOrderDebug(input.visibleMessages, 8)}`,
-    );
+    logContinuationSnapshotStateFromService(input);
   }
 
   private logToolSnapshotState(input: {
@@ -2511,161 +2394,15 @@ class DesktopHostService {
     visibleMessages: ConversationMessageSnapshot[];
     isBusy: boolean;
   }): void {
-    if (messageOrderDebugLevel() !== 'verbose') {
-      return;
-    }
-
-    const rawTools = summarizeToolRowsForDebug(input.rawMessages, 8);
-    const timelineTools = summarizeToolRowsForDebug(input.timelineMessages, 8);
-    const visibleTools = summarizeToolRowsForDebug(input.visibleMessages, 8);
-    if (rawTools === '∅' && timelineTools === '∅' && visibleTools === '∅') {
-      this.lastToolSnapshotLogSignature = undefined;
-      return;
-    }
-
-    const rawTail = summarizeMessagesTailForOrderDebug(input.rawMessages, 8);
-    const timelineTail = summarizeMessagesTailForOrderDebug(input.timelineMessages, 8);
-    const visibleTail = summarizeMessagesTailForOrderDebug(input.visibleMessages, 8);
-    const signature = [
-      input.isBusy ? '1' : '0',
-      rawTools,
-      timelineTools,
-      visibleTools,
-      rawTail,
-      timelineTail,
-      visibleTail,
-    ].join('|');
-    if (signature === this.lastToolSnapshotLogSignature) {
-      return;
-    }
-    this.lastToolSnapshotLogSignature = signature;
-
-    console.log(
-      `[desktop-host][tool-flow] snapshot busy=${input.isBusy} raw=${rawTools} timeline=${timelineTools} visible=${visibleTools} rawTail=${rawTail} timelineTail=${timelineTail} visibleTail=${visibleTail}`,
-    );
-  }
-
-  private describeContinuationMessage(message: ConversationMessageSnapshot): string {
-    const kind = message.tool
-      ? `tool:${message.tool.phase}:${message.tool.toolName}`
-      : message.aux?.thinking?.trim()
-        ? 'thinking'
-        : message.aux?.compaction?.trim()
-          ? 'compaction'
-          : message.content.trim()
-            ? 'content'
-            : 'empty';
-    const text = message.content.trim()
-      ? truncateOneLineForDebug(message.content, 28)
-      : '∅';
-    return `${message.id}:${kind}:${text}`;
-  }
-
-  private purgeSubagentLeakTextInCurrentTurn(bundle: SessionBundle): void {
-    const messages = bundle.messageTimeline.toMessages();
-    if (!hasActiveRunSubagentToolInMessages(messages)) {
-      return;
-    }
-
-    let lastUserIndex = -1;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index]?.role === 'user') {
-        lastUserIndex = index;
-        break;
-      }
-    }
-
-    let activeSubagentToolIndex = -1;
-    for (let index = lastUserIndex + 1; index < messages.length; index += 1) {
-      const message = messages[index];
-      if (
-        message?.role === 'assistant' &&
-        message.tool?.toolName === 'run_subagent' &&
-        (message.tool.phase === 'preview' || message.tool.phase === 'running')
-      ) {
-        activeSubagentToolIndex = index;
-      }
-    }
-
-    if (activeSubagentToolIndex < 0) {
-      return;
-    }
-
-    for (let index = activeSubagentToolIndex + 1; index < messages.length; index += 1) {
-      const message = messages[index];
-      if (message.role !== 'assistant' || message.tool || !message.content.trim()) {
-        break;
-      }
-      if (!isSubagentStatusSurfaceMessage(message)) {
-        continue;
-      }
-      bundle.messageTimeline.clearSubagentStatusLeak(message.id);
-    }
+    logToolSnapshotStateFromService(this.conversationContinuationContext(), input);
   }
 
   private syncSubagentToolStreamingOutput(bundle: SessionBundle): void {
-    const runtime = bundle.runtime;
-    if (!runtime?.isBusy()) {
-      return;
-    }
-
-    this.refreshArchiveFromRuntime(bundle);
-
-    this.purgeSubagentLeakTextInCurrentTurn(bundle);
-
-    const sessions = bundle.archiveSubagentSessions;
-    if (sessions.length === 0) {
-      return;
-    }
-
-    const timelineMessages = bundle.messageTimeline.toMessages();
-    const orchestration = this.orchestrationFor(bundle);
-    for (const session of sessions) {
-      if (session.summary.status !== 'running' && session.summary.status !== 'blocked') {
-        continue;
-      }
-
-      const toolCallId = session.summary.parentToolCallId?.trim();
-      if (!toolCallId) {
-        continue;
-      }
-
-      const existing = timelineMessages.find((message) => message.tool?.toolCallId === toolCallId)?.tool;
-      if (!existing) {
-        continue;
-      }
-
-      const streamingText = extractSubagentSessionStreamingText(session)?.trim();
-      const phase = findRunSubagentToolPhase(timelineMessages, toolCallId) ?? 'running';
-      const nextPhase = phase === 'preview' || phase === 'running' ? phase : 'running';
-      const nextTool = {
-        ...existing,
-        phase: nextPhase,
-        ...(streamingText
-          ? {
-              outputExcerpt:
-                streamingText.length > 4_000 ? streamingText.slice(0, 4_000) : streamingText,
-            }
-          : {}),
-      };
-
-      orchestration.assistantMessages.upsertToolMessage(toolCallId, nextTool, 0);
-      bundle.messageTimeline.upsertToolMessage(toolCallId, nextTool);
-    }
+    syncSubagentToolStreamingOutputFromService(this.conversationContinuationContext(), bundle);
   }
 
   private refreshArchiveFromRuntime(bundle: SessionBundle = this.activeBundle()): void {
-    if (!bundle.runtime) {
-      return;
-    }
-
-    const desktopMessages = bundle.messageTimeline.toMessages();
-    const archive = bundle.runtime.toArchive(
-      buildArchiveMessagesFromConversation(desktopMessages),
-      buildArchiveAssistantAuxFromConversation(desktopMessages),
-    );
-    bundle.archiveHistory = archive.llmHistory;
-    bundle.archiveSubagentSessions = archive.subagentSessions ?? [];
+    refreshArchiveFromRuntimeFromService(this.conversationContinuationContext(), bundle);
   }
 
   private async recordHostFileChange(bundle: SessionBundle, change: HostRecordedFileChange): Promise<void> {
