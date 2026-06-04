@@ -1002,12 +1002,14 @@ function AssistantThinkingCollapsible({
 }) {
   const thinking = message.aux?.thinking?.trim() ?? "";
   const reasoningLive = isAssistantReasoningLive(message, pendingAuxState, messages, listIndex);
+  const showThinkingBody = Boolean(thinking && !isGenericPendingThinkingStatusText(thinking));
+  const thinkingActive = reasoningLive && !collapseDuringToolPreview;
   if (!thinking && !reasoningLive) {
     return null;
   }
-
-  const showThinkingBody = Boolean(thinking && !isGenericPendingThinkingStatusText(thinking));
-  const thinkingActive = reasoningLive && !collapseDuringToolPreview;
+  if (!showThinkingBody && !thinkingActive) {
+    return null;
+  }
   const autoExpanded = thinkingActive && showThinkingBody;
   const [manualOpen, setManualOpen] = useState(false);
   const prevAutoExpandedRef = useRef(autoExpanded);
@@ -2673,8 +2675,10 @@ export default function App() {
               mcpsBusy={runtime.busyAction === "mcps"}
               skillsBusy={runtime.busyAction === "skills"}
               extensionsBusy={runtime.busyAction === "extensions"}
+              lspInstallBusy={runtime.lspInstallBusy}
               isElectronShell={isElectronShell}
               onSavePatch={runtime.saveSettingsPatch}
+              onInstallLspProvider={runtime.installLspProvider}
               onResetWebHostPairing={runtime.resetWebHostPairing}
               onAddModel={runtime.addModel}
               onAddProviderModels={runtime.addProviderModels}

@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useRef, useState, type MouseEvent, type Rea
 import { useTranslation } from "react-i18next";
 
 import {
+  Bot,
   ArrowLeft,
   FolderClosed,
   FolderOpen,
@@ -83,6 +84,7 @@ export type SettingsSidebarTab =
   | "basic"
   | "appearance"
   | "models"
+  | "agents"
   | "mcps"
   | "skills"
   | "extensions"
@@ -316,6 +318,11 @@ const settingsTabs: Array<{
     id: "models",
     labelKey: "settings.models",
     icon: Layers,
+  },
+  {
+    id: "agents",
+    labelKey: "settings.agents",
+    icon: Bot,
   },
   {
     id: "skills",

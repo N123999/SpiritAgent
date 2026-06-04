@@ -28,6 +28,13 @@ import {
   type BuiltinHostToolDefinitionEnvironment,
 } from '../host-tools.js';
 import { enrichUnknownToolError, toolNamesFromDefinitions } from '../unknown-tool-error.js';
+import { LspService } from '../lsp/service.js';
+import { buildLspHostToolDefinitions } from '../lsp/tool-definitions.js';
+import {
+  isLspDiagnosticsToolRequest,
+  requestFromGetDiagnosticsFunctionCall,
+} from '../lsp/tool-request.js';
+import { appendLspDiagnosticsAfterWriteIfNeeded } from '../lsp/write-append.js';
 import { McpService, type McpToolRequest } from '../mcp/service.js';
 import { JsonRpcPeer } from './framing.js';
 
@@ -65,6 +72,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly mcp = new McpService();
+  private lsp: LspService | undefined;
   private localHostService: LocalHostToolService | undefined;
   private imageGenerationAvailable = false;
   private transportConfigForToolDefinitions: LlmTransportConfig | undefined;
@@ -114,6 +122,25 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     this.setAgentModeToolExposure(planMode ? 'plan' : 'agent');
   }
 
+  async setLspWorkspaceRoot(workspaceRoot: string): Promise<void> {
+    await this.lsp?.dispose();
+    this.lsp = undefined;
+    const lsp = new LspService(workspaceRoot);
+    await lsp.probe();
+    this.lsp = lsp.enabled ? lsp : undefined;
+    this.refreshMergedToolDefinitions();
+  }
+
+  lspServiceSnapshot(): LspService | undefined {
+    return this.lsp;
+  }
+
+  async disposeLsp(): Promise<void> {
+    await this.lsp?.dispose();
+    this.lsp = undefined;
+    this.refreshMergedToolDefinitions();
+  }
+
   async refreshCaches(): Promise<void> {
     if (!this.hostToolDefinitionsLoaded) {
       this.hostToolDefinitionsCache = buildBuiltinHostToolDefinitions(
@@ -152,6 +179,11 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
         return localMcpRequest;
       }
 
+      const lspRequest = requestFromGetDiagnosticsFunctionCall(name, argumentsJson);
+      if (lspRequest) {
+        return lspRequest;
+      }
+
       if (this.localHostService) {
         return this.unwrapHostToolRequest(
           await this.localHostService.requestFromFunctionCall(name, argumentsJson),
@@ -173,6 +205,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   async authorize(request: JsonValue): Promise<AuthorizationDecision<JsonValue>> {
     if (this.mcp.isToolRequest(request)) {
       await this.mcp.authorizeToolRequest(request);
+      return { kind: 'allowed' };
+    }
+
+    if (isLspDiagnosticsToolRequest(request)) {
       return { kind: 'allowed' };
     }
 
@@ -199,15 +235,21 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       return this.executeLocalMcpTool(request);
     }
 
-    if (this.localHostService) {
-      return normalizeToolExecutionOutput(await this.localHostService.execute(request));
+    if (isLspDiagnosticsToolRequest(request)) {
+      return this.executeLspDiagnosticsTool(request);
     }
 
-    return normalizeToolExecutionOutput(
+    if (this.localHostService) {
+      const output = normalizeToolExecutionOutput(await this.localHostService.execute(request));
+      return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
+    }
+
+    const output = normalizeToolExecutionOutput(
       await this.peer.call<ToolExecutionOutput | string>('host.execute', {
         request: this.serializeRequest(request),
       }),
     );
+    return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
   }
 
   attachRequestMetadata(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue {
@@ -457,7 +499,18 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
       mergedHostDefinitions,
       this.extensionToolDefinitionsCache,
       this.mcp.toolDefinitionsJson(),
+      this.lsp?.enabled ? buildLspHostToolDefinitions() : [],
     );
+  }
+
+  private async executeLspDiagnosticsTool(
+    request: import('../lsp/types.js').LspDiagnosticsToolRequest,
+  ): Promise<ToolExecutionOutput> {
+    if (!this.lsp?.enabled) {
+      throw new Error('get_diagnostics is not available because typescript-language-server was not found on PATH');
+    }
+    const result = await this.lsp.getDiagnosticsForPath(request.path);
+    return createToolExecutionTextOutput(result.formatted);
   }
 }
 
@@ -504,9 +557,10 @@ function mergeToolDefinitions(
   hostDefinitions: JsonValue,
   extensionDefinitions: JsonValue[],
   mcpDefinitions: JsonValue[],
+  lspDefinitions: JsonValue[] = [],
 ): JsonValue {
   const merged = Array.isArray(hostDefinitions) ? [...hostDefinitions] : [];
-  merged.push(...extensionDefinitions, ...mcpDefinitions);
+  merged.push(...extensionDefinitions, ...mcpDefinitions, ...lspDefinitions);
   const seenNames = new Set<string>();
 
   return merged.filter((definition) => {

@@ -81,6 +81,7 @@ type BusyAction =
   | "mcps"
   | "skills"
   | "extensions"
+  | "lspInstall"
   | "marketplace"
   | "git";
 
@@ -177,6 +178,11 @@ function updateConfigFromSettingsForm(
       collectorModel: s.dreamCollectorModel,
       clearCollectorModel: !s.dreamCollectorModel.trim(),
       debugMode: s.dreamDebugMode,
+    },
+    agents: {
+      lsp: {
+        enabled: s.lspEnabled,
+      },
     },
     ...(s.uiLocale.trim() ? { uiLocale: s.uiLocale.trim() } : { uiLocale: undefined }),
     ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : undefined),
@@ -291,6 +297,7 @@ export function useDesktopRuntime() {
     dreamEnabled: false,
     dreamCollectorModel: "",
     dreamDebugMode: false,
+    lspEnabled: true,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -471,6 +478,7 @@ export function useDesktopRuntime() {
         dreamEnabled: next.dreams.settings.enabled,
         dreamCollectorModel: next.dreams.settings.collectorModel ?? "",
         dreamDebugMode: next.dreams.settings.debugMode,
+        lspEnabled: next.lsp.userEnabled,
       };
     });
   }, []);
@@ -2108,6 +2116,27 @@ export function useDesktopRuntime() {
     onNotifyRefresh: refreshFromHostPoll,
   });
 
+  const installLspProvider = useCallback(
+    async (providerId: string) => {
+      if (!api?.installLspProvider) {
+        throw new Error("LSP provider install is only available in the desktop app.");
+      }
+
+      setBusyAction("lspInstall");
+      try {
+        const next = await api.installLspProvider({ providerId });
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        throw error;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   return {
     apiReady: hostReady,
     hostConnectionError: hostError,
@@ -2188,6 +2217,8 @@ export function useDesktopRuntime() {
     rewindAndSubmitMessage,
     saveSettingsPatch,
     resetWebHostPairing,
+    installLspProvider,
+    lspInstallBusy: busyAction === "lspInstall",
     sendMessage,
     submitStartImplementing,
     skipQuestions,

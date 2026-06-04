@@ -7,7 +7,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 ## Summary
 
 - Apache-2.0: 11 package(s)
-- MIT: 2 package(s)
+- MIT: 4 package(s)
 - BSD-3-Clause: 1 package(s)
 
 ## Components
@@ -24,7 +24,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/vercel/ai
 - **@ai-sdk/open-responses** 1.0.16 — Apache-2.0
   - https://github.com/vercel/ai
-- **@ai-sdk/openai** 2.0.106 — Apache-2.0
+- **@ai-sdk/openai** 3.0.67 — Apache-2.0
   - https://github.com/vercel/ai
 - **@ai-sdk/openai-compatible** 2.0.46 — Apache-2.0
   - https://github.com/vercel/ai
@@ -40,6 +40,10 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/RSeidelsohn/license-checker-rseidelsohn
 - **typescript** 5.9.3 — Apache-2.0
   - https://github.com/microsoft/TypeScript
+- **vscode-jsonrpc** 8.2.1 — MIT
+  - https://github.com/Microsoft/vscode-languageserver-node
+- **vscode-languageserver-protocol** 3.18.0 — MIT
+  - https://github.com/Microsoft/vscode-languageserver-node
 
 ## License texts
 
@@ -52,7 +56,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 - @ai-sdk/gateway 3.0.121
 - @ai-sdk/moonshotai 2.0.23
 - @ai-sdk/open-responses 1.0.16
-- @ai-sdk/openai 2.0.106
+- @ai-sdk/openai 3.0.67
 - @ai-sdk/openai-compatible 2.0.46
 - @ai-sdk/xai 3.0.93
 - ai 6.0.175
@@ -223,4 +227,24 @@ SOFTWARE.
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE
+```
+
+### MIT
+
+**Used by:**
+- vscode-jsonrpc 8.2.1
+- vscode-languageserver-protocol 3.18.0
+
+```
+Copyright (c) Microsoft Corporation
+
+All rights reserved.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```

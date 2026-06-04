@@ -21,6 +21,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     updateConfig(request) {
       return bridge.updateConfig(request);
     },
+    installLspProvider(request) {
+      return bridge.installLspProvider(request);
+    },
     addModel(request) {
       return bridge.addModel(request);
     },

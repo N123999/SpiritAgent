@@ -22,6 +22,7 @@ import {
   buildWebHostSnapshot,
 } from './service-utils.js';
 import { resolveDesktopHomeDirectory } from './storage.js';
+import type { DesktopLspSnapshot } from '../types.js';
 
 export interface BuildDesktopSnapshotInput {
   workspaceRoot: string;
@@ -38,6 +39,7 @@ export interface BuildDesktopSnapshotInput {
   activeApiKeyConfigured: boolean;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];
+  lsp: DesktopLspSnapshot;
   conversation: ConversationSnapshot;
   activeSession?: ActiveSessionSnapshot;
   composerSessionKey: string;
@@ -108,6 +110,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     plan: { ...input.plan },
     mcpStatus: input.mcpStatus,
     mcpServers: input.mcpServers,
+    lsp: input.lsp,
     conversation: input.conversation,
     ...(input.activeSession ? { activeSession: { ...input.activeSession } } : {}),
     composerSessionKey: input.composerSessionKey,

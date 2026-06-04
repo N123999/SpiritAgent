@@ -196,6 +196,10 @@ export class DesktopMessageTimeline {
   }
 
   beginAssistantSegment(kind: DesktopTimelineSegmentKind = 'initial'): ConversationMessageSnapshot {
+    const prior = this.activeSegment();
+    if (prior?.status === 'streaming') {
+      this.completeActiveAssistantSegment();
+    }
     const turn = this.ensureActiveTurn();
     const segment = this.createSegment(turn, kind);
     const row = this.createAssistantTextRow(segment, 'before-tools', true);
@@ -424,15 +428,67 @@ export class DesktopMessageTimeline {
       pending: false,
       aux: { thinking: text },
     });
-    segment.rows.push(row);
+    this.insertFinalizedThinkingRow(segment, row, placement);
     this.logSegmentRows('finalize-thinking', segment);
     return rowToMessage(row);
+  }
+
+  private insertFinalizedThinkingRow(
+    segment: DesktopTimelineSegment,
+    row: DesktopTimelineRow,
+    placement?: DesktopThinkingSegmentPlacement,
+  ): void {
+    const insertAfterTools =
+      placement === 'before-next-tool'
+      || (
+        placement === 'after-stream'
+        && segmentHasToolRows(segment)
+        && !segmentHasPostToolAssistantAnswer(segment)
+      );
+    if (!insertAfterTools) {
+      segment.rows.push(row);
+      return;
+    }
+    let lastToolIndex = -1;
+    for (let index = 0; index < segment.rows.length; index += 1) {
+      if (segment.rows[index]?.kind === 'tool') {
+        lastToolIndex = index;
+      }
+    }
+    if (lastToolIndex >= 0) {
+      segment.rows.splice(lastToolIndex + 1, 0, row);
+      return;
+    }
+    segment.rows.push(row);
   }
 
   /** Whether the active segment already has tool rows (used to decide thinking-row placement). */
   activeSegmentHasToolRows(): boolean {
     const segment = this.activeSegment();
     return segment ? segmentHasToolRows(segment) : false;
+  }
+
+  /** Any segment in the active turn already has tool rows (continuation segments included). */
+  activeTurnHasToolRows(): boolean {
+    const turn = this.activeTurn();
+    if (!turn) {
+      return false;
+    }
+    return turn.segments.some((segment) => segmentHasToolRows(segment));
+  }
+
+  /** Active segment already has pre-tool assistant body (do not defer after-stream thinking to aux). */
+  activeSegmentHasPreToolAssistantBody(): boolean {
+    const segment = this.activeSegment();
+    if (!segment) {
+      return false;
+    }
+    return segment.rows.some(
+      (row) =>
+        row.kind === 'assistant-text' &&
+        row.section !== 'after-tools' &&
+        row.content.trim(),
+    );
   }
 
   finalizeCompactionSegment(text: string): ConversationMessageSnapshot | undefined {
@@ -1260,7 +1316,7 @@ export class DesktopMessageTimeline {
         continue;
       }
       const current = kind === 'thinking' ? row.aux.thinking : row.aux.compaction;
-      if (!current?.trim()) {
+      if (!current?.trim() || current.trim() !== text.trim()) {
         continue;
       }
       if (kind === 'thinking') {
@@ -1456,7 +1512,7 @@ function resolveThinkingRowSection(
     return 'before-tools';
   }
   if (placement === 'before-next-tool') {
-    return 'tools';
+    return segmentHasToolRows(segment) ? 'tools' : 'before-tools';
   }
   if (placement === 'after-stream') {
     if (segmentHasPostToolAssistantAnswer(segment)) {
@@ -1465,7 +1521,8 @@ function resolveThinkingRowSection(
     if (segmentHasPendingBeforeToolsRowAfterFirstTool(segment)) {
       return 'before-tools';
     }
-    return 'after-tools';
+    // 工具回合中途的思考（尚无工具后正文）应落在 tools 段，而非 after-tools（会排到所有工具卡片之后）。
+    return 'tools';
   }
   return 'before-tools';
 }

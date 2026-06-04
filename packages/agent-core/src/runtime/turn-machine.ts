@@ -1270,6 +1270,7 @@ export function buildRuntimeToolExecution<ToolRequest>(
     output: options.output.summaryText,
     failed: options.failed,
     ...(artifacts ? { artifacts } : {}),
+    ...(options.output.hostUi ? { hostUi: options.output.hostUi } : {}),
   };
 }
 

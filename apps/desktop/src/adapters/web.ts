@@ -20,6 +20,7 @@ import type {
   DesktopMcpServerInspection,
   DesktopSnapshot,
   ImportExtensionRequest,
+  InstallLspProviderRequest,
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
@@ -61,6 +62,9 @@ export function createWebHostApi(): HostApi {
     },
     updateConfig(request: UpdateConfigRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/config', request);
+    },
+    installLspProvider(_request: InstallLspProviderRequest) {
+      return Promise.reject(new Error('LSP provider install is only available in the desktop app.'));
     },
     addModel(request: AddModelRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/models', request);

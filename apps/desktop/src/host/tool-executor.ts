@@ -26,12 +26,17 @@ import {
   AuthorizationDecision,
   createToolExecutionTextOutput,
   JsonValue,
+  LspService,
   McpService,
   McpStatusSnapshot,
   type McpToolRequest,
   type ToolExecutionOutput,
   ToolRequestExecutionMetadata,
   ToolExecutor,
+  buildLspHostToolDefinitions,
+  isLspDiagnosticsToolRequest,
+  requestFromGetDiagnosticsFunctionCall,
+  appendLspDiagnosticsAfterWriteIfNeeded,
 } from '@spirit-agent/agent-core';
 import {
   type HostDreamScope,
@@ -67,6 +72,7 @@ export class DesktopToolExecutor
 {
   private readonly tools: NodeHostToolService<AskQuestionsQuestionSpec>;
   private readonly mcp: McpService;
+  private readonly lsp: LspService | undefined;
   private readonly dreamToolDefinitions: JsonValue[];
   private readonly todoToolDefinitions: JsonValue[];
   private readonly dreamScope: HostDreamScope | undefined;
@@ -86,6 +92,7 @@ export class DesktopToolExecutor
     private readonly workspaceRoot: string,
     options: {
       mcp?: McpService;
+      lsp?: LspService;
       extensionToolDefinitions?: JsonValue[];
       fileChangeObserver?: HostFileChangeObserver;
       extensions?: HostExtensionRuntimeBinding<unknown>;
@@ -96,6 +103,7 @@ export class DesktopToolExecutor
     } = {},
   ) {
     this.mcp = options.mcp ?? new McpService(workspaceRoot);
+    this.lsp = options.lsp;
     this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
     this.dreamScope = options.dreamScope;
     this.todoScope = options.todoScope;
@@ -202,7 +210,12 @@ export class DesktopToolExecutor
       ...hostDefinitionItems,
       ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
+      ...(this.lsp?.enabled ? buildLspHostToolDefinitions() : []),
     );
+  }
+
+  lspServiceSnapshot(): LspService | undefined {
+    return this.lsp?.enabled ? this.lsp : undefined;
   }
 
   setExtensionToolDefinitions(definitions: JsonValue[] | undefined): void {
@@ -225,6 +238,10 @@ export class DesktopToolExecutor
       if (localMcpRequest) {
         return localMcpRequest as unknown as DesktopToolRequest;
       }
+      const lspRequest = requestFromGetDiagnosticsFunctionCall(name, argumentsJson);
+      if (lspRequest) {
+        return lspRequest as unknown as DesktopToolRequest;
+      }
       const request = await this.tools.requestFromFunctionCall(name, argumentsJson);
       this.assertAllowedDreamToolRequest(request);
       return request;
@@ -244,6 +261,9 @@ export class DesktopToolExecutor
       await this.mcp.authorizeToolRequest(request as unknown as McpToolRequest);
       return { kind: 'allowed' };
     }
+    if (isLspDiagnosticsToolRequest(request as JsonValue)) {
+      return { kind: 'allowed' };
+    }
     this.assertAllowedDreamToolRequest(request);
     return this.tools.authorize(request);
   }
@@ -259,24 +279,36 @@ export class DesktopToolExecutor
       );
     }
 
-    this.assertAllowedDreamToolRequest(request);
-    const output = await this.tools.execute(request);
-    if (typeof output === 'string') {
-      return createToolExecutionTextOutput(output);
+    const jsonRequest = request as JsonValue;
+    if (isLspDiagnosticsToolRequest(jsonRequest)) {
+      if (!this.lsp?.enabled) {
+        throw new Error(
+          'get_diagnostics is not available because typescript-language-server was not found on PATH',
+        );
+      }
+      const result = await this.lsp.getDiagnosticsForPath(jsonRequest.path);
+      return createToolExecutionTextOutput(result.formatted);
     }
 
-    return {
-      summaryText: output.summaryText,
-      content: output.content.map((part) => {
-        if (part.type === 'text') {
-          return createLlmTextContentPart(part.text);
-        }
-        if (part.type === 'video') {
-          return createLlmVideoContentPart(part.path);
-        }
-        return createLlmImageContentPart(part.path);
-      }),
-    };
+    this.assertAllowedDreamToolRequest(request);
+    const output = await this.tools.execute(request);
+    const normalized =
+      typeof output === 'string'
+        ? createToolExecutionTextOutput(output)
+        : {
+            summaryText: output.summaryText,
+            content: output.content.map((part) => {
+              if (part.type === 'text') {
+                return createLlmTextContentPart(part.text);
+              }
+              if (part.type === 'video') {
+                return createLlmVideoContentPart(part.path);
+              }
+              return createLlmImageContentPart(part.path);
+            }),
+          };
+    const withLsp = await appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request as JsonValue, normalized);
+    return withLsp;
   }
 
   async saveGeneratedImage(request: HostGeneratedImageSaveRequest): Promise<HostGeneratedImageFile> {

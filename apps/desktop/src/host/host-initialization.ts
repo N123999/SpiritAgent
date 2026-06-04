@@ -44,6 +44,7 @@ export interface HostInitializationContext {
   resetStreamingPlacementState(full: boolean): void;
   refreshExtensionsList(): Promise<void>;
   refreshRuntime(): Promise<void>;
+  refreshLspSnapshot(): Promise<void>;
   deactivateExtensions(): Promise<void>;
   dispatchStartupEvent(workspaceRoot: string): Promise<void>;
   loadDesktopPlanSnapshot(planPath: string, existsHint?: boolean): Promise<PlanSnapshot>;
@@ -148,6 +149,7 @@ export async function ensureInitializedCommand(
       currentState.metadata.planMetadata.path,
       currentState.metadata.planMetadata.exists,
     );
+    await ctx.refreshLspSnapshot();
     return;
   }
 
@@ -188,6 +190,7 @@ export async function ensureInitializedCommand(
   });
   ctx.setInitialized(true);
   await ctx.refreshExtensionsList();
+  await ctx.refreshLspSnapshot();
   const skipRuntimeRefresh = switchingWorkspace && options.deferRuntimeRefresh === true;
   if (!skipRuntimeRefresh) {
     await ctx.refreshRuntime();

@@ -6,6 +6,7 @@ export interface HostCommandDelegate {
   rememberWorkspaceRoot(request: CommandPayloads['rememberWorkspaceRoot']['request']): Promise<unknown>;
   commitChanges(request: CommandPayloads['commitChanges']['request']): Promise<unknown>;
   updateConfig(request: CommandPayloads['updateConfig']['request']): Promise<unknown>;
+  installLspProvider(request: CommandPayloads['installLspProvider']['request']): Promise<unknown>;
   setWebHostAuthTokenHash(authTokenHash: string): Promise<unknown>;
   addModel(request: CommandPayloads['addModel']['request']): Promise<unknown>;
   addProviderModels(request: CommandPayloads['addProviderModels']['request']): Promise<unknown>;
@@ -74,6 +75,7 @@ const hostCommandDispatch = {
   rememberWorkspaceRoot: (host, payload) => host.rememberWorkspaceRoot(payload.request),
   commitChanges: (host, payload) => host.commitChanges(payload.request),
   updateConfig: (host, payload) => host.updateConfig(payload.request),
+  installLspProvider: (host, payload) => host.installLspProvider(payload.request),
   setWebHostAuthTokenHash: (host, payload) => host.setWebHostAuthTokenHash(payload.authTokenHash),
   addModel: (host, payload) => host.addModel(payload.request),
   addProviderModels: (host, payload) => host.addProviderModels(payload.request),

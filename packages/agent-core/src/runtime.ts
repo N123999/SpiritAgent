@@ -95,6 +95,7 @@ import {
   performToolExecution as performToolExecutionInternal,
   persistToolExecutionResult as persistToolExecutionResultInternal,
 } from './runtime/tool-execution.js';
+import { buildRuntimeToolExecution } from './runtime/turn-machine.js';
 import type {
   AgentRuntimeOptions,
   AssistantAuxKind,
@@ -202,6 +203,7 @@ export class AgentRuntime<
   private pendingMcpResourcesStore: PendingMcpResource[];
   private pendingAssistantTextStore: string;
   private thinkingTextStore: string;
+  private toolPreviewSeenInStreamRoundStore = false;
   private compactionTextStore: string;
   private pendingUserTurnStore: string | undefined;
   private pendingApproval: PendingApprovalState<State, ToolRequest, TrustTarget> | undefined;
@@ -252,6 +254,7 @@ export class AgentRuntime<
     this.pendingMcpResourcesStore = [];
     this.pendingAssistantTextStore = '';
     this.thinkingTextStore = '';
+    this.toolPreviewSeenInStreamRoundStore = false;
     this.compactionTextStore = '';
     this.childSessionsStore = [];
     this.streamChunkCounterStore = 0;
@@ -925,15 +928,13 @@ export class AgentRuntime<
         pending.toolName,
         pending.toolCallId,
       );
-      const artifacts = toolArtifactsFromOutput(execution.output);
-      const finished: RuntimeToolExecution<ToolRequest> = {
+      const finished = buildRuntimeToolExecution({
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: pending.request,
-        output: execution.output.summaryText,
+        output: execution.output,
         failed: execution.failed,
-        ...(artifacts ? { artifacts } : {}),
-      };
+      });
       pending.turn.toolExecutions.push(finished);
       this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
       enqueueDeferredToolOutputGuidance(pending.turn, pending.toolName, execution.output);
@@ -1234,15 +1235,13 @@ export class AgentRuntime<
         pending.toolName,
         pending.toolCallId,
       );
-      const artifacts = toolArtifactsFromOutput(execution.output);
-      const finished: RuntimeToolExecution<ToolRequest> = {
+      const finished = buildRuntimeToolExecution({
         toolCallId: pending.toolCallId,
         toolName: pending.toolName,
         request: continuedRequest,
-        output: execution.output.summaryText,
+        output: execution.output,
         failed: execution.failed,
-        ...(artifacts ? { artifacts } : {}),
-      };
+      });
       pending.turn.toolExecutions.push(finished);
       this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
       enqueueDeferredToolOutputGuidance(pending.turn, pending.toolName, execution.output);

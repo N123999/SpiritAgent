@@ -41,6 +41,7 @@ import type {
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
+  InstallLspProviderRequest,
 } from './types';
 
 import { createElectronHostApi } from './adapters/electron';
@@ -52,6 +53,7 @@ export interface HostApi {
   rememberWorkspaceRoot?(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
   commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot>;
   updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
+  installLspProvider(request: InstallLspProviderRequest): Promise<DesktopSnapshot>;
   addModel(request: AddModelRequest): Promise<DesktopSnapshot>;
   addProviderModels(request: AddProviderModelsRequest): Promise<DesktopSnapshot>;
   previewModels(request: PreviewModelsRequest): Promise<PreviewModelsResponse>;

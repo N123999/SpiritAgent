@@ -104,6 +104,11 @@ function cloneJsonValue(value: JsonValue): JsonValue {
 export interface ToolExecutionOutput {
   content: LlmMessageContent;
   summaryText: string;
+  hostUi?: ToolExecutionHostUi;
+}
+
+export interface ToolExecutionHostUi {
+  lspWriteDiagnostics?: import('./lsp/types.js').LspWriteDiagnosticsUi;
 }
 
 export const DEFAULT_IMAGE_GENERATION_SIZE = '1024x1024';

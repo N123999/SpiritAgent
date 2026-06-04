@@ -27,6 +27,7 @@ export interface RuntimeToolExecution<ToolRequest> {
   output: string;
   failed: boolean;
   artifacts?: RuntimeToolArtifact[];
+  hostUi?: import('../ports.js').ToolExecutionHostUi;
 }
 
 /** Where the host should anchor a finalized thinking segment in the timeline. */

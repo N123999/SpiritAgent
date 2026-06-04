@@ -217,6 +217,10 @@ export function shouldShowAssistantThinkingCollapsible(
     hasDisplayableThinkingAux &&
     hasAssistantLiveReasoningLaterInTurn(messages, listIndex, pendingAuxState)
   ) {
+    // 已固化的独立思考行（无正文）在工具回合中必须保持可见，即使后面还有 live reasoning。
+    if (isStandaloneThinkingMessage(message) && hasAssistantToolLaterInTurn(messages, listIndex)) {
+      return true;
+    }
     return false;
   }
 

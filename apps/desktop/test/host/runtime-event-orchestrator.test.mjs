@@ -141,6 +141,69 @@ test('runtime events are mirrored into continuation timeline segments', () => {
   ]);
 });
 
+test('deferred after-stream thinking is materialized before the first tool preview', () => {
+  const harness = createHarness();
+  harness.pushUser('制造一个错误');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    { kind: 'assistant-chunk', text: '先看看文件结尾。' },
+    {
+      kind: 'assistant-thinking-segment-finalized',
+      text: 'Plan to read the file end first.',
+      placement: 'after-stream',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'read-1',
+      toolName: 'read_file',
+      argumentsJson: '{"path":"packages/agent-core/src/ports.ts"}',
+    },
+  ]);
+
+  const tokens = visibleRowTokens(harness.timeline.toMessages());
+  const thinkingIndex = tokens.findIndex((token) => token === 'thinking:Plan to read the file end first.');
+  const toolIndex = tokens.findIndex((token) => token === 'tool:read-1');
+  assert.ok(thinkingIndex >= 0 && toolIndex >= 0 && thinkingIndex < toolIndex);
+});
+
+test('after-stream thinking is finalized before later tools when the turn already has a tool preview', () => {
+  const harness = createHarness();
+  harness.pushUser('run diagnostics');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    { kind: 'assistant-thinking-segment-finalized', text: 'Pick a TypeScript file.', placement: 'after-stream' },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'glob-1',
+      toolName: 'glob',
+      argumentsJson: '{"pattern":"**/*.ts"}',
+    },
+    {
+      kind: 'assistant-thinking-segment-finalized',
+      text: 'Use packages/agent-core/src/runtime/helpers.ts.',
+      placement: 'after-stream',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'diag-1',
+      toolName: 'get_diagnostics',
+      argumentsJson: '{"path":"packages/agent-core/src/runtime/helpers.ts"}',
+    },
+  ]);
+
+  const tokens = visibleRowTokens(harness.timeline.toMessages());
+  const globIndex = tokens.findIndex((token) => token === 'tool:glob-1');
+  const firstThinkingIndex = tokens.findIndex((token) => token === 'thinking:Pick a TypeScript file.');
+  const secondThinkingIndex = tokens.findIndex(
+    (token) => token === 'thinking:Use packages/agent-core/src/runtime/helpers.ts.',
+  );
+  const diagIndex = tokens.findIndex((token) => token === 'tool:diag-1');
+  assert.ok(firstThinkingIndex >= 0 && globIndex >= 0 && firstThinkingIndex < globIndex);
+  assert.ok(secondThinkingIndex > globIndex && secondThinkingIndex < diagIndex);
+});
+
 test('completed turn result reuses the finalized assistant text row instead of duplicating it', () => {
   const harness = createHarness();
   harness.pushUser('Hi');
@@ -746,4 +809,50 @@ test('splitRuntimeEventsForIncrementalFinishTaskPreview applies one finish_task 
   assert.equal(split.deferred.length, 1);
   assert.equal(split.toApply[1].argumentsJson, '{"summary":"a"}');
   assert.equal(split.deferred[0].argumentsJson, '{"summary":"ab"}');
+});
+
+test('edit_file tool-execution-finished preserves lspWriteDiagnostics on tool snapshot', () => {
+  const harness = createHarness();
+  harness.pushUser('fix types');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    {
+      kind: 'tool-execution-finished',
+      execution: {
+        toolCallId: 'call-edit',
+        toolName: 'edit_file',
+        request: {
+          name: 'edit_file',
+          path: 'packages/agent-core/src/a.ts',
+          old_text: 'const x = 1',
+          new_text: 'const x = "1"',
+        },
+        output: '[write]\naction: edit_file\n\n[lsp]\nDiagnostics for packages/agent-core/src/a.ts (1 shown):',
+        failed: false,
+        hostUi: {
+          lspWriteDiagnostics: {
+            relativePath: 'packages/agent-core/src/a.ts',
+            items: [
+              {
+                severity: 'error',
+                line: 81,
+                column: 7,
+                message: "Type 'string' is not assignable to type 'number'.",
+                code: 2322,
+                source: 'typescript',
+              },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const toolMessage = harness.timeline
+    .toMessages()
+    .find((message) => message.tool?.toolCallId === 'call-edit');
+  assert.equal(toolMessage?.tool?.toolName, 'edit_file');
+  assert.equal(toolMessage?.tool?.lspWriteDiagnostics?.items.length, 1);
+  assert.equal(toolMessage?.tool?.lspWriteDiagnostics?.items[0]?.severity, 'error');
 });

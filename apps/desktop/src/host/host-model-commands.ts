@@ -40,6 +40,7 @@ import {
   loadHostMetadata,
   modelProviderKeyScope,
   normalizeDreamConfig,
+  normalizeAgentsConfig,
   normalizeModelCapabilities,
   normalizeWebHostConfig,
   removeModelApiKey,
@@ -77,6 +78,9 @@ export interface HostModelCommandContext {
   persistCurrentSessionIfNeeded(): Promise<void>;
   setLastRuntimeError(error: string): void;
   buildSnapshot(): DesktopSnapshot;
+  disposeAllLspServices(): Promise<void>;
+  invalidateToolExecutors(): void;
+  refreshLspSnapshot(): Promise<void>;
 }
 
 export async function updateConfigCommand(
@@ -91,6 +95,7 @@ export async function updateConfigCommand(
     const prevImageGenerationModel = state.config.imageGenerationModel;
     const prevApiBase = currentApiBase(state.config);
     const prevAgentMode = resolveDesktopAgentMode(state.config);
+    const prevLspEnabled = state.config.agents.lsp.enabled;
 
     if (ctx.isRuntimeBusy() && Boolean(request.apiKey?.trim())) {
       throw new Error(i18n.t('error.runtimeBusy'));
@@ -164,6 +169,15 @@ export async function updateConfigCommand(
       }
       state.config.dreams = normalizeDreamConfig(nextDreamConfig);
     }
+    if (request.agents?.lsp !== undefined) {
+      state.config.agents = normalizeAgentsConfig({
+        ...state.config.agents,
+        lsp: {
+          ...state.config.agents.lsp,
+          ...request.agents.lsp,
+        },
+      });
+    }
     await saveConfig(state.config);
     if (request.apiKey?.trim()) {
       const keyScope = modelProviderKeyScope(existing?.provider);
@@ -171,6 +185,7 @@ export async function updateConfigCommand(
     }
 
     const agentModeNow = resolveDesktopAgentMode(state.config);
+    const lspEnabledChanged = state.config.agents.lsp.enabled !== prevLspEnabled;
     const modelOrEndpointChanged =
       state.config.activeModel !== prevActiveModel ||
       currentApiBase(state.config) !== prevApiBase;
@@ -182,6 +197,12 @@ export async function updateConfigCommand(
         workspaceBinding: state.workspaceBinding,
       });
     }
+
+    if (lspEnabledChanged) {
+      await ctx.disposeAllLspServices();
+      ctx.invalidateToolExecutors();
+    }
+    await ctx.refreshLspSnapshot();
 
     const transportOrPlanChanged =
       agentModeNow !== prevAgentMode || modelOrEndpointChanged || imageGenerationModelChanged;

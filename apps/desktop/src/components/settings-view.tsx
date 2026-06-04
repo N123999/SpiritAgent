@@ -82,6 +82,7 @@ import {
   resolveConnectApiBase,
   resolveProviderConnectApiBase,
 } from "@/host/provider-presets";
+import { AgentsSettingsPanel } from "@/components/agents-settings-panel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export type SettingsFormState = {
@@ -98,6 +99,7 @@ export type SettingsFormState = {
   dreamEnabled: boolean;
   dreamCollectorModel: string;
   dreamDebugMode: boolean;
+  lspEnabled: boolean;
 };
 
 type SettingsViewProps = {
@@ -117,8 +119,10 @@ type SettingsViewProps = {
   mcpsBusy: boolean;
   skillsBusy: boolean;
   extensionsBusy: boolean;
+  lspInstallBusy: boolean;
   isElectronShell: boolean;
   onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
+  onInstallLspProvider: (providerId: string) => Promise<void>;
   onResetWebHostPairing?: () => Promise<void>;
   onAddModel: (request: AddModelRequest) => Promise<void>;
   onAddProviderModels: (request: AddProviderModelsRequest) => Promise<void>;
@@ -151,6 +155,7 @@ const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = 
 const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   basic: "settings.basic",
   models: "settings.models",
+  agents: "settings.agents",
   extensions: "settings.extensions",
   mcps: "settings.mcps",
   skills: "settings.skills",
@@ -3474,6 +3479,8 @@ export function SettingsView({
   onCreateSkill,
   onDeleteSkill,
   onListDreamsOverview,
+  onInstallLspProvider,
+  lspInstallBusy,
   onGenerateSkillNavigate,
   onStartCompactionUiDemo,
 }: SettingsViewProps) {
@@ -3487,7 +3494,7 @@ export function SettingsView({
       <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "mcps" && tab !== "extensions" ? (
+            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "mcps" && tab !== "extensions" && tab !== "agents" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {t(settingsPageTitleKey[tab])}
               </h1>
@@ -3522,6 +3529,14 @@ export function SettingsView({
                 snapshot={snapshot}
                 onSavePatch={onSavePatch}
                 onListDreamsOverview={onListDreamsOverview}
+              />
+            ) : tab === "agents" ? (
+              <AgentsSettingsPanel
+                settings={settings}
+                snapshot={snapshot}
+                lspInstallBusy={lspInstallBusy}
+                onSavePatch={onSavePatch}
+                onInstallLspProvider={onInstallLspProvider}
               />
             ) : tab === "models" ? (
               <ModelsSettingsPanel

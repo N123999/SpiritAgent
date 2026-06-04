@@ -14,6 +14,7 @@ export type HostCommandName =
   | 'rememberWorkspaceRoot'
   | 'commitChanges'
   | 'updateConfig'
+  | 'installLspProvider'
   | 'setWebHostAuthTokenHash'
   | 'addModel'
   | 'addProviderModels'

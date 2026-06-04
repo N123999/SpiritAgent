@@ -708,6 +708,7 @@ export function normalizeToolBlockSnapshot(
   const argsExcerpt = tool.argsExcerpt?.trim() ? tool.argsExcerpt : undefined;
   const outputExcerpt = tool.outputExcerpt?.trim() ? tool.outputExcerpt : undefined;
   const imagePaths = tool.imagePaths?.map((entry) => entry.trim()).filter(Boolean);
+  const lspWriteDiagnostics = normalizeLspWriteDiagnosticsSnapshot(tool.lspWriteDiagnostics);
 
   return {
     ...tool,
@@ -718,7 +719,43 @@ export function normalizeToolBlockSnapshot(
     ...(argsExcerpt ? { argsExcerpt } : {}),
     ...(outputExcerpt ? { outputExcerpt } : {}),
     ...(imagePaths && imagePaths.length > 0 ? { imagePaths } : {}),
+    ...(lspWriteDiagnostics ? { lspWriteDiagnostics } : {}),
   };
+}
+
+function normalizeLspWriteDiagnosticsSnapshot(
+  value: ToolBlockSnapshot['lspWriteDiagnostics'],
+): ToolBlockSnapshot['lspWriteDiagnostics'] | undefined {
+  if (!value || typeof value.relativePath !== 'string' || !Array.isArray(value.items)) {
+    return undefined;
+  }
+  const relativePath = value.relativePath.trim();
+  if (!relativePath) {
+    return undefined;
+  }
+  const items = value.items
+    .filter(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        (item.severity === 'error' || item.severity === 'warning') &&
+        typeof item.line === 'number' &&
+        typeof item.column === 'number' &&
+        typeof item.message === 'string' &&
+        item.message.trim().length > 0,
+    )
+    .map((item) => ({
+      severity: item.severity,
+      line: item.line,
+      column: item.column,
+      message: item.message.trim(),
+      ...(item.code !== undefined ? { code: item.code } : {}),
+      ...(item.source?.trim() ? { source: item.source.trim() } : {}),
+    }));
+  if (items.length === 0) {
+    return undefined;
+  }
+  return { relativePath, items };
 }
 
 export function normalizeMessageAuxSnapshot(

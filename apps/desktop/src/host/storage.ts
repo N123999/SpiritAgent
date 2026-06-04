@@ -71,6 +71,20 @@ const DEFAULT_CUSTOM_MODEL_CAPABILITIES: DesktopModelCapability[] = ['chat', 'im
 
 export type DesktopWorkspaceBinding = 'project' | 'none';
 
+export interface DesktopDreamConfigFile {
+  enabled: boolean;
+  collectorModel?: string;
+  debugMode: boolean;
+}
+
+export interface DesktopLspConfigFile {
+  enabled: boolean;
+}
+
+export interface DesktopAgentsConfigFile {
+  lsp: DesktopLspConfigFile;
+}
+
 export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
   activeModel: string;
@@ -87,6 +101,7 @@ export interface DesktopConfigFile {
   planMode?: boolean;
   webHost: DesktopWebHostConfigFile;
   dreams: DesktopDreamConfigFile;
+  agents: DesktopAgentsConfigFile;
 }
 
 export function normalizeWorkspaceBinding(value: unknown): DesktopWorkspaceBinding {
@@ -102,12 +117,6 @@ export interface DesktopWebHostConfigFile {
   host: string;
   port: number;
   authTokenHash?: string;
-}
-
-export interface DesktopDreamConfigFile {
-  enabled: boolean;
-  collectorModel?: string;
-  debugMode: boolean;
 }
 
 /** 与 `apps/cli/src/model_registry.rs` 中 keyring 命名一致。 */
@@ -514,6 +523,7 @@ function defaultConfig(): DesktopConfigFile {
     agentMode: 'agent',
     webHost: defaultWebHostConfig(),
     dreams: defaultDreamConfig(),
+    agents: defaultAgentsConfig(),
   };
 }
 
@@ -533,6 +543,27 @@ export function defaultDreamConfig(): DesktopDreamConfigFile {
   return {
     enabled: false,
     debugMode: false,
+  };
+}
+
+export function defaultAgentsConfig(): DesktopAgentsConfigFile {
+  return {
+    lsp: {
+      enabled: true,
+    },
+  };
+}
+
+export function normalizeAgentsConfig(raw: unknown): DesktopAgentsConfigFile {
+  const record = typeof raw === 'object' && raw !== null ? (raw as Partial<DesktopAgentsConfigFile>) : {};
+  const lspRaw =
+    typeof record.lsp === 'object' && record.lsp !== null
+      ? (record.lsp as Partial<DesktopLspConfigFile>)
+      : {};
+  return {
+    lsp: {
+      enabled: lspRaw.enabled !== false,
+    },
   };
 }
 
@@ -590,6 +621,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
     agentMode: resolveDesktopAgentMode({ agentMode: raw.agentMode, planMode: raw.planMode }),
     webHost: normalizeWebHostConfig(raw.webHost),
     dreams: normalizeDreamConfig(raw.dreams),
+    agents: normalizeAgentsConfig(raw.agents),
   };
 }
 

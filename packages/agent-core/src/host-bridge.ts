@@ -692,6 +692,7 @@ async function rebuildCliHostToolService(workspaceRoot: string): Promise<void> {
   const service = new module.NodeHostToolService({ workspaceRoot, spiritDataDir }, serviceOptions);
   cliHostInternal.service = service;
   toolExecutor.setLocalHostService(service);
+  await toolExecutor.setLspWorkspaceRoot(workspaceRoot);
   await toolExecutor.refreshCaches();
 }
 
@@ -705,6 +706,7 @@ function buildCliHostToolServiceOptions(
       : {}),
     fileChangeObserver: {
       async recordFileChange(change: unknown): Promise<void> {
+        await toolExecutor.lspServiceSnapshot()?.syncFromRecordedChange(change);
         await peer.call('host.recordFileChange', change);
       },
     },
@@ -731,6 +733,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
     toolExecutor.setLocalHostService(undefined);
     toolExecutor.setExtensionToolDefinitions([]);
     toolExecutor.setTodoToolDefinitions([]);
+    await toolExecutor.disposeLsp();
     extensionSystemPrompts = [];
     return undefined;
   }
@@ -760,6 +763,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   );
   toolExecutor.setLocalHostService(service);
   toolExecutor.setTodoToolDefinitions(currentTodoSessionKey ? buildTodoHostToolDefinitions() : []);
+  await toolExecutor.setLspWorkspaceRoot(workspaceRoot);
   cliHostInternal = {
     module,
     service,
@@ -1409,6 +1413,7 @@ async function createRuntime(
   const todosContextText = await buildTodosContextTextForSession(currentTodoSessionKey);
   toolExecutor.setImageGenerationAvailable('imageGeneration' in config && config.imageGeneration !== undefined);
   toolExecutor.setTransportConfigForToolDefinitions(config);
+  await toolExecutor.setLspWorkspaceRoot(workspaceRoot);
   await toolExecutor.refreshCaches();
   logBridge('createRuntime', {
     workspaceRoot,
@@ -2213,6 +2218,10 @@ peer.on('runtime.exportState', async () => {
 peer.on('runtime.exportArchive', async (rawParams) => {
   const params = rawParams as RuntimeExportArchiveParams;
   return requireRuntime().toArchive(params.messages, params.assistantAux);
+});
+
+process.on('beforeExit', () => {
+  void toolExecutor.disposeLsp();
 });
 
 peer.start();

@@ -49,6 +49,50 @@ test('shouldShowAssistantThinkingCollapsible hides finalized Thought when live T
   );
 });
 
+test('shouldShowAssistantThinkingCollapsible keeps finalized Thought when a tool follows later in the turn', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'hi', pending: false },
+    {
+      id: 2,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      aux: { thinking: 'Plan to read the file end first.' },
+    },
+    {
+      id: 3,
+      role: 'assistant',
+      content: '先看看文件。',
+      pending: false,
+    },
+    {
+      id: 4,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      tool: {
+        toolCallId: 't1',
+        toolName: 'read_file',
+        phase: 'preview',
+        headline: 'read_file',
+        detailLines: [],
+      },
+    },
+    {
+      id: 5,
+      role: 'assistant',
+      content: '',
+      pending: true,
+      aux: { thinking: 'Reading the tail now.' },
+    },
+  ];
+
+  assert.equal(
+    shouldShowAssistantThinkingCollapsible(messages[1], undefined, messages, 1),
+    true,
+  );
+});
+
 test('shouldShowAssistantThinkingCollapsible keeps pre-tool Thought when tool is next row', () => {
   const messages = [
     { id: 1, role: 'user', content: 'hi', pending: false },

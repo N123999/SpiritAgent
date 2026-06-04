@@ -4,10 +4,15 @@ import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { EditFileLineDeltaBadge } from "@/components/edit-file-line-delta-badge";
+import { FileToolLspDiagnosticsBadge } from "@/components/file-tool-lsp-diagnostics-badge";
+import {
+  FileToolLspDiagnosticsHover,
+  FileToolLspDiagnosticsHoverTrigger,
+} from "@/components/file-tool-lsp-diagnostics-hover";
 import { ToolCallDiffView } from "@/components/tool-call-diff-view";
 import { useToolCallDiffHost } from "@/components/tool-call-diff-host-context";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { resolveToolLineDelta } from "@/lib/edit-file-line-delta";
 import {
   type FileToolDiffSource,
@@ -25,6 +30,10 @@ import {
   type ShellToolSummaryParts,
 } from "@/lib/tool-call-display";
 import { parseShellCommand } from "@/lib/shell-tool-display";
+import {
+  shouldShowLspDiagnosticsOnToolCard,
+  toolCardFileNameDetailClass,
+} from "@/lib/file-tool-lsp-diagnostics-display";
 import { cn } from "@/lib/utils";
 import type { ToolBlockSnapshot } from "@/types";
 
@@ -39,8 +48,7 @@ export type ToolSummaryDetailTone = "default" | "shell-command";
 const summaryShellReasonClass =
   "text-muted-foreground/75 dark:text-muted-foreground/65";
 
-const summaryShellCommandClass =
-  "text-muted-foreground/42 dark:text-muted-foreground/45";
+const summaryShellCommandClass = toolCardFileNameDetailClass;
 
 const summaryDetailToneClass: Record<ToolSummaryDetailTone, string> = {
   default: summaryShellCommandClass,
@@ -78,6 +86,9 @@ function ToolCallSummaryRow({
         detailTone={detailTone}
       />
       {editLineDelta ? <EditFileLineDeltaBadge delta={editLineDelta} /> : null}
+      {shouldShowLspDiagnosticsOnToolCard(tool) ? (
+        <FileToolLspDiagnosticsBadge diagnostics={tool.lspWriteDiagnostics} />
+      ) : null}
     </span>
   );
 }
@@ -343,63 +354,93 @@ export function MinimalToolCallCard({ tool }: { tool: ToolBlockSnapshot }) {
   );
   const expandable = toolHasExpandableContent(tool);
   const [open, setOpen] = useState(false);
+  const showLspHover = shouldShowLspDiagnosticsOnToolCard(tool);
+  const lspHoverItemId = tool.toolCallId ?? tool.toolName;
+  const lspDiagnostics = showLspHover ? tool.lspWriteDiagnostics : undefined;
+
+  const summaryRow = (
+    <ToolCallSummaryRow
+      tool={tool}
+      headline={summary.headline}
+      detail={summary.detail}
+      shellSummary={summary.shellSummary}
+      shimmerActive={shimmerActive}
+      detailTone={isShell ? "shell-command" : "default"}
+    />
+  );
 
   if (!expandable) {
+    const plainCard = (
+      <p className={shimmerActive ? undefined : summaryClass}>{summaryRow}</p>
+    );
+    if (!lspDiagnostics) {
+      return plainCard;
+    }
     return (
-      <p className={shimmerActive ? undefined : summaryClass}>
-        <ToolCallSummaryRow
-          tool={tool}
-          headline={summary.headline}
-          detail={summary.detail}
-          shellSummary={summary.shellSummary}
-          shimmerActive={shimmerActive}
-          detailTone={isShell ? "shell-command" : "default"}
-        />
-      </p>
+      <FileToolLspDiagnosticsHover itemId={lspHoverItemId} diagnostics={lspDiagnostics}>
+        <FileToolLspDiagnosticsHoverTrigger itemId={lspHoverItemId} diagnostics={lspDiagnostics}>
+          {plainCard}
+        </FileToolLspDiagnosticsHoverTrigger>
+      </FileToolLspDiagnosticsHover>
     );
   }
 
-  return (
+  const expandedBody = (
+    <div className="pt-1.5">
+      {isShell ? (
+        <ShellToolExpandedBody tool={tool} command={shellCommand} />
+      ) : isFileDiff ? (
+        <FileToolDiffExpandedBody tool={tool} open={open} />
+      ) : isResponsesBuiltIn ? (
+        <ResponsesBuiltInToolExpandedBody tool={tool} shimmerActive={shimmerActive} />
+      ) : (
+        <GenericToolExpandedBody tool={tool} />
+      )}
+    </div>
+  );
+
+  const collapsibleTriggerButton = (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => setOpen((value) => !value)}
+      className={cn(
+        "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
+        "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
+      )}
+    >
+      {summaryRow}
+      <ChevronRight
+        className={cn(
+          "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+          "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+          open && "rotate-90",
+        )}
+        aria-hidden
+      />
+    </button>
+  );
+
+  const collapsibleInner = (
     <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
-            "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
-          )}
-        >
-          <ToolCallSummaryRow
-            tool={tool}
-            headline={summary.headline}
-            detail={summary.detail}
-            shellSummary={summary.shellSummary}
-            shimmerActive={shimmerActive}
-            detailTone={isShell ? "shell-command" : "default"}
-          />
-          <ChevronRight
-            className={cn(
-              "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
-              "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
-              open && "rotate-90",
-            )}
-            aria-hidden
-          />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="min-w-0">
-        <div className="pt-1.5">
-          {isShell ? (
-            <ShellToolExpandedBody tool={tool} command={shellCommand} />
-          ) : isFileDiff ? (
-            <FileToolDiffExpandedBody tool={tool} open={open} />
-          ) : isResponsesBuiltIn ? (
-            <ResponsesBuiltInToolExpandedBody tool={tool} shimmerActive={shimmerActive} />
-          ) : (
-            <GenericToolExpandedBody tool={tool} />
-          )}
-        </div>
-      </CollapsibleContent>
+      {lspDiagnostics ? (
+        <FileToolLspDiagnosticsHoverTrigger itemId={lspHoverItemId} diagnostics={lspDiagnostics}>
+          {collapsibleTriggerButton}
+        </FileToolLspDiagnosticsHoverTrigger>
+      ) : (
+        collapsibleTriggerButton
+      )}
+      <CollapsibleContent className="min-w-0">{expandedBody}</CollapsibleContent>
     </Collapsible>
+  );
+
+  if (!lspDiagnostics) {
+    return collapsibleInner;
+  }
+
+  return (
+    <FileToolLspDiagnosticsHover itemId={lspHoverItemId} diagnostics={lspDiagnostics}>
+      {collapsibleInner}
+    </FileToolLspDiagnosticsHover>
   );
 }

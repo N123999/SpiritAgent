@@ -14,4 +14,5 @@ export * from './unknown-tool-error.js';
 export * from './finish-task-preview.js';
 export * from './tool-streaming-preview-gate.js';
 export * from './mcp/index.js';
+export * from './lsp/index.js';
 export * from './eval/index.js';
