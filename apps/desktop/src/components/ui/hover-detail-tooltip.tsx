@@ -11,7 +11,6 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import type * as React from "react";
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -20,6 +19,8 @@ const DEFAULT_OPEN_DELAY_MS = 400;
 const DEFAULT_CLOSE_DELAY_MS = 120;
 /** Keep the anchor row mounted long enough for Radix's close animation to finish. */
 const DEFAULT_ANCHOR_LINGER_MS = 220;
+
+const HOVER_DETAIL_ANCHOR_ATTR = "data-hover-detail-anchor";
 
 export type HoverDetailTooltipTriggerProps = {
   onPointerEnter: () => void;
@@ -357,10 +358,16 @@ type HoverDetailTooltipAnchorProps = {
 
 function HoverDetailTooltipAnchor({ itemId, children }: HoverDetailTooltipAnchorProps) {
   const { anchorItemId } = useHoverDetailTooltipContext();
+  const rowMarker = (
+    <div className="block w-full" {...{ [HOVER_DETAIL_ANCHOR_ATTR]: itemId }}>
+      {children}
+    </div>
+  );
+  // 仅当前行挂 PopoverAnchor：行间切换时 Radix 会换参考节点并重新定位（与 Git 历史一致）。
   if (anchorItemId === itemId) {
-    return <PopoverAnchor asChild>{children}</PopoverAnchor>;
+    return <PopoverAnchor asChild>{rowMarker}</PopoverAnchor>;
   }
-  return children;
+  return rowMarker;
 }
 
 type HoverDetailTooltipContentProps = Omit<

@@ -2079,6 +2079,7 @@ function ModelSettingsRowButton({
   defaultActionLabel,
   disabled,
   isHighlighted = false,
+  showNativeTitle = true,
   onPointerEnter,
   onDefaultAction,
 }: {
@@ -2088,6 +2089,8 @@ function ModelSettingsRowButton({
   defaultActionLabel: string;
   disabled: boolean;
   isHighlighted?: boolean;
+  /** 有 HoverDetailTooltip 时不显示浏览器 title，避免盖住详情 Popover。 */
+  showNativeTitle?: boolean;
   onPointerEnter?: () => void;
   onDefaultAction: () => void;
 }) {
@@ -2101,7 +2104,7 @@ function ModelSettingsRowButton({
         isHighlighted && "bg-muted/30",
       )}
       disabled={disabled}
-      title={defaultActionLabel}
+      title={showNativeTitle ? defaultActionLabel : undefined}
       aria-label={`${defaultActionLabel}：${model.name}`}
       onPointerEnter={onPointerEnter}
       onClick={onDefaultAction}
@@ -2157,6 +2160,7 @@ function ModelSettingsRowWithHover({
         defaultActionLabel={defaultActionLabel}
         disabled={disabled}
         isHighlighted={isHighlighted}
+        showNativeTitle={false}
         onPointerEnter={onPointerEnter}
         onDefaultAction={onDefaultAction}
       />
@@ -2518,7 +2522,7 @@ function ModelsSettingsPanel({
               return (
                 <div
                   key={provider}
-                  className="overflow-hidden rounded-lg border border-border/40 bg-background/80"
+                  className="rounded-lg border border-border/40 bg-background/80"
                 >
                   <div className="flex items-center justify-between gap-3 border-b border-border/35 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-2">
@@ -2547,7 +2551,10 @@ function ModelsSettingsPanel({
                   </div>
                   {providerSupportsModelCatalogDetail(provider)
                   && groupModels.some((model) => catalogDetailByModelName.has(model.name)) ? (
-                    <HoverDetailTooltip<SettingsModelProfile> getItemId={(model) => model.name}>
+                    <HoverDetailTooltip<SettingsModelProfile>
+                      getItemId={(model) => model.name}
+                      openDelayMs={300}
+                    >
                       <HoverDetailTooltip.TriggerZone className="divide-y divide-border/35">
                         {groupModels.map((model) => {
                           const isActive = model.name === activeModel;
@@ -2592,8 +2599,8 @@ function ModelsSettingsPanel({
                         side="right"
                         align="start"
                         sideOffset={8}
-                        collisionPadding={12}
-                        className="w-80 max-w-[min(20rem,calc(100vw-2rem))] p-3"
+                        collisionPadding={16}
+                        className="z-[100] w-80 max-w-[min(20rem,calc(100vw-2rem))] p-3"
                       >
                         {(activeRow) => {
                           const row = activeRow as SettingsModelProfile | null;
