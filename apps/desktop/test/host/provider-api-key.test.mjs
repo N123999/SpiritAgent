@@ -12,6 +12,7 @@ import {
 
 test('providerKeyAccount uses provider namespace', () => {
   assert.equal(providerKeyAccount('vercel-ai-gateway'), 'provider::vercel-ai-gateway');
+  assert.equal(providerKeyAccount('openrouter'), 'provider::openrouter');
   assert.equal(providerKeyAccount('custom'), 'provider::custom');
 });
 
