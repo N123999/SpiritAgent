@@ -35,6 +35,7 @@ import type {
   DesktopMessageTimeline,
   DesktopTimelineSegmentKind,
 } from './message-timeline.js';
+import { hasAssistantToolInCurrentTurn } from '../lib/conversation-thinking-ui.js';
 import {
   assistantPrefixBeforeFirstToolInCurrentTurn,
   finishTaskNoticeFromExecution,
@@ -298,11 +299,18 @@ export class DesktopRuntimeEventOrchestrator {
       if (event.kind === 'assistant-thinking-segment-finalized') {
         if (event.text.trim()) {
           const timeline = this.options.messageTimeline?.();
-          this.options.assistantMessages.appendAssistantThinkingSegment(event.text);
+          const turnHasTools =
+            messages.length > 0 &&
+            hasAssistantToolInCurrentTurn(messages, messages.length - 1);
+          const activeTurnHasTools = timeline?.activeTurnHasToolRows() ?? false;
+          if (!timeline) {
+            this.options.assistantMessages.appendAssistantThinkingSegment(event.text);
+          }
           if (
             event.placement === 'after-stream' &&
             timeline &&
-            !timeline.activeSegmentHasToolRows()
+            !activeTurnHasTools &&
+            !turnHasTools
           ) {
             // 无工具：暂不拆行。把思考挂在当前 assistant 行 aux 上，正文到来后在同一个
             // Collapsible 实例上由展开过渡到收起（Radix collapsible-up）；本段 completed 再拆行。

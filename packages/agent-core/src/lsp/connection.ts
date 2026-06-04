@@ -1,7 +1,8 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { isWindowsPlatform } from '../mcp/windows.js';
 import {
   createMessageConnection,
   StreamMessageReader,
@@ -9,6 +10,22 @@ import {
   type MessageConnection,
 } from 'vscode-jsonrpc/node.js';
 import type { InitializeParams, InitializeResult } from 'vscode-languageserver-protocol';
+
+/** Windows 上 .cmd/.bat 须 shell:true，否则 spawn 会同步抛出 EINVAL。 */
+export function buildLanguageServerSpawnOptions(
+  command: string,
+  cwd: string,
+): SpawnOptions {
+  const options: SpawnOptions = {
+    cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  };
+  if (isWindowsPlatform() && /\.(?:cmd|bat)$/i.test(command)) {
+    return { ...options, shell: true };
+  }
+  return options;
+}
 
 export interface LspConnectionOptions {
   command: string;
@@ -19,7 +36,7 @@ export interface LspConnectionOptions {
 }
 
 export class LspConnection {
-  private processStore: ChildProcessWithoutNullStreams | undefined;
+  private processStore: ReturnType<typeof spawn> | undefined;
   private connectionStore: MessageConnection | undefined;
   private startPromise: Promise<void> | undefined;
 
@@ -58,20 +75,20 @@ export class LspConnection {
   }
 
   private async startInternal(options: LspConnectionOptions): Promise<void> {
-    const child = spawn(options.command, options.args, {
-      cwd: options.cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    const spawnOptions = buildLanguageServerSpawnOptions(options.command, options.cwd);
+    const child = spawn(options.command, options.args, spawnOptions);
     this.processStore = child;
 
-    child.stderr.on('data', (chunk) => {
+    child.stderr?.on('data', (chunk) => {
       const text = String(chunk).trim();
       if (text.length > 0) {
         console.error(`[lsp] ${text}`);
       }
     });
 
+    if (!child.stdout || !child.stdin) {
+      throw new Error('Language server child process is missing stdio pipes');
+    }
     const connection = createMessageConnection(
       new StreamMessageReader(child.stdout),
       new StreamMessageWriter(child.stdin),

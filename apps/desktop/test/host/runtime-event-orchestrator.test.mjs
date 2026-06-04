@@ -141,6 +141,43 @@ test('runtime events are mirrored into continuation timeline segments', () => {
   ]);
 });
 
+test('after-stream thinking is finalized before later tools when the turn already has a tool preview', () => {
+  const harness = createHarness();
+  harness.pushUser('run diagnostics');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    { kind: 'assistant-thinking-segment-finalized', text: 'Pick a TypeScript file.', placement: 'after-stream' },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'glob-1',
+      toolName: 'glob',
+      argumentsJson: '{"pattern":"**/*.ts"}',
+    },
+    {
+      kind: 'assistant-thinking-segment-finalized',
+      text: 'Use packages/agent-core/src/runtime/helpers.ts.',
+      placement: 'after-stream',
+    },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'diag-1',
+      toolName: 'get_diagnostics',
+      argumentsJson: '{"path":"packages/agent-core/src/runtime/helpers.ts"}',
+    },
+  ]);
+
+  const tokens = visibleRowTokens(harness.timeline.toMessages());
+  const globIndex = tokens.findIndex((token) => token === 'tool:glob-1');
+  const firstThinkingIndex = tokens.findIndex((token) => token === 'thinking:Pick a TypeScript file.');
+  const secondThinkingIndex = tokens.findIndex(
+    (token) => token === 'thinking:Use packages/agent-core/src/runtime/helpers.ts.',
+  );
+  const diagIndex = tokens.findIndex((token) => token === 'tool:diag-1');
+  assert.ok(firstThinkingIndex >= 0 && globIndex >= 0 && firstThinkingIndex < globIndex);
+  assert.ok(secondThinkingIndex > globIndex && secondThinkingIndex < diagIndex);
+});
+
 test('completed turn result reuses the finalized assistant text row instead of duplicating it', () => {
   const harness = createHarness();
   harness.pushUser('Hi');

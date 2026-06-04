@@ -1002,12 +1002,14 @@ function AssistantThinkingCollapsible({
 }) {
   const thinking = message.aux?.thinking?.trim() ?? "";
   const reasoningLive = isAssistantReasoningLive(message, pendingAuxState, messages, listIndex);
+  const showThinkingBody = Boolean(thinking && !isGenericPendingThinkingStatusText(thinking));
+  const thinkingActive = reasoningLive && !collapseDuringToolPreview;
   if (!thinking && !reasoningLive) {
     return null;
   }
-
-  const showThinkingBody = Boolean(thinking && !isGenericPendingThinkingStatusText(thinking));
-  const thinkingActive = reasoningLive && !collapseDuringToolPreview;
+  if (!showThinkingBody && !thinkingActive) {
+    return null;
+  }
   const autoExpanded = thinkingActive && showThinkingBody;
   const [manualOpen, setManualOpen] = useState(false);
   const prevAutoExpandedRef = useRef(autoExpanded);

@@ -48,6 +48,8 @@ export interface StreamingRuntime<
   pendingBackgroundToolStatusStore: string | undefined;
   pendingAssistantTextStore: string;
   thinkingTextStore: string;
+  /** Set when a tool preview appears in the current streaming round (cleared with streaming UI state). */
+  toolPreviewSeenInStreamRoundStore: boolean;
   compactionTextStore: string;
   pendingStartedAtStore: number | undefined;
   pendingLastEventAtStore: number | undefined;
@@ -344,6 +346,28 @@ export function currentAuxText<
   return undefined;
 }
 
+function finalizeInFlightStreamThinking<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
+): void {
+  if (!runtime.thinkingTextStore.trim()) {
+    return;
+  }
+  const placement = runtime.toolPreviewSeenInStreamRoundStore
+    ? 'before-next-tool'
+    : 'after-stream';
+  runtime.emitEvent({
+    kind: 'assistant-thinking-segment-finalized',
+    text: runtime.thinkingTextStore,
+    placement,
+  });
+  runtime.thinkingTextStore = '';
+}
+
 export function clearStreamingUiState<
   Config,
   State,
@@ -352,19 +376,14 @@ export function clearStreamingUiState<
 >(
   runtime: StreamingRuntime<Config, State, ToolRequest, TrustTarget>,
 ): void {
-  if (runtime.thinkingTextStore.trim()) {
-    runtime.emitEvent({
-      kind: 'assistant-thinking-segment-finalized',
-      text: runtime.thinkingTextStore,
-      placement: 'after-stream',
-    });
-  }
+  finalizeInFlightStreamThinking(runtime);
   runtime.pendingStartedAtStore = undefined;
   runtime.pendingLastEventAtStore = undefined;
   runtime.streamChunkCounterStore = 0;
   runtime.pendingAssistantTextStore = '';
   runtime.thinkingTextStore = '';
   runtime.compactionTextStore = '';
+  runtime.toolPreviewSeenInStreamRoundStore = false;
 }
 
 export function clearPendingStreamingState<
@@ -426,16 +445,9 @@ export async function handlePendingStreamEvent<
   }
 
   if (event.kind === 'streaming-tool-preview') {
-    if (
-      isResponsesBuiltInToolName(event.toolName)
-      && runtime.thinkingTextStore.trim()
-    ) {
-      runtime.emitEvent({
-        kind: 'assistant-thinking-segment-finalized',
-        text: runtime.thinkingTextStore,
-        placement: 'before-next-tool',
-      });
-      runtime.thinkingTextStore = '';
+    runtime.toolPreviewSeenInStreamRoundStore = true;
+    if (runtime.thinkingTextStore.trim()) {
+      finalizeInFlightStreamThinking(runtime);
     }
     runtime.emitEvent({
       kind: 'streaming-tool-preview',
@@ -464,12 +476,7 @@ export async function handlePendingStreamEvent<
 
   if (event.kind === 'assistant-chunk') {
     if (runtime.thinkingTextStore.trim()) {
-      runtime.emitEvent({
-        kind: 'assistant-thinking-segment-finalized',
-        text: runtime.thinkingTextStore,
-        placement: 'after-stream',
-      });
-      runtime.thinkingTextStore = '';
+      finalizeInFlightStreamThinking(runtime);
     }
     runtime.streamChunkCounterStore += 1;
     runtime.pendingAssistantTextStore += event.text;

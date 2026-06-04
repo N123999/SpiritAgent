@@ -202,6 +202,7 @@ export class AgentRuntime<
   private pendingMcpResourcesStore: PendingMcpResource[];
   private pendingAssistantTextStore: string;
   private thinkingTextStore: string;
+  private toolPreviewSeenInStreamRoundStore = false;
   private compactionTextStore: string;
   private pendingUserTurnStore: string | undefined;
   private pendingApproval: PendingApprovalState<State, ToolRequest, TrustTarget> | undefined;
@@ -252,6 +253,7 @@ export class AgentRuntime<
     this.pendingMcpResourcesStore = [];
     this.pendingAssistantTextStore = '';
     this.thinkingTextStore = '';
+    this.toolPreviewSeenInStreamRoundStore = false;
     this.compactionTextStore = '';
     this.childSessionsStore = [];
     this.streamChunkCounterStore = 0;

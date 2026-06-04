@@ -239,7 +239,6 @@ export class LspService {
       .catch((error) => {
         this.startPromise = undefined;
         this.connection = undefined;
-        this.enabledStore = false;
         throw error;
       });
     return this.startPromise;
