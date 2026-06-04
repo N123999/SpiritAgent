@@ -65,10 +65,27 @@ test('resolveOpenResponsesLanguageModelId strips gateway openai prefix', () => {
   );
   assert.equal(
     resolveOpenResponsesLanguageModelId({
+      llmVendor: 'openrouter',
+      model: 'openai/gpt-5.4-mini',
+    }),
+    'gpt-5.4-mini',
+  );
+  assert.equal(
+    resolveOpenResponsesLanguageModelId({
       llmVendor: 'openai',
       model: 'gpt-5.1',
     }),
     'gpt-5.1',
+  );
+});
+
+test('resolveOpenResponsesSdkProvider openrouter stays open-responses-compatible', () => {
+  assert.equal(
+    resolveOpenResponsesSdkProvider({
+      llmVendor: 'openrouter',
+      model: 'openai/gpt-5.1',
+    }),
+    'open-responses-compatible',
   );
 });
 

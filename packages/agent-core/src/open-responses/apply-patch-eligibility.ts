@@ -6,6 +6,7 @@ import {
 } from '../ports.js';
 import type { OpenAiLlmVendor } from '../openai/openai-compat.js';
 import {
+  isAggregatedOpenAiRoutedVendor,
   normalizeGatewayOpenAiModelId,
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
@@ -69,7 +70,7 @@ export function isOpenAiGptModelAtLeast51(modelId: string): boolean {
 }
 
 function isEligibleOpenAiRoutedModel(model: string, llmVendor: OpenAiLlmVendor | undefined): boolean {
-  if (llmVendor === 'vercel-ai-gateway') {
+  if (isAggregatedOpenAiRoutedVendor(llmVendor)) {
     const routed = normalizeGatewayOpenAiModelId(model);
     if (!routed) {
       return false;
@@ -91,11 +92,12 @@ function isEligibleResponsesProvider(
   if (provider === 'openai') {
     return (
       config.llmVendor === 'openai'
-      || (config.llmVendor === 'vercel-ai-gateway' && normalizeGatewayOpenAiModelId(config.model) !== undefined)
+      || (isAggregatedOpenAiRoutedVendor(config.llmVendor)
+        && normalizeGatewayOpenAiModelId(config.model) !== undefined)
     );
   }
 
-  return config.llmVendor === 'vercel-ai-gateway';
+  return isAggregatedOpenAiRoutedVendor(config.llmVendor);
 }
 
 /** OpenAI 官方 Responses 使用 apply_patch_call/output；Gateway 等兼容端点用 function_call 对。 */

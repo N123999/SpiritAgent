@@ -77,6 +77,13 @@ export function isGatewayOpenAiRoutedModel(model: string): boolean {
   return normalizeGatewayOpenAiModelId(model) !== undefined;
 }
 
+/** Aggregators that route `openai/*` model ids through a unified API (Gateway, OpenRouter, …). */
+export function isAggregatedOpenAiRoutedVendor(
+  llmVendor: OpenAiLlmVendor | undefined,
+): llmVendor is 'vercel-ai-gateway' | 'openrouter' {
+  return llmVendor === 'vercel-ai-gateway' || llmVendor === 'openrouter';
+}
+
 /**
  * Model id passed to `@ai-sdk/openai` / `@ai-sdk/xai` language model factories.
  * Gateway OpenAI routes use the stripped id (e.g. `gpt-5.1` from `openai/gpt-5.1`).
@@ -84,7 +91,7 @@ export function isGatewayOpenAiRoutedModel(model: string): boolean {
 export function resolveOpenResponsesLanguageModelId(
   config: Pick<OpenResponsesTransportConfig, 'model' | 'llmVendor'>,
 ): string {
-  if (config.llmVendor === 'vercel-ai-gateway') {
+  if (isAggregatedOpenAiRoutedVendor(config.llmVendor)) {
     const routed = normalizeGatewayOpenAiModelId(config.model);
     if (routed) {
       return routed;
