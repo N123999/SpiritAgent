@@ -133,6 +133,18 @@ export function createDesktopRuntime(input: {
   }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 
+export function buildDesktopRuntimeBasicInfo(
+  workspaceRoot: string,
+  toolExecutor: DesktopToolExecutor,
+): LlmToolAgentBasicInfo {
+  const shell = toolExecutor.toolDefinitionEnvironment();
+  return {
+    workspaceRoot,
+    terminal: shell.shellDisplayName,
+    system: toolExecutor.operatingSystemInfo(),
+  };
+}
+
 export function cloneActiveSkills(skills: LlmActiveSkill[]): LlmActiveSkill[] {
   return skills.map((skill) => ({
     ...skill,

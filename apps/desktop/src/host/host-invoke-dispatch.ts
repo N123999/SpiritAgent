@@ -1,0 +1,135 @@
+import type { HostCommandName } from './contracts.js';
+import type { CommandPayloads } from './host-command-payloads.js';
+
+export interface HostCommandDelegate {
+  bootstrap(request?: CommandPayloads['bootstrap']['request']): Promise<unknown>;
+  rememberWorkspaceRoot(request: CommandPayloads['rememberWorkspaceRoot']['request']): Promise<unknown>;
+  commitChanges(request: CommandPayloads['commitChanges']['request']): Promise<unknown>;
+  updateConfig(request: CommandPayloads['updateConfig']['request']): Promise<unknown>;
+  setWebHostAuthTokenHash(authTokenHash: string): Promise<unknown>;
+  addModel(request: CommandPayloads['addModel']['request']): Promise<unknown>;
+  addProviderModels(request: CommandPayloads['addProviderModels']['request']): Promise<unknown>;
+  previewModels(request: CommandPayloads['previewModels']['request']): Promise<unknown>;
+  removeModel(request: CommandPayloads['removeModel']['request']): Promise<unknown>;
+  removeProviderModels(request: CommandPayloads['removeProviderModels']['request']): Promise<unknown>;
+  addMcpServer(request: CommandPayloads['addMcpServer']['request']): Promise<unknown>;
+  deleteMcpServer(request: CommandPayloads['deleteMcpServer']['request']): Promise<unknown>;
+  inspectMcpServer(name: string): Promise<unknown>;
+  importExtension(request: CommandPayloads['importExtension']['request']): Promise<unknown>;
+  listMarketplaceExtensions(): Promise<unknown>;
+  getMarketplaceExtensionDetail(extensionId: string): Promise<unknown>;
+  getMarketplaceExtensionReadme(extensionId: string): Promise<unknown>;
+  installMarketplaceExtension(request: CommandPayloads['installMarketplaceExtension']['request']): Promise<unknown>;
+  prepareMarketplaceExtensionInstall(
+    request: CommandPayloads['prepareMarketplaceExtensionInstall']['request'],
+  ): Promise<unknown>;
+  deleteExtension(request: CommandPayloads['deleteExtension']['request']): Promise<unknown>;
+  runExtension(request: CommandPayloads['runExtension']['request']): Promise<unknown>;
+  updateExtensionSettings(request: CommandPayloads['updateExtensionSettings']['request']): Promise<unknown>;
+  updateExtensionSecret(request: CommandPayloads['updateExtensionSecret']['request']): Promise<unknown>;
+  createSkill(request: CommandPayloads['createSkill']['request']): Promise<unknown>;
+  deleteSkill(request: CommandPayloads['deleteSkill']['request']): Promise<unknown>;
+  submitCreateSkillSlash(request: CommandPayloads['submitCreateSkillSlash']['request']): Promise<unknown>;
+  submitSkillSlash(request: CommandPayloads['submitSkillSlash']['request']): Promise<unknown>;
+  submitStartImplementing(): Promise<unknown>;
+  exportSessionLog(): Promise<unknown>;
+  compactHistory(): Promise<unknown>;
+  submitUserTurn(request: CommandPayloads['submitUserTurn']): Promise<unknown>;
+  setLoopEnabled(enabled: boolean): Promise<unknown>;
+  setApprovalLevel(approvalLevel: CommandPayloads['setApprovalLevel']['approvalLevel']): Promise<unknown>;
+  setPendingGitBranch(branch: string): Promise<unknown>;
+  setWorkLocation(workLocation: CommandPayloads['setWorkLocation']['workLocation']): Promise<unknown>;
+  checkoutGitBranch(request: CommandPayloads['checkoutGitBranch']): Promise<unknown>;
+  mergeWorktreeToMain(): Promise<unknown>;
+  pushGitBranch(): Promise<unknown>;
+  refreshGitSnapshot(): Promise<unknown>;
+  abortConversation(): Promise<unknown>;
+  continueAssistantCompletion(messageId: number): Promise<unknown>;
+  poll(): Promise<unknown>;
+  listDreamsOverview(): Promise<unknown>;
+  replyPendingApproval(decision: CommandPayloads['replyPendingApproval']['decision']): Promise<unknown>;
+  replyPendingQuestions(result: CommandPayloads['replyPendingQuestions']['result']): Promise<unknown>;
+  resetSession(): Promise<unknown>;
+  listSessions(): Promise<unknown>;
+  openSession(path: string): Promise<unknown>;
+  listWorkspaceFileReferenceSuggestions(
+    request: CommandPayloads['listWorkspaceFileReferenceSuggestions']['request'],
+  ): Promise<unknown>;
+  listWorkspaceExplorerChildren(relativePath: string): Promise<unknown>;
+  readGitWorkingTree(): Promise<unknown>;
+  readGitHistory(request: NonNullable<CommandPayloads['readGitHistory']['request']>): Promise<unknown>;
+  readWorkspaceTextFile(relativePath: string): Promise<unknown>;
+  writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
+  rewindAndSubmitMessage(request: CommandPayloads['rewindAndSubmitMessage']['request']): Promise<unknown>;
+}
+
+type HostCommandHandler<Command extends HostCommandName> = (
+  host: HostCommandDelegate,
+  payload: CommandPayloads[Command],
+) => Promise<unknown>;
+
+const hostCommandDispatch = {
+  bootstrap: (host, payload) => host.bootstrap(payload?.request),
+  rememberWorkspaceRoot: (host, payload) => host.rememberWorkspaceRoot(payload.request),
+  commitChanges: (host, payload) => host.commitChanges(payload.request),
+  updateConfig: (host, payload) => host.updateConfig(payload.request),
+  setWebHostAuthTokenHash: (host, payload) => host.setWebHostAuthTokenHash(payload.authTokenHash),
+  addModel: (host, payload) => host.addModel(payload.request),
+  addProviderModels: (host, payload) => host.addProviderModels(payload.request),
+  previewModels: (host, payload) => host.previewModels(payload.request),
+  removeModel: (host, payload) => host.removeModel(payload.request),
+  removeProviderModels: (host, payload) => host.removeProviderModels(payload.request),
+  addMcpServer: (host, payload) => host.addMcpServer(payload.request),
+  deleteMcpServer: (host, payload) => host.deleteMcpServer(payload.request),
+  inspectMcpServer: (host, payload) => host.inspectMcpServer(payload.name),
+  importExtension: (host, payload) => host.importExtension(payload.request),
+  listMarketplaceExtensions: (host) => host.listMarketplaceExtensions(),
+  getMarketplaceExtensionDetail: (host, payload) => host.getMarketplaceExtensionDetail(payload.extensionId),
+  getMarketplaceExtensionReadme: (host, payload) => host.getMarketplaceExtensionReadme(payload.extensionId),
+  installMarketplaceExtension: (host, payload) => host.installMarketplaceExtension(payload.request),
+  prepareMarketplaceExtensionInstall: (host, payload) => host.prepareMarketplaceExtensionInstall(payload.request),
+  deleteExtension: (host, payload) => host.deleteExtension(payload.request),
+  runExtension: (host, payload) => host.runExtension(payload.request),
+  updateExtensionSettings: (host, payload) => host.updateExtensionSettings(payload.request),
+  updateExtensionSecret: (host, payload) => host.updateExtensionSecret(payload.request),
+  createSkill: (host, payload) => host.createSkill(payload.request),
+  deleteSkill: (host, payload) => host.deleteSkill(payload.request),
+  submitCreateSkillSlash: (host, payload) => host.submitCreateSkillSlash(payload.request),
+  submitSkillSlash: (host, payload) => host.submitSkillSlash(payload.request),
+  submitStartImplementing: (host) => host.submitStartImplementing(),
+  exportSessionLog: (host) => host.exportSessionLog(),
+  compactHistory: (host) => host.compactHistory(),
+  submitUserTurn: (host, payload) => host.submitUserTurn(payload),
+  setLoopEnabled: (host, payload) => host.setLoopEnabled(payload.enabled === true),
+  setApprovalLevel: (host, payload) => host.setApprovalLevel(payload.approvalLevel),
+  setPendingGitBranch: (host, payload) => host.setPendingGitBranch(payload.branch),
+  setWorkLocation: (host, payload) => host.setWorkLocation(payload.workLocation),
+  checkoutGitBranch: (host, payload) => host.checkoutGitBranch(payload),
+  mergeWorktreeToMain: (host) => host.mergeWorktreeToMain(),
+  pushGitBranch: (host) => host.pushGitBranch(),
+  refreshGitSnapshot: (host) => host.refreshGitSnapshot(),
+  abortConversation: (host) => host.abortConversation(),
+  continueAssistantCompletion: (host, payload) => host.continueAssistantCompletion(payload.messageId),
+  poll: (host) => host.poll(),
+  listDreamsOverview: (host) => host.listDreamsOverview(),
+  replyPendingApproval: (host, payload) => host.replyPendingApproval(payload.decision),
+  replyPendingQuestions: (host, payload) => host.replyPendingQuestions(payload.result),
+  resetSession: (host) => host.resetSession(),
+  listSessions: (host) => host.listSessions(),
+  openSession: (host, payload) => host.openSession(payload.path),
+  listWorkspaceFileReferenceSuggestions: (host, payload) =>
+    host.listWorkspaceFileReferenceSuggestions(payload.request),
+  listWorkspaceExplorerChildren: (host, payload) => host.listWorkspaceExplorerChildren(payload.relativePath),
+  readGitWorkingTree: (host) => host.readGitWorkingTree(),
+  readGitHistory: (host, payload) => host.readGitHistory(payload.request ?? {}),
+  readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
+  writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
+  rewindAndSubmitMessage: (host, payload) => host.rewindAndSubmitMessage(payload.request),
+} satisfies { [Command in HostCommandName]: HostCommandHandler<Command> };
+
+export function createHostInvokeDispatch(host: HostCommandDelegate) {
+  return (command: HostCommandName, payload?: unknown): Promise<unknown> => {
+    const handler = hostCommandDispatch[command] as HostCommandHandler<typeof command>;
+    return handler(host, payload as CommandPayloads[typeof command]);
+  };
+}
