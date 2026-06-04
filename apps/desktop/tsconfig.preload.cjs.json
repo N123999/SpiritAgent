@@ -10,7 +10,9 @@
     "skipLibCheck": true,
     "outDir": "./dist-electron/electron",
     "rootDir": "./electron",
-    "noEmit": false
+    "noEmit": false,
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo-preload"
   },
   "include": ["electron/preload.ts"]
 }

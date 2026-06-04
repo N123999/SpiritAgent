@@ -8,7 +8,9 @@
     "types": ["node"],
     "outDir": "./dist-electron",
     "rootDir": ".",
-    "noEmit": false
+    "noEmit": false,
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo-electron"
   },
   "include": [
     "electron/**/*.ts",
