@@ -20,6 +20,7 @@ import {
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
 import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
 import { cn } from "@/lib/utils";
 import i18n from "@/lib/i18n";
@@ -205,8 +206,8 @@ function SessionListRow({
         {session.displayName}
       </span>
       {session.isBusy ? (
-        <span
-          className="size-1.5 shrink-0 rounded-full bg-primary animate-pulse"
+        <Spinner
+          className="size-3 shrink-0 text-primary"
           aria-label={t('common.running')}
         />
       ) : null}
