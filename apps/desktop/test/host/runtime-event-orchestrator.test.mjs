@@ -230,6 +230,37 @@ test('after-stream thinking stays on the body row until completion (same-instanc
   ]);
 });
 
+test('empty assistant turn flushes deferred after-stream thinking on consumeCompletedTurnResult', () => {
+  const harness = createHarness();
+  harness.pushUser('hi');
+
+  // Mirrors agent-core `done` with empty pendingAssistantTextStore:
+  // remove-pending-assistant, then clearStreamingUiState thinking finalize — no
+  // assistant-response-completed.
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    { kind: 'update-pending-assistant-thinking', text: 'Only thinking, no body.' },
+    { kind: 'remove-pending-assistant' },
+    {
+      kind: 'assistant-thinking-segment-finalized',
+      text: 'Only thinking, no body.',
+      placement: 'after-stream',
+    },
+  ]);
+
+  harness.setCompletedTurnResult({
+    kind: 'completed',
+    assistantText: '',
+    toolExecutions: [],
+  });
+  harness.orchestrator.consumeCompletedTurnResult();
+
+  assert.deepEqual(harness.timeline.toMessages().map(rowToken), [
+    'user',
+    'thinking:Only thinking, no body.',
+  ]);
+});
+
 test('read_file streaming preview shows filename from partial arguments JSON', () => {
   const harness = createHarness();
   harness.pushUser('read Cargo.toml');

@@ -136,6 +136,17 @@ export class DesktopRuntimeEventOrchestrator {
     this.lastApplyEventBatchId = 0;
     this.messageOrderDebugLastVerboseLogMs = 0;
     this.activeGenerateImageTools.clear();
+    this.deferredAfterStreamThinking = undefined;
+  }
+
+  /** 无工具回合里暂挂的 after-stream 思考：在 completed / 空正文收尾时拆成独立思考行。 */
+  private flushDeferredAfterStreamThinking(): void {
+    const deferred = this.deferredAfterStreamThinking;
+    if (!deferred) {
+      return;
+    }
+    this.deferredAfterStreamThinking = undefined;
+    this.options.messageTimeline?.()?.finalizeThinkingSegment(deferred, 'after-stream');
   }
 
   consumeCompletedTurnResult(): void {
@@ -185,6 +196,9 @@ export class DesktopRuntimeEventOrchestrator {
           }
           this.options.messageTimeline?.()?.materializeCompletedAssistantText(result.assistantText, aux);
         } else {
+          // 流式 done 在正文为空时只 remove-pending-assistant，随后 clearStreamingUiState 才定稿思考；
+          // 不会发 assistant-response-completed，须在此消费 deferred 并拆行。
+          this.flushDeferredAfterStreamThinking();
           this.options.messageTimeline?.()?.completeActiveAssistantSegment();
         }
         this.options.setLastRuntimeError('');
@@ -271,13 +285,9 @@ export class DesktopRuntimeEventOrchestrator {
       if (event.kind === 'assistant-response-completed') {
         this.finalizeResponsesBuiltInToolPreviews(messages);
         this.options.assistantMessages.completePendingAssistantMessage();
-        const timeline = this.options.messageTimeline?.();
-        if (this.deferredAfterStreamThinking) {
-          // 收起动画此时已在同一实例上播完，再把思考拆成独立行（与持久化结构一致）。
-          timeline?.finalizeThinkingSegment(this.deferredAfterStreamThinking, 'after-stream');
-          this.deferredAfterStreamThinking = undefined;
-        }
-        timeline?.completeActiveAssistantSegment();
+        // 收起动画此时已在同一实例上播完，再把思考拆成独立行（与持久化结构一致）。
+        this.flushDeferredAfterStreamThinking();
+        this.options.messageTimeline?.()?.completeActiveAssistantSegment();
         continue;
       }
       if (event.kind === 'remove-pending-assistant') {
