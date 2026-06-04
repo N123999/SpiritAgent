@@ -2,6 +2,7 @@ import * as React from "react";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";
 
+import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
 function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
@@ -55,8 +56,7 @@ function SelectContent({
         data-slot="select-content"
         position={position}
         className={cn(
-          "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
-          "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          radixAnchoredOverlayMotion("select"),
           "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] overflow-hidden",
           "rounded-xl border border-border/80 bg-popover p-1 text-sm text-popover-foreground shadow-lg",
           "ring-1 ring-white/5 backdrop-blur-sm",
