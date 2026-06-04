@@ -20,7 +20,6 @@ import {
   buildSkillsCatalogSystemMessage,
   buildToolAgentHostPrompt,
   createLlmTransport,
-  McpService,
   invalidateSharedUserMcpToolingCache,
   type AssistantAuxArchiveEntry,
   type ChatArchive,
@@ -31,6 +30,7 @@ import {
   type LlmPlanMetadata,
   type LlmToolAgentBasicInfo,
   type LlmTransportConfig,
+  type McpService,
   type RuntimeApprovalDecision,
   type RuntimeEvent,
   type PendingWorkspaceFile,
@@ -227,12 +227,21 @@ import {
   toDesktopMarketplacePreparedInstall,
 } from './extensions.js';
 import {
-  addMcpServerToDisk,
-  buildMcpServerConfigFromRequest,
-  deleteMcpServerFromDisk,
+  getDesktopExtensionHostAdapter,
+  requireDesktopExtensionHostAdapter,
+  setDesktopExtensionHostAdapter,
+  type DesktopExtensionHostAdapter,
+} from './extension-host-adapter.js';
+import {
   emptyMcpStatusSnapshot,
   listDesktopMcpServersFromDisk,
 } from './mcp-config.js';
+import {
+  addDesktopMcpServer,
+  deleteDesktopMcpServer,
+  inspectDesktopMcpServer,
+  sharedMcpServiceForWorkspace,
+} from './service-mcp.js';
 import {
   archiveBeforeLastUser,
   cloneArchiveHistory,
@@ -330,28 +339,7 @@ import {
   type StoredDesktopRewindMetadata,
 } from './rewind.js';
 
-export interface DesktopExtensionMessageBoxRequest {
-  title: string;
-  message: string;
-  detail?: string;
-  buttons?: string[];
-  cancelId?: number;
-  defaultId?: number;
-  noLink?: boolean;
-  type?: 'none' | 'info' | 'error' | 'question' | 'warning';
-}
-
-export interface DesktopExtensionHostAdapter {
-  showMessageBox(request: DesktopExtensionMessageBoxRequest): Promise<void>;
-}
-
-let desktopExtensionHostAdapter: DesktopExtensionHostAdapter | undefined;
-
-export function setDesktopExtensionHostAdapter(
-  adapter: DesktopExtensionHostAdapter | undefined,
-): void {
-  desktopExtensionHostAdapter = adapter;
-}
+export { setDesktopExtensionHostAdapter };
 
 type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
@@ -1139,27 +1127,11 @@ class DesktopHostService {
       await this.ensureInitialized();
       const state = this.requireState();
 
-      const name = request.name.trim();
-      if (!name) {
-        throw new Error(i18n.t('error.mcpNameRequired'));
-      }
-      if (/\s/u.test(name)) {
-        throw new Error(i18n.t('error.mcpNameWhitespace'));
-      }
-
-      const endpoint = request.endpoint.trim();
-      if (!endpoint) {
-        throw new Error(request.transportType === 'http' ? i18n.t('error.urlRequired') : i18n.t('error.commandRequired'));
-      }
-
-      const scope = request.scope ?? 'workspace';
-      if (scope === 'workspace' && state.workspaceBinding === 'none') {
-        throw new Error(
-          'Workspace-scoped MCP servers are unavailable when workspace binding is disabled.',
-        );
-      }
-      const serverConfig = buildMcpServerConfigFromRequest({ ...request, scope });
-      await addMcpServerToDisk(scope, state.workspaceRoot, name, serverConfig);
+      const { scope } = await addDesktopMcpServer({
+        request,
+        workspaceRoot: state.workspaceRoot,
+        workspaceBinding: state.workspaceBinding,
+      });
       if (scope === 'user') {
         invalidateSharedUserMcpToolingCache();
       }
@@ -1175,13 +1147,10 @@ class DesktopHostService {
       await this.ensureInitialized();
       const state = this.requireState();
 
-      const name = request.name.trim();
-      if (!name) {
-        throw new Error(i18n.t('error.mcpNameRequired'));
-      }
-
-      const scope = request.scope ?? 'user';
-      await deleteMcpServerFromDisk(scope, state.workspaceRoot, name);
+      const { scope } = await deleteDesktopMcpServer({
+        request,
+        workspaceRoot: state.workspaceRoot,
+      });
       if (scope === 'user') {
         invalidateSharedUserMcpToolingCache();
       }
@@ -1195,25 +1164,10 @@ class DesktopHostService {
   async inspectMcpServer(name: string): Promise<DesktopMcpServerInspection> {
     return this.runSerialized(async () => {
       await this.ensureInitialized();
-      const trimmedName = name.trim();
-      if (!trimmedName) {
-        throw new Error(i18n.t('error.mcpNameRequired'));
-      }
-
-      const inspection = await this.requireToolExecutor().inspectMcpServer(trimmedName) as Record<string, unknown>;
-      return {
-        name: typeof inspection.name === 'string' ? inspection.name : trimmedName,
-        displayName:
-          typeof inspection.displayName === 'string'
-            ? inspection.displayName
-            : trimmedName,
-        supportsTools: inspection.supportsTools === true,
-        supportsResources: inspection.supportsResources === true,
-        supportsPrompts: inspection.supportsPrompts === true,
-        toolsCount: typeof inspection.toolsCount === 'number' ? inspection.toolsCount : 0,
-        resourcesCount: typeof inspection.resourcesCount === 'number' ? inspection.resourcesCount : 0,
-        promptsCount: typeof inspection.promptsCount === 'number' ? inspection.promptsCount : 0,
-      };
+      return inspectDesktopMcpServer({
+        name,
+        inspect: (serverName) => this.requireToolExecutor().inspectMcpServer(serverName),
+      });
     });
   }
 
@@ -2974,15 +2928,11 @@ class DesktopHostService {
     workspaceRoot: string,
     workspaceBinding: DesktopWorkspaceBinding = 'project',
   ): McpService {
-    const includeWorkspaceConfig = workspaceBinding === 'project';
-    const key = `${path.resolve(workspaceRoot)}|${includeWorkspaceConfig ? 'project' : 'none'}`;
-    let service = this.mcpServiceByWorkspaceRoot.get(key);
-    if (!service) {
-      service = new McpService(path.resolve(workspaceRoot), includeWorkspaceConfig);
-      service.startBackgroundRefreshInBackground(false);
-      this.mcpServiceByWorkspaceRoot.set(key, service);
-    }
-    return service;
+    return sharedMcpServiceForWorkspace(
+      this.mcpServiceByWorkspaceRoot,
+      workspaceRoot,
+      workspaceBinding,
+    );
   }
 
   private async buildToolExecutorForBundle(
@@ -3004,7 +2954,7 @@ class DesktopHostService {
       extensions: {
         manager: this.extensionManager(),
         getHost: () => {
-          const adapter = desktopExtensionHostAdapter;
+          const adapter = getDesktopExtensionHostAdapter();
           if (!adapter) {
             throw new Error(i18n.t('error.extensionHostNotConnected'));
           }
@@ -3721,7 +3671,7 @@ class DesktopHostService {
   }
 
   private async collectExtensionSystemPrompts(): Promise<LlmExtensionSystemPrompt[]> {
-    const adapter = desktopExtensionHostAdapter;
+    const adapter = getDesktopExtensionHostAdapter();
     if (!adapter) {
       return [];
     }
@@ -3746,7 +3696,7 @@ class DesktopHostService {
       targetExtensionIds?: readonly string[];
     } = {},
   ): Promise<void> {
-    const adapter = desktopExtensionHostAdapter;
+    const adapter = getDesktopExtensionHostAdapter();
     if (!adapter) {
       return;
     }
@@ -4545,10 +4495,7 @@ class DesktopHostService {
   }
 
   private requireExtensionHostAdapter(): DesktopExtensionHostAdapter {
-    if (!desktopExtensionHostAdapter) {
-      throw new Error(i18n.t('error.extensionHostNotAvailable'));
-    }
-    return desktopExtensionHostAdapter;
+    return requireDesktopExtensionHostAdapter();
   }
 }
 
