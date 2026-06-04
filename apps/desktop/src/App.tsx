@@ -2653,6 +2653,10 @@ export default function App() {
               micaStyle={useMicaBackdrop}
               newSessionBusy={newSessionBusy}
               sessionNavigationBusy={sessionNavigationBusy}
+              deleteSessionBusy={sessionNavigationBusy}
+              onDeleteSession={(path) => {
+                void runtime.deleteSession(path);
+              }}
             />
           </div>
         </div>

@@ -1951,6 +1951,34 @@ export function useDesktopRuntime() {
     [api, applySnapshot, refreshSessions, restoreSessionUi, stashSessionUi],
   );
 
+  const deleteSession = useCallback(
+    async (path: string) => {
+      if (!api) {
+        return;
+      }
+      const navGeneration = sessionNavigationGenerationRef.current + 1;
+      sessionNavigationGenerationRef.current = navGeneration;
+      setBusyAction("session");
+      try {
+        const next = await api.deleteSession(path);
+        if (navGeneration !== sessionNavigationGenerationRef.current) {
+          return;
+        }
+        applySnapshot(next, { navGeneration });
+        restoreSessionUi(next);
+        setRuntimeError("");
+        void refreshSessions();
+      } catch (error) {
+        setRuntimeError(describeError(error));
+      } finally {
+        if (navGeneration === sessionNavigationGenerationRef.current) {
+          setBusyAction("");
+        }
+      }
+    },
+    [api, applySnapshot, refreshSessions, restoreSessionUi],
+  );
+
   const listWorkspaceFileReferenceSuggestions = useCallback(
     async (
       request: QueryWorkspaceFileReferenceSuggestionsRequest,
@@ -2147,6 +2175,7 @@ export function useDesktopRuntime() {
     pushGitBranch,
     continueAssistantCompletion,
     openSession,
+    deleteSession,
     listWorkspaceFileReferenceSuggestions,
     listWorkspaceExplorerChildren,
     readGitWorkingTree,

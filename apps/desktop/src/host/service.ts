@@ -173,6 +173,7 @@ import {
   resetSessionCommand,
   type SessionActivationContext,
 } from './session-activation.js';
+import { deleteSessionCommand, type SessionDeleteContext } from './session-delete.js';
 import {
   finishSessionActivationCommand,
   isBundleRuntimeFresh,
@@ -228,6 +229,7 @@ import {
   nextMessageIdFromMessages,
   rememberEphemeralSessionRecord,
   rememberEphemeralWorktreeSessionRecord,
+  removeEphemeralSessionRecord,
 } from './sessions.js';
 import {
   buildPrimaryTransportConfig,
@@ -1324,6 +1326,24 @@ class DesktopHostService {
 
   async openSession(filePath: string): Promise<DesktopSnapshot> {
     return openSessionCommand(this.sessionActivationContext(), filePath);
+  }
+
+  async deleteSession(filePath: string): Promise<DesktopSnapshot> {
+    return deleteSessionCommand(this.sessionDeleteContext(), filePath);
+  }
+
+  private sessionDeleteContext(): SessionDeleteContext {
+    return {
+      ...this.sessionActivationContext(),
+      removeEphemeralSession: (filePath) => {
+        const state = this.requireState();
+        state.ephemeralSessions = removeEphemeralSessionRecord(state.ephemeralSessions, filePath);
+      },
+      bundleRuntimeIsBusy: (sessionPath) => {
+        const bundle = this.sessionRegistry.findBySessionPath(sessionPath);
+        return bundle?.runtime?.isBusy() === true;
+      },
+    };
   }
 
   private runtimeActivationSignature(bundle: SessionBundle): string {

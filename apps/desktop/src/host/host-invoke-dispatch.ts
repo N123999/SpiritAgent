@@ -52,6 +52,7 @@ export interface HostCommandDelegate {
   resetSession(): Promise<unknown>;
   listSessions(): Promise<unknown>;
   openSession(path: string): Promise<unknown>;
+  deleteSession(path: string): Promise<unknown>;
   listWorkspaceFileReferenceSuggestions(
     request: CommandPayloads['listWorkspaceFileReferenceSuggestions']['request'],
   ): Promise<unknown>;
@@ -117,6 +118,7 @@ const hostCommandDispatch = {
   resetSession: (host) => host.resetSession(),
   listSessions: (host) => host.listSessions(),
   openSession: (host, payload) => host.openSession(payload.path),
+  deleteSession: (host, payload) => host.deleteSession(payload.path),
   listWorkspaceFileReferenceSuggestions: (host, payload) =>
     host.listWorkspaceFileReferenceSuggestions(payload.request),
   listWorkspaceExplorerChildren: (host, payload) => host.listWorkspaceExplorerChildren(payload.relativePath),

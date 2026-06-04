@@ -155,6 +155,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   openSession(path: string) {
     return ipcRenderer.invoke('desktop:invoke', 'openSession', { path });
   },
+  deleteSession(path: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'deleteSession', { path });
+  },
   listWorkspaceFileReferenceSuggestions(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'listWorkspaceFileReferenceSuggestions', {
       request,

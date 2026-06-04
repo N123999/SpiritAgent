@@ -199,6 +199,9 @@ export function createWebHostApi(): HostApi {
     openSession(path: string) {
       return post<DesktopSnapshot>(baseUrl, '/api/sessions/open', { path });
     },
+    deleteSession(path: string) {
+      return post<DesktopSnapshot>(baseUrl, '/api/sessions/delete', { path });
+    },
     listWorkspaceFileReferenceSuggestions(request: QueryWorkspaceFileReferenceSuggestionsRequest) {
       return post<WorkspaceFileReferenceSuggestionsResponse>(
         baseUrl,

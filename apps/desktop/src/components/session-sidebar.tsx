@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Layers,
   Code2,
+  LoaderCircle,
   MoonStar,
   Package,
   Palette,
@@ -15,10 +16,24 @@ import {
   Settings2,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
@@ -59,6 +74,8 @@ type SessionSidebarProps = {
   micaStyle?: boolean;
   newSessionBusy?: boolean;
   sessionNavigationBusy?: boolean;
+  deleteSessionBusy?: boolean;
+  onDeleteSession?: (path: string) => void | Promise<void>;
   disabled?: boolean;
 };
 
@@ -172,6 +189,7 @@ type SessionListRowProps = {
   disabled?: boolean;
   micaStyle?: boolean;
   onSelect(): void;
+  onRequestDelete?(session: SessionListItem): void;
 };
 
 function SessionListRow({
@@ -181,9 +199,10 @@ function SessionListRow({
   disabled,
   micaStyle,
   onSelect,
+  onRequestDelete,
 }: SessionListRowProps) {
   const { t } = useTranslation();
-  return (
+  const rowButton = (
     <button
       type="button"
       disabled={disabled}
@@ -212,6 +231,29 @@ function SessionListRow({
         />
       ) : null}
     </button>
+  );
+
+  if (disabled || !onRequestDelete) {
+    return rowButton;
+  }
+
+  const busy = session.isBusy === true;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{rowButton}</ContextMenuTrigger>
+      <ContextMenuContent aria-label={t("sidebar.sessionActions")}>
+        <ContextMenuItem
+          variant="destructive"
+          disabled={busy}
+          title={busy ? t("sidebar.cannotDeleteBusySession") : undefined}
+          onSelect={() => onRequestDelete(session)}
+        >
+          <Trash2 aria-hidden />
+          {t("sidebar.deleteSession")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -327,6 +369,8 @@ export function SessionSidebar({
   micaStyle,
   newSessionBusy = false,
   sessionNavigationBusy = false,
+  deleteSessionBusy = false,
+  onDeleteSession,
   disabled,
 }: SessionSidebarProps) {
   const { t, i18n } = useTranslation();
@@ -341,6 +385,7 @@ export function SessionSidebar({
   );
   const unboundSessions = useMemo(() => sortSessionsByModified(unbound), [unbound]);
   const [collapsedWorkspaceIds, setCollapsedWorkspaceIds] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<SessionListItem | null>(null);
 
   const isSessionSelected = (sessionPath: string) =>
     !marketplaceActive && activeFilePath !== null && samePath(sessionPath, activeFilePath);
@@ -529,6 +574,7 @@ export function SessionSidebar({
                         disabled={disabled}
                         micaStyle={micaStyle}
                         onSelect={() => onSelectSession(session.path)}
+                        onRequestDelete={onDeleteSession ? setDeleteTarget : undefined}
                       />
                     ))}
                   </>
@@ -582,6 +628,7 @@ export function SessionSidebar({
                               disabled={disabled}
                               micaStyle={micaStyle}
                               onSelect={() => onSelectSession(session.path)}
+                              onRequestDelete={onDeleteSession ? setDeleteTarget : undefined}
                             />
                           ))}
                         </div>
@@ -637,6 +684,54 @@ export function SessionSidebar({
           </p>
         )}
       </div>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>{t("sidebar.deleteSession")}</DialogTitle>
+            <DialogDescription>
+              {t("sidebar.deleteSessionConfirm", { name: deleteTarget?.displayName ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteSessionBusy}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={deleteSessionBusy || !deleteTarget || !onDeleteSession}
+              onClick={() => {
+                const target = deleteTarget;
+                if (!target || !onDeleteSession) {
+                  return;
+                }
+                void (async () => {
+                  await onDeleteSession(target.path);
+                  setDeleteTarget(null);
+                })();
+              }}
+            >
+              {deleteSessionBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+              {t("common.delete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }

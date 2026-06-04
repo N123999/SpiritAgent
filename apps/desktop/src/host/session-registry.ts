@@ -207,6 +207,25 @@ export class SessionRegistry {
     return bundle;
   }
 
+  removeBySessionPath(filePath: string): SessionBundle | undefined {
+    const bundle = this.findBySessionPath(filePath);
+    if (!bundle) {
+      return undefined;
+    }
+    const mapKey = this.mapKeyFor(bundle);
+    const resolvedPath = path.resolve(filePath);
+    if (mapKey) {
+      this.bundles.delete(mapKey);
+    }
+    if (
+      this.activeId !== undefined
+      && (this.activeId === mapKey || path.resolve(this.activeId) === resolvedPath)
+    ) {
+      this.activeId = undefined;
+    }
+    return bundle;
+  }
+
   isBundleBusy(bundle: SessionBundle): boolean {
     return bundle.runtime?.isBusy() === true;
   }

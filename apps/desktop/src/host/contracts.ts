@@ -60,6 +60,7 @@ export type HostCommandName =
   | 'resetSession'
   | 'listSessions'
   | 'openSession'
+  | 'deleteSession'
   | 'listWorkspaceFileReferenceSuggestions'
   | 'listWorkspaceExplorerChildren'
   | 'readWorkspaceTextFile'

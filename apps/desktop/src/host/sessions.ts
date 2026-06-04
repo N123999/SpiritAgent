@@ -77,6 +77,13 @@ export function rememberEphemeralSessionRecord(
   ].slice(0, MAX_EPHEMERAL_COMMIT_SESSIONS);
 }
 
+export function removeEphemeralSessionRecord(
+  sessions: EphemeralSessionRecord[],
+  filePath: string,
+): EphemeralSessionRecord[] {
+  return sessions.filter((session) => session.path !== filePath);
+}
+
 export function ephemeralSessionsToListItems(
   sessions: EphemeralSessionRecord[],
 ): SessionListItem[] {

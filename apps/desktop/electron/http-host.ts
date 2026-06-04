@@ -820,6 +820,18 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/sessions/delete') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('deleteSession', {
+        path: typeof jsonBody?.path === 'string' ? jsonBody.path : '',
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/workspace/explorer') {
     writeJson(
       request,

@@ -156,6 +156,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     openSession(path) {
       return bridge.openSession(path);
     },
+    deleteSession(path) {
+      return bridge.deleteSession(path);
+    },
     listWorkspaceFileReferenceSuggestions(request) {
       return bridge.listWorkspaceFileReferenceSuggestions(request);
     },

@@ -4,6 +4,7 @@ import {
   readdir,
   readFile,
   stat,
+  unlink,
   writeFile,
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -11,6 +12,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
+import i18n from '../lib/i18n-host.js';
 import {
   defaultModelReasoningEffort,
   normalizeModelReasoningEffort,
@@ -483,6 +485,18 @@ export async function saveStoredSession(
   await mkdir(path.dirname(resolved), { recursive: true });
   await writeFile(resolved, `${JSON.stringify(session, null, 2)}\n`, 'utf8');
   return resolved;
+}
+
+export async function deleteStoredSession(filePath: string): Promise<void> {
+  const resolved = path.resolve(filePath);
+  const chatsDir = path.resolve(chatsDirPath());
+  const relative = path.relative(chatsDir, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(i18n.t('error.invalidSessionPath'));
+  }
+  if (existsSync(resolved)) {
+    await unlink(resolved);
+  }
 }
 
 function defaultConfig(): DesktopConfigFile {

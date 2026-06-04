@@ -87,6 +87,7 @@ export type CommandPayloads = {
   resetSession: undefined;
   listSessions: undefined;
   openSession: { path: string };
+  deleteSession: { path: string };
   listWorkspaceFileReferenceSuggestions: { request: QueryWorkspaceFileReferenceSuggestionsRequest };
   listWorkspaceExplorerChildren: { relativePath: string };
   readWorkspaceTextFile: { relativePath: string };
