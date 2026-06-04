@@ -51,7 +51,7 @@
   --git-action-split: oklch(0.58 0 0);
   /* UI 字体栈：运行时由 applyFontToDocument 覆盖；须用 var() 接入 @theme，避免 font-sans 被编译成字面量。 */
   --spirit-ui-font-stack: 'Geist Variable', sans-serif;
-  /* 集成终端（xterm）：ANSI 色板参考 VS Code Light+ 默认 */
+  /* 集成终端（xterm）：浅色主题 ANSI 色板 */
   --terminal-bg: #ffffff;
   --terminal-fg: #0a0a0a;
   --terminal-cursor: #0a0a0a;
@@ -450,7 +450,7 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
   }
 }
 
-/* Shell 内嵌 xterm：可点击链接与 VS Code 一致显示手型光标 */
+/* Shell 内嵌 xterm：可点击链接显示手型光标 */
 .workspace-shell-xterm .xterm-link {
   cursor: pointer;
   text-decoration: underline;
