@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { TYPESCRIPT_JS_EXTENSIONS } from './constants.js';
 import { LspPathError } from './errors.js';
@@ -49,8 +49,27 @@ export function relativePathFromWorkspace(workspaceRoot: string, resolvedPath: s
   return path.relative(path.resolve(workspaceRoot), path.resolve(resolvedPath)).replace(/\\/g, '/');
 }
 
+function normalizeWindowsDriveLetter(filePath: string): string {
+  if (process.platform !== 'win32') {
+    return filePath;
+  }
+  return filePath.replace(/^([a-zA-Z]):/, (_match, letter: string) => `${letter.toUpperCase()}:`);
+}
+
+/** 统一 file URI（Windows 上 TLS 可能返回 `file:///d%3A/...` 或盘符大小写不一致）。 */
+export function normalizeLspFileUri(uri: string): string {
+  if (!uri.startsWith('file:')) {
+    return uri;
+  }
+  try {
+    return pathToFileURL(normalizeWindowsDriveLetter(fileURLToPath(uri))).href;
+  } catch {
+    return uri;
+  }
+}
+
 export function fileUriForResolvedPath(resolvedPath: string): string {
-  return pathToFileURL(path.resolve(resolvedPath)).href;
+  return normalizeLspFileUri(pathToFileURL(path.resolve(resolvedPath)).href);
 }
 
 export function parseLspFileChangeNotification(value: unknown): import('./types.js').LspFileChangeNotification | undefined {

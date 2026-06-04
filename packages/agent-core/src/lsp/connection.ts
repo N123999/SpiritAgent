@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { isWindowsPlatform } from '../mcp/windows.js';
+import { normalizeLspFileUri } from './paths.js';
 import {
   createMessageConnection,
   StreamMessageReader,
@@ -99,7 +100,7 @@ export class LspConnection {
       if (!params || typeof params !== 'object') {
         return;
       }
-      const uri = typeof params.uri === 'string' ? params.uri : '';
+      const uri = normalizeLspFileUri(typeof params.uri === 'string' ? params.uri : '');
       const diagnostics = Array.isArray(params.diagnostics) ? params.diagnostics : [];
       options.onDiagnostics(uri, diagnostics as import('./types.js').LspDiagnostic[]);
     });
@@ -112,6 +113,10 @@ export class LspConnection {
       rootUri,
       capabilities: {
         textDocument: {
+          // TLS 5.x：未声明 publishDiagnostics 时 diagnosticsSupport=false，不会推送诊断。
+          publishDiagnostics: {
+            relatedInformation: true,
+          },
           synchronization: {
             dynamicRegistration: false,
             didSave: true,

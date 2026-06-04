@@ -7,6 +7,7 @@ import { LspDisabledError, LspPathError, LspTimeoutError } from './errors.js';
 import { formatDiagnosticsForLlm } from './format-diagnostics.js';
 import {
   fileUriForResolvedPath,
+  normalizeLspFileUri,
   isTypescriptJavascriptPath,
   parseLspFileChangeNotification,
   relativePathFromWorkspace,
@@ -106,9 +107,10 @@ export class LspService {
       throw new LspPathError(`path is not a TypeScript or JavaScript file: ${inputPath}`);
     }
     const relativePath = relativePathFromWorkspace(this.workspaceRootStore, resolvedPath);
-    await this.flushDebounce(fileUriForResolvedPath(resolvedPath));
-    await this.openOrSyncDocument(resolvedPath);
     const uri = fileUriForResolvedPath(resolvedPath);
+    this.diagnosticsByUri.delete(uri);
+    await this.flushDebounce(uri);
+    await this.openOrSyncDocument(resolvedPath);
     const diagnostics = await this.waitForDiagnostics(uri, waitMs);
     return {
       relativePath,
@@ -225,15 +227,7 @@ export class LspService {
         cwd: this.workspaceRootStore,
         workspaceRoot: this.workspaceRootStore,
         onDiagnostics: (uri, diagnostics) => {
-          this.diagnosticsByUri.set(uri, diagnostics);
-          const waiters = this.diagnosticWaiters.get(uri);
-          if (!waiters) {
-            return;
-          }
-          for (const resolve of waiters) {
-            resolve(diagnostics);
-          }
-          this.diagnosticWaiters.delete(uri);
+          this.handlePublishedDiagnostics(uri, diagnostics);
         },
       })
       .catch((error) => {
@@ -266,6 +260,19 @@ export class LspService {
     this.documentStore.close(uri);
     this.diagnosticsByUri.delete(uri);
     this.diagnosticWaiters.delete(uri);
+  }
+
+  private handlePublishedDiagnostics(uri: string, diagnostics: LspDiagnostic[]): void {
+    const canonicalUri = normalizeLspFileUri(uri);
+    this.diagnosticsByUri.set(canonicalUri, diagnostics);
+    const waiters = this.diagnosticWaiters.get(canonicalUri);
+    if (!waiters) {
+      return;
+    }
+    for (const resolve of waiters) {
+      resolve(diagnostics);
+    }
+    this.diagnosticWaiters.delete(canonicalUri);
   }
 
   private async waitForDiagnostics(uri: string, waitMs: number): Promise<LspDiagnostic[]> {
