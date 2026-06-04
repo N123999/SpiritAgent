@@ -79,6 +79,35 @@ test('moonshot-ai provider consumes Moonshot model catalog metadata', () => {
   ]);
 });
 
+test('openrouter provider maps output_modalities to catalog capabilities', () => {
+  assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'openrouter' }), true);
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'openrouter',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'openai/gpt-4o',
+      },
+      {
+        id: 'google/imagen-4',
+        supportsImageGeneration: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'openai/gpt-4o',
+      capabilities: ['chat'],
+    },
+    {
+      id: 'google/imagen-4',
+      capabilities: ['imageGeneration'],
+    },
+  ]);
+});
+
 test('vercel-ai-gateway provider maps language and image model types to catalog capabilities', () => {
   assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'vercel-ai-gateway' }), true);
 

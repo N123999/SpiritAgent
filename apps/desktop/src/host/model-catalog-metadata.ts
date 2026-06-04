@@ -22,7 +22,7 @@ export function usesProviderListedModelCatalogMetadata(input: {
   if (input.provider === 'moonshot-ai') {
     return true;
   }
-  if (input.provider === 'vercel-ai-gateway') {
+  if (input.provider === 'vercel-ai-gateway' || input.provider === 'openrouter') {
     return true;
   }
   return usesAnthropicModelCatalogMetadata(input);

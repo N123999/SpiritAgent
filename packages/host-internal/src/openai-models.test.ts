@@ -6,6 +6,7 @@ import {
   parseAnthropicModelEntriesPayload,
   parseOpenAiCompatibleModelEntriesPayload,
   parseMoonshotModelEntriesPayload,
+  parseOpenRouterModelEntriesPayload,
   parseVercelAiGatewayModelEntriesPayload,
 } from './openai-models.js';
 
@@ -167,5 +168,58 @@ test('parseOpenAiCompatibleModelEntriesPayload routes vercel-ai-gateway to typed
   assert.deepEqual(entries, [
     { id: 'openai/gpt-5' },
     { id: 'google/imagen-4', supportsImageGeneration: true },
+  ]);
+});
+
+test('parseOpenRouterModelEntriesPayload classifies output_modalities', () => {
+  const entries = parseOpenRouterModelEntriesPayload({
+    data: [
+      {
+        id: 'openai/gpt-4o',
+        architecture: { output_modalities: ['text'] },
+      },
+      {
+        id: 'google/imagen-4',
+        architecture: { output_modalities: ['image'] },
+      },
+      {
+        id: 'openai/gpt-image-1',
+        output_modalities: ['text', 'image'],
+      },
+      {
+        id: 'openai/text-embedding-3-small',
+        architecture: { output_modalities: ['embedding'] },
+      },
+      {
+        id: 'legacy/model-without-modalities',
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    { id: 'openai/gpt-4o' },
+    { id: 'google/imagen-4', supportsImageGeneration: true },
+    { id: 'openai/gpt-image-1' },
+    { id: 'legacy/model-without-modalities' },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload routes openrouter to typed parser', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload({
+    data: [
+      {
+        id: 'anthropic/claude-sonnet-4',
+        architecture: { output_modalities: ['text'] },
+      },
+      {
+        id: 'stability/sdxl',
+        architecture: { output_modalities: ['image'] },
+      },
+    ],
+  }, 'openrouter');
+
+  assert.deepEqual(entries, [
+    { id: 'anthropic/claude-sonnet-4' },
+    { id: 'stability/sdxl', supportsImageGeneration: true },
   ]);
 });

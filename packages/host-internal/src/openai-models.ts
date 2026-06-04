@@ -58,6 +58,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
     return parseVercelAiGatewayModelEntriesPayload(body);
   }
 
+  if (provider === 'openrouter') {
+    return parseOpenRouterModelEntriesPayload(body);
+  }
+
   if (typeof body !== 'object' || body === null || !('data' in body)) {
     return [];
   }
@@ -171,6 +175,72 @@ export function parseVercelAiGatewayModelEntriesPayload(body: unknown): Provider
     if (type === 'video') {
       entries.push({ id: id.trim(), supportsVideoInput: true });
       continue;
+    }
+
+    entries.push({ id: id.trim() });
+  }
+  return entries;
+}
+
+function readOpenRouterModalities(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const modalities: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim().length > 0) {
+      modalities.push(item.trim().toLowerCase());
+    }
+  }
+  return modalities;
+}
+
+/** OpenRouter 列表项：`architecture.output_modalities` 优先，其次顶层 `output_modalities`。 */
+function readOpenRouterOutputModalities(record: Record<string, unknown>): string[] {
+  const architecture = asRecord(record.architecture);
+  const fromArchitecture = readOpenRouterModalities(architecture?.output_modalities);
+  if (fromArchitecture.length > 0) {
+    return fromArchitecture;
+  }
+  return readOpenRouterModalities(record.output_modalities);
+}
+
+/**
+ * OpenRouter /models：仅以 output_modalities 区分对话与生图；不用模型 id 或 pricing 推断。
+ * 含 image 且不含 text → 生图；含 text → 对话；二者皆无 → 跳过；缺失 → 默认对话。
+ */
+export function parseOpenRouterModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('data' in body)) {
+    return [];
+  }
+  const raw = (body as { data?: unknown }).data;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const id = record.id;
+    if (typeof id !== 'string' || id.trim().length === 0) {
+      continue;
+    }
+
+    const outputModalities = readOpenRouterOutputModalities(record);
+    if (outputModalities.length > 0) {
+      const hasText = outputModalities.includes('text');
+      const hasImage = outputModalities.includes('image');
+      if (!hasText && !hasImage) {
+        continue;
+      }
+      if (hasImage && !hasText) {
+        entries.push({ id: id.trim(), supportsImageGeneration: true });
+        continue;
+      }
     }
 
     entries.push({ id: id.trim() });
@@ -415,6 +485,10 @@ export async function listProviderModels(
     return listVercelAiGatewayModels(options);
   }
 
+  if (options.provider === 'openrouter') {
+    return listOpenRouterModels(options);
+  }
+
   return listOpenAiCompatibleModels(options);
 }
 
@@ -434,6 +508,12 @@ export async function listVercelAiGatewayModels(
   options: ListOpenAiCompatibleModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
   return listOpenAiCompatibleModelsForProvider(options, 'vercel-ai-gateway');
+}
+
+export async function listOpenRouterModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  return listOpenAiCompatibleModelsForProvider(options, 'openrouter');
 }
 
 export async function listProviderModelIds(
