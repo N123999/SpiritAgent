@@ -170,16 +170,23 @@ import {
   type SubmitUserTurnAfterInitializedOptions,
 } from './session-turn-orchestrator.js';
 import {
+  openSessionCommand,
+  resetSessionCommand,
+  type SessionActivationContext,
+} from './session-activation.js';
+import {
+  finishSessionActivationCommand,
+  isBundleRuntimeFresh,
+  runtimeActivationSignature,
+} from './runtime-lifecycle.js';
+import {
   buildArchiveAssistantAuxFromConversation,
   buildArchiveMessagesFromConversation,
   deriveDisplayNameFromSeed,
   type EphemeralSessionRecord,
-  isEphemeralDebugSessionPath,
   nextMessageIdFromMessages,
   rememberEphemeralSessionRecord,
   rememberEphemeralWorktreeSessionRecord,
-  restoreEphemeralSessionState,
-  restoreStoredSessionState,
   sanitizeConversationMessagesForPersistence,
 } from './sessions.js';
 import {
@@ -199,7 +206,6 @@ import {
   loadHostMetadata,
   normalizeWorkspaceBinding,
   resolveDesktopHomeDirectory,
-  loadStoredSession,
   modelSecretKeyPresence,
   mergeRecentWorkspaceRoots,
   resolveApiKeyForConfigModel,
@@ -281,7 +287,6 @@ import {
   hasActiveRunSubagentToolInMessages,
   isSubagentStatusSurfaceMessage,
   parsePendingSubagentStatusText,
-  restoreMessagesFromArchive,
   summarizeMessagesTailForOrderDebug,
   summarizeToolRowsForDebug,
   truncateOneLineForDebug,
@@ -571,6 +576,38 @@ class DesktopHostService {
       insertUserApprovalReplyMessage: (content, pendingToolCallId) =>
         this.insertUserApprovalReplyMessage(content, pendingToolCallId),
       normalizeApprovalDecision,
+    };
+  }
+
+  private sessionActivationContext(): SessionActivationContext {
+    return {
+      runSerialized: (work) => this.runSerialized(work),
+      ensureInitialized: (workspaceRootOverride, options) => this.ensureInitialized(workspaceRootOverride, options),
+      requireState: () => this.requireState(),
+      isInitialized: () => this.initialized,
+      currentWorkspaceRoot: () => this.state?.workspaceRoot,
+      currentRuntime: () => this.runtime,
+      sessionRegistry: () => this.sessionRegistry,
+      persistSessionBundle: (bundle, options) => this.persistSessionBundle(bundle, options),
+      finalizeTodoScopeForNewActiveBundle: (bundle, workspaceRoot) =>
+        this.finalizeTodoScopeForNewActiveBundle(bundle, workspaceRoot),
+      resetStreamingPlacementState: (full, bundle) => this.resetStreamingPlacementState(full, bundle),
+      findEphemeralSession: (filePath) => this.findEphemeralSession(filePath),
+      createMessageTimelineFromMessages: (messages, timelineSnapshot) =>
+        this.createMessageTimelineFromMessages(messages, timelineSnapshot),
+      syncPlanStateForBundle: (bundle) => this.syncPlanStateForBundle(bundle),
+      tickSession: (bundle) => this.tickSession(bundle),
+      syncActiveRuntimePointer: () => this.syncActiveRuntimePointer(),
+      refreshTodoSnapshotForBundle: (bundle) => this.refreshTodoSnapshotForBundle(bundle),
+      flushDeferredRuntimeRefreshIfIdle: (bundle) => this.flushDeferredRuntimeRefreshIfIdle(bundle),
+      ensureToolExecutor: (bundle) => this.ensureToolExecutor(bundle),
+      refreshRuntimeForBundle: (bundle) => this.refreshRuntimeForBundle(bundle),
+      resolveTodoSessionKeyForBundle: (bundle) => this.resolveTodoSessionKeyForBundle(bundle),
+      setLastRuntimeError: (error) => {
+        this.lastRuntimeError = error;
+      },
+      dispatchSessionEvent: (event) => this.dispatchExtensionEvent(event),
+      buildSnapshot: () => this.buildSnapshot(),
     };
   }
 
@@ -1152,31 +1189,7 @@ class DesktopHostService {
   }
 
   async resetSession(): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      await this.ensureInitialized(undefined, { fastPath: true });
-
-      const state = this.requireState();
-      const leaving = this.sessionRegistry.getActive();
-      const leavingMessageCount = leaving?.messageTimeline.toMessages().length ?? 0;
-      if (leaving?.activeSession && leavingMessageCount > 0) {
-        await this.persistSessionBundle(leaving, {
-          fromRuntime: this.sessionRegistry.activeSessionId() === leaving.id ? this.runtime : undefined,
-          bumpListSortAt: false,
-        });
-      }
-      const bundle = this.sessionRegistry.beginNewActive(state.workspaceRoot);
-      await this.finalizeTodoScopeForNewActiveBundle(bundle, state.workspaceRoot);
-      this.resetStreamingPlacementState(true, bundle);
-      await this.finishSessionActivation(bundle);
-      this.lastRuntimeError = '';
-      await this.dispatchExtensionEvent({
-        type: 'onSessionReset',
-        detail: {
-          workspaceRoot: state.workspaceRoot,
-        },
-      });
-      return this.buildSnapshot();
-    });
+    return resetSessionCommand(this.sessionActivationContext());
   }
 
   async listSessions(): Promise<SessionListItem[]> {
@@ -1214,144 +1227,20 @@ class DesktopHostService {
   }
 
   async openSession(filePath: string): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
-      const leaving = this.sessionRegistry.getActive();
-      const leavingMessageCount = leaving?.messageTimeline.toMessages().length ?? 0;
-      if (
-        leaving?.activeSession
-        && leaving.activeSession.kind !== 'ephemeral'
-        && leavingMessageCount > 0
-      ) {
-        await this.persistSessionBundle(leaving, {
-          fromRuntime:
-            leaving.runtime?.isBusy() && this.sessionRegistry.activeSessionId() === leaving.id
-              ? this.runtime
-              : undefined,
-          bumpListSortAt: false,
-        });
-      }
-
-      if (isEphemeralDebugSessionPath(filePath)) {
-        const ephemeral = this.findEphemeralSession(filePath);
-        if (!ephemeral) {
-          throw new Error(i18n.t('error.ephemeralSessionExpired'));
-        }
-        const ephemeralSameWorkspace = Boolean(
-          this.initialized
-          && this.state?.workspaceRoot
-          && sameWorkspaceRoot(this.state.workspaceRoot, ephemeral.workspaceRoot),
-        );
-        await this.ensureInitialized(ephemeral.workspaceRoot, {
-          preserveRecentWorkspaces: true,
-          ...(ephemeralSameWorkspace ? { fastPath: true } : { deferRuntimeRefresh: true }),
-        });
-        const restored = restoreEphemeralSessionState(ephemeral);
-        const bundle = this.sessionRegistry.upsertFromRestored(
-          ephemeral.workspaceRoot,
-          restored,
-          (messages, timelineSnapshot) => this.createMessageTimelineFromMessages(messages, timelineSnapshot),
-        );
-        await this.finishSessionActivation(bundle);
-        this.lastRuntimeError = '';
-        return this.buildSnapshot();
-      }
-
-      const resolvedPath = path.resolve(filePath);
-      const warmBundle = this.sessionRegistry.findBySessionPath(resolvedPath);
-      const warmMessageCount = warmBundle?.messageTimeline.toMessages().length ?? 0;
-      if (warmBundle?.activeSession && warmMessageCount > 0) {
-        await this.ensureInitialized(warmBundle.workspaceRoot, { fastPath: true });
-        this.sessionRegistry.activateExisting(warmBundle);
-        await this.finishSessionActivation(warmBundle);
-        this.lastRuntimeError = '';
-        await this.dispatchExtensionEvent({
-          type: 'onSessionOpened',
-          detail: {
-            filePath: resolvedPath,
-            displayName: warmBundle.activeSession.displayName,
-          },
-        });
-        return this.buildSnapshot();
-      }
-
-      const loaded = await loadStoredSession(filePath);
-      const workspaceRoot = loaded.workspaceRoot ?? this.requireState().workspaceRoot;
-      const sameWorkspace =
-        this.initialized
-        && Boolean(this.state?.workspaceRoot)
-        && sameWorkspaceRoot(this.state!.workspaceRoot, workspaceRoot);
-      await this.ensureInitialized(workspaceRoot, {
-        ...(sameWorkspace ? { fastPath: true } : { deferRuntimeRefresh: true }),
-        preserveRecentWorkspaces: true,
-      });
-      const restored = restoreStoredSessionState({
-        filePath,
-        loaded,
-        fallbackMessages: restoreMessagesFromArchive(loaded),
-      });
-      const bundle = this.sessionRegistry.upsertFromRestored(
-        workspaceRoot,
-        restored,
-        (messages, timelineSnapshot) => this.createMessageTimelineFromMessages(messages, timelineSnapshot),
-      );
-      bundle.listSortSavedAtUnixMs = loaded.savedAtUnixMs;
-      await this.finishSessionActivation(bundle);
-      this.lastRuntimeError = '';
-      await this.dispatchExtensionEvent({
-        type: 'onSessionOpened',
-        detail: {
-          filePath: path.resolve(filePath),
-          displayName: bundle.activeSession!.displayName,
-        },
-      });
-      return this.buildSnapshot();
-    });
+    return openSessionCommand(this.sessionActivationContext(), filePath);
   }
 
   private runtimeActivationSignature(bundle: SessionBundle): string {
-    const state = this.requireState();
-    return JSON.stringify({
-      model: state.config.activeModel,
-      imageModel: state.config.imageGenerationModel ?? '',
-      apiBase: currentApiBase(state.config),
-      workspaceRoot: bundle.workspaceRoot || state.workspaceRoot,
-      agentMode: resolveDesktopAgentMode(state.config),
-      approvalLevel: bundle.approvalLevel,
-      loopEnabled: bundle.loopEnabled,
-      todoSessionKey: this.resolveTodoSessionKeyForBundle(bundle),
-    });
+    return runtimeActivationSignature(this.sessionActivationContext(), bundle);
   }
 
   private isBundleRuntimeFresh(bundle: SessionBundle): boolean {
-    if (!bundle.runtime || bundle.runtime.isBusy() || !bundle.runtimeTransport) {
-      return false;
-    }
-    if (!bundle.runtimeActivationSignature) {
-      return false;
-    }
-    return bundle.runtimeActivationSignature === this.runtimeActivationSignature(bundle);
+    return isBundleRuntimeFresh(this.sessionActivationContext(), bundle);
   }
 
   /** After registry switch: wire runtime for new loads, resume in-flight runs without resetting timeline. */
   private async finishSessionActivation(bundle: SessionBundle): Promise<void> {
-    await this.syncPlanStateForBundle(bundle);
-    if (bundle.runtime?.isBusy()) {
-      await this.tickSession(bundle);
-      this.syncActiveRuntimePointer();
-      return;
-    }
-    this.resetStreamingPlacementState(true, bundle);
-    if (this.isBundleRuntimeFresh(bundle)) {
-      await this.refreshTodoSnapshotForBundle(bundle);
-      await this.flushDeferredRuntimeRefreshIfIdle(bundle);
-      this.syncActiveRuntimePointer();
-      return;
-    }
-    await this.ensureToolExecutor(bundle);
-    await this.refreshTodoSnapshotForBundle(bundle);
-    await this.refreshRuntimeForBundle(bundle);
-    await this.flushDeferredRuntimeRefreshIfIdle(bundle);
-    this.syncActiveRuntimePointer();
+    return finishSessionActivationCommand(this.sessionActivationContext(), bundle);
   }
 
   async invoke(command: HostCommandName, payload?: unknown): Promise<unknown> {
