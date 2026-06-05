@@ -269,6 +269,7 @@ import {
   emptyDreamCollectorSnapshot,
   isDreamCollectorDebugSessionPath,
 } from './dreams.js';
+import { resolveLightweightChatModelProfile } from './lightweight-chat-model.js';
 import {
   buildSessionTodosContextText,
   createTodoScope,
@@ -2003,8 +2004,11 @@ class DesktopHostService {
     repoRoot: string,
   ): Promise<{ worktreeName: string; branchName: string }> {
     const state = this.requireState();
-    const activeProfile = state.config.models.find((model) => model.name === state.config.activeModel);
-    const apiKey = await resolveApiKeyForConfigModel(state.config, state.config.activeModel);
+    const lightweightModel = resolveLightweightChatModelProfile(state.config);
+    if (!lightweightModel) {
+      throw new Error(i18n.t('error.lightweightChatModelNotConfigured'));
+    }
+    const apiKey = await resolveApiKeyForConfigModel(state.config, lightweightModel.name);
     if (!apiKey) {
       throw new Error(i18n.t('error.autoWorktreeNameFailedNoKey'));
     }
@@ -2015,7 +2019,8 @@ class DesktopHostService {
       workspaceRoot: state.workspaceRoot,
       gitBranch: state.git.branch,
       config: state.config,
-      activeProfile,
+      taskModel: lightweightModel.name,
+      taskProfile: lightweightModel.profile,
       apiKey,
       metadata: state.metadata,
       extensionSystemPrompts,

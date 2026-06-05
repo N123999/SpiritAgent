@@ -172,14 +172,14 @@ function updateConfigFromSettingsForm(
   return {
     activeModel: s.activeModel,
     imageGenerationModel: s.imageGenerationModel,
+    lightweightChatModel: s.lightweightChatModel,
     apiBase: s.apiBase,
     windowsMica: s.windowsMica,
     agentMode: s.agentMode,
     webHost,
     dreams: {
       enabled: s.dreamEnabled,
-      collectorModel: s.dreamCollectorModel,
-      clearCollectorModel: !s.dreamCollectorModel.trim(),
+      clearCollectorModel: true,
       debugMode: s.dreamDebugMode,
     },
     agents: {
@@ -289,6 +289,7 @@ export function useDesktopRuntime() {
   const [settings, setSettings] = useState({
     activeModel: "",
     imageGenerationModel: "",
+    lightweightChatModel: "",
     apiBase: "",
     uiLocale: "",
     apiKey: "",
@@ -298,7 +299,6 @@ export function useDesktopRuntime() {
     webHostHost: "127.0.0.1",
     webHostPort: 7788,
     dreamEnabled: false,
-    dreamCollectorModel: "",
     dreamDebugMode: false,
     lspEnabled: true,
   });
@@ -495,6 +495,7 @@ export function useDesktopRuntime() {
       return {
         activeModel: next.config.activeModel,
         imageGenerationModel: next.config.imageGenerationModel ?? "",
+        lightweightChatModel: next.config.lightweightChatModel ?? "",
         apiBase: activeModelProfile?.apiBase ?? current.apiBase,
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
@@ -504,7 +505,6 @@ export function useDesktopRuntime() {
         webHostHost: next.webHost.config.host,
         webHostPort: next.webHost.config.port,
         dreamEnabled: next.dreams.settings.enabled,
-        dreamCollectorModel: next.dreams.settings.collectorModel ?? "",
         dreamDebugMode: next.dreams.settings.debugMode,
         lspEnabled: next.lsp.userEnabled,
       };

@@ -59,7 +59,6 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     dreams: {
       settings: {
         enabled: input.config.dreams.enabled === true,
-        ...(input.config.dreams.collectorModel ? { collectorModel: input.config.dreams.collectorModel } : {}),
         debugMode: input.config.dreams.debugMode === true,
       },
       collector: { ...input.dreamCollectorStatus },
@@ -81,6 +80,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
       })),
       activeModel: input.config.activeModel,
       ...(input.config.imageGenerationModel ? { imageGenerationModel: input.config.imageGenerationModel } : {}),
+      ...(input.config.lightweightChatModel ? { lightweightChatModel: input.config.lightweightChatModel } : {}),
       ...(input.config.uiLocale ? { uiLocale: input.config.uiLocale } : {}),
       activeApiKeyConfigured: input.activeApiKeyConfigured,
       windowsMica: input.config.windowsMica !== false,

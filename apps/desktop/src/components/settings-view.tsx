@@ -88,6 +88,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export type SettingsFormState = {
   activeModel: string;
   imageGenerationModel: string;
+  lightweightChatModel: string;
   apiBase: string;
   uiLocale: string;
   apiKey: string;
@@ -97,7 +98,6 @@ export type SettingsFormState = {
   webHostHost: string;
   webHostPort: number;
   dreamEnabled: boolean;
-  dreamCollectorModel: string;
   dreamDebugMode: boolean;
   lspEnabled: boolean;
 };
@@ -200,6 +200,7 @@ type SettingsModelProfile = DesktopSnapshot["config"]["models"][number];
 type ModelDefaultAssignments = {
   activeModel: boolean;
   imageGenerationModel: boolean;
+  lightweightChatModel: boolean;
 };
 
 type ModelDefaultRole = keyof ModelDefaultAssignments;
@@ -356,10 +357,18 @@ function canAssignAsImageGenerationModel(
   return isCurrentImageGenerationModel || model.capabilities?.includes("imageGeneration") === true;
 }
 
+function canAssignAsLightweightChatModel(
+  model: SettingsModelProfile,
+  isCurrentLightweightChatModel: boolean,
+): boolean {
+  return canAssignAsActiveModel(model, isCurrentLightweightChatModel);
+}
+
 function getSupportedModelDefaultRoles(
   model: SettingsModelProfile,
   activeModel: string,
   imageGenerationModel: string,
+  lightweightChatModel: string,
 ): ModelDefaultRole[] {
   const roles: ModelDefaultRole[] = [];
 
@@ -371,6 +380,10 @@ function getSupportedModelDefaultRoles(
     roles.push("imageGenerationModel");
   }
 
+  if (canAssignAsLightweightChatModel(model, model.name === lightweightChatModel)) {
+    roles.push("lightweightChatModel");
+  }
+
   return roles;
 }
 
@@ -380,7 +393,13 @@ function modelDefaultActionLabel(roles: readonly ModelDefaultRole[]): string {
   }
 
   if (roles.length === 1) {
-    return roles[0] === "activeModel" ? i18n.t('settings.setActiveModel') : i18n.t('settings.setImageGenModel');
+    if (roles[0] === "activeModel") {
+      return i18n.t('settings.setActiveModel');
+    }
+    if (roles[0] === "imageGenerationModel") {
+      return i18n.t('settings.setImageGenModel');
+    }
+    return i18n.t('settings.setLightweightChatModel');
   }
 
   return i18n.t('settings.selectDefaultRole');
@@ -2081,6 +2100,7 @@ function ModelSettingsRowButton({
   model,
   isActive,
   isImageDefault,
+  isLightweightDefault,
   defaultActionLabel,
   disabled,
   isHighlighted = false,
@@ -2091,6 +2111,7 @@ function ModelSettingsRowButton({
   model: SettingsModelProfile;
   isActive: boolean;
   isImageDefault: boolean;
+  isLightweightDefault: boolean;
   defaultActionLabel: string;
   disabled: boolean;
   isHighlighted?: boolean;
@@ -2127,6 +2148,11 @@ function ModelSettingsRowButton({
               {t("settings.currentImageGen")}
             </Badge>
           ) : null}
+          {isLightweightDefault ? (
+            <Badge variant="secondary" className="text-muted-foreground">
+              {t("settings.currentLightweightChat")}
+            </Badge>
+          ) : null}
           {model.capabilities?.map((capability) => (
             <Badge key={capability} variant="outline" className="text-muted-foreground">
               {modelCapabilityLabel(capability)}
@@ -2142,6 +2168,7 @@ function ModelSettingsRowWithHover({
   model,
   isActive,
   isImageDefault,
+  isLightweightDefault,
   defaultActionLabel,
   disabled,
   onDefaultAction,
@@ -2149,6 +2176,7 @@ function ModelSettingsRowWithHover({
   model: SettingsModelProfile;
   isActive: boolean;
   isImageDefault: boolean;
+  isLightweightDefault: boolean;
   defaultActionLabel: string;
   disabled: boolean;
   onDefaultAction: () => void;
@@ -2162,6 +2190,7 @@ function ModelSettingsRowWithHover({
         model={model}
         isActive={isActive}
         isImageDefault={isImageDefault}
+        isLightweightDefault={isLightweightDefault}
         defaultActionLabel={defaultActionLabel}
         disabled={disabled}
         isHighlighted={isHighlighted}
@@ -2246,6 +2275,7 @@ function ModelsSettingsPanel({
   const [modelDefaultAssignments, setModelDefaultAssignments] = useState<ModelDefaultAssignments>({
     activeModel: false,
     imageGenerationModel: false,
+    lightweightChatModel: false,
   });
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<DesktopModelProvider | null>(null);
@@ -2254,6 +2284,8 @@ function ModelsSettingsPanel({
   const activeModel = settings.activeModel.trim() || (snapshot?.config.activeModel ?? "");
   const imageGenerationModel =
     settings.imageGenerationModel.trim() || (snapshot?.config.imageGenerationModel ?? "");
+  const lightweightChatModel =
+    settings.lightweightChatModel.trim() || (snapshot?.config.lightweightChatModel ?? "");
   const modelDefaultsDialogModel =
     modelDefaultsDialogTarget === null
       ? null
@@ -2267,12 +2299,21 @@ function ModelsSettingsPanel({
       modelDefaultsDialogModel,
       modelDefaultsDialogModel.name === imageGenerationModel,
     );
+  const canAssignLightweightChatRole =
+    modelDefaultsDialogModel !== null &&
+    canAssignAsLightweightChatModel(
+      modelDefaultsDialogModel,
+      modelDefaultsDialogModel.name === lightweightChatModel,
+    );
   const isModelDefaultsDialogModelActive = modelDefaultsDialogModel?.name === activeModel;
+  const isModelDefaultsDialogModelLightweight =
+    modelDefaultsDialogModel?.name === lightweightChatModel;
   const hasModelDefaultAssignmentChanges =
     modelDefaultsDialogModel !== null &&
     (modelDefaultAssignments.activeModel !== isModelDefaultsDialogModelActive ||
       modelDefaultAssignments.imageGenerationModel !==
-        (modelDefaultsDialogModel.name === imageGenerationModel));
+        (modelDefaultsDialogModel.name === imageGenerationModel) ||
+      modelDefaultAssignments.lightweightChatModel !== isModelDefaultsDialogModelLightweight);
 
   const catalogDetailByModelName = useMemo(
     () => buildModelCatalogDetailMap(models, snapshot?.config.modelCatalogHints),
@@ -2344,6 +2385,7 @@ function ModelsSettingsPanel({
     setModelDefaultAssignments({
       activeModel: model.name === activeModel,
       imageGenerationModel: model.name === imageGenerationModel,
+      lightweightChatModel: model.name === lightweightChatModel,
     });
   };
 
@@ -2352,6 +2394,7 @@ function ModelsSettingsPanel({
     setModelDefaultAssignments({
       activeModel: false,
       imageGenerationModel: false,
+      lightweightChatModel: false,
     });
   };
 
@@ -2380,6 +2423,20 @@ function ModelsSettingsPanel({
       }
     }
 
+    if (canAssignLightweightChatRole) {
+      if (
+        modelDefaultAssignments.lightweightChatModel &&
+        modelDefaultsDialogModel.name !== lightweightChatModel
+      ) {
+        patch.lightweightChatModel = modelDefaultsDialogModel.name;
+      } else if (
+        !modelDefaultAssignments.lightweightChatModel &&
+        modelDefaultsDialogModel.name === lightweightChatModel
+      ) {
+        patch.lightweightChatModel = "";
+      }
+    }
+
     if (Object.keys(patch).length === 0) {
       closeModelDefaultsDialog();
       return;
@@ -2399,8 +2456,12 @@ function ModelsSettingsPanel({
       if (model.name !== activeModel) {
         patch.activeModel = model.name;
       }
-    } else if (model.name !== imageGenerationModel) {
-      patch.imageGenerationModel = model.name;
+    } else if (role === "imageGenerationModel") {
+      if (model.name !== imageGenerationModel) {
+        patch.imageGenerationModel = model.name;
+      }
+    } else if (model.name !== lightweightChatModel) {
+      patch.lightweightChatModel = model.name;
     }
 
     if (Object.keys(patch).length === 0) {
@@ -2411,7 +2472,12 @@ function ModelsSettingsPanel({
   };
 
   const handleModelDefaultAction = (model: SettingsModelProfile) => {
-    const supportedRoles = getSupportedModelDefaultRoles(model, activeModel, imageGenerationModel);
+    const supportedRoles = getSupportedModelDefaultRoles(
+      model,
+      activeModel,
+      imageGenerationModel,
+      lightweightChatModel,
+    );
 
     if (supportedRoles.length === 0) {
       openModelDefaultsDialog(model);
@@ -2564,10 +2630,12 @@ function ModelsSettingsPanel({
                         {groupModels.map((model) => {
                           const isActive = model.name === activeModel;
                           const isImageDefault = model.name === imageGenerationModel;
+                          const isLightweightDefault = model.name === lightweightChatModel;
                           const supportedDefaultRoles = getSupportedModelDefaultRoles(
                             model,
                             activeModel,
                             imageGenerationModel,
+                            lightweightChatModel,
                           );
                           const defaultActionLabel = modelDefaultActionLabel(supportedDefaultRoles);
                           const rowDisabled = modelsBusy || modelsPreviewBusy;
@@ -2580,6 +2648,7 @@ function ModelsSettingsPanel({
                                 model={model}
                                 isActive={isActive}
                                 isImageDefault={isImageDefault}
+                                isLightweightDefault={isLightweightDefault}
                                 defaultActionLabel={defaultActionLabel}
                                 disabled={rowDisabled}
                                 onDefaultAction={() => handleModelDefaultAction(model)}
@@ -2593,6 +2662,7 @@ function ModelsSettingsPanel({
                               model={model}
                               isActive={isActive}
                               isImageDefault={isImageDefault}
+                              isLightweightDefault={isLightweightDefault}
                               defaultActionLabel={defaultActionLabel}
                               disabled={rowDisabled}
                               onDefaultAction={() => handleModelDefaultAction(model)}
@@ -2625,10 +2695,12 @@ function ModelsSettingsPanel({
                       {groupModels.map((model) => {
                         const isActive = model.name === activeModel;
                         const isImageDefault = model.name === imageGenerationModel;
+                        const isLightweightDefault = model.name === lightweightChatModel;
                         const supportedDefaultRoles = getSupportedModelDefaultRoles(
                           model,
                           activeModel,
                           imageGenerationModel,
+                          lightweightChatModel,
                         );
                         const defaultActionLabel = modelDefaultActionLabel(supportedDefaultRoles);
                         return (
@@ -2637,6 +2709,7 @@ function ModelsSettingsPanel({
                             model={model}
                             isActive={isActive}
                             isImageDefault={isImageDefault}
+                            isLightweightDefault={isLightweightDefault}
                             defaultActionLabel={defaultActionLabel}
                             disabled={modelsBusy || modelsPreviewBusy}
                             onDefaultAction={() => handleModelDefaultAction(model)}
@@ -2653,10 +2726,12 @@ function ModelsSettingsPanel({
                 {standaloneModels.map((model) => {
                   const isActive = model.name === activeModel;
                   const isImageDefault = model.name === imageGenerationModel;
+                  const isLightweightDefault = model.name === lightweightChatModel;
                   const supportedDefaultRoles = getSupportedModelDefaultRoles(
                     model,
                     activeModel,
                     imageGenerationModel,
+                    lightweightChatModel,
                   );
                   const defaultActionLabel = modelDefaultActionLabel(supportedDefaultRoles);
                   const isStandaloneModelDisabled = modelsBusy || modelsPreviewBusy;
@@ -2704,6 +2779,11 @@ function ModelsSettingsPanel({
                           {isImageDefault ? (
                             <Badge variant="secondary" className="text-muted-foreground">
                               {t('settings.currentImageGen')}
+                            </Badge>
+                          ) : null}
+                          {isLightweightDefault ? (
+                            <Badge variant="secondary" className="text-muted-foreground">
+                              {t('settings.currentLightweightChat')}
                             </Badge>
                           ) : null}
                           {model.keyConfigured ? (
@@ -2821,7 +2901,36 @@ function ModelsSettingsPanel({
                 </div>
               </div>
             ) : null}
-            {!canAssignActiveRole && !canAssignImageGenerationRole ? (
+            {canAssignLightweightChatRole ? (
+              <div
+                className="group/field flex items-start gap-3 rounded-lg border border-dialog-panel-border px-3 py-3 transition-colors data-[disabled=true]:opacity-70"
+                data-disabled={modelsBusy || modelsPreviewBusy || undefined}
+              >
+                <Checkbox
+                  id="model-default-lightweight-chat"
+                  checked={modelDefaultAssignments.lightweightChatModel}
+                  disabled={modelsBusy || modelsPreviewBusy}
+                  onCheckedChange={(checked) =>
+                    setModelDefaultAssignments((current) => ({
+                      ...current,
+                      lightweightChatModel: checked === true,
+                    }))
+                  }
+                />
+                <div className="grid gap-1.5">
+                  <Label
+                    htmlFor="model-default-lightweight-chat"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    {t('settings.lightweightChatModelLabel')}
+                  </Label>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {t('settings.lightweightChatModelUsage')}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {!canAssignActiveRole && !canAssignImageGenerationRole && !canAssignLightweightChatRole ? (
               <div className="rounded-lg border border-dashed border-dialog-panel-border px-3 py-4 text-sm text-muted-foreground">
                 {t('settings.noDefaultRolesForModel')}
               </div>
@@ -3302,10 +3411,8 @@ function DreamSettingsPanel({
   onListDreamsOverview,
 }: Pick<SettingsViewProps, "theme" | "settings" | "snapshot" | "onSavePatch" | "onListDreamsOverview">) {
   const { t } = useTranslation();
-  const models = snapshot?.config.models ?? [];
   const collector = snapshot?.dreams.collector;
   const disabled = !settings.dreamEnabled;
-  const selectValue = settings.dreamCollectorModel.trim() || "__none";
   const [dreamItems, setDreamItems] = useState<DesktopDreamOverviewItem[]>([]);
   const [dreamsLoading, setDreamsLoading] = useState(false);
 
@@ -3373,32 +3480,6 @@ function DreamSettingsPanel({
         </SettingsRow>
 
         <SettingsRow
-          label={t('settings.collectorModel')}
-          description={t('settings.collectorModelDescription')}
-          htmlFor="settings-dream-model"
-        >
-          <Select
-            value={selectValue}
-            disabled={disabled || models.length === 0}
-            onValueChange={(value) =>
-              void onSavePatch({ dreamCollectorModel: value === "__none" ? "" : value })
-            }
-          >
-            <SelectTrigger id="settings-dream-model" className="w-full sm:min-w-[14rem]">
-              <SelectValue placeholder={t('settings.selectModel')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">{t('settings.notSelected')}</SelectItem>
-              {models.map((model) => (
-                <SelectItem key={model.name} value={model.name}>
-                  {model.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-
-        <SettingsRow
           label={t('settings.debugMode')}
           description={t('settings.debugModeDescription')}
           htmlFor="settings-dream-debug"
@@ -3433,9 +3514,6 @@ function DreamSettingsPanel({
             ) : null}
             {collector?.lastError ? (
               <p className="break-words text-destructive">{collector.lastError}</p>
-            ) : null}
-            {settings.dreamEnabled && !settings.dreamCollectorModel.trim() ? (
-              <p className="text-amber-600 dark:text-amber-400">{t('settings.selectCollectorModelHint')}</p>
             ) : null}
           </div>
         </div>

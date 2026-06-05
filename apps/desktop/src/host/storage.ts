@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import { Entry } from '@napi-rs/keyring';
 import i18n from '../lib/i18n-host.js';
+import { normalizeLightweightChatModel } from './lightweight-chat-model.js';
 import {
   defaultModelReasoningEffort,
   normalizeModelReasoningEffort,
@@ -89,6 +90,7 @@ export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
   activeModel: string;
   imageGenerationModel?: string;
+  lightweightChatModel?: string;
   recentWorkspaces?: string[];
   /** When `none`, cwd is the user home directory and workspace-scoped instructions/MCP are skipped. */
   workspaceBinding?: DesktopWorkspaceBinding;
@@ -604,11 +606,17 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
         ? raw.activeModel!.trim()
         : normalizedModels[0]!.name;
   const imageGenerationModel = normalizeImageGenerationModel(raw.imageGenerationModel, normalizedModels);
+  const dreams = normalizeDreamConfig(raw.dreams);
+  const lightweightChatModel = normalizeLightweightChatModel(
+    raw.lightweightChatModel ?? dreams.collectorModel,
+    normalizedModels,
+  );
 
   return {
     models: normalizedModels,
     activeModel,
     ...(imageGenerationModel ? { imageGenerationModel } : {}),
+    ...(lightweightChatModel ? { lightweightChatModel } : {}),
     recentWorkspaces: normalizeRecentWorkspaceRoots(raw.recentWorkspaces),
     workspaceBinding: normalizeWorkspaceBinding(raw.workspaceBinding),
     ...(typeof raw.lastProjectWorkspaceRoot === 'string' && raw.lastProjectWorkspaceRoot.trim()
@@ -620,7 +628,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
     windowsMica: raw.windowsMica !== false,
     agentMode: resolveDesktopAgentMode({ agentMode: raw.agentMode, planMode: raw.planMode }),
     webHost: normalizeWebHostConfig(raw.webHost),
-    dreams: normalizeDreamConfig(raw.dreams),
+    dreams,
     agents: normalizeAgentsConfig(raw.agents),
   };
 }

@@ -35,6 +35,7 @@ import {
   resolveDesktopTransportKind,
   supportsImageGeneration,
 } from './model-config.js';
+import { modelSupportsChat } from './lightweight-chat-model.js';
 import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
 import {
   loadHostMetadata,
@@ -141,6 +142,21 @@ export async function updateConfigCommand(
           throw new Error(i18n.t('error.modelNoImageGenCapability', { model: imageGenerationModel }));
         }
         state.config.imageGenerationModel = imageProfile.name;
+      }
+    }
+    if (request.lightweightChatModel !== undefined) {
+      const lightweightChatModel = request.lightweightChatModel.trim();
+      if (!lightweightChatModel) {
+        delete state.config.lightweightChatModel;
+      } else {
+        const chatProfile = state.config.models.find((model) => model.name === lightweightChatModel);
+        if (!chatProfile) {
+          throw new Error(i18n.t('error.lightweightChatModelNotFound', { model: lightweightChatModel }));
+        }
+        if (!modelSupportsChat(chatProfile)) {
+          throw new Error(i18n.t('error.modelNoChatCapability', { model: lightweightChatModel }));
+        }
+        state.config.lightweightChatModel = chatProfile.name;
       }
     }
     state.config.windowsMica = request.windowsMica !== false;
@@ -516,6 +532,9 @@ async function finalizeModelRemoval(
   );
   if (state.config.imageGenerationModel && namesToRemove.includes(state.config.imageGenerationModel)) {
     delete state.config.imageGenerationModel;
+  }
+  if (state.config.lightweightChatModel && namesToRemove.includes(state.config.lightweightChatModel)) {
+    delete state.config.lightweightChatModel;
   }
   await saveConfig(state.config);
   if (options?.removeProviderKey) {

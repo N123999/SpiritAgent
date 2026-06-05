@@ -33,6 +33,7 @@ export interface CheckoutGitBranchRequest {
 export interface UpdateConfigRequest {
   activeModel: string;
   imageGenerationModel?: string;
+  lightweightChatModel?: string;
   apiBase: string;
   reasoningEffort?: DesktopModelReasoningEffort;
   uiLocale?: string;
@@ -599,6 +600,7 @@ export interface DesktopConfigSnapshot {
   models: ModelProfileSnapshot[];
   activeModel: string;
   imageGenerationModel?: string;
+  lightweightChatModel?: string;
   uiLocale?: string;
   activeApiKeyConfigured: boolean;
   /** 桌面宿主在 Windows 上是否使用 Mica 风格；无字段时按 true 处理。 */
