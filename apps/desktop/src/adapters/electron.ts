@@ -147,6 +147,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     subscribeDreamUpdates(callback) {
       return bridge.dreamSubscribe(callback);
     },
+    subscribeSessionListUpdates(callback) {
+      return bridge.sessionListSubscribe(callback);
+    },
     replyPendingApproval(decision) {
       return bridge.replyPendingApproval(decision);
     },

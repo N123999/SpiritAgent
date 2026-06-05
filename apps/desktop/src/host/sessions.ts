@@ -9,7 +9,7 @@ import type {
 } from '../types.js';
 import { extractActivePlanPathFromLlmHistory, normalizeApprovalLevel } from '@spirit-agent/host-internal';
 import type { ApprovalLevel } from '@spirit-agent/host-internal';
-import type { StoredDesktopSession } from './contracts.js';
+import type { SessionTitleSource, StoredDesktopSession } from './contracts.js';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import {
   normalizeMessageAuxSnapshot,
@@ -22,6 +22,7 @@ import { createDesktopRewindMetadata, type StoredDesktopRewindMetadata } from '.
 
 export const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
 export const EPHEMERAL_WORKTREE_SESSION_PREFIX = 'ephemeral://worktree-naming/';
+export const EPHEMERAL_SESSION_TITLE_PREFIX = 'ephemeral://session-title/';
 const MAX_EPHEMERAL_COMMIT_SESSIONS = 8;
 const MAX_EPHEMERAL_WORKTREE_SESSIONS = 8;
 
@@ -45,6 +46,7 @@ export interface RestoredSessionState {
   loopEnabled: boolean;
   approvalLevel: ApprovalLevel;
   activePlanPath?: string;
+  sessionTitleSource?: SessionTitleSource;
 }
 
 export function isEphemeralCommitSessionPath(filePath: string): boolean {
@@ -181,6 +183,9 @@ export function restoreStoredSessionState(input: {
     loopEnabled: input.loaded.loopEnabled === true,
     approvalLevel: normalizeApprovalLevel(input.loaded.approvalLevel),
     ...(activePlanPath ? { activePlanPath } : {}),
+    ...(input.loaded.sessionTitleSource === 'seed' || input.loaded.sessionTitleSource === 'llm'
+      ? { sessionTitleSource: input.loaded.sessionTitleSource }
+      : {}),
   };
 }
 
@@ -188,6 +193,7 @@ export function buildStoredDesktopSession(input: {
   archive: ChatArchive;
   savedAtUnixMs?: number;
   sessionDisplayName: string;
+  sessionTitleSource?: SessionTitleSource;
   workspaceRoot: string;
   gitBranch?: string;
   activePlanPath?: string;
@@ -203,6 +209,7 @@ export function buildStoredDesktopSession(input: {
     approvalLevel: input.approvalLevel,
     savedAtUnixMs: input.savedAtUnixMs ?? Date.now(),
     sessionDisplayName: input.sessionDisplayName,
+    ...(input.sessionTitleSource ? { sessionTitleSource: input.sessionTitleSource } : {}),
     workspaceRoot: input.workspaceRoot,
     ...(input.gitBranch ? { gitBranch: input.gitBranch } : {}),
     ...(input.activePlanPath ? { activePlanPath: input.activePlanPath } : {}),

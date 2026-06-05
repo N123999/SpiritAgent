@@ -72,9 +72,12 @@ export type HostCommandName =
 /** 与 `apps/cli/src/tool_runtime.rs` 中 `ToolRequest` 对齐的宿主工具请求。 */
 export type DesktopToolRequest = HostToolRequest<AskQuestionsQuestionSpec>;
 
+export type SessionTitleSource = 'seed' | 'llm';
+
 export interface StoredDesktopSession extends ChatArchive {
   savedAtUnixMs: number;
   sessionDisplayName?: string;
+  sessionTitleSource?: SessionTitleSource;
   workspaceRoot?: string;
   gitBranch?: string;
   activePlanPath?: string;

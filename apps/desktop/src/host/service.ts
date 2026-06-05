@@ -234,6 +234,8 @@ import {
   rememberEphemeralWorktreeSessionRecord,
   removeEphemeralSessionRecord,
 } from './sessions.js';
+import { generateSessionTitleFromModelTask } from './session-title-generation.js';
+import { applyGeneratedSessionTitle } from './session-title-service.js';
 import {
   buildPrimaryTransportConfig,
   modelCapabilitiesFromConfig,
@@ -420,6 +422,8 @@ class DesktopHostService {
   private dreamCollectorLastTickUnixMs = 0;
   private dreamCollectorMonitorTimer: ReturnType<typeof setInterval> | undefined;
   private readonly dreamUpdateListeners = new Set<(snapshot: DesktopSnapshot) => void>();
+  private readonly sessionListUpdateListeners = new Set<() => void>();
+  private readonly sessionTitleGenerationInFlight = new Set<string>();
   private gitRefreshInFlight: Promise<void> | null = null;
   private gitRefreshQueued = false;
   private readonly todoClearingBySession = new Map<
@@ -566,6 +570,8 @@ class DesktopHostService {
       allocateMessageId: () => this.allocateMessageId(),
       resetStreamingPlacementState: (full) => this.resetStreamingPlacementState(full),
       persistCurrentSessionIfNeeded: () => this.persistCurrentSessionIfNeeded(),
+      scheduleSessionTitleGenerationIfNeeded: (seedText) =>
+        this.scheduleSessionTitleGenerationIfNeeded(seedText),
       dispatchUserMessageExtensionEvent: (text, displayText, messageId) =>
         this.dispatchExtensionEvent({
           type: 'onUserMessage',
@@ -829,6 +835,13 @@ class DesktopHostService {
     this.startDreamCollectorMonitorIfNeeded();
     return () => {
       this.dreamUpdateListeners.delete(listener);
+    };
+  }
+
+  subscribeSessionListUpdates(listener: () => void): () => void {
+    this.sessionListUpdateListeners.add(listener);
+    return () => {
+      this.sessionListUpdateListeners.delete(listener);
     };
   }
 
@@ -1735,6 +1748,82 @@ class DesktopHostService {
     }
   }
 
+  private notifySessionListUpdated(): void {
+    if (this.sessionListUpdateListeners.size === 0) {
+      return;
+    }
+    for (const listener of this.sessionListUpdateListeners) {
+      listener();
+    }
+  }
+
+  private scheduleSessionTitleGenerationIfNeeded(seedText: string): void {
+    const bundle = this.activeBundle();
+    const activeSession = bundle.activeSession;
+    if (!activeSession || activeSession.readOnly === true || activeSession.kind === 'ephemeral') {
+      return;
+    }
+
+    const userMessageCount = bundle.messageTimeline
+      .toMessages()
+      .filter((message) => message.role === 'user').length;
+    if (userMessageCount !== 1) {
+      return;
+    }
+
+    if (bundle.sessionTitleSource !== 'seed') {
+      return;
+    }
+
+    if (!resolveLightweightChatModelProfile(this.requireState().config)) {
+      return;
+    }
+
+    const filePath = path.resolve(activeSession.filePath);
+    if (this.sessionTitleGenerationInFlight.has(filePath)) {
+      return;
+    }
+
+    this.sessionTitleGenerationInFlight.add(filePath);
+    void this.generateAndApplySessionTitle(bundle, seedText, filePath)
+      .catch((error) => {
+        console.debug(
+          '[session-title] generation failed:',
+          error instanceof Error ? error.message : String(error),
+        );
+      })
+      .finally(() => {
+        this.sessionTitleGenerationInFlight.delete(filePath);
+      });
+  }
+
+  private async generateAndApplySessionTitle(
+    bundle: SessionBundle,
+    seedText: string,
+    filePath: string,
+  ): Promise<void> {
+    const state = this.requireState();
+    const fallbackSeed = bundle.activeSession?.displayName ?? deriveDisplayNameFromSeed(seedText);
+    const result = await generateSessionTitleFromModelTask({
+      config: state.config,
+      workspaceRoot: bundle.workspaceRoot || state.workspaceRoot,
+      firstUserMessage: seedText,
+      fallbackSeedTitle: fallbackSeed,
+    });
+    await applyGeneratedSessionTitle({
+      sessionPath: filePath,
+      title: result.title,
+      registry: this.sessionRegistry,
+      runSerialized: (work) => this.runSerialized(work),
+      persistBundle: (target) =>
+        this.persistSessionBundle(target, {
+          fromRuntime: target.runtime,
+          bumpListSortAt: false,
+        }),
+      notifySessionListUpdated: () => this.notifySessionListUpdated(),
+    });
+  }
+
   private async flushDeferredRuntimeRefreshIfIdle(bundle: SessionBundle = this.activeBundle()): Promise<void> {
     if (!bundle.deferredRuntimeRefreshWhileBusy) {
       return;
@@ -2473,6 +2562,10 @@ export function subscribeDesktopDreamUpdates(
   listener: (snapshot: DesktopSnapshot) => void,
 ): () => void {
   return desktopHostService.subscribeDreamUpdates(listener);
+}
+
+export function subscribeDesktopSessionListUpdates(listener: () => void): () => void {
+  return desktopHostService.subscribeSessionListUpdates(listener);
 }
 
 function normalizeApprovalDecision(

@@ -851,6 +851,16 @@ export function useDesktopRuntime() {
   }, [api, applySnapshot, refreshSessions]);
 
   useEffect(() => {
+    if (!api?.subscribeSessionListUpdates) {
+      return;
+    }
+
+    return api.subscribeSessionListUpdates(() => {
+      void refreshSessions();
+    });
+  }, [api, refreshSessions]);
+
+  useEffect(() => {
     if (!api || !snapshot || snapshot.conversation.isBusy || !snapshot.dreams.settings.enabled) {
       return;
     }

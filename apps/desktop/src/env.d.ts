@@ -94,6 +94,7 @@ declare global {
     poll(): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
     dreamSubscribe(callback: (snapshot: DesktopSnapshot) => void): () => void;
+    sessionListSubscribe(callback: () => void): () => void;
     replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot>;
     replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
     resetSession(): Promise<DesktopSnapshot>;

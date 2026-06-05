@@ -59,10 +59,13 @@ export async function persistDesktopSessionBundle(
   const savedAtUnixMs = bumpListSortAt
     ? Date.now()
     : (bundle.listSortSavedAtUnixMs ?? Date.now());
+  const sessionTitleSource = bundle.sessionTitleSource ?? 'seed';
+  bundle.sessionTitleSource = sessionTitleSource;
   const stored = buildStoredDesktopSession({
     archive,
     savedAtUnixMs,
     sessionDisplayName: activeSession.displayName,
+    sessionTitleSource,
     workspaceRoot: input.workspaceRoot,
     gitBranch: input.gitBranch,
     ...(bundle.activePlanPath ? { activePlanPath: bundle.activePlanPath } : {}),

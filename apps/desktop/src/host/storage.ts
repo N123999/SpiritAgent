@@ -422,6 +422,9 @@ function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDe
     ...(normalizeDisplayName(parsed.sessionDisplayName)
       ? { sessionDisplayName: normalizeDisplayName(parsed.sessionDisplayName) }
       : {}),
+    ...(parsed.sessionTitleSource === 'seed' || parsed.sessionTitleSource === 'llm'
+      ? { sessionTitleSource: parsed.sessionTitleSource }
+      : {}),
     ...(resolveStoredWorkspaceRoot(parsed.workspaceRoot)
       ? { workspaceRoot: resolveStoredWorkspaceRoot(parsed.workspaceRoot) }
       : {}),

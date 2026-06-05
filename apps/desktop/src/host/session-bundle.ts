@@ -4,7 +4,7 @@ import type {
   RuntimeEvent,
   SpiritLlmTransport,
 } from '@spirit-agent/agent-core';
-import type { DesktopToolRequest } from './contracts.js';
+import type { DesktopToolRequest, SessionTitleSource } from './contracts.js';
 import type { ApprovalLevel, WorkLocationKind } from '@spirit-agent/host-internal';
 
 import type { DesktopRuntime } from './runtime.js';
@@ -62,6 +62,8 @@ export interface SessionBundle {
   conversationRevision: number;
   /** Last successful create_plan absolute path for this session. */
   activePlanPath?: string;
+  /** Tracks whether the sidebar title is seed-truncated or LLM-generated. */
+  sessionTitleSource?: SessionTitleSource;
 }
 
 export function createEmptySessionBundle(workspaceRoot: string, id = '__draft__'): SessionBundle {
@@ -133,6 +135,7 @@ export function sessionBundleFromRestored(
     responsesBuiltInPreviewSeenCallIds: new Set(),
     conversationRevision: 0,
     ...(restored.activePlanPath ? { activePlanPath: restored.activePlanPath } : {}),
+    ...(restored.sessionTitleSource ? { sessionTitleSource: restored.sessionTitleSource } : {}),
   };
 }
 
@@ -162,4 +165,5 @@ export function resetSessionBundleInPlace(bundle: SessionBundle): void {
   bundle.todoSessionScopeKey = createTodoSessionScopeKey();
   bundle.conversationRevision = 0;
   bundle.activePlanPath = undefined;
+  bundle.sessionTitleSource = undefined;
 }

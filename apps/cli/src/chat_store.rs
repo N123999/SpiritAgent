@@ -15,6 +15,7 @@ fn default_chat_approval_level() -> String {
     "default".to_string()
 }
 
+/// Desktop 会话 JSON 可能含 `sessionTitleSource`（seed/llm）；CLI 读取时忽略该字段。
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatFile {

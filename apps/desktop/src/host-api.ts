@@ -100,6 +100,7 @@ export interface HostApi {
   poll(): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
   subscribeDreamUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
+  subscribeSessionListUpdates?(callback: () => void): () => void;
   replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot>;
   replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;
   resetSession(): Promise<DesktopSnapshot>;

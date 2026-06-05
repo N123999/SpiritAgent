@@ -126,6 +126,7 @@ import {
   setDesktopMarketplaceFetchImplementation,
   setDesktopExtensionHostAdapter,
   subscribeDesktopDreamUpdates,
+  subscribeDesktopSessionListUpdates,
 } from '../src/host/service.js';
 import {
   configFilePath,
@@ -163,6 +164,7 @@ let desktopWebHostConfig: DesktopWebHostConfigFile | undefined;
 let desktopWebHostPairingCode = createDesktopWebPairingCode();
 let quittingAfterDesktopWebHostStop = false;
 let unsubscribeDesktopDreamUpdates: (() => void) | undefined;
+let unsubscribeDesktopSessionListUpdates: (() => void) | undefined;
 
 const workspacePtyManager = new WorkspacePtyManager();
 
@@ -635,6 +637,14 @@ if (gotSpiritSingleInstanceLock) {
     }
   });
 
+  unsubscribeDesktopSessionListUpdates = subscribeDesktopSessionListUpdates(() => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('desktop:session-list-updated');
+      }
+    }
+  });
+
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
     invokeMainDesktopHostCommand(command, payload),
   );
@@ -919,6 +929,8 @@ if (gotSpiritSingleInstanceLock) {
 app.on('before-quit', (event) => {
   unsubscribeDesktopDreamUpdates?.();
   unsubscribeDesktopDreamUpdates = undefined;
+  unsubscribeDesktopSessionListUpdates?.();
+  unsubscribeDesktopSessionListUpdates = undefined;
   if (quittingAfterDesktopWebHostStop || !desktopWebHost?.isRunning()) {
     return;
   }
