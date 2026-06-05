@@ -312,7 +312,7 @@ function EmptyStateWorkspaceSelector({
               disabled={disabled}
               aria-label={t('app.selectWorkspace')}
               className={cn(
-                "inline-flex h-8 max-w-[min(18.5rem,100%)] min-w-0 items-center gap-1 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+                "inline-flex h-8 max-w-[min(24rem,100%)] min-w-0 items-center gap-1 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
                 instantHoverMotionClass,
               )}
             >
@@ -325,18 +325,14 @@ function EmptyStateWorkspaceSelector({
         }
         footer={
           <>
-            <DropdownMenuItem
-              onSelect={onAddWorkspace}
-              className={cn("gap-2 text-xs", DESKTOP_COMPACT_OVERLAY_ITEM)}
-            >
+            <DropdownMenuItem onSelect={onAddWorkspace} className="gap-2 px-2 py-2 text-sm">
               <FolderPlus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
               <span>{t('app.addWorkspace')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={onSelectNoWorkspace}
               className={cn(
-                "gap-2 text-xs",
-                DESKTOP_COMPACT_OVERLAY_ITEM,
+                "gap-2 px-2 py-2 text-sm",
                 workspaceBinding === "none" && "bg-accent/40",
               )}
             >
@@ -347,7 +343,7 @@ function EmptyStateWorkspaceSelector({
         }
       >
         {filteredWorkspaces.length === 0 ? (
-          <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
+          <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
         ) : (
           filteredWorkspaces.map((workspace) => {
             const selected =
@@ -827,10 +823,10 @@ function ComposerSurface({
                 }
               >
                 {filteredModelGroups.length === 0 ? (
-                  <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
+                  <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
                 ) : (
                   filteredModelGroups.map((group) => (
-                    <div key={group.provider} className="mb-1.5 last:mb-0">
+                    <div key={group.provider} className="mb-2 last:mb-0">
                       <div className={DESKTOP_COMPACT_OVERLAY_GROUP_LABEL}>
                         {t(group.labelKey, { defaultValue: group.fallbackLabel })}
                       </div>
@@ -844,8 +840,7 @@ function ComposerSurface({
                           <DropdownMenuSub key={`${group.provider}:${model.name}`}>
                             <DropdownMenuSubTrigger
                               className={cn(
-                                "items-start gap-1.5 pr-2",
-                                DESKTOP_COMPACT_OVERLAY_ITEM,
+                                "items-start gap-2 px-2 py-2 pr-2",
                                 activeModelProfile?.name === model.name && "bg-accent/40",
                               )}
                               onClick={() => {
@@ -892,7 +887,6 @@ function ComposerSurface({
                                     setModelMenuOpen(false);
                                   }}
                                   className={cn(
-                                    DESKTOP_COMPACT_OVERLAY_ITEM,
                                     model.reasoningEffort === option.value && "bg-accent/40",
                                   )}
                                   title={modelSummary}

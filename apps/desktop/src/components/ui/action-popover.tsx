@@ -3,12 +3,7 @@ import { type VariantProps } from 'class-variance-authority'
 
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  DESKTOP_COMPACT_ACTION_POPOVER_CONTENT,
-  DESKTOP_COMPACT_ACTION_POPOVER_HEADING,
-  DESKTOP_COMPACT_ACTION_POPOVER_ITEM,
-  instantHoverMotionClass,
-} from '@/lib/desktop-chrome'
+import { instantHoverMotionClass } from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
 
 export type ActionPopoverItem = {
@@ -56,7 +51,12 @@ function ActionPopoverItemButton({
       role="menuitem"
       disabled={disabled}
       title={title}
-      className={DESKTOP_COMPACT_ACTION_POPOVER_ITEM}
+      className={cn(
+        'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none',
+        'text-foreground hover:bg-accent hover:text-accent-foreground',
+        'focus-visible:bg-accent focus-visible:text-accent-foreground',
+        'disabled:pointer-events-none disabled:opacity-50',
+      )}
       onClick={onClick}
     >
       {icon}
@@ -129,7 +129,10 @@ export function ActionPopover({
         align="start"
         side="top"
         sideOffset={10}
-        className={cn(DESKTOP_COMPACT_ACTION_POPOVER_CONTENT, contentClassName)}
+        className={cn(
+          'w-max min-w-[11rem] max-w-[min(15rem,calc(100vw-1.25rem))] p-1',
+          contentClassName,
+        )}
         onPointerDownOutside={(event) => {
           const target = event.target
           if (!(target instanceof Node)) {
@@ -144,7 +147,7 @@ export function ActionPopover({
       >
         <div role="menu" aria-label={ariaLabel}>
           {heading ? (
-            <div className={DESKTOP_COMPACT_ACTION_POPOVER_HEADING}>{heading}</div>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{heading}</div>
           ) : null}
           <div className="grid gap-0.5">
             {items.map((item) => (

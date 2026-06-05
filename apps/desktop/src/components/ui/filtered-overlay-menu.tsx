@@ -14,6 +14,7 @@ import {
   DESKTOP_COMPACT_OVERLAY_LIST,
   DESKTOP_COMPACT_OVERLAY_SCROLL_AREA,
   DESKTOP_COMPACT_OVERLAY_WIDTH,
+  DESKTOP_COMPACT_OVERLAY_WORKSPACE_SCROLL_AREA,
   DESKTOP_COMPACT_WORKSPACE_PANEL,
   stopOverlayScrollPropagation,
 } from "@/lib/desktop-chrome";
@@ -88,14 +89,18 @@ export function FilteredOverlayMenu({
         ) : null}
         <ScrollArea
           type="always"
-          className={DESKTOP_COMPACT_OVERLAY_SCROLL_AREA}
+          className={
+            layout === "workspace"
+              ? DESKTOP_COMPACT_OVERLAY_WORKSPACE_SCROLL_AREA
+              : DESKTOP_COMPACT_OVERLAY_SCROLL_AREA
+          }
           onWheel={stopOverlayScrollPropagation}
           onTouchMove={stopOverlayScrollPropagation}
         >
           <FilteredOverlayMenuList>{children}</FilteredOverlayMenuList>
         </ScrollArea>
         {footer ? (
-          <div className="shrink-0 border-t border-border/40 p-1.5">{footer}</div>
+          <div className="shrink-0 border-t border-border/40 p-1">{footer}</div>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
