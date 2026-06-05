@@ -25,8 +25,29 @@ export function languageIdForExtension(relativePath: string): string {
     case '.mjs':
     case '.cjs':
       return 'javascript';
+    case '.py':
+    case '.pyi':
+      return 'python';
+    case '.go':
+      return 'go';
+    case '.rs':
+      return 'rust';
+    case '.c':
+    case '.h':
+      return 'c';
+    case '.cpp':
+    case '.cc':
+    case '.cxx':
+    case '.hpp':
+    case '.hh':
+    case '.hxx':
+      return 'cpp';
+    case '.java':
+      return 'java';
+    case '.cs':
+      return 'csharp';
     default:
-      return 'typescript';
+      return 'plaintext';
   }
 }
 

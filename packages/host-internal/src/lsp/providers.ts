@@ -1,6 +1,8 @@
 import {
+  resolveClangdOnPath,
   resolveGoplsOnPath,
   resolvePyrightOnPath,
+  resolveRustAnalyzerOnPath,
   resolveTypescriptLanguageServerOnPath,
 } from './resolve-server.js';
 
@@ -133,6 +135,8 @@ const PROVIDER_RESOLVERS: Partial<Record<LspProviderId, ProviderResolver>> = {
   'typescript-language-server': resolveTypescriptLanguageServerOnPath,
   pyright: resolvePyrightOnPath,
   gopls: resolveGoplsOnPath,
+  'rust-analyzer': resolveRustAnalyzerOnPath,
+  clangd: resolveClangdOnPath,
 };
 
 export async function discoverLspProvider(

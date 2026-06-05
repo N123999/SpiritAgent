@@ -50,6 +50,20 @@ export function buildCommandCandidates(
   );
 }
 
+export async function resolveRustAnalyzerOnPath(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<ResolvedLanguageServerCommand | undefined> {
+  return resolveCommandOnPath('rust-analyzer', env, platform, []);
+}
+
+export async function resolveClangdOnPath(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<ResolvedLanguageServerCommand | undefined> {
+  return resolveCommandOnPath('clangd', env, platform, ['--background-index']);
+}
+
 export async function resolvePyrightOnPath(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
