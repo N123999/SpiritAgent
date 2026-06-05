@@ -172,14 +172,14 @@ function updateConfigFromSettingsForm(
   return {
     activeModel: s.activeModel,
     imageGenerationModel: s.imageGenerationModel,
+    lightweightChatModel: s.lightweightChatModel,
     apiBase: s.apiBase,
     windowsMica: s.windowsMica,
     agentMode: s.agentMode,
     webHost,
     dreams: {
       enabled: s.dreamEnabled,
-      collectorModel: s.dreamCollectorModel,
-      clearCollectorModel: !s.dreamCollectorModel.trim(),
+      clearCollectorModel: true,
       debugMode: s.dreamDebugMode,
     },
     agents: {
@@ -289,6 +289,7 @@ export function useDesktopRuntime() {
   const [settings, setSettings] = useState({
     activeModel: "",
     imageGenerationModel: "",
+    lightweightChatModel: "",
     apiBase: "",
     uiLocale: "",
     apiKey: "",
@@ -495,6 +496,7 @@ export function useDesktopRuntime() {
       return {
         activeModel: next.config.activeModel,
         imageGenerationModel: next.config.imageGenerationModel ?? "",
+        lightweightChatModel: next.config.lightweightChatModel ?? "",
         apiBase: activeModelProfile?.apiBase ?? current.apiBase,
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,

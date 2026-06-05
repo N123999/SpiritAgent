@@ -37,7 +37,8 @@ interface EphemeralLlmTaskContext {
   workspaceRoot: string;
   gitBranch?: string;
   config: DesktopConfigFile;
-  activeProfile?: ModelProfileSnapshot;
+  taskModel: string;
+  taskProfile?: ModelProfileSnapshot;
   apiKey: string;
   metadata: HostMetadataSummary;
   extensionSystemPrompts: LlmExtensionSystemPrompt[];
@@ -100,10 +101,10 @@ export async function generateWorktreeNamesFromModelTask(
 function buildTaskTransportConfig(context: EphemeralLlmTaskContext): LlmTransportConfig {
   return buildPrimaryTransportConfig({
     apiKey: context.apiKey,
-    model: context.config.activeModel,
+    model: context.taskModel,
     baseUrl: currentApiBase(context.config),
     workspaceRoot: context.workspaceRoot,
-    profile: context.activeProfile,
+    profile: context.taskProfile,
     agentMode: resolveDesktopAgentMode(context.config),
   });
 }

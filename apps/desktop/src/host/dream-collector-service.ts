@@ -20,6 +20,7 @@ import {
   emptyDreamCollectorSnapshot,
   runDesktopDreamCollectorOnce,
 } from './dreams.js';
+import { resolveLightweightChatModelProfile } from './lightweight-chat-model.js';
 import { cloneDesktopConfig } from './service-utils.js';
 
 interface DreamCollectorState {
@@ -62,10 +63,11 @@ export function startDreamCollectorIfNeeded(ctx: DreamCollectorServiceContext): 
     ctx.setStatus(emptyDreamCollectorSnapshot('disabled'));
     return;
   }
-  if (!settings.collectorModel) {
+  const lightweightModel = resolveLightweightChatModelProfile(state.config);
+  if (!lightweightModel) {
     ctx.setStatus({
       ...emptyDreamCollectorSnapshot('missing-model'),
-      lastError: i18n.t('error.dreamCollectorModelNotConfigured'),
+      lastError: i18n.t('error.lightweightChatModelNotConfigured'),
     });
     return;
   }
@@ -101,7 +103,7 @@ export function startDreamCollectorIfNeeded(ctx: DreamCollectorServiceContext): 
   const collectorInput = {
     workspaceRoot: state.workspaceRoot,
     gitBranch: state.git.branch,
-    collectorModel: settings.collectorModel,
+    collectorModel: lightweightModel.name,
     config: cloneDesktopConfig(state.config),
     planMetadata: buildDreamCollectorPlanMetadata(state.metadata.planMetadata),
   };

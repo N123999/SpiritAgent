@@ -88,6 +88,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export type SettingsFormState = {
   activeModel: string;
   imageGenerationModel: string;
+  lightweightChatModel: string;
   apiBase: string;
   uiLocale: string;
   apiKey: string;
