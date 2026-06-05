@@ -20,6 +20,16 @@ import {
 } from "@spirit-agent/host-internal/workspace-file-reference-query";
 
 import { type DesktopAgentMode } from "@/lib/agent-mode";
+import {
+  pickEmptySessionGreetingVariant,
+  resolveEmptySessionGreeting,
+  type EmptySessionGreetingVariantId,
+} from "@/lib/empty-session-greeting";
+import {
+  resolveWorkspaceDisplayLabel,
+  resolveWorkspaceSelectorLabel,
+  sameWorkspacePath,
+} from "@/lib/workspace-display-label";
 
 import {
   ArrowUp,
@@ -238,20 +248,6 @@ function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReaso
   return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
 }
 
-function normalizeWorkspacePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
-}
-
-function sameWorkspacePath(left: string, right: string): boolean {
-  return normalizeWorkspacePath(left) === normalizeWorkspacePath(right);
-}
-
-function deriveWorkspaceLabel(workspaceRoot: string): string {
-  const normalized = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/g, "");
-  const lastSlash = normalized.lastIndexOf("/");
-  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) || normalized : normalized;
-}
-
 function normalizeSlashPath(value: string): string {
   return value.replace(/\\/g, "/").replace(/\/+$/g, "");
 }
@@ -286,15 +282,16 @@ function EmptyStateWorkspaceSelector({
       workspace.label.toLowerCase().includes(query) || workspace.path.toLowerCase().includes(query),
     );
   }, [availableWorkspaces, workspaceFilter]);
-  const currentWorkspaceLabel = useMemo(() => {
-    if (workspaceBinding === "none") {
-      return t("app.noWorkspace");
-    }
-    const matched = availableWorkspaces.find((workspace) =>
-      sameWorkspacePath(workspace.path, currentWorkspaceRoot),
-    );
-    return matched?.label ?? deriveWorkspaceLabel(currentWorkspaceRoot);
-  }, [availableWorkspaces, currentWorkspaceRoot, t, workspaceBinding]);
+  const currentWorkspaceLabel = useMemo(
+    () =>
+      resolveWorkspaceSelectorLabel(
+        currentWorkspaceRoot,
+        workspaceBinding,
+        availableWorkspaces,
+        t,
+      ),
+    [availableWorkspaces, currentWorkspaceRoot, t, workspaceBinding],
+  );
 
   return (
     <div className="flex justify-start px-0.5">
@@ -1658,7 +1655,7 @@ function DesktopLayoutChromeBar({
 }
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { font, setFont } = useFont();
   const runtime = useDesktopRuntime();
@@ -1735,6 +1732,39 @@ export default function App() {
   const compactionDemo = useCompactionUiDemo();
   const models = snapshot?.config.models ?? [];
   const composerSessionKey = snapshot?.composerSessionKey ?? "";
+  const emptySessionGreetingCacheRef = useRef(new Map<string, EmptySessionGreetingVariantId>());
+  const workspaceDisplayLabel = useMemo(
+    () =>
+      resolveWorkspaceDisplayLabel(
+        snapshot?.workspaceRoot ?? "",
+        snapshot?.workspaceBinding ?? "project",
+        snapshot?.availableWorkspaces ?? [],
+      ),
+    [
+      snapshot?.availableWorkspaces,
+      snapshot?.workspaceBinding,
+      snapshot?.workspaceRoot,
+      i18n.language,
+    ],
+  );
+  const includeWorkspaceGreetingVariants = workspaceDisplayLabel !== null;
+  const emptySessionGreeting = useMemo(() => {
+    const sessionKey = composerSessionKey.trim() || "__no-session__";
+    let variantId = emptySessionGreetingCacheRef.current.get(sessionKey);
+    if (!variantId) {
+      variantId = pickEmptySessionGreetingVariant({
+        includeWorkspaceVariants: includeWorkspaceGreetingVariants,
+      });
+      emptySessionGreetingCacheRef.current.set(sessionKey, variantId);
+    }
+    return resolveEmptySessionGreeting(t, variantId, workspaceDisplayLabel);
+  }, [
+    composerSessionKey,
+    includeWorkspaceGreetingVariants,
+    workspaceDisplayLabel,
+    t,
+    i18n.language,
+  ]);
   const sessionMessages = snapshot?.conversation.messages ?? [];
   const messagesDuringRewindSuppressed =
     runtime.busyAction === "rewind" ? [] : sessionMessages;
@@ -2916,8 +2946,11 @@ export default function App() {
                 >
                 {isEmptySession ? (
                   <div data-spirit-surface="conversation-empty">
-                    <p className="mb-6 text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-                      Start something.
+                    <p
+                      className="mb-6 text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
+                      data-testid="empty-session-greeting"
+                    >
+                      {emptySessionGreeting}
                     </p>
                   </div>
                 ) : null}

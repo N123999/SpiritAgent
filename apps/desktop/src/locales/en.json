@@ -360,6 +360,11 @@
     "viewLargeImage": "View Large Image",
     "closeImagePreview": "Close Image Preview",
     "typeMessage": "Type a message\u2026",
+    "emptySessionGreeting": {
+      "startSomething": "Start something.",
+      "letsBuild": "Let's build.",
+      "doSomethingIn": "Do something in {{workspace}}?"
+    },
     "runMode": "Run Mode",
     "selectModel": "Select Model",
     "filterModels": "Filter models",
