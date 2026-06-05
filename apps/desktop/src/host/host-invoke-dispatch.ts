@@ -32,7 +32,7 @@ export interface HostCommandDelegate {
   deleteSkill(request: CommandPayloads['deleteSkill']['request']): Promise<unknown>;
   submitCreateSkillSlash(request: CommandPayloads['submitCreateSkillSlash']['request']): Promise<unknown>;
   submitSkillSlash(request: CommandPayloads['submitSkillSlash']['request']): Promise<unknown>;
-  submitGitClap(request: CommandPayloads['submitGitClap']['request']): Promise<unknown>;
+  submitGitChip(request: CommandPayloads['submitGitChip']['request']): Promise<unknown>;
   submitStartImplementing(): Promise<unknown>;
   exportSessionLog(): Promise<unknown>;
   compactHistory(): Promise<unknown>;
@@ -100,7 +100,7 @@ const hostCommandDispatch = {
   deleteSkill: (host, payload) => host.deleteSkill(payload.request),
   submitCreateSkillSlash: (host, payload) => host.submitCreateSkillSlash(payload.request),
   submitSkillSlash: (host, payload) => host.submitSkillSlash(payload.request),
-  submitGitClap: (host, payload) => host.submitGitClap(payload.request),
+  submitGitChip: (host, payload) => host.submitGitChip(payload.request),
   submitStartImplementing: (host) => host.submitStartImplementing(),
   exportSessionLog: (host) => host.exportSessionLog(),
   compactHistory: (host) => host.compactHistory(),

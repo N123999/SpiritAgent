@@ -38,7 +38,7 @@ export type HostCommandName =
   | 'deleteSkill'
   | 'submitCreateSkillSlash'
   | 'submitSkillSlash'
-  | 'submitGitClap'
+  | 'submitGitChip'
   | 'submitStartImplementing'
   | 'exportSessionLog'
   | 'compactHistory'

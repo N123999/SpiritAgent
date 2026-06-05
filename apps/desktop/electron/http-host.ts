@@ -596,17 +596,17 @@ async function handleApiRequest({
     return;
   }
 
-  if (request.method === 'POST' && pathname === '/api/git/clap') {
+  if (request.method === 'POST' && pathname === '/api/git/chip') {
     const action = jsonBody?.action;
     if (action !== 'commit' && action !== 'push' && action !== 'merge') {
-      writeJson(request, response, 400, { error: 'Invalid git clap action' });
+      writeJson(request, response, 400, { error: 'Invalid git chip action' });
       return;
     }
     writeJson(
       request,
       response,
       200,
-      await runHostCommand('submitGitClap', {
+      await runHostCommand('submitGitChip', {
         request: {
           action,
           ...(typeof jsonBody?.extraNote === 'string' && jsonBody.extraNote.trim()

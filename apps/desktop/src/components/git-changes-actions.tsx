@@ -14,7 +14,7 @@ import {
 } from "@/lib/desktop-chrome";
 import { buildGitChangesMenuItemIds } from "@/lib/git-changes-menu-items";
 import { cn } from "@/lib/utils";
-import type { GitClapAction, SubmitGitClapRequest } from "@/types";
+import type { GitChipAction, SubmitGitChipRequest } from "@/types";
 
 export type GitChangesMenuLabels = {
   push: string;
@@ -59,7 +59,7 @@ export type GitChangesActionsProps = {
   gitBusy: boolean;
   mergeFlashMerged?: boolean;
   pushDisabledTitle?: string;
-  onGitClap(request: SubmitGitClapRequest): Promise<boolean>;
+  onGitChip(request: SubmitGitChipRequest): Promise<boolean>;
 };
 
 export function GitChangesActions({
@@ -70,7 +70,7 @@ export function GitChangesActions({
   gitBusy,
   mergeFlashMerged = false,
   pushDisabledTitle,
-  onGitClap,
+  onGitChip,
 }: GitChangesActionsProps) {
   const { t } = useTranslation();
 
@@ -83,11 +83,11 @@ export function GitChangesActions({
     [t],
   );
 
-  const runGitClap = useCallback(
-    (action: GitClapAction) => {
-      void onGitClap({ action });
+  const runGitChip = useCallback(
+    (action: GitChipAction) => {
+      void onGitChip({ action });
     },
-    [onGitClap],
+    [onGitChip],
   );
 
   const menuItems = useMemo(
@@ -97,10 +97,10 @@ export function GitChangesActions({
         canMerge,
         mergeFlashMerged,
         labels: menuLabels,
-        onPush: () => runGitClap("push"),
-        onMerge: () => runGitClap("merge"),
+        onPush: () => runGitChip("push"),
+        onMerge: () => runGitChip("merge"),
       }),
-    [canMerge, mergeFlashMerged, menuLabels, needsPush, runGitClap],
+    [canMerge, mergeFlashMerged, menuLabels, needsPush, runGitChip],
   );
 
   if (!isRepository) {
@@ -121,7 +121,7 @@ export function GitChangesActions({
           className={cn(DESKTOP_GIT_ACTION_BTN, instantHoverMotionClass)}
           disabled={!needsPush || gitBusy}
           title={!needsPush ? pushDisabledTitle : undefined}
-          onClick={() => runGitClap("push")}
+          onClick={() => runGitChip("push")}
         >
           {busyIcon}
           <span>{t("workspace.git.push")}</span>
@@ -138,7 +138,7 @@ export function GitChangesActions({
         size="xs"
         className={cn(DESKTOP_GIT_ACTION_BTN, instantHoverMotionClass)}
         disabled={gitBusy}
-        onClick={() => runGitClap("commit")}
+        onClick={() => runGitChip("commit")}
       >
         {busyIcon}
         <span>{t("app.commit")}</span>

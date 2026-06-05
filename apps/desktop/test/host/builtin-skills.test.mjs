@@ -7,13 +7,13 @@ import test from 'node:test';
 import {
   BUILTIN_GIT_SKILL_NAMES,
   ensureBuiltinUserSkills,
-  gitClapActionToSkillName,
+  gitChipActionToSkillName,
 } from '../../src/host/builtin-skills.ts';
 
-test('gitClapActionToSkillName maps actions', () => {
-  assert.equal(gitClapActionToSkillName('commit'), 'git-commit');
-  assert.equal(gitClapActionToSkillName('push'), 'git-push');
-  assert.equal(gitClapActionToSkillName('merge'), 'git-merge');
+test('gitChipActionToSkillName maps actions', () => {
+  assert.equal(gitChipActionToSkillName('commit'), 'git-commit');
+  assert.equal(gitChipActionToSkillName('push'), 'git-push');
+  assert.equal(gitChipActionToSkillName('merge'), 'git-merge');
 });
 
 test('ensureBuiltinUserSkills seeds missing skills without overwriting', async () => {

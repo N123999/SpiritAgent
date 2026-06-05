@@ -83,8 +83,8 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   submitSkillSlash(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'submitSkillSlash', { request });
   },
-  submitGitClap(request: unknown) {
-    return ipcRenderer.invoke('desktop:invoke', 'submitGitClap', { request });
+  submitGitChip(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'submitGitChip', { request });
   },
   submitStartImplementing() {
     return ipcRenderer.invoke('desktop:invoke', 'submitStartImplementing');

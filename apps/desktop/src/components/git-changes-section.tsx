@@ -11,7 +11,7 @@ import type {
   DesktopGitSnapshot,
   GitWorkingTreeChange,
   GitWorkingTreeSnapshot,
-  SubmitGitClapRequest,
+  SubmitGitChipRequest,
 } from "@/types";
 
 export type GitChangesSectionProps = {
@@ -25,7 +25,7 @@ export type GitChangesSectionProps = {
   gitBusy?: boolean;
   mergeFlashMerged?: boolean;
   pushDisabledTitle?: string;
-  onGitClap: (request: SubmitGitClapRequest) => Promise<boolean>;
+  onGitChip: (request: SubmitGitChipRequest) => Promise<boolean>;
   onOpenChangedFile?: (relativePath: string) => void;
   className?: string;
   style?: CSSProperties;
@@ -112,7 +112,7 @@ export function GitChangesSection({
   gitBusy = false,
   mergeFlashMerged = false,
   pushDisabledTitle,
-  onGitClap,
+  onGitChip,
   onOpenChangedFile,
   className,
   style,
@@ -146,7 +146,7 @@ export function GitChangesSection({
           gitBusy={gitBusy}
           mergeFlashMerged={mergeFlashMerged}
           pushDisabledTitle={pushDisabledTitle}
-          onGitClap={onGitClap}
+          onGitChip={onGitChip}
         />
       </div>
       <div className="relative min-h-0 flex-1">

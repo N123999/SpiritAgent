@@ -101,7 +101,7 @@ import type {
   PrepareMarketplaceExtensionInstallRequest,
   SubmitUserTurnRequest,
   SubmitCreateSkillSlashRequest,
-  SubmitGitClapRequest,
+  SubmitGitChipRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
@@ -140,7 +140,7 @@ import {
   updateExtensionSettingsCommand,
   type HostExtensionCommandContext,
 } from './host-extension-commands.js';
-import { submitGitClapCommand } from './host-git-clap-commands.js';
+import { submitGitChipCommand } from './host-git-chip-commands.js';
 import {
   checkoutGitBranchCommand,
   commitChangesCommand,
@@ -939,8 +939,8 @@ class DesktopHostService {
     return submitSkillSlashCommand(this.extensionCommandContext(), request);
   }
 
-  async submitGitClap(request: SubmitGitClapRequest): Promise<DesktopSnapshot> {
-    const snapshot = await submitGitClapCommand(this.extensionCommandContext(), request);
+  async submitGitChip(request: SubmitGitChipRequest): Promise<DesktopSnapshot> {
+    const snapshot = await submitGitChipCommand(this.extensionCommandContext(), request);
     void this.runCoalescedGitRefresh();
     return snapshot;
   }

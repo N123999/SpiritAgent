@@ -22,7 +22,7 @@ import type {
   DesktopGitSnapshot,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
-  SubmitGitClapRequest,
+  SubmitGitChipRequest,
   PlanSnapshot,
   ReadGitHistoryRequest,
   WorkspaceExplorerListResult,
@@ -78,10 +78,10 @@ export type WorkspaceToolsDockProps = {
   onWidthPxChange(next: number): void;
   open: boolean;
   gitSnapshot?: DesktopGitSnapshot;
-  gitClapBusy?: boolean;
+  gitChipBusy?: boolean;
   readGitWorkingTree: () => Promise<GitWorkingTreeSnapshot>;
   readGitHistory: (request?: ReadGitHistoryRequest) => Promise<GitHistorySnapshot>;
-  submitGitClap: (request: SubmitGitClapRequest) => Promise<boolean>;
+  submitGitChip: (request: SubmitGitChipRequest) => Promise<boolean>;
   className?: string;
 };
 
@@ -125,10 +125,10 @@ export function WorkspaceToolsDock({
   onWidthPxChange,
   open,
   gitSnapshot,
-  gitClapBusy = false,
+  gitChipBusy = false,
   readGitWorkingTree,
   readGitHistory,
-  submitGitClap,
+  submitGitChip,
   className,
 }: WorkspaceToolsDockProps) {
   const { t } = useTranslation();
@@ -463,10 +463,10 @@ export function WorkspaceToolsDock({
                       <WorkspaceGitTab
                         gitSnapshot={gitSnapshot}
                         isActive={selected}
-                        gitClapBusy={gitClapBusy}
+                        gitChipBusy={gitChipBusy}
                         readGitWorkingTree={readGitWorkingTree}
                         readGitHistory={readGitHistory}
-                        submitGitClap={submitGitClap}
+                        submitGitChip={submitGitChip}
                         onOpenChangedFile={onOpenWorkspaceFile}
                       />
                     </div>

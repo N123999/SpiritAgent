@@ -10,7 +10,7 @@ import type {
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
   ReadGitHistoryRequest,
-  SubmitGitClapRequest,
+  SubmitGitChipRequest,
 } from "@/types";
 
 function describeError(error: unknown): string {
@@ -29,10 +29,10 @@ const GIT_CHANGES_DEFAULT_RATIO = 0.45;
 export type WorkspaceGitTabProps = {
   gitSnapshot?: DesktopGitSnapshot;
   isActive: boolean;
-  gitClapBusy: boolean;
+  gitChipBusy: boolean;
   readGitWorkingTree: () => Promise<GitWorkingTreeSnapshot>;
   readGitHistory: (request?: ReadGitHistoryRequest) => Promise<GitHistorySnapshot>;
-  submitGitClap: (request: SubmitGitClapRequest) => Promise<boolean>;
+  submitGitChip: (request: SubmitGitChipRequest) => Promise<boolean>;
   onOpenChangedFile?: (
     relativePath: string,
     options?: { viewMode?: WorkspaceEditorViewMode },
@@ -43,10 +43,10 @@ export type WorkspaceGitTabProps = {
 export function WorkspaceGitTab({
   gitSnapshot,
   isActive,
-  gitClapBusy,
+  gitChipBusy,
   readGitWorkingTree,
   readGitHistory,
-  submitGitClap,
+  submitGitChip,
   onOpenChangedFile,
   className,
 }: WorkspaceGitTabProps) {
@@ -259,15 +259,15 @@ export function WorkspaceGitTab({
     }, 1000);
   }, []);
 
-  const handleGitClap = useCallback(
-    async (request: SubmitGitClapRequest) => {
-      const ok = await submitGitClap(request);
+  const handleGitChip = useCallback(
+    async (request: SubmitGitChipRequest) => {
+      const ok = await submitGitChip(request);
       if (ok && request.action === "merge") {
         flashMergeButtonSucceeded();
       }
       return ok;
     },
-    [flashMergeButtonSucceeded, submitGitClap],
+    [flashMergeButtonSucceeded, submitGitChip],
   );
 
   const canMerge =
@@ -296,10 +296,10 @@ export function WorkspaceGitTab({
         hasChanges={hasChanges}
         needsPush={needsPush}
         canMerge={canMerge}
-        gitBusy={gitClapBusy}
+        gitBusy={gitChipBusy}
         mergeFlashMerged={mergeButtonFlashMerged}
         pushDisabledTitle={pushDisabledTitle}
-        onGitClap={handleGitClap}
+        onGitChip={handleGitChip}
         onOpenChangedFile={onOpenChangedFile}
       />
       <div

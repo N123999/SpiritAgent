@@ -1940,7 +1940,7 @@ export default function App() {
   } | null>(null);
   const activeFilePath = snapshot?.activeSession?.filePath ?? null;
   const commitBusy = runtime.busyAction === "git";
-  const gitClapBusy =
+  const gitChipBusy =
     runtime.busyAction === "send" || snapshot?.conversation.isBusy === true;
   const sessionNavigationBusy = runtime.busyAction === "session";
   const newSessionBusy = runtime.busyAction === "reset";
@@ -3259,10 +3259,10 @@ export default function App() {
               widthPx={workspaceToolsWidthPx}
               onWidthPxChange={setWorkspaceToolsWidthPx}
               gitSnapshot={snapshot?.git}
-              gitClapBusy={gitClapBusy}
+              gitChipBusy={gitChipBusy}
               readGitWorkingTree={runtime.readGitWorkingTree}
               readGitHistory={runtime.readGitHistory}
-              submitGitClap={runtime.submitGitClap}
+              submitGitChip={runtime.submitGitChip}
             />
             </div>
           </div>

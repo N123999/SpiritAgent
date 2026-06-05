@@ -1,8 +1,8 @@
 import i18n from '../lib/i18n-host.js';
-import { gitClapActionToSkillName } from './builtin-skills.js';
+import { gitChipActionToSkillName } from './builtin-skills.js';
 import { buildActiveSkillPayload, buildActivateSkillUserTurn } from './skills.js';
 import type { HostExtensionCommandContext } from './host-extension-commands.js';
-import type { DesktopGitSnapshot, DesktopSnapshot, SubmitGitClapRequest } from '../types.js';
+import type { DesktopGitSnapshot, DesktopSnapshot, SubmitGitChipRequest } from '../types.js';
 
 /** Same visible line as composer skill slash (e.g. `/git-commit`). */
 function buildGitSkillSlashRawText(skillName: string, extraNote: string): string {
@@ -17,9 +17,9 @@ function assertMergeAllowed(git: DesktopGitSnapshot): void {
   }
 }
 
-export async function submitGitClapCommand(
+export async function submitGitChipCommand(
   ctx: HostExtensionCommandContext,
-  request: SubmitGitClapRequest,
+  request: SubmitGitChipRequest,
 ): Promise<DesktopSnapshot> {
   return ctx.runSerialized(async () => {
     await ctx.ensureInitialized(undefined, { fastPath: true });
@@ -50,7 +50,7 @@ export async function submitGitClapCommand(
       }
     }
 
-    const skillName = gitClapActionToSkillName(action);
+    const skillName = gitChipActionToSkillName(action);
     const skill = ctx.requireEnabledSkillEntry(skillName);
     const payload = await buildActiveSkillPayload(skill);
     const extraNote = request.extraNote?.trim() ?? '';

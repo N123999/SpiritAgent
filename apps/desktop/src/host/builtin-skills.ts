@@ -48,7 +48,7 @@ export async function ensureBuiltinUserSkills(spiritDataDir: string): Promise<vo
   }
 }
 
-export function gitClapActionToSkillName(action: 'commit' | 'push' | 'merge'): BuiltinGitSkillName {
+export function gitChipActionToSkillName(action: 'commit' | 'push' | 'merge'): BuiltinGitSkillName {
   switch (action) {
     case 'commit':
       return 'git-commit';
