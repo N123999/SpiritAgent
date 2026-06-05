@@ -471,8 +471,11 @@ function ImageGenerationToolCard({
 
   const loading = tool.phase === "preview" || tool.phase === "running" || previewState === "loading";
   const canInteract = Boolean(previewDataUrl && previewableImagePath);
+  // backdrop-filter 在祖先 opacity 动画期间无法正确合成；卡片 hover 渐显须与 blur 写在同一元素上。
   const floatingActionButtonClass =
-    "size-8 rounded-full border border-border/50 bg-background/55 text-foreground shadow-sm backdrop-blur-xl transition-[background-color,border-color,box-shadow,transform] hover:border-border/60 hover:bg-background/72 dark:border-white/12 dark:bg-input/30 dark:hover:bg-input/40 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+    "size-8 rounded-full border border-border/50 bg-background/55 text-foreground shadow-sm backdrop-blur-xl transition-[opacity,background-color,border-color,box-shadow] duration-200 ease-out hover:border-border/60 hover:bg-background/72 dark:border-white/12 dark:bg-input/30 dark:hover:bg-input/40 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+  const floatingActionCardRevealClass =
+    "opacity-0 group-hover/image-card:opacity-100 group-focus-within/image-card:opacity-100";
   const viewerFrameStyle = previewAspectRatio
     ? {
         aspectRatio: String(previewAspectRatio),
@@ -535,12 +538,16 @@ function ImageGenerationToolCard({
           </div>
         )}
         {previewDataUrl ? (
-          <div className="pointer-events-none absolute inset-0 z-10 opacity-0 transition duration-200 group-hover/image-card:opacity-100 group-focus-within/image-card:opacity-100">
+          <div className="pointer-events-none absolute inset-0 z-10">
             <Button
               type="button"
               size="icon"
               variant="ghost"
-              className={cn("pointer-events-auto absolute bottom-3 left-3", floatingActionButtonClass)}
+              className={cn(
+                "pointer-events-auto absolute bottom-3 left-3",
+                floatingActionButtonClass,
+                floatingActionCardRevealClass,
+              )}
               onClick={(event) => {
                 event.stopPropagation();
                 void handleSaveImage();
@@ -555,7 +562,11 @@ function ImageGenerationToolCard({
               type="button"
               size="icon"
               variant="ghost"
-              className={cn("pointer-events-auto absolute right-3 bottom-3", floatingActionButtonClass)}
+              className={cn(
+                "pointer-events-auto absolute right-3 bottom-3",
+                floatingActionButtonClass,
+                floatingActionCardRevealClass,
+              )}
               onClick={(event) => {
                 event.stopPropagation();
                 setViewerOpen(true);
