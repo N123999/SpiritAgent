@@ -8,14 +8,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  DESKTOP_COMPACT_OVERLAY_CONTENT,
-  DESKTOP_COMPACT_OVERLAY_FILTER_HEADER,
-  DESKTOP_COMPACT_OVERLAY_FILTER_INPUT,
-  DESKTOP_COMPACT_OVERLAY_LIST,
-  DESKTOP_COMPACT_OVERLAY_SCROLL_AREA,
-  DESKTOP_COMPACT_OVERLAY_WIDTH,
-  DESKTOP_COMPACT_OVERLAY_WORKSPACE_SCROLL_AREA,
-  DESKTOP_COMPACT_WORKSPACE_PANEL,
+  DESKTOP_OVERLAY_LIST_CONTENT,
+  DESKTOP_OVERLAY_LIST_FILTER_HEADER,
+  DESKTOP_OVERLAY_LIST_FILTER_INPUT,
+  DESKTOP_OVERLAY_LIST_LIST_PADDING,
+  DESKTOP_OVERLAY_LIST_SCROLL_AREA,
+  DESKTOP_OVERLAY_LIST_SHELL,
+  DESKTOP_OVERLAY_LIST_WIDTH,
+  DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL,
+  DESKTOP_OVERLAY_LIST_WORKSPACE_SCROLL_AREA,
   stopOverlayScrollPropagation,
 } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
@@ -30,8 +31,8 @@ type FilteredOverlayMenuProps = {
   filterValue?: string;
   onFilterChange?(value: string): void;
   filterPlaceholder?: string;
-  /** `workspace`：flex 列 + 弹性 ScrollArea，供 footer 使用 */
-  layout?: "list" | "workspace";
+  /** `workspace-panel`：flex 列 + 弹性 ScrollArea，供 footer 使用 */
+  variant?: "filtered-list" | "workspace-panel";
   contentClassName?: string;
   footer?: ReactNode;
 };
@@ -43,7 +44,9 @@ export function FilteredOverlayMenuList({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn(DESKTOP_COMPACT_OVERLAY_LIST, className)}>{children}</div>;
+  return (
+    <div className={cn(className ?? DESKTOP_OVERLAY_LIST_LIST_PADDING)}>{children}</div>
+  );
 }
 
 export function FilteredOverlayMenu({
@@ -56,32 +59,38 @@ export function FilteredOverlayMenu({
   filterValue = "",
   onFilterChange,
   filterPlaceholder,
-  layout = "list",
+  variant = "filtered-list",
   contentClassName,
   footer,
 }: FilteredOverlayMenuProps) {
   const showFilter = onFilterChange != null;
 
   const contentClasses =
-    layout === "workspace"
-      ? cn(DESKTOP_COMPACT_WORKSPACE_PANEL, contentClassName)
+    variant === "workspace-panel"
+      ? cn(DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL, contentClassName)
       : cn(
-          DESKTOP_COMPACT_OVERLAY_CONTENT,
-          DESKTOP_COMPACT_OVERLAY_WIDTH,
+          DESKTOP_OVERLAY_LIST_CONTENT,
+          DESKTOP_OVERLAY_LIST_SHELL,
+          DESKTOP_OVERLAY_LIST_WIDTH,
           contentClassName,
         );
+
+  const scrollAreaClass =
+    variant === "workspace-panel"
+      ? DESKTOP_OVERLAY_LIST_WORKSPACE_SCROLL_AREA
+      : DESKTOP_OVERLAY_LIST_SCROLL_AREA;
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       {trigger}
       <DropdownMenuContent align={align} side={side} className={contentClasses}>
         {showFilter ? (
-          <div className={DESKTOP_COMPACT_OVERLAY_FILTER_HEADER}>
+          <div className={DESKTOP_OVERLAY_LIST_FILTER_HEADER}>
             <Input
               value={filterValue}
               onChange={(event) => onFilterChange(event.target.value)}
               placeholder={filterPlaceholder}
-              className={DESKTOP_COMPACT_OVERLAY_FILTER_INPUT}
+              className={DESKTOP_OVERLAY_LIST_FILTER_INPUT}
               onKeyDown={(event) => event.stopPropagation()}
               autoComplete="off"
             />
@@ -89,11 +98,7 @@ export function FilteredOverlayMenu({
         ) : null}
         <ScrollArea
           type="always"
-          className={
-            layout === "workspace"
-              ? DESKTOP_COMPACT_OVERLAY_WORKSPACE_SCROLL_AREA
-              : DESKTOP_COMPACT_OVERLAY_SCROLL_AREA
-          }
+          className={scrollAreaClass}
           onWheel={stopOverlayScrollPropagation}
           onTouchMove={stopOverlayScrollPropagation}
         >

@@ -17,6 +17,7 @@ import {
   toFontFamilyStack,
   type FontPreference,
 } from "@/lib/font";
+import { DESKTOP_OVERLAY_SHORT_LIST_PADDING } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
 /** 与 [`SelectTrigger`](./ui/select.tsx) 保持一致，便于设置页视觉对齐。 */
@@ -196,7 +197,7 @@ export function FontSelect({
               event.stopPropagation();
             }}
           >
-            <div className="p-1 pr-2">
+            <div className={cn(DESKTOP_OVERLAY_SHORT_LIST_PADDING, "pr-2")}>
               {effectiveLoading ? (
                 <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('settings.loadingFonts')}</p>
               ) : filteredOptions.length === 0 ? (

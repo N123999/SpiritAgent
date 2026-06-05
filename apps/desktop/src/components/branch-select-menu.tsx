@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DESKTOP_OVERLAY_SHORT_LIST_PADDING } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
 type BranchSelectMenuProps = {
@@ -49,11 +50,7 @@ export function BranchSelectMenu({
           <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        side="top"
-        className="min-w-[8.5rem] p-0 text-xs"
-      >
+      <DropdownMenuContent align="start" side="top" className="min-w-[8.5rem] p-0">
         <ScrollArea
           type="always"
           className="[&>[data-radix-scroll-area-viewport]]:max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:overscroll-contain"
@@ -64,7 +61,7 @@ export function BranchSelectMenu({
             event.stopPropagation();
           }}
         >
-          <div className="p-1 pr-2">
+          <div className={cn(DESKTOP_OVERLAY_SHORT_LIST_PADDING, "pr-2")}>
             {branches.map((branch) => (
               <DropdownMenuItem
                 key={branch}

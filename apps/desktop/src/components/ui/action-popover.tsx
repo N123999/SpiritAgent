@@ -3,7 +3,13 @@ import { type VariantProps } from 'class-variance-authority'
 
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { instantHoverMotionClass } from '@/lib/desktop-chrome'
+import {
+  DESKTOP_OVERLAY_SHORT_ITEM,
+  DESKTOP_OVERLAY_SHORT_LIST_GAP,
+  DESKTOP_OVERLAY_SHORT_LIST_PADDING,
+  DESKTOP_OVERLAY_SHORT_SHELL,
+  instantHoverMotionClass,
+} from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
 
 export type ActionPopoverItem = {
@@ -52,7 +58,8 @@ function ActionPopoverItemButton({
       disabled={disabled}
       title={title}
       className={cn(
-        'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none',
+        'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
+        DESKTOP_OVERLAY_SHORT_ITEM,
         'text-foreground hover:bg-accent hover:text-accent-foreground',
         'focus-visible:bg-accent focus-visible:text-accent-foreground',
         'disabled:pointer-events-none disabled:opacity-50',
@@ -130,7 +137,9 @@ export function ActionPopover({
         side="top"
         sideOffset={10}
         className={cn(
-          'w-max min-w-[11rem] max-w-[min(15rem,calc(100vw-1.25rem))] p-1',
+          'w-max min-w-[11rem] max-w-[min(15rem,calc(100vw-1.25rem))]',
+          DESKTOP_OVERLAY_SHORT_SHELL,
+          DESKTOP_OVERLAY_SHORT_LIST_PADDING,
           contentClassName,
         )}
         onPointerDownOutside={(event) => {
@@ -149,7 +158,7 @@ export function ActionPopover({
           {heading ? (
             <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{heading}</div>
           ) : null}
-          <div className="grid gap-0.5">
+          <div className={cn('grid', DESKTOP_OVERLAY_SHORT_LIST_GAP)}>
             {items.map((item) => (
               <ActionPopoverItemButton
                 key={item.id}

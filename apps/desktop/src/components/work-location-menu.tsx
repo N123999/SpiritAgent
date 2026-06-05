@@ -55,7 +55,11 @@ export function WorkLocationMenu({
           <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="min-w-[9.5rem] text-xs">
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        className="min-w-[9.5rem]"
+      >
         {WORK_LOCATION_OPTIONS.map((option) => (
           <DropdownMenuItem
             key={option.value}

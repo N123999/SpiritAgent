@@ -2,6 +2,10 @@ import * as React from "react";
 import { Check } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
+import {
+  DESKTOP_OVERLAY_SHORT_DROPDOWN_SURFACE,
+  DESKTOP_OVERLAY_SHORT_ITEM,
+} from "@/lib/desktop-chrome";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
@@ -54,8 +58,7 @@ function DropdownMenuSubContent({
         className={cn(
           radixAnchoredOverlayMotion("dropdown-menu"),
           "spirit-scroll z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-32 overflow-y-auto overflow-x-hidden",
-          "rounded-xl border border-border/80 bg-popover p-1 text-sm text-popover-foreground shadow-lg",
-          "ring-1 ring-white/5 backdrop-blur-sm",
+          DESKTOP_OVERLAY_SHORT_DROPDOWN_SURFACE,
           className,
         )}
         {...props}
@@ -77,8 +80,7 @@ function DropdownMenuContent({
         className={cn(
           radixAnchoredOverlayMotion("dropdown-menu"),
           "spirit-scroll z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-32 overflow-y-auto overflow-x-hidden",
-          "rounded-xl border border-border/80 bg-popover p-1 text-sm text-popover-foreground shadow-lg",
-          "ring-1 ring-white/5 backdrop-blur-sm",
+          DESKTOP_OVERLAY_SHORT_DROPDOWN_SURFACE,
           className,
         )}
         {...props}
@@ -95,7 +97,8 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
+        "relative flex cursor-pointer select-none items-center rounded-sm outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
+        DESKTOP_OVERLAY_SHORT_ITEM,
         className,
       )}
       {...props}

@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
 type ApprovalLevelMenuProps = {
@@ -57,7 +58,11 @@ export function ApprovalLevelMenu({
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="min-w-[8.5rem] text-xs">
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        className={DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH}
+      >
         {options.map((option) => (
           <DropdownMenuItem
             key={option.value}

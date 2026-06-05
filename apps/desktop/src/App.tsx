@@ -158,11 +158,13 @@ import {
 } from "@/components/ui/filtered-overlay-menu";
 import {
   DESKTOP_CHROME_TOGGLE_ICON_BTN,
-  DESKTOP_COMPACT_OVERLAY_GROUP_LABEL,
-  DESKTOP_COMPACT_OVERLAY_ITEM,
-  DESKTOP_COMPACT_OVERLAY_ITEM_PRIMARY,
-  DESKTOP_COMPACT_OVERLAY_ITEM_SECONDARY,
-  DESKTOP_COMPACT_OVERLAY_SUBCONTENT,
+  DESKTOP_OVERLAY_LIST_GROUP_LABEL,
+  DESKTOP_OVERLAY_LIST_ITEM,
+  DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
+  DESKTOP_OVERLAY_LIST_ITEM_SECONDARY,
+  DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
+  DESKTOP_OVERLAY_SHORT_ITEM,
+  DESKTOP_OVERLAY_SHORT_SUBCONTENT,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
@@ -296,7 +298,7 @@ function EmptyStateWorkspaceSelector({
   return (
     <div className="flex justify-start px-0.5">
       <FilteredOverlayMenu
-        layout="workspace"
+        variant="workspace-panel"
         filterValue={workspaceFilter}
         onFilterChange={setWorkspaceFilter}
         filterPlaceholder={t('app.searchWorkspace')}
@@ -325,14 +327,15 @@ function EmptyStateWorkspaceSelector({
         }
         footer={
           <>
-            <DropdownMenuItem onSelect={onAddWorkspace} className="gap-2 px-2 py-2 text-sm">
+            <DropdownMenuItem onSelect={onAddWorkspace} className={cn("gap-2", DESKTOP_OVERLAY_SHORT_ITEM)}>
               <FolderPlus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
               <span>{t('app.addWorkspace')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={onSelectNoWorkspace}
               className={cn(
-                "gap-2 px-2 py-2 text-sm",
+                "gap-2",
+                DESKTOP_OVERLAY_SHORT_ITEM,
                 workspaceBinding === "none" && "bg-accent/40",
               )}
             >
@@ -353,13 +356,13 @@ function EmptyStateWorkspaceSelector({
               <DropdownMenuItem
                 key={workspace.path}
                 onSelect={() => onSelectWorkspace(workspace.path)}
-                className={cn("items-start", DESKTOP_COMPACT_OVERLAY_ITEM, selected && "bg-accent/40")}
+                className={cn("items-start", DESKTOP_OVERLAY_LIST_ITEM, selected && "bg-accent/40")}
               >
                 <div className="min-w-0 flex-1">
-                  <div className={DESKTOP_COMPACT_OVERLAY_ITEM_PRIMARY} title={workspace.label}>
+                  <div className={DESKTOP_OVERLAY_LIST_ITEM_PRIMARY} title={workspace.label}>
                     {workspace.label}
                   </div>
-                  <div className={DESKTOP_COMPACT_OVERLAY_ITEM_SECONDARY} title={workspace.path}>
+                  <div className={DESKTOP_OVERLAY_LIST_ITEM_SECONDARY} title={workspace.path}>
                     {workspace.path}
                   </div>
                 </div>
@@ -802,6 +805,7 @@ function ComposerSurface({
             ) : null}
             {models.length > 0 ? (
               <FilteredOverlayMenu
+                variant="filtered-list"
                 open={modelMenuOpen}
                 onOpenChange={(open) => {
                   setModelMenuOpen(open);
@@ -836,7 +840,7 @@ function ComposerSurface({
                 ) : (
                   filteredModelGroups.map((group) => (
                     <div key={group.provider} className="mb-2 last:mb-0">
-                      <div className={DESKTOP_COMPACT_OVERLAY_GROUP_LABEL}>
+                      <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
                         {t(group.labelKey, { defaultValue: group.fallbackLabel })}
                       </div>
                       {group.items.map((model) => {
@@ -849,7 +853,7 @@ function ComposerSurface({
                           <DropdownMenuSub key={`${group.provider}:${model.name}`}>
                             <DropdownMenuSubTrigger
                               className={cn(
-                                "items-start gap-2 px-2 py-2 pr-2",
+                                DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
                                 activeModelProfile?.name === model.name && "bg-accent/40",
                               )}
                               onClick={() => {
@@ -866,19 +870,24 @@ function ComposerSurface({
                                 }
                               }}
                             >
-                              <div className="min-w-0 flex-1">
-                                <div className={DESKTOP_COMPACT_OVERLAY_ITEM_PRIMARY} title={model.name}>
-                                  {model.name}
-                                </div>
-                                <div
-                                  className={DESKTOP_COMPACT_OVERLAY_ITEM_SECONDARY}
-                                  title={modelSummary}
+                              <div
+                                className="flex min-w-0 flex-1 items-baseline gap-x-1.5 overflow-hidden"
+                                title={modelSummary}
+                              >
+                                <span
+                                  className={cn(
+                                    DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
+                                    "min-w-0 truncate",
+                                  )}
                                 >
+                                  {model.name}
+                                </span>
+                                <span className="shrink-0 text-xs font-normal text-muted-foreground">
                                   {modelReasoningEffortLabel(model.reasoningEffort)}
-                                </div>
+                                </span>
                               </div>
                             </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className={DESKTOP_COMPACT_OVERLAY_SUBCONTENT}>
+                            <DropdownMenuSubContent className={DESKTOP_OVERLAY_SHORT_SUBCONTENT}>
                               {modelReasoningEffortOptions({
                                 provider: model.provider,
                                 model: model.name,
