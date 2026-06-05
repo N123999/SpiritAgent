@@ -142,34 +142,6 @@ export function buildDreamCollectorPlanMetadata(
   };
 }
 
-export function buildCommitMessageGenerationPrompt(input: {
-  workspaceRoot: string;
-  branch?: string;
-  statusText: string;
-  diffStatText: string;
-  diffText: string;
-}): string {
-  return [
-    'Generate one Git commit message for the current changes.',
-    'Repository convention: type and optional scope in English; subject in Chinese.',
-    'Return JSON only: {"message":"..."}. No Markdown, no explanations, no extra keys.',
-    'The message must be ready for git commit. A body is allowed when needed.',
-    'Use the Git changes as the source of truth. Dreams are only background continuity when relevant.',
-    '',
-    `workspace: ${input.workspaceRoot}`,
-    `branch: ${input.branch ?? '(unknown)'}`,
-    '',
-    '[git status --short --branch]',
-    input.statusText || '(empty)',
-    '',
-    '[git diff --stat HEAD]',
-    input.diffStatText || '(empty)',
-    '',
-    '[git diff HEAD]',
-    input.diffText || '(empty)',
-  ].join('\n');
-}
-
 export interface RunDesktopDreamCollectorOnceInput {
   workspaceRoot: string;
   gitBranch: string;

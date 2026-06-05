@@ -16,16 +16,12 @@ import type {
   ModelProfileSnapshot,
 } from '../types.js';
 import {
-  buildCommitEphemeralSessionRecord,
   buildWorktreeEphemeralSessionRecord,
-  createEphemeralCommitSessionPath,
   createEphemeralWorktreeSessionPath,
-  deriveDisplayNameFromSeed,
   type EphemeralSessionRecord,
 } from './sessions.js';
 import {
   currentApiBase,
-  parseGeneratedCommitMessageResponse,
   parseGeneratedWorktreeNamingResponse,
 } from './service-utils.js';
 import type {
@@ -34,8 +30,6 @@ import type {
 } from './storage.js';
 import { buildPrimaryTransportConfig } from './model-config.js';
 import { buildDreamContextText } from './dreams.js';
-import { buildCommitMessageGenerationPrompt } from './dreams.js';
-import { buildWorkspaceGitCommitMessageContext } from './git.js';
 import type { DesktopToolExecutor } from './tool-executor.js';
 import { buildWorktreeNamingPrompt, type GeneratedWorktreeNames } from './worktree-naming.js';
 
@@ -50,56 +44,6 @@ interface EphemeralLlmTaskContext {
   toolExecutor: DesktopToolExecutor;
   runtimeBasicInfo: LlmToolAgentBasicInfo;
   rememberEphemeralSession(record: EphemeralSessionRecord): void;
-}
-
-export async function generateCommitMessageFromModelTask(
-  context: EphemeralLlmTaskContext,
-): Promise<string> {
-  const commitContext = await buildWorkspaceGitCommitMessageContext(context.workspaceRoot);
-  const prompt = buildCommitMessageGenerationPrompt({
-    workspaceRoot: context.workspaceRoot,
-    branch: context.gitBranch,
-    statusText: commitContext.statusText,
-    diffStatText: commitContext.diffStatText,
-    diffText: commitContext.diffText,
-  });
-  const transportConfig = buildTaskTransportConfig(context);
-  const sessionPath = createEphemeralCommitSessionPath();
-  const baseMessages = buildBaseMessages(prompt);
-
-  try {
-    const assistantText = await runEphemeralToolAgentRounds({
-      context,
-      transportConfig,
-      prompt,
-      failurePrefixKey: 'error.autoCommitFailed',
-      noBodyKey: 'error.autoCommitFailedNoBody',
-      interactiveToolKey: 'error.autoCommitFailedInteractiveTool',
-      incompleteKey: 'error.autoCommitFailedIncomplete',
-    });
-    const message = parseGeneratedCommitMessageResponse(assistantText);
-    context.rememberEphemeralSession(buildCommitEphemeralSessionRecord({
-      path: sessionPath,
-      displayName: `[Commit] ${deriveDisplayNameFromSeed(message)}`,
-      workspaceRoot: context.workspaceRoot,
-      messages: [
-        ...baseMessages,
-        buildAssistantMessage(message),
-      ],
-    }));
-    return message;
-  } catch (error) {
-    context.rememberEphemeralSession(buildCommitEphemeralSessionRecord({
-      path: sessionPath,
-      displayName: i18n.t('error.commitAutoGenFailed'),
-      workspaceRoot: context.workspaceRoot,
-      messages: [
-        ...baseMessages,
-        buildAssistantMessage(generationFailureMessage(error)),
-      ],
-    }));
-    throw error;
-  }
 }
 
 export async function generateWorktreeNamesFromModelTask(

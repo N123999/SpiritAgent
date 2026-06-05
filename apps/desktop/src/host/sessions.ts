@@ -59,10 +59,6 @@ export function isEphemeralDebugSessionPath(filePath: string): boolean {
   return isEphemeralCommitSessionPath(filePath) || isEphemeralWorktreeSessionPath(filePath);
 }
 
-export function createEphemeralCommitSessionPath(now = Date.now()): string {
-  return `${EPHEMERAL_COMMIT_SESSION_PREFIX}${now}`;
-}
-
 export function createEphemeralWorktreeSessionPath(now = Date.now()): string {
   return `${EPHEMERAL_WORKTREE_SESSION_PREFIX}${now}`;
 }

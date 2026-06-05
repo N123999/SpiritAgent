@@ -31,12 +31,6 @@ import type { GeneratedWorktreeNames } from './worktree-naming.js';
 const execFileAsync = promisify(execFile);
 const GIT_MAX_BUFFER = 4 * 1024 * 1024;
 
-export interface WorkspaceGitCommitMessageContext {
-  statusText: string;
-  diffStatText: string;
-  diffText: string;
-}
-
 async function runGit(
   workspaceRoot: string,
   args: string[],
@@ -70,14 +64,6 @@ function renderGitError(error: unknown): string {
     : '';
   const message = error instanceof Error ? error.message.trim() : String(error);
   return stderr || stdout || message;
-}
-
-function truncateChars(text: string, maxChars: number): string {
-  const chars = Array.from(text);
-  if (chars.length <= maxChars) {
-    return text;
-  }
-  return `${chars.slice(0, maxChars).join('')}\n...<truncated>`;
 }
 
 export type WorkspaceGitSnapshotRead = Omit<DesktopGitSnapshot, 'revision'>;
@@ -209,22 +195,6 @@ export async function checkoutWorkspaceGitBranch(
     throw new Error(message.replace(/^git checkout .* failed: /u, i18n.t('error.gitCheckoutFailed')));
   }
   return readWorkspaceGitSnapshot(workspaceRoot);
-}
-
-export async function buildWorkspaceGitCommitMessageContext(
-  workspaceRoot: string,
-): Promise<WorkspaceGitCommitMessageContext> {
-  const [status, diffStat, diff] = await Promise.all([
-    runGit(workspaceRoot, ['status', '--short', '--branch', '--untracked-files=all']),
-    runGit(workspaceRoot, ['diff', '--no-ext-diff', '--stat', 'HEAD']),
-    runGit(workspaceRoot, ['diff', '--no-ext-diff', '--no-color', 'HEAD']),
-  ]);
-
-  return {
-    statusText: truncateChars(status.stdout.trim(), 8_000),
-    diffStatText: truncateChars(diffStat.stdout.trim(), 8_000),
-    diffText: truncateChars(diff.stdout.trim(), 24_000),
-  };
 }
 
 export async function commitWorkspaceChanges(

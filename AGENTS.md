@@ -23,6 +23,10 @@
 - 禁止用多范围来概括“改了很多文件”或逃避拆分提交；只有确实同时修改了多个独立模块时才允许使用。
 - 如范围过多，要么改成一个最主要的范围，要么去除所有范围。
 
+## Desktop 内置 Git Skill
+
+首次启动 Desktop Host 时，会将 `apps/desktop/builtin-skills/` 下的 `git-commit`、`git-push`、`git-merge` 种子到 `%APPDATA%/SpiritAgent/skills/`（已存在则不覆盖，可自行编辑）。Git 选项卡通过 **Git Clap** 在当前会话激活对应 Skill，不再使用后台 ephemeral 会话生成提交信息。
+
 ## Agent / LLM 约定
 
 - 发给 LLM 的模型可见文本默认统一使用英文，包括但不限于系统消息、工具定义概述、工具描述、评估文案等；除非某个机制明确要求其他语言，否则不要混入中文或中英混写，以尽量减少输出质量波动。

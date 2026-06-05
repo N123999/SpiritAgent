@@ -111,47 +111,6 @@ export function cloneDesktopConfig(config: DesktopConfigFile): DesktopConfigFile
   return JSON.parse(JSON.stringify(config)) as DesktopConfigFile;
 }
 
-export function normalizeGeneratedCommitMessage(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new Error(i18n.t('error.autoCommitFailedNoMessageField'));
-  }
-
-  const normalized = value
-    .replace(/\r\n/g, '\n')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join('\n');
-
-  if (!normalized) {
-    throw new Error(i18n.t('error.autoCommitFailedEmptyMessage'));
-  }
-
-  return normalized;
-}
-
-export function parseGeneratedCommitMessageResponse(rawText: string): string {
-  const trimmed = rawText.trim();
-  if (!trimmed) {
-    throw new Error(i18n.t('error.autoCommitFailedNoBody'));
-  }
-
-  const candidate = extractJsonObjectText(trimmed);
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(candidate);
-  } catch {
-    throw new Error(i18n.t('error.autoCommitFailedInvalidJson'));
-  }
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(i18n.t('error.autoCommitFailedNotObject'));
-  }
-
-  return normalizeGeneratedCommitMessage((parsed as { message?: unknown }).message);
-}
-
 export function normalizeGeneratedWorktreeNames(value: {
   worktreeName?: unknown;
   branchName?: unknown;
