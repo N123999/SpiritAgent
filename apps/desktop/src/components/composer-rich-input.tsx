@@ -698,8 +698,21 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       const shell = segmentsRef.current;
       const domParsed = mergeAdjacentTextSegments(domToSegments(div));
       const policy = chipPolicy();
+      const domPlain = segmentsToPlainText(domParsed);
 
       if (domParsedMissingRequiredAgentChip(shell, domParsed, policy)) {
+        if (isComposerPlainEmpty(domPlain)) {
+          agentModeChipDismissedRef.current = true;
+          onAgentModeChipDismissChangeRef.current?.(true);
+          const next = removeAgentModeSegment(domParsed);
+          hadAgentModeRef.current = false;
+          commitSegments(next, { segmentIndex: 0, offset: 0 }, { syncAgentMode: false });
+          if (isAgentModeChipKind(agentModeRef.current)) {
+            onAgentModeChangeRef.current?.("agent");
+          }
+          reportSelectionChange();
+          return;
+        }
         skipRenderRef.current = false;
         pendingCaretRef.current = normalizeCaretForPinnedAgentModeChip(
           shell,
@@ -710,7 +723,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         return;
       }
 
-      let caret = selectionToCaret(div, shell);
+      let caret = selectionToCaret(div, domParsed);
       let next = synchronizeTextFromDom(shell, domParsed);
       next = applyComposerPolicy(next);
 
