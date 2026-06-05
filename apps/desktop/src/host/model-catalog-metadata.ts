@@ -89,6 +89,10 @@ function previewCapabilitiesFromListedEntry(
     return ['imageGeneration'];
   }
 
+  if (entry.supportsVideoGeneration === true) {
+    return ['chat', 'videoGeneration'];
+  }
+
   const capabilities: DesktopModelCapability[] = ['chat'];
   if (entry.supportsImageInput === true) {
     capabilities.push('image');

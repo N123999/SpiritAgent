@@ -218,6 +218,7 @@ const modelCapabilityOptions: Array<{
   { value: "image", label: "Image", labelKey: 'settings.capabilityImageLabel', summaryKey: 'settings.capabilityImage' },
   { value: "video", label: "Video", labelKey: 'settings.capabilityVideoLabel', summaryKey: 'settings.capabilityVideo' },
   { value: "imageGeneration", label: "Image generation", labelKey: 'settings.capabilityImageGenerationLabel', summaryKey: 'settings.capabilityImageGeneration' },
+  { value: "videoGeneration", label: "Video generation", labelKey: 'settings.capabilityVideoGenerationLabel', summaryKey: 'settings.capabilityVideoGeneration' },
 ];
 
 type ConnectTransportOption = {

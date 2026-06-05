@@ -132,6 +132,10 @@ test('parseVercelAiGatewayModelEntriesPayload maps language and image types', ()
         type: 'image',
       },
       {
+        id: 'alibaba/wan-v2.6-text-to-video',
+        type: 'video',
+      },
+      {
         id: 'openai/text-embedding-3-small',
         type: 'embedding',
       },
@@ -149,6 +153,10 @@ test('parseVercelAiGatewayModelEntriesPayload maps language and image types', ()
     {
       id: 'google/imagen-4',
       supportsImageGeneration: true,
+    },
+    {
+      id: 'alibaba/wan-v2.6-text-to-video',
+      supportsVideoGeneration: true,
     },
     {
       id: 'legacy/model-without-type',

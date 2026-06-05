@@ -20,6 +20,7 @@ export interface ProviderListedModelEntry {
   pricing?: ProviderListedModelPricing;
   supportsImageInput?: boolean;
   supportsVideoInput?: boolean;
+  supportsVideoGeneration?: boolean;
   supportsImageGeneration?: boolean;
   supportsReasoning?: boolean;
   contextLength?: number;
@@ -195,7 +196,7 @@ export function parseVercelAiGatewayModelEntriesPayload(body: unknown): Provider
     if (type === 'video') {
       entries.push(
         attachListedModelMetadata(
-          { id: id.trim(), supportsVideoInput: true },
+          { id: id.trim(), supportsVideoGeneration: true },
           record,
           readVercelGatewayPricing(record),
         ),
@@ -615,6 +616,9 @@ function dedupeProviderListedModelEntries(
         : {}),
       ...(entry.supportsVideoInput !== undefined
         ? { supportsVideoInput: entry.supportsVideoInput }
+        : {}),
+      ...(entry.supportsVideoGeneration !== undefined
+        ? { supportsVideoGeneration: entry.supportsVideoGeneration }
         : {}),
       ...(entry.supportsImageGeneration !== undefined
         ? { supportsImageGeneration: entry.supportsImageGeneration }

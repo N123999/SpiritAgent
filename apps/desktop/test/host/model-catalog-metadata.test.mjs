@@ -161,6 +161,10 @@ test('vercel-ai-gateway provider maps language and image model types to catalog 
         id: 'google/imagen-4',
         supportsImageGeneration: true,
       },
+      {
+        id: 'alibaba/wan-v2.6-text-to-video',
+        supportsVideoGeneration: true,
+      },
     ],
   });
 
@@ -172,6 +176,30 @@ test('vercel-ai-gateway provider maps language and image model types to catalog 
     {
       id: 'google/imagen-4',
       capabilities: ['imageGeneration'],
+    },
+    {
+      id: 'alibaba/wan-v2.6-text-to-video',
+      capabilities: ['chat', 'videoGeneration'],
+    },
+  ]);
+});
+
+test('moonshot-ai video input maps to video capability not videoGeneration', () => {
+  const preview = previewModelCatalogForTransport({
+    provider: 'moonshot-ai',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'moonshot-v1-128k-vision-preview',
+        supportsVideoInput: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'moonshot-v1-128k-vision-preview',
+      capabilities: ['chat', 'video'],
     },
   ]);
 });
