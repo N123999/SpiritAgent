@@ -1,13 +1,19 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { TYPESCRIPT_JS_EXTENSIONS } from '@spirit-agent/agent-core';
+import { isLspSupportedExtension, TYPESCRIPT_JS_EXTENSIONS } from '@spirit-agent/agent-core';
 import type { LspFileChangeNotification, LspFileSnapshot } from '@spirit-agent/agent-core';
 import { LspPathError } from './errors.js';
+import { routeLspProviderForPath } from './providers.js';
 
 export function isTypescriptJavascriptPath(filePath: string): boolean {
   const extension = path.extname(filePath).toLowerCase();
   return TYPESCRIPT_JS_EXTENSIONS.has(extension);
+}
+
+export function isLspSupportedPath(filePath: string): boolean {
+  const extension = path.extname(filePath).toLowerCase();
+  return isLspSupportedExtension(extension) && routeLspProviderForPath(filePath) !== undefined;
 }
 
 export function languageIdForExtension(relativePath: string): string {

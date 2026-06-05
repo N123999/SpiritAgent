@@ -50,6 +50,49 @@ test('appendLspDiagnosticsAfterWriteIfNeeded attaches hostUi for write tools', a
   assert.equal(result.hostUi?.lspWriteDiagnostics?.items[0]?.line, 1);
 });
 
+test('appendLspDiagnosticsAfterWriteIfNeeded skips unsupported extensions', async () => {
+  const lsp = {
+    enabled: true,
+    workspaceRoot: 'D:\\SpiritAgent',
+    getDiagnosticsForPath: async () => ({
+      relativePath: 'index.html',
+      diagnostics: [],
+      formatted: '',
+    }),
+  } satisfies Pick<LspService, 'enabled' | 'workspaceRoot' | 'getDiagnosticsForPath'>;
+
+  const output = createToolExecutionTextOutput('ok');
+  const result = await appendLspDiagnosticsAfterWriteIfNeeded(
+    lsp as unknown as LspService,
+    { name: 'edit_file', path: 'index.html' },
+    output,
+  );
+  assert.equal(result.summaryText, 'ok');
+});
+
+test('appendLspDiagnosticsAfterWriteIfNeeded routes Python writes when supported', async () => {
+  let called = false;
+  const lsp = {
+    enabled: true,
+    workspaceRoot: 'D:\\SpiritAgent',
+    getDiagnosticsForPath: async () => {
+      called = true;
+      return {
+        relativePath: 'main.py',
+        diagnostics: [],
+        formatted: '',
+      };
+    },
+  } satisfies Pick<LspService, 'enabled' | 'workspaceRoot' | 'getDiagnosticsForPath'>;
+
+  await appendLspDiagnosticsAfterWriteIfNeeded(
+    lsp as unknown as LspService,
+    { name: 'edit_file', path: 'main.py' },
+    createToolExecutionTextOutput('ok'),
+  );
+  assert.equal(called, true);
+});
+
 test('appendLspDiagnosticsAfterWriteIfNeeded waits with writeAppendDiagnosticsWaitMs', async () => {
   let waitMs: number | undefined;
   const lsp = {

@@ -124,10 +124,6 @@ export function routeLspProviderForPath(resolvedPath: string): LspProviderId | u
   return routeLspProviderForExtension(extension);
 }
 
-export function isLspSupportedPath(resolvedPath: string): boolean {
-  return routeLspProviderForPath(resolvedPath) !== undefined;
-}
-
 type ProviderResolver = (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,

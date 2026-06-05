@@ -526,7 +526,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     request: LspDiagnosticsToolRequest,
   ): Promise<ToolExecutionOutput> {
     if (!this.lsp?.enabled) {
-      throw new Error('get_diagnostics is not available because typescript-language-server was not found on PATH');
+      throw new Error('get_diagnostics is not available because no language server is installed for this workspace');
     }
     const result = await this.lsp.getDiagnosticsForPath(request.path);
     return createToolExecutionTextOutput(result.formatted);

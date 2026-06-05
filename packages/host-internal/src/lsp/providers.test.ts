@@ -8,11 +8,11 @@ import {
   discoverAllLspProviders,
   discoverLspProvider,
   findLspProvider,
-  isLspSupportedPath,
   LSP_PROVIDERS,
   routeLspProviderForExtension,
   routeLspProviderForPath,
 } from './providers.js';
+import { isLspSupportedPath } from './paths.js';
 
 async function writeFakeTypescriptLanguageServer(binDir: string, platform: NodeJS.Platform): Promise<void> {
   if (platform === 'win32') {

@@ -6,7 +6,7 @@ import {
 } from '@spirit-agent/agent-core';
 
 import { DEFAULT_LSP_TIMING } from './config.js';
-import { isTypescriptJavascriptPath, resolveWorkspaceFilePath } from './paths.js';
+import { isLspSupportedPath, resolveWorkspaceFilePath } from './paths.js';
 import type { LspService } from './service.js';
 
 export async function appendLspDiagnosticsAfterWriteIfNeeded(
@@ -19,7 +19,7 @@ export async function appendLspDiagnosticsAfterWriteIfNeeded(
   }
 
   const resolvedPath = resolvedPathFromWriteRequest(lsp.workspaceRoot, request);
-  if (!resolvedPath || !isTypescriptJavascriptPath(resolvedPath)) {
+  if (!resolvedPath || !isLspSupportedPath(resolvedPath)) {
     return output;
   }
 

@@ -285,7 +285,7 @@ export class DesktopToolExecutor
     if (isLspDiagnosticsToolRequest(jsonRequest)) {
       if (!this.lsp?.enabled) {
         throw new Error(
-          'get_diagnostics is not available because typescript-language-server was not found on PATH',
+          'get_diagnostics is not available because no language server is installed for this workspace',
         );
       }
       const result = await this.lsp.getDiagnosticsForPath(jsonRequest.path);

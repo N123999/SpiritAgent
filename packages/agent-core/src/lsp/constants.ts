@@ -15,6 +15,30 @@ export const TYPESCRIPT_JS_EXTENSIONS = new Set([
   '.cjs',
 ]);
 
+/** File extensions routed to an in-scope language server (HTML/CSS excluded). */
+export const LSP_SUPPORTED_EXTENSIONS = new Set([
+  ...TYPESCRIPT_JS_EXTENSIONS,
+  '.py',
+  '.pyi',
+  '.go',
+  '.rs',
+  '.c',
+  '.h',
+  '.cpp',
+  '.cc',
+  '.cxx',
+  '.hpp',
+  '.hh',
+  '.hxx',
+  '.java',
+  '.cs',
+]);
+
+export function isLspSupportedExtension(extension: string): boolean {
+  const normalized = extension.startsWith('.') ? extension.toLowerCase() : `.${extension.toLowerCase()}`;
+  return LSP_SUPPORTED_EXTENSIONS.has(normalized);
+}
+
 export const HOST_WRITE_TOOL_NAMES = new Set<string>([
   'create_file',
   'edit_file',
