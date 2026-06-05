@@ -1972,6 +1972,19 @@ export default function App() {
     },
     [runtime],
   );
+  const handleNewSession = useCallback(() => {
+    setLastNonSettingsSurface("conversation");
+    const resetPromise = runtime.resetSession();
+    // 扩展页仍挂着旧会话快照；先 reset 再切 surface，避免中间帧闪回旧会话。
+    if (activeSurface === "marketplace") {
+      void resetPromise.then(() => {
+        setActiveSurface("conversation");
+      });
+      return;
+    }
+    setActiveSurface("conversation");
+    void resetPromise;
+  }, [activeSurface, runtime]);
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
   const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
   const previousActiveSessionPathRef = useRef<string | null>(null);
@@ -2666,11 +2679,7 @@ export default function App() {
               userHomeDirectory={snapshot?.userHomeDirectory ?? null}
               sessions={runtime.sessions}
               activeFilePath={activeFilePath}
-              onNewSession={() => {
-                setLastNonSettingsSurface("conversation");
-                setActiveSurface("conversation");
-                void runtime.resetSession();
-              }}
+              onNewSession={handleNewSession}
               onSelectSession={(path) => {
                 setLastNonSettingsSurface("conversation");
                 setActiveSurface("conversation");

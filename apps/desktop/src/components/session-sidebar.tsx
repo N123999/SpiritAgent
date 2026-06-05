@@ -484,7 +484,10 @@ export function SessionSidebar({
   }, []);
 
   const isSessionSelected = (sessionPath: string) =>
-    !marketplaceActive && activeFilePath !== null && samePath(sessionPath, activeFilePath);
+    !marketplaceActive &&
+    !newSessionBusy &&
+    activeFilePath !== null &&
+    samePath(sessionPath, activeFilePath);
 
   const setWorkspaceGroupExpanded = useCallback((groupId: string, open: boolean) => {
     setCollapsedWorkspaceIds((current) => ({
