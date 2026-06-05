@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/lib/i18n";
@@ -41,10 +41,15 @@ type DreamNodeData = {
   label: string;
   subtitle: string;
   dream?: DesktopDreamOverviewItem;
-  open?: boolean;
-  onOpenChange?: (open: boolean, dreamId?: string) => void;
   interactive?: boolean;
 };
+
+type DreamGraphInteractionValue = {
+  selectedDreamId: string | null;
+  onDreamOpenChange: (open: boolean, dreamId?: string) => void;
+};
+
+const DreamGraphInteractionContext = createContext<DreamGraphInteractionValue | null>(null);
 
 type DreamLogoNodeData = {
   iconSrc: string;
@@ -137,16 +142,27 @@ function fallbackDreamSummaries(input: {
 
 function DreamInfoNode({ data }: NodeProps<Node<DreamNodeData>>) {
   const { t } = useTranslation();
+  const interaction = useContext(DreamGraphInteractionContext);
   const dream = data.dream;
+  const dreamId = dream?.id;
   const tags = dream?.tags ?? [];
   const visibleTags = tags.slice(0, 3);
   const overflowTags = tags.slice(3);
+  const popoverOpen = Boolean(
+    data.interactive
+    && dreamId
+    && interaction?.selectedDreamId === dreamId,
+  );
 
   return (
     <Popover
       modal
-      open={Boolean(data.interactive && data.open && dream)}
-      onOpenChange={(open) => data.onOpenChange?.(open, dream?.id)}
+      open={popoverOpen}
+      onOpenChange={(open) => {
+        if (dreamId && data.interactive) {
+          interaction?.onDreamOpenChange(open, dreamId);
+        }
+      }}
     >
       <PopoverTrigger asChild>
         <div
@@ -369,29 +385,6 @@ function mergeGraphNodes(
   });
 }
 
-function applyDreamNodeUiState(
-  nodes: DreamFlowNode[],
-  selectedDreamId: string | null,
-  onDreamOpenChange: (open: boolean, dreamId?: string) => void,
-): DreamFlowNode[] {
-  return nodes.map((node) => {
-    if (node.type !== "dreamInfo") {
-      return node;
-    }
-
-    const data = node.data as DreamNodeData;
-    const dreamId = data.dream?.id;
-    return {
-      ...node,
-      data: {
-        ...data,
-        open: dreamId !== undefined && dreamId === selectedDreamId,
-        onOpenChange: dreamId !== undefined ? onDreamOpenChange : undefined,
-      },
-    };
-  });
-}
-
 function buildDreamItemSlots(count: number): Array<{ x: number; y: number }> {
   if (count <= 0) {
     return [];
@@ -455,9 +448,17 @@ function DreamGraphCanvas({
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const graphNodeIds = useMemo(() => new Set(["context", "logo", ...items.map((item) => item.id)]), [items]);
   const pinnedNodeIdSet = useMemo(() => new Set(pinnedNodeIds), [pinnedNodeIds]);
-  const handleDreamOpenChange = (open: boolean, dreamId?: string) => {
+  const handleDreamOpenChange = useCallback((open: boolean, dreamId?: string) => {
     setSelectedDreamId(open ? dreamId ?? null : null);
-  };
+  }, []);
+
+  const dreamGraphInteraction = useMemo(
+    (): DreamGraphInteractionValue => ({
+      selectedDreamId,
+      onDreamOpenChange: handleDreamOpenChange,
+    }),
+    [handleDreamOpenChange, selectedDreamId],
+  );
 
   const handleNodeDragStop = (_event: unknown, node: DreamFlowNode) => {
     setPinnedNodeIds((current) => {
@@ -502,17 +503,8 @@ function DreamGraphCanvas({
     setEdges(graph.edges);
   }, [graph, pinnedNodeIdSet, setEdges, setNodes]);
 
-  useEffect(() => {
-    setNodes((currentNodes) =>
-      applyDreamNodeUiState(
-        currentNodes as DreamFlowNode[],
-        selectedDreamId,
-        handleDreamOpenChange,
-      ),
-    );
-  }, [graph.nodes, selectedDreamId, setNodes]);
-
   return (
+    <DreamGraphInteractionContext.Provider value={dreamGraphInteraction}>
     <ReactFlow
       nodes={nodes}
       edges={edges}
@@ -537,6 +529,7 @@ function DreamGraphCanvas({
     >
       <Background gap={24} size={1} color="rgba(255,255,255,0.03)" />
     </ReactFlow>
+    </DreamGraphInteractionContext.Provider>
   );
 }
 
