@@ -42,7 +42,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
 import { cn } from "@/lib/utils";
 import i18n from "@/lib/i18n";
-import type { DesktopSnapshot, SessionListItem } from "@/types";
+import type { SessionListItem } from "@/types";
 
 function samePath(a: string, b: string): boolean {
   return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
@@ -71,8 +71,6 @@ type SessionSidebarProps = {
   }>;
   onSettingsTabChange?: (tab: SettingsSidebarTab) => void;
   onExtensionSettingsChange?: (extensionId: string) => void;
-  hostStatus: string;
-  mcpState: string | null;
   /** Windows 云母：侧栏需半透明+blur，避免透出窗后内容发花 */
   micaStyle?: boolean;
   newSessionBusy?: boolean;
@@ -448,8 +446,6 @@ export function SessionSidebar({
   extensionSettingsItems = [],
   onSettingsTabChange,
   onExtensionSettingsChange,
-  hostStatus,
-  mcpState,
   micaStyle,
   newSessionBusy = false,
   sessionNavigationBusy = false,
@@ -806,13 +802,13 @@ export function SessionSidebar({
         </ScrollArea>
       </div>
 
-      <div
-        className={cn(
-          "shrink-0 space-y-1 border-t border-sidebar-border/30 p-2 dark:border-border/40",
-          narrow && "mt-auto flex flex-col items-center gap-1.5 border-t py-2",
-        )}
-      >
-        {settingsMode ? null : (
+      {!settingsMode ? (
+        <div
+          className={cn(
+            "shrink-0 border-t border-sidebar-border/30 p-2 dark:border-border/40",
+            narrow && "mt-auto flex flex-col items-center border-t py-2",
+          )}
+        >
           <Button
             type="button"
             variant="ghost"
@@ -828,26 +824,8 @@ export function SessionSidebar({
             <Settings2 className="size-4" aria-hidden />
             <span className={cn(narrow && "sr-only")}>{t('settings.title')}</span>
           </Button>
-        )}
-        {narrow ? (
-          <>
-            <p className="sr-only" role="status">
-              {hostStatus}
-              {mcpState ? ` · ${mcpState}` : null}
-            </p>
-            <div
-              className="size-1.5 rounded-full bg-sidebar-faint-foreground/50"
-              title={mcpState ? `${hostStatus} · ${mcpState}` : hostStatus}
-              aria-hidden
-            />
-          </>
-        ) : (
-          <p className="line-clamp-2 px-1.5 text-[0.65rem] leading-relaxed text-sidebar-faint-foreground">
-            {hostStatus}
-            {mcpState ? ` · ${mcpState}` : null}
-          </p>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       <Dialog
         open={deleteTarget !== null}
@@ -898,11 +876,4 @@ export function SessionSidebar({
       </Dialog>
     </aside>
   );
-}
-
-export function mcpBadgeText(snapshot: DesktopSnapshot | null): string | null {
-  if (!snapshot) {
-    return null;
-  }
-  return `MCP ${snapshot.mcpStatus.state}`;
 }

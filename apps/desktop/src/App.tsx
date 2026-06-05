@@ -184,11 +184,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
 import { LaunchSplash } from "@/components/launch-splash";
-import {
-  SessionSidebar,
-  mcpBadgeText,
-  type SettingsSidebarTab,
-} from "@/components/session-sidebar";
+import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
 import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import {
@@ -214,21 +210,6 @@ import type {
   ToolBlockSnapshot,
   WorkspaceFileReferenceSuggestionsResponse,
 } from "@/types";
-
-function mcpStateVariant(
-  state: DesktopSnapshot["mcpStatus"]["state"],
-): "outline" | "secondary" | "default" | "destructive" {
-  switch (state) {
-    case "loading":
-      return "secondary";
-    case "ready":
-      return "default";
-    case "error":
-      return "destructive";
-    default:
-      return "outline";
-  }
-}
 
 /** Stable list identity — must not include list index (rows insert above tools during finalize-thinking). */
 function conversationMessageStableId(
@@ -2715,8 +2696,6 @@ export default function App() {
               setSettingsTab(tab);
             }}
             onExtensionSettingsChange={(id) => setExtensionSettingsId(id)}
-            hostStatus={runtime.summary.hostStatus}
-            mcpState={mcpBadgeText(snapshot)}
             micaStyle={useMicaBackdrop}
             newSessionBusy={newSessionBusy}
             sessionNavigationBusy={sessionNavigationBusy}
