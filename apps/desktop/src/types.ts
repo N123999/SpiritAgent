@@ -519,6 +519,8 @@ export interface SessionListItem {
   readOnly?: boolean;
   /** Agent turn in progress for this session (in-memory registry). */
   isBusy?: boolean;
+  /** Waiting for approval or askQuestions; still counts as busy for host polling. */
+  isBlocked?: boolean;
   /** Currently focused session in the desktop host. */
   isActive?: boolean;
 }

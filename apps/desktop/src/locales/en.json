@@ -282,7 +282,9 @@
     "sessionActions": "Session actions",
     "deleteSession": "Delete session",
     "deleteSessionConfirm": "Delete session \"{{name}}\"? This cannot be undone.",
-    "cannotDeleteBusySession": "Cannot delete while the session is running."
+    "cannotDeleteBusySession": "Cannot delete while the session is running.",
+    "sessionBlocked": "Waiting for input",
+    "sessionCompleted": "Background task completed"
   },
   "titleBar": {
     "file": "File",

@@ -80,6 +80,8 @@ type SessionSidebarProps = {
   deleteSessionBusy?: boolean;
   onDeleteSession?: (path: string) => void | Promise<void>;
   disabled?: boolean;
+  /** 后台会话完成后、用户尚未打开前显示蓝色圆点。 */
+  unseenCompletedSessionPaths?: ReadonlySet<string>;
 };
 
 export type SettingsSidebarTab =
@@ -186,10 +188,30 @@ function sortSessionsByModified(sessions: SessionListItem[]): SessionListItem[] 
   return [...sessions].sort((left, right) => right.modifiedAtUnixMs - left.modifiedAtUnixMs);
 }
 
+type SessionRowStatusTone = "blocked" | "completed";
+
+function sessionRowStatusDotClass(tone: SessionRowStatusTone): string {
+  return tone === "blocked"
+    ? "bg-yellow-500"
+    : "bg-blue-500 dark:bg-blue-400";
+}
+
+function SessionRowStatusDot({ tone, label }: { tone: SessionRowStatusTone; label: string }) {
+  return (
+    <span
+      className={cn("size-2 shrink-0 rounded-full", sessionRowStatusDotClass(tone))}
+      role="status"
+      aria-label={label}
+    />
+  );
+}
+
 type SessionListRowProps = {
   sessionPath: string;
   displayName: string;
   isBusy?: boolean;
+  isBlocked?: boolean;
+  showCompletedUnseen?: boolean;
   nested: boolean;
   selected: boolean;
   disabled?: boolean;
@@ -201,6 +223,8 @@ const SessionListRow = memo(function SessionListRow({
   sessionPath,
   displayName,
   isBusy,
+  isBlocked,
+  showCompletedUnseen,
   nested,
   selected,
   disabled,
@@ -232,7 +256,13 @@ const SessionListRow = memo(function SessionListRow({
       >
         {displayName}
       </span>
-      {isBusy ? (
+      {!selected && isBlocked ? (
+        <SessionRowStatusDot tone="blocked" label={t("sidebar.sessionBlocked")} />
+      ) : null}
+      {!selected && showCompletedUnseen ? (
+        <SessionRowStatusDot tone="completed" label={t("sidebar.sessionCompleted")} />
+      ) : null}
+      {isBusy && !isBlocked ? (
         <Spinner
           className="size-3 shrink-0 text-primary"
           aria-label={t('common.running')}
@@ -426,6 +456,7 @@ export function SessionSidebar({
   deleteSessionBusy = false,
   onDeleteSession,
   disabled,
+  unseenCompletedSessionPaths,
 }: SessionSidebarProps) {
   const { t, i18n } = useTranslation();
   const settingsMode = mode === "settings";
@@ -677,6 +708,8 @@ export function SessionSidebar({
                         sessionPath={session.path}
                         displayName={session.displayName}
                         isBusy={session.isBusy}
+                        isBlocked={session.isBlocked}
+                        showCompletedUnseen={unseenCompletedSessionPaths?.has(session.path) === true}
                         nested={false}
                         selected={isSessionSelected(session.path)}
                         disabled={disabled}
@@ -753,6 +786,8 @@ export function SessionSidebar({
                               sessionPath={session.path}
                               displayName={session.displayName}
                               isBusy={session.isBusy}
+                              isBlocked={session.isBlocked}
+                              showCompletedUnseen={unseenCompletedSessionPaths?.has(session.path) === true}
                               nested
                               selected={isSessionSelected(session.path)}
                               disabled={disabled}

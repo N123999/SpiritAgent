@@ -11,6 +11,7 @@ import { extractActivePlanPathFromLlmHistory, normalizeApprovalLevel } from '@sp
 import type { ApprovalLevel } from '@spirit-agent/host-internal';
 import type { SessionTitleSource, StoredDesktopSession } from './contracts.js';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
+import type { SessionBundle } from './session-bundle.js';
 import {
   normalizeMessageAuxSnapshot,
   normalizeToolBlockSnapshot,
@@ -375,4 +376,18 @@ function cloneSubagentSessions(
   sessions: NonNullable<ChatArchive['subagentSessions']>,
 ): NonNullable<ChatArchive['subagentSessions']> {
   return cloneArchiveSubagentSessions(sessions);
+}
+
+type SessionListActivity = Pick<SessionListItem, 'isBusy' | 'isBlocked'>;
+
+/** Map in-memory bundle runtime to session list activity flags. */
+export function sessionListActivityFromBundle(bundle?: SessionBundle): SessionListActivity {
+  const runtime = bundle?.runtime;
+  if (!runtime?.isBusy()) {
+    return {};
+  }
+  if (runtime.hasPendingApproval() || runtime.hasPendingQuestions()) {
+    return { isBusy: true, isBlocked: true };
+  }
+  return { isBusy: true };
 }

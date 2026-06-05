@@ -33,7 +33,8 @@ import {
   readWorkspaceGitHistory,
   readWorkspaceGitWorkingTree,
 } from './git.js';
-import { ephemeralSessionsToListItems } from './sessions.js';
+import { ephemeralSessionsToListItems, sessionListActivityFromBundle } from './sessions.js';
+import type { SessionBundle } from './session-bundle.js';
 import {
   listWorkspaceExplorerChildren as listWorkspaceExplorerChildrenFromDisk,
   readWorkspaceTextFile as readWorkspaceTextFileFromDisk,
@@ -69,6 +70,7 @@ export interface HostWorkspaceGitCommandContext {
   activeBundle(): HostWorkspaceGitBundle;
   activeSessionId(): string | undefined;
   bundleRuntimeIsBusy(sessionPath: string): boolean;
+  bundleForSessionPath(sessionPath: string): SessionBundle | undefined;
   refreshGitState(): Promise<void>;
   refreshRuntimeForActiveBundle(): Promise<void>;
   syncActiveRuntimePointer(): void;
@@ -236,7 +238,7 @@ export async function listSessionsCommand(ctx: HostWorkspaceGitCommandContext): 
     const merged = [...stored, ...ephemeral].sort((left, right) => right.modifiedAtUnixMs - left.modifiedAtUnixMs);
     return merged.map((item) => ({
       ...item,
-      ...(ctx.bundleRuntimeIsBusy(item.path) ? { isBusy: true } : {}),
+      ...sessionListActivityFromBundle(ctx.bundleForSessionPath(item.path)),
       ...(item.path === activeId ? { isActive: true } : {}),
     }));
   });

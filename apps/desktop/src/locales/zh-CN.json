@@ -282,7 +282,9 @@
     "sessionActions": "会话操作",
     "deleteSession": "删除会话",
     "deleteSessionConfirm": "确定删除会话「{{name}}」？此操作无法撤销。",
-    "cannotDeleteBusySession": "会话运行中，无法删除。"
+    "cannotDeleteBusySession": "会话运行中，无法删除。",
+    "sessionBlocked": "等待处理",
+    "sessionCompleted": "后台任务已完成"
   },
   "titleBar": {
     "file": "文件",

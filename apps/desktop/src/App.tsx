@@ -2725,6 +2725,7 @@ export default function App() {
               onDeleteSession={(path) => {
                 void runtime.deleteSession(path);
               }}
+              unseenCompletedSessionPaths={runtime.unseenCompletedSessionPaths}
             />
           </div>
         </div>

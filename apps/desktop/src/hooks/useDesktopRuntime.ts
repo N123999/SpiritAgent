@@ -304,6 +304,10 @@ export function useDesktopRuntime() {
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [unseenCompletedSessionPaths, setUnseenCompletedSessionPaths] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const sessionsBusySnapshotRef = useRef<Map<string, boolean>>(new Map());
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, QuestionDraft>>({});
   const [composerLocalFileAttachments, setComposerLocalFileAttachments] = useState<
     ComposerLocalFileAttachmentView[]
@@ -511,17 +515,57 @@ export function useDesktopRuntime() {
     });
   }, []);
 
+  const acknowledgeSessionAttention = useCallback((path: string) => {
+    setUnseenCompletedSessionPaths((current) => {
+      if (!current.has(path)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(path);
+      return next;
+    });
+  }, []);
+
+  const applySessionList = useCallback((list: SessionListItem[]) => {
+    const prev = sessionsBusySnapshotRef.current;
+    const nextBusy = new Map<string, boolean>();
+    const newlyCompleted: string[] = [];
+
+    for (const session of list) {
+      const wasBusy = prev.get(session.path) === true;
+      const nowBusy = session.isBusy === true;
+      nextBusy.set(session.path, nowBusy);
+      if (wasBusy && !nowBusy && !session.isActive && !session.isBlocked) {
+        newlyCompleted.push(session.path);
+      }
+    }
+    sessionsBusySnapshotRef.current = nextBusy;
+
+    if (newlyCompleted.length > 0) {
+      setUnseenCompletedSessionPaths((current) => {
+        const next = new Set(current);
+        for (const path of newlyCompleted) {
+          next.add(path);
+        }
+        return next;
+      });
+    }
+
+    setSessions(list);
+  }, []);
+
   const refreshSessions = useCallback(async () => {
     if (!api) {
       return;
     }
     try {
       const list = await api.listSessions();
-      setSessions(list);
+      applySessionList(list);
     } catch {
+      sessionsBusySnapshotRef.current = new Map();
       setSessions([]);
     }
-  }, [api]);
+  }, [api, applySessionList]);
 
   const listDreamsOverview = useCallback(async (): Promise<DesktopDreamOverviewItem[]> => {
     if (!api) {
@@ -817,7 +861,7 @@ export function useDesktopRuntime() {
           if (cancelled) {
             break;
           }
-          setSessions(sessionItems);
+          applySessionList(sessionItems);
           const stillBusy = sessionItems.some((session) => session.isBusy === true);
           if (!stillBusy) {
             break;
@@ -833,7 +877,7 @@ export function useDesktopRuntime() {
     return () => {
       cancelled = true;
     };
-  }, [api, applySnapshot, backgroundSessionsBusy, snapshot?.conversation.isBusy]);
+  }, [api, applySessionList, applySnapshot, backgroundSessionsBusy, snapshot?.conversation.isBusy]);
 
   useEffect(() => {
     if (!api?.subscribeDreamUpdates) {
@@ -1997,6 +2041,7 @@ export function useDesktopRuntime() {
       if (!api) {
         return;
       }
+      acknowledgeSessionAttention(path);
       const navGeneration = sessionNavigationGenerationRef.current + 1;
       sessionNavigationGenerationRef.current = navGeneration;
       setBusyAction("session");
@@ -2018,7 +2063,7 @@ export function useDesktopRuntime() {
         }
       }
     },
-    [api, applySnapshot, refreshSessions, restoreSessionUi, stashSessionUi],
+    [acknowledgeSessionAttention, api, applySnapshot, refreshSessions, restoreSessionUi, stashSessionUi],
   );
 
   const deleteSession = useCallback(
@@ -2026,6 +2071,7 @@ export function useDesktopRuntime() {
       if (!api) {
         return;
       }
+      acknowledgeSessionAttention(path);
       const navGeneration = sessionNavigationGenerationRef.current + 1;
       sessionNavigationGenerationRef.current = navGeneration;
       setBusyAction("session");
@@ -2046,7 +2092,7 @@ export function useDesktopRuntime() {
         }
       }
     },
-    [api, applySnapshot, refreshSessions, restoreSessionUi],
+    [acknowledgeSessionAttention, api, applySnapshot, refreshSessions, restoreSessionUi],
   );
 
   const listWorkspaceFileReferenceSuggestions = useCallback(
@@ -2213,6 +2259,7 @@ export function useDesktopRuntime() {
     listDreamsOverview,
     runtimeError,
     sessions,
+    unseenCompletedSessionPaths,
     settings,
     snapshot,
     summary,

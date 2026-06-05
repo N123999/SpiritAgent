@@ -536,6 +536,7 @@ class DesktopHostService {
       activeBundle: () => this.activeBundle(),
       activeSessionId: () => this.sessionRegistry.activeSessionId(),
       bundleRuntimeIsBusy: (sessionPath) => this.sessionRegistry.get(sessionPath)?.runtime?.isBusy() === true,
+      bundleForSessionPath: (sessionPath) => this.sessionRegistry.findBySessionPath(sessionPath),
       refreshGitState: () => this.refreshGitState(),
       refreshRuntimeForActiveBundle: () => this.refreshRuntimeForBundle(this.activeBundle()),
       syncActiveRuntimePointer: () => this.syncActiveRuntimePointer(),
