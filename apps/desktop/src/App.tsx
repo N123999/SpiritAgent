@@ -165,6 +165,7 @@ import {
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
   DESKTOP_OVERLAY_SHORT_ITEM,
   DESKTOP_OVERLAY_SHORT_SUBCONTENT,
+  SESSION_SIDEBAR_DEFAULT_WIDTH_PX,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
@@ -188,6 +189,7 @@ import {
   mcpBadgeText,
   type SettingsSidebarTab,
 } from "@/components/session-sidebar";
+import { SessionSidebarShell } from "@/components/session-sidebar-shell";
 import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import {
   addWorkspaceBrowserTabWithUrl,
@@ -1845,6 +1847,9 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
   const [extensionSettingsId, setExtensionSettingsId] = useState<string | null>(null);
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(true);
+  const [sessionSidebarWidthPx, setSessionSidebarWidthPx] = useState(
+    SESSION_SIDEBAR_DEFAULT_WIDTH_PX,
+  );
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const initialWorkspaceToolsRef = useRef<ReturnType<
     typeof createInitialWorkspaceToolsState
@@ -2649,7 +2654,11 @@ export default function App() {
     >
       <LaunchSplash active={launchSplashActive} />
       {winElectronChrome ? (
-        <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} sessionSidebarOpen={sessionSidebarOpen} />
+        <DesktopTitleBar
+          useMicaBackdrop={useMicaBackdrop}
+          sessionSidebarOpen={sessionSidebarOpen}
+          sessionSidebarWidthPx={sessionSidebarWidthPx}
+        />
       ) : null}
       <div data-spirit-surface="app-body" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {!winElectronChrome ? (
@@ -2666,78 +2675,58 @@ export default function App() {
           />
         ) : null}
         <div data-spirit-surface="main-frame" className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div
-          data-spirit-surface="session-sidebar-shell"
-          className={cn(
-            "relative h-full min-h-0 shrink-0 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
-            sessionSidebarOpen ? "w-[min(16rem,40vw)]" : "w-0",
-          )}
+        <SessionSidebarShell
+          open={sessionSidebarOpen}
+          widthPx={sessionSidebarWidthPx}
+          onWidthPxChange={setSessionSidebarWidthPx}
+          useMicaBackdrop={useMicaBackdrop}
         >
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-hidden={!sessionSidebarOpen}
-            className={cn(
-              "pointer-events-none absolute inset-y-0 right-0 z-10 w-px",
-              useMicaBackdrop ? "bg-black/5 dark:bg-border/40" : "bg-border/40",
-            )}
+          <SessionSidebar
+            narrow={false}
+            mode={settingsMode ? "settings" : "sessions"}
+            userHomeDirectory={snapshot?.userHomeDirectory ?? null}
+            sessions={runtime.sessions}
+            activeFilePath={activeFilePath}
+            onNewSession={handleNewSession}
+            onSelectSession={(path) => {
+              setLastNonSettingsSurface("conversation");
+              setActiveSurface("conversation");
+              void runtime.openSession(path);
+            }}
+            onOpenMarketplace={() => {
+              setSessionSidebarOpen(true);
+              setLastNonSettingsSurface("marketplace");
+              setActiveSurface("marketplace");
+            }}
+            onOpenSettings={() => {
+              setSessionSidebarOpen(true);
+              if (activeSurface !== "settings") {
+                setLastNonSettingsSurface(activeSurface === "marketplace" ? "marketplace" : "conversation");
+              }
+              setActiveSurface("settings");
+            }}
+            onBackToSessions={() => setActiveSurface(lastNonSettingsSurface)}
+            marketplaceActive={marketplaceMode}
+            settingsTab={settingsTab}
+            extensionSettingsId={extensionSettingsId}
+            extensionSettingsItems={extensionSettingsItems}
+            onSettingsTabChange={(tab) => {
+              setExtensionSettingsId(null);
+              setSettingsTab(tab);
+            }}
+            onExtensionSettingsChange={(id) => setExtensionSettingsId(id)}
+            hostStatus={runtime.summary.hostStatus}
+            mcpState={mcpBadgeText(snapshot)}
+            micaStyle={useMicaBackdrop}
+            newSessionBusy={newSessionBusy}
+            sessionNavigationBusy={sessionNavigationBusy}
+            deleteSessionBusy={sessionNavigationBusy}
+            onDeleteSession={(path) => {
+              void runtime.deleteSession(path);
+            }}
+            unseenCompletedSessionPaths={runtime.unseenCompletedSessionPaths}
           />
-          <div
-            data-spirit-surface="session-sidebar"
-            className={cn(
-              "h-full min-w-0 w-[min(16rem,40vw)]",
-              !sessionSidebarOpen && "pointer-events-none select-none",
-            )}
-            aria-hidden={!sessionSidebarOpen}
-            inert={!sessionSidebarOpen}
-          >
-            <SessionSidebar
-              narrow={false}
-              mode={settingsMode ? "settings" : "sessions"}
-              userHomeDirectory={snapshot?.userHomeDirectory ?? null}
-              sessions={runtime.sessions}
-              activeFilePath={activeFilePath}
-              onNewSession={handleNewSession}
-              onSelectSession={(path) => {
-                setLastNonSettingsSurface("conversation");
-                setActiveSurface("conversation");
-                void runtime.openSession(path);
-              }}
-              onOpenMarketplace={() => {
-                setSessionSidebarOpen(true);
-                setLastNonSettingsSurface("marketplace");
-                setActiveSurface("marketplace");
-              }}
-              onOpenSettings={() => {
-                setSessionSidebarOpen(true);
-                if (activeSurface !== "settings") {
-                  setLastNonSettingsSurface(activeSurface === "marketplace" ? "marketplace" : "conversation");
-                }
-                setActiveSurface("settings");
-              }}
-              onBackToSessions={() => setActiveSurface(lastNonSettingsSurface)}
-              marketplaceActive={marketplaceMode}
-              settingsTab={settingsTab}
-              extensionSettingsId={extensionSettingsId}
-              extensionSettingsItems={extensionSettingsItems}
-              onSettingsTabChange={(tab) => {
-                setExtensionSettingsId(null);
-                setSettingsTab(tab);
-              }}
-              onExtensionSettingsChange={(id) => setExtensionSettingsId(id)}
-              hostStatus={runtime.summary.hostStatus}
-              mcpState={mcpBadgeText(snapshot)}
-              micaStyle={useMicaBackdrop}
-              newSessionBusy={newSessionBusy}
-              sessionNavigationBusy={sessionNavigationBusy}
-              deleteSessionBusy={sessionNavigationBusy}
-              onDeleteSession={(path) => {
-                void runtime.deleteSession(path);
-              }}
-              unseenCompletedSessionPaths={runtime.unseenCompletedSessionPaths}
-            />
-          </div>
-        </div>
+        </SessionSidebarShell>
 
         {settingsMode ? (
           <div data-spirit-surface="settings-shell" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">

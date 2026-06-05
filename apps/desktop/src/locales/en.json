@@ -284,7 +284,8 @@
     "deleteSessionConfirm": "Delete session \"{{name}}\"? This cannot be undone.",
     "cannotDeleteBusySession": "Cannot delete while the session is running.",
     "sessionBlocked": "Waiting for input",
-    "sessionCompleted": "Background task completed"
+    "sessionCompleted": "Background task completed",
+    "resizeWidth": "Resize sidebar width"
   },
   "titleBar": {
     "file": "File",

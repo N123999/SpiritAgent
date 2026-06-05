@@ -113,3 +113,28 @@ export function stopOverlayScrollPropagation(event: {
 }): void {
   event.stopPropagation();
 }
+
+/** 左侧会话侧栏默认宽度（原 16rem） */
+export const SESSION_SIDEBAR_DEFAULT_WIDTH_PX = 256;
+
+/** 可拖拽下限：略窄于默认，勿压太多 */
+export const SESSION_SIDEBAR_MIN_WIDTH_PX = 232;
+
+/** 可拖拽上限：相对默认仅略放宽（右侧工具区勿用视口大比例） */
+export const SESSION_SIDEBAR_MAX_WIDTH_PX = 288;
+
+const SESSION_SIDEBAR_VIEWPORT_MAX_RATIO = 0.4;
+
+export function computeSessionSidebarMaxWidthPx(): number {
+  if (typeof window === "undefined") {
+    return SESSION_SIDEBAR_MAX_WIDTH_PX;
+  }
+  return Math.min(
+    SESSION_SIDEBAR_MAX_WIDTH_PX,
+    Math.round(window.innerWidth * SESSION_SIDEBAR_VIEWPORT_MAX_RATIO),
+  );
+}
+
+export function sessionSidebarShellWidth(open: boolean, widthPx: number): string {
+  return open ? `calc(0.25rem + ${widthPx}px)` : "0px";
+}

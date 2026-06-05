@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/hooks/useTheme";
 import { spiritAgentBrandIconSrc } from "@/lib/brand-icon";
+import { sessionSidebarShellWidth } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
 const MENU_ENTRIES = [
@@ -11,9 +12,6 @@ const MENU_ENTRIES = [
   { labelKey: "titleBar.window", section: "window" as const },
   { labelKey: "titleBar.help", section: "help" as const },
 ];
-
-/** 与 [`App.tsx`](../App.tsx) `session-sidebar-shell` 展开宽度一致 */
-const SESSION_SIDEBAR_WIDTH_CLASS = "w-[min(16rem,40vw)]";
 
 function popupMenuAtAnchor(
   el: HTMLElement,
@@ -28,6 +26,8 @@ type DesktopTitleBarProps = {
   useMicaBackdrop: boolean;
   /** 侧栏是否展开（影响顶栏左侧菜单区宽度） */
   sessionSidebarOpen: boolean;
+  /** 与主布局 session-sidebar-shell 一致（像素宽，不含拖动手柄） */
+  sessionSidebarWidthPx: number;
 };
 
 function titleBarSurfaceClass(useMicaBackdrop: boolean, withBorder: boolean) {
@@ -88,7 +88,11 @@ function TitleBarMenuCluster() {
 /**
  * Windows：自绘顶栏（LOGO + 菜单文案），窗口控制键仍由 `titleBarOverlay` 绘制。
  */
-export function DesktopTitleBar({ useMicaBackdrop, sessionSidebarOpen }: DesktopTitleBarProps) {
+export function DesktopTitleBar({
+  useMicaBackdrop,
+  sessionSidebarOpen,
+  sessionSidebarWidthPx,
+}: DesktopTitleBarProps) {
   return (
     <header
       className={cn(
@@ -99,8 +103,13 @@ export function DesktopTitleBar({ useMicaBackdrop, sessionSidebarOpen }: Desktop
       <div
         className={cn(
           "flex h-full min-h-0 shrink-0 items-center gap-1 pl-2",
-          sessionSidebarOpen ? SESSION_SIDEBAR_WIDTH_CLASS : "min-w-0 flex-1",
+          !sessionSidebarOpen && "min-w-0 flex-1",
         )}
+        style={
+          sessionSidebarOpen
+            ? { width: sessionSidebarShellWidth(true, sessionSidebarWidthPx) }
+            : undefined
+        }
       >
         <TitleBarMenuCluster />
       </div>
