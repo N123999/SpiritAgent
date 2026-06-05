@@ -54,6 +54,10 @@
     "./workspace-file-references": {
       "types": "./dist/workspace-file-references.d.ts",
       "default": "./dist/workspace-file-references.js"
+    },
+    "./lsp": {
+      "types": "./dist/lsp/index.d.ts",
+      "default": "./dist/lsp/index.js"
     }
   },
   "files": [
@@ -66,6 +70,8 @@
     "build": "npm --prefix ../agent-core run build && npm run build:tsc",
     "build:tsc": "tsc -p tsconfig.json",
     "test:workspace-file-references": "npm run build && node --test dist/workspace-file-references.test.js",
+    "test:lsp": "npm run build && node --test dist/lsp/providers.test.js dist/lsp/service-probe.test.js dist/lsp/write-append.test.js",
+    "smoke:lsp": "npm run build && node dist/smoke/lsp-typescript-smoke.js",
     "typecheck": "npm --prefix ../agent-core run build && tsc -p tsconfig.json --noEmit",
     "smoke:openai-models-parse": "npm run build && node dist/smoke/openai-models-parse-smoke.js",
     "notice": "node scripts/gen-notice.mjs",
@@ -82,6 +88,8 @@
     "glob": "^13.0.6",
     "ignore": "^5.3.2",
     "spirit-agent-repo": "file:../..",
-    "tar": "^7.5.13"
+    "tar": "^7.5.13",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.17.5"
   }
 }

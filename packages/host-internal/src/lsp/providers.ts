@@ -1,4 +1,4 @@
-import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from './constants.js';
+import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from '@spirit-agent/agent-core';
 import { resolveTypescriptLanguageServerOnPath } from './resolve-server.js';
 
 export type LspProviderId = 'typescript-language-server';

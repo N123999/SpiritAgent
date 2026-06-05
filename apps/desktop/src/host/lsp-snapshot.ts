@@ -2,7 +2,7 @@ import {
   LSP_PROVIDERS,
   discoverAllLspProviders,
   type LspProviderId,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/host-internal/lsp';
 
 import type { DesktopLspProviderSnapshot, DesktopLspSnapshot } from '../types.js';
 import { normalizeAgentsConfig, type DesktopConfigFile } from './storage.js';

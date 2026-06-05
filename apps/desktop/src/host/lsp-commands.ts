@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { findLspProvider } from '@spirit-agent/agent-core';
+import { findLspProvider } from '@spirit-agent/host-internal/lsp';
 
 import type { DesktopSnapshot, InstallLspProviderRequest } from '../types.js';
 import { buildDesktopLspSnapshot } from './lsp-snapshot.js';

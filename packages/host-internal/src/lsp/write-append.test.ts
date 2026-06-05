@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createToolExecutionTextOutput } from '../ports.js';
+import { createToolExecutionTextOutput } from '@spirit-agent/agent-core';
 import { DEFAULT_LSP_TIMING } from './config.js';
 import { appendLspDiagnosticsAfterWriteIfNeeded } from './write-append.js';
 import type { LspService } from './service.js';

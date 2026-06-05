@@ -28,13 +28,13 @@ import {
   type BuiltinHostToolDefinitionEnvironment,
 } from '../host-tools.js';
 import { enrichUnknownToolError, toolNamesFromDefinitions } from '../unknown-tool-error.js';
-import { LspService } from '../lsp/service.js';
 import { buildLspHostToolDefinitions } from '../lsp/tool-definitions.js';
 import {
   isLspDiagnosticsToolRequest,
   requestFromGetDiagnosticsFunctionCall,
 } from '../lsp/tool-request.js';
-import { appendLspDiagnosticsAfterWriteIfNeeded } from '../lsp/write-append.js';
+import type { LspDiagnosticsToolRequest } from '../lsp/types.js';
+import type { LspHostBindings, LspHostServiceInstance } from './lsp-host-bindings.js';
 import { McpService, type McpToolRequest } from '../mcp/service.js';
 import { JsonRpcPeer } from './framing.js';
 
@@ -72,7 +72,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private toolDefinitionsCache: JsonValue = [];
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly mcp = new McpService();
-  private lsp: LspService | undefined;
+  private lspBindings: LspHostBindings | undefined;
+  private lsp: LspHostServiceInstance | undefined;
   private localHostService: LocalHostToolService | undefined;
   private imageGenerationAvailable = false;
   private transportConfigForToolDefinitions: LlmTransportConfig | undefined;
@@ -122,16 +123,24 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     this.setAgentModeToolExposure(planMode ? 'plan' : 'agent');
   }
 
+  setLspHostBindings(bindings: LspHostBindings | undefined): void {
+    this.lspBindings = bindings;
+  }
+
   async setLspWorkspaceRoot(workspaceRoot: string): Promise<void> {
     await this.lsp?.dispose();
     this.lsp = undefined;
-    const lsp = new LspService(workspaceRoot);
+    if (!this.lspBindings) {
+      this.refreshMergedToolDefinitions();
+      return;
+    }
+    const lsp = new this.lspBindings.LspService(workspaceRoot);
     await lsp.probe();
     this.lsp = lsp.enabled ? lsp : undefined;
     this.refreshMergedToolDefinitions();
   }
 
-  lspServiceSnapshot(): LspService | undefined {
+  lspServiceSnapshot(): LspHostServiceInstance | undefined {
     return this.lsp;
   }
 
@@ -241,7 +250,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
     if (this.localHostService) {
       const output = normalizeToolExecutionOutput(await this.localHostService.execute(request));
-      return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
+      return this.appendWriteDiagnostics(request, output);
     }
 
     const output = normalizeToolExecutionOutput(
@@ -249,7 +258,17 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
         request: this.serializeRequest(request),
       }),
     );
-    return appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
+    return this.appendWriteDiagnostics(request, output);
+  }
+
+  private appendWriteDiagnostics(
+    request: JsonValue,
+    output: ToolExecutionOutput,
+  ): Promise<ToolExecutionOutput> {
+    if (!this.lspBindings) {
+      return Promise.resolve(output);
+    }
+    return this.lspBindings.appendLspDiagnosticsAfterWriteIfNeeded(this.lsp, request, output);
   }
 
   attachRequestMetadata(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue {
@@ -504,7 +523,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   private async executeLspDiagnosticsTool(
-    request: import('../lsp/types.js').LspDiagnosticsToolRequest,
+    request: LspDiagnosticsToolRequest,
   ): Promise<ToolExecutionOutput> {
     if (!this.lsp?.enabled) {
       throw new Error('get_diagnostics is not available because typescript-language-server was not found on PATH');

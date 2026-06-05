@@ -4,7 +4,10 @@ import { DEFAULT_LSP_TIMING, type LspTimingConfig } from './config.js';
 import { LspConnection } from './connection.js';
 import { LspDocumentStore } from './document-store.js';
 import { LspDisabledError, LspPathError, LspTimeoutError } from './errors.js';
-import { formatDiagnosticsForLlm } from './format-diagnostics.js';
+import {
+  formatDiagnosticsForLlm,
+} from '@spirit-agent/agent-core';
+import type { LspDiagnostic, LspFileChangeNotification } from '@spirit-agent/agent-core';
 import {
   fileUriForResolvedPath,
   normalizeLspFileUri,
@@ -14,7 +17,6 @@ import {
   resolveWorkspaceFilePath,
 } from './paths.js';
 import { resolveTypescriptLanguageServerOnPath } from './resolve-server.js';
-import type { LspDiagnostic, LspFileChangeNotification } from './types.js';
 
 export interface LspUserConfig {
   enabled: boolean;
@@ -91,7 +93,7 @@ export class LspService {
     this.serverCommand = undefined;
   }
 
-  toolDefinitionsJson(): import('../ports.js').JsonValue[] {
+  toolDefinitionsJson(): import('@spirit-agent/agent-core').JsonValue[] {
     return [];
   }
 

@@ -134,12 +134,14 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | 内建工具名称、描述、JSON Schema | `agent-core` |
 | 梦境工具名称、描述、JSON Schema 与收集者系统提示 | `agent-core` |
 | 会话 TODO 工具名称、描述、JSON Schema 与 `[SPIRIT_TODOS]` 系统段 | `agent-core` |
+| LSP 工具契约、`get_diagnostics` Schema 与诊断格式化 | `agent-core` |
 | MCP 协议、MCP tool / resource / prompt 运行时 | `agent-core` |
 | Host 接口定义 | `agent-core` |
 | Rules / Skills / Plan 的发现与管理 | 宿主内部库 |
 | 宿主工具请求类型、解析、校验、审批、执行 | 宿主内部库 |
 | 梦境文件存储、过期清理与运行日志 | 宿主内部库 |
 | 会话 TODO 存储、`replaceAll` 与工具执行 | 宿主内部库 |
+| LSP 进程、PATH 探测、文档同步、写后 append 与 workspace cache | 宿主内部库 |
 | shell / search / file / web fetch 的平台适配 | 宿主内部库 |
 | CLI / Desktop UI 与平台接线 | apps |
 | Desktop 梦境设置页、后台调度与 Commit 消费 | apps |
@@ -161,6 +163,8 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 - `packages/agent-core` 继续承载 runtime、MCP、系统提示词、工具契约。
 - `packages/agent-core` 承载梦境工具契约与收集者系统提示，不承载 Desktop 会话扫描或文件存储。
 - `packages/host-internal` 承载梦境工具执行、dream store 与日志目录等宿主能力。
+- `packages/host-internal/src/lsp/` 承载 LSP 宿主实现（TLS 进程、provider 发现、写后诊断 append、workspace cache）。
+- `packages/agent-core/src/lsp/` 仅保留 LSP 工具契约与 LLM 可见诊断格式化。
 - `apps/desktop` 承载梦境设置、后台调度与 Commit 消费。
 - CLI 与 Desktop 当前重复的宿主工具实现、rules / skills / plan 发现与管理逻辑，应收敛到宿主内部库。
 - `agent-core` 不应吸收这些发现与管理实现，因为那会把 Host / UI 责任错误抬升成 Agent SDK 的一部分。

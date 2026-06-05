@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { LspService } from '../../lsp/service.js';
-import { resolveTypescriptLanguageServerOnPath } from '../../lsp/resolve-server.js';
+import { LspService } from '../lsp/service.js';
+import { resolveTypescriptLanguageServerOnPath } from '../lsp/resolve-server.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const workspaceRoot = path.resolve(here, '../../../../..');
+const workspaceRoot = path.resolve(here, '../../../..');
 const sampleFile = path.join(workspaceRoot, 'packages/agent-core/src/lsp/constants.ts');
 
 async function main(): Promise<void> {

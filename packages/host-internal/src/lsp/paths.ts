@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { TYPESCRIPT_JS_EXTENSIONS } from './constants.js';
+import { TYPESCRIPT_JS_EXTENSIONS } from '@spirit-agent/agent-core';
+import type { LspFileChangeNotification, LspFileSnapshot } from '@spirit-agent/agent-core';
 import { LspPathError } from './errors.js';
 
 export function isTypescriptJavascriptPath(filePath: string): boolean {
@@ -72,7 +73,7 @@ export function fileUriForResolvedPath(resolvedPath: string): string {
   return normalizeLspFileUri(pathToFileURL(path.resolve(resolvedPath)).href);
 }
 
-export function parseLspFileChangeNotification(value: unknown): import('./types.js').LspFileChangeNotification | undefined {
+export function parseLspFileChangeNotification(value: unknown): LspFileChangeNotification | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined;
   }
@@ -98,7 +99,7 @@ export function parseLspFileChangeNotification(value: unknown): import('./types.
   };
 }
 
-function readSnapshot(value: unknown): import('./types.js').LspFileSnapshot | undefined {
+function readSnapshot(value: unknown): LspFileSnapshot | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined;
   }

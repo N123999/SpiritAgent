@@ -6,8 +6,8 @@ import {
   isWindowsPlatform,
   splitWindowsPathEntries,
   splitWindowsPathExtEntries,
-} from '../mcp/windows.js';
-import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from './constants.js';
+} from './windows-path.js';
+import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from '@spirit-agent/agent-core';
 
 export interface ResolvedLanguageServerCommand {
   command: string;

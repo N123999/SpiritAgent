@@ -68,6 +68,7 @@ import {
   HostToolExecutorProxy,
   type LocalHostToolService,
 } from './host-bridge/host-tool-executor.js';
+import type { LspHostBindings } from './host-bridge/lsp-host-bindings.js';
 import type {
   BridgeRuntimeSnapshot,
   DrainEventsResult,
@@ -574,6 +575,8 @@ interface CliHostInternalModule {
     skillsStateFile: string;
   };
   saveToggleState?: (filePath: string, state: { enabledOverrides?: Record<string, boolean> }) => Promise<void>;
+  LspService?: LspHostBindings['LspService'];
+  appendLspDiagnosticsAfterWriteIfNeeded?: LspHostBindings['appendLspDiagnosticsAfterWriteIfNeeded'];
 }
 
 type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
@@ -692,6 +695,7 @@ async function rebuildCliHostToolService(workspaceRoot: string): Promise<void> {
   const service = new module.NodeHostToolService({ workspaceRoot, spiritDataDir }, serviceOptions);
   cliHostInternal.service = service;
   toolExecutor.setLocalHostService(service);
+  applyCliLspHostBindings(module);
   await toolExecutor.setLspWorkspaceRoot(workspaceRoot);
   await toolExecutor.refreshCaches();
 }
@@ -725,6 +729,21 @@ function buildCliHostToolServiceOptions(
   };
 }
 
+function applyCliLspHostBindings(module: CliHostInternalModule): void {
+  if (
+    typeof module.LspService === 'function'
+    && typeof module.appendLspDiagnosticsAfterWriteIfNeeded === 'function'
+  ) {
+    toolExecutor.setLspHostBindings({
+      LspService: module.LspService,
+      appendLspDiagnosticsAfterWriteIfNeeded: module.appendLspDiagnosticsAfterWriteIfNeeded,
+    });
+    return;
+  }
+
+  toolExecutor.setLspHostBindings(undefined);
+}
+
 async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInternalState | undefined> {
   const modulePath = process.env[ENV_HOST_INTERNAL_MODULE_PATH]?.trim();
   const spiritDataDir = process.env[ENV_HOST_INTERNAL_SPIRIT_DATA_DIR]?.trim();
@@ -733,6 +752,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
     toolExecutor.setLocalHostService(undefined);
     toolExecutor.setExtensionToolDefinitions([]);
     toolExecutor.setTodoToolDefinitions([]);
+    toolExecutor.setLspHostBindings(undefined);
     await toolExecutor.disposeLsp();
     extensionSystemPrompts = [];
     return undefined;
@@ -763,6 +783,7 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   );
   toolExecutor.setLocalHostService(service);
   toolExecutor.setTodoToolDefinitions(currentTodoSessionKey ? buildTodoHostToolDefinitions() : []);
+  applyCliLspHostBindings(module);
   await toolExecutor.setLspWorkspaceRoot(workspaceRoot);
   cliHostInternal = {
     module,

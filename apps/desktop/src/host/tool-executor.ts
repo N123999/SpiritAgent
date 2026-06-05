@@ -26,7 +26,6 @@ import {
   AuthorizationDecision,
   createToolExecutionTextOutput,
   JsonValue,
-  LspService,
   McpService,
   McpStatusSnapshot,
   type McpToolRequest,
@@ -36,8 +35,11 @@ import {
   buildLspHostToolDefinitions,
   isLspDiagnosticsToolRequest,
   requestFromGetDiagnosticsFunctionCall,
-  appendLspDiagnosticsAfterWriteIfNeeded,
 } from '@spirit-agent/agent-core';
+import {
+  LspService,
+  appendLspDiagnosticsAfterWriteIfNeeded,
+} from '@spirit-agent/host-internal/lsp';
 import {
   type HostDreamScope,
   type HostDreamSourceSessionRef,

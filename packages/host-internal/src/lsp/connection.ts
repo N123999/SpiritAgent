@@ -2,7 +2,9 @@ import { spawn, type SpawnOptions } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { isWindowsPlatform } from '../mcp/windows.js';
+import type { LspDiagnostic } from '@spirit-agent/agent-core';
+
+import { isWindowsPlatform } from './windows-path.js';
 import { normalizeLspFileUri } from './paths.js';
 import {
   createMessageConnection,
@@ -33,7 +35,7 @@ export interface LspConnectionOptions {
   args: string[];
   cwd: string;
   workspaceRoot: string;
-  onDiagnostics: (uri: string, diagnostics: import('./types.js').LspDiagnostic[]) => void;
+  onDiagnostics: (uri: string, diagnostics: LspDiagnostic[]) => void;
 }
 
 export class LspConnection {
@@ -102,7 +104,7 @@ export class LspConnection {
       }
       const uri = normalizeLspFileUri(typeof params.uri === 'string' ? params.uri : '');
       const diagnostics = Array.isArray(params.diagnostics) ? params.diagnostics : [];
-      options.onDiagnostics(uri, diagnostics as import('./types.js').LspDiagnostic[]);
+      options.onDiagnostics(uri, diagnostics as LspDiagnostic[]);
     });
 
     connection.listen();

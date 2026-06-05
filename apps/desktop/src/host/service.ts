@@ -296,7 +296,7 @@ import {
   ensureLspServiceReady,
   lspUserConfigFromEnabled,
   sharedLspServiceForWorkspace,
-} from './service-lsp.js';
+} from '@spirit-agent/host-internal/lsp';
 import { buildDesktopLspSnapshot, defaultDesktopLspSnapshot } from './lsp-snapshot.js';
 import { installLspProviderCommand } from './lsp-commands.js';
 import {
@@ -433,7 +433,7 @@ class DesktopHostService {
   private lastToolSnapshotLogSignature: string | undefined;
   /** One MCP catalog per workspace — survives per-session DesktopToolExecutor rebuilds. */
   private readonly mcpServiceByWorkspaceRoot = new Map<string, McpService>();
-  private readonly lspServiceByWorkspaceRoot = new Map<string, import('@spirit-agent/agent-core').LspService>();
+  private readonly lspServiceByWorkspaceRoot = new Map<string, import('@spirit-agent/host-internal/lsp').LspService>();
   private lspSnapshot = defaultDesktopLspSnapshot();
 
   private orchestrationFor(bundle: SessionBundle): {

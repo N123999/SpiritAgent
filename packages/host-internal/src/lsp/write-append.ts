@@ -1,13 +1,13 @@
-import { APPEND_DIAGNOSTICS_AFTER_WRITES, HOST_WRITE_TOOL_NAMES } from './constants.js';
-import { DEFAULT_LSP_TIMING } from './config.js';
+import type { JsonValue, ToolExecutionOutput } from '@spirit-agent/agent-core';
+import { APPEND_DIAGNOSTICS_AFTER_WRITES, HOST_WRITE_TOOL_NAMES } from '@spirit-agent/agent-core';
 import {
   buildLspWriteDiagnosticsUi,
   formatDiagnosticsSummaryBlock,
-} from './format-diagnostics.js';
+} from '@spirit-agent/agent-core';
+
+import { DEFAULT_LSP_TIMING } from './config.js';
 import { isTypescriptJavascriptPath, resolveWorkspaceFilePath } from './paths.js';
 import type { LspService } from './service.js';
-import type { JsonValue } from '../ports.js';
-import type { ToolExecutionOutput } from '../ports.js';
 
 export async function appendLspDiagnosticsAfterWriteIfNeeded(
   lsp: LspService | undefined,

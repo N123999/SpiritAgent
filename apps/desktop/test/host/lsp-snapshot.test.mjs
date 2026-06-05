@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { LspService } from '@spirit-agent/agent-core';
+import { LspService } from '@spirit-agent/host-internal/lsp';
 
 import { buildDesktopLspSnapshot } from '../../dist-electron/src/host/lsp-snapshot.js';
 import { DesktopToolExecutor } from '../../dist-electron/src/host/tool-executor.js';

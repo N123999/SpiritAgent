@@ -16,3 +16,4 @@ export * from './storage.js';
 export * from './tools.js';
 export * from './workspace-file-reference-query.js';
 export * from './workspace-file-references.js';
+export * from './lsp/index.js';
