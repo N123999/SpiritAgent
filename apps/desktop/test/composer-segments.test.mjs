@@ -32,6 +32,13 @@ import {
   isCaretAtAgentModeRemovalPoint,
   removeAgentModeSegment,
 } from "../src/lib/composer-agent-mode-segments.ts";
+import {
+  applyAgentModeChipPolicy,
+  composerShowsPlaceholder,
+  domParsedMissingRequiredAgentChip,
+  shouldPinAgentModeChip,
+  synchronizeTextFromDom,
+} from "../src/lib/composer-agent-mode-policy.ts";
 
 const sampleAttachment = {
   id: "el-1",
@@ -189,6 +196,34 @@ test("syncSegmentsFromExternalValue clears all segments when value empty", () =>
     "",
   );
   assert.deepEqual(synced, [{ kind: "text", value: "" }]);
+});
+
+test("syncSegmentsFromExternalValue keeps ask chip when syncing plain text", () => {
+  const synced = syncSegmentsFromExternalValue(
+    [
+      { kind: "ask" },
+      { kind: "text", value: "old" },
+    ],
+    "new",
+  );
+  assert.deepEqual(synced, [
+    { kind: "ask" },
+    { kind: "text", value: "new" },
+  ]);
+});
+
+test("syncSegmentsFromExternalValue keeps plan chip after loop", () => {
+  const synced = syncSegmentsFromExternalValue(
+    [
+      { kind: "loop" },
+      { kind: "plan" },
+      { kind: "text", value: "a" },
+    ],
+    "b",
+  );
+  assert.equal(synced[0]?.kind, "loop");
+  assert.equal(synced[1]?.kind, "plan");
+  assert.equal(synced[2]?.kind === "text" && synced[2].value, "b");
 });
 
 test("syncSegmentsFromExternalValue replaces text while keeping elements", () => {
@@ -375,4 +410,48 @@ test("isComposerPlainEmpty treats lone newline as empty", () => {
   assert.equal(isComposerPlainEmpty("/"), false);
   assert.equal(isComposerPlainEmpty("a\n"), false);
   assert.equal(normalizeComposerPlain("\n"), "");
+});
+
+test("applyAgentModeChipPolicy inserts ask when not dismissed", () => {
+  const segs = applyAgentModeChipPolicy(emptySegments(), { hostMode: "ask", dismissed: false });
+  assert.equal(segs.some((s) => s.kind === "ask"), true);
+  assert.equal(segs.find((s) => s.kind === "text")?.value, " ");
+});
+
+test("applyAgentModeChipPolicy removes chip when dismissed", () => {
+  const segs = applyAgentModeChipPolicy(
+    [{ kind: "ask" }, { kind: "text", value: " " }],
+    { hostMode: "ask", dismissed: true },
+  );
+  assert.equal(hasAgentModeSegment(segs), false);
+});
+
+test("composerShowsPlaceholder false when ask chip present", () => {
+  assert.equal(
+    composerShowsPlaceholder([{ kind: "ask" }, { kind: "text", value: " " }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    false,
+  );
+});
+
+test("synchronizeTextFromDom keeps shell chips and adopts dom text", () => {
+  const shell = [{ kind: "ask" }, { kind: "text", value: " " }];
+  const dom = [{ kind: "text", value: "hello" }];
+  const merged = synchronizeTextFromDom(shell, dom);
+  assert.equal(merged[0]?.kind, "ask");
+  assert.equal(merged[1]?.kind === "text" && merged[1].value, "hello");
+});
+
+test("domParsedMissingRequiredAgentChip when shell has ask but dom lost it", () => {
+  assert.equal(
+    domParsedMissingRequiredAgentChip(
+      [{ kind: "ask" }, { kind: "text", value: " " }],
+      [{ kind: "text", value: "" }],
+      { hostMode: "ask", dismissed: false },
+    ),
+    true,
+  );
+  assert.equal(shouldPinAgentModeChip({ hostMode: "ask", dismissed: true }), false);
 });

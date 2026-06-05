@@ -20,9 +20,18 @@ import {
   type ActiveWorkspaceFileReferenceQuery,
 } from "@/lib/composer-segment-model";
 import {
+  applyAgentModeChipPolicy,
+  buildSegmentsAfterSend,
+  composerShowsPlaceholder,
+  domParsedMissingRequiredAgentChip,
+  shouldPinAgentModeChip,
+  synchronizeTextFromDom,
+  type AgentModeChipPolicy,
+} from "@/lib/composer-agent-mode-policy";
+import {
   domToSegments,
   emptySegments,
-  ensureAgentModePinned,
+  caretAfterAgentModeChip,
   ensureLoopPinned,
   hasAgentModeSegment,
   hasLoopSegment,
@@ -34,6 +43,7 @@ import {
   isCaretAtLoopRemovalPoint,
   isComposerPlainEmpty,
   mergeAdjacentTextSegments,
+  normalizeCaretForPinnedAgentModeChip,
   normalizeComposerPlain,
   removeAgentModeSegment,
   removeLoopSegment,
@@ -79,6 +89,11 @@ type Props = {
   onPaste?(e: ClipboardEvent<HTMLDivElement>): void;
   /** UTF-16 offset in plain composer text (`segmentsToPlainText`), for @-file suggestions. */
   onSelectionChange?(selectionStart: number | null): void;
+  /** Agent 正在输出时，阻止父级滞后 value 覆盖本地 segments（poll 重渲染）。 */
+  conversationBusy?: boolean;
+  /** Session 级：用户 Backspace 去掉 Plan/Ask chip 后，poll 不得再通过 DOM 钉回。 */
+  agentModeChipDismissed?: boolean;
+  onAgentModeChipDismissChange?(dismissed: boolean): void;
 };
 
 export type InsertLoopChipOptions = {
@@ -101,6 +116,8 @@ export type ComposerRichInputHandle = {
   insertPlanChip(options?: InsertAgentModeChipOptions): void;
   insertAskChip(options?: InsertAgentModeChipOptions): void;
   removeAgentModeChip(): void;
+  /** 发送成功后由宿主调用：恢复 chip（若仍为 plan/ask）并将光标置于 chip 后。 */
+  resetAfterSend(agentMode: DesktopAgentMode): void;
   getSegments(): RichSegment[];
   setSegments(segments: RichSegment[]): void;
 };
@@ -126,6 +143,9 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       onKeyDown,
       onPaste,
       onSelectionChange,
+      conversationBusy = false,
+      agentModeChipDismissed = false,
+      onAgentModeChipDismissChange,
     },
     ref,
   ) {
@@ -136,7 +156,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         : loopEnabled
           ? insertLoopSegment(emptySegments()).segments
           : emptySegments();
-      return ensureAgentModePinned(base, agentMode);
+      return applyAgentModeChipPolicy(base, { hostMode: agentMode, dismissed: false });
     });
     const segmentsRef = useRef(segments);
     segmentsRef.current = segments;
@@ -144,6 +164,9 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const [isComposing, setIsComposing] = useState(false);
     const pendingCaretRef = useRef<SegmentCaret | null>(null);
     const skipExternalValueSyncRef = useRef(Boolean(initialSegments?.length));
+    /** 最近一次 notifyParents 上报给父级的纯文本，用于识别 poll 时滞后的 value。 */
+    const lastSyncedToParentPlainRef = useRef<string | null>(null);
+    const conversationBusyRef = useRef(conversationBusy);
     const skipRenderRef = useRef(false);
     const initialSegmentsHydratedRef = useRef(Boolean(initialSegments?.length));
     const onElementAttachmentsChangeRef = useRef(onElementAttachmentsChange);
@@ -156,6 +179,16 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const prevAgentModeRef = useRef(agentMode);
     const hadLoopRef = useRef(hasLoopSegment(segments));
     const hadAgentModeRef = useRef(isAgentModeChipKind(agentMode));
+    const agentModeChipDismissedRef = useRef(agentModeChipDismissed);
+    const onAgentModeChipDismissChangeRef = useRef(onAgentModeChipDismissChange);
+
+    useEffect(() => {
+      agentModeChipDismissedRef.current = agentModeChipDismissed;
+    }, [agentModeChipDismissed]);
+
+    useEffect(() => {
+      onAgentModeChipDismissChangeRef.current = onAgentModeChipDismissChange;
+    }, [onAgentModeChipDismissChange]);
 
     useEffect(() => {
       loopEnabledRef.current = loopEnabled;
@@ -164,6 +197,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     useEffect(() => {
       agentModeRef.current = agentMode;
     }, [agentMode]);
+
+    useEffect(() => {
+      conversationBusyRef.current = conversationBusy;
+    }, [conversationBusy]);
 
     useEffect(() => {
       onLoopEnabledChangeRef.current = onLoopEnabledChange;
@@ -194,9 +231,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           hadAgentModeRef.current = true;
           return;
         }
-        if (hadAgentModeRef.current) {
-          return;
-        }
+        hadAgentModeRef.current = false;
+        onAgentModeChangeRef.current?.("agent");
         return;
       }
       if (!hasChip && hadAgentModeRef.current) {
@@ -205,10 +241,18 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       }
     }, []);
 
-    const pinComposerSegments = useCallback(
-      (next: RichSegment[], mode: DesktopAgentMode = agentModeRef.current): RichSegment[] =>
-        ensureAgentModePinned(ensureLoopPinned(mergeAdjacentTextSegments(next)), mode),
-      [],
+    const chipPolicy = useCallback((): AgentModeChipPolicy => {
+      return {
+        hostMode: agentModeRef.current,
+        dismissed: agentModeChipDismissedRef.current,
+      };
+    }, []);
+
+    /** Plan/Ask chip 增删的唯一入口（与 loop pin 正交）。 */
+    const applyComposerPolicy = useCallback(
+      (next: RichSegment[]): RichSegment[] =>
+        applyAgentModeChipPolicy(ensureLoopPinned(mergeAdjacentTextSegments(next)), chipPolicy()),
+      [chipPolicy],
     );
 
     const reportSelectionChange = useCallback(() => {
@@ -255,8 +299,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
 
     const notifyParents = useCallback(
       (next: RichSegment[]) => {
+        const plain = normalizeComposerPlain(segmentsToPlainText(next));
+        lastSyncedToParentPlainRef.current = plain;
         skipExternalValueSyncRef.current = true;
-        onTextChange(normalizeComposerPlain(segmentsToPlainText(next)));
+        onTextChange(plain);
         onElementAttachmentsChange(segmentsToAttachments(next));
       },
       [onTextChange, onElementAttachmentsChange],
@@ -268,9 +314,13 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         caret?: SegmentCaret | null,
         options?: { notifyParent?: boolean; syncLoop?: boolean; syncAgentMode?: boolean },
       ) => {
-        const merged = pinComposerSegments(next);
+        const merged = applyComposerPolicy(next);
+        let resolvedCaret = caret ?? null;
+        if (shouldPinAgentModeChip(chipPolicy()) && hasAgentModeSegment(merged)) {
+          resolvedCaret = normalizeCaretForPinnedAgentModeChip(merged, resolvedCaret);
+        }
         segmentsRef.current = merged;
-        pendingCaretRef.current = caret ?? null;
+        pendingCaretRef.current = resolvedCaret;
         setSegments(merged);
         if (options?.syncLoop !== false && !loopEnabledRef.current) {
           syncLoopEnabledFromSegments(merged);
@@ -282,7 +332,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           notifyParents(merged);
         }
       },
-      [notifyParents, pinComposerSegments, syncAgentModeFromSegments, syncLoopEnabledFromSegments],
+      [applyComposerPolicy, chipPolicy, notifyParents, syncAgentModeFromSegments, syncLoopEnabledFromSegments],
     );
 
     const getSegments = useCallback((): RichSegment[] => segmentsRef.current, []);
@@ -358,11 +408,11 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       if (!hasLoopSegment(segmentsRef.current)) {
         return;
       }
-      const next = pinComposerSegments(removeLoopSegment(segmentsRef.current));
+      const next = applyComposerPolicy(removeLoopSegment(segmentsRef.current));
       hadLoopRef.current = false;
       commitSegments(next, { segmentIndex: 0, offset: 0 }, { syncLoop: false });
       onLoopEnabledChangeRef.current?.(false);
-    }, [commitSegments, pinComposerSegments]);
+    }, [applyComposerPolicy, commitSegments]);
 
     const insertAgentModeChip = useCallback(
       (mode: "plan" | "ask", options?: InsertAgentModeChipOptions) => {
@@ -371,6 +421,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           div.focus();
         }
         const base = options?.clearText ? emptySegments() : segmentsRef.current;
+        agentModeChipDismissedRef.current = false;
+        onAgentModeChipDismissChangeRef.current?.(false);
         const { segments: next, caret } = insertAgentModeSegment(base, mode);
         hadAgentModeRef.current = true;
         commitSegments(next, caret, { syncAgentMode: false });
@@ -392,11 +444,35 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       if (!hasAgentModeSegment(segmentsRef.current)) {
         return;
       }
-      const next = pinComposerSegments(removeAgentModeSegment(segmentsRef.current), "agent");
+      agentModeChipDismissedRef.current = true;
+      onAgentModeChipDismissChangeRef.current?.(true);
+      const next = applyAgentModeChipPolicy(removeAgentModeSegment(segmentsRef.current), {
+        hostMode: agentModeRef.current,
+        dismissed: true,
+      });
       hadAgentModeRef.current = false;
       commitSegments(next, { segmentIndex: 0, offset: 0 }, { syncAgentMode: false });
-      onAgentModeChangeRef.current?.("agent");
-    }, [commitSegments, pinComposerSegments]);
+      if (isAgentModeChipKind(agentModeRef.current)) {
+        onAgentModeChangeRef.current?.("agent");
+      }
+    }, [commitSegments]);
+
+    const resetAfterSend = useCallback(
+      (mode: DesktopAgentMode) => {
+        agentModeChipDismissedRef.current = false;
+        onAgentModeChipDismissChangeRef.current?.(false);
+        let next = buildSegmentsAfterSend(mode);
+        if (loopEnabledRef.current) {
+          next = insertLoopSegment(next).segments;
+        }
+        const caret = hasAgentModeSegment(next)
+          ? caretAfterAgentModeChip(next)
+          : caretAtEnd(next);
+        skipExternalValueSyncRef.current = true;
+        commitSegments(next, caret, { syncLoop: false, syncAgentMode: false });
+      },
+      [commitSegments],
+    );
 
     useImperativeHandle(
       ref,
@@ -409,6 +485,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertPlanChip,
         insertAskChip,
         removeAgentModeChip,
+        resetAfterSend,
         getSegments,
         setSegments: (next: RichSegment[]) => applySegments(next),
       }),
@@ -420,6 +497,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertPlanChip,
         insertAskChip,
         removeAgentModeChip,
+        resetAfterSend,
         getSegments,
         applySegments,
       ],
@@ -449,7 +527,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         }
         return;
       }
-      if (prev !== agentMode || !hasAgentModeSegment(segmentsRef.current)) {
+      if (prev !== agentMode && !agentModeChipDismissedRef.current) {
         insertAgentModeChip(agentMode, { clearText: false });
       }
     }, [agentMode, insertAgentModeChip, removeAgentModeChip]);
@@ -475,14 +553,19 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       const domSegs = domToSegments(div);
       if (skipRenderRef.current) {
         skipRenderRef.current = false;
-        pendingCaretRef.current = null;
+        if (pendingCaretRef.current) {
+          const caret = normalizeCaretForPinnedAgentModeChip(segments, pendingCaretRef.current);
+          caretToDomRange(div, segments, caret);
+          pendingCaretRef.current = null;
+        }
         reportSelectionChange();
         return;
       }
 
       if (segmentsEqual(domSegs, segments)) {
         if (pendingCaretRef.current) {
-          caretToDomRange(div, segments, pendingCaretRef.current);
+          const caret = normalizeCaretForPinnedAgentModeChip(segments, pendingCaretRef.current);
+          caretToDomRange(div, segments, caret);
           pendingCaretRef.current = null;
           reportSelectionChange();
         }
@@ -495,20 +578,37 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         askLabel: askChipLabel,
       });
       if (pendingCaretRef.current) {
-        caretToDomRange(div, segments, pendingCaretRef.current);
+        const caret = normalizeCaretForPinnedAgentModeChip(segments, pendingCaretRef.current);
+        caretToDomRange(div, segments, caret);
         pendingCaretRef.current = null;
         reportSelectionChange();
+      } else if (
+        shouldPinAgentModeChip(chipPolicy()) &&
+        hasAgentModeSegment(segments) &&
+        isComposerPlainEmpty(segmentsToPlainText(segments))
+      ) {
+        const caret = normalizeCaretForPinnedAgentModeChip(segments, selectionToCaret(div, segments));
+        caretToDomRange(div, segments, caret);
+        reportSelectionChange();
       }
-    }, [segments, loopChipLabel, planChipLabel, askChipLabel, reportSelectionChange, value.length]);
+    }, [chipPolicy, segments, loopChipLabel, planChipLabel, askChipLabel, reportSelectionChange, value.length]);
 
     useEffect(() => {
+      const current = segmentsRef.current;
+      const plain = segmentsToPlainText(current);
+      const localPlain = normalizeComposerPlain(plain);
+      const externalPlain = normalizeComposerPlain(value);
+
       if (skipExternalValueSyncRef.current) {
+        const expected = lastSyncedToParentPlainRef.current;
+        if (expected !== null && externalPlain !== expected) {
+          skipExternalValueSyncRef.current = true;
+          return;
+        }
         skipExternalValueSyncRef.current = false;
         return;
       }
 
-      const current = segmentsRef.current;
-      const plain = segmentsToPlainText(current);
       const hasElements = current.some((s) => s.kind === "element");
       const attachmentCount = elementAttachments?.length ?? 0;
 
@@ -523,106 +623,133 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         return;
       }
 
-      // Parent cleared composer after send: empty value AND no attachments prop.
+      // Parent cleared composer after send: 由 resetAfterSend 恢复 chip；此处仅处理 loop shell。
       if (!value && attachmentCount === 0 && (plain || hasElements || hasLoopSegment(current) || hasAgentModeSegment(current))) {
         if (loopEnabled || loopEnabledRef.current) {
           const { segments: next, caret } = insertLoopSegment(emptySegments());
-          commitSegments(
-            ensureAgentModePinned(next, agentModeRef.current),
-            caret,
-            { syncLoop: false, syncAgentMode: false },
-          );
+          commitSegments(applyComposerPolicy(next), caret, { syncLoop: false, syncAgentMode: false });
           return;
         }
-        if (isAgentModeChipKind(agentModeRef.current)) {
-          const { segments: next, caret } = insertAgentModeSegment(emptySegments(), agentModeRef.current);
-          commitSegments(next, caret, { syncLoop: false, syncAgentMode: false });
-          return;
-        }
-        // Keep loop-only shell while host loopEnabled catches up (e.g. /loop).
         if (hasLoopSegment(current) && !plain && !hasElements) {
+          return;
+        }
+        // 发消息后 resetAfterSend 已恢复 chip；busy poll 时勿反复 empty→policy 重插（日志 B 根因）。
+        const policy = chipPolicy();
+        if (
+          shouldPinAgentModeChip(policy) &&
+          hasAgentModeSegment(current) &&
+          isComposerPlainEmpty(plain) &&
+          !hasElements
+        ) {
+          return;
+        }
+        if (agentModeChipDismissedRef.current && !hasAgentModeSegment(current)) {
           return;
         }
         commitSegments(emptySegments(), { segmentIndex: 0, offset: 0 });
         return;
       }
 
-      if (normalizeComposerPlain(plain) === normalizeComposerPlain(value)) {
+      if (localPlain === externalPlain) {
         return;
       }
 
-      const next = syncSegmentsFromExternalValue(current, value);
+      if (
+        conversationBusyRef.current &&
+        lastSyncedToParentPlainRef.current === localPlain &&
+        externalPlain !== localPlain
+      ) {
+        return;
+      }
+
+      let next = syncSegmentsFromExternalValue(current, value);
+      next = applyComposerPolicy(next);
+      if (agentModeChipDismissedRef.current && hasAgentModeSegment(next)) {
+        next = removeAgentModeSegment(next);
+      }
       if (!segmentsEqual(next, current)) {
         pendingCaretRef.current = null;
         segmentsRef.current = next;
         setSegments(next);
       }
-    }, [value, elementAttachments?.length, initialSegments, applySegments, commitSegments, loopEnabled, agentMode]);
+    }, [
+      value,
+      elementAttachments?.length,
+      initialSegments,
+      applyComposerPolicy,
+      applySegments,
+      commitSegments,
+      loopEnabled,
+      agentMode,
+      agentModeChipDismissed,
+      conversationBusy,
+    ]);
 
+    /**
+     * DOM 只上报正文/附件；plan/ask/loop 以 segments 为准。
+     * DOM 暂时缺 chip 时只 forceRenderFromSegments，不改 segments、不降级 agentMode。
+     */
     const syncFromDom = useCallback(() => {
       const div = divRef.current;
       if (!div || isComposingRef.current) {
         return;
       }
-      const caret = selectionToCaret(div, segmentsRef.current);
-      let next = mergeAdjacentTextSegments(domToSegments(div));
+
+      const shell = segmentsRef.current;
+      const domParsed = mergeAdjacentTextSegments(domToSegments(div));
+      const policy = chipPolicy();
+
+      if (domParsedMissingRequiredAgentChip(shell, domParsed, policy)) {
+        skipRenderRef.current = false;
+        pendingCaretRef.current = normalizeCaretForPinnedAgentModeChip(
+          shell,
+          selectionToCaret(div, shell),
+        );
+        setSegments(shell);
+        reportSelectionChange();
+        return;
+      }
+
+      let caret = selectionToCaret(div, shell);
+      let next = synchronizeTextFromDom(shell, domParsed);
+      next = applyComposerPolicy(next);
+
       if (loopEnabledRef.current) {
         next = ensureLoopPinned(next);
         if (!hasLoopSegment(next)) {
           const { segments: pinned, caret: pinCaret } = insertLoopSegment(next);
-          commitSegments(
-            ensureAgentModePinned(pinned, agentModeRef.current),
-            caret ?? pinCaret,
-            { syncLoop: false, syncAgentMode: false },
-          );
+          commitSegments(applyComposerPolicy(pinned), caret ?? pinCaret, {
+            syncLoop: false,
+            syncAgentMode: false,
+          });
           reportSelectionChange();
           return;
         }
-        if (isAgentModeChipKind(agentModeRef.current)) {
-          next = ensureAgentModePinned(next, agentModeRef.current);
-        }
-        skipRenderRef.current = true;
-        pendingCaretRef.current = caret;
-        segmentsRef.current = next;
-        hadLoopRef.current = true;
-        if (hasAgentModeSegment(next)) {
-          hadAgentModeRef.current = true;
-        }
-        setSegments(next);
-        notifyParents(next);
-        reportSelectionChange();
-        return;
       }
-      if (isAgentModeChipKind(agentModeRef.current)) {
-        next = ensureAgentModePinned(next, agentModeRef.current);
-        if (!hasAgentModeSegment(next)) {
-          const { segments: pinned, caret: pinCaret } = insertAgentModeSegment(next, agentModeRef.current);
-          commitSegments(pinned, caret ?? pinCaret, { syncLoop: false, syncAgentMode: false });
-          reportSelectionChange();
-          return;
-        }
-        skipRenderRef.current = true;
-        pendingCaretRef.current = caret;
-        segmentsRef.current = next;
-        hadAgentModeRef.current = true;
-        setSegments(next);
-        notifyParents(next);
-        reportSelectionChange();
-        return;
+
+      if (shouldPinAgentModeChip(policy) && hasAgentModeSegment(next)) {
+        caret = normalizeCaretForPinnedAgentModeChip(next, caret);
       }
+
       skipRenderRef.current = true;
-      next = pinComposerSegments(next);
       pendingCaretRef.current = caret;
       segmentsRef.current = next;
+      hadLoopRef.current = hasLoopSegment(next);
+      hadAgentModeRef.current = hasAgentModeSegment(next);
       setSegments(next);
-      syncLoopEnabledFromSegments(next);
-      syncAgentModeFromSegments(next);
+      if (!loopEnabledRef.current) {
+        syncLoopEnabledFromSegments(next);
+      }
+      if (!isAgentModeChipKind(agentModeRef.current)) {
+        syncAgentModeFromSegments(next);
+      }
       notifyParents(next);
       reportSelectionChange();
     }, [
+      applyComposerPolicy,
+      chipPolicy,
       commitSegments,
       notifyParents,
-      pinComposerSegments,
       reportSelectionChange,
       syncAgentModeFromSegments,
       syncLoopEnabledFromSegments,
@@ -760,13 +887,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments, onPaste],
     );
 
-    const plainForEmptyCheck = segmentsToPlainText(segments);
-    const isEmpty =
-      !isComposing &&
-      isComposerPlainEmpty(plainForEmptyCheck) &&
-      !(elementAttachments?.length) &&
-      !hasLoopSegment(segments) &&
-      !hasAgentModeSegment(segments);
+    const isEmpty = composerShowsPlaceholder(segments, {
+      composing: isComposing,
+      attachmentCount: elementAttachments?.length ?? 0,
+    });
 
     return (
       <div className="relative">

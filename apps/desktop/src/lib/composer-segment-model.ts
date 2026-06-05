@@ -186,6 +186,20 @@ export function segmentsEqual(a: RichSegment[], b: RichSegment[]): boolean {
   });
 }
 
+function pinAgentModeChipFromSegments(
+  body: RichSegment[],
+  segs: RichSegment[],
+): RichSegment[] {
+  const modeChip = segs.find((s) => s.kind === "plan" || s.kind === "ask");
+  if (modeChip?.kind !== "plan" && modeChip?.kind !== "ask") {
+    return body;
+  }
+  const withoutMode = body.filter((s) => s.kind !== "plan" && s.kind !== "ask");
+  const loopPart = withoutMode.filter((s) => s.kind === "loop");
+  const rest = withoutMode.filter((s) => s.kind !== "loop");
+  return mergeAdjacentTextSegments([...loopPart, { kind: modeChip.kind }, ...rest]);
+}
+
 export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string): RichSegment[] {
   const loopPinned = segs.some((s) => s.kind === "loop");
   const inlineChips = segs.filter(
@@ -215,10 +229,10 @@ export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string
     body = mergeAdjacentTextSegments(out);
   }
 
-  if (loopPinned) {
-    return mergeAdjacentTextSegments([{ kind: "loop" }, ...body]);
-  }
-  return body;
+  let result = loopPinned
+    ? mergeAdjacentTextSegments([{ kind: "loop" }, ...body])
+    : body;
+  return pinAgentModeChipFromSegments(result, segs);
 }
 
 export type SegmentCaret = {

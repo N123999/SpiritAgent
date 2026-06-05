@@ -40,7 +40,8 @@ function agentModeChipIndex(segs: RichSegment[]): number {
   return segs.findIndex((s) => s.kind === "plan" || s.kind === "ask");
 }
 
-function caretAfterModeChip(segs: RichSegment[]): SegmentCaret {
+/** Caret in the trailing text segment after a pinned Plan/Ask chip (never on the chip segment). */
+export function caretAfterAgentModeChip(segs: RichSegment[]): SegmentCaret {
   const merged = mergeAdjacentTextSegments(segs);
   const modeIndex = agentModeChipIndex(merged);
   if (modeIndex < 0) {
@@ -69,8 +70,30 @@ export function insertAgentModeSegment(
   ]);
   return {
     segments: normalized,
-    caret: caretAfterModeChip(normalized),
+    caret: caretAfterAgentModeChip(normalized),
   };
+}
+
+/** DOM/selection often reports segment 0 before the chip; snap to the typed position after it. */
+export function normalizeCaretForPinnedAgentModeChip(
+  segs: RichSegment[],
+  caret: SegmentCaret | null,
+): SegmentCaret {
+  if (!hasAgentModeSegment(segs)) {
+    return caret ?? { segmentIndex: 0, offset: 0 };
+  }
+  if (!caret) {
+    return caretAfterAgentModeChip(segs);
+  }
+  const merged = mergeAdjacentTextSegments(segs);
+  const modeIndex = agentModeChipIndex(merged);
+  if (modeIndex < 0) {
+    return caret;
+  }
+  if (caret.segmentIndex <= modeIndex) {
+    return caretAfterAgentModeChip(merged);
+  }
+  return caret;
 }
 
 export function ensureAgentModePinned(

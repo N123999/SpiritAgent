@@ -167,7 +167,12 @@ export function caretToDomRange(
       currentSeg.kind === "ask"
     ) {
       if (walkIndex === targetSegment && targetOffset === 0) {
-        range.setStartBefore(node);
+        // Plan/Ask：segment 0 表示 chip 后输入区，DOM 落点在 chip 之后而非之前
+        if (currentSeg.kind === "plan" || currentSeg.kind === "ask") {
+          range.setStartAfter(node);
+        } else {
+          range.setStartBefore(node);
+        }
         range.collapse(true);
         placed = true;
         break;

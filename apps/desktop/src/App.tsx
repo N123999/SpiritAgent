@@ -674,6 +674,9 @@ type ComposerSurfaceProps = {
   browserElementAttachments?: readonly BrowserElementAttachment[];
   onElementAttachmentsChange?(attachments: BrowserElementAttachment[]): void;
   initialSegments?: readonly RichSegment[] | null;
+  conversationBusy?: boolean;
+  agentModeChipDismissed?: boolean;
+  onAgentModeChipDismissChange?(dismissed: boolean): void;
 };
 
 function ComposerSurface({
@@ -709,6 +712,9 @@ function ComposerSurface({
   browserElementAttachments,
   onElementAttachmentsChange,
   initialSegments,
+  conversationBusy = false,
+  agentModeChipDismissed = false,
+  onAgentModeChipDismissChange,
 }: ComposerSurfaceProps) {
   const { t } = useTranslation();
   const [modelFilter, setModelFilter] = useState("");
@@ -763,6 +769,9 @@ function ComposerSurface({
         onElementAttachmentsChange={(atts) => onElementAttachmentsChange?.(atts)}
         onLoopEnabledChange={onLoopEnabledChange}
         onAgentModeChange={onAgentModeChange}
+        conversationBusy={conversationBusy}
+        agentModeChipDismissed={agentModeChipDismissed}
+        onAgentModeChipDismissChange={onAgentModeChipDismissChange}
         onPaste={(e) => onPaste?.(e as unknown as ReactClipboardEvent<HTMLTextAreaElement>)}
         onKeyDown={(e) => {
           onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLTextAreaElement>);
@@ -1946,6 +1955,23 @@ export default function App() {
   const newSessionBusy = runtime.busyAction === "reset";
   const composerRichInputRef = useRef<ComposerRichInputHandle | null>(null);
   const rewindRichInputRef = useRef<ComposerRichInputHandle | null>(null);
+
+  const handleComposerAgentModeChange = useCallback(
+    (agentMode: DesktopAgentMode) => {
+      void runtime.saveSettingsPatch({ agentMode });
+      if (agentMode === "plan" || agentMode === "ask") {
+        runtime.setAgentModeChipDismissed(false);
+      }
+      if (agentMode === "plan") {
+        composerRichInputRef.current?.insertPlanChip({ clearText: false });
+      } else if (agentMode === "ask") {
+        composerRichInputRef.current?.insertAskChip({ clearText: false });
+      } else {
+        composerRichInputRef.current?.removeAgentModeChip();
+      }
+    },
+    [runtime],
+  );
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
   const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
   const previousActiveSessionPathRef = useRef<string | null>(null);
@@ -2406,6 +2432,7 @@ export default function App() {
     void runtime.sendMessage(payload).then((ok) => {
       if (ok) {
         setComposerBrowserElementAttachments([]);
+        composerRichInputRef.current?.resetAfterSend(runtime.settings.agentMode);
       }
     });
   };
@@ -2424,7 +2451,11 @@ export default function App() {
         pendingComposerSendRef.current = null;
         setBranchCheckoutBlockedByChanges(false);
         setBranchCheckoutDialogOpen(false);
-        void runtime.sendMessage(pending);
+        void runtime.sendMessage(pending).then((ok) => {
+          if (ok) {
+            composerRichInputRef.current?.resetAfterSend(runtime.settings.agentMode);
+          }
+        });
         return;
       }
 
@@ -2452,7 +2483,11 @@ export default function App() {
       pendingComposerSendRef.current = null;
       setBranchCheckoutBlockedByChanges(false);
       setBranchCheckoutDialogOpen(false);
-      void runtime.sendMessage(pending);
+      void runtime.sendMessage(pending).then((ok) => {
+        if (ok) {
+          composerRichInputRef.current?.resetAfterSend(runtime.settings.agentMode);
+        }
+      });
     })();
   };
 
@@ -2905,9 +2940,7 @@ export default function App() {
                               onRewindPaste={handleRewindComposerPaste}
                               onModelSelect={runtime.setActiveModel}
                               onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
-                              onAgentModeChange={(agentMode) => {
-                                void runtime.saveSettingsPatch({ agentMode });
-                              }}
+                              onAgentModeChange={handleComposerAgentModeChange}
                               readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
                               readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
                               saveLocalImageAs={runtime.saveLocalImageAs}
@@ -3171,9 +3204,7 @@ export default function App() {
                     loopEnabled={snapshot?.conversation.loopEnabled === true}
                     onModelSelect={runtime.setActiveModel}
                     onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
-                    onAgentModeChange={(agentMode) => {
-                      void runtime.saveSettingsPatch({ agentMode });
-                    }}
+                    onAgentModeChange={handleComposerAgentModeChange}
                     onLoopEnabledChange={(enabled) => {
                       void runtime.setLoopEnabled(enabled);
                     }}
@@ -3187,6 +3218,9 @@ export default function App() {
                     canSend={composerCanSend}
                     canAbort={conversationInterruptible}
                     busy={runtime.busyAction === "send" && !conversationInterruptible}
+                    conversationBusy={continueBusy}
+                    agentModeChipDismissed={runtime.agentModeChipDismissed}
+                    onAgentModeChipDismissChange={runtime.setAgentModeChipDismissed}
                     readOnly={activeSessionReadOnly}
                     showInsertButton
                     canPickLocalFile={runtime.hostKind === "electron"}

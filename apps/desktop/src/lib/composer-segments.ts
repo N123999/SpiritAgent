@@ -38,11 +38,13 @@ export {
 export { makeChipNode } from "@/lib/browser-element-chip-styles";
 export { makeFileChipNode } from "@/lib/workspace-file-chip-styles";
 export {
+  caretAfterAgentModeChip,
   ensureAgentModePinned,
   hasAgentModeSegment,
   insertAgentModeSegment,
   isAgentModeChipKind,
   isCaretAtAgentModeRemovalPoint,
+  normalizeCaretForPinnedAgentModeChip,
   removeAgentModeSegment,
 } from "@/lib/composer-agent-mode-segments";
 
@@ -67,7 +69,10 @@ export function domToSegments(root: HTMLElement): RichSegment[] {
     last.value = last.value.slice(0, -1);
     if (!last.value) segs.pop();
   }
-  if (isComposerPlainEmpty(segmentsToPlainText(segs))) {
+  // 只有在完全没有非文本片段（chip）时，才把空白正文折叠成干净的空 segments；
+  // 否则会把仅含 Ask/Plan/Loop/附件 Chip 的输入框误判为空、丢掉 Chip。
+  const hasNonTextSegment = segs.some((s) => s.kind !== "text");
+  if (!hasNonTextSegment && isComposerPlainEmpty(segmentsToPlainText(segs))) {
     return emptySegments();
   }
   return segs.length > 0 ? segs : emptySegments();

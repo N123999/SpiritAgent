@@ -20,6 +20,7 @@ import {
   matchSkillSlashInput,
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
+import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
 import { useDesktopSystemNotifications } from "@/hooks/useDesktopSystemNotifications";
 import type {
   AddModelRequest,
@@ -94,6 +95,7 @@ type SessionUiState = {
   composer: string;
   questionDrafts: Record<string, QuestionDraft>;
   localFilePaths: string[];
+  agentModeChipDismissed: boolean;
 };
 
 function pathsFromComposerAttachments(
@@ -306,6 +308,8 @@ export function useDesktopRuntime() {
   const [composerLocalFileAttachments, setComposerLocalFileAttachments] = useState<
     ComposerLocalFileAttachmentView[]
   >([]);
+  const [agentModeChipDismissed, setAgentModeChipDismissed] = useState(false);
+  const agentModeChipDismissedRef = useRef(false);
   const appliedConversationRevisionRef = useRef(0);
   const appliedComposerSessionKeyRef = useRef("");
   const sessionNavigationGenerationRef = useRef(0);
@@ -320,6 +324,7 @@ export function useDesktopRuntime() {
     const key = sessionUiKey(snapshotRef.current?.composerSessionKey);
     setComposer("");
     setComposerLocalFileAttachments([]);
+    setAgentModeChipDismissed(false);
     if (!key) {
       return;
     }
@@ -341,11 +346,12 @@ export function useDesktopRuntime() {
         composer,
         questionDrafts,
         localFilePaths: pathsFromComposerAttachments(composerLocalFileAttachments),
+        agentModeChipDismissed,
       };
       sessionUiCacheRef.current.set(key, state);
       persistSessionUiDraft(key, state);
     },
-    [composer, composerLocalFileAttachments, questionDrafts, sessionUiKey],
+    [agentModeChipDismissed, composer, composerLocalFileAttachments, questionDrafts, sessionUiKey],
   );
 
   const restoreSessionUi = useCallback(
@@ -356,6 +362,7 @@ export function useDesktopRuntime() {
         setComposer("");
         setQuestionDrafts({});
         setComposerLocalFileAttachments([]);
+        setAgentModeChipDismissed(false);
         setQuestionError("");
         return;
       }
@@ -363,6 +370,7 @@ export function useDesktopRuntime() {
         setComposer("");
         setQuestionDrafts({});
         setComposerLocalFileAttachments([]);
+        setAgentModeChipDismissed(false);
         setQuestionError("");
         return;
       }
@@ -371,6 +379,7 @@ export function useDesktopRuntime() {
         setComposer(cached.composer);
         setQuestionDrafts(cached.questionDrafts);
         setComposerLocalFileAttachments(attachmentsFromPaths(cached.localFilePaths));
+        setAgentModeChipDismissed(cached.agentModeChipDismissed ?? false);
         setQuestionError("");
         return;
       }
@@ -378,10 +387,15 @@ export function useDesktopRuntime() {
       setComposer(stored?.text ?? "");
       setQuestionDrafts({});
       setComposerLocalFileAttachments(attachmentsFromPaths(stored?.localFilePaths ?? []));
+      setAgentModeChipDismissed(false);
       setQuestionError("");
     },
     [sessionUiKey],
   );
+
+  useEffect(() => {
+    agentModeChipDismissedRef.current = agentModeChipDismissed;
+  }, [agentModeChipDismissed]);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -464,6 +478,19 @@ export function useDesktopRuntime() {
       const activeModelProfile = next.config.models.find(
         (model) => model.name === next.config.activeModel,
       );
+      const configAgentMode = (next.config.agentMode ?? "agent") as DesktopAgentMode;
+      // 回合进行中 poll 可能仍带旧 config.agentMode；勿覆盖用户 dismiss Chip 后 saveSettingsPatch 的乐观 agentMode。
+      const turnInFlight =
+        next.conversation.isBusy === true || busyActionRef.current === "send";
+      const chipDismissed = agentModeChipDismissedRef.current;
+      let agentMode: DesktopAgentMode =
+        turnInFlight && current.agentMode !== configAgentMode
+          ? current.agentMode
+          : configAgentMode;
+      // 用户 Backspace 去掉 chip 后，poll 不得再把 settings.agentMode 设回 ask/plan（否则 agentMode effect 会重插 chip）。
+      if (chipDismissed && isAgentModeChipKind(agentMode)) {
+        agentMode = "agent";
+      }
 
       return {
         activeModel: next.config.activeModel,
@@ -472,7 +499,7 @@ export function useDesktopRuntime() {
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
         windowsMica: next.config.windowsMica !== false,
-        agentMode: (next.config.agentMode ?? "agent") as DesktopAgentMode,
+        agentMode,
         webHostEnabled: next.webHost.config.enabled,
         webHostHost: next.webHost.config.host,
         webHostPort: next.webHost.config.port,
@@ -2165,6 +2192,7 @@ export function useDesktopRuntime() {
     apiReady: hostReady,
     hostConnectionError: hostError,
     busyAction,
+    agentModeChipDismissed,
     composer,
     composerLocalFileAttachments,
     hostKind: kind,
@@ -2183,6 +2211,7 @@ export function useDesktopRuntime() {
     setActiveModel,
     setModelReasoningEffort,
     setApprovalGuidance,
+    setAgentModeChipDismissed,
     setComposer,
     setComposerLocalFileAttachments,
     setQuestionDrafts,
