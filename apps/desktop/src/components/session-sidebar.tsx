@@ -359,7 +359,7 @@ const settingsTabs: Array<{
 ];
 
 const sidebarInteractionMotionClass =
-  "!transition-[opacity,transform,box-shadow] duration-150";
+  "!transition-[opacity,transform,box-shadow] duration-150 active:!translate-y-0";
 
 const sidebarMenuHoverClass =
   "hover:!bg-accent hover:!text-accent-foreground focus-visible:!bg-accent focus-visible:!text-accent-foreground";
