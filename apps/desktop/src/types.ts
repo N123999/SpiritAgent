@@ -68,7 +68,8 @@ export interface DesktopLspProviderSnapshot {
   displayName: string;
   languages: string[];
   status: DesktopLspProviderStatus;
-  npmPackage: string;
+  installKind: 'npm' | 'go' | 'rustup' | 'platform' | 'manual' | 'dotnet';
+  npmPackage?: string;
   command?: string;
 }
 

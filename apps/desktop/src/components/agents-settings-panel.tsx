@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { DesktopLspProviderSnapshot, DesktopSnapshot } from "@/types";
+import { isDesktopInstallableProvider } from "@/lib/lsp-provider-install";
 
 function SettingsRow({
   label,
@@ -112,7 +113,7 @@ export function AgentsSettingsPanel({
                 </p>
               ) : null}
             </div>
-            {provider.status === "not_found" && settings.lspEnabled ? (
+            {provider.status === "not_found" && settings.lspEnabled && isDesktopInstallableProvider(provider) ? (
               <Button
                 type="button"
                 variant="outline"
