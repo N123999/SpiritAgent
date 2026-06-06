@@ -3498,7 +3498,6 @@ export default function App() {
                         />
                         <ComposerContextUsageRing
                           usage={snapshot?.conversation.contextUsage}
-                          busy={snapshot?.conversation.isBusy}
                         />
                       </div>
                       {snapshot?.conversation.pendingQuestions ? (

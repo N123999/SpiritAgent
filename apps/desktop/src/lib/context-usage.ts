@@ -1,11 +1,11 @@
 import { normalizeOpenAiApiBase } from '@spirit-agent/host-internal';
 
-import { DEFAULT_API_BASE } from '@/host/storage';
+import { DEFAULT_API_BASE } from '../host/storage.js';
 import type {
   DesktopModelCatalogHint,
   DesktopModelProvider,
   DesktopTransportKind,
-} from '@/types';
+} from '../types.js';
 
 export interface ContextUsageModelProfile {
   name: string;

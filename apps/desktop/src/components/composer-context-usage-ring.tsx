@@ -1,19 +1,16 @@
 import { useTranslation } from 'react-i18next';
 
-import { cn } from '@/lib/utils';
 import type { ConversationContextUsageSnapshot } from '@/types';
 
-const RING_SIZE_PX = 18;
-const RING_STROKE_PX = 2.25;
+const RING_SIZE_PX = 13;
+const RING_STROKE_PX = 1.75;
 const RING_RADIUS = (RING_SIZE_PX - RING_STROKE_PX) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export function ComposerContextUsageRing({
   usage,
-  busy = false,
 }: {
   usage?: ConversationContextUsageSnapshot;
-  busy?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -38,7 +35,7 @@ export function ComposerContextUsageRing({
         width={RING_SIZE_PX}
         height={RING_SIZE_PX}
         viewBox={`0 0 ${RING_SIZE_PX} ${RING_SIZE_PX}`}
-        className={cn('shrink-0', busy && 'animate-spin')}
+        className="shrink-0"
         aria-hidden
       >
         <circle
@@ -62,7 +59,7 @@ export function ComposerContextUsageRing({
           transform={`rotate(-90 ${RING_SIZE_PX / 2} ${RING_SIZE_PX / 2})`}
         />
       </svg>
-      <span className="text-xs tabular-nums text-muted-foreground">{usage.percent}%</span>
+      <span className="font-sans text-xs text-muted-foreground">{usage.percent}%</span>
     </div>
   );
 }

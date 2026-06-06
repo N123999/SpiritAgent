@@ -96,6 +96,10 @@ export interface DesktopRuntimeEventOrchestratorOptions {
     | undefined;
   resolveCatalogHints?: () => DesktopModelCatalogHint[] | undefined;
   setContextUsage?: (usage: ConversationContextUsageSnapshot | undefined) => void;
+  refreshContextUsageCatalog?: (input: {
+    usage: { inputTokens: number };
+    activeModel: NonNullable<ReturnType<NonNullable<DesktopRuntimeEventOrchestratorOptions['resolveActiveModel']>>>;
+  }) => void;
 }
 
 function isMcpLikeToolName(toolName: string): boolean {
@@ -257,7 +261,6 @@ export class DesktopRuntimeEventOrchestrator {
     for (const event of events) {
       if (event.kind === 'begin-assistant-response') {
         this.deferredAfterStreamThinking = undefined;
-        this.options.setContextUsage?.(undefined);
         const insertAt = messages.length;
         const shouldReanchorStandalonePendingAux =
           this.options.conversationSnapshotView.shouldReanchorPersistedStandaloneSubagentStatusOnBeginAssistantResponse(
@@ -286,6 +289,16 @@ export class DesktopRuntimeEventOrchestrator {
           || !supportsContextUsageProvider(activeModel.provider)
           || contextLength === undefined
         ) {
+          if (
+            activeModel
+            && supportsContextUsageProvider(activeModel.provider)
+            && contextLength === undefined
+          ) {
+            this.options.refreshContextUsageCatalog?.({
+              usage: event.usage,
+              activeModel,
+            });
+          }
           this.options.setContextUsage?.(undefined);
         } else {
           this.options.setContextUsage?.({

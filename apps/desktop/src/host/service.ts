@@ -238,8 +238,13 @@ import {
 import { generateSessionTitleFromModelTask } from './session-title-generation.js';
 import { applyGeneratedSessionTitle } from './session-title-service.js';
 import {
+  buildContextUsagePercent,
+  resolveModelContextLength,
+} from '../lib/context-usage.js';
+import {
   attachVideoGenerationToTransportConfig,
   buildPrimaryTransportConfig,
+  loadPreviewModelsForTransport,
   modelCapabilitiesFromConfig,
   openAiCompatibleVendorFromProvider,
   resolveDesktopTransportKind,
@@ -432,6 +437,7 @@ class DesktopHostService {
   private readonly sessionListUpdateListeners = new Set<() => void>();
   private readonly sessionTitleGenerationInFlight = new Set<string>();
   private gitRefreshInFlight: Promise<void> | null = null;
+  private contextUsageCatalogRefreshInFlight = false;
   private gitRefreshQueued = false;
   private readonly todoClearingBySession = new Map<
     string,
@@ -830,6 +836,9 @@ class DesktopHostService {
       resolveCatalogHints: () => buildModelCatalogHints(this.requireState().config),
       setContextUsage: (usage) => {
         bundle.contextUsage = usage;
+      },
+      refreshContextUsageCatalog: ({ usage, activeModel }) => {
+        void this.refreshContextUsageCatalogForBundle(bundle, usage, activeModel);
       },
     });
     return { assistantMessages, runtimeEvents, conversationSnapshotView };
@@ -1881,6 +1890,59 @@ class DesktopHostService {
       return;
     }
     this.modelKeyPresence = await modelSecretKeyPresence(state.config.models);
+  }
+
+  private async refreshContextUsageCatalogForBundle(
+    bundle: SessionBundle,
+    usage: { inputTokens: number },
+    activeModel: {
+      name: string;
+      apiBase: string;
+      provider?: import('../types.js').DesktopModelProvider;
+      transportKind?: import('../types.js').DesktopTransportKind;
+    },
+  ): Promise<void> {
+    if (this.contextUsageCatalogRefreshInFlight || !activeModel.provider) {
+      return;
+    }
+    this.contextUsageCatalogRefreshInFlight = true;
+    try {
+      await this.runSerialized(async () => {
+        const state = this.state;
+        if (!state) {
+          return;
+        }
+        const apiKey = await resolveApiKeyForConfigModel(state.config, activeModel.name);
+        if (!apiKey?.trim()) {
+          return;
+        }
+        const transportKind = resolveDesktopTransportKind(activeModel);
+        await loadPreviewModelsForTransport({
+          provider: activeModel.provider,
+          transportKind,
+          apiBase: activeModel.apiBase.trim() || DEFAULT_API_BASE,
+          apiKey: apiKey.trim(),
+          forceRefresh: true,
+        });
+        const contextLength = resolveModelContextLength(
+          activeModel,
+          buildModelCatalogHints(state.config),
+        );
+        if (contextLength === undefined) {
+          return;
+        }
+        bundle.contextUsage = {
+          inputTokens: usage.inputTokens,
+          contextLength,
+          percent: buildContextUsagePercent(usage.inputTokens, contextLength),
+        };
+        if (bundle.id === this.sessionRegistry.activeSessionId()) {
+          this.emitLiveSnapshotUpdate();
+        }
+      });
+    } finally {
+      this.contextUsageCatalogRefreshInFlight = false;
+    }
   }
 
   private createRuntime(

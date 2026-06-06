@@ -813,9 +813,9 @@ function createAiSdkAlibabaProvider(config: OpenAiTransportConfig) {
 }
 
 function createAiSdkGatewayProvider(config: OpenAiTransportConfig) {
+  // Gateway chat 走 v3 AI 协议（默认 …/v3/ai/language-model），不能用模型目录预设的 /v1 baseUrl。
   return createGateway({
     apiKey: config.apiKey,
-    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     fetch: getLlmFetch(),
   });
 }
