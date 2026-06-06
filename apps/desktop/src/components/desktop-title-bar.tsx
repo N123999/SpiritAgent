@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/hooks/useTheme";
-import { spiritAgentBrandIconSrc } from "@/lib/brand-icon";
+import { spiritAgentTitleBarIconSrc } from "@/lib/brand-icon";
 import { sessionSidebarShellWidth } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
@@ -37,35 +37,42 @@ function titleBarSurfaceClass(useMicaBackdrop: boolean, withBorder: boolean) {
   );
 }
 
-/** 顶栏菜单区图标显示边长（PNG 画布较大，需小于旧 favicon 的 20px 观感） */
+/** 透明底顶栏标（`spirit-agent-icon*.png` 画布大，14px 观感接近旧 20px favicon） */
 const TITLE_BAR_ICON_PX = 14;
 
-function TitleBarAppIcon() {
+/** 云母顶栏黑底标（`build/icon.png` 内图案更小，恢复迁移透明标前的 20px） */
+const TITLE_BAR_ICON_MICA_PX = 20;
+
+function TitleBarAppIcon({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
   const { resolvedDark } = useTheme();
-  const iconSrc = spiritAgentBrandIconSrc(resolvedDark);
+  const iconSrc = spiritAgentTitleBarIconSrc(resolvedDark, useMicaBackdrop);
+  const iconPx = useMicaBackdrop ? TITLE_BAR_ICON_MICA_PX : TITLE_BAR_ICON_PX;
   return (
     <span
       className="electron-no-drag ml-1 inline-flex shrink-0 items-center justify-center"
-      style={{ width: TITLE_BAR_ICON_PX, height: TITLE_BAR_ICON_PX }}
+      style={{ width: iconPx, height: iconPx }}
     >
       <img
         key={iconSrc}
         src={iconSrc}
         alt=""
-        width={TITLE_BAR_ICON_PX}
-        height={TITLE_BAR_ICON_PX}
+        width={iconPx}
+        height={iconPx}
         draggable={false}
-        className="max-h-full max-w-full object-contain select-none"
+        className={cn(
+          "max-h-full max-w-full object-contain select-none",
+          useMicaBackdrop && "rounded-sm",
+        )}
       />
     </span>
   );
 }
 
-function TitleBarMenuCluster() {
+function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
   const { t } = useTranslation();
   return (
     <>
-      <TitleBarAppIcon />
+      <TitleBarAppIcon useMicaBackdrop={useMicaBackdrop} />
       <nav
         className="electron-no-drag flex shrink-0 items-center gap-0.5 text-[13px] leading-none"
         aria-label={t('titleBar.appMenu')}
@@ -111,7 +118,7 @@ export function DesktopTitleBar({
             : undefined
         }
       >
-        <TitleBarMenuCluster />
+        <TitleBarMenuCluster useMicaBackdrop={useMicaBackdrop} />
       </div>
       <div className="electron-drag h-full min-w-0 flex-1" aria-hidden />
     </header>
