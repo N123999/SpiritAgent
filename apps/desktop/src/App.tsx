@@ -50,6 +50,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Plus,
   ShieldCheck,
   Square,
   X,
@@ -1804,6 +1805,8 @@ function DesktopLayoutChromeBar({
   workspaceToolsOpen = false,
   onToggleWorkspaceTools,
   sessionTitle,
+  onNewSession,
+  newSessionBusy = false,
 }: {
   useMicaBackdrop: boolean;
   sessionSidebarOpen: boolean;
@@ -1812,6 +1815,8 @@ function DesktopLayoutChromeBar({
   workspaceToolsOpen?: boolean;
   onToggleWorkspaceTools?: () => void;
   sessionTitle?: string | null;
+  onNewSession?: () => void;
+  newSessionBusy?: boolean;
 }) {
   const { t } = useTranslation();
   const showTrailingActions = showWorkspaceToggle;
@@ -1840,6 +1845,19 @@ function DesktopLayoutChromeBar({
         >
           {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
         </Button>
+        {!sessionSidebarOpen && onNewSession ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
+            onClick={onNewSession}
+            disabled={newSessionBusy}
+            aria-label={t("sidebar.newSession")}
+          >
+            <Plus className="size-3.5" aria-hidden />
+          </Button>
+        ) : null}
         {trimmedSessionTitle ? (
           <span
             className="min-w-0 max-w-[min(20rem,40vw)] truncate text-xs font-medium text-foreground/90"
@@ -3024,6 +3042,8 @@ export default function App() {
                 workspaceToolsOpen={workspaceToolsOpen}
                 onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
                 sessionTitle={snapshot?.activeSession?.displayName}
+                onNewSession={handleNewSession}
+                newSessionBusy={newSessionBusy}
               />
             <div data-spirit-surface="conversation-stage" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
               {compactionDemo.active ? (
