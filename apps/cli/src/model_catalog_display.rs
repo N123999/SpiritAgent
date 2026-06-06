@@ -42,6 +42,34 @@ fn provider_uses_catalog_display(provider: ModelProvider) -> bool {
     )
 }
 
+fn format_model_display_name_from_id(model_id: &str) -> String {
+    let normalized = model_id
+        .trim()
+        .replace(['-', ':', '/'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if normalized.is_empty() {
+        return model_id.to_string();
+    }
+    normalized
+        .split(' ')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => {
+                    let mut formatted = String::new();
+                    formatted.extend(first.to_uppercase());
+                    formatted.extend(chars);
+                    formatted
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[derive(Debug, Deserialize)]
 struct ModelCatalogCacheEntry {
     #[serde(rename = "modelCatalog", default)]
@@ -90,28 +118,36 @@ pub fn build_model_display_titles(models: &[ModelProfile]) -> HashMap<String, St
 
     for model in models {
         let Some(provider) = model.provider else {
+            let formatted = format_model_display_name_from_id(&model.name);
+            if formatted != model.name {
+                titles.insert(model.name.clone(), formatted);
+            }
             continue;
         };
-        if !provider_uses_catalog_display(provider) {
+        if provider_uses_catalog_display(provider) {
+            let transport = model.transport_kind().as_str();
+            let hint_key = model_catalog_hint_key(provider.as_str(), transport, &model.api_base);
+            if loaded_hints.insert(hint_key.clone()) {
+                let display_names = read_display_names_for_hint(&hint_key);
+                cache_by_hint.insert(hint_key.clone(), display_names);
+            }
+
+            let Some(display_names) = cache_by_hint.get(&hint_key) else {
+                continue;
+            };
+            let display = display_names
+                .get(&model.name)
+                .cloned()
+                .unwrap_or_else(|| model.name.clone());
+            if display != model.name {
+                titles.insert(model.name.clone(), display);
+            }
             continue;
         }
 
-        let transport = model.transport_kind().as_str();
-        let hint_key = model_catalog_hint_key(provider.as_str(), transport, &model.api_base);
-        if loaded_hints.insert(hint_key.clone()) {
-            let display_names = read_display_names_for_hint(&hint_key);
-            cache_by_hint.insert(hint_key.clone(), display_names);
-        }
-
-        let Some(display_names) = cache_by_hint.get(&hint_key) else {
-            continue;
-        };
-        let display = display_names
-            .get(&model.name)
-            .cloned()
-            .unwrap_or_else(|| model.name.clone());
-        if display != model.name {
-            titles.insert(model.name.clone(), display);
+        let formatted = format_model_display_name_from_id(&model.name);
+        if formatted != model.name {
+            titles.insert(model.name.clone(), formatted);
         }
     }
 
@@ -179,15 +215,26 @@ mod tests {
     }
 
     #[test]
-    fn build_model_display_titles_skips_non_gateway_providers() {
+    fn build_model_display_titles_formats_non_gateway_providers() {
         let models = vec![ModelProfile {
-            name: "gpt-4o".to_string(),
+            name: "gpt-4o-mini".to_string(),
             api_base: "https://api.openai.com/v1".to_string(),
             provider: Some(ModelProvider::Openai),
             reasoning_effort: None,
             extra: serde_json::Map::new(),
         }];
         let titles = build_model_display_titles(&models);
-        assert!(titles.is_empty());
+        assert_eq!(
+            titles.get("gpt-4o-mini").map(String::as_str),
+            Some("Gpt 4o Mini")
+        );
+    }
+
+    #[test]
+    fn format_model_display_name_from_id_replaces_separators() {
+        assert_eq!(
+            format_model_display_name_from_id("anthropic/claude-sonnet-4"),
+            "Anthropic Claude Sonnet 4"
+        );
     }
 }

@@ -1,3 +1,4 @@
+import { formatModelDisplayNameFromId } from '@spirit-agent/agent-core/model-display-name';
 import type { ProviderListedModelEntry } from '@spirit-agent/host-internal';
 
 import type {
@@ -13,6 +14,10 @@ export function usesAnthropicModelCatalogMetadata(input: {
   transportKind?: DesktopTransportKind;
 }): boolean {
   return input.transportKind === 'anthropic' || input.provider === 'anthropic';
+}
+
+function providerUsesUpstreamModelDisplayName(provider: DesktopModelProvider | undefined): boolean {
+  return provider === 'vercel-ai-gateway' || provider === 'openrouter';
 }
 
 export function usesProviderListedModelCatalogMetadata(input: {
@@ -44,7 +49,7 @@ export function previewModelCatalogForTransport(input: {
   return input.listedModels.map((entry) => ({
     id: entry.id,
     capabilities: previewCapabilitiesFromListedEntry(entry),
-    ...(entry.displayName !== undefined ? { displayName: entry.displayName } : {}),
+    ...resolvePreviewCatalogDisplayName(input.provider, entry),
     ...(entry.description !== undefined ? { description: entry.description } : {}),
     ...(entry.pricing !== undefined ? { pricing: { ...entry.pricing } } : {}),
     ...(entry.supportedReasoningEfforts !== undefined
@@ -72,7 +77,10 @@ export function previewCatalogMapForTransport(input: {
       id,
       {
         id,
-        ...(entry.displayName !== undefined ? { displayName: entry.displayName } : {}),
+        ...resolvePreviewCatalogDisplayName(input.provider, {
+          id,
+          displayName: entry.displayName,
+        }),
         ...(entry.description !== undefined ? { description: entry.description } : {}),
         ...(entry.pricing !== undefined ? { pricing: { ...entry.pricing } } : {}),
         ...(entry.capabilities ? { capabilities: entry.capabilities } : {}),
@@ -84,6 +92,20 @@ export function previewCatalogMapForTransport(input: {
   }
 
   return new Map(normalized);
+}
+
+function resolvePreviewCatalogDisplayName(
+  provider: DesktopModelProvider | undefined,
+  entry: Pick<ProviderListedModelEntry, 'id' | 'displayName'>,
+): { displayName?: string } {
+  const upstreamDisplayName = entry.displayName?.trim();
+  if (upstreamDisplayName) {
+    return { displayName: upstreamDisplayName };
+  }
+  if (providerUsesUpstreamModelDisplayName(provider)) {
+    return {};
+  }
+  return { displayName: formatModelDisplayNameFromId(entry.id) };
 }
 
 function previewCapabilitiesFromListedEntry(

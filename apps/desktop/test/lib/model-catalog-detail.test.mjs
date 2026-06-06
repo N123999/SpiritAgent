@@ -41,6 +41,34 @@ test('modelHasCatalogDetail is true when only displayName is present', () => {
   assert.equal(modelHasCatalogDetail({ id: 'x', displayName: 'Friendly' }), true);
 });
 
+test('buildModelCatalogDisplayTitleMap formats non-gateway model ids', () => {
+  const models = [
+    {
+      name: 'gpt-4o-mini',
+      apiBase: 'https://api.openai.com/v1',
+      provider: 'openai',
+      transportKind: 'openai-compatible',
+      reasoningEffort: 'default',
+      keyConfigured: true,
+    },
+  ];
+
+  const titles = buildModelCatalogDisplayTitleMap(models, []);
+  assert.equal(titles.get('gpt-4o-mini'), 'Gpt 4o Mini');
+});
+
+test('modelCatalogDisplayTitle keeps raw id for gateway without catalog entry', () => {
+  const model = {
+    name: 'openai/gpt-5',
+    apiBase: 'https://gateway.example/v1',
+    provider: 'vercel-ai-gateway',
+    transportKind: 'openai-compatible',
+    reasoningEffort: 'default',
+    keyConfigured: true,
+  };
+  assert.equal(modelCatalogDisplayTitle(model, undefined), 'openai/gpt-5');
+});
+
 test('findModelCatalogEntry returns entry without pricing', () => {
   const hints = [
     {

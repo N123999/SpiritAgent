@@ -29,6 +29,7 @@ test('custom anthropic transport consumes Anthropic model catalog metadata', () 
   assert.deepEqual(preview, [
     {
       id: 'claude-sonnet-4-20250514',
+      displayName: 'Claude Sonnet 4 20250514',
       capabilities: ['chat'],
       supportedReasoningEfforts: ['low', 'high', 'max'],
     },
@@ -68,11 +69,13 @@ test('moonshot-ai provider consumes Moonshot model catalog metadata', () => {
   assert.deepEqual(preview, [
     {
       id: 'kimi-k2.5',
+      displayName: 'Kimi K2.5',
       capabilities: ['chat', 'image'],
       supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     },
     {
       id: 'kimi-k2-turbo-preview',
+      displayName: 'Kimi K2 Turbo Preview',
       capabilities: ['chat'],
       supportedReasoningEfforts: [],
     },
@@ -199,6 +202,7 @@ test('moonshot-ai video input maps to video capability not videoGeneration', () 
   assert.deepEqual(preview, [
     {
       id: 'moonshot-v1-128k-vision-preview',
+      displayName: 'Moonshot V1 128k Vision Preview',
       capabilities: ['chat', 'video'],
     },
   ]);
@@ -240,14 +244,17 @@ test('volcengine provider maps domain-derived traits to catalog capabilities', (
     },
     {
       id: 'doubao-seed-1-6-250615',
+      displayName: 'Doubao Seed 1 6 250615',
       capabilities: ['chat', 'image', 'video'],
     },
     {
       id: 'doubao-seedance-2-0-260128',
+      displayName: 'Doubao Seedance 2 0 260128',
       capabilities: ['chat', 'videoGeneration'],
     },
     {
       id: 'doubao-seedream-4-0-250828',
+      displayName: 'Doubao Seedream 4 0 250828',
       capabilities: ['imageGeneration'],
     },
   ]);

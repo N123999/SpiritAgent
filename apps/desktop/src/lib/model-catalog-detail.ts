@@ -1,3 +1,5 @@
+import { formatModelDisplayNameFromId } from '@spirit-agent/agent-core/model-display-name';
+
 import type {
   DesktopModelCatalogHint,
   DesktopModelProvider,
@@ -116,10 +118,9 @@ export function buildModelCatalogDisplayTitleMap(
   const entryIndex = buildModelCatalogEntryIndex(hints);
   const titles = new Map<string, string>();
   for (const model of models) {
-    if (!providerSupportsModelCatalogDetail(model.provider)) {
-      continue;
-    }
-    const catalogEntry = findModelCatalogEntry(model, hints, entryIndex);
+    const catalogEntry = providerSupportsModelCatalogDetail(model.provider)
+      ? findModelCatalogEntry(model, hints, entryIndex)
+      : undefined;
     titles.set(model.name, modelCatalogDisplayTitle(model, catalogEntry));
   }
   return titles;
@@ -136,8 +137,14 @@ export function modelCatalogDisplayTitle(
   model: ModelProfileSnapshot,
   catalogEntry: PreviewModelCatalogEntry | undefined,
 ): string {
-  const displayName = catalogEntry?.displayName?.trim();
-  return displayName && displayName.length > 0 ? displayName : model.name;
+  const catalogDisplayName = catalogEntry?.displayName?.trim();
+  if (catalogDisplayName && catalogDisplayName.length > 0) {
+    return catalogDisplayName;
+  }
+  if (providerSupportsModelCatalogDetail(model.provider)) {
+    return model.name;
+  }
+  return formatModelDisplayNameFromId(model.name);
 }
 
 export function modelSettingsRowAriaLabel(
