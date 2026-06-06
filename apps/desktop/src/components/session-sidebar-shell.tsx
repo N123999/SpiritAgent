@@ -6,6 +6,7 @@ import {
   computeSessionSidebarMaxWidthPx,
   sessionSidebarShellWidth,
 } from "@/lib/desktop-chrome";
+import { writeSessionSidebarWidthPx } from "@/lib/layout-prefs";
 import { cn } from "@/lib/utils";
 
 export type SessionSidebarShellProps = {
@@ -32,6 +33,8 @@ export function SessionSidebarShell({
   const { t } = useTranslation();
   const [isResizing, setIsResizing] = useState(false);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const latestWidthPxRef = useRef(widthPx);
+  latestWidthPxRef.current = widthPx;
   const [viewportMaxWidthPx, setViewportMaxWidthPx] = useState(computeSessionSidebarMaxWidthPx);
   const maxWidthPx = maxWidthPxProp ?? viewportMaxWidthPx;
 
@@ -81,13 +84,18 @@ export function SessionSidebarShell({
         return;
       }
       const delta = event.clientX - drag.startX;
-      onWidthPxChange(clampWidth(drag.startWidth + delta));
+      const next = clampWidth(drag.startWidth + delta);
+      latestWidthPxRef.current = next;
+      onWidthPxChange(next);
     },
     [clampWidth, onWidthPxChange],
   );
 
   const endResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     setIsResizing(false);
+    if (dragRef.current) {
+      writeSessionSidebarWidthPx(latestWidthPxRef.current);
+    }
     dragRef.current = null;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);

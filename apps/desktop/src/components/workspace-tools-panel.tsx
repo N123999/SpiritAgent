@@ -9,6 +9,11 @@ import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceGitTab } from "@/components/workspace-git-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import { instantHoverMotionClass } from "@/lib/desktop-chrome";
+import {
+  WORKSPACE_TOOLS_MIN_WIDTH_PX,
+  computeWorkspaceToolsMaxWidthPx,
+  writeWorkspaceToolsWidthPx,
+} from "@/lib/layout-prefs";
 import { cn } from "@/lib/utils";
 import type { WorkspaceEditorViewMode } from "@/lib/workspace-editor-navigation";
 import {
@@ -85,17 +90,6 @@ export type WorkspaceToolsDockProps = {
   className?: string;
 };
 
-const DEFAULT_MIN = 240;
-/** 默认可拖至视口宽度约 62%，保证大屏下能占至少一大半。 */
-const VIEWPORT_MAX_WIDTH_RATIO = 0.62;
-
-function computeViewportMaxWidthPx(): number {
-  if (typeof window === "undefined") {
-    return 900;
-  }
-  return Math.round(window.innerWidth * VIEWPORT_MAX_WIDTH_RATIO);
-}
-
 export function WorkspaceToolsDock({
   workspaceRoot,
   listExplorerChildren,
@@ -120,7 +114,7 @@ export function WorkspaceToolsDock({
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   widthPx,
-  minWidthPx = DEFAULT_MIN,
+  minWidthPx = WORKSPACE_TOOLS_MIN_WIDTH_PX,
   maxWidthPx: maxWidthPxProp,
   onWidthPxChange,
   open,
@@ -134,7 +128,9 @@ export function WorkspaceToolsDock({
   const { t } = useTranslation();
   const [isResizing, setIsResizing] = useState(false);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const [viewportMaxWidthPx, setViewportMaxWidthPx] = useState(computeViewportMaxWidthPx);
+  const latestWidthPxRef = useRef(widthPx);
+  latestWidthPxRef.current = widthPx;
+  const [viewportMaxWidthPx, setViewportMaxWidthPx] = useState(computeWorkspaceToolsMaxWidthPx);
   const maxWidthPx = maxWidthPxProp ?? viewportMaxWidthPx;
 
   useEffect(() => {
@@ -142,7 +138,7 @@ export function WorkspaceToolsDock({
       return;
     }
     const onWindowResize = () => {
-      setViewportMaxWidthPx(computeViewportMaxWidthPx());
+      setViewportMaxWidthPx(computeWorkspaceToolsMaxWidthPx());
     };
     window.addEventListener("resize", onWindowResize);
     return () => window.removeEventListener("resize", onWindowResize);
@@ -183,7 +179,9 @@ export function WorkspaceToolsDock({
         return;
       }
       const delta = drag.startX - event.clientX;
-      onWidthPxChange(clampWidth(drag.startWidth + delta));
+      const next = clampWidth(drag.startWidth + delta);
+      latestWidthPxRef.current = next;
+      onWidthPxChange(next);
     },
     [clampWidth, onWidthPxChange],
   );
@@ -191,8 +189,9 @@ export function WorkspaceToolsDock({
   const endResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     setIsResizing(false);
     if (dragRef.current) {
-      dragRef.current = null;
+      writeWorkspaceToolsWidthPx(latestWidthPxRef.current);
     }
+    dragRef.current = null;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {

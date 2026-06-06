@@ -118,11 +118,11 @@ export function stopOverlayScrollPropagation(event: {
   event.stopPropagation();
 }
 
-/** 左侧会话侧栏默认宽度（原 16rem） */
-export const SESSION_SIDEBAR_DEFAULT_WIDTH_PX = 256;
-
-/** 可拖拽下限：略窄于默认，勿压太多 */
+/** 可拖拽下限：默认宽度与之对齐，首次打开更紧凑 */
 export const SESSION_SIDEBAR_MIN_WIDTH_PX = 232;
+
+/** 左侧会话侧栏默认宽度 */
+export const SESSION_SIDEBAR_DEFAULT_WIDTH_PX = SESSION_SIDEBAR_MIN_WIDTH_PX;
 
 /** 可拖拽上限：相对默认仅略放宽（右侧工具区勿用视口大比例） */
 export const SESSION_SIDEBAR_MAX_WIDTH_PX = 288;
