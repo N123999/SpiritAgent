@@ -204,6 +204,55 @@ test('moonshot-ai video input maps to video capability not videoGeneration', () 
   ]);
 });
 
+test('volcengine provider maps domain-derived traits to catalog capabilities', () => {
+  assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'volcengine' }), true);
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'volcengine',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'doubao-1-5-pro-32k-250115',
+        displayName: 'doubao-1-5-pro-32k',
+        contextLength: 131072,
+      },
+      {
+        id: 'doubao-seed-1-6-250615',
+        supportsImageInput: true,
+        supportsVideoInput: true,
+      },
+      {
+        id: 'doubao-seedance-2-0-260128',
+        supportsVideoGeneration: true,
+      },
+      {
+        id: 'doubao-seedream-4-0-250828',
+        supportsImageGeneration: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'doubao-1-5-pro-32k-250115',
+      displayName: 'doubao-1-5-pro-32k',
+      capabilities: ['chat'],
+    },
+    {
+      id: 'doubao-seed-1-6-250615',
+      capabilities: ['chat', 'image', 'video'],
+    },
+    {
+      id: 'doubao-seedance-2-0-260128',
+      capabilities: ['chat', 'videoGeneration'],
+    },
+    {
+      id: 'doubao-seedream-4-0-250828',
+      capabilities: ['imageGeneration'],
+    },
+  ]);
+});
+
 test('openai-compatible transport does not treat metadata as Anthropic-specific catalog data', () => {
   assert.equal(
     usesAnthropicModelCatalogMetadata({ provider: 'custom', transportKind: 'openai-compatible' }),

@@ -274,6 +274,11 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
         connectTransportOptionCatalog.openResponsesApi,
         connectTransportOptionCatalog.messagesApi,
       ];
+    case "volcengine":
+      return [
+        connectTransportOptionCatalog.chatCompletions,
+        connectTransportOptionCatalog.responsesApi,
+      ];
     default:
       return [];
   }
@@ -294,7 +299,8 @@ function providerSupportsConnectTransportPicker(
     provider === "alibaba" ||
     provider === "custom" ||
     provider === "vercel-ai-gateway" ||
-    provider === "openrouter"
+    provider === "openrouter" ||
+    provider === "volcengine"
   );
 }
 
@@ -316,6 +322,10 @@ function connectTransportOptionSummary(
 
   if (option.value === "open-responses" && provider === "custom") {
     return i18n.t(connectTransportOptionCatalog.openResponsesApi.summaryKey);
+  }
+
+  if (option.value === "open-responses" && provider === "volcengine") {
+    return i18n.t('settings.transportVolcengineResponses');
   }
 
   return i18n.t(option.summaryKey);
@@ -3259,9 +3269,11 @@ function ModelsSettingsPanel({
             <DialogDescription>
               {selectedProvider === "custom"
                 ? t('settings.customConnectionDescription')
-                : providerSupportsConnectTransportPicker(selectedProvider)
-                  ? t('settings.providerConnectionDescription')
-                  : t('settings.providerSimpleDescription')}
+                : selectedProvider === "volcengine"
+                  ? t('settings.volcengineConnectionDescription')
+                  : providerSupportsConnectTransportPicker(selectedProvider)
+                    ? t('settings.providerConnectionDescription')
+                    : t('settings.providerSimpleDescription')}
             </DialogDescription>
           </DialogHeader>
 

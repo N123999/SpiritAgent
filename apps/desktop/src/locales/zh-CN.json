@@ -231,6 +231,8 @@
     "customConnection": "自定义连接",
     "customConnectionDescription": "先选择 API 类型，再填写端点与密钥。",
     "providerConnectionDescription": "先选择 API 类型，再填写 API Key；批量导入的模型会沿用该类型。",
+    "volcengineConnectionDescription": "先选择 API 类型（Chat Completions 或 Responses API），再填写 API Key；将从火山方舟自动导入模型目录并标注能力。",
+    "transportVolcengineResponses": "火山方舟 Responses API（`/api/v3/responses`），支持上下文缓存等能力。",
     "providerSimpleDescription": "填写 API Key 即可连接。",
     "apiType": "API 类型",
     "modelAddMode": "模型添加方式",

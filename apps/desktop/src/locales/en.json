@@ -231,6 +231,8 @@
     "customConnection": "Custom Connection",
     "customConnectionDescription": "First select API type, then fill in endpoint and key.",
     "providerConnectionDescription": "First select API type, then fill in API Key; bulk imported models will use this type.",
+    "volcengineConnectionDescription": "Select API type (Chat Completions or Responses API), then enter API Key; models are imported from Volcengine Ark with capabilities inferred from the catalog.",
+    "transportVolcengineResponses": "Volcengine Ark Responses API (`/api/v3/responses`), including context caching.",
     "providerSimpleDescription": "Fill in API Key to connect.",
     "apiType": "API Type",
     "modelAddMode": "Model Add Mode",
