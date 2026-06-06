@@ -172,9 +172,9 @@ import {
   DESKTOP_OVERLAY_LIST_ITEM_SECONDARY,
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
   DESKTOP_OVERLAY_SHORT_SUBCONTENT,
-  SESSION_SIDEBAR_DEFAULT_WIDTH_PX,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
+import { readSessionSidebarWidthPx } from "@/lib/layout-prefs";
 import {
   buildModelCatalogDisplayTitleMap,
   modelDisplayTitleFromMap,
@@ -2054,9 +2054,7 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("basic");
   const [extensionSettingsId, setExtensionSettingsId] = useState<string | null>(null);
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(true);
-  const [sessionSidebarWidthPx, setSessionSidebarWidthPx] = useState(
-    SESSION_SIDEBAR_DEFAULT_WIDTH_PX,
-  );
+  const [sessionSidebarWidthPx, setSessionSidebarWidthPx] = useState(readSessionSidebarWidthPx);
   const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
   const initialWorkspaceToolsRef = useRef<ReturnType<
     typeof createInitialWorkspaceToolsState
