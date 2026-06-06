@@ -32,6 +32,7 @@ export interface BuildDesktopSnapshotInput {
   plan: DesktopSnapshot['plan'];
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
+  extensionsLoading?: boolean;
   dreamCollectorStatus: DesktopDreamCollectorSnapshot;
   runtimeReady: boolean;
   runtimeError?: string;
@@ -108,6 +109,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     })),
     extensionsList: input.extensionsList.map((item) => ({ ...item })),
     extensionCss: input.extensionCss.map((entry) => ({ ...entry })),
+    ...(input.extensionsLoading ? { extensionsLoading: true } : {}),
     plan: { ...input.plan },
     mcpStatus: input.mcpStatus,
     mcpServers: input.mcpServers,

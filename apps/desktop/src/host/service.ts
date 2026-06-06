@@ -291,6 +291,10 @@ import {
   type DesktopExtensionHostAdapter,
 } from './extension-host-adapter.js';
 import {
+  ExtensionWarmupCoordinator,
+  type ExtensionWarmupTrigger,
+} from './extension-warmup.js';
+import {
   emptyMcpStatusSnapshot,
   listDesktopMcpServersFromDisk,
 } from './mcp-config.js';
@@ -399,6 +403,7 @@ class DesktopHostService {
     hostKind: 'desktop',
     stateStore: this.extensionStateStore,
   });
+  private readonly extensionWarmup = new ExtensionWarmupCoordinator();
   private hostExtensionMarketplace: HostExtensionMarketplaceManager | undefined;
   private hostExtensionMarketplaceFetchImpl: typeof fetch | undefined;
   private state: HostState | undefined;
@@ -503,6 +508,7 @@ class DesktopHostService {
     return {
       runSerialized: (work) => this.runSerialized(work),
       ensureInitialized: (workspaceRootOverride, options) => this.ensureInitialized(workspaceRootOverride, options),
+      isInitialized: () => this.initialized,
       requireState: () => this.requireState(),
       isRuntimeBusy: () => this.runtime?.isBusy() === true,
       requireRuntime: () => this.requireRuntime(),
@@ -634,7 +640,8 @@ class DesktopHostService {
       setLastRuntimeError: (error) => {
         this.lastRuntimeError = error;
       },
-      dispatchSessionEvent: (event) => this.dispatchExtensionEvent(event),
+      scheduleSessionExtensionWarmup: (event) =>
+        this.scheduleExtensionWarmup({ type: 'session', event }),
       buildSnapshot: () => this.buildSnapshot(),
     };
   }
@@ -736,17 +743,12 @@ class DesktopHostService {
       },
       sessionRegistry: () => this.sessionRegistry,
       resetStreamingPlacementState: (full) => this.resetStreamingPlacementState(full),
-      refreshExtensionsList: () => this.refreshExtensionsList(),
+      refreshExtensionsList: (options) => this.refreshExtensionsList(options),
       refreshRuntime: () => this.refreshRuntime(),
       refreshLspSnapshot: () => this.refreshLspSnapshot(),
       deactivateExtensions: () => this.extensionManager().deactivateAll(),
-      dispatchStartupEvent: (workspaceRoot) =>
-        this.dispatchExtensionEvent({
-          type: 'onStartup',
-          detail: {
-            workspaceRoot,
-          },
-        }),
+      invalidateExtensionWarmup: () => this.invalidateExtensionWarmup(),
+      scheduleExtensionWarmup: (trigger) => this.scheduleExtensionWarmup(trigger),
       loadDesktopPlanSnapshot,
     };
   }
@@ -823,14 +825,17 @@ class DesktopHostService {
   }
 
   async bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot> {
-    return this.runSerialized(async () => {
+    const snapshot = await this.runSerialized(async () => {
       await this.ensureInitialized(request?.workspaceRoot, {
         workspaceBinding: request?.workspaceBinding,
+        deferExtensionWarmup: true,
         ...(request?.workspaceBinding === 'none' ? { preserveRecentWorkspaces: true } : {}),
       });
       this.startDreamCollectorMonitorIfNeeded();
       return this.buildSnapshot();
     });
+    this.scheduleExtensionWarmup({ type: 'startup', workspaceRoot: snapshot.workspaceRoot });
+    return snapshot;
   }
 
   subscribeDreamUpdates(listener: (snapshot: DesktopSnapshot) => void): () => void {
@@ -1429,6 +1434,8 @@ class DesktopHostService {
       preserveRecentWorkspaces?: boolean;
       /** Skip global runtime rebuild after workspace switch; caller will activate a session bundle. */
       deferRuntimeRefresh?: boolean;
+      /** Skip extension warmup scheduling; caller will schedule after serialized work completes. */
+      deferExtensionWarmup?: boolean;
       workspaceBinding?: DesktopWorkspaceBinding;
     } = {},
   ): Promise<void> {
@@ -1473,7 +1480,7 @@ class DesktopHostService {
     // 保留 bundle.currentTurnSkills：斜杠激活的 turn skill 须在 promote/refresh 后仍进入 createRuntime。
     const apiKey = await resolveApiKeyForConfigModel(state.config, state.config.activeModel);
     this.activeApiKeyConfigured = Boolean(apiKey);
-    const extensionSystemPrompts = await this.collectExtensionSystemPrompts();
+    const extensionSystemPrompts = this.extensionWarmup.systemPromptsCache;
     const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
     const imageGenerationProfile = state.config.imageGenerationModel
       ? state.config.models.find((model) => model.name === state.config.imageGenerationModel)
@@ -1978,6 +1985,7 @@ class DesktopHostService {
       plan: state.plan,
       extensionsList: state.extensionsList,
       extensionCss: state.extensionCss,
+      ...(this.extensionWarmup.extensionsLoading ? { extensionsLoading: true } : {}),
       dreamCollectorStatus: this.dreamCollectorStatus,
       runtimeReady: this.runtime !== undefined,
       runtimeError: this.lastRuntimeError,
@@ -2074,6 +2082,7 @@ class DesktopHostService {
 
     if (switchingWorkspace) {
       await this.extensionManager().deactivateAll();
+      this.invalidateExtensionWarmup();
       this.lastRuntimeError = '';
       this.toolExecutor = undefined;
       this.resetStreamingPlacementState(true);
@@ -2090,13 +2099,8 @@ class DesktopHostService {
     await this.refreshRuntimeForBundle(bundle);
     this.syncActiveRuntimePointer();
     if (switchingWorkspace) {
-      await this.refreshExtensionsList();
-      await this.dispatchExtensionEvent({
-        type: 'onStartup',
-        detail: {
-          workspaceRoot: resolved,
-        },
-      });
+      await this.refreshExtensionsList({ metadataOnly: true });
+      this.scheduleExtensionWarmup({ type: 'startup', workspaceRoot: resolved });
     }
   }
 
@@ -2162,10 +2166,14 @@ class DesktopHostService {
     this.hostExtensionMarketplace = undefined;
   }
 
-  private async refreshExtensionsList(): Promise<void> {
+  private async refreshExtensionsList(options?: { metadataOnly?: boolean }): Promise<void> {
     const state = this.requireState();
     const extensions = await this.extensionManager().list();
-    state.extensionsList = await buildDesktopExtensionListItems(this.extensionManager(), extensions);
+    state.extensionsList = await buildDesktopExtensionListItems(
+      this.extensionManager(),
+      extensions,
+      options,
+    );
     state.extensionCss = await collectDesktopExtensionCssLayers(extensions);
   }
 
@@ -2184,6 +2192,9 @@ class DesktopHostService {
   }
 
   private async refreshRuntimeAfterExtensionMutation(): Promise<void> {
+    await this.refreshExtensionSystemPromptsCache();
+    await this.refreshExtensionsList();
+
     if (this.runtime?.isBusy()) {
       this.activeBundle().deferredRuntimeRefreshWhileBusy = true;
       return;
@@ -2191,6 +2202,40 @@ class DesktopHostService {
 
     this.activeBundle().deferredRuntimeRefreshWhileBusy = false;
     await this.refreshRuntime();
+    this.lastRuntimeError = '';
+  }
+
+  private invalidateExtensionWarmup(): void {
+    this.extensionWarmup.invalidate();
+  }
+
+  private scheduleExtensionWarmup(trigger: ExtensionWarmupTrigger): void {
+    this.extensionWarmup.schedule(trigger, {
+      collectSystemPrompts: () => this.collectExtensionSystemPrompts(),
+      refreshExtensionsListFull: () => this.refreshExtensionsList(),
+      dispatchEvent: (event) => this.dispatchExtensionEvent(event),
+      applyWarmupToRuntime: () => this.applyExtensionWarmupToRuntime(),
+      emitSnapshotUpdate: () => this.emitLiveSnapshotUpdate(),
+    });
+  }
+
+  private async refreshExtensionSystemPromptsCache(): Promise<void> {
+    await this.extensionWarmup.refreshSystemPromptsCache({
+      collectSystemPrompts: () => this.collectExtensionSystemPrompts(),
+    });
+  }
+
+  private async applyExtensionWarmupToRuntime(): Promise<void> {
+    const bundle = this.activeBundle();
+    if (bundle.runtime?.isBusy()) {
+      bundle.deferredRuntimeRefreshWhileBusy = true;
+      return;
+    }
+    bundle.deferredRuntimeRefreshWhileBusy = false;
+    await this.refreshRuntimeForBundle(bundle);
+    if (bundle.id === this.sessionRegistry.activeSessionId()) {
+      this.syncActiveRuntimePointer();
+    }
     this.lastRuntimeError = '';
   }
 

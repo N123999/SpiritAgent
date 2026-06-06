@@ -20,6 +20,7 @@ import {
 import type { DesktopTimelineTurnSnapshot, DesktopMessageTimeline } from './message-timeline.js';
 import { restoreMessagesFromArchive } from './message-ordering.js';
 import { currentApiBase, sameWorkspaceRoot } from './service-utils.js';
+import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 
 interface ActivationState {
   workspaceRoot: string;
@@ -63,17 +64,7 @@ export interface SessionActivationContext {
   refreshRuntimeForBundle(bundle: SessionBundle): Promise<void>;
   resolveTodoSessionKeyForBundle(bundle: SessionBundle): string;
   setLastRuntimeError(error: string): void;
-  dispatchSessionEvent(
-    event:
-      | {
-          type: 'onSessionReset';
-          detail: { workspaceRoot: string };
-        }
-      | {
-          type: 'onSessionOpened';
-          detail: { filePath: string; displayName: string };
-        },
-  ): Promise<void>;
+  scheduleSessionExtensionWarmup(event: HostExtensionEvent): void;
   buildSnapshot(): DesktopSnapshot;
 }
 
@@ -95,7 +86,7 @@ export async function resetSessionCommand(ctx: SessionActivationContext): Promis
     ctx.resetStreamingPlacementState(true, bundle);
     await finishSessionActivationCommand(ctx, bundle);
     ctx.setLastRuntimeError('');
-    await ctx.dispatchSessionEvent({
+    ctx.scheduleSessionExtensionWarmup({
       type: 'onSessionReset',
       detail: {
         workspaceRoot: state.workspaceRoot,
@@ -159,7 +150,7 @@ export async function openSessionCommand(
       ctx.sessionRegistry().activateExisting(warmBundle);
       await finishSessionActivationCommand(ctx, warmBundle);
       ctx.setLastRuntimeError('');
-      await ctx.dispatchSessionEvent({
+      ctx.scheduleSessionExtensionWarmup({
         type: 'onSessionOpened',
         detail: {
           filePath: resolvedPath,
@@ -192,7 +183,7 @@ export async function openSessionCommand(
     bundle.listSortSavedAtUnixMs = loaded.savedAtUnixMs;
     await finishSessionActivationCommand(ctx, bundle);
     ctx.setLastRuntimeError('');
-    await ctx.dispatchSessionEvent({
+    ctx.scheduleSessionExtensionWarmup({
       type: 'onSessionOpened',
       detail: {
         filePath: path.resolve(filePath),

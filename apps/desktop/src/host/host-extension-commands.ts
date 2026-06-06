@@ -82,6 +82,7 @@ type McpBackgroundRefreshable = {
 export interface HostExtensionCommandContext {
   runSerialized<T>(work: () => Promise<T>): Promise<T>;
   ensureInitialized(workspaceRootOverride?: string, options?: { fastPath?: boolean }): Promise<void>;
+  isInitialized(): boolean;
   requireState(): HostExtensionState;
   isRuntimeBusy(): boolean;
   requireRuntime(): { isBusy(): boolean };
@@ -107,6 +108,17 @@ export interface HostExtensionCommandContext {
   appendInlineAssistantReply(displayText: string, assistantText: string): Promise<DesktopSnapshot>;
   setLastRuntimeError(error: string): void;
   buildSnapshot(): DesktopSnapshot;
+}
+
+/** Marketplace catalog/detail/readme 为只读网络 I/O，不得占用 runSerialized 以免阻塞会话导航。 */
+async function ensureInitializedForReadOnlyMarketplace(
+  ctx: HostExtensionCommandContext,
+): Promise<void> {
+  if (ctx.isInitialized()) {
+    await ctx.ensureInitialized(undefined, { fastPath: true });
+    return;
+  }
+  await ctx.runSerialized(() => ctx.ensureInitialized());
 }
 
 export async function createSkillCommand(
@@ -230,61 +242,53 @@ export async function importExtensionCommand(
 export async function listMarketplaceExtensionsCommand(
   ctx: HostExtensionCommandContext,
 ): Promise<DesktopMarketplaceCatalogItem[]> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const items = await ctx.marketplace().listCatalog();
-    return items.map((item) => toDesktopMarketplaceCatalogItem(item));
-  });
+  await ensureInitializedForReadOnlyMarketplace(ctx);
+  const items = await ctx.marketplace().listCatalog();
+  return items.map((item) => toDesktopMarketplaceCatalogItem(item));
 }
 
 export async function getMarketplaceExtensionDetailCommand(
   ctx: HostExtensionCommandContext,
   extensionId: string,
 ): Promise<DesktopMarketplaceDetail> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const trimmedId = extensionId.trim();
-    if (!trimmedId) {
-      throw new Error(i18n.t('error.extensionIdRequired'));
-    }
+  await ensureInitializedForReadOnlyMarketplace(ctx);
+  const trimmedId = extensionId.trim();
+  if (!trimmedId) {
+    throw new Error(i18n.t('error.extensionIdRequired'));
+  }
 
-    const detail = await ctx.marketplace().getDetail(trimmedId);
-    return toDesktopMarketplaceDetail(detail);
-  });
+  const detail = await ctx.marketplace().getDetail(trimmedId);
+  return toDesktopMarketplaceDetail(detail);
 }
 
 export async function getMarketplaceExtensionReadmeCommand(
   ctx: HostExtensionCommandContext,
   extensionId: string,
 ): Promise<string> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const trimmedId = extensionId.trim();
-    if (!trimmedId) {
-      throw new Error(i18n.t('error.extensionIdRequired'));
-    }
+  await ensureInitializedForReadOnlyMarketplace(ctx);
+  const trimmedId = extensionId.trim();
+  if (!trimmedId) {
+    throw new Error(i18n.t('error.extensionIdRequired'));
+  }
 
-    return ctx.marketplace().getReadme(trimmedId);
-  });
+  return ctx.marketplace().getReadme(trimmedId);
 }
 
 export async function prepareMarketplaceExtensionInstallCommand(
   ctx: HostExtensionCommandContext,
   request: PrepareMarketplaceExtensionInstallRequest,
 ): Promise<DesktopMarketplacePreparedInstall> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const extensionId = request.extensionId.trim();
-    if (!extensionId) {
-      throw new Error(i18n.t('error.extensionIdRequired'));
-    }
+  await ensureInitializedForReadOnlyMarketplace(ctx);
+  const extensionId = request.extensionId.trim();
+  if (!extensionId) {
+    throw new Error(i18n.t('error.extensionIdRequired'));
+  }
 
-    const prepared = await ctx.marketplace().prepareInstall({
-      extensionId,
-      ...(request.version?.trim() ? { version: request.version.trim() } : {}),
-    });
-    return toDesktopMarketplacePreparedInstall(prepared);
+  const prepared = await ctx.marketplace().prepareInstall({
+    extensionId,
+    ...(request.version?.trim() ? { version: request.version.trim() } : {}),
   });
+  return toDesktopMarketplacePreparedInstall(prepared);
 }
 
 export async function installMarketplaceExtensionCommand(

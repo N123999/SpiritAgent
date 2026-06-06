@@ -22,6 +22,7 @@ import type { EphemeralSessionRecord } from './sessions.js';
 import { ensureBuiltinUserSkills } from './builtin-skills.js';
 import { resolveWorkspaceBindingForRequestedRoot, sameWorkspaceRoot } from './service-utils.js';
 import { spiritAgentDataDir } from './storage.js';
+import type { ExtensionWarmupTrigger } from './extension-warmup.js';
 
 export interface InitializationState {
   workspaceRoot: string;
@@ -44,11 +45,12 @@ export interface HostInitializationContext {
   setToolExecutor(executor: DesktopToolExecutor | undefined): void;
   sessionRegistry(): SessionRegistry;
   resetStreamingPlacementState(full: boolean): void;
-  refreshExtensionsList(): Promise<void>;
+  refreshExtensionsList(options?: { metadataOnly?: boolean }): Promise<void>;
   refreshRuntime(): Promise<void>;
   refreshLspSnapshot(): Promise<void>;
   deactivateExtensions(): Promise<void>;
-  dispatchStartupEvent(workspaceRoot: string): Promise<void>;
+  invalidateExtensionWarmup(): void;
+  scheduleExtensionWarmup(trigger: ExtensionWarmupTrigger): void;
   loadDesktopPlanSnapshot(planPath: string, existsHint?: boolean): Promise<PlanSnapshot>;
 }
 
@@ -60,6 +62,8 @@ export async function ensureInitializedCommand(
     preserveRecentWorkspaces?: boolean;
     /** Skip global runtime rebuild after workspace switch; caller will activate a session bundle. */
     deferRuntimeRefresh?: boolean;
+    /** Skip extension warmup scheduling; caller will schedule after serialized work completes. */
+    deferExtensionWarmup?: boolean;
     workspaceBinding?: DesktopWorkspaceBinding;
   } = {},
 ): Promise<void> {
@@ -167,6 +171,7 @@ export async function ensureInitializedCommand(
   );
   if (switchingWorkspace) {
     await ctx.deactivateExtensions();
+    ctx.invalidateExtensionWarmup();
   }
 
   if (switchingWorkspace) {
@@ -192,11 +197,13 @@ export async function ensureInitializedCommand(
     ephemeralSessions: state?.ephemeralSessions ?? [],
   });
   ctx.setInitialized(true);
-  await ctx.refreshExtensionsList();
+  await ctx.refreshExtensionsList({ metadataOnly: true });
   await ctx.refreshLspSnapshot();
   const skipRuntimeRefresh = switchingWorkspace && options.deferRuntimeRefresh === true;
   if (!skipRuntimeRefresh) {
     await ctx.refreshRuntime();
   }
-  await ctx.dispatchStartupEvent(workspaceRoot);
+  if (options.deferExtensionWarmup !== true) {
+    ctx.scheduleExtensionWarmup({ type: 'startup', workspaceRoot });
+  }
 }

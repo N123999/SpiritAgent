@@ -36,7 +36,9 @@ export function buildDesktopExtensionToolDefinitions(
 export async function buildDesktopExtensionListItems(
   manager: HostExtensionManager,
   extensions: readonly HostInstalledExtension[],
+  options?: { metadataOnly?: boolean },
 ): Promise<DesktopExtensionListItem[]> {
+  const metadataOnly = options?.metadataOnly === true;
   return Promise.all(extensions.map(async (item) => ({
     id: item.id,
     displayName: item.manifest.name,
@@ -121,7 +123,9 @@ export async function buildDesktopExtensionListItems(
                 }
               : {}),
           })),
-          settingsValues: await manager.getSettingsValues(item.id),
+          ...(metadataOnly
+            ? {}
+            : { settingsValues: await manager.getSettingsValues(item.id) }),
         }
       : {}),
     ...(item.manifest.secretSlots?.length
@@ -132,12 +136,16 @@ export async function buildDesktopExtensionListItems(
             ...(slot.description ? { description: slot.description } : {}),
             ...(slot.required !== undefined ? { required: slot.required } : {}),
           })),
-          secretStatuses: Object.entries(
-            await manager.getSecretStatus(item.id),
-          ).map(([key, configured]) => ({
-            key,
-            configured,
-          })),
+          ...(metadataOnly
+            ? {}
+            : {
+                secretStatuses: Object.entries(
+                  await manager.getSecretStatus(item.id),
+                ).map(([key, configured]) => ({
+                  key,
+                  configured,
+                })),
+              }),
         }
       : {}),
     ...(item.archiveFileName ? { archiveFileName: item.archiveFileName } : {}),

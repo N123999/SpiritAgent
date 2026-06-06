@@ -580,6 +580,8 @@ export interface DesktopSnapshot {
   skillsList: DesktopSkillListItem[];
   extensionsList: DesktopExtensionListItem[];
   extensionCss: DesktopExtensionCssLayer[];
+  /** 扩展后台 warmup 进行中（不阻塞会话导航与发消息）。 */
+  extensionsLoading?: boolean;
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];

@@ -2176,17 +2176,9 @@ export default function App() {
   );
   const handleNewSession = useCallback(() => {
     setLastNonSettingsSurface("conversation");
-    const resetPromise = runtime.resetSession();
-    // 扩展页仍挂着旧会话快照；先 reset 再切 surface，避免中间帧闪回旧会话。
-    if (activeSurface === "marketplace") {
-      void resetPromise.then(() => {
-        setActiveSurface("conversation");
-      });
-      return;
-    }
     setActiveSurface("conversation");
-    void resetPromise;
-  }, [activeSurface, runtime]);
+    void runtime.resetSession();
+  }, [runtime]);
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
   const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
   const previousActiveSessionPathRef = useRef<string | null>(null);
