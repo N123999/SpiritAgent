@@ -275,6 +275,22 @@ fn model_add_api_base_field(value: &str) -> BottomFormFieldView {
     }
 }
 
+fn model_add_context_length_field(value: &str) -> BottomFormFieldView {
+    let value = value.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.context_length.label").into_owned(),
+        help: t!("form.model.field.context_length.help").into_owned(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.context_length.placeholder").into_owned(),
+            cursor,
+            mask: false,
+            disabled: false,
+        },
+    }
+}
+
 fn model_add_api_key_field(api_key: &str) -> BottomFormFieldView {
     let value = api_key.to_string();
     let cursor = value.chars().count();
@@ -337,15 +353,20 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         _ => 0,
     };
 
-    let name_raw = if old_len == 6 {
+    let name_raw = if old_len == 7 {
         bottom_form_text_value(form, 3)
     } else {
         ""
     };
-    let base_raw = if old_len == 6 {
+    let base_raw = if old_len == 7 {
         bottom_form_text_value(form, 4)
     } else if old_len == 5 {
         bottom_form_text_value(form, 3)
+    } else {
+        ""
+    };
+    let context_length_raw = if old_len == 7 {
+        bottom_form_text_value(form, 5)
     } else {
         ""
     };
@@ -381,6 +402,7 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
             model_add_transport_field(transport_selected),
             model_add_model_name_field(name_raw),
             model_add_api_base_field(base_raw),
+            model_add_context_length_field(context_length_raw),
             model_add_api_key_field(api_key_raw),
         ]
     };
@@ -412,6 +434,7 @@ pub(crate) struct ParsedModelAddForm {
     pub model_name: Option<String>,
     pub api_base: String,
     pub api_key: String,
+    pub context_length: Option<u64>,
 }
 
 pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
@@ -877,6 +900,20 @@ pub(crate) fn to_config(
     ))
 }
 
+fn parse_model_context_length_field(raw: &str) -> std::result::Result<Option<u64>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let parsed = raw.parse::<u64>().map_err(|_| {
+        t!("form.model.validation.context_length_invalid").into_owned()
+    })?;
+    if parsed == 0 {
+        return Err(t!("form.model.validation.context_length_invalid").into_owned());
+    }
+    Ok(Some(parsed))
+}
+
 pub(crate) fn parse_model_add_connection(
     form: &BottomFormView,
 ) -> std::result::Result<ParsedModelAddForm, String> {
@@ -904,7 +941,7 @@ pub(crate) fn parse_model_add_connection(
     } else {
         let base_idx = match form.fields.len() {
             5 => 3,
-            6 => 4,
+            7 => 4,
             _ => {
                 return Err(t!("form.model.validation.invalid_form_kind").into_owned());
             }
@@ -920,7 +957,7 @@ pub(crate) fn parse_model_add_connection(
     let model_name = if bulk {
         None
     } else {
-        if form.fields.len() != 6 {
+        if form.fields.len() != 7 {
             return Err(t!("form.model.validation.invalid_form_kind").into_owned());
         }
         let n = bottom_form_text_value(form, 3).trim().to_string();
@@ -933,6 +970,12 @@ pub(crate) fn parse_model_add_connection(
         Some(n)
     };
 
+    let context_length = if bulk {
+        None
+    } else {
+        parse_model_context_length_field(&bottom_form_text_value(form, 5))?
+    };
+
     Ok(ParsedModelAddForm {
         provider,
         transport_kind,
@@ -940,6 +983,7 @@ pub(crate) fn parse_model_add_connection(
         model_name,
         api_base,
         api_key,
+        context_length,
     })
 }
 
@@ -1619,7 +1663,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 8;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 10;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -1663,7 +1707,7 @@ mod tests {
         insert_text(&mut form, "my-model");
         form.selected_field = 4;
         insert_text(&mut form, "https://custom.example/v1");
-        form.selected_field = 5;
+        form.selected_field = 6;
         insert_text(&mut form, "sk-c");
         let parsed = parse_model_add_connection(&form).expect("parse");
         assert_eq!(parsed.provider, ModelProvider::Custom);
@@ -1672,6 +1716,28 @@ mod tests {
         assert_eq!(parsed.model_name.as_deref(), Some("my-model"));
         assert_eq!(parsed.api_base, "https://custom.example/v1");
         assert_eq!(parsed.api_key, "sk-c");
+        assert_eq!(parsed.context_length, None);
+    }
+
+    #[test]
+    fn model_add_form_parses_custom_connection_context_length() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = MODEL_ADD_CUSTOM_PROVIDER_INDEX;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        form.selected_field = 3;
+        insert_text(&mut form, "my-model");
+        form.selected_field = 4;
+        insert_text(&mut form, "https://custom.example/v1");
+        form.selected_field = 5;
+        insert_text(&mut form, "128000");
+        form.selected_field = 6;
+        insert_text(&mut form, "sk-c");
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.context_length, Some(128_000));
     }
 
     #[test]
@@ -1683,7 +1749,7 @@ mod tests {
             }
         }
         sync_model_add_form_fields(&mut form);
-        assert_eq!(form.fields.len(), 6);
+        assert_eq!(form.fields.len(), 7);
         form.selected_field = 1;
         move_right(&mut form);
         assert_eq!(form.fields.len(), 5);
@@ -1723,7 +1789,7 @@ mod tests {
         sync_model_add_form_fields(&mut form);
         form.selected_field = 3;
         insert_text(&mut form, "claude-custom");
-        form.selected_field = 5;
+        form.selected_field = 6;
         insert_text(&mut form, "sk-anthropic");
         let parsed = parse_model_add_connection(&form).expect("parse");
         assert_eq!(parsed.provider, ModelProvider::Custom);
@@ -1737,7 +1803,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 6;
+                *selected = 7;
             }
         }
         sync_model_add_form_fields(&mut form);

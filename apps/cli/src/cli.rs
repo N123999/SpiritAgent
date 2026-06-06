@@ -27,6 +27,7 @@ pub enum ModelCommand {
         transport_kind: Option<String>,
         reasoning_effort: Option<String>,
         capabilities: Vec<String>,
+        context_length: Option<u64>,
         key: Option<String>,
     },
     Remove {
@@ -147,6 +148,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             transport_kind,
             reasoning_effort,
             capabilities,
+            context_length,
             key,
         } => {
             if cfg.has_model(&name) {
@@ -177,6 +179,11 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 if key_value.trim().is_empty() {
                     return Err(anyhow!("API Key 不能为空"));
                 }
+                let context_length = match context_length {
+                    None => None,
+                    Some(0) => return Err(anyhow!("上下文长度必须是正整数")),
+                    Some(value) => Some(value),
+                };
 
                 let mut extra = serde_json::Map::new();
                 if !capabilities.is_empty() {
@@ -196,7 +203,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     api_base: api_base.clone(),
                     provider,
                     reasoning_effort: reasoning_effort.clone(),
-                    context_length: None,
+                    context_length,
                     extra,
                 });
                 if cfg.image_generation_model.is_none()

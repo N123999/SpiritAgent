@@ -302,6 +302,7 @@ impl TuiShell {
                     parsed.api_key.as_str(),
                     Some(parsed.provider),
                     parsed.transport_kind,
+                    parsed.context_length,
                 ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {

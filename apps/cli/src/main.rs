@@ -106,6 +106,8 @@ enum ModelAction {
         #[arg(long = "capability", value_parser = ["chat", "image", "imageGeneration", "video", "videoGeneration"])]
         capabilities: Vec<String>,
         #[arg(long)]
+        context_length: Option<u64>,
+        #[arg(long)]
         key: Option<String>,
     },
     Remove {
@@ -272,6 +274,7 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             transport_kind,
             reasoning_effort,
             capabilities,
+            context_length,
             key,
         } => ModelCommand::Add {
             name,
@@ -280,6 +283,7 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             transport_kind,
             reasoning_effort,
             capabilities,
+            context_length,
             key,
         },
         ModelAction::Remove { name } => ModelCommand::Remove { name },

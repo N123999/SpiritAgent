@@ -87,6 +87,7 @@ impl TuiShell {
                     api_key,
                     None,
                     crate::model_registry::ModelTransportKind::OpenAiCompatible,
+                    None,
                 ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {

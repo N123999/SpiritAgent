@@ -454,6 +454,7 @@ impl TuiShell {
         api_key: &str,
         provider: Option<ModelProvider>,
         transport_kind: crate::model_registry::ModelTransportKind,
+        context_length: Option<u64>,
     ) -> Result<(), String> {
         let mut config = self.runtime.config().clone();
         if config.has_model(name) {
@@ -475,7 +476,7 @@ impl TuiShell {
             api_base: api_base.to_string(),
             provider,
             reasoning_effort: None,
-            context_length: None,
+            context_length,
             extra,
         });
         config.active_model = name.to_string();
