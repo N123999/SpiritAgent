@@ -102,6 +102,10 @@ export interface RuntimeSetApprovalLevelParams {
   approvalLevel: BridgeApprovalLevel;
 }
 
+export interface RuntimeSetLlmHttpVersionParams {
+  llmHttpVersion: 'http1.1' | 'http2';
+}
+
 export interface RuntimeSetLoopEnabledParams {
   enabled: boolean;
 }

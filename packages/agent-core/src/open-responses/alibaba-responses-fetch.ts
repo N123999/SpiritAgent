@@ -1,3 +1,4 @@
+import { getLlmFetch } from '../llm-fetch.js';
 import type { JsonObject, JsonValue } from '../ports.js';
 import { isJsonObject } from '../tool-agent.js';
 import {
@@ -10,7 +11,7 @@ type FetchFn = typeof fetch;
 
 export function createAlibabaResponsesAwareFetch(
   config: OpenResponsesTransportConfig,
-  baseFetch: FetchFn = globalThis.fetch,
+  baseFetch: FetchFn = getLlmFetch(),
 ): FetchFn {
   if (!shouldUseAlibabaResponsesBuiltInTools(config)) {
     return baseFetch;

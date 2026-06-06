@@ -104,6 +104,7 @@ export type SettingsFormState = {
   dreamEnabled: boolean;
   dreamDebugMode: boolean;
   lspEnabled: boolean;
+  llmHttpVersion: 'http1.1' | 'http2';
 };
 
 type SettingsViewProps = {
@@ -165,6 +166,7 @@ const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   skills: "settings.skills",
   dreams: "settings.dreams",
   appearance: "settings.appearance",
+  networks: "settings.networks",
   developer: "settings.developer",
 };
 
@@ -3474,6 +3476,43 @@ function ModelsSettingsPanel({
   );
 }
 
+const llmHttpVersionSelectOptions = [
+  { value: "http1.1" as const, labelKey: "settings.llmHttpVersionHttp11" },
+  { value: "http2" as const, labelKey: "settings.llmHttpVersionHttp2" },
+];
+
+function NetworksSettingsPanel({
+  settings,
+  onSavePatch,
+}: Pick<SettingsViewProps, "settings" | "onSavePatch">) {
+  const { t } = useTranslation();
+  return (
+    <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
+      <SettingsRow
+        label={t('settings.llmHttpVersion')}
+        description={t('settings.llmHttpVersionDescription')}
+        htmlFor="settings-llm-http-version-select"
+      >
+        <Select
+          value={settings.llmHttpVersion}
+          onValueChange={(value) => void onSavePatch({ llmHttpVersion: value as 'http1.1' | 'http2' })}
+        >
+          <SelectTrigger id="settings-llm-http-version-select" className="w-full sm:min-w-[12rem]">
+            <SelectValue placeholder={t('settings.llmHttpVersion')} />
+          </SelectTrigger>
+          <SelectContent>
+            {llmHttpVersionSelectOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {t(opt.labelKey)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+    </div>
+  );
+}
+
 function AppearanceSettingsPanel({
   theme,
   onThemeChange,
@@ -3799,6 +3838,8 @@ export function SettingsView({
                 isElectronShell={isElectronShell}
                 onSavePatch={onSavePatch}
               />
+            ) : tab === "networks" ? (
+              <NetworksSettingsPanel settings={settings} onSavePatch={onSavePatch} />
             ) : null}
           </div>
         </div>

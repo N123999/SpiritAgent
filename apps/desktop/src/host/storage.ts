@@ -15,6 +15,11 @@ import { Entry } from '@napi-rs/keyring';
 import i18n from '../lib/i18n-host.js';
 import { normalizeLightweightChatModel } from './lightweight-chat-model.js';
 import {
+  configureLlmHttpVersion,
+  normalizeLlmHttpVersion,
+  type LlmHttpVersion,
+} from '@spirit-agent/agent-core';
+import {
   defaultModelReasoningEffort,
   normalizeModelReasoningEffort,
   resolveModelReasoningEffortForContext,
@@ -86,6 +91,10 @@ export interface DesktopAgentsConfigFile {
   lsp: DesktopLspConfigFile;
 }
 
+export interface DesktopNetworksConfigFile {
+  llmHttpVersion: LlmHttpVersion;
+}
+
 export interface DesktopConfigFile {
   models: ModelProfileSnapshot[];
   activeModel: string;
@@ -105,6 +114,7 @@ export interface DesktopConfigFile {
   webHost: DesktopWebHostConfigFile;
   dreams: DesktopDreamConfigFile;
   agents: DesktopAgentsConfigFile;
+  networks: DesktopNetworksConfigFile;
 }
 
 export function normalizeWorkspaceBinding(value: unknown): DesktopWorkspaceBinding {
@@ -530,6 +540,7 @@ function defaultConfig(): DesktopConfigFile {
     webHost: defaultWebHostConfig(),
     dreams: defaultDreamConfig(),
     agents: defaultAgentsConfig(),
+    networks: defaultNetworksConfig(),
   };
 }
 
@@ -558,6 +569,24 @@ export function defaultAgentsConfig(): DesktopAgentsConfigFile {
       enabled: true,
     },
   };
+}
+
+export function defaultNetworksConfig(): DesktopNetworksConfigFile {
+  return {
+    llmHttpVersion: 'http2',
+  };
+}
+
+export function normalizeNetworksConfig(raw: unknown): DesktopNetworksConfigFile {
+  const record =
+    typeof raw === 'object' && raw !== null ? (raw as Partial<DesktopNetworksConfigFile>) : {};
+  return {
+    llmHttpVersion: normalizeLlmHttpVersion(record.llmHttpVersion),
+  };
+}
+
+export function applyLlmHttpVersionFromConfig(config: Pick<DesktopConfigFile, 'networks'>): void {
+  configureLlmHttpVersion(config.networks.llmHttpVersion);
 }
 
 export function normalizeAgentsConfig(raw: unknown): DesktopAgentsConfigFile {
@@ -636,6 +665,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
     webHost: normalizeWebHostConfig(raw.webHost),
     dreams,
     agents: normalizeAgentsConfig(raw.agents),
+    networks: normalizeNetworksConfig(raw.networks),
   };
 }
 

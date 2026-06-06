@@ -60,6 +60,14 @@ impl RuntimeHandle {
         self.runtime.replace_config(config)
     }
 
+    pub fn store_config(&mut self, config: AppConfig) {
+        self.runtime.store_config(config)
+    }
+
+    pub fn set_llm_http_version(&mut self, llm_http_version: &str) -> Result<()> {
+        self.runtime.set_llm_http_version(llm_http_version)
+    }
+
     pub fn replace_plan_metadata(&mut self, metadata: PlanMetadata) {
         self.runtime.replace_plan_metadata(metadata)
     }

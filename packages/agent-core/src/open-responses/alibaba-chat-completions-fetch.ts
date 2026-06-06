@@ -1,3 +1,4 @@
+import { getLlmFetch } from '../llm-fetch.js';
 import type { JsonObject, JsonValue } from '../ports.js';
 import { isJsonObject } from '../tool-agent.js';
 import type { OpenAiTransportConfig } from '../openai/openai-compat.js';
@@ -10,7 +11,7 @@ type FetchFn = typeof fetch;
 
 export function createAlibabaChatCompletionsAwareFetch(
   config: OpenAiTransportConfig,
-  baseFetch: FetchFn = globalThis.fetch,
+  baseFetch: FetchFn = getLlmFetch(),
 ): FetchFn {
   if (!shouldUseAlibabaChatCompletionsBuiltInTools(config)) {
     return baseFetch;

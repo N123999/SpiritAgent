@@ -77,6 +77,7 @@ import {
   type OpenAiVideoGenerationConfig,
 } from './openai-compat.js';
 import { generateVideoWithRouter } from '../video-generation/router.js';
+import { getLlmFetch } from '../llm-fetch.js';
 import { createAlibabaChatCompletionsAwareFetch } from '../open-responses/alibaba-chat-completions-fetch.js';
 import {
   buildAlibabaChatCompletionsExtraBody,
@@ -698,10 +699,10 @@ function createAiSdkOpenAiCompatibleProvider(
       : async (input: RequestInfo | URL, init?: RequestInit) => {
           const body = tryParseRequestBody(init?.body);
           if (!isJsonObject(body)) {
-            return fetch(input, init);
+            return getLlmFetch()(input, init);
           }
 
-          return fetch(input, {
+          return getLlmFetch()(input, {
             ...init,
             body: JSON.stringify({
               ...body,
@@ -721,7 +722,7 @@ function createAiSdkOpenAiCompatibleProvider(
     baseURL: config.baseUrl ?? DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
     supportsStructuredOutputs: true,
     ...(Object.keys(headers).length === 0 ? {} : { headers }),
-    ...(fetchWrapper ? { fetch: fetchWrapper } : {}),
+    fetch: fetchWrapper ?? getLlmFetch(),
   });
 }
 
@@ -730,7 +731,7 @@ function createAiSdkMoonshotProvider(config: OpenAiTransportConfig) {
   const fetchWrapper = async (input: RequestInfo | URL, init?: RequestInit) => {
     const body = tryParseRequestBody(init?.body);
     if (!isJsonObject(body)) {
-      return fetch(input, init);
+      return getLlmFetch()(input, init);
     }
 
     const requestUrl =
@@ -742,7 +743,7 @@ function createAiSdkMoonshotProvider(config: OpenAiTransportConfig) {
     const moonshotMessages = requestUrl.includes('/chat/completions')
       ? takeMoonshotChatCompletionMessages()
       : undefined;
-    return fetch(input, {
+    return getLlmFetch()(input, {
       ...init,
       body: JSON.stringify({
         ...body,
@@ -763,6 +764,7 @@ function createAiSdkXaiProvider(config: OpenAiTransportConfig) {
   return createXai({
     apiKey: config.apiKey,
     baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
+    fetch: getLlmFetch(),
   });
 }
 
@@ -774,10 +776,10 @@ function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
       : async (input: RequestInfo | URL, init?: RequestInit) => {
           const body = tryParseRequestBody(init?.body);
           if (!isJsonObject(body)) {
-            return fetch(input, init);
+            return getLlmFetch()(input, init);
           }
 
-          return fetch(input, {
+          return getLlmFetch()(input, {
             ...init,
             body: JSON.stringify({
               ...body,
@@ -789,19 +791,19 @@ function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
   return createDeepSeek({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
-    ...(fetchWrapper ? { fetch: fetchWrapper } : {}),
+    fetch: fetchWrapper ?? getLlmFetch(),
   });
 }
 
 function createAiSdkAlibabaProvider(config: OpenAiTransportConfig) {
   const fetchWrapper = shouldUseAlibabaChatCompletionsBuiltInTools(config)
-    ? createAlibabaChatCompletionsAwareFetch(config)
-    : undefined;
+    ? createAlibabaChatCompletionsAwareFetch(config, getLlmFetch())
+    : getLlmFetch();
 
   return createAlibaba({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
-    ...(fetchWrapper ? { fetch: fetchWrapper } : {}),
+    fetch: fetchWrapper,
   });
 }
 
@@ -809,6 +811,7 @@ function createAiSdkGatewayProvider(config: OpenAiTransportConfig) {
   return createGateway({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+    fetch: getLlmFetch(),
   });
 }
 
@@ -818,6 +821,7 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     ...(config.organization ? { organization: config.organization } : {}),
     ...(config.project ? { project: config.project } : {}),
+    fetch: getLlmFetch(),
   });
 }
 

@@ -72,6 +72,8 @@ impl TuiShell {
             language_picker_index: self.language_picker_index,
             approval_picker_active: self.approval_picker_active,
             approval_picker_index: self.approval_picker_index,
+            network_picker_active: self.network_picker_active,
+            network_picker_index: self.network_picker_index,
             chat_picker_active: self.chat_picker_active,
             chat_picker_index: self.chat_picker_index,
             chat_picker_files: self.chat_picker_files.clone(),

@@ -384,6 +384,8 @@ pub struct TuiViewModel {
     pub language_picker_index: usize,
     pub approval_picker_active: bool,
     pub approval_picker_index: usize,
+    pub network_picker_active: bool,
+    pub network_picker_index: usize,
     pub chat_picker_active: bool,
     pub chat_picker_index: usize,
     pub chat_picker_files: Vec<String>,

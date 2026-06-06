@@ -548,6 +548,14 @@ impl TuiShell {
         }
     }
 
+    pub(crate) fn handle_networks_slash(&mut self, args: &[&str]) {
+        match args {
+            [] => self.open_network_picker(),
+            [version] => self.persist_llm_http_version(version),
+            _ => self.push_agent_message(t!("tui.networks.usage").into_owned()),
+        }
+    }
+
     pub(crate) fn handle_language_slash(&mut self, args: &[&str]) {
         match args {
             [] => self.open_language_picker(),

@@ -188,6 +188,9 @@ function updateConfigFromSettingsForm(
         enabled: s.lspEnabled,
       },
     },
+    networks: {
+      llmHttpVersion: s.llmHttpVersion,
+    },
     ...(s.uiLocale.trim() ? { uiLocale: s.uiLocale.trim() } : { uiLocale: undefined }),
     ...(s.apiKey.trim() ? { apiKey: s.apiKey.trim() } : undefined),
   };
@@ -287,7 +290,7 @@ export function useDesktopRuntime() {
   const [composer, setComposer] = useState("");
   const [approvalGuidance, setApprovalGuidance] = useState("");
   const [questionError, setQuestionError] = useState("");
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<SettingsFormState>({
     activeModel: "",
     imageGenerationModel: "",
     videoGenerationModel: "",
@@ -296,13 +299,14 @@ export function useDesktopRuntime() {
     uiLocale: "",
     apiKey: "",
     windowsMica: true,
-    agentMode: "agent" as DesktopAgentMode,
+    agentMode: "agent",
     webHostEnabled: false,
     webHostHost: "127.0.0.1",
     webHostPort: 7788,
     dreamEnabled: false,
     dreamDebugMode: false,
     lspEnabled: true,
+    llmHttpVersion: "http2",
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -516,6 +520,7 @@ export function useDesktopRuntime() {
         dreamEnabled: next.dreams.settings.enabled,
         dreamDebugMode: next.dreams.settings.debugMode,
         lspEnabled: next.lsp.userEnabled,
+        llmHttpVersion: next.config.networks.llmHttpVersion,
       };
     });
   }, []);

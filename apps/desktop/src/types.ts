@@ -51,6 +51,12 @@ export interface UpdateConfigRequest {
   dreams?: DesktopDreamConfigUpdate;
   /** 缺省时不修改已保存的智能体配置。 */
   agents?: DesktopAgentsConfigUpdate;
+  /** 缺省时不修改已保存的网络配置。 */
+  networks?: DesktopNetworksConfigUpdate;
+}
+
+export interface DesktopNetworksConfigUpdate {
+  llmHttpVersion?: 'http1.1' | 'http2';
 }
 
 export interface DesktopAgentsConfigUpdate {
@@ -615,6 +621,9 @@ export interface DesktopConfigSnapshot {
   agentMode: DesktopAgentMode;
   /** 与 `spiritAgentDataDir()/model-catalog-cache` 对齐；无缓存时为空数组。 */
   modelCatalogHints?: DesktopModelCatalogHint[];
+  networks: {
+    llmHttpVersion: 'http1.1' | 'http2';
+  };
 }
 
 export interface DesktopDreamSettingsSnapshot {

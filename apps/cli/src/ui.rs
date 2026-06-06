@@ -22,7 +22,7 @@ mod subagent;
 mod text;
 mod theme;
 
-pub(crate) use pickers::approval_level_label;
+pub(crate) use pickers::{approval_level_label, llm_http_version_label};
 
 use conversation::*;
 use forms::*;
@@ -236,16 +236,19 @@ pub fn draw_ui(
     let show_model_picker = app.model_picker_active;
     let show_language_picker = app.language_picker_active;
     let show_approval_picker = app.approval_picker_active;
+    let show_network_picker = app.network_picker_active;
     let show_chat_picker = app.chat_picker_active;
     let show_subagent_picker = app.subagent_picker_active;
     let show_image_picker = app.image_picker_active;
     let show_rewind_picker = app.rewind_picker.is_some();
     let show_bottom_form = app.bottom_form.is_some();
     let show_marketplace = app.marketplace_view.is_some();
-    let show_inline_picker = show_model_picker || show_chat_picker || show_approval_picker;
+    let show_inline_picker =
+        show_model_picker || show_chat_picker || show_approval_picker || show_network_picker;
     let show_picker = show_model_picker
         || show_language_picker
         || show_approval_picker
+        || show_network_picker
         || show_chat_picker
         || show_subagent_picker
         || show_image_picker;
@@ -432,6 +435,9 @@ pub fn draw_ui(
         draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_approval_picker {
         let picker_lines = build_approval_picker_lines(&app, 5);
+        draw_inline_picker(frame, chunks[2], picker_lines);
+    } else if show_network_picker {
+        let picker_lines = build_network_picker_lines(&app, 5);
         draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_language_picker {
         let picker_lines = build_language_picker_lines(&app, 5);

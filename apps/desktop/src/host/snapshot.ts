@@ -88,6 +88,9 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
       windowsMica: input.config.windowsMica !== false,
       agentMode: input.config.agentMode ?? 'agent',
       modelCatalogHints: buildModelCatalogHints(input.config),
+      networks: {
+        llmHttpVersion: input.config.networks.llmHttpVersion,
+      },
     },
     webHost: buildWebHostSnapshot(input.config.webHost),
     rules: {

@@ -203,6 +203,15 @@ pub fn normalize_approval_level(value: &str) -> String {
     }
 }
 
+pub fn normalize_llm_http_version(value: &str) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized == "http1.1" || normalized == "http/1.1" || normalized == "http1" {
+        "http1.1".to_string()
+    } else {
+        "http2".to_string()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatArchive {

@@ -5,6 +5,7 @@ import {
   type XaiLanguageModelResponsesOptions,
 } from '@ai-sdk/xai';
 
+import { getLlmFetch } from '../llm-fetch.js';
 import type { JsonObject } from '../ports.js';
 import { createAlibabaResponsesAwareFetch } from './alibaba-responses-fetch.js';
 import { createApplyPatchAwareFetch } from './apply-patch-responses-fetch.js';
@@ -31,19 +32,14 @@ import {
 
 const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 
-function responsesFetchForConfig(config: OpenResponsesTransportConfig): typeof fetch | undefined {
-  if (shouldUseOpenAiSdkApplyPatchTool(config)) {
-    return undefined;
-  }
-
-  let fetchFn: typeof fetch | undefined;
+function responsesFetchForConfig(config: OpenResponsesTransportConfig): typeof fetch {
+  let fetchFn: typeof fetch = getLlmFetch();
   if (shouldUseAlibabaResponsesBuiltInTools(config)) {
-    fetchFn = createAlibabaResponsesAwareFetch(config, fetchFn ?? globalThis.fetch);
+    fetchFn = createAlibabaResponsesAwareFetch(config, fetchFn);
   }
   if (shouldUseApplyPatchFileTools(config)) {
-    fetchFn = createApplyPatchAwareFetch(config, fetchFn ?? globalThis.fetch);
+    fetchFn = createApplyPatchAwareFetch(config, fetchFn);
   }
-
   return fetchFn;
 }
 
@@ -54,13 +50,12 @@ export function createOpenAIResponsesProvider(
     return undefined;
   }
 
-  const applyPatchFetch = responsesFetchForConfig(config);
   return createOpenAI({
     apiKey: config.apiKey,
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     ...(config.organization ? { organization: config.organization } : {}),
     ...(config.project ? { project: config.project } : {}),
-    ...(applyPatchFetch ? { fetch: applyPatchFetch } : {}),
+    fetch: responsesFetchForConfig(config),
   });
 }
 
@@ -79,12 +74,11 @@ export function createResponsesLanguageModel(config: OpenResponsesTransportConfi
     return createXaiResponsesProvider(config).responses(languageModelId);
   }
 
-  const applyPatchFetch = responsesFetchForConfig(config);
   const openResponses = createOpenResponses({
     name: config.llmVendor ?? 'spirit-agent',
     url: openResponsesPostUrl(config.baseUrl),
     apiKey: config.apiKey,
-    ...(applyPatchFetch ? { fetch: applyPatchFetch } : {}),
+    fetch: responsesFetchForConfig(config),
   });
   return openResponses(config.model);
 }
@@ -93,6 +87,7 @@ function createXaiResponsesProvider(config: OpenResponsesTransportConfig) {
   return createXai({
     apiKey: config.apiKey,
     baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
+    fetch: getLlmFetch(),
   });
 }
 

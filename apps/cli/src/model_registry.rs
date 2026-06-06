@@ -188,6 +188,24 @@ impl ModelProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworksConfig {
+    #[serde(rename = "llmHttpVersion", default = "default_llm_http_version")]
+    pub llm_http_version: String,
+}
+
+fn default_llm_http_version() -> String {
+    "http2".to_string()
+}
+
+impl Default for NetworksConfig {
+    fn default() -> Self {
+        Self {
+            llm_http_version: default_llm_http_version(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub models: Vec<ModelProfile>,
     #[serde(rename = "activeModel", alias = "active_model")]
@@ -213,6 +231,8 @@ pub struct AppConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub ui_locale: Option<String>,
+    #[serde(default)]
+    pub networks: NetworksConfig,
     #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
     pub extra: Map<String, Value>,
 }
@@ -238,6 +258,7 @@ impl Default for AppConfig {
             image_generation_model: None,
             video_generation_model: None,
             ui_locale: None,
+            networks: NetworksConfig::default(),
             extra: Map::new(),
         }
     }
@@ -325,6 +346,7 @@ fn deserialize_config(content: &str, path: &Path) -> Result<AppConfig> {
         image_generation_model: None,
         video_generation_model: None,
         ui_locale: None,
+        networks: NetworksConfig::default(),
         extra: Map::new(),
     };
     normalize_config(&mut migrated);
@@ -349,6 +371,9 @@ fn serialize_config(cfg: &AppConfig) -> Result<String> {
 }
 
 fn normalize_config(cfg: &mut AppConfig) {
+    cfg.networks.llm_http_version =
+        crate::ports::normalize_llm_http_version(&cfg.networks.llm_http_version);
+
     if cfg.models.is_empty() {
         cfg.active_model.clear();
         cfg.image_generation_model = None;

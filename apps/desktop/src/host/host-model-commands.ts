@@ -43,6 +43,8 @@ import {
   modelProviderKeyScope,
   normalizeDreamConfig,
   normalizeAgentsConfig,
+  normalizeNetworksConfig,
+  applyLlmHttpVersionFromConfig,
   normalizeModelCapabilities,
   normalizeWebHostConfig,
   removeModelApiKey,
@@ -210,6 +212,13 @@ export async function updateConfigCommand(
           ...request.agents.lsp,
         },
       });
+    }
+    if (request.networks?.llmHttpVersion !== undefined) {
+      state.config.networks = normalizeNetworksConfig({
+        ...state.config.networks,
+        llmHttpVersion: request.networks.llmHttpVersion,
+      });
+      applyLlmHttpVersionFromConfig(state.config);
     }
     await saveConfig(state.config);
     if (request.apiKey?.trim()) {

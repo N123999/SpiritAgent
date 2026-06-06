@@ -618,6 +618,7 @@ impl TsBridgeRuntime {
         let session_key = runtime.rewind.session_id.clone();
         runtime.set_todo_session_key(&session_key)?;
         runtime.initialize_bridge()?;
+        runtime.apply_llm_http_version_from_config()?;
         Ok(runtime)
     }
 
@@ -728,11 +729,17 @@ impl TsBridgeRuntime {
 
         if !transport_config_changed {
             self.config = config;
+            if let Err(err) = self.apply_llm_http_version_from_config() {
+                self.handle_bridge_error(err);
+            }
             return;
         }
 
         let busy_defer = self.is_busy_cache || self.session.pending_user_turn().is_some();
         self.config = config;
+        if let Err(err) = self.apply_llm_http_version_from_config() {
+            self.handle_bridge_error(err);
+        }
 
         if busy_defer {
             self.deferred_transport_replace = true;
@@ -1310,6 +1317,32 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
+    pub fn set_llm_http_version(&mut self, llm_http_version: &str) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已处于失败状态。"));
+        }
+        let normalized = crate::ports::normalize_llm_http_version(llm_http_version);
+        self.call_bridge(
+            "runtime.setLlmHttpVersion",
+            Some(json!({
+                "llmHttpVersion": normalized,
+            })),
+        )?;
+        Ok(())
+    }
+
+    pub fn store_config(&mut self, config: AppConfig) {
+        self.config = config;
+    }
+
+    fn apply_llm_http_version_from_config(&mut self) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已处于失败状态。"));
+        }
+        let version = self.config.networks.llm_http_version.clone();
+        self.set_llm_http_version(&version)
+    }
+
     pub fn abort(&mut self) {
         if self.bridge_failed {
             return;
@@ -1739,6 +1772,7 @@ impl TsBridgeRuntime {
             })),
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
+        self.apply_llm_http_version_from_config()?;
         Ok(())
     }
 
@@ -3210,7 +3244,7 @@ mod tests {
     };
     use crate::{
         host_runtime::RuntimeEvent,
-        model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider},
+        model_registry::{AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, NetworksConfig},
         ports::SecretStore,
     };
     use anyhow::{Result, anyhow};
@@ -3286,6 +3320,7 @@ mod tests {
             image_generation_model: None,
             video_generation_model: None,
             ui_locale: None,
+            networks: NetworksConfig::default(),
             extra: Default::default(),
         };
 

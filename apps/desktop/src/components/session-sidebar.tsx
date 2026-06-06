@@ -11,6 +11,7 @@ import {
   Code2,
   LoaderCircle,
   MoonStar,
+  Network,
   Package,
   Palette,
   Plus,
@@ -85,6 +86,7 @@ type SessionSidebarProps = {
 export type SettingsSidebarTab =
   | "basic"
   | "appearance"
+  | "networks"
   | "models"
   | "agents"
   | "mcps"
@@ -378,6 +380,11 @@ const settingsTabs: Array<{
     id: "appearance",
     labelKey: "settings.appearance",
     icon: Palette,
+  },
+  {
+    id: "networks",
+    labelKey: "settings.networks",
+    icon: Network,
   },
   {
     id: "developer",

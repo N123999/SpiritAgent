@@ -46,6 +46,7 @@ import {
   readSpiritAgentModeFromTransportConfig,
   type SpiritAgentMode,
 } from './ports.js';
+import { configureLlmHttpVersion, normalizeLlmHttpVersion } from './llm-fetch.js';
 import { createLlmTransport } from './transport-factory.js';
 import type {
   GeneratedImageSaveRequest,
@@ -2058,6 +2059,12 @@ peer.on('runtime.setApprovalLevel', async (rawParams) => {
   const params = rawParams as import('./host-bridge/protocol.js').RuntimeSetApprovalLevelParams;
   currentApprovalLevel = normalizeBridgeApprovalLevel(params.approvalLevel);
   return buildSnapshot(requireRuntime());
+});
+
+peer.on('runtime.setLlmHttpVersion', async (rawParams) => {
+  const params = rawParams as import('./host-bridge/protocol.js').RuntimeSetLlmHttpVersionParams;
+  configureLlmHttpVersion(normalizeLlmHttpVersion(params.llmHttpVersion));
+  return null;
 });
 
 peer.on('runtime.respondToPendingApproval', async (rawParams) => {
