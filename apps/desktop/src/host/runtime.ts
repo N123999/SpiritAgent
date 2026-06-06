@@ -130,6 +130,12 @@ export function createDesktopRuntime(input: {
         request,
         (saveRequest) => input.toolExecutor.saveGeneratedImage(saveRequest),
       ),
+    generateVideo: (request) =>
+      input.llmTransport.generateVideo(
+        input.transportConfig,
+        request,
+        (saveRequest) => input.toolExecutor.saveGeneratedVideo(saveRequest),
+      ),
   }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 

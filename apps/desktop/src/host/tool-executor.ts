@@ -90,6 +90,7 @@ export class DesktopToolExecutor
   private activeModelCompatibilityProfile: OpenAiModelCompatibilityProfile | undefined;
   private activeTransportConfig: LlmTransportConfig | undefined;
   private imageGenerationAvailable = false;
+  private videoGenerationAvailable = false;
   private approvalLevel: ApprovalLevel = 'default';
 
   constructor(
@@ -139,6 +140,8 @@ export class DesktopToolExecutor
     this.activeModelCompatibilityProfile = resolveOpenAiModelCompatibilityProfile(config as any);
     this.imageGenerationAvailable =
       'imageGeneration' in config && config.imageGeneration !== undefined;
+    this.videoGenerationAvailable =
+      'videoGeneration' in config && config.videoGeneration !== undefined;
   }
 
   setApprovalLevel(level: ApprovalLevel): void {
@@ -185,10 +188,17 @@ export class DesktopToolExecutor
   }
 
   toolDefinitionsJson(): JsonValue {
-    let builtinDefinitions = this.imageGenerationAvailable
-      ? buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
-      : buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment())
-          .filter((definition) => toolDefinitionName(definition) !== 'generate_image');
+    let builtinDefinitions = buildBuiltinHostToolDefinitions(this.tools.toolDefinitionEnvironment());
+    if (!this.imageGenerationAvailable) {
+      builtinDefinitions = builtinDefinitions.filter(
+        (definition) => toolDefinitionName(definition) !== 'generate_image',
+      );
+    }
+    if (!this.videoGenerationAvailable) {
+      builtinDefinitions = builtinDefinitions.filter(
+        (definition) => toolDefinitionName(definition) !== 'generate_video',
+      );
+    }
 
     if (
       this.activeTransportConfig !== undefined

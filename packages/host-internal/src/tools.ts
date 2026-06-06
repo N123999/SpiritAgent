@@ -248,6 +248,13 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       size?: string;
     }
   | {
+      name: 'generate_video';
+      prompt: string;
+      duration?: number;
+      aspect_ratio?: string;
+      resolution?: string;
+    }
+  | {
       name: 'ask_questions';
       title?: string;
       questions: QuestionSpec[];
@@ -685,6 +692,19 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           ...(size ? { size } : {}),
         };
         }
+      case 'generate_video':
+        {
+          const duration = optionalPositiveInt(parsed, 'duration');
+          const aspectRatio = optionalStringStrict(parsed, 'aspect_ratio');
+          const resolution = optionalStringStrict(parsed, 'resolution');
+        return {
+          name,
+          prompt: requiredString(parsed, 'prompt'),
+          ...(duration !== undefined ? { duration } : {}),
+          ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+          ...(resolution ? { resolution } : {}),
+        };
+        }
       case 'ask_questions':
         return parseAskQuestionsRequest(parsed) as HostToolRequest<QuestionSpec>;
       case 'create_file':
@@ -810,6 +830,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       case 'grep':
       case 'run_subagent':
       case 'generate_image':
+      case 'generate_video':
         return { kind: 'allowed' };
       case 'ask_questions':
         return {
@@ -961,6 +982,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         throw new Error('run_subagent 应由 Agent runtime 接管，不应落到 host-internal 工具执行器');
       case 'generate_image':
         throw new Error('generate_image 应由 Agent runtime 接管，不应落到 host-internal 工具执行器');
+      case 'generate_video':
+        throw new Error('generate_video 应由 Agent runtime 接管，不应落到 host-internal 工具执行器');
       case 'ask_questions':
         throw new Error('ask_questions 应由运行时挂起并等待用户填写，不应直接执行');
       case 'extension_tool':

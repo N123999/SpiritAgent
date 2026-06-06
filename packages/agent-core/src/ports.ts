@@ -112,10 +112,18 @@ export interface ToolExecutionHostUi {
 }
 
 export const DEFAULT_IMAGE_GENERATION_SIZE = '1024x1024';
+export const DEFAULT_VIDEO_GENERATION_DURATION = 5;
 
 export interface ImageGenerationRequest {
   prompt: string;
   size: string;
+}
+
+export interface VideoGenerationRequest {
+  prompt: string;
+  duration?: number;
+  aspectRatio?: string;
+  resolution?: string;
 }
 
 export interface GeneratedImageSaveRequest {
@@ -126,6 +134,19 @@ export interface GeneratedImageSaveRequest {
 }
 
 export interface GeneratedImageFile {
+  path: string;
+  mimeType: string;
+  markdownRef: string;
+}
+
+export interface GeneratedVideoSaveRequest {
+  data: Uint8Array;
+  mediaType: string;
+  prompt: string;
+  model: string;
+}
+
+export interface GeneratedVideoFile {
   path: string;
   mimeType: string;
   markdownRef: string;

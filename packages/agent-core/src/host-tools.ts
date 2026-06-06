@@ -1,6 +1,7 @@
 import { APPLY_PATCH_HOST_TOOL_NAME } from './open-responses/apply-patch-eligibility.js';
 import {
   DEFAULT_IMAGE_GENERATION_SIZE,
+  DEFAULT_VIDEO_GENERATION_DURATION,
   type JsonObject,
   type JsonValue,
   type SpiritAgentMode,
@@ -42,6 +43,7 @@ export const ASK_MODE_EXCLUDED_HOST_TOOL_NAMES = new Set<string>([
   'delete_file',
   APPLY_PATCH_HOST_TOOL_NAME,
   'generate_image',
+  'generate_video',
   'create_plan',
 ]);
 
@@ -271,6 +273,37 @@ export function buildBuiltinHostToolDefinitions(
             pattern: '^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$',
             description:
               `Optional pixel size in WIDTHxHEIGHT format, such as 1024x1024 or 1536x1024. If omitted, default to ${DEFAULT_IMAGE_GENERATION_SIZE} so the image matches the square card unless the user asked otherwise.`,
+          },
+        },
+        required: ['prompt'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      'generate_video',
+      'Generate one video with the configured video generation model. Use this only when the user explicitly wants a video. First gather enough context and rewrite the final video prompt yourself, then call this tool. After it completes, you may continue with a normal assistant message when that helps the user.',
+      {
+        type: 'object',
+        properties: {
+          prompt: {
+            type: 'string',
+            description:
+              'Detailed final prompt for the video generation model. Include subject, motion, camera, style, lighting, duration intent, and any user-requested details.',
+          },
+          duration: {
+            type: 'integer',
+            minimum: 4,
+            maximum: 15,
+            description:
+              `Optional clip duration in seconds. If omitted, default to ${DEFAULT_VIDEO_GENERATION_DURATION}.`,
+          },
+          aspect_ratio: {
+            type: 'string',
+            description: 'Optional aspect ratio such as 16:9, 9:16, or 1:1.',
+          },
+          resolution: {
+            type: 'string',
+            description: 'Optional output resolution such as 720p or 1080p.',
           },
         },
         required: ['prompt'],

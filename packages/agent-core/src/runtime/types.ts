@@ -370,6 +370,7 @@ export interface AgentRuntimeOptions<
   appendUserLlmMessage?: (state: State, message: LlmMessage) => State;
   extractAssistantText: (state: State) => string | undefined;
   generateImage?: (request: ImageGenerationRequest) => Promise<ToolExecutionOutput>;
+  generateVideo?: (request: import('../ports.js').VideoGenerationRequest) => Promise<ToolExecutionOutput>;
   truncateStateForContextRetry?: (state: State) => RuntimeStatePreparationResult<State>;
   truncateHistoryForCompaction?: (
     history: LlmMessage[],

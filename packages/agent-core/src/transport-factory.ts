@@ -1,9 +1,12 @@
 import type {
   GeneratedImageFile,
   GeneratedImageSaveRequest,
+  GeneratedVideoFile,
+  GeneratedVideoSaveRequest,
   ImageGenerationRequest,
   LlmTransport,
   ToolExecutionOutput,
+  VideoGenerationRequest,
 } from './ports.js';
 import type { LlmTransportConfig } from './provider-config.js';
 import { isAnthropicTransportConfig, isOpenResponsesTransportConfig } from './provider-config.js';
@@ -21,10 +24,18 @@ export interface LlmImageGenerationTransport {
   ): Promise<ToolExecutionOutput>;
 }
 
+export interface LlmVideoGenerationTransport {
+  generateVideo(
+    config: LlmTransportConfig,
+    request: VideoGenerationRequest,
+    saveGeneratedVideo: (request: GeneratedVideoSaveRequest) => Promise<GeneratedVideoFile>,
+  ): Promise<ToolExecutionOutput>;
+}
+
 export type SpiritLlmTransport = LlmTransport<
   LlmTransportConfig,
   LlmToolAgentState
-> & LlmImageGenerationTransport;
+> & LlmImageGenerationTransport & LlmVideoGenerationTransport;
 
 export function createLlmTransport(
   config?: LlmTransportConfig,

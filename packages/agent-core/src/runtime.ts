@@ -7,6 +7,7 @@ import type {
   AssistantAuxArchiveEntry,
   ChatArchive,
   ImageGenerationRequest,
+  VideoGenerationRequest,
   JsonValue,
   LlmMessage,
   LlmStreamEvent,
@@ -17,6 +18,7 @@ import type {
 } from './ports.js';
 import {
   DEFAULT_IMAGE_GENERATION_SIZE,
+  DEFAULT_VIDEO_GENERATION_DURATION,
   cloneLlmProviderState,
   cloneLlmMessageContent,
   createLlmMessageContentFromText,
@@ -1452,6 +1454,30 @@ export class AgentRuntime<
       return this.runTurnLoop(imageResult.state, pendingUserInput, turn);
     }
 
+    const videoResult = await this.tryExecuteGenerateVideoTool(
+      request,
+      toolCallId,
+      _toolName,
+      state,
+      turn,
+    );
+    if (videoResult !== undefined) {
+      if (videoResult.kind !== 'completed' || videoResult.assistantText !== '') {
+        return videoResult;
+      }
+
+      if (remainingCalls.length > 0) {
+        return this.processToolCalls(
+          videoResult.state,
+          pendingUserInput,
+          remainingCalls,
+          turn,
+        );
+      }
+
+      return this.runTurnLoop(videoResult.state, pendingUserInput, turn);
+    }
+
     const outcome = await this.tryExecuteRunSubagentTool(
       request,
       toolCallId,
@@ -1579,6 +1605,45 @@ export class AgentRuntime<
       }
 
       this.startToolAgentRoundAsync(imageResult.state, pendingUserInput, turn);
+      return true;
+    }
+
+    const videoResult = await this.tryExecuteGenerateVideoTool(
+      request,
+      toolCallId,
+      _toolName,
+      state,
+      turn,
+    );
+    if (videoResult !== undefined) {
+      if (videoResult.kind !== 'completed' || videoResult.assistantText !== '') {
+        this.completeTurn(videoResult);
+        return true;
+      }
+
+      if (remainingCalls.length > 0) {
+        this.queuePendingToolCallContinuation(
+          videoResult.state,
+          pendingUserInput,
+          remainingCalls,
+          turn,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        );
+        return true;
+      }
+
+      if (resumeAsStreaming) {
+        await this.startStreamingRound(
+          videoResult.state,
+          pendingUserInput,
+          turn,
+          streamingEmitBeginResponse,
+        );
+        return true;
+      }
+
+      this.startToolAgentRoundAsync(videoResult.state, pendingUserInput, turn);
       return true;
     }
 
@@ -2258,6 +2323,32 @@ export class AgentRuntime<
       }
     }
 
+    const videoRequest = extractGenerateVideoRequest(request);
+    if (videoRequest !== undefined) {
+      try {
+        if (!this.options.generateVideo) {
+          throw new Error('No video generation executor is configured.');
+        }
+
+        const output = await this.options.generateVideo(videoRequest);
+        return {
+          kind: 'completed',
+          output,
+          failed: false,
+          enqueueDeferredGuidance: false,
+        };
+      } catch (error) {
+        const message = renderError(error);
+        return {
+          kind: 'completed',
+          output: createToolExecutionTextOutput(`generate_video failed: ${message}`),
+          failed: true,
+          enqueueDeferredGuidance: false,
+          fatalError: message,
+        };
+      }
+    }
+
     if (extractRunSubagentRequest(request) !== undefined) {
       return { kind: 'defer-to-formal' };
     }
@@ -2370,6 +2461,102 @@ export class AgentRuntime<
   }
 
   private finishGenerateImageToolCall(
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    output: string,
+    failed: boolean,
+    turn: RuntimeTurnContext<ToolRequest>,
+    artifacts?: RuntimeToolExecution<ToolRequest>['artifacts'],
+  ): RuntimeToolExecution<ToolRequest> {
+    return this.finishInternalMediaGenerationToolCall(
+      request,
+      toolCallId,
+      toolName,
+      output,
+      failed,
+      turn,
+      artifacts,
+    );
+  }
+
+  private async tryExecuteGenerateVideoTool(
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    state: State,
+    turn: RuntimeTurnContext<ToolRequest>,
+  ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget> | undefined> {
+    const videoRequest = extractGenerateVideoRequest(request);
+    if (videoRequest === undefined) {
+      return undefined;
+    }
+
+    try {
+      if (!this.options.generateVideo) {
+        throw new Error('No video generation executor is configured.');
+      }
+
+      const output = await this.options.generateVideo(videoRequest);
+      const resumedState = this.options.appendToolResultMessage(
+        state,
+        toolCallId,
+        output.summaryText,
+      );
+      this.finishGenerateVideoToolCall(
+        request,
+        toolCallId,
+        toolName,
+        output.summaryText,
+        false,
+        turn,
+        toolArtifactsFromOutput(output),
+      );
+      this.persistToolExecutionResult(output, toolCallId);
+
+      return {
+        kind: 'completed',
+        assistantText: '',
+        state: resumedState,
+        requestTrace: [...turn.requestTrace],
+        toolExecutions: [...turn.toolExecutions],
+        compactions: [...turn.compactions],
+      };
+    } catch (error) {
+      const message = renderError(error);
+      this.finishGenerateVideoToolCall(
+        request,
+        toolCallId,
+        toolName,
+        `generate_video failed: ${message}`,
+        true,
+        turn,
+      );
+      return this.failedTurnResult(message, state, turn);
+    }
+  }
+
+  private finishGenerateVideoToolCall(
+    request: ToolRequest,
+    toolCallId: string,
+    toolName: string,
+    output: string,
+    failed: boolean,
+    turn: RuntimeTurnContext<ToolRequest>,
+    artifacts?: RuntimeToolExecution<ToolRequest>['artifacts'],
+  ): RuntimeToolExecution<ToolRequest> {
+    return this.finishInternalMediaGenerationToolCall(
+      request,
+      toolCallId,
+      toolName,
+      output,
+      failed,
+      turn,
+      artifacts,
+    );
+  }
+
+  private finishInternalMediaGenerationToolCall(
     request: ToolRequest,
     toolCallId: string,
     toolName: string,
@@ -2794,6 +2981,65 @@ function extractGenerateImageRequest<ToolRequest>(request: ToolRequest): ImageGe
   return {
     prompt,
     size: readOptionalStringField(value, 'size') ?? DEFAULT_IMAGE_GENERATION_SIZE,
+  };
+}
+
+function extractGenerateVideoRequest<ToolRequest>(request: ToolRequest): VideoGenerationRequest | undefined {
+  if (!isJsonObject(request)) {
+    return undefined;
+  }
+
+  let value: Record<string, JsonValue>;
+  if (readOptionalStringField(request, 'name') === 'generate_video') {
+    if (readOptionalStringField(request, 'prompt') !== undefined) {
+      value = request;
+    } else {
+      const argumentsJson = readOptionalStringField(request, 'argumentsJson');
+      if (argumentsJson === undefined) {
+        return undefined;
+      }
+
+      try {
+        const parsed = JSON.parse(argumentsJson) as JsonValue;
+        if (!isJsonObject(parsed)) {
+          return undefined;
+        }
+        value = parsed;
+      } catch {
+        return undefined;
+      }
+    }
+  } else {
+    if (!('GenerateVideo' in request)) {
+      return undefined;
+    }
+
+    const candidate = request.GenerateVideo;
+    if (!isJsonObject(candidate)) {
+      return undefined;
+    }
+
+    value = isJsonObject(candidate.request) ? candidate.request : candidate;
+  }
+
+  const prompt = readOptionalStringField(value, 'prompt');
+  if (prompt === undefined) {
+    return undefined;
+  }
+
+  const durationField = value.duration;
+  const duration = typeof durationField === 'number' && Number.isFinite(durationField)
+    ? durationField
+    : undefined;
+
+  const aspectRatio = readOptionalStringField(value, 'aspect_ratio');
+  const resolution = readOptionalStringField(value, 'resolution');
+
+  return {
+    prompt,
+    duration: duration ?? DEFAULT_VIDEO_GENERATION_DURATION,
+    ...(aspectRatio ? { aspectRatio } : {}),
+    ...(resolution ? { resolution } : {}),
   };
 }
 

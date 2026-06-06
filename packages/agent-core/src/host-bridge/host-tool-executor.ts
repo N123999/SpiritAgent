@@ -57,6 +57,7 @@ export interface LocalHostToolService {
   trust(target: string): Promise<void>;
   execute(request: JsonValue): Promise<ToolExecutionOutput | string>;
   saveGeneratedImage?(request: GeneratedImageSaveRequest): Promise<GeneratedImageFile>;
+  saveGeneratedVideo?(request: import('../ports.js').GeneratedVideoSaveRequest): Promise<import('../ports.js').GeneratedVideoFile>;
   attachRequestMetadata?(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue;
 }
 
@@ -76,6 +77,7 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   private lsp: LspHostServiceInstance | undefined;
   private localHostService: LocalHostToolService | undefined;
   private imageGenerationAvailable = false;
+  private videoGenerationAvailable = false;
   private transportConfigForToolDefinitions: LlmTransportConfig | undefined;
 
   constructor(protected readonly peer: JsonRpcPeer) {}
@@ -94,6 +96,11 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
 
   setImageGenerationAvailable(available: boolean): void {
     this.imageGenerationAvailable = available;
+    this.refreshMergedToolDefinitions();
+  }
+
+  setVideoGenerationAvailable(available: boolean): void {
+    this.videoGenerationAvailable = available;
     this.refreshMergedToolDefinitions();
   }
 
@@ -493,9 +500,13 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
   }
 
   private refreshMergedToolDefinitions(): void {
-    let hostDefinitions = this.imageGenerationAvailable
-      ? this.hostToolDefinitionsCache
-      : filterToolDefinitionByName(this.hostToolDefinitionsCache, 'generate_image');
+    let hostDefinitions = this.hostToolDefinitionsCache;
+    if (!this.imageGenerationAvailable && Array.isArray(hostDefinitions)) {
+      hostDefinitions = filterToolDefinitionByName(hostDefinitions, 'generate_image');
+    }
+    if (!this.videoGenerationAvailable && Array.isArray(hostDefinitions)) {
+      hostDefinitions = filterToolDefinitionByName(hostDefinitions, 'generate_video');
+    }
     if (
       isOpenResponsesTransportConfig(this.transportConfigForToolDefinitions)
       && shouldUseApplyPatchFileTools(this.transportConfigForToolDefinitions, { agentMode: this.agentMode })

@@ -104,6 +104,14 @@ export class AiSdkAnthropicTransport
     throw new Error('Anthropic transport does not support image generation.');
   }
 
+  async generateVideo(
+    _config: AnthropicTransportConfig,
+    _request: import('../ports.js').VideoGenerationRequest,
+    _saveGeneratedVideo: (request: import('../ports.js').GeneratedVideoSaveRequest) => Promise<import('../ports.js').GeneratedVideoFile>,
+  ): Promise<ToolExecutionOutput> {
+    throw new Error('Anthropic transport does not support video generation.');
+  }
+
   async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(
     config: AnthropicTransportConfig,
     request: OpenAiJsonSchemaCompletionRequest,

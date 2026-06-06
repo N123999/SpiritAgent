@@ -45,7 +45,10 @@ import {
 import type {
   GeneratedImageFile,
   GeneratedImageSaveRequest,
+  GeneratedVideoFile,
+  GeneratedVideoSaveRequest,
   ImageGenerationRequest,
+  VideoGenerationRequest,
   JsonObject,
   JsonValue,
   LlmMessage,
@@ -71,7 +74,9 @@ import {
   resolveOpenAiModelCompatibilityProfile,
   type OpenAiImageGenerationConfig,
   type OpenAiTransportConfig,
+  type OpenAiVideoGenerationConfig,
 } from './openai-compat.js';
+import { generateVideoWithRouter } from '../video-generation/router.js';
 import { createAlibabaChatCompletionsAwareFetch } from '../open-responses/alibaba-chat-completions-fetch.js';
 import {
   buildAlibabaChatCompletionsExtraBody,
@@ -235,6 +240,19 @@ export class AiSdkOpenAiCompatibleTransport
       content: createLlmMessageContentFromTextAndImages(summaryText, [saved.path]),
       summaryText,
     };
+  }
+
+  async generateVideo(
+    config: OpenAiTransportConfig,
+    request: VideoGenerationRequest,
+    saveGeneratedVideo: (request: GeneratedVideoSaveRequest) => Promise<GeneratedVideoFile>,
+  ): Promise<ToolExecutionOutput> {
+    const videoConfig = config.videoGeneration;
+    if (!videoConfig) {
+      throw new Error('No video generation model is configured.');
+    }
+
+    return generateVideoWithRouter(videoConfig, request, saveGeneratedVideo);
   }
 
   async createJsonSchemaCompletion<T extends JsonValue = JsonValue>(

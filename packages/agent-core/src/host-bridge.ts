@@ -1433,6 +1433,7 @@ async function createRuntime(
   const basicInfo = buildRuntimeBasicInfo(workspaceRoot, hostInternal?.service);
   const todosContextText = await buildTodosContextTextForSession(currentTodoSessionKey);
   toolExecutor.setImageGenerationAvailable('imageGeneration' in config && config.imageGeneration !== undefined);
+  toolExecutor.setVideoGenerationAvailable('videoGeneration' in config && config.videoGeneration !== undefined);
   toolExecutor.setTransportConfigForToolDefinitions(config);
   await toolExecutor.setLspWorkspaceRoot(workspaceRoot);
   await toolExecutor.refreshCaches();
@@ -1519,6 +1520,15 @@ async function createRuntime(
           throw new Error('CLI host-internal 当前不支持保存生成图片');
         }
         return saveGeneratedImage.call(hostInternal.service, saveRequest);
+      }),
+    generateVideo: (request) =>
+      llmTransport.generateVideo(config, request, async (saveRequest) => {
+        const hostInternal = await ensureCliHostInternal(workspaceRoot);
+        const saveGeneratedVideo = hostInternal?.service.saveGeneratedVideo;
+        if (!saveGeneratedVideo) {
+          throw new Error('CLI host-internal 当前不支持保存生成视频');
+        }
+        return saveGeneratedVideo.call(hostInternal.service, saveRequest);
       }),
     resolveWorkspaceFilesFromInput: (text) => {
       const resolveFromHostInternal = cliHostInternal?.module.resolveWorkspaceFileReferenceAttachmentsFromInput;
