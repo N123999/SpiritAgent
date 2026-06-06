@@ -717,33 +717,8 @@ export function SessionSidebar({
                 onContextMenuOpenChange={handleContextMenuOpenChange}
                 onRequestDelete={handleContextMenuDelete}
               >
-                {unboundSessions.length > 0 ? (
-                  <>
-                    <p className="px-2.5 pt-2 pb-1 text-[0.65rem] text-sidebar-faint-foreground">
-                      {t('sidebar.noWorkspaceSessions')}
-                    </p>
-                    {unboundSessions.map((session) => (
-                      <SessionListRow
-                        key={session.path}
-                        sessionPath={session.path}
-                        displayName={session.displayName}
-                        isBusy={session.isBusy}
-                        isBlocked={session.isBlocked}
-                        showCompletedUnseen={unseenCompletedSessionPaths?.has(session.path) === true}
-                        nested={false}
-                        selected={isSessionSelected(session.path)}
-                        disabled={disabled}
-                        micaStyle={micaStyle}
-                        onSelectPath={onSelectSession}
-                      />
-                    ))}
-                  </>
-                ) : null}
-                {unboundSessions.length > 0 && workspaceGroups.length > 0 ? (
-                  <div className="h-2" aria-hidden />
-                ) : null}
                 {workspaceGroups.length > 0 ? (
-                  <p className="px-2.5 pt-1 pb-1 text-[0.65rem] text-sidebar-faint-foreground">
+                  <p className="px-2.5 pt-2 pb-1 text-[0.65rem] text-sidebar-faint-foreground">
                     {t('sidebar.workspace')}
                   </p>
                 ) : null}
@@ -820,6 +795,31 @@ export function SessionSidebar({
                     </Collapsible>
                   );
                 })}
+                {unboundSessions.length > 0 && workspaceGroups.length > 0 ? (
+                  <div className="h-2" aria-hidden />
+                ) : null}
+                {unboundSessions.length > 0 ? (
+                  <>
+                    <p className="px-2.5 pt-1 pb-1 text-[0.65rem] text-sidebar-faint-foreground">
+                      {t('sidebar.noWorkspaceSessions')}
+                    </p>
+                    {unboundSessions.map((session) => (
+                      <SessionListRow
+                        key={session.path}
+                        sessionPath={session.path}
+                        displayName={session.displayName}
+                        isBusy={session.isBusy}
+                        isBlocked={session.isBlocked}
+                        showCompletedUnseen={unseenCompletedSessionPaths?.has(session.path) === true}
+                        nested={false}
+                        selected={isSessionSelected(session.path)}
+                        disabled={disabled}
+                        micaStyle={micaStyle}
+                        onSelectPath={onSelectSession}
+                      />
+                    ))}
+                  </>
+                ) : null}
               </SessionListNav>
             </div>
           )}
