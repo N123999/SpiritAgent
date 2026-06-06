@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import {
   buildTodosSystemMessage,
   startOpenAiToolAgentState,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import { createHostTodoStore } from '@spirit-agent/host-internal';
 
 import {

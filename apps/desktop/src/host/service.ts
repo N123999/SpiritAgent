@@ -33,7 +33,7 @@ import {
   type PendingWorkspaceFile,
   type RuntimeToolExecution,
   type SpiritLlmTransport,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   buildStartImplementingUserTurn,
   extractActivePlanPathFromLlmHistory,

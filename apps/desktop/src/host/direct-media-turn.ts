@@ -10,7 +10,7 @@ import {
   type RuntimeToolExecution,
   type StoredLlmMessageArchiveEntry,
   type ToolExecutionOutput,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import i18n from '../lib/i18n-host.js';
 import {

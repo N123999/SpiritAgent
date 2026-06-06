@@ -1,4 +1,4 @@
-import type { JsonValue, LspDiagnostic, LspReadyProviderSummary } from '@spirit-agent/agent-core';
+import type { JsonValue, LspDiagnostic, LspReadyProviderSummary } from '@spirit-agent/core';
 
 import { DEFAULT_LSP_TIMING, type LspTimingConfig } from './config.js';
 import { LspOrchestrator } from './orchestrator.js';

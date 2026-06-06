@@ -6,7 +6,7 @@ import {
   type JsonObject,
   type JsonValue,
   type OpenAiExtensionSystemPrompt,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   collectHostExtensionContributedTools,
   type HostExtensionManager,

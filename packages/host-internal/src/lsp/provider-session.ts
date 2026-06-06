@@ -4,7 +4,7 @@ import { DEFAULT_LSP_TIMING, type LspTimingConfig } from './config.js';
 import { LspConnection } from './connection.js';
 import { LspDocumentStore } from './document-store.js';
 import { LspDisabledError, LspTimeoutError } from './errors.js';
-import type { LspDiagnostic, LspFileChangeNotification } from '@spirit-agent/agent-core';
+import type { LspDiagnostic, LspFileChangeNotification } from '@spirit-agent/core';
 import {
   fileUriForResolvedPath,
   normalizeLspFileUri,

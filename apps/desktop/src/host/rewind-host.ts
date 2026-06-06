@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { ChatArchive, RuntimeToolExecution } from '@spirit-agent/agent-core';
+import type { ChatArchive, RuntimeToolExecution } from '@spirit-agent/core';
 import type { HostRecordedFileChange } from '@spirit-agent/host-internal';
 
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { isOpenAiCompatibleTransportConfig } from '@spirit-agent/agent-core';
+import { isOpenAiCompatibleTransportConfig } from '@spirit-agent/core';
 
 test('deepseek primary transport without transportKind must still count as openai-compatible', () => {
   const runtimeTransportConfig = {

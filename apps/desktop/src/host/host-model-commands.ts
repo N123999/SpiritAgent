@@ -7,7 +7,7 @@ import {
   defaultModelReasoningEffort,
   resolveModelReasoningEffortForContext,
   type ModelReasoningEffort,
-} from '@spirit-agent/agent-core/reasoning-effort';
+} from '@spirit-agent/core/reasoning-effort';
 
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
 import i18n from '../lib/i18n-host.js';

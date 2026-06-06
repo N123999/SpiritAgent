@@ -1,6 +1,6 @@
 # Third-party notices
 
-This file was generated for `@spirit-agent/agent-core` (`dependencies` + `devDependencies`; direct dependencies only by default).
+This file was generated for `@spirit-agent/core` (`dependencies` + `devDependencies`; direct dependencies only by default).
 Regenerate: `npm run notice` — `-- --production` limits output to production dependencies, `-- --recursive` includes transitive dependencies.
 Scope constraint: exclude workspace-local/internal dependencies resolved via `workspace:` or `file:`; keep output sorted deterministically by package name and license section.
 

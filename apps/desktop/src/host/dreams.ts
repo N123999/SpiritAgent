@@ -11,15 +11,15 @@ import type {
   LlmToolAgentState,
   LlmTransportConfig,
   OpenAiTransportConfig,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   llmMessageTextContent,
   normalizeStoredLlmMessage,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   resolveAnthropicTransportReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
-} from '@spirit-agent/agent-core/reasoning-effort';
+} from '@spirit-agent/core/reasoning-effort';
 import {
   createHostDreamStore,
   DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,

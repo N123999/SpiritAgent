@@ -35,7 +35,7 @@ import {
   buildLspHostToolDefinitions,
   isLspDiagnosticsToolRequest,
   requestFromGetDiagnosticsFunctionCall,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   LspService,
   appendLspDiagnosticsAfterWriteIfNeeded,

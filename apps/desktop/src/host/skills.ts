@@ -6,7 +6,7 @@ import i18n from '../lib/i18n-host.js';
 import type {
   OpenAiActiveSkill,
   OpenAiActiveSkillResourceEntry,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   resolveInstructionPaths,
   SKILL_FILE_NAME,

@@ -24,7 +24,7 @@ import {
   type LlmToolAgentBasicInfo,
   type LlmToolAgentState,
   type LlmTransportConfig,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import { resolveWorkspaceFileReferenceAttachmentsFromInput } from '@spirit-agent/host-internal';
 
 import type { DesktopToolRequest } from './contracts.js';

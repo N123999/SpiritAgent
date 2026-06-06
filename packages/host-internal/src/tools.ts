@@ -21,7 +21,7 @@ import {
   throwUnknownToolError,
   toolNamesFromDefinitions,
   type JsonValue,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import { applyDiff } from './apply-diff.js';
 import {
@@ -64,7 +64,7 @@ import { detectSupportedVideoFile, hasSupportedVideoExtension } from './video-fi
 import {
   buildRunShellCommandToolResult,
   serializeRunShellCommandToolResult,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 const exec = promisify(execCallback);
 

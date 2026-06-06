@@ -1,4 +1,4 @@
-import { formatModelDisplayNameFromId } from '@spirit-agent/agent-core/model-display-name';
+import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-name';
 import type { ProviderListedModelEntry } from '@spirit-agent/host-internal';
 
 import type {

@@ -2,11 +2,11 @@ import type {
   AskQuestionsResult as RuntimeAskQuestionsResult,
   ChatArchive,
   RuntimePendingQuestions,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   cloneLlmMessageContent,
   cloneLlmProviderState,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import i18n from '../lib/i18n-host.js';
 import type {

@@ -18,12 +18,12 @@ import {
   configureLlmHttpVersion,
   normalizeLlmHttpVersion,
   type LlmHttpVersion,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   defaultModelReasoningEffort,
   normalizeModelReasoningEffort,
   resolveModelReasoningEffortForContext,
-} from '@spirit-agent/agent-core/reasoning-effort';
+} from '@spirit-agent/core/reasoning-effort';
 import {
   createFileExtensionStateStore,
   type ExtensionManagementContext,

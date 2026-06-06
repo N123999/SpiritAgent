@@ -1,4 +1,4 @@
-import type { LlmExtensionSystemPrompt } from '@spirit-agent/agent-core';
+import type { LlmExtensionSystemPrompt } from '@spirit-agent/core';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 
 export type ExtensionWarmupTrigger =

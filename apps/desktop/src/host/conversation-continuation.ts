@@ -1,4 +1,4 @@
-import type { ChatArchive, PendingAssistantAux } from '@spirit-agent/agent-core';
+import type { ChatArchive, PendingAssistantAux } from '@spirit-agent/core';
 
 import type { ConversationMessageSnapshot } from '../types.js';
 import type { SessionBundle } from './session-bundle.js';

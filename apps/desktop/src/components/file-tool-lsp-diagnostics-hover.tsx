@@ -5,7 +5,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { LspWriteDiagnosticsUi } from "@spirit-agent/agent-core";
+import type { LspWriteDiagnosticsUi } from "@spirit-agent/core";
 
 import {
   HoverDetailTooltip,

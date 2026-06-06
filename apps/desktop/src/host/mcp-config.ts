@@ -13,7 +13,7 @@ import {
   summarizeTransport,
   type McpConfigFile,
   type McpServerConfig,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import type {
   AddMcpServerRequest,

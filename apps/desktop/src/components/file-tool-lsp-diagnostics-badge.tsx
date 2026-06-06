@@ -6,7 +6,7 @@ import {
   toolCardSecondaryTextClass,
 } from "@/lib/file-tool-lsp-diagnostics-display";
 import { cn } from "@/lib/utils";
-import type { LspWriteDiagnosticsUi } from "@spirit-agent/agent-core";
+import type { LspWriteDiagnosticsUi } from "@spirit-agent/core";
 
 export function FileToolLspDiagnosticsBadge({
   diagnostics,

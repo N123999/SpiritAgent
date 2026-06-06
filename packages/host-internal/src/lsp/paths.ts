@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { isLspSupportedExtension, TYPESCRIPT_JS_EXTENSIONS } from '@spirit-agent/agent-core';
-import type { LspFileChangeNotification, LspFileSnapshot } from '@spirit-agent/agent-core';
+import { isLspSupportedExtension, TYPESCRIPT_JS_EXTENSIONS } from '@spirit-agent/core';
+import type { LspFileChangeNotification, LspFileSnapshot } from '@spirit-agent/core';
 import { LspPathError } from './errors.js';
 import { routeLspProviderForPath } from './providers.js';
 

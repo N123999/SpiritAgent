@@ -17,7 +17,7 @@ import {
   toDesktopMarketplaceDetail,
   toDesktopMarketplacePreparedInstall,
 } from './extensions.js';
-import { invalidateSharedUserMcpToolingCache } from '@spirit-agent/agent-core';
+import { invalidateSharedUserMcpToolingCache } from '@spirit-agent/core';
 import i18n from '../lib/i18n-host.js';
 import type {
   AddMcpServerRequest,
@@ -43,7 +43,7 @@ import type {
   HostExtensionEvent,
   HostExtensionMarketplaceManager,
 } from '@spirit-agent/host-internal';
-import type { LlmActiveSkill } from '@spirit-agent/agent-core';
+import type { LlmActiveSkill } from '@spirit-agent/core';
 import type { DesktopExtensionHostAdapter } from './extension-host-adapter.js';
 import type { DesktopConfigFile, DesktopWorkspaceBinding, HostMetadataSummary } from './storage.js';
 import type { DesktopGitSnapshot } from '../types.js';

@@ -3,12 +3,12 @@ import type {
   LlmMessageContent,
   RuntimePendingApproval,
   RuntimePendingQuestions,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   finishTaskNoticeFromSummary,
   isGenericProviderWebSearchQuery,
   llmMessageTextContent,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js';
 import {
@@ -790,7 +790,7 @@ export {
   finishTaskNoticeFromSummary,
   finishTaskNoticePreviewFromArguments,
   finishTaskSummaryFromStreamingArguments,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 export function finishTaskSummaryFromExecution(input: {
   request: unknown;

@@ -3,7 +3,7 @@ import {
   normalizeStoredLlmMessage,
   type ChatArchive,
   type LlmMessage,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import type { ConversationMessageSnapshot } from '../types.js';
 import {

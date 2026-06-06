@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import {
   buildPlanSystemMessage,
   startOpenAiToolAgentState,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import { createHostDreamStore } from '@spirit-agent/host-internal';
 
 import {

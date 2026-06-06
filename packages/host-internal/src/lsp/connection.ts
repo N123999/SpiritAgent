@@ -2,7 +2,7 @@ import { spawn, type SpawnOptions } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { LspDiagnostic } from '@spirit-agent/agent-core';
+import type { LspDiagnostic } from '@spirit-agent/core';
 
 import { isWindowsPlatform } from './windows-path.js';
 import { normalizeLspFileUri } from './paths.js';

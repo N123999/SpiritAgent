@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 
-import { normalizeSpiritAgentMode, type SpiritAgentMode } from '@spirit-agent/agent-core';
+import { normalizeSpiritAgentMode, type SpiritAgentMode } from '@spirit-agent/core';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 

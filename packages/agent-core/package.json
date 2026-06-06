@@ -1,8 +1,16 @@
 {
-  "name": "@spirit-agent/agent-core",
+  "name": "@spirit-agent/core",
   "version": "0.1.0",
-  "private": true,
   "description": "TypeScript core runtime for Spirit Agent",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/N123999/SpiritAgent.git",
+    "directory": "packages/agent-core"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +33,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22"
@@ -33,6 +42,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build",
     "smoke:contract": "npm run build && node dist/smoke/contract/ai-sdk-openai-smoke.js && node dist/smoke/contract/ai-sdk-openai-json-schema-smoke.js && node dist/smoke/contract/ai-sdk-openai-streaming-smoke.js && node dist/smoke/contract/ai-sdk-openai-stream-reasoning-only-smoke.js && node dist/smoke/contract/ai-sdk-deepseek-streaming-smoke.js && node dist/smoke/contract/ai-sdk-anthropic-streaming-smoke.js && node dist/smoke/contract/ai-sdk-open-responses-smoke.js && node dist/smoke/contract/ai-sdk-openai-responses-smoke.js && node dist/smoke/contract/ai-sdk-openai-apply-patch-smoke.js && node dist/smoke/contract/ai-sdk-gateway-apply-patch-smoke.js && node dist/smoke/contract/ai-sdk-openrouter-apply-patch-smoke.js && node dist/smoke/contract/ai-sdk-open-responses-streaming-smoke.js && node dist/smoke/contract/ai-sdk-alibaba-built-in-tools-smoke.js",
     "smoke:runtime": "npm run build && node dist/smoke/runtime/ai-sdk-openai-runtime-smoke.js && node dist/smoke/runtime/runtime-parity-smoke.js",
     "smoke:host-config": "npm run build && node dist/smoke/host-config/mcp-missing-env-smoke.js",
@@ -76,7 +86,6 @@
     "@ai-sdk/xai": "^3.0.93",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.175",
-    "spirit-agent-repo": "file:../..",
     "undici": "^7.27.2"
   }
 }

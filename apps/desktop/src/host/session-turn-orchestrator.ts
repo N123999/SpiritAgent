@@ -5,7 +5,7 @@ import type {
   PendingWorkspaceFile,
   RuntimeApprovalDecision,
   RuntimeEvent,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import { cloneActiveSkills } from './runtime.js';
 
 import i18n from '../lib/i18n-host.js';

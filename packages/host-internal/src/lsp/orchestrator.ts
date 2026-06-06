@@ -2,8 +2,8 @@ import path from 'node:path';
 
 import { DEFAULT_LSP_TIMING, type LspTimingConfig } from './config.js';
 import { LspDisabledError, LspPathError } from './errors.js';
-import { formatDiagnosticsForLlm } from '@spirit-agent/agent-core';
-import type { LspDiagnostic, LspFileChangeNotification } from '@spirit-agent/agent-core';
+import { formatDiagnosticsForLlm } from '@spirit-agent/core';
+import type { LspDiagnostic, LspFileChangeNotification } from '@spirit-agent/core';
 import {
   isLspSupportedPath,
   parseLspFileChangeNotification,

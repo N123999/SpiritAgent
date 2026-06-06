@@ -1,6 +1,6 @@
 import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
-import type { ModelReasoningEffort } from '@spirit-agent/agent-core/reasoning-effort';
-import type { LspWriteDiagnosticsUi } from '@spirit-agent/agent-core';
+import type { ModelReasoningEffort } from '@spirit-agent/core/reasoning-effort';
+import type { LspWriteDiagnosticsUi } from '@spirit-agent/core';
 
 import type { DesktopAgentMode } from './lib/agent-mode.js';
 

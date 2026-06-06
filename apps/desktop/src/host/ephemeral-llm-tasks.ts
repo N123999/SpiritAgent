@@ -7,7 +7,7 @@ import {
   type LlmExtensionSystemPrompt,
   type LlmToolAgentBasicInfo,
   type LlmTransportConfig,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 
 import i18n from '../lib/i18n-host.js';
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';

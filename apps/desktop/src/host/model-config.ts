@@ -4,11 +4,11 @@ import {
   type LlmModelCapabilities,
   type LlmTransportConfig,
   type OpenResponsesSdkProvider,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import {
   resolveAnthropicTransportReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
-} from '@spirit-agent/agent-core/reasoning-effort';
+} from '@spirit-agent/core/reasoning-effort';
 import {
   listProviderModels,
   resolveProviderConnectApiBase,

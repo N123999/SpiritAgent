@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { McpService } from '@spirit-agent/agent-core';
+import { McpService } from '@spirit-agent/core';
 
 import i18n from '../lib/i18n-host.js';
 import type {

@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import {
   modelReasoningEffortOptions,
   modelReasoningEffortLabel,
-} from "@spirit-agent/agent-core/reasoning-effort";
+} from "@spirit-agent/core/reasoning-effort";
 import {
   charCountToCodeUnitIndex,
   codeUnitIndexToCharCount,

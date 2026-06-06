@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 
-import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from '@spirit-agent/agent-core';
+import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from '@spirit-agent/core';
 
 import {
   buildWindowsCommandCandidates,

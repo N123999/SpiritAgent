@@ -6,7 +6,7 @@ import {
   type JsonObject,
   type RuntimeEvent,
   type RuntimeToolExecution,
-} from '@spirit-agent/agent-core';
+} from '@spirit-agent/core';
 import { toolCallPhaseShowsShimmer } from '../lib/tool-call-shimmer.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 

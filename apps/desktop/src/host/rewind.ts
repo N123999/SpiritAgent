@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ChatArchive } from '@spirit-agent/agent-core';
+import type { ChatArchive } from '@spirit-agent/core';
 import type { HostRecordedFileChange, HostTodoRecord } from '@spirit-agent/host-internal';
 
 import type { ConversationMessageSnapshot } from '../types.js';

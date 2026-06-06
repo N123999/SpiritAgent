@@ -1,7 +1,7 @@
 import {
   parseRunShellCommandToolResult,
   type RunShellCommandToolResult,
-} from "@spirit-agent/agent-core/shell-tool-result";
+} from "@spirit-agent/core/shell-tool-result";
 
 import i18n from "@/lib/i18n";
 import type { ToolBlockSnapshot } from "@/types";

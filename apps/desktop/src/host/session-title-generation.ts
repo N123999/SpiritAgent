@@ -1,5 +1,5 @@
 // Desktop 首批消费方：首条用户消息后异步生成会话标题；CLI 待产品定义后再接入。
-import { createJsonSchemaTransport } from '@spirit-agent/agent-core';
+import { createJsonSchemaTransport } from '@spirit-agent/core';
 import {
   buildSessionTitlePrompt,
   normalizeGeneratedSessionTitle,

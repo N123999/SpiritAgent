@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { ChatArchive } from '@spirit-agent/agent-core';
+import type { ChatArchive } from '@spirit-agent/core';
 
 import {
   buildArchiveAssistantAuxFromConversation,

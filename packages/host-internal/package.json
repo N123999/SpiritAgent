@@ -83,7 +83,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@spirit-agent/agent-core": "file:../agent-core",
+    "@spirit-agent/core": "file:../agent-core",
     "fflate": "^0.8.2",
     "glob": "^13.0.6",
     "ignore": "^5.3.2",
