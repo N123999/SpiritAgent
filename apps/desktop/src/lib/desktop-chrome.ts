@@ -81,8 +81,9 @@ export const DESKTOP_OVERLAY_LIST_FILTER_HEADER =
 
 export const DESKTOP_OVERLAY_LIST_FILTER_INPUT = "h-7 w-full min-w-0 text-xs";
 
+/** Root 与 viewport 同步 max-h：仅约束 viewport 时 Root 会随内容撑高，滚动条轨道 h-full 失真 */
 export const DESKTOP_OVERLAY_LIST_SCROLL_AREA =
-  "[&>[data-radix-scroll-area-viewport]]:max-h-[min(17rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:overscroll-contain";
+  "max-h-[min(17rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:max-h-[min(17rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:overscroll-contain";
 
 export const DESKTOP_OVERLAY_LIST_WORKSPACE_SCROLL_AREA =
   "min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:h-full [&>[data-radix-scroll-area-viewport]]:overscroll-contain";

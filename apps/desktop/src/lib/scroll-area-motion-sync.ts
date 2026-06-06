@@ -106,7 +106,8 @@ function computeThumbMetrics(
   const computedStyle = getComputedStyle(scrollbar);
   const paddingStart = Number.parseInt(computedStyle.paddingTop, 10) || 0;
   const paddingEnd = Number.parseInt(computedStyle.paddingBottom, 10) || 0;
-  const scrollbarSize = scrollbar.clientHeight;
+  // 轨道 h-full 随 Root 撑高时会远大于 viewport，直接用 clientHeight 会把拇指算成「铺满视口」
+  const scrollbarSize = Math.min(scrollbar.clientHeight, viewportSize);
   const ratio = contentSize > 0 ? viewportSize / contentSize : 1;
   const thumbSize = Math.max((scrollbarSize - paddingStart - paddingEnd) * ratio, 18);
   const maxScrollPos = Math.max(0, contentSize - viewportSize);
@@ -121,16 +122,17 @@ function syncScrollbarMetrics(
   root: HTMLElement,
   viewport: HTMLElement,
   sessions: readonly MotionSession[] = [],
-): void {
+): boolean {
   const scrollbar = verticalScrollbar(root);
   const thumb = scrollbar?.firstElementChild;
   if (!scrollbar || !(thumb instanceof HTMLElement)) {
-    return;
+    return false;
   }
   const contentSize = effectiveContentSize(viewport, sessions);
   const { thumbSize, thumbOffset } = computeThumbMetrics(viewport, scrollbar, contentSize);
   scrollbar.style.setProperty("--radix-scroll-area-thumb-height", `${thumbSize}px`);
   thumb.style.transform = `translate3d(0, ${thumbOffset}px, 0)`;
+  return true;
 }
 
 function clearScrollbarOverrides(root: HTMLElement): void {
@@ -147,6 +149,8 @@ function clearScrollbarOverrides(root: HTMLElement): void {
 
 /**
  * Collapsible keyframe 动画期间：钳制 scrollTop + 同步滚动条拇指尺寸/位置。
+ * 动画结束后继续随 scroll/resize 同步（勿 clear：scrollHeight 未稳定时 clear 会闪跳）。
+ * effect cleanup 仅在本周期曾 sync 时 clear，避免抹掉 Radix 变量（浮层 Strict Mode 重挂载）。
  */
 export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>): void {
   useEffect(() => {
@@ -157,15 +161,24 @@ export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>):
 
     let rafId = 0;
     let activeMotions = 0;
-    let manualThumbActive = false;
     let motionSessions: MotionSession[] = [];
     let contentResizeObserver: ResizeObserver | null = null;
+    let appliedOverrides = false;
+    let postAnimationSync = false;
 
     const syncFromViewport = (viewport: HTMLElement) => {
       for (const session of motionSessions) {
         pinScrollToEdge(viewport, session.scrollEdge);
       }
-      syncScrollbarMetrics(root, viewport, motionSessions);
+      if (syncScrollbarMetrics(root, viewport, motionSessions)) {
+        appliedOverrides = true;
+      }
+    };
+
+    const syncAfterAnimation = (viewport: HTMLElement) => {
+      if (syncScrollbarMetrics(root, viewport)) {
+        appliedOverrides = true;
+      }
     };
 
     const onViewportScroll = () => {
@@ -177,10 +190,9 @@ export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>):
         syncFromViewport(viewport);
         return;
       }
-      if (!manualThumbActive) {
-        return;
+      if (postAnimationSync) {
+        syncAfterAnimation(viewport);
       }
-      syncScrollbarMetrics(root, viewport);
     };
 
     const tick = () => {
@@ -194,12 +206,28 @@ export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>):
       }
     };
 
+    const ensureContentResizeObserver = (viewport: HTMLElement, content: HTMLElement) => {
+      if (contentResizeObserver) {
+        return;
+      }
+      contentResizeObserver = new ResizeObserver(() => {
+        if (activeMotions > 0) {
+          syncFromViewport(viewport);
+          return;
+        }
+        if (postAnimationSync) {
+          syncAfterAnimation(viewport);
+        }
+      });
+      contentResizeObserver.observe(content);
+    };
+
     const onMotionStart = (event: AnimationEvent) => {
       if (!root.contains(event.target as Node) || !isCollapsibleAnimation(event)) {
         return;
       }
+      postAnimationSync = false;
       activeMotions += 1;
-      manualThumbActive = true;
       const viewport = scrollAreaViewport(root);
       const animTarget = event.target instanceof HTMLElement ? event.target : null;
       if (viewport && animTarget) {
@@ -214,12 +242,7 @@ export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>):
       if (activeMotions === 1) {
         const nodes = scrollAreaNodes(root);
         if (nodes) {
-          contentResizeObserver = new ResizeObserver(() => {
-            if (activeMotions > 0) {
-              syncFromViewport(nodes.viewport);
-            }
-          });
-          contentResizeObserver.observe(nodes.content);
+          ensureContentResizeObserver(nodes.viewport, nodes.content);
         }
         if (viewport) {
           syncFromViewport(viewport);
@@ -239,13 +262,16 @@ export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>):
       }
       if (activeMotions === 0) {
         cancelAnimationFrame(rafId);
-        contentResizeObserver?.disconnect();
-        contentResizeObserver = null;
+        motionSessions = [];
         const viewport = scrollAreaViewport(root);
         if (viewport) {
           clampScrollTop(viewport);
-          syncScrollbarMetrics(root, viewport, motionSessions);
-          motionSessions = [];
+          syncAfterAnimation(viewport);
+          postAnimationSync = true;
+          const nodes = scrollAreaNodes(root);
+          if (nodes) {
+            ensureContentResizeObserver(nodes.viewport, nodes.content);
+          }
         }
       }
     };
@@ -259,12 +285,15 @@ export function useScrollAreaMotionSync(rootRef: RefObject<HTMLElement | null>):
 
     return () => {
       activeMotions = 0;
+      postAnimationSync = false;
       motionSessions = [];
       cancelAnimationFrame(rafId);
       contentResizeObserver?.disconnect();
       contentResizeObserver = null;
       viewport?.removeEventListener("scroll", onViewportScroll);
-      clearScrollbarOverrides(root);
+      if (appliedOverrides) {
+        clearScrollbarOverrides(root);
+      }
       root.removeEventListener("animationstart", onMotionStart, true);
       root.removeEventListener("animationend", onMotionEnd, true);
       root.removeEventListener("animationcancel", onMotionEnd, true);
