@@ -66,11 +66,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AnchoredDropdownSubMenu,
+  useAnchoredDropdownSubMenuContext,
+} from "@/components/ui/anchored-dropdown-sub-menu";
 import {
   Dialog,
   DialogClose,
@@ -235,6 +236,57 @@ const CONVERSATION_GUTTER_NEG_X = "-mx-4 sm:-mx-5";
 
 function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReasoningEffort): string {
   return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
+}
+
+type ModelPickerItem = DesktopSnapshot["config"]["models"][number];
+
+function ModelPickerReasoningRow({
+  model,
+  displayTitle,
+  modelSummary,
+  isActive,
+  onSelectModel,
+}: {
+  model: ModelPickerItem;
+  displayTitle: string;
+  modelSummary: string;
+  isActive: boolean;
+  onSelectModel: () => void;
+}) {
+  const { getTriggerProps } = useAnchoredDropdownSubMenuContext<ModelPickerItem>();
+  const { onPointerEnter } = getTriggerProps(model);
+
+  return (
+    <AnchoredDropdownSubMenu.Anchor itemId={model.name}>
+      <div
+        role="menuitem"
+        tabIndex={-1}
+        className={cn(
+          DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
+          "cursor-pointer outline-none focus:bg-accent focus:text-accent-foreground",
+          isActive && "bg-accent/40",
+        )}
+        title={modelSummary}
+        onPointerEnter={onPointerEnter}
+        onClick={onSelectModel}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelectModel();
+          }
+        }}
+      >
+        <div className="flex min-w-0 flex-1 items-baseline gap-x-1.5 overflow-hidden">
+          <span className={cn(DESKTOP_OVERLAY_LIST_ITEM_PRIMARY, "min-w-0 truncate")}>
+            {displayTitle}
+          </span>
+          <span className="shrink-0 text-xs font-normal text-muted-foreground">
+            {modelReasoningEffortLabel(model.reasoningEffort)}
+          </span>
+        </div>
+      </div>
+    </AnchoredDropdownSubMenu.Anchor>
+  );
 }
 
 function normalizeSlashPath(value: string): string {
@@ -849,12 +901,50 @@ function ComposerSurface({
                 {filteredModelGroups.length === 0 ? (
                   <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
                 ) : (
-                  filteredModelGroups.map((group) => (
-                    <div key={group.provider} className="mb-2 last:mb-0">
-                      <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
-                        {t(group.labelKey, { defaultValue: group.fallbackLabel })}
-                      </div>
-                      {group.items.map((model) => {
+                  <AnchoredDropdownSubMenu<ModelPickerItem>
+                    getItemId={(model) => model.name}
+                    openDelayMs={0}
+                  >
+                    <AnchoredDropdownSubMenu.TriggerZone>
+                      {filteredModelGroups.map((group) => (
+                        <div key={group.provider} className="mb-2 last:mb-0">
+                          <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
+                            {t(group.labelKey, { defaultValue: group.fallbackLabel })}
+                          </div>
+                          {group.items.map((model) => {
+                            const displayTitle = modelDisplayTitleFromMap(
+                              model.name,
+                              displayTitleByModelName,
+                            );
+                            const modelSummary = formatModelPickerLabel(
+                              displayTitle,
+                              model.reasoningEffort,
+                            );
+
+                            return (
+                              <ModelPickerReasoningRow
+                                key={`${group.provider}:${model.name}`}
+                                model={model}
+                                displayTitle={displayTitle}
+                                modelSummary={modelSummary}
+                                isActive={activeModelProfile?.name === model.name}
+                                onSelectModel={() => {
+                                  onModelSelect(model.name);
+                                  setModelFilter("");
+                                  setModelMenuOpen(false);
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </AnchoredDropdownSubMenu.TriggerZone>
+                    <AnchoredDropdownSubMenu.Content className={DESKTOP_OVERLAY_SHORT_SUBCONTENT}>
+                      {(activeItem) => {
+                        const model = activeItem as ModelPickerItem | null;
+                        if (!model) {
+                          return null;
+                        }
                         const displayTitle = modelDisplayTitleFromMap(
                           model.name,
                           displayTitleByModelName,
@@ -864,75 +954,33 @@ function ComposerSurface({
                           model.reasoningEffort,
                         );
 
-                        return (
-                          <DropdownMenuSub key={`${group.provider}:${model.name}`}>
-                            <DropdownMenuSubTrigger
-                              className={cn(
-                                DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
-                                activeModelProfile?.name === model.name && "bg-accent/40",
-                              )}
-                              onClick={() => {
-                                onModelSelect(model.name);
-                                setModelFilter("");
-                                setModelMenuOpen(false);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                  event.preventDefault();
-                                  onModelSelect(model.name);
-                                  setModelFilter("");
-                                  setModelMenuOpen(false);
-                                }
-                              }}
-                            >
-                              <div
-                                className="flex min-w-0 flex-1 items-baseline gap-x-1.5 overflow-hidden"
-                                title={modelSummary}
-                              >
-                                <span
-                                  className={cn(
-                                    DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
-                                    "min-w-0 truncate",
-                                  )}
-                                >
-                                  {displayTitle}
-                                </span>
-                                <span className="shrink-0 text-xs font-normal text-muted-foreground">
-                                  {modelReasoningEffortLabel(model.reasoningEffort)}
-                                </span>
-                              </div>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className={DESKTOP_OVERLAY_SHORT_SUBCONTENT}>
-                              {modelReasoningEffortOptions({
-                                provider: model.provider,
-                                model: model.name,
-                                ...(model.supportedReasoningEfforts !== undefined
-                                  ? { supportedEfforts: model.supportedReasoningEfforts }
-                                  : {}),
-                                transportKind: model.transportKind,
-                              }).map((option) => (
-                                <DropdownMenuItem
-                                  key={option.value}
-                                  onSelect={() => {
-                                    onModelReasoningEffortSelect(model.name, option.value);
-                                    onModelSelect(model.name);
-                                    setModelFilter("");
-                                    setModelMenuOpen(false);
-                                  }}
-                                  className={cn(
-                                    model.reasoningEffort === option.value && "bg-accent/40",
-                                  )}
-                                  title={modelSummary}
-                                >
-                                  {option.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
-                        );
-                      })}
-                    </div>
-                  ))
+                        return modelReasoningEffortOptions({
+                          provider: model.provider,
+                          model: model.name,
+                          ...(model.supportedReasoningEfforts !== undefined
+                            ? { supportedEfforts: model.supportedReasoningEfforts }
+                            : {}),
+                          transportKind: model.transportKind,
+                        }).map((option) => (
+                          <DropdownMenuItem
+                            key={option.value}
+                            onSelect={() => {
+                              onModelReasoningEffortSelect(model.name, option.value);
+                              onModelSelect(model.name);
+                              setModelFilter("");
+                              setModelMenuOpen(false);
+                            }}
+                            className={cn(
+                              model.reasoningEffort === option.value && "bg-accent/40",
+                            )}
+                            title={modelSummary}
+                          >
+                            {option.label}
+                          </DropdownMenuItem>
+                        ));
+                      }}
+                    </AnchoredDropdownSubMenu.Content>
+                  </AnchoredDropdownSubMenu>
                 )}
               </FilteredOverlayMenu>
             ) : (
