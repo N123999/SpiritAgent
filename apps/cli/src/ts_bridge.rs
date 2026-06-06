@@ -1331,9 +1331,13 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
+    pub fn store_config(&mut self, config: AppConfig) {
+        self.config = config;
+    }
+
     fn apply_llm_http_version_from_config(&mut self) -> Result<()> {
         if self.bridge_failed {
-            return Ok(());
+            return Err(anyhow!("TS bridge 已处于失败状态。"));
         }
         let version = self.config.networks.llm_http_version.clone();
         self.set_llm_http_version(&version)

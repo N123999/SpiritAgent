@@ -371,14 +371,19 @@ impl TuiShell {
             );
             return;
         }
-        self.runtime.replace_config(config);
-        self.push_agent_message(
-            t!(
-                "tui.networks.changed",
-                level = crate::ui::llm_http_version_label(&normalized)
-            )
-            .into_owned(),
-        );
+        self.runtime.store_config(config);
+        match self.runtime.set_llm_http_version(&normalized) {
+            Ok(()) => self.push_agent_message(
+                t!(
+                    "tui.networks.changed",
+                    level = crate::ui::llm_http_version_label(&normalized)
+                )
+                .into_owned(),
+            ),
+            Err(err) => {
+                self.push_agent_message(t!("tui.networks.failed", err = err).into_owned())
+            }
+        }
     }
 
     pub(super) fn open_chat_picker(&mut self) {
