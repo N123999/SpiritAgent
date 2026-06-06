@@ -72,6 +72,7 @@ export function WorkspaceGitTab({
   latestChangesPaneHeightPxRef.current = changesPaneHeightPx;
   const [isResizingSplit, setIsResizingSplit] = useState(false);
   const splitDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const hasInitializedSplitFromStorageRef = useRef(false);
   const historyLoadMoreInFlightRef = useRef(false);
   const hasLoadedWorkingTreeRef = useRef(false);
 
@@ -91,13 +92,22 @@ export function WorkspaceGitTab({
       return;
     }
     const syncDefaultHeight = (): void => {
+      const containerHeight = container.clientHeight;
+      const panelHidden = container.closest("[hidden]") !== null;
+      if (containerHeight <= 0 || panelHidden) {
+        return;
+      }
       setChangesPaneHeightPx((prev) => {
-        if (prev !== null) {
-          return clampChangesPaneHeight(prev);
+        const storedRatio = readGitChangesPaneRatio(containerHeight);
+        const next = !hasInitializedSplitFromStorageRef.current
+          ? clampChangesPaneHeight(containerHeight * storedRatio)
+          : prev !== null
+            ? clampChangesPaneHeight(prev)
+            : clampChangesPaneHeight(containerHeight * storedRatio);
+        if (!hasInitializedSplitFromStorageRef.current) {
+          hasInitializedSplitFromStorageRef.current = true;
         }
-        return clampChangesPaneHeight(
-          container.clientHeight * readGitChangesPaneRatio(container.clientHeight),
-        );
+        return next;
       });
     };
     syncDefaultHeight();
