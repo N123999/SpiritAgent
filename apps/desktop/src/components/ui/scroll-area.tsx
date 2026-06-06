@@ -7,6 +7,7 @@ import {
   Viewport,
 } from "@radix-ui/react-scroll-area";
 
+import { useScrollAreaMotionSync } from "@/lib/scroll-area-motion-sync";
 import { cn } from "@/lib/utils";
 
 const ScrollBar = React.forwardRef<
@@ -46,6 +47,20 @@ const ScrollArea = React.forwardRef<
     },
     ref,
   ) => {
+    const rootRef = React.useRef<React.ComponentRef<typeof Root>>(null);
+    const setRootRef = React.useCallback(
+      (node: React.ComponentRef<typeof Root> | null) => {
+        rootRef.current = node;
+        if (typeof ref === "function") {
+          ref(node);
+        } else if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref],
+    );
+    useScrollAreaMotionSync(rootRef);
+
     const viewportChildClass =
       scrollbars === "horizontal"
         ? "[&>div]:!block [&>div]:!min-h-0 [&>div]:min-w-0 [&>div]:!w-max"
@@ -55,7 +70,7 @@ const ScrollArea = React.forwardRef<
 
     return (
       <Root
-        ref={ref}
+        ref={setRootRef}
         type={type}
         scrollHideDelay={scrollHideDelay}
         className={cn("relative min-w-0 overflow-hidden", className)}
