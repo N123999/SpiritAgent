@@ -196,6 +196,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     api_base: api_base.clone(),
                     provider,
                     reasoning_effort: reasoning_effort.clone(),
+                    context_length: None,
                     extra,
                 });
                 if cfg.image_generation_model.is_none()

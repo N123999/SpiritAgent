@@ -114,6 +114,12 @@ pub struct ModelProfile {
         skip_serializing_if = "Option::is_none"
     )]
     pub reasoning_effort: Option<String>,
+    #[serde(
+        rename = "contextLength",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_length: Option<u64>,
     #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
     pub extra: Map<String, Value>,
 }
@@ -252,6 +258,7 @@ impl Default for AppConfig {
                 api_base: DEFAULT_API_BASE.to_string(),
                 provider: None,
                 reasoning_effort: None,
+                context_length: None,
                 extra: Map::new(),
             }],
             active_model: "gpt-4o-mini".to_string(),
@@ -339,6 +346,7 @@ fn deserialize_config(content: &str, path: &Path) -> Result<AppConfig> {
                 api_base: legacy.api_base.clone(),
                 provider: None,
                 reasoning_effort: None,
+                context_length: None,
                 extra: Map::new(),
             })
             .collect(),
@@ -621,6 +629,7 @@ mod tests {
             api_base: "https://api.moonshot.cn/v1".to_string(),
             provider: Some(super::ModelProvider::Moonshot),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::new(),
         };
         let mut kimi_with_image = kimi_without_capabilities.clone();
@@ -633,6 +642,7 @@ mod tests {
             api_base: "https://api.deepseek.com/v1".to_string(),
             provider: Some(super::ModelProvider::Deepseek),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::new(),
         };
         let custom = super::ModelProfile {
@@ -640,6 +650,7 @@ mod tests {
             api_base: "https://example.invalid/v1".to_string(),
             provider: Some(super::ModelProvider::Custom),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::new(),
         };
 
@@ -656,6 +667,7 @@ mod tests {
             api_base: "https://api.deepseek.com/v1".to_string(),
             provider: Some(super::ModelProvider::Deepseek),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::new(),
         };
         deepseek.extra.insert(
@@ -668,6 +680,7 @@ mod tests {
             api_base: "https://example.invalid/v1".to_string(),
             provider: Some(super::ModelProvider::Custom),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::new(),
         };
         custom
@@ -873,6 +886,59 @@ mod tests {
 
         assert_eq!(active.transport_kind(), super::ModelTransportKind::Anthropic);
         assert_eq!(active.reasoning_effort.as_deref(), Some("max"));
+    }
+
+    #[test]
+    fn roundtrips_model_context_length_field() {
+        let config = r#"
+{
+  "models": [
+    {
+      "name": "custom-model",
+      "apiBase": "https://example.invalid/v1",
+      "provider": "custom",
+      "contextLength": 128000
+    }
+  ],
+  "activeModel": "custom-model"
+}
+"#;
+
+        let parsed = deserialize_config(config, Path::new("config.json")).expect("parse config");
+        let active = parsed.active_model_profile().expect("active model");
+        assert_eq!(active.context_length, Some(128_000));
+
+        let serialized = serialize_config(&parsed).expect("serialize config");
+        let json: Value = serde_json::from_str(&serialized).expect("json value");
+        assert_eq!(
+            json.get("models")
+                .and_then(Value::as_array)
+                .and_then(|models| models.first())
+                .and_then(|model| model.get("contextLength"))
+                .and_then(Value::as_u64),
+            Some(128_000)
+        );
+
+        let without_context = super::ModelProfile {
+            name: "plain".to_string(),
+            api_base: "https://example.invalid/v1".to_string(),
+            provider: Some(super::ModelProvider::Custom),
+            reasoning_effort: None,
+            context_length: None,
+            extra: serde_json::Map::new(),
+        };
+        let mut cfg = super::AppConfig::default();
+        cfg.models = vec![without_context];
+        let serialized_without = serialize_config(&cfg).expect("serialize config");
+        let json_without: Value = serde_json::from_str(&serialized_without).expect("json value");
+        assert_eq!(
+            json_without
+                .get("models")
+                .and_then(Value::as_array)
+                .and_then(|models| models.first())
+                .and_then(|model| model.get("contextLength")),
+            None
+        );
     }
 }
 

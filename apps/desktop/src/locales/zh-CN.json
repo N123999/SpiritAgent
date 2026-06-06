@@ -531,6 +531,7 @@
     "runtimeBusyDeleteSkill": "当前已有回复或审批在进行，请稍后再删除 Skill。",
     "apiKeyRequired": "API Key 不能为空。",
     "modelNameRequired": "模型名称不能为空。",
+    "contextLengthInvalid": "上下文长度必须是正整数。",
     "modelExists": "模型已存在：{{name}}",
     "modelNotFound": "模型不存在：{{name}}",
     "cannotDeleteActiveModel": "不能删除当前模型，请先切换到其他模型。",

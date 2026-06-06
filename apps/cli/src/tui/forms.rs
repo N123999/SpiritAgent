@@ -465,6 +465,7 @@ impl TuiShell {
                 api_base: parsed.api_base.clone(),
                 provider: Some(parsed.provider),
                 reasoning_effort: None,
+                context_length: None,
                 extra,
             });
             if let Err(err) = self

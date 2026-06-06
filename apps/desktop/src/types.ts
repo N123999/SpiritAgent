@@ -173,6 +173,8 @@ export interface AddModelRequest {
   provider?: DesktopModelProvider;
   transportKind?: DesktopTransportKind;
   capabilities?: DesktopModelCapability[];
+  /** 可选；正整数；用于上下文 usage 圆环分母等。 */
+  contextLength?: number;
 }
 
 export interface RemoveModelRequest {
@@ -752,6 +754,8 @@ export interface ModelProfileSnapshot {
   provider?: DesktopModelProvider;
   /** 传输族；当前主要用于区分 Anthropic 与 OpenAI-compatible。 */
   transportKind?: DesktopTransportKind;
+  /** 用户配置的模型上下文长度（token）；优先于 catalog 解析。 */
+  contextLength?: number;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
   keyConfigured?: boolean;
 }

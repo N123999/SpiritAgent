@@ -12,6 +12,15 @@ export interface ContextUsageModelProfile {
   apiBase: string;
   provider?: DesktopModelProvider;
   transportKind?: DesktopTransportKind;
+  contextLength?: number;
+}
+
+export function parseModelContextLength(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    return undefined;
+  }
+
+  return value;
 }
 
 const CONTEXT_USAGE_PROVIDERS = new Set<DesktopModelProvider>([
@@ -27,7 +36,16 @@ export function resolveModelContextLength(
   activeModel: ContextUsageModelProfile | undefined,
   catalogHints: DesktopModelCatalogHint[] | undefined,
 ): number | undefined {
-  if (!activeModel || !supportsContextUsageProvider(activeModel.provider)) {
+  if (!activeModel) {
+    return undefined;
+  }
+
+  const profileLength = parseModelContextLength(activeModel.contextLength);
+  if (profileLength !== undefined) {
+    return profileLength;
+  }
+
+  if (!supportsContextUsageProvider(activeModel.provider)) {
     return undefined;
   }
 

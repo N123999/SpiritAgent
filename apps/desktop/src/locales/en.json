@@ -531,6 +531,7 @@
     "runtimeBusyDeleteSkill": "A response or approval is currently in progress. Please try deleting Skill later.",
     "apiKeyRequired": "API Key cannot be empty.",
     "modelNameRequired": "Model name cannot be empty.",
+    "contextLengthInvalid": "Context length must be a positive integer.",
     "modelExists": "Model already exists: {{name}}",
     "modelNotFound": "Model not found: {{name}}",
     "cannotDeleteActiveModel": "Cannot delete the current model. Please switch to another model first.",

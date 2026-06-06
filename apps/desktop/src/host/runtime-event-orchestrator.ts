@@ -24,6 +24,7 @@ import {
 import i18n from '../lib/i18n-host.js';
 import {
   buildContextUsagePercent,
+  parseModelContextLength,
   resolveModelContextLength,
   supportsContextUsageProvider,
 } from '../lib/context-usage.js';
@@ -286,12 +287,12 @@ export class DesktopRuntimeEventOrchestrator {
         );
         if (
           !activeModel
-          || !supportsContextUsageProvider(activeModel.provider)
           || contextLength === undefined
         ) {
           if (
             activeModel
             && supportsContextUsageProvider(activeModel.provider)
+            && parseModelContextLength(activeModel.contextLength) === undefined
             && contextLength === undefined
           ) {
             this.options.refreshContextUsageCatalog?.({

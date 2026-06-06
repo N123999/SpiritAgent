@@ -3306,6 +3306,7 @@ mod tests {
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
                     reasoning_effort: None,
+                    context_length: None,
                     extra: Default::default(),
                 },
                 ModelProfile {
@@ -3313,6 +3314,7 @@ mod tests {
                     api_base: DEFAULT_API_BASE.to_string(),
                     provider: None,
                     reasoning_effort: None,
+                    context_length: None,
                     extra: Default::default(),
                 },
             ],
@@ -3429,6 +3431,7 @@ mod tests {
             api_base: DEFAULT_API_BASE.to_string(),
             provider: None,
             reasoning_effort: None,
+            context_length: None,
             extra: Default::default(),
         });
 
@@ -3482,6 +3485,7 @@ mod tests {
             api_base: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             provider: Some(ModelProvider::Volcengine),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::from_iter([(
                 "capabilities".to_string(),
                 json!(["videoGeneration"]),
@@ -3526,6 +3530,7 @@ mod tests {
             api_base: "https://images.example.invalid/v1".to_string(),
             provider: Some(ModelProvider::Custom),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::from_iter([(
                 "capabilities".to_string(),
                 json!(["imageGeneration"]),
@@ -3661,6 +3666,7 @@ mod tests {
             api_base: DEFAULT_API_BASE.to_string(),
             provider: None,
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::from_iter([(
                 "capabilities".to_string(),
                 json!(["imageGeneration"]),

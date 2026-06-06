@@ -37,6 +37,7 @@ import {
 } from '@spirit-agent/host-internal';
 
 import { resolveDesktopAgentMode, type DesktopAgentMode } from '../lib/agent-mode.js';
+import { parseModelContextLength } from '../lib/context-usage.js';
 
 import type {
   ConversationMessageSnapshot,
@@ -614,6 +615,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
           const transportKind = normalizeDesktopTransportKind(model.transportKind, provider);
           const capabilities = normalizeModelCapabilities(model.capabilities);
           const supportedReasoningEfforts = normalizeSupportedReasoningEfforts(model.supportedReasoningEfforts);
+          const contextLength = parseModelContextLength(model.contextLength);
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
@@ -627,6 +629,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(capabilities ? { capabilities } : {}),
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
+            ...(contextLength !== undefined ? { contextLength } : {}),
           };
         })
     : [];

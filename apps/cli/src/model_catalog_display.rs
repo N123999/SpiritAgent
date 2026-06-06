@@ -221,6 +221,7 @@ mod tests {
             api_base: "https://api.openai.com/v1".to_string(),
             provider: Some(ModelProvider::Openai),
             reasoning_effort: None,
+            context_length: None,
             extra: serde_json::Map::new(),
         }];
         let titles = build_model_display_titles(&models);

@@ -475,6 +475,7 @@ impl TuiShell {
             api_base: api_base.to_string(),
             provider,
             reasoning_effort: None,
+            context_length: None,
             extra,
         });
         config.active_model = name.to_string();
