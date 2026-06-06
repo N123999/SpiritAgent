@@ -18,6 +18,10 @@
     "./model-display-name": {
       "types": "./dist/model-display-name.d.ts",
       "default": "./dist/model-display-name.js"
+    },
+    "./shell-tool-result": {
+      "types": "./dist/shell-tool-result.d.ts",
+      "default": "./dist/shell-tool-result.js"
     }
   },
   "files": [

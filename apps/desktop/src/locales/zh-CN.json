@@ -732,6 +732,8 @@
     "videoGenFailed": "视频生成失败",
     "videoGenComplete": "视频生成完成",
     "commandPrefix": "命令:",
+    "shellOutputEmpty": "（无输出）",
+    "shellOutputTruncated": "输出已截断。",
     "lspErrorCount_one": "{{count}} 个错误",
     "lspErrorCount_other": "{{count}} 个错误",
     "lspWarningCount_one": "{{count}} 个警告",

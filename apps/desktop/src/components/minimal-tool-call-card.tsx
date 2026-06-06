@@ -29,7 +29,7 @@ import {
   toolHasExpandableContent,
   type ShellToolSummaryParts,
 } from "@/lib/tool-call-display";
-import { parseShellCommand } from "@/lib/shell-tool-display";
+import { parseShellCommand, parseShellToolResult } from "@/lib/shell-tool-display";
 import {
   shouldShowLspDiagnosticsOnToolCard,
   toolCardFileNameDetailClass,
@@ -310,15 +310,33 @@ function ShellToolExpandedBody({
   tool: ToolBlockSnapshot;
   command: string | undefined;
 }) {
+  const { t } = useTranslation();
+  const shellOutput = useMemo(() => {
+    const parsed = parseShellToolResult(tool.outputExcerpt);
+    if (parsed) {
+      return { text: parsed.output, truncated: parsed.truncated === true };
+    }
+    const raw = tool.outputExcerpt?.trim();
+    return raw ? { text: raw, truncated: false } : null;
+  }, [tool.outputExcerpt]);
   const detailLines = shellToolExpandableDetailLines(tool, command);
   const showArgsExcerpt = !command && Boolean(tool.argsExcerpt?.trim());
 
   return (
     <div className="space-y-2">
-      {tool.outputExcerpt ? (
-        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-border/20 bg-muted/15 p-2 font-mono text-xs leading-relaxed text-muted-foreground">
-          {tool.outputExcerpt}
-        </pre>
+      {shellOutput ? (
+        <div className="space-y-1">
+          {shellOutput.text.length > 0 ? (
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-border/20 bg-muted/15 p-2 font-mono text-xs leading-relaxed text-muted-foreground">
+              {shellOutput.text}
+            </pre>
+          ) : (
+            <p className="text-xs leading-relaxed text-muted-foreground/70">{t("tool.shellOutputEmpty")}</p>
+          )}
+          {shellOutput.truncated ? (
+            <p className="text-xs leading-relaxed text-muted-foreground/70">{t("tool.shellOutputTruncated")}</p>
+          ) : null}
+        </div>
       ) : null}
       {detailLines.length > 0 ? (
         <ul className="list-disc space-y-0.5 pl-3.5 text-xs leading-relaxed text-muted-foreground">

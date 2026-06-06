@@ -717,7 +717,7 @@ export function buildDreamCollectorSystemMessage(): string {
 }
 
 function buildShellToolDescription(shellDisplayName: string): string {
-  return `Execute a shell command in the workspace directory using the current shell: ${shellDisplayName}. Always provide a short user-facing reason explaining why the command is needed. Do not assume Bash or generic Unix syntax unless this shell is actually POSIX compatible. This is high risk and may require user approval.`;
+  return `Execute a shell command in the workspace directory using the current shell: ${shellDisplayName}. Always provide a short user-facing reason explaining why the command is needed. Do not assume Bash or generic Unix syntax unless this shell is actually POSIX compatible. This is high risk and may require user approval. Returns a JSON object with terminal, workspace, command, exitCode, and combined output (stdout+stderr).`;
 }
 
 function functionTool(name: string, description: string, parameters: JsonObject): JsonValue {

@@ -61,6 +61,10 @@ import {
   parseManagedGeneratedAssetReference,
 } from './managed-generated-asset.js';
 import { detectSupportedVideoFile, hasSupportedVideoExtension } from './video-file-support.js';
+import {
+  buildRunShellCommandToolResult,
+  serializeRunShellCommandToolResult,
+} from '@spirit-agent/agent-core';
 
 const exec = promisify(execCallback);
 
@@ -72,7 +76,6 @@ const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
-const MAX_COMMAND_OUTPUT_CHARS = 16_000;
 const MAX_GLOB_RESULTS = 1000;
 const MAX_SEARCH_RESULTS = 80;
 const MAX_SEARCH_MATCHES_PER_FILE = 3;
@@ -1669,18 +1672,16 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       code = typeof ex.code === 'number' ? ex.code : -1;
     }
 
-    let combined = formatShellToolTranscript(
-      shell.shellDisplayName,
-      this.workspaceRoot,
-      command,
-      code,
-      stdout,
-      stderr,
+    return serializeRunShellCommandToolResult(
+      buildRunShellCommandToolResult({
+        terminal: shell.shellDisplayName,
+        workspace: this.workspaceRoot,
+        command,
+        exitCode: code,
+        stdout,
+        stderr,
+      }),
     );
-    if ([...combined].length > MAX_COMMAND_OUTPUT_CHARS) {
-      combined = `${truncateChars(combined, MAX_COMMAND_OUTPUT_CHARS)}\n\n...<输出已截断>`;
-    }
-    return combined;
   }
 
   private createImageToolOutput(
@@ -2617,54 +2618,6 @@ function replaceSingleMatchAllowingNewlineDifferences(
   const prefix = Buffer.from(source, 'utf8').subarray(0, sourceStart).toString('utf8');
   const suffix = Buffer.from(source, 'utf8').subarray(sourceEnd).toString('utf8');
   return { updated: `${prefix}${replacement}${suffix}` };
-}
-
-function combineShellToolOutput(stdout: string, stderr: string): string {
-  const hasStdout = stdout.length > 0;
-  const hasStderr = stderr.length > 0;
-  if (!hasStdout && !hasStderr) {
-    return '';
-  }
-  if (!hasStdout) {
-    return stderr;
-  }
-  if (!hasStderr) {
-    return stdout;
-  }
-  const separator = stdout.endsWith('\n') || stderr.startsWith('\n') ? '' : '\n';
-  return `${stdout}${separator}${stderr}`;
-}
-
-function formatShellToolTranscript(
-  shellName: string,
-  workspace: string,
-  command: string,
-  exitCode: number,
-  stdout: string,
-  stderr: string,
-): string {
-  let s = '';
-  s += `终端      ${shellName}\n`;
-  s += `工作目录  ${workspace}\n`;
-  s += `命令      ${command}\n`;
-  s += `退出码    ${exitCode}\n`;
-  s += '\n';
-  s += appendShellSectionChunk('输出', combineShellToolOutput(stdout, stderr), '（无输出）');
-  return s;
-}
-
-function appendShellSectionChunk(title: string, body: string, emptyPlaceholder: string): string {
-  let chunk = `── ${title} ──\n`;
-  if (body.trim().length === 0) {
-    chunk += `${emptyPlaceholder}\n\n`;
-  } else {
-    chunk += body;
-    if (!body.endsWith('\n')) {
-      chunk += '\n';
-    }
-    chunk += '\n';
-  }
-  return chunk;
 }
 
 function truncateChars(value: string, maxChars: number): string {

@@ -732,6 +732,8 @@
     "videoGenFailed": "Video generation failed",
     "videoGenComplete": "Video generation complete",
     "commandPrefix": "Command:",
+    "shellOutputEmpty": "(no output)",
+    "shellOutputTruncated": "Output was truncated.",
     "lspErrorCount_one": "{{count}} error",
     "lspErrorCount_other": "{{count}} errors",
     "lspWarningCount_one": "{{count}} warning",

@@ -1,5 +1,19 @@
+import {
+  parseRunShellCommandToolResult,
+  type RunShellCommandToolResult,
+} from "@spirit-agent/agent-core/shell-tool-result";
+
 import i18n from "@/lib/i18n";
 import type { ToolBlockSnapshot } from "@/types";
+
+export function parseShellToolResult(
+  outputExcerpt: string | undefined,
+): RunShellCommandToolResult | null {
+  if (!outputExcerpt?.trim()) {
+    return null;
+  }
+  return parseRunShellCommandToolResult(outputExcerpt);
+}
 
 const COMMAND_LINE_PREFIX = i18n.t('tool.commandPrefix');
 
