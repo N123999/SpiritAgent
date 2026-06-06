@@ -73,6 +73,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
     return parseOpenRouterModelEntriesPayload(body);
   }
 
+  if (provider === 'volcengine') {
+    return parseVolcengineModelEntriesPayload(body);
+  }
+
   if (typeof body !== 'object' || body === null || !('data' in body)) {
     return [];
   }
@@ -131,6 +135,98 @@ export function parseMoonshotModelEntriesPayload(body: unknown): ProviderListedM
     if (contextLength !== undefined) {
       modelEntry.contextLength = contextLength;
     }
+    entries.push(modelEntry);
+  }
+  return entries;
+}
+
+const SKIPPED_VOLCENGINE_MODEL_STATUSES = new Set(['shutdown', 'retiring']);
+
+function readVolcengineModalities(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const modalities: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim().length > 0) {
+      modalities.push(item.trim().toLowerCase());
+    }
+  }
+  return modalities;
+}
+
+function readVolcengineInputModalities(record: Record<string, unknown>): string[] {
+  const modalities = asRecord(record.modalities);
+  return readVolcengineModalities(modalities?.input_modalities);
+}
+
+/**
+ * Volcengine Ark `GET /api/v3/models`: OpenAI-shaped list with `domain`, `modalities`, `status`.
+ */
+export function parseVolcengineModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('data' in body)) {
+    return [];
+  }
+  const raw = (body as { data?: unknown }).data;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const id = record.id;
+    if (typeof id !== 'string' || id.trim().length === 0) {
+      continue;
+    }
+
+    const status = typeof record.status === 'string' ? record.status.trim().toLowerCase() : '';
+    if (status && SKIPPED_VOLCENGINE_MODEL_STATUSES.has(status)) {
+      continue;
+    }
+
+    const domain = typeof record.domain === 'string' ? record.domain.trim() : '';
+    const modelEntry: ProviderListedModelEntry = { id: id.trim() };
+
+    const displayName = typeof record.name === 'string' ? record.name.trim() : '';
+    if (displayName.length > 0) {
+      modelEntry.displayName = displayName;
+    }
+
+    const tokenLimits = asRecord(record.token_limits);
+    const contextWindow = readPositiveIntegerModelTrait(
+      tokenLimits ?? {},
+      'context_window',
+    );
+    if (contextWindow !== undefined) {
+      modelEntry.contextLength = contextWindow;
+    }
+
+    switch (domain) {
+      case 'VideoGeneration':
+        modelEntry.supportsVideoGeneration = true;
+        break;
+      case 'ImageGeneration':
+        modelEntry.supportsImageGeneration = true;
+        break;
+      case 'VLM': {
+        const inputModalities = readVolcengineInputModalities(record);
+        if (inputModalities.includes('image')) {
+          modelEntry.supportsImageInput = true;
+        }
+        if (inputModalities.includes('video')) {
+          modelEntry.supportsVideoInput = true;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
     entries.push(modelEntry);
   }
   return entries;
@@ -526,6 +622,10 @@ export async function listProviderModels(
     return listOpenRouterModels(options);
   }
 
+  if (options.provider === 'volcengine') {
+    return listVolcengineModels(options);
+  }
+
   return listOpenAiCompatibleModels(options);
 }
 
@@ -551,6 +651,12 @@ export async function listOpenRouterModels(
   options: ListOpenAiCompatibleModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
   return listOpenAiCompatibleModelsForProvider(options, 'openrouter');
+}
+
+export async function listVolcengineModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  return listOpenAiCompatibleModelsForProvider(options, 'volcengine');
 }
 
 export async function listProviderModelIds(

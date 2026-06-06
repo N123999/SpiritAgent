@@ -8,6 +8,7 @@ import {
   parseMoonshotModelEntriesPayload,
   parseOpenRouterModelEntriesPayload,
   parseVercelAiGatewayModelEntriesPayload,
+  parseVolcengineModelEntriesPayload,
 } from './openai-models.js';
 
 test('parseAnthropicModelEntriesPayload extracts image input and supported effort levels', () => {
@@ -270,6 +271,94 @@ test('parseOpenRouterModelEntriesPayload extracts display metadata and pricing',
         outputPerTokenUsd: '0.000015',
         requestPerCallUsd: '0',
       },
+    },
+  ]);
+});
+
+test('parseVolcengineModelEntriesPayload maps domain and skips shutdown models', () => {
+  const entries = parseVolcengineModelEntriesPayload({
+    object: 'list',
+    data: [
+      {
+        id: 'doubao-1-5-pro-32k-250115',
+        name: 'doubao-1-5-pro-32k',
+        domain: 'LLM',
+        token_limits: { context_window: 131072 },
+      },
+      {
+        id: 'doubao-seed-1-6-250615',
+        name: 'doubao-seed-1-6',
+        domain: 'VLM',
+        modalities: { input_modalities: ['text', 'image', 'video'], output_modalities: ['text'] },
+        token_limits: { context_window: 262144 },
+      },
+      {
+        id: 'doubao-seedance-2-0-260128',
+        name: 'doubao-seedance-2-0',
+        domain: 'VideoGeneration',
+      },
+      {
+        id: 'doubao-seedream-4-0-250828',
+        name: 'doubao-seedream-4-0',
+        domain: 'ImageGeneration',
+      },
+      {
+        id: 'doubao-pro-32k-240828',
+        name: 'doubao-pro-32k',
+        domain: 'LLM',
+        status: 'Shutdown',
+      },
+      {
+        id: 'doubao-embedding-text-240515',
+        name: 'doubao-embedding',
+        domain: 'Embedding',
+        status: 'Retiring',
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'doubao-1-5-pro-32k-250115',
+      displayName: 'doubao-1-5-pro-32k',
+      contextLength: 131072,
+    },
+    {
+      id: 'doubao-seed-1-6-250615',
+      displayName: 'doubao-seed-1-6',
+      supportsImageInput: true,
+      supportsVideoInput: true,
+      contextLength: 262144,
+    },
+    {
+      id: 'doubao-seedance-2-0-260128',
+      displayName: 'doubao-seedance-2-0',
+      supportsVideoGeneration: true,
+    },
+    {
+      id: 'doubao-seedream-4-0-250828',
+      displayName: 'doubao-seedream-4-0',
+      supportsImageGeneration: true,
+    },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload routes volcengine to typed parser', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload({
+    data: [
+      {
+        id: 'doubao-seedance-2-0-260128',
+        name: 'doubao-seedance-2-0',
+        domain: 'VideoGeneration',
+      },
+    ],
+  }, 'volcengine');
+
+  assert.deepEqual(entries, [
+    {
+      id: 'doubao-seedance-2-0-260128',
+      displayName: 'doubao-seedance-2-0',
+      supportsVideoGeneration: true,
     },
   ]);
 });
