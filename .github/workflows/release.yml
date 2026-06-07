@@ -242,14 +242,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          notes="$(cat <<EOF
-          Spirit Agent ${RELEASE_TAG}
-
-          This release includes CLI and Desktop artifacts for Windows, Linux, and macOS.
-
-          Desktop artifacts are unsigned unless signing secrets are configured.
-          EOF
-          )"
           mapfile -d '' -t assets < <(find release-assets -maxdepth 1 -type f -print0)
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No release assets found under release-assets" >&2
@@ -258,5 +250,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
-            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TAG" --notes "$notes"
+            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TAG" --generate-notes
           fi
