@@ -151,6 +151,7 @@ import {
   shouldTightenAfterPreviousMetaMessage,
 } from "@/lib/message-card-spacing";
 import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
+import { ActionPickerDialog } from "@/components/action-picker-dialog";
 import { WorkspaceFilePickerDialog } from "@/components/workspace-file-picker-dialog";
 import { UserMessageBubble } from "@/components/user-message-bubble";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
@@ -193,6 +194,10 @@ import {
   modelDisplayTitleFromMap,
 } from "@/lib/model-catalog-detail";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
+import {
+  isNewSessionAction,
+  type ActionPaletteItem,
+} from "@/lib/action-palette";
 import {
   buildSkillSlashSuggestions,
   CREATE_SKILL_SLASH_ALIAS,
@@ -2309,6 +2314,10 @@ export default function App() {
         return;
       }
       event.preventDefault();
+      if (event.shiftKey) {
+        setActionPickerOpen(true);
+        return;
+      }
       setFilePickerOpen(true);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -2321,6 +2330,7 @@ export default function App() {
   const [fileReferenceSelectedIndex, setFileReferenceSelectedIndex] = useState(-1);
   const [dismissedFileReferenceKey, setDismissedFileReferenceKey] = useState<string | null>(null);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const [branchCheckoutDialogOpen, setBranchCheckoutDialogOpen] = useState(false);
   const [branchCheckoutBlockedByChanges, setBranchCheckoutBlockedByChanges] = useState(false);
   const pendingComposerSendRef = useRef<{
@@ -2614,6 +2624,59 @@ export default function App() {
       applySlashSuggestion(`${suggestion.alias} `);
     },
     [applyLoopSlash, applyPlanSlash, applyAskSlash],
+  );
+
+  const ensureConversationSurface = useCallback(() => {
+    setLastNonSettingsSurface("conversation");
+    setActiveSurface("conversation");
+  }, []);
+
+  const isActionPaletteItemDisabled = useCallback(
+    (item: ActionPaletteItem) => {
+      if (!runtime.busyAction) {
+        return false;
+      }
+      if (isNewSessionAction(item)) {
+        return true;
+      }
+      return item.kind === "log-session" || item.kind === "compact";
+    },
+    [runtime.busyAction],
+  );
+
+  const runActionPaletteItem = useCallback(
+    (item: ActionPaletteItem) => {
+      ensureConversationSurface();
+      if (isNewSessionAction(item)) {
+        handleNewSession();
+        return;
+      }
+      if (item.kind === "loop") {
+        applyLoopSlash();
+        return;
+      }
+      if (item.kind === "plan") {
+        applyPlanSlash();
+        return;
+      }
+      if (item.kind === "ask") {
+        applyAskSlash();
+        return;
+      }
+      if (item.kind === "log-session" || item.kind === "compact") {
+        void runtime.sendMessage({ text: item.alias });
+        return;
+      }
+      applySlashSuggestion(`${item.alias} `);
+    },
+    [
+      applyAskSlash,
+      applyLoopSlash,
+      applyPlanSlash,
+      ensureConversationSurface,
+      handleNewSession,
+      runtime,
+    ],
   );
 
   const applyFileReferenceSuggestion = (path: string) => {
@@ -3631,6 +3694,13 @@ export default function App() {
         )}
         </div>
       </div>
+
+      <ActionPickerDialog
+        open={actionPickerOpen}
+        onOpenChange={setActionPickerOpen}
+        onSelect={runActionPaletteItem}
+        isItemDisabled={isActionPaletteItemDisabled}
+      />
 
       <WorkspaceFilePickerDialog
         open={filePickerOpen}
