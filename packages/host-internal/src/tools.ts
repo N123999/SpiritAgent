@@ -25,6 +25,11 @@ import {
 
 import { applyDiff } from './apply-diff.js';
 import {
+  defaultShellForPty,
+  shellCommandParameterDescriptionForResolvedShell,
+  shellDisplayNameForResolvedShell,
+} from './default-terminal-shell.js';
+import {
   readHostFileSnapshot,
   type HostFileChangeKind,
   type HostFileChangeObserver,
@@ -454,19 +459,10 @@ export function detectShellForTools(): HostBuiltinToolDefinitionEnvironment {
     };
   }
 
-  const comspec = (process.env.COMSPEC ?? 'cmd.exe').toLowerCase();
-  if (comspec.includes('powershell') || comspec.includes('pwsh')) {
-    return {
-      shellDisplayName: 'Windows PowerShell',
-      shellCommandParameterDescription:
-        'The command to execute in Windows PowerShell. Prefer PowerShell syntax such as Get-ChildItem, Select-String, Get-Content, Set-Location, and Test-Path. Do not assume Bash-only syntax.',
-    };
-  }
-
+  const { file } = defaultShellForPty();
   return {
-    shellDisplayName: 'Command Prompt (cmd.exe)',
-    shellCommandParameterDescription:
-      'The command to execute in Command Prompt (cmd.exe). Prefer cmd.exe syntax such as dir, type, where, findstr, and cd. Do not assume Bash commands like find, ls, grep, or cat.',
+    shellDisplayName: shellDisplayNameForResolvedShell(file),
+    shellCommandParameterDescription: shellCommandParameterDescriptionForResolvedShell(file),
   };
 }
 
@@ -1654,6 +1650,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   private async executeShell(command: string): Promise<string> {
     const shell = this.toolDefinitionEnvironment();
+    const { file: shellExecutable } = defaultShellForPty();
     let stdout = '';
     let stderr = '';
     let code = 0;
@@ -1662,6 +1659,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         cwd: this.workspaceRoot,
         maxBuffer: 8 * 1024 * 1024,
         windowsHide: true,
+        shell: shellExecutable,
       });
       stdout = result.stdout ?? '';
       stderr = result.stderr ?? '';

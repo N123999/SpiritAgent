@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { shell } from 'electron';
 
+import { defaultShellForPty } from '@spirit-agent/host-internal/default-terminal-shell';
+
 function assertDirectory(cwd: string): string {
   const resolved = path.resolve(cwd);
   if (!existsSync(resolved)) {
@@ -14,7 +16,8 @@ function assertDirectory(cwd: string): string {
 
 /**
  * 在系统终端中打开目录（独立窗口，不嵌入）。
- * Windows：优先 `wt -d`（常见安装路径或 PATH），失败则 `cmd /c start` 在新控制台打开。
+ * Windows：优先 `wt -d`（常见安装路径或 PATH），Shell 与集成终端相同（pwsh → powershell → cmd）；
+ * 失败则 `cmd /c start` 在新控制台打开同一 Shell。
  * macOS：`Terminal.app`，子进程工作目录为工作区。
  * Linux：gnome-terminal、konsole、`x-terminal-emulator`（cwd）；均不可用时退回打开文件夹。
  */
@@ -22,6 +25,7 @@ export function openSystemTerminalInDirectory(cwd: string): void {
   const dir = assertDirectory(cwd);
 
   if (process.platform === 'win32') {
+    const { file: shellFile } = defaultShellForPty();
     const wtCandidates = [
       path.join(process.env.LocalAppData || '', 'Microsoft', 'Windows Apps', 'wt.exe'),
       path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Windows Terminal', 'wt.exe'),
@@ -32,7 +36,7 @@ export function openSystemTerminalInDirectory(cwd: string): void {
       path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
 
     const fallback = (): void => {
-      spawn(comspec, ['/c', 'start', '', '/D', dir, 'cmd.exe'], {
+      spawn(comspec, ['/c', 'start', '', '/D', dir, shellFile], {
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
@@ -40,7 +44,7 @@ export function openSystemTerminalInDirectory(cwd: string): void {
     };
 
     const exe = wtFromDisk ?? 'wt.exe';
-    const child = spawn(exe, ['-d', dir], {
+    const child = spawn(exe, ['-d', dir, shellFile], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,

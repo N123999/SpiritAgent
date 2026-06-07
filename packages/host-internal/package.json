@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./default-terminal-shell": {
+      "types": "./dist/default-terminal-shell.d.ts",
+      "default": "./dist/default-terminal-shell.js"
+    },
     "./discovery": {
       "types": "./dist/discovery.d.ts",
       "default": "./dist/discovery.js"
