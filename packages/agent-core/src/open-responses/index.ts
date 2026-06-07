@@ -56,8 +56,13 @@ export {
 export {
   buildGatewayWebSearchTool,
   buildGatewayWebSearchTraceToolEntry,
+  buildGatewayResponsesWebSearchToolRequestEntry,
   shouldUseGatewayWebSearch,
 } from './gateway-web-search.js';
+export {
+  createGatewayWebSearchAwareFetch,
+  mergeGatewayResponsesWebSearchTools,
+} from './gateway-responses-fetch.js';
 export {
   buildProviderWebSearchPromptSection,
   buildWebSearchResponsesTraceToolEntry,

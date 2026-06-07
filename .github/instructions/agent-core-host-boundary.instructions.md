@@ -16,6 +16,7 @@ applyTo: "**/*"
 
 - **不在** `host-internal` 注册可执行 `web_search` 宿主工具（Moonshot `$web_search` 亦不在范围内）。
 - **OpenAI / xAI 官方 Responses**：`@ai-sdk/openai` / `@ai-sdk/xai` 的 `tools.webSearch()`。
+- **Vercel AI Gateway（`vercel-ai-gateway`）Open Responses**：`@ai-sdk/gateway` 的 `createGateway().tools.perplexitySearch()` 注入为 `web_search`；`@ai-sdk/open-responses` 不会在 HTTP 请求体带上 provider tools，须经 `gateway-responses-fetch` 补注入 `{ type: provider, id: gateway.perplexity_search }`。
 - **Alibaba（`alibaba`）双路径**（`alibaba-built-in-tools` + `web-search-eligibility`）：
   - **Chat Completions**：经 `extra_body`（`enable_search`、`enable_thinking`、`enable_code_interpreter`、`search_options` 等）；代码解释器在 Chat API 上要求流式。抓取指定 URL 正文用宿主 `web_fetch`。
   - **Open Responses**：经 HTTP `tools` 注入 `{ type: web_search }`、`code_interpreter`（不含 `web_extractor`；URL 正文用宿主 `web_fetch`）。
