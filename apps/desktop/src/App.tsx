@@ -149,6 +149,7 @@ import {
 import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
 import { UserMessageBubble } from "@/components/user-message-bubble";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
+import { useElementBoxHeight } from "@/hooks/use-element-box-height";
 import { useSubagentViewer } from "@/hooks/useSubagentViewer";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
@@ -238,6 +239,10 @@ const CONVERSATION_MAX_W = "max-w-[min(86vw,44rem)]";
 /** 消息列表、输入区与顶栏横幅共用的水平内边距（侧栏拉宽后列变窄时避免贴窗缘） */
 const CONVERSATION_GUTTER_X = "px-4 sm:px-5";
 const CONVERSATION_GUTTER_NEG_X = "-mx-4 sm:-mx-5";
+/** composer-dock 未量到高度前的滚动床 fallback（原 12rem） */
+const CONVERSATION_COMPOSER_SCROLL_BED_FALLBACK_PX = 192;
+/** 末条消息与 composer 叠层之间可继续下滚的额外留白 */
+const CONVERSATION_SCROLL_BED_EXTRA_PX = 48;
 
 function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReasoningEffort): string {
   return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
@@ -2066,6 +2071,14 @@ export default function App() {
       || pendingApproval.subagentSessionId === snapshot?.subagentViewer?.sessionId
     ),
   );
+  const { ref: composerDockRef, heightPx: composerDockHeightPx } = useElementBoxHeight<HTMLDivElement>();
+  const conversationScrollBedPaddingPx =
+    composerDockHeightPx > 0
+      ? Math.max(
+          CONVERSATION_COMPOSER_SCROLL_BED_FALLBACK_PX,
+          composerDockHeightPx + CONVERSATION_SCROLL_BED_EXTRA_PX,
+        )
+      : CONVERSATION_COMPOSER_SCROLL_BED_FALLBACK_PX;
   const pendingQuestions = runtime.pendingQuestions;
   useLocalFileAttachmentPreviews(
     runtime.composerLocalFileAttachments,
@@ -3164,15 +3177,15 @@ export default function App() {
                 type="hover"
                 scrollHideDelay={450}
               >
-                {/* min-h-full：短内容仍铺满视口；大 pb 为底部透明叠层留出可滚入的「床」，避免正文被输入区挡住 */}
+                {/* min-h-full：短内容仍铺满视口；pb ≥ dock 实测高度 + 留白，审批卡弹出时同步增高 */}
                 <div
                   data-spirit-surface="conversation-scroll-body"
-                  className={cn(
-                    "min-h-full w-full bg-background",
+                  className="min-h-full w-full bg-background"
+                  style={
                     !isEmptySession || subagentViewActive
-                      ? "pb-[calc(12rem+env(safe-area-inset-bottom,0px))]"
-                      : undefined,
-                  )}
+                      ? { paddingBottom: conversationScrollBedPaddingPx }
+                      : undefined
+                  }
                 >
                   {!isEmptySession || subagentViewActive ? (
                     <div
@@ -3293,6 +3306,7 @@ export default function App() {
               </ScrollArea>
 
               <div
+                ref={composerDockRef}
                 data-spirit-surface="composer-dock"
                 className={cn(
                   "pointer-events-none absolute inset-x-0 z-10 bg-transparent",
