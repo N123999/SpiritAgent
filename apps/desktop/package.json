@@ -35,7 +35,8 @@
     "gen:icons": "node scripts/gen-app-icons.mjs",
     "notice": "node scripts/gen-notice.mjs",
     "notice:production": "node scripts/gen-notice.mjs --production",
-    "rebuild:pty": "electron-rebuild -f -w node-pty"
+    "rebuild:pty": "electron-rebuild -f -w node-pty",
+    "build:win-uia-helper": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-win-uia-helper.ps1"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
