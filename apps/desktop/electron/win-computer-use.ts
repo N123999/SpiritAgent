@@ -28,22 +28,30 @@ let stdoutBuffer = '';
 const pendingRequests: PendingRequest[] = [];
 let requestChain: Promise<void> = Promise.resolve();
 
-function resolveHelperExecutablePath(): string {
-  const devPath = path.join(
-    fileURLToPath(new URL('.', import.meta.url)),
-    '../native/win-uia-helper/bin/Release/net8.0-windows/spirit-win-uia.exe',
-  );
-  if (fs.existsSync(devPath)) {
-    return devPath;
-  }
+function resolveDesktopPackageRoot(): string {
+  // Compiled to dist-electron/electron/*.js — native/ lives beside dist-electron/.
+  const electronDir = fileURLToPath(new URL('.', import.meta.url));
+  return path.resolve(electronDir, '../..');
+}
 
-  const packagedPath = path.join(process.resourcesPath, 'native/win-uia-helper/spirit-win-uia.exe');
-  if (fs.existsSync(packagedPath)) {
-    return packagedPath;
+function resolveHelperExecutablePath(): string {
+  const desktopRoot = resolveDesktopPackageRoot();
+  const candidates = [
+    path.join(
+      desktopRoot,
+      'native/win-uia-helper/bin/Release/net8.0-windows/spirit-win-uia.exe',
+    ),
+    path.join(process.resourcesPath, 'native/win-uia-helper/spirit-win-uia.exe'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
 
   throw new Error(
-    `spirit-win-uia.exe not found. Run npm run build:win-uia-helper (checked ${devPath}).`,
+    `spirit-win-uia.exe not found. Run npm run build:win-uia-helper (checked ${candidates.join('; ')}).`,
   );
 }
 
@@ -129,7 +137,7 @@ function sendHelperRequest(
       };
 
       pendingRequests.push(pending);
-      child.stdin.write(`${JSON.stringify(payload)}\n`);
+      child.stdin.write(`${JSON.stringify(payload)}\n`, 'utf8');
     });
   };
 

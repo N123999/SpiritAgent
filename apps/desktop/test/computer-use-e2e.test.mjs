@@ -118,7 +118,7 @@ test('computer use e2e: notepad set_value via UIA tree', async (t) => {
       cmd: 'action',
       ref: editNode.ref,
       action: 'set_value',
-      text: 'Spirit Agent Computer Use',
+      text: '你好，我是 DeepSeek',
     });
     assert.equal(action.ok, true);
     assert.equal(action.data.action, 'set_value');

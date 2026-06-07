@@ -11,12 +11,24 @@ internal sealed class CommandHandler
         return cmd switch
         {
             "ping" => JsonProtocol.Ok(new { pong = true }),
+            "echo_text" => HandleEchoText(root),
             "list_windows" => HandleListWindows(),
             "snapshot" => HandleSnapshot(root),
             "action" => HandleAction(root),
             "shutdown" => JsonProtocol.Ok(),
             _ => JsonProtocol.Error("unknown_cmd", $"Unknown cmd: {cmd}"),
         };
+    }
+
+    private static object HandleEchoText(JsonElement root)
+    {
+        var text = ReadOptionalString(root, "text");
+        if (text == null)
+        {
+            return JsonProtocol.Error("invalid_request", "text is required.");
+        }
+
+        return JsonProtocol.Ok(new { text });
     }
 
     private static object HandleListWindows()

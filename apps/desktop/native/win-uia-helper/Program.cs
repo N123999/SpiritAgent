@@ -11,12 +11,13 @@ internal static class Program
     private static int Main()
     {
         var handler = new CommandHandler();
-        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        using var input = StdioJson.OpenInput();
+        using var output = StdioJson.OpenOutput();
 
         try
         {
             string? line;
-            while ((line = Console.In.ReadLine()) != null)
+            while ((line = input.ReadLine()) != null)
             {
                 if (string.IsNullOrWhiteSpace(line))
                 {
@@ -30,7 +31,7 @@ internal static class Program
                 }
                 catch (JsonException ex)
                 {
-                    WriteResponse(options, JsonProtocol.Error("invalid_json", ex.Message));
+                    StdioJson.WriteLine(output, JsonProtocol.Error("invalid_json", ex.Message));
                     continue;
                 }
 
@@ -38,7 +39,7 @@ internal static class Program
                 {
                     if (!doc.RootElement.TryGetProperty("cmd", out var cmdProp) || cmdProp.ValueKind != JsonValueKind.String)
                     {
-                        WriteResponse(options, JsonProtocol.Error("invalid_request", "Missing cmd field."));
+                        StdioJson.WriteLine(output, JsonProtocol.Error("invalid_request", "Missing cmd field."));
                         continue;
                     }
 
@@ -53,7 +54,7 @@ internal static class Program
                         response = JsonProtocol.Error("internal_error", ex.Message);
                     }
 
-                    WriteResponse(options, response);
+                    StdioJson.WriteLine(output, response);
 
                     if (cmd == "shutdown")
                     {
@@ -66,7 +67,7 @@ internal static class Program
         {
             try
             {
-                WriteResponse(options, JsonProtocol.Error("fatal", ex.Message));
+                StdioJson.WriteLine(output, JsonProtocol.Error("fatal", ex.Message));
             }
             catch
             {
@@ -77,11 +78,5 @@ internal static class Program
         }
 
         return 0;
-    }
-
-    private static void WriteResponse(JsonSerializerOptions options, object response)
-    {
-        Console.Out.WriteLine(JsonSerializer.Serialize(response, options));
-        Console.Out.Flush();
     }
 }

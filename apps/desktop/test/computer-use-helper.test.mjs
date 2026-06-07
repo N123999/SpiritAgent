@@ -46,6 +46,22 @@ function sendHelperCommands(commands) {
   });
 }
 
+test('spirit-win-uia preserves UTF-8 Chinese in JSON stdin', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows only');
+    return;
+  }
+
+  const sample = '你好，我是 DeepSeek';
+  const { lines } = await sendHelperCommands([
+    { cmd: 'echo_text', text: sample },
+    { cmd: 'shutdown' },
+  ]);
+  const echoed = JSON.parse(lines[0]);
+  assert.equal(echoed.ok, true);
+  assert.equal(echoed.data.text, sample);
+});
+
 test('spirit-win-uia ping returns pong', async (t) => {
   if (process.platform !== 'win32') {
     t.skip('Windows only');
