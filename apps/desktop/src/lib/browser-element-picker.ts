@@ -75,7 +75,7 @@ export function clearPickerOverlayInlineStyles(el: HTMLElement): void {
 
 /**
  * Guest-page script: hover/click element pick + drag marquee pick.
- * - Hover: highlight element bounding box (animated in host UI).
+ * - Hover: highlight element bounding box (in-page overlay; BrowserView covers renderer DOM).
  * - Click (no drag): capture element box.
  * - Drag (>= MIN_MARQUEE_PX): capture user marquee; element from center point.
  */
@@ -85,10 +85,78 @@ export function buildPickerInjectScript(): string {
   if (window.__spiritPickerCleanup) window.__spiritPickerCleanup();
 
   var MARQUEE_THRESHOLD = ${MIN_MARQUEE_PX};
+  var OVERLAY_RING = '${PICKER_OVERLAY_RING}';
   var startX = 0;
   var startY = 0;
   var pointerDown = false;
   var marqueeDrag = false;
+  var overlayMotionEnabled = false;
+  var ELEMENT_OVERLAY_TRANSITION =
+    'left 200ms ease-out, top 200ms ease-out, width 200ms ease-out, height 200ms ease-out, opacity 150ms ease-out';
+
+  var overlayEl = document.createElement('div');
+  overlayEl.id = '__spiritPickerOverlay';
+  overlayEl.setAttribute('aria-hidden', 'true');
+  overlayEl.style.cssText =
+    'position:fixed;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none;z-index:2147483647;box-sizing:border-box;';
+  document.documentElement.appendChild(overlayEl);
+
+  function paintOverlayGeometry(rect) {
+    overlayEl.style.left = rect.x + 'px';
+    overlayEl.style.top = rect.y + 'px';
+    overlayEl.style.width = rect.width + 'px';
+    overlayEl.style.height = rect.height + 'px';
+    overlayEl.style.boxShadow = OVERLAY_RING;
+    overlayEl.style.background = 'rgba(147,197,253,0.15)';
+    overlayEl.style.borderRadius = '2px';
+  }
+
+  function enableOverlayMotionNextFrame() {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        if (window.__spiritPickerRectMode === 'element') {
+          overlayEl.style.transition = ELEMENT_OVERLAY_TRANSITION;
+          overlayMotionEnabled = true;
+        }
+      });
+    });
+  }
+
+  function applyOverlayBox(rect, mode) {
+    if (!rect || (mode !== 'element' && mode !== 'marquee')) {
+      overlayEl.style.opacity = '0';
+      return;
+    }
+
+    if (mode === 'marquee') {
+      overlayEl.style.transition = 'none';
+      paintOverlayGeometry(rect);
+      overlayEl.style.opacity = '1';
+      return;
+    }
+
+    if (!overlayMotionEnabled) {
+      // 首次进入：几何瞬间落位 + 仅 opacity 渐显，避免从 (0,0) 飞入（对齐 WebView 时 host overlay 行为）
+      overlayEl.style.transition = 'none';
+      paintOverlayGeometry(rect);
+      overlayEl.style.opacity = '0';
+      void overlayEl.offsetWidth;
+      overlayEl.style.transition = 'opacity 150ms ease-out';
+      overlayEl.style.opacity = '1';
+      enableOverlayMotionNextFrame();
+      return;
+    }
+
+    overlayEl.style.transition = ELEMENT_OVERLAY_TRANSITION;
+    paintOverlayGeometry(rect);
+    overlayEl.style.opacity = '1';
+  }
+
+  function setPickerRect(rect, mode) {
+    window.__spiritPickerRect = rect;
+    window.__spiritPickerRectMode = mode;
+    applyOverlayBox(rect, mode);
+  }
 
   function normalizeRect(x0, y0, x1, y1) {
     var x = Math.min(x0, x1);
@@ -111,13 +179,11 @@ export function buildPickerInjectScript(): string {
   function hoverElement(e) {
     if (pointerDown) return;
     var el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el) {
-      window.__spiritPickerRect = null;
-      window.__spiritPickerRectMode = null;
+    if (!el || el.id === '__spiritPickerOverlay') {
+      setPickerRect(null, null);
       return;
     }
-    window.__spiritPickerRect = elementRect(el);
-    window.__spiritPickerRectMode = 'element';
+    setPickerRect(elementRect(el), 'element');
   }
 
   function onDown(e) {
@@ -145,8 +211,7 @@ export function buildPickerInjectScript(): string {
     }
     e.preventDefault();
     e.stopPropagation();
-    window.__spiritPickerRect = normalizeRect(startX, startY, e.clientX, e.clientY);
-    window.__spiritPickerRectMode = 'marquee';
+    setPickerRect(normalizeRect(startX, startY, e.clientX, e.clientY), 'marquee');
   }
 
   function onUp(e) {
@@ -154,8 +219,7 @@ export function buildPickerInjectScript(): string {
     e.preventDefault();
     e.stopPropagation();
     pointerDown = false;
-    window.__spiritPickerRect = null;
-    window.__spiritPickerRectMode = null;
+    setPickerRect(null, null);
 
     if (marqueeDrag) {
       marqueeDrag = false;
@@ -212,8 +276,11 @@ export function buildPickerInjectScript(): string {
     document.removeEventListener('mouseup', onUp, true);
     window.removeEventListener('blur', resetPointer);
     resetPointer();
-    window.__spiritPickerRect = null;
-    window.__spiritPickerRectMode = null;
+    overlayMotionEnabled = false;
+    setPickerRect(null, null);
+    if (overlayEl.parentNode) {
+      overlayEl.parentNode.removeChild(overlayEl);
+    }
   };
   true;
 })();
