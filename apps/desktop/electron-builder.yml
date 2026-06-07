@@ -26,6 +26,14 @@ asarUnpack:
 npmRebuild: true
 buildDependenciesFromSource: false
 publish: null
+extraResources:
+  - from: native/win-uia-helper/bin/Release/net8.0-windows
+    to: native/win-uia-helper
+    filter:
+      - spirit-win-uia.exe
+      - spirit-win-uia.dll
+      - spirit-win-uia.deps.json
+      - spirit-win-uia.runtimeconfig.json
 win:
   target:
     - nsis

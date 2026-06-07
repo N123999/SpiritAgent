@@ -8,7 +8,7 @@ const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const repoRoot = path.resolve(desktopRoot, '../..');
 const force = process.argv.includes('--force');
 
-const SOURCE_EXT = new Set(['.ts', '.tsx', '.json']);
+const SOURCE_EXT = new Set(['.ts', '.tsx', '.json', '.cs', '.csproj']);
 
 function walkSources(rootDir, files = []) {
   if (!fs.existsSync(rootDir)) {
@@ -137,3 +137,16 @@ ensure(
   ),
   () => npmRun(desktopRoot, 'build:electron'),
 );
+
+const winUiaHelperOut = path.join(
+  desktopRoot,
+  'native/win-uia-helper/bin/Release/net8.0-windows/spirit-win-uia.exe',
+);
+
+if (process.platform === 'win32') {
+  ensure(
+    'win-uia-helper',
+    isStale([path.join(desktopRoot, 'native/win-uia-helper')], [winUiaHelperOut]),
+    () => npmRun(desktopRoot, 'build:win-uia-helper'),
+  );
+}

@@ -36,6 +36,9 @@ export type TodoHostToolName =
 
 export const FINISH_TASK_TOOL_NAME = 'finish_task';
 
+export const COMPUTER_USE_SNAPSHOT_TOOL_NAME = 'computer_use_snapshot';
+export const COMPUTER_USE_ACTION_TOOL_NAME = 'computer_use_action';
+
 export const ASK_MODE_EXCLUDED_HOST_TOOL_NAMES = new Set<string>([
   'run_shell_command',
   'create_file',
@@ -45,6 +48,7 @@ export const ASK_MODE_EXCLUDED_HOST_TOOL_NAMES = new Set<string>([
   'generate_image',
   'generate_video',
   'create_plan',
+  COMPUTER_USE_ACTION_TOOL_NAME,
 ]);
 
 export function isAskAgentMode(agentMode: SpiritAgentMode): boolean {
@@ -714,6 +718,114 @@ export function buildDreamCollectorSystemMessage(): string {
     'Do not summarize every message mechanically. Preserve signal that helps future host consumers understand the current work direction.',
     'Do not perform production work. Only read the provided context and maintain dreams through the dream tools.',
   ].join('\n');
+}
+
+export function buildComputerUseHostToolDefinitions(): JsonValue[] {
+  return [
+    functionTool(
+      COMPUTER_USE_SNAPSHOT_TOOL_NAME,
+      'Inspect Windows desktop UI (not screenshots). Windows Electron host only. For mode=list_windows, enumerate top-level windows plus shell surfaces (taskbar). For mode=tree, return a structured element tree with stable refs; specify surface, process_name, and/or window_title. Use surface=taskbar for the Windows taskbar (Shell_TrayWnd). Chromium/CEF host windows automatically use the target app CDP accessibility tree when it was started with --remote-debugging-port (default debug_port 9222); other windows use UI Automation. Pattern or CDP actions are performed via computer_use_action.',
+      {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description:
+              'Short imperative phrase for the UI, e.g. "List open windows" or "Inspect Notepad controls".',
+          },
+          mode: {
+            type: 'string',
+            enum: ['list_windows', 'tree'],
+            description: 'list_windows enumerates top-level windows and shell surfaces; tree returns the UIA subtree for one target.',
+          },
+          surface: {
+            type: 'string',
+            enum: ['taskbar', 'secondary_taskbar'],
+            description:
+              'Shell UI surface for mode=tree. taskbar targets Shell_TrayWnd; secondary_taskbar targets Shell_SecondaryTrayWnd when present.',
+          },
+          process_name: {
+            type: 'string',
+            description: 'Target process file name, e.g. notepad.exe. Required for mode=tree unless window_title or surface is set.',
+          },
+          window_title: {
+            type: 'string',
+            description: 'Substring match against the target window title. Required for mode=tree unless process_name or surface is set.',
+          },
+          max_depth: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 32,
+            description: 'Maximum tree depth for mode=tree. Defaults to 8.',
+          },
+          max_nodes: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 5000,
+            description: 'Maximum nodes returned for mode=tree. Defaults to 400.',
+          },
+          debug_port: {
+            type: 'integer',
+            minimum: 1024,
+            maximum: 65535,
+            description:
+              'Localhost CDP port for Chromium/CEF fallback when mode=tree. Defaults to 9222. The target app must already be running with --remote-debugging-port.',
+          },
+        },
+        required: ['reason', 'mode'],
+        additionalProperties: false,
+      },
+    ),
+    functionTool(
+      COMPUTER_USE_ACTION_TOOL_NAME,
+      'Act on a Windows UI element by ref from computer_use_snapshot. UIA refs (w…) use control patterns only. CDP refs (c…) use DOM focus/click/text on the target app debug port. Supported actions: invoke, set_value, toggle, expand, collapse, select. If unsupported, returns pattern_unsupported. Windows Electron host only. High risk: requires user approval.',
+      {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description: 'Short imperative phrase for the UI, e.g. "Click OK" or "Type greeting".',
+          },
+          ref: {
+            type: 'string',
+            description: 'Element ref from computer_use_snapshot, e.g. w1a2b3n4 (UIA) or c9222n1042 (CDP).',
+          },
+          action: {
+            type: 'string',
+            enum: ['invoke', 'set_value', 'toggle', 'expand', 'collapse', 'select'],
+            description: 'UIA pattern action to perform on the element.',
+          },
+          text: {
+            type: 'string',
+            description: 'Required when action is set_value.',
+          },
+          process_name: {
+            type: 'string',
+            description: 'Optional target process for approval trust scoping, e.g. notepad.exe.',
+          },
+          window_title: {
+            type: 'string',
+            description: 'Optional target window title substring for approval trust scoping.',
+          },
+          invoke_timeout_ms: {
+            type: 'integer',
+            minimum: 1000,
+            maximum: 120000,
+            description: 'Timeout for UIA invoke actions. Defaults to 30000.',
+          },
+          debug_port: {
+            type: 'integer',
+            minimum: 1024,
+            maximum: 65535,
+            description:
+              'Localhost CDP port when ref is a CDP ref (c…). Defaults to 9222 for reconnecting the CDP session.',
+          },
+        },
+        required: ['reason', 'ref', 'action'],
+        additionalProperties: false,
+      },
+    ),
+  ];
 }
 
 function buildShellToolDescription(shellDisplayName: string): string {

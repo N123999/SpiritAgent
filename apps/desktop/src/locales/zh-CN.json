@@ -729,6 +729,8 @@
     "todoUpdate": "更新 TODO",
     "todoComplete": "完成 TODO",
     "todoList": "列出 TODO",
+    "computerUseSnapshot": "检查界面",
+    "computerUseAction": "界面操作",
     "previewing": "预览中: {{toolName}}",
     "pendingApproval": "等待确认: {{toolName}}",
     "running": "调用中: {{toolName}}",

@@ -284,7 +284,29 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { name: 'todo_list'; include_completed: boolean }
   | { name: 'todo_create'; items: HostTodoCreateItem[] }
   | { name: 'todo_update'; id: string; title: string }
-  | { name: 'todo_complete'; id: string };
+  | { name: 'todo_complete'; id: string }
+  | {
+      name: 'computer_use_snapshot';
+      reason: string;
+      mode: 'list_windows' | 'tree';
+      process_name?: string;
+      window_title?: string;
+      surface?: 'taskbar' | 'secondary_taskbar';
+      max_depth?: number;
+      max_nodes?: number;
+      debug_port?: number;
+    }
+  | {
+      name: 'computer_use_action';
+      reason: string;
+      ref: string;
+      action: string;
+      text?: string;
+      process_name?: string;
+      window_title?: string;
+      invoke_timeout_ms?: number;
+      debug_port?: number;
+    };
 
 export type HostAuthorizationDecision<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { kind: 'allowed' }
@@ -400,6 +422,7 @@ export interface NodeHostToolServiceOptions {
 interface ToolPermissionStore {
   trusted_shell_commands?: string[];
   trusted_external_read_paths?: string[];
+  trusted_computer_use_targets?: string[];
 }
 
 export function createNoopMcpAdapter(): HostMcpAdapter {
@@ -803,6 +826,49 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           name,
           id: requiredString(parsed, 'id'),
         };
+      case 'computer_use_snapshot':
+        {
+          const modeRaw = requiredString(parsed, 'mode');
+          if (modeRaw !== 'list_windows' && modeRaw !== 'tree') {
+            throw new Error('computer_use_snapshot mode must be list_windows or tree.');
+          }
+          const processName = optionalStringStrict(parsed, 'process_name');
+          const windowTitle = optionalStringStrict(parsed, 'window_title');
+          const surface = parseComputerUseSurface(parsed);
+          const maxDepth = optionalPositiveInt(parsed, 'max_depth');
+          const maxNodes = optionalPositiveInt(parsed, 'max_nodes');
+          const debugPort = optionalDebugPort(parsed, 'debug_port');
+          return {
+            name,
+            reason: requiredString(parsed, 'reason'),
+            mode: modeRaw,
+            ...(processName ? { process_name: processName } : {}),
+            ...(windowTitle ? { window_title: windowTitle } : {}),
+            ...(surface ? { surface } : {}),
+            ...(maxDepth !== undefined ? { max_depth: maxDepth } : {}),
+            ...(maxNodes !== undefined ? { max_nodes: maxNodes } : {}),
+            ...(debugPort !== undefined ? { debug_port: debugPort } : {}),
+          };
+        }
+      case 'computer_use_action':
+        {
+          const text = optionalStringStrict(parsed, 'text');
+          const processName = optionalStringStrict(parsed, 'process_name');
+          const windowTitle = optionalStringStrict(parsed, 'window_title');
+          const invokeTimeoutMs = optionalPositiveInt(parsed, 'invoke_timeout_ms');
+          const debugPort = optionalDebugPort(parsed, 'debug_port');
+          return {
+            name,
+            reason: requiredString(parsed, 'reason'),
+            ref: requiredString(parsed, 'ref'),
+            action: requiredString(parsed, 'action'),
+            ...(text ? { text } : {}),
+            ...(processName ? { process_name: processName } : {}),
+            ...(windowTitle ? { window_title: windowTitle } : {}),
+            ...(invokeTimeoutMs !== undefined ? { invoke_timeout_ms: invokeTimeoutMs } : {}),
+            ...(debugPort !== undefined ? { debug_port: debugPort } : {}),
+          };
+        }
       default:
         {
           const extensionTool = await this.resolveExtensionToolRequest(name, parsed);
@@ -935,6 +1001,25 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       case 'todo_update':
       case 'todo_complete':
         return { kind: 'allowed' };
+      case 'computer_use_snapshot':
+        return { kind: 'allowed' };
+      case 'computer_use_action': {
+        const trustTarget = buildComputerUseTrustTarget(request);
+        const permissions = await this.loadPermissions();
+        if ((permissions.trusted_computer_use_targets ?? []).includes(trustTarget)) {
+          return { kind: 'allowed' };
+        }
+        return {
+          kind: 'need-approval',
+          prompt:
+            `理由: ${request.reason}\n` +
+            `高风险工具调用: Windows UI 操作\n` +
+            `目标: ${trustTarget}\n` +
+            `元素: ${request.ref}\n` +
+            `动作: ${request.action}`,
+          trustTarget,
+        };
+      }
     }
   }
 
@@ -958,6 +1043,16 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         trusted.push(externalPath);
       }
       permissions.trusted_external_read_paths = trusted;
+      await this.savePermissions(permissions);
+      return;
+    }
+
+    if (target.startsWith('computer_use:')) {
+      const trusted = permissions.trusted_computer_use_targets ?? [];
+      if (!trusted.includes(target)) {
+        trusted.push(target);
+      }
+      permissions.trusted_computer_use_targets = trusted;
       await this.savePermissions(permissions);
       return;
     }
@@ -1073,6 +1168,9 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         });
       case 'todo_complete':
         return JSON.stringify(await this.requireTodoStore().complete(request.id));
+      case 'computer_use_snapshot':
+      case 'computer_use_action':
+        throw new Error(`${request.name} 应由 Desktop Windows 宿主接管，不应落到 host-internal 工具执行器`);
     }
   }
 
@@ -2096,6 +2194,16 @@ function summarizeFileToolRequest<QuestionSpec>(
   }
 }
 
+function buildComputerUseTrustTarget(
+  request: Extract<HostToolRequest, { name: 'computer_use_action' }>,
+): string {
+  const scope =
+    request.process_name?.trim()
+    || request.window_title?.trim()
+    || request.ref.trim();
+  return `computer_use:${scope}`;
+}
+
 async function loadPermissions(filePath: string): Promise<ToolPermissionStore> {
   if (!existsSync(filePath)) {
     return {};
@@ -2107,6 +2215,7 @@ async function loadPermissions(filePath: string): Promise<ToolPermissionStore> {
     return {
       trusted_shell_commands: parsed.trusted_shell_commands ?? [],
       trusted_external_read_paths: parsed.trusted_external_read_paths ?? [],
+      trusted_computer_use_targets: parsed.trusted_computer_use_targets ?? [],
     };
   } catch {
     return {};
@@ -2198,6 +2307,35 @@ function optionalPositiveInt(obj: HostJsonObject, key: string): number | undefin
   const n = Math.trunc(value);
   if (n < 1) {
     throw new Error(`字段 ${key} 必须 >= 1`);
+  }
+  return n;
+}
+
+const COMPUTER_USE_SHELL_SURFACES = ['taskbar', 'secondary_taskbar'] as const;
+type ComputerUseShellSurface = (typeof COMPUTER_USE_SHELL_SURFACES)[number];
+
+function parseComputerUseSurface(obj: HostJsonObject): ComputerUseShellSurface | undefined {
+  const value = optionalStringStrict(obj, 'surface');
+  if (!value) {
+    return undefined;
+  }
+  if (!COMPUTER_USE_SHELL_SURFACES.includes(value as ComputerUseShellSurface)) {
+    throw new Error('computer_use_snapshot surface must be taskbar or secondary_taskbar.');
+  }
+  return value as ComputerUseShellSurface;
+}
+
+function optionalDebugPort(obj: HostJsonObject, key: string): number | undefined {
+  const value = obj[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`字段 ${key} 必须是整数`);
+  }
+  const n = Math.trunc(value);
+  if (n < 1024 || n > 65535) {
+    throw new Error(`字段 ${key} 必须在 1024 到 65535 之间`);
   }
   return n;
 }

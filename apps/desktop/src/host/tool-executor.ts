@@ -9,6 +9,7 @@ import {
   createLlmVideoContentPart,
   createLlmTextContentPart,
   buildBuiltinHostToolDefinitions,
+  buildComputerUseHostToolDefinitions,
   buildDreamHostToolDefinitions,
   buildDreamReadHostToolDefinitions,
   assertAgentModeAllowsHostTool,
@@ -59,6 +60,11 @@ import {
 } from '@spirit-agent/host-internal';
 
 import type { AskQuestionsQuestionSpec } from '../types.js';
+import {
+  executeComputerUseAction,
+  executeComputerUseSnapshot,
+  isComputerUseToolRequest,
+} from './computer-use-executor.js';
 import { spiritAgentDataDir } from './storage.js';
 import type { DesktopAgentMode } from '../lib/agent-mode.js';
 import type { DesktopToolRequest } from './contracts.js';
@@ -208,9 +214,13 @@ export class DesktopToolExecutor
       builtinDefinitions = filterLegacyHostFileToolDefinitions(builtinDefinitions);
     }
 
+    const computerUseDefinitions =
+      process.platform === 'win32' ? buildComputerUseHostToolDefinitions() : [];
+
     const mergedHostDefinitions = filterHostToolDefinitionsForAgentMode(
       [
         ...builtinDefinitions,
+        ...computerUseDefinitions,
         ...this.loopToolDefinitions,
         ...this.planToolDefinitions,
         ...this.dreamToolDefinitions,
@@ -307,6 +317,14 @@ export class DesktopToolExecutor
     }
 
     this.assertAllowedDreamToolRequest(request);
+    if (isComputerUseToolRequest(request)) {
+      const text =
+        request.name === 'computer_use_snapshot'
+          ? await executeComputerUseSnapshot(request)
+          : await executeComputerUseAction(request);
+      return createToolExecutionTextOutput(text);
+    }
+
     const output = await this.tools.execute(request);
     const normalized =
       typeof output === 'string'

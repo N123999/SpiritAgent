@@ -729,6 +729,8 @@
     "todoUpdate": "Update TODO",
     "todoComplete": "Complete TODO",
     "todoList": "List TODO",
+    "computerUseSnapshot": "Inspect UI",
+    "computerUseAction": "UI action",
     "previewing": "Previewing: {{toolName}}",
     "pendingApproval": "Pending approval: {{toolName}}",
     "running": "Running: {{toolName}}",
