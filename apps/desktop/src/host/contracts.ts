@@ -65,6 +65,8 @@ export type HostCommandName =
   | 'openSession'
   | 'deleteSession'
   | 'listWorkspaceFileReferenceSuggestions'
+  | 'primeWorkspaceFileReferenceIndex'
+  | 'getWorkspaceFileReferenceIndex'
   | 'listWorkspaceExplorerChildren'
   | 'readWorkspaceTextFile'
   | 'writeWorkspaceTextFile'

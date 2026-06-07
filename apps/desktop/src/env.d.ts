@@ -107,6 +107,8 @@ declare global {
     listWorkspaceFileReferenceSuggestions(
       request: QueryWorkspaceFileReferenceSuggestionsRequest,
     ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
+    primeWorkspaceFileReferenceIndex(): Promise<void>;
+    getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
     readGitWorkingTree(): Promise<import('./types').GitWorkingTreeSnapshot>;
     readGitHistory(request?: import('./types').ReadGitHistoryRequest): Promise<import('./types').GitHistorySnapshot>;

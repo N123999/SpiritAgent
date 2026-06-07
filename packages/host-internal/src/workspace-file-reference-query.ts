@@ -1,4 +1,7 @@
+import fuzzysort from 'fuzzysort';
+
 const DEFAULT_SUGGESTION_LIMIT = 128;
+const FUZZYSORT_PREFILTER_LIMIT = 512;
 
 export interface ActiveWorkspaceFileReferenceQuery {
   start: number;
@@ -88,7 +91,9 @@ export function computeWorkspaceFileReferenceSuggestions(
     .trim()
     .toLowerCase();
 
-  const scored = files
+  const candidateFiles = narrowWorkspaceFileCandidates(needle, files);
+
+  const scored = candidateFiles
     .map((path) => {
       const score = scoreWorkspaceFileReferenceCandidate(needle, path);
       if (!score) {
@@ -116,6 +121,53 @@ export function computeWorkspaceFileReferenceSuggestions(
   });
 
   return scored.slice(0, DEFAULT_SUGGESTION_LIMIT).map((item) => item.path);
+}
+
+function narrowWorkspaceFileCandidates(
+  needle: string,
+  files: readonly string[],
+): readonly string[] {
+  if (!needle) {
+    return files;
+  }
+
+  const prepared = files.map((path) => {
+    const basename = path.split('/').at(-1) ?? path;
+    return {
+      path,
+      preparedBasename: fuzzysort.prepare(basename),
+      preparedPath: fuzzysort.prepare(path),
+    };
+  });
+
+  const seen = new Set<string>();
+  const narrowed: string[] = [];
+
+  for (const result of fuzzysort.go(needle, prepared, {
+    key: 'preparedBasename',
+    limit: FUZZYSORT_PREFILTER_LIMIT,
+    threshold: -10_000,
+  })) {
+    if (seen.has(result.obj.path)) {
+      continue;
+    }
+    seen.add(result.obj.path);
+    narrowed.push(result.obj.path);
+  }
+
+  for (const result of fuzzysort.go(needle, prepared, {
+    key: 'preparedPath',
+    limit: FUZZYSORT_PREFILTER_LIMIT,
+    threshold: -10_000,
+  })) {
+    if (seen.has(result.obj.path)) {
+      continue;
+    }
+    seen.add(result.obj.path);
+    narrowed.push(result.obj.path);
+  }
+
+  return narrowed;
 }
 
 export function charCountToCodeUnitIndex(input: string, cursorChars: number): number {

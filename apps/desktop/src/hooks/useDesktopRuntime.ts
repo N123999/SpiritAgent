@@ -2165,6 +2165,20 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const primeWorkspaceFileReferenceIndex = useCallback(async (): Promise<void> => {
+    if (!api) {
+      return;
+    }
+    await api.primeWorkspaceFileReferenceIndex();
+  }, [api]);
+
+  const getWorkspaceFileReferenceIndex = useCallback(async () => {
+    if (!api) {
+      return { ready: false, files: [] };
+    }
+    return api.getWorkspaceFileReferenceIndex();
+  }, [api]);
+
   const listWorkspaceExplorerChildren = useCallback(
     async (relativePath: string): Promise<WorkspaceExplorerListResult> => {
       if (!api) {
@@ -2409,6 +2423,8 @@ export function useDesktopRuntime() {
     openSession,
     deleteSession,
     listWorkspaceFileReferenceSuggestions,
+    primeWorkspaceFileReferenceIndex,
+    getWorkspaceFileReferenceIndex,
     listWorkspaceExplorerChildren,
     readGitWorkingTree,
     readGitHistory,

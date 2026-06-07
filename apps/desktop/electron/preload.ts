@@ -181,6 +181,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       request,
     });
   },
+  primeWorkspaceFileReferenceIndex() {
+    return ipcRenderer.invoke('desktop:invoke', 'primeWorkspaceFileReferenceIndex');
+  },
+  getWorkspaceFileReferenceIndex() {
+    return ipcRenderer.invoke('desktop:invoke', 'getWorkspaceFileReferenceIndex');
+  },
   listWorkspaceExplorerChildren(relativePath: string) {
     return ipcRenderer.invoke('desktop:invoke', 'listWorkspaceExplorerChildren', {
       relativePath,

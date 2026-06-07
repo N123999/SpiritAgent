@@ -113,6 +113,8 @@ export interface HostApi {
   listWorkspaceFileReferenceSuggestions(
     request: QueryWorkspaceFileReferenceSuggestionsRequest,
   ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
+  primeWorkspaceFileReferenceIndex(): Promise<void>;
+  getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;

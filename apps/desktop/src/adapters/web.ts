@@ -221,6 +221,15 @@ export function createWebHostApi(): HostApi {
         request,
       );
     },
+    primeWorkspaceFileReferenceIndex() {
+      return post<void>(baseUrl, '/api/workspace/file-reference-index/prime');
+    },
+    getWorkspaceFileReferenceIndex() {
+      return post<import('../types').WorkspaceFileReferenceIndexSnapshot>(
+        baseUrl,
+        '/api/workspace/file-reference-index',
+      );
+    },
     listWorkspaceExplorerChildren(relativePath: string) {
       return post<WorkspaceExplorerListResult>(baseUrl, '/api/workspace/explorer', {
         relativePath,

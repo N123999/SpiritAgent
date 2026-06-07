@@ -150,7 +150,9 @@ import {
   listDreamsOverviewCommand,
   listSessionsCommand,
   listWorkspaceExplorerChildrenCommand,
+  getWorkspaceFileReferenceIndexCommand,
   listWorkspaceFileReferenceSuggestionsCommand,
+  primeWorkspaceFileReferenceIndexCommand,
   mergeWorktreeToMainCommand,
   pushGitBranchCommand,
   readGitHistoryCommand,
@@ -1431,6 +1433,14 @@ class DesktopHostService {
     request: QueryWorkspaceFileReferenceSuggestionsRequest,
   ): Promise<WorkspaceFileReferenceSuggestionsResponse> {
     return listWorkspaceFileReferenceSuggestionsCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async primeWorkspaceFileReferenceIndex(): Promise<void> {
+    return primeWorkspaceFileReferenceIndexCommand(this.workspaceGitCommandContext());
+  }
+
+  async getWorkspaceFileReferenceIndex(): Promise<import('../types.js').WorkspaceFileReferenceIndexSnapshot> {
+    return getWorkspaceFileReferenceIndexCommand(this.workspaceGitCommandContext());
   }
 
   async readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult> {

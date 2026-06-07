@@ -19,19 +19,15 @@ import {
 import { instantHoverMotionClass } from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
 
-const FILE_PICKER_SEARCH_DEBOUNCE_MS = 90
-
 type WorkspaceFilePickerDialogProps = {
   open: boolean
   onOpenChange(open: boolean): void
   workspaceRoot: string
   workspaceBinding: 'project' | 'none'
+  indexReady: boolean
+  searchWorkspaceFiles(query: string): string[]
   onOpenWorkspaceFile(relativePath: string): void
   onOpenExternalFile(absolutePath: string): void
-  listWorkspaceFileReferenceSuggestions(input: {
-    input: string
-    cursorChars: number
-  }): Promise<{ suggestions: string[] } | null | undefined>
   statHostTextFile(absolutePath: string): Promise<{ exists: boolean; isFile: boolean }>
 }
 
@@ -40,16 +36,16 @@ export function WorkspaceFilePickerDialog({
   onOpenChange,
   workspaceRoot,
   workspaceBinding,
+  indexReady,
+  searchWorkspaceFiles,
   onOpenWorkspaceFile,
   onOpenExternalFile,
-  listWorkspaceFileReferenceSuggestions,
   statHostTextFile,
 }: WorkspaceFilePickerDialogProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [absolutePathExists, setAbsolutePathExists] = useState<boolean | null>(null)
-  const requestIdRef = useRef(0)
   const absoluteStatRequestIdRef = useRef(0)
 
   useEffect(() => {
@@ -70,45 +66,14 @@ export function WorkspaceFilePickerDialog({
     const workspaceSearchEnabled =
       workspaceBinding === 'project' && workspaceRoot.trim().length > 0
 
-    if (!workspaceSearchEnabled) {
+    if (!workspaceSearchEnabled || !indexReady) {
       setSuggestions([])
       return
     }
 
-    const requestId = requestIdRef.current + 1
-    requestIdRef.current = requestId
     const syntheticInput = trimmed ? `@${trimmed}` : '@'
-    const cursorChars = trimmed.length + 1
-
-    const timeout = window.setTimeout(() => {
-      void listWorkspaceFileReferenceSuggestions({
-        input: syntheticInput,
-        cursorChars,
-      })
-        .then((result) => {
-          if (requestIdRef.current !== requestId) {
-            return
-          }
-          setSuggestions(result?.suggestions ?? [])
-        })
-        .catch(() => {
-          if (requestIdRef.current !== requestId) {
-            return
-          }
-          setSuggestions([])
-        })
-    }, FILE_PICKER_SEARCH_DEBOUNCE_MS)
-
-    return () => {
-      window.clearTimeout(timeout)
-    }
-  }, [
-    listWorkspaceFileReferenceSuggestions,
-    open,
-    query,
-    workspaceBinding,
-    workspaceRoot,
-  ])
+    setSuggestions(searchWorkspaceFiles(syntheticInput))
+  }, [indexReady, open, query, searchWorkspaceFiles, workspaceBinding, workspaceRoot])
 
   const trimmedQuery = query.trim()
   const absolutePathCandidate = looksLikeAbsolutePath(trimmedQuery)
@@ -123,23 +88,20 @@ export function WorkspaceFilePickerDialog({
 
     const requestId = absoluteStatRequestIdRef.current + 1
     absoluteStatRequestIdRef.current = requestId
-    const timeout = window.setTimeout(() => {
-      void statHostTextFile(absolutePathCandidate)
-        .then((result) => {
-          if (absoluteStatRequestIdRef.current !== requestId) {
-            return
-          }
-          setAbsolutePathExists(result.exists && result.isFile)
-        })
-        .catch(() => {
-          if (absoluteStatRequestIdRef.current !== requestId) {
-            return
-          }
-          setAbsolutePathExists(false)
-        })
-    }, FILE_PICKER_SEARCH_DEBOUNCE_MS)
 
-    return () => window.clearTimeout(timeout)
+    void statHostTextFile(absolutePathCandidate)
+      .then((result) => {
+        if (absoluteStatRequestIdRef.current !== requestId) {
+          return
+        }
+        setAbsolutePathExists(result.exists && result.isFile)
+      })
+      .catch(() => {
+        if (absoluteStatRequestIdRef.current !== requestId) {
+          return
+        }
+        setAbsolutePathExists(false)
+      })
   }, [absolutePathCandidate, open, statHostTextFile])
 
   const closeAndOpenWorkspaceFile = (relativePath: string) => {
@@ -206,9 +168,11 @@ export function WorkspaceFilePickerDialog({
           ))}
           {showEmpty ? (
             <CommandEmpty>
-              {absolutePathCandidate && absolutePathExists === false
-                ? t('workspace.filePickerAbsolutePathNotFound')
-                : t('workspace.filePickerEmpty')}
+              {!indexReady
+                ? t('workspace.filePickerIndexing')
+                : absolutePathCandidate && absolutePathExists === false
+                  ? t('workspace.filePickerAbsolutePathNotFound')
+                  : t('workspace.filePickerEmpty')}
             </CommandEmpty>
           ) : null}
         </CommandList>

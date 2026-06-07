@@ -174,6 +174,12 @@ export async function createElectronHostApi(): Promise<HostApi> {
     listWorkspaceFileReferenceSuggestions(request) {
       return bridge.listWorkspaceFileReferenceSuggestions(request);
     },
+    primeWorkspaceFileReferenceIndex() {
+      return bridge.primeWorkspaceFileReferenceIndex();
+    },
+    getWorkspaceFileReferenceIndex() {
+      return bridge.getWorkspaceFileReferenceIndex();
+    },
     listWorkspaceExplorerChildren(relativePath) {
       return bridge.listWorkspaceExplorerChildren(relativePath);
     },

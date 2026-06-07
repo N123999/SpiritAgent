@@ -514,6 +514,7 @@
     "filePickerDescription": "Search workspace files or enter an absolute path to open any file.",
     "filePickerPlaceholder": "Search by file name or path…",
     "filePickerEmpty": "No matching files",
+    "filePickerIndexing": "Indexing workspace files…",
     "filePickerOpenAbsolutePath": "Open path: {{path}}",
     "filePickerAbsolutePathNotFound": "No file exists at that path",
     "fileReferenceCandidates": "Workspace file reference candidates"

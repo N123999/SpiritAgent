@@ -2,8 +2,11 @@ import path from 'node:path';
 
 import {
   createHostDreamStore,
+  getWorkspaceFileReferenceIndexSnapshot,
   listWorkspaceFileReferenceSuggestions as listWorkspaceFileReferenceSuggestionsFromHostInternal,
+  primeWorkspaceFileReferenceIndexCache,
   type WorkLocationKind,
+  type WorkspaceFileReferenceIndexSnapshot,
 } from '@spirit-agent/host-internal';
 
 import i18n from '../lib/i18n-host.js';
@@ -326,6 +329,22 @@ export async function listWorkspaceFileReferenceSuggestionsCommand(
       )) ?? null
     );
   });
+}
+
+export async function primeWorkspaceFileReferenceIndexCommand(
+  ctx: HostWorkspaceGitCommandContext,
+): Promise<void> {
+  await ctx.ensureInitialized();
+  const state = ctx.requireState();
+  await primeWorkspaceFileReferenceIndexCache(state.workspaceRoot);
+}
+
+export async function getWorkspaceFileReferenceIndexCommand(
+  ctx: HostWorkspaceGitCommandContext,
+): Promise<WorkspaceFileReferenceIndexSnapshot> {
+  await ctx.ensureInitialized();
+  const state = ctx.requireState();
+  return getWorkspaceFileReferenceIndexSnapshot(state.workspaceRoot);
 }
 
 export async function readWorkspaceTextFileCommand(

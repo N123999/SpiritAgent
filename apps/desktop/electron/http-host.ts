@@ -896,6 +896,16 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/file-reference-index/prime') {
+    writeJson(request, response, 200, await runHostCommand('primeWorkspaceFileReferenceIndex'));
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/workspace/file-reference-index') {
+    writeJson(request, response, 200, await runHostCommand('getWorkspaceFileReferenceIndex'));
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/workspace/file') {
     writeJson(
       request,

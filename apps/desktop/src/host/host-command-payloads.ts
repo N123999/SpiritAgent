@@ -94,6 +94,8 @@ export type CommandPayloads = {
   openSession: { path: string };
   deleteSession: { path: string };
   listWorkspaceFileReferenceSuggestions: { request: QueryWorkspaceFileReferenceSuggestionsRequest };
+  primeWorkspaceFileReferenceIndex: undefined;
+  getWorkspaceFileReferenceIndex: undefined;
   listWorkspaceExplorerChildren: { relativePath: string };
   readWorkspaceTextFile: { relativePath: string };
   writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };

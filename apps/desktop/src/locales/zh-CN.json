@@ -514,6 +514,7 @@
     "filePickerDescription": "在工作区中搜索文件，或输入绝对路径打开任意文件。",
     "filePickerPlaceholder": "按文件名或路径搜索…",
     "filePickerEmpty": "无匹配文件",
+    "filePickerIndexing": "正在索引工作区文件…",
     "filePickerOpenAbsolutePath": "打开路径：{{path}}",
     "filePickerAbsolutePathNotFound": "找不到该路径对应的文件",
     "fileReferenceCandidates": "工作区文件引用候选"

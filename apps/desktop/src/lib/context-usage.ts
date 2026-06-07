@@ -1,4 +1,4 @@
-import { normalizeOpenAiApiBase } from '@spirit-agent/host-internal';
+import { normalizeOpenAiApiBase } from '@spirit-agent/host-internal/openai-models';
 
 import { parseModelContextLength } from './model-context-length.js';
 import { DEFAULT_API_BASE } from '../host/storage.js';

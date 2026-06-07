@@ -153,6 +153,7 @@ import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useElementBoxHeight } from "@/hooks/use-element-box-height";
 import { useSubagentViewer } from "@/hooks/useSubagentViewer";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
+import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import { useFont } from "@/hooks/useFont";
 import { useTheme } from "@/hooks/useTheme";
@@ -2435,7 +2436,12 @@ export default function App() {
         : "",
     [fileReferenceQuery],
   );
-  const fileReferenceRequestIdRef = useRef(0);
+  const workspaceFileIndex = useWorkspaceFileIndex({
+    workspaceRoot: snapshot?.workspaceRoot ?? "",
+    workspaceBinding: snapshot?.workspaceBinding ?? "project",
+    primeWorkspaceFileReferenceIndex: runtime.primeWorkspaceFileReferenceIndex,
+    getWorkspaceFileReferenceIndex: runtime.getWorkspaceFileReferenceIndex,
+  });
   const extensionSettingsItems = useMemo(
     () =>
       (snapshot?.extensionsList ?? [])
@@ -2458,37 +2464,25 @@ export default function App() {
       return;
     }
 
-    const requestId = fileReferenceRequestIdRef.current + 1;
-    fileReferenceRequestIdRef.current = requestId;
-    const input = runtime.composer;
-    const cursorChars = composerCursorChars;
-    const timeout = window.setTimeout(() => {
-      void runtime
-        .listWorkspaceFileReferenceSuggestions({
-          input,
-          cursorChars,
-        })
-        .then((result) => {
-          if (fileReferenceRequestIdRef.current !== requestId) {
-            return;
-          }
-          setFileReferenceSuggestions(result);
-        })
-        .catch(() => {
-          if (fileReferenceRequestIdRef.current !== requestId) {
-            return;
-          }
-          setFileReferenceSuggestions(null);
-        });
-    }, 90);
+    if (!workspaceFileIndex.ready) {
+      setFileReferenceSuggestions({
+        query: fileReferenceQuery,
+        suggestions: [],
+      });
+      return;
+    }
 
-    return () => {
-      window.clearTimeout(timeout);
-    };
+    setFileReferenceSuggestions({
+      query: fileReferenceQuery,
+      suggestions: workspaceFileIndex.search(fileReferenceQuery.raw),
+    });
   }, [
     dismissedFileReferenceKey,
+    fileReferenceQuery,
     fileReferenceQueryKey,
-    runtime,
+    workspaceFileIndex.ready,
+    workspaceFileIndex.fileCount,
+    workspaceFileIndex.search,
   ]);
 
   useEffect(() => {
@@ -3660,7 +3654,8 @@ export default function App() {
           });
         }}
         statHostTextFile={runtime.statHostTextFile}
-        listWorkspaceFileReferenceSuggestions={runtime.listWorkspaceFileReferenceSuggestions}
+        indexReady={workspaceFileIndex.ready}
+        searchWorkspaceFiles={workspaceFileIndex.search}
       />
 
       <Dialog open={Boolean(pendingQuestions)}>

@@ -58,6 +58,8 @@ export interface HostCommandDelegate {
   listWorkspaceFileReferenceSuggestions(
     request: CommandPayloads['listWorkspaceFileReferenceSuggestions']['request'],
   ): Promise<unknown>;
+  primeWorkspaceFileReferenceIndex(): Promise<unknown>;
+  getWorkspaceFileReferenceIndex(): Promise<unknown>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<unknown>;
   readGitWorkingTree(): Promise<unknown>;
   readGitHistory(request: NonNullable<CommandPayloads['readGitHistory']['request']>): Promise<unknown>;
@@ -129,6 +131,8 @@ const hostCommandDispatch = {
   deleteSession: (host, payload) => host.deleteSession(payload.path),
   listWorkspaceFileReferenceSuggestions: (host, payload) =>
     host.listWorkspaceFileReferenceSuggestions(payload.request),
+  primeWorkspaceFileReferenceIndex: (host) => host.primeWorkspaceFileReferenceIndex(),
+  getWorkspaceFileReferenceIndex: (host) => host.getWorkspaceFileReferenceIndex(),
   listWorkspaceExplorerChildren: (host, payload) => host.listWorkspaceExplorerChildren(payload.relativePath),
   readGitWorkingTree: (host) => host.readGitWorkingTree(),
   readGitHistory: (host, payload) => host.readGitHistory(payload.request ?? {}),

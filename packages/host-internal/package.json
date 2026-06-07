@@ -84,7 +84,9 @@
   },
   "dependencies": {
     "@spirit-agent/core": "file:../agent-core",
+    "fast-glob": "^3.3.3",
     "fflate": "^0.8.2",
+    "fuzzysort": "^3.1.0",
     "glob": "^13.0.6",
     "ignore": "^5.3.2",
     "spirit-agent-repo": "file:../..",
