@@ -28,7 +28,7 @@ test('buildResponsesGenerateTools adds web_search for openai official', () => {
   assert.ok('grep' in tools);
 });
 
-test('buildResponsesGenerateTools omits web_search for gateway', () => {
+test('buildResponsesGenerateTools adds web_search for gateway', () => {
   const tools = buildResponsesGenerateTools(
     {
       transportKind: 'open-responses',
@@ -39,7 +39,8 @@ test('buildResponsesGenerateTools omits web_search for gateway', () => {
     [hostTool],
   );
 
-  assert.equal('web_search' in tools, false);
+  assert.ok('web_search' in tools);
+  assert.ok('grep' in tools);
 });
 
 test('buildResponsesGenerateTools omits sdk web_search for openrouter', () => {

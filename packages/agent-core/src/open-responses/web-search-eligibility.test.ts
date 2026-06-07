@@ -46,7 +46,7 @@ test('resolveProviderWebSearchMode xai when enabled', () => {
   );
 });
 
-test('resolveProviderWebSearchMode excludes vercel gateway', () => {
+test('resolveProviderWebSearchMode enables vercel gateway open-responses', () => {
   assert.equal(
     resolveProviderWebSearchMode({
       transportKind: 'open-responses',
@@ -54,7 +54,7 @@ test('resolveProviderWebSearchMode excludes vercel gateway', () => {
       model: 'openai/gpt-5.4',
       llmVendor: 'vercel-ai-gateway',
     }),
-    undefined,
+    'gateway-sdk-web-search',
   );
   assert.equal(
     shouldUseProviderWebSearch({
@@ -63,7 +63,7 @@ test('resolveProviderWebSearchMode excludes vercel gateway', () => {
       model: 'openai/gpt-5.4',
       llmVendor: 'vercel-ai-gateway',
     }),
-    false,
+    true,
   );
 });
 
