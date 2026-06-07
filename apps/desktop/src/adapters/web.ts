@@ -33,7 +33,9 @@ import type {
   SessionListItem,
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
+  HostTextFileStatResult,
   WorkspaceReadTextFileResult,
+  WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
@@ -219,6 +221,15 @@ export function createWebHostApi(): HostApi {
         request,
       );
     },
+    primeWorkspaceFileReferenceIndex() {
+      return post<void>(baseUrl, '/api/workspace/file-reference-index/prime');
+    },
+    getWorkspaceFileReferenceIndex() {
+      return post<import('../types').WorkspaceFileReferenceIndexSnapshot>(
+        baseUrl,
+        '/api/workspace/file-reference-index',
+      );
+    },
     listWorkspaceExplorerChildren(relativePath: string) {
       return post<WorkspaceExplorerListResult>(baseUrl, '/api/workspace/explorer', {
         relativePath,
@@ -231,6 +242,15 @@ export function createWebHostApi(): HostApi {
     },
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest) {
       return post<void>(baseUrl, '/api/workspace/file/write', request);
+    },
+    readHostTextFile(absolutePath: string) {
+      return post<WorkspaceReadTextFileResult>(baseUrl, '/api/host/file', { absolutePath });
+    },
+    writeHostTextFile(request: WriteHostTextFileRequest) {
+      return post<void>(baseUrl, '/api/host/file/write', request);
+    },
+    statHostTextFile(absolutePath: string) {
+      return post<HostTextFileStatResult>(baseUrl, '/api/host/file/stat', { absolutePath });
     },
     async readLocalImagePreviewDataUrl() {
       return null;

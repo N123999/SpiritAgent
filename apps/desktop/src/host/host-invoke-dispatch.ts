@@ -58,11 +58,16 @@ export interface HostCommandDelegate {
   listWorkspaceFileReferenceSuggestions(
     request: CommandPayloads['listWorkspaceFileReferenceSuggestions']['request'],
   ): Promise<unknown>;
+  primeWorkspaceFileReferenceIndex(): Promise<unknown>;
+  getWorkspaceFileReferenceIndex(): Promise<unknown>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<unknown>;
   readGitWorkingTree(): Promise<unknown>;
   readGitHistory(request: NonNullable<CommandPayloads['readGitHistory']['request']>): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
+  readHostTextFile(absolutePath: string): Promise<unknown>;
+  writeHostTextFile(request: CommandPayloads['writeHostTextFile']['request']): Promise<unknown>;
+  statHostTextFile(absolutePath: string): Promise<unknown>;
   rewindAndSubmitMessage(request: CommandPayloads['rewindAndSubmitMessage']['request']): Promise<unknown>;
   setSubagentViewerTarget(parentToolCallId: string | null): Promise<unknown>;
 }
@@ -126,11 +131,16 @@ const hostCommandDispatch = {
   deleteSession: (host, payload) => host.deleteSession(payload.path),
   listWorkspaceFileReferenceSuggestions: (host, payload) =>
     host.listWorkspaceFileReferenceSuggestions(payload.request),
+  primeWorkspaceFileReferenceIndex: (host) => host.primeWorkspaceFileReferenceIndex(),
+  getWorkspaceFileReferenceIndex: (host) => host.getWorkspaceFileReferenceIndex(),
   listWorkspaceExplorerChildren: (host, payload) => host.listWorkspaceExplorerChildren(payload.relativePath),
   readGitWorkingTree: (host) => host.readGitWorkingTree(),
   readGitHistory: (host, payload) => host.readGitHistory(payload.request ?? {}),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
+  readHostTextFile: (host, payload) => host.readHostTextFile(payload.absolutePath),
+  writeHostTextFile: (host, payload) => host.writeHostTextFile(payload.request),
+  statHostTextFile: (host, payload) => host.statHostTextFile(payload.absolutePath),
   rewindAndSubmitMessage: (host, payload) => host.rewindAndSubmitMessage(payload.request),
   setSubagentViewerTarget: (host, payload) => host.setSubagentViewerTarget(payload.parentToolCallId),
 } satisfies { [Command in HostCommandName]: HostCommandHandler<Command> };

@@ -560,6 +560,11 @@ export interface QueryWorkspaceFileReferenceSuggestionsRequest {
 export type WorkspaceFileReferenceSuggestionsResult = HostWorkspaceFileReferenceSuggestionsResult;
 export type WorkspaceFileReferenceSuggestionsResponse = WorkspaceFileReferenceSuggestionsResult | null;
 
+export interface WorkspaceFileReferenceIndexSnapshot {
+  ready: boolean;
+  files: string[];
+}
+
 /** 宿主按 UTF-8 读取的工作区文本文件内容（侧栏编辑器等）。 */
 export interface WorkspaceReadTextFileResult {
   text: string;
@@ -568,6 +573,16 @@ export interface WorkspaceReadTextFileResult {
 /** 将 UTF-8 文本写回工作区内已有文件（路径规则与读文件一致）。 */
 export interface WriteWorkspaceTextFileRequest {
   relativePath: string;
+  text: string;
+}
+
+export interface HostTextFileStatResult {
+  exists: boolean;
+  isFile: boolean;
+}
+
+export interface WriteHostTextFileRequest {
+  absolutePath: string;
   text: string;
 }
 

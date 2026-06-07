@@ -147,11 +147,13 @@ import {
   shouldTightenAfterPreviousMetaMessage,
 } from "@/lib/message-card-spacing";
 import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
+import { WorkspaceFilePickerDialog } from "@/components/workspace-file-picker-dialog";
 import { UserMessageBubble } from "@/components/user-message-bubble";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useElementBoxHeight } from "@/hooks/use-element-box-height";
 import { useSubagentViewer } from "@/hooks/useSubagentViewer";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
+import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import { useFont } from "@/hooks/useFont";
 import { useTheme } from "@/hooks/useTheme";
@@ -215,9 +217,11 @@ import {
 } from "@/lib/workspace-tool-tabs";
 import { normalizeBrowserUrl } from "@/lib/browser-url";
 import {
-  buildOpenWorkspaceFileNavigation,
+  buildOpenEditorFileNavigation,
+  type EditorFileTarget,
   type WorkspaceEditorViewMode,
 } from "@/lib/workspace-editor-navigation";
+import { isMarkdownPath } from "@/lib/file-picker-path";
 import type {
   AskQuestionsQuestionSpec,
   DesktopModelReasoningEffort,
@@ -2195,6 +2199,10 @@ export default function App() {
     null,
   );
   const [workspaceFileRevealPath, setWorkspaceFileRevealPath] = useState("");
+  const [workspaceFileRevealAbsolutePath, setWorkspaceFileRevealAbsolutePath] = useState("");
+  const [workspaceFileRevealScope, setWorkspaceFileRevealScope] = useState<
+    EditorFileTarget["scope"]
+  >("workspace");
   const [workspaceFileRevealViewMode, setWorkspaceFileRevealViewMode] =
     useState<WorkspaceEditorViewMode>("edit");
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(readWorkspaceToolsWidthPx);
@@ -2219,23 +2227,37 @@ export default function App() {
     }
   }, [runtime.hostKind]);
 
+  const openEditorFile = useCallback((target: EditorFileTarget) => {
+    const navigation = buildOpenEditorFileNavigation({
+      tabs: workspaceToolTabsRef.current,
+      activeTabId: activeWorkspaceToolTabIdRef.current,
+      target,
+    });
+    setWorkspaceToolsOpen(true);
+    setWorkspaceToolTabs(navigation.tabs);
+    setActiveWorkspaceToolTabId(navigation.activeTabId);
+    setWorkspaceFileRevealTargetId(navigation.filesTabId);
+    setWorkspaceFileRevealScope(target.scope);
+    setWorkspaceFileRevealViewMode(target.viewMode);
+    if (target.scope === "workspace") {
+      setWorkspaceFileRevealPath(target.relativePath);
+      setWorkspaceFileRevealAbsolutePath("");
+    } else {
+      setWorkspaceFileRevealPath("");
+      setWorkspaceFileRevealAbsolutePath(target.absolutePath);
+    }
+    setWorkspaceFileRevealNonce((value) => value + 1);
+  }, []);
+
   const openWorkspaceFile = useCallback(
     (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => {
-      const viewMode = options?.viewMode ?? "edit";
-      const navigation = buildOpenWorkspaceFileNavigation({
-        tabs: workspaceToolTabsRef.current,
-        activeTabId: activeWorkspaceToolTabIdRef.current,
-        request: { relativePath, viewMode },
+      openEditorFile({
+        scope: "workspace",
+        relativePath,
+        viewMode: options?.viewMode ?? "edit",
       });
-      setWorkspaceToolsOpen(true);
-      setWorkspaceToolTabs(navigation.tabs);
-      setActiveWorkspaceToolTabId(navigation.activeTabId);
-      setWorkspaceFileRevealTargetId(navigation.filesTabId);
-      setWorkspaceFileRevealPath(relativePath);
-      setWorkspaceFileRevealViewMode(viewMode);
-      setWorkspaceFileRevealNonce((value) => value + 1);
     },
-    [],
+    [openEditorFile],
   );
 
   useEffect(() => {
@@ -2267,12 +2289,28 @@ export default function App() {
     }
     return bridge.subscribeBrowserOpenUrl(openBrowserUrlInNewTab);
   }, [openBrowserUrlInNewTab]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'p') {
+        return;
+      }
+      event.preventDefault();
+      setFilePickerOpen(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const [composerCursorCodeUnits, setComposerCursorCodeUnits] = useState(0);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const [fileReferenceSuggestions, setFileReferenceSuggestions] =
     useState<WorkspaceFileReferenceSuggestionsResponse>(null);
   const [fileReferenceSelectedIndex, setFileReferenceSelectedIndex] = useState(-1);
   const [dismissedFileReferenceKey, setDismissedFileReferenceKey] = useState<string | null>(null);
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [branchCheckoutDialogOpen, setBranchCheckoutDialogOpen] = useState(false);
   const [branchCheckoutBlockedByChanges, setBranchCheckoutBlockedByChanges] = useState(false);
   const pendingComposerSendRef = useRef<{
@@ -2398,7 +2436,12 @@ export default function App() {
         : "",
     [fileReferenceQuery],
   );
-  const fileReferenceRequestIdRef = useRef(0);
+  const workspaceFileIndex = useWorkspaceFileIndex({
+    workspaceRoot: snapshot?.workspaceRoot ?? "",
+    workspaceBinding: snapshot?.workspaceBinding ?? "project",
+    primeWorkspaceFileReferenceIndex: runtime.primeWorkspaceFileReferenceIndex,
+    getWorkspaceFileReferenceIndex: runtime.getWorkspaceFileReferenceIndex,
+  });
   const extensionSettingsItems = useMemo(
     () =>
       (snapshot?.extensionsList ?? [])
@@ -2421,37 +2464,25 @@ export default function App() {
       return;
     }
 
-    const requestId = fileReferenceRequestIdRef.current + 1;
-    fileReferenceRequestIdRef.current = requestId;
-    const input = runtime.composer;
-    const cursorChars = composerCursorChars;
-    const timeout = window.setTimeout(() => {
-      void runtime
-        .listWorkspaceFileReferenceSuggestions({
-          input,
-          cursorChars,
-        })
-        .then((result) => {
-          if (fileReferenceRequestIdRef.current !== requestId) {
-            return;
-          }
-          setFileReferenceSuggestions(result);
-        })
-        .catch(() => {
-          if (fileReferenceRequestIdRef.current !== requestId) {
-            return;
-          }
-          setFileReferenceSuggestions(null);
-        });
-    }, 90);
+    if (!workspaceFileIndex.ready) {
+      setFileReferenceSuggestions({
+        query: fileReferenceQuery,
+        suggestions: [],
+      });
+      return;
+    }
 
-    return () => {
-      window.clearTimeout(timeout);
-    };
+    setFileReferenceSuggestions({
+      query: fileReferenceQuery,
+      suggestions: workspaceFileIndex.search(fileReferenceQuery.raw),
+    });
   }, [
     dismissedFileReferenceKey,
+    fileReferenceQuery,
     fileReferenceQueryKey,
-    runtime,
+    workspaceFileIndex.ready,
+    workspaceFileIndex.fileCount,
+    workspaceFileIndex.search,
   ]);
 
   useEffect(() => {
@@ -3564,6 +3595,8 @@ export default function App() {
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
               readWorkspaceTextFile={runtime.readWorkspaceTextFile}
               writeWorkspaceTextFile={runtime.writeWorkspaceTextFile}
+              readHostTextFile={runtime.readHostTextFile}
+              writeHostTextFile={runtime.writeHostTextFile}
               readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
               plan={snapshot?.plan ?? { path: "", exists: false }}
               onStartImplementing={() => {
@@ -3577,6 +3610,8 @@ export default function App() {
               autoRevealFileNonce={workspaceFileRevealNonce}
               fileRevealTabId={workspaceFileRevealTargetId}
               fileRevealPath={workspaceFileRevealPath}
+              fileRevealAbsolutePath={workspaceFileRevealAbsolutePath}
+              fileRevealScope={workspaceFileRevealScope}
               fileRevealViewMode={workspaceFileRevealViewMode}
               onOpenWorkspaceFile={openWorkspaceFile}
               tabs={workspaceToolTabs}
@@ -3600,6 +3635,28 @@ export default function App() {
         )}
         </div>
       </div>
+
+      <WorkspaceFilePickerDialog
+        open={filePickerOpen}
+        onOpenChange={setFilePickerOpen}
+        workspaceRoot={snapshot?.workspaceRoot ?? ''}
+        workspaceBinding={snapshot?.workspaceBinding ?? 'project'}
+        onOpenWorkspaceFile={(relativePath) => {
+          openWorkspaceFile(relativePath, {
+            viewMode: isMarkdownPath(relativePath) ? "preview" : "edit",
+          });
+        }}
+        onOpenExternalFile={(absolutePath) => {
+          openEditorFile({
+            scope: "external",
+            absolutePath,
+            viewMode: isMarkdownPath(absolutePath) ? "preview" : "edit",
+          });
+        }}
+        statHostTextFile={runtime.statHostTextFile}
+        indexReady={workspaceFileIndex.ready}
+        searchWorkspaceFiles={workspaceFileIndex.search}
+      />
 
       <Dialog open={Boolean(pendingQuestions)}>
         <DialogContent className="max-w-4xl p-0" showCloseButton={false}>

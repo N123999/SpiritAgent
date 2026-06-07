@@ -60,7 +60,9 @@ import type {
   UpdateConfigRequest,
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
+  HostTextFileStatResult,
   WorkspaceReadTextFileResult,
+  WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
   DesktopModelProvider,
   GitHistorySnapshot,
@@ -2163,6 +2165,20 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const primeWorkspaceFileReferenceIndex = useCallback(async (): Promise<void> => {
+    if (!api) {
+      return;
+    }
+    await api.primeWorkspaceFileReferenceIndex();
+  }, [api]);
+
+  const getWorkspaceFileReferenceIndex = useCallback(async () => {
+    if (!api) {
+      return { ready: false, files: [] };
+    }
+    return api.getWorkspaceFileReferenceIndex();
+  }, [api]);
+
   const listWorkspaceExplorerChildren = useCallback(
     async (relativePath: string): Promise<WorkspaceExplorerListResult> => {
       if (!api) {
@@ -2206,6 +2222,36 @@ export function useDesktopRuntime() {
         throw new Error(i18n.t('error.hostNotReady'));
       }
       return api.writeWorkspaceTextFile(request);
+    },
+    [api],
+  );
+
+  const readHostTextFile = useCallback(
+    async (absolutePath: string): Promise<WorkspaceReadTextFileResult> => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.readHostTextFile(absolutePath);
+    },
+    [api],
+  );
+
+  const writeHostTextFile = useCallback(
+    async (request: WriteHostTextFileRequest): Promise<void> => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.writeHostTextFile(request);
+    },
+    [api],
+  );
+
+  const statHostTextFile = useCallback(
+    async (absolutePath: string): Promise<HostTextFileStatResult> => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.statHostTextFile(absolutePath);
     },
     [api],
   );
@@ -2377,11 +2423,16 @@ export function useDesktopRuntime() {
     openSession,
     deleteSession,
     listWorkspaceFileReferenceSuggestions,
+    primeWorkspaceFileReferenceIndex,
+    getWorkspaceFileReferenceIndex,
     listWorkspaceExplorerChildren,
     readGitWorkingTree,
     readGitHistory,
     readWorkspaceTextFile,
     writeWorkspaceTextFile,
+    readHostTextFile,
+    writeHostTextFile,
+    statHostTextFile,
     pairWebHost,
     resetSession,
     rewindAndSubmitMessage,

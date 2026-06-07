@@ -7,6 +7,10 @@ import {
 
 export type WorkspaceEditorViewMode = "edit" | "preview";
 
+export type EditorFileTarget =
+  | { scope: "workspace"; relativePath: string; viewMode: WorkspaceEditorViewMode }
+  | { scope: "external"; absolutePath: string; viewMode: WorkspaceEditorViewMode };
+
 export type WorkspaceFileRevealRequest = {
   relativePath: string;
   viewMode: WorkspaceEditorViewMode;
@@ -41,22 +45,44 @@ export function resolveWorkspaceFilesTab(
   };
 }
 
+export type OpenEditorFileNavigationInput = {
+  tabs: readonly WorkspaceToolTab[];
+  activeTabId: string;
+  target: EditorFileTarget;
+};
+
+export type OpenEditorFileNavigationResult = ResolveWorkspaceFilesTabResult & {
+  reveal: EditorFileTarget;
+};
+
+export function buildOpenEditorFileNavigation(
+  input: OpenEditorFileNavigationInput,
+): OpenEditorFileNavigationResult {
+  const resolved = resolveWorkspaceFilesTab(input.tabs, input.activeTabId);
+  return {
+    ...resolved,
+    reveal: input.target,
+  };
+}
+
 export type OpenWorkspaceFileNavigationInput = {
   tabs: readonly WorkspaceToolTab[];
   activeTabId: string;
   request: WorkspaceFileRevealRequest;
 };
 
-export type OpenWorkspaceFileNavigationResult = ResolveWorkspaceFilesTabResult & {
-  reveal: WorkspaceFileRevealRequest;
-};
+export type OpenWorkspaceFileNavigationResult = OpenEditorFileNavigationResult;
 
 export function buildOpenWorkspaceFileNavigation(
   input: OpenWorkspaceFileNavigationInput,
 ): OpenWorkspaceFileNavigationResult {
-  const resolved = resolveWorkspaceFilesTab(input.tabs, input.activeTabId);
-  return {
-    ...resolved,
-    reveal: input.request,
-  };
+  return buildOpenEditorFileNavigation({
+    tabs: input.tabs,
+    activeTabId: input.activeTabId,
+    target: {
+      scope: "workspace",
+      relativePath: input.request.relativePath,
+      viewMode: input.request.viewMode,
+    },
+  });
 }

@@ -8,6 +8,7 @@ import type {
   CommitChangesRequest,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
+  HostTextFileStatResult,
   ReadGitHistoryRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
@@ -37,6 +38,7 @@ import type {
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
+  WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
   SubmitCreateSkillSlashRequest,
   SubmitGitChipRequest,
@@ -111,9 +113,14 @@ export interface HostApi {
   listWorkspaceFileReferenceSuggestions(
     request: QueryWorkspaceFileReferenceSuggestionsRequest,
   ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
+  primeWorkspaceFileReferenceIndex(): Promise<void>;
+  getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
+  readHostTextFile(absolutePath: string): Promise<WorkspaceReadTextFileResult>;
+  writeHostTextFile(request: WriteHostTextFileRequest): Promise<void>;
+  statHostTextFile(absolutePath: string): Promise<HostTextFileStatResult>;
   pickWorkspaceDirectory?(): Promise<string | null>;
   pickLocalFile?(): Promise<string | null>;
   ingestClipboardImage?(): Promise<string | null>;

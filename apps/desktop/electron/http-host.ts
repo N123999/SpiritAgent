@@ -896,6 +896,16 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/file-reference-index/prime') {
+    writeJson(request, response, 200, await runHostCommand('primeWorkspaceFileReferenceIndex'));
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/workspace/file-reference-index') {
+    writeJson(request, response, 200, await runHostCommand('getWorkspaceFileReferenceIndex'));
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/workspace/file') {
     writeJson(
       request,
@@ -919,6 +929,46 @@ async function handleApiRequest({
             typeof jsonBody?.relativePath === 'string' ? jsonBody.relativePath : '',
           text: typeof jsonBody?.text === 'string' ? jsonBody.text : '',
         },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/host/file') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('readHostTextFile', {
+        absolutePath: typeof jsonBody?.absolutePath === 'string' ? jsonBody.absolutePath : '',
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/host/file/write') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('writeHostTextFile', {
+        request: {
+          absolutePath:
+            typeof jsonBody?.absolutePath === 'string' ? jsonBody.absolutePath : '',
+          text: typeof jsonBody?.text === 'string' ? jsonBody.text : '',
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/host/file/stat') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('statHostTextFile', {
+        absolutePath: typeof jsonBody?.absolutePath === 'string' ? jsonBody.absolutePath : '',
       }),
     );
     return;

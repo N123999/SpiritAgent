@@ -16,7 +16,10 @@ import {
   writeWorkspaceToolsWidthPx,
 } from "@/lib/layout-prefs";
 import { cn } from "@/lib/utils";
-import type { WorkspaceEditorViewMode } from "@/lib/workspace-editor-navigation";
+import type {
+  EditorFileTarget,
+  WorkspaceEditorViewMode,
+} from "@/lib/workspace-editor-navigation";
 import {
   addWorkspaceToolTab,
   closeWorkspaceToolTab,
@@ -33,6 +36,7 @@ import type {
   ReadGitHistoryRequest,
   WorkspaceExplorerListResult,
   WorkspaceReadTextFileResult,
+  WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
 } from "@/types";
 
@@ -57,6 +61,8 @@ export type WorkspaceToolsDockProps = {
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile: (request: WriteWorkspaceTextFileRequest) => Promise<void>;
+  readHostTextFile: (absolutePath: string) => Promise<WorkspaceReadTextFileResult>;
+  writeHostTextFile: (request: WriteHostTextFileRequest) => Promise<void>;
   readManagedImagePreviewDataUrl?: (reference: string) => Promise<string | null>;
   plan: PlanSnapshot;
   onStartImplementing?: () => void;
@@ -67,6 +73,8 @@ export type WorkspaceToolsDockProps = {
   autoRevealFileNonce?: number;
   fileRevealTabId?: string | null;
   fileRevealPath?: string;
+  fileRevealAbsolutePath?: string;
+  fileRevealScope?: EditorFileTarget["scope"];
   fileRevealViewMode?: WorkspaceEditorViewMode;
   onOpenWorkspaceFile?: (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => void;
   tabs: WorkspaceToolTab[];
@@ -96,6 +104,8 @@ export function WorkspaceToolsDock({
   listExplorerChildren,
   readWorkspaceTextFile,
   writeWorkspaceTextFile,
+  readHostTextFile,
+  writeHostTextFile,
   readManagedImagePreviewDataUrl,
   plan,
   onStartImplementing,
@@ -105,6 +115,8 @@ export function WorkspaceToolsDock({
   autoRevealFileNonce = 0,
   fileRevealTabId = null,
   fileRevealPath = "",
+  fileRevealAbsolutePath = "",
+  fileRevealScope = "workspace",
   fileRevealViewMode = "edit",
   onOpenWorkspaceFile,
   tabs,
@@ -427,6 +439,8 @@ export function WorkspaceToolsDock({
                         listExplorerChildren={listExplorerChildren}
                         readWorkspaceTextFile={readWorkspaceTextFile}
                         writeWorkspaceTextFile={writeWorkspaceTextFile}
+                        readHostTextFile={readHostTextFile}
+                        writeHostTextFile={writeHostTextFile}
                         readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
                         onStartImplementing={onStartImplementing}
                         startImplementingDisabled={startImplementingDisabled}
@@ -435,6 +449,8 @@ export function WorkspaceToolsDock({
                         autoRevealFileNonce={fileRevealEnabled ? autoRevealFileNonce : 0}
                         fileRevealEnabled={fileRevealEnabled}
                         fileRevealPath={fileRevealPath}
+                        fileRevealAbsolutePath={fileRevealAbsolutePath}
+                        fileRevealScope={fileRevealScope}
                         fileRevealViewMode={fileRevealViewMode}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                       />

@@ -95,6 +95,23 @@ test('collect workspace file index respects root gitignore and default ignored d
   }
 });
 
+test('collect workspace file index respects nested gitignore without git', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-file-ref-nested-'));
+  try {
+    await mkdir(join(workspaceRoot, 'src', 'pkg'), { recursive: true });
+    await writeFile(join(workspaceRoot, 'src', '.gitignore'), 'pkg/\n');
+    await writeFile(join(workspaceRoot, 'src', 'main.ts'), 'console.log(1);\n');
+    await writeFile(join(workspaceRoot, 'src', 'pkg', 'ignored.ts'), 'export {};\n');
+
+    await clearWorkspaceFileReferenceIndexCache(workspaceRoot);
+    const files = await collectWorkspaceFileReferenceIndex(workspaceRoot);
+    assert.deepEqual(files, ['src/.gitignore', 'src/main.ts']);
+  } finally {
+    await clearWorkspaceFileReferenceIndexCache(workspaceRoot);
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('cached workspace file suggestions do not block on cold index', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-file-ref-cached-'));
   try {

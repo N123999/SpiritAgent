@@ -174,6 +174,12 @@ export async function createElectronHostApi(): Promise<HostApi> {
     listWorkspaceFileReferenceSuggestions(request) {
       return bridge.listWorkspaceFileReferenceSuggestions(request);
     },
+    primeWorkspaceFileReferenceIndex() {
+      return bridge.primeWorkspaceFileReferenceIndex();
+    },
+    getWorkspaceFileReferenceIndex() {
+      return bridge.getWorkspaceFileReferenceIndex();
+    },
     listWorkspaceExplorerChildren(relativePath) {
       return bridge.listWorkspaceExplorerChildren(relativePath);
     },
@@ -188,6 +194,15 @@ export async function createElectronHostApi(): Promise<HostApi> {
     },
     writeWorkspaceTextFile(request) {
       return bridge.writeWorkspaceTextFile(request);
+    },
+    readHostTextFile(absolutePath) {
+      return bridge.readHostTextFile(absolutePath);
+    },
+    writeHostTextFile(request) {
+      return bridge.writeHostTextFile(request);
+    },
+    statHostTextFile(absolutePath) {
+      return bridge.statHostTextFile(absolutePath);
     },
     pickWorkspaceDirectory() {
       return bridge.pickWorkspaceDirectory();

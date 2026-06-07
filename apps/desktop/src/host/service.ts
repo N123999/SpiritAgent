@@ -80,6 +80,7 @@ import type {
   DesktopGitSnapshot,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
+  HostTextFileStatResult,
   ReadGitHistoryRequest,
   DesktopDreamCollectorSnapshot,
   PlanSnapshot,
@@ -108,6 +109,7 @@ import type {
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
+  WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
 } from '../types.js';
 import type { DesktopToolRequest, HostCommandName } from './contracts.js';
@@ -148,15 +150,20 @@ import {
   listDreamsOverviewCommand,
   listSessionsCommand,
   listWorkspaceExplorerChildrenCommand,
+  getWorkspaceFileReferenceIndexCommand,
   listWorkspaceFileReferenceSuggestionsCommand,
+  primeWorkspaceFileReferenceIndexCommand,
   mergeWorktreeToMainCommand,
   pushGitBranchCommand,
   readGitHistoryCommand,
   readGitWorkingTreeCommand,
+  readHostTextFileCommand,
   readWorkspaceTextFileCommand,
   refreshGitSnapshotCommand,
   rememberWorkspaceRootCommand,
   setWebHostAuthTokenHashCommand,
+  statHostTextFileCommand,
+  writeHostTextFileCommand,
   writeWorkspaceTextFileCommand,
   type HostWorkspaceGitCommandContext,
 } from './host-workspace-git-commands.js';
@@ -1428,12 +1435,32 @@ class DesktopHostService {
     return listWorkspaceFileReferenceSuggestionsCommand(this.workspaceGitCommandContext(), request);
   }
 
+  async primeWorkspaceFileReferenceIndex(): Promise<void> {
+    return primeWorkspaceFileReferenceIndexCommand(this.workspaceGitCommandContext());
+  }
+
+  async getWorkspaceFileReferenceIndex(): Promise<import('../types.js').WorkspaceFileReferenceIndexSnapshot> {
+    return getWorkspaceFileReferenceIndexCommand(this.workspaceGitCommandContext());
+  }
+
   async readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult> {
     return readWorkspaceTextFileCommand(this.workspaceGitCommandContext(), relativePath);
   }
 
   async writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void> {
     return writeWorkspaceTextFileCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async readHostTextFile(absolutePath: string): Promise<WorkspaceReadTextFileResult> {
+    return readHostTextFileCommand(this.workspaceGitCommandContext(), absolutePath);
+  }
+
+  async writeHostTextFile(request: WriteHostTextFileRequest): Promise<void> {
+    return writeHostTextFileCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async statHostTextFile(absolutePath: string): Promise<HostTextFileStatResult> {
+    return statHostTextFileCommand(this.workspaceGitCommandContext(), absolutePath);
   }
 
   async openSession(filePath: string): Promise<DesktopSnapshot> {

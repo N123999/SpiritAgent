@@ -40,6 +40,8 @@ import type {
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
+  HostTextFileStatResult,
+  WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
 } from './types';
 
@@ -105,11 +107,16 @@ declare global {
     listWorkspaceFileReferenceSuggestions(
       request: QueryWorkspaceFileReferenceSuggestionsRequest,
     ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
+    primeWorkspaceFileReferenceIndex(): Promise<void>;
+    getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
     readGitWorkingTree(): Promise<import('./types').GitWorkingTreeSnapshot>;
     readGitHistory(request?: import('./types').ReadGitHistoryRequest): Promise<import('./types').GitHistorySnapshot>;
     readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
+    readHostTextFile(absolutePath: string): Promise<WorkspaceReadTextFileResult>;
+    writeHostTextFile(request: WriteHostTextFileRequest): Promise<void>;
+    statHostTextFile(absolutePath: string): Promise<HostTextFileStatResult>;
     pickWorkspaceDirectory(): Promise<string | null>;
     pickLocalFile(): Promise<string | null>;
     ingestClipboardImage(): Promise<string | null>;

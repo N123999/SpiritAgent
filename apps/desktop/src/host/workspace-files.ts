@@ -11,7 +11,7 @@ import type {
 } from '../types.js';
 
 /** 单文件上限，避免大文件拖垮渲染进程。 */
-const WORKSPACE_TEXT_FILE_MAX_BYTES = 2 * 1024 * 1024;
+export const WORKSPACE_TEXT_FILE_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
  * 将工作区相对路径解析为绝对路径；使用 `/` 分段，禁止 `..` 与绝对路径。

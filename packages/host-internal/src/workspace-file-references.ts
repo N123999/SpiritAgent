@@ -1,7 +1,17 @@
-import { readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { promisify } from 'node:util';
 
+import fg from 'fast-glob';
 import ignore, { type Ignore } from 'ignore';
+
+const createIgnore = ignore as unknown as (options?: {
+  allowRelativePaths?: boolean;
+}) => Ignore;
+
+const execFileAsync = promisify(execFile);
+const GIT_LS_FILES_MAX_BUFFER = 64 * 1024 * 1024;
 import {
   computeWorkspaceFileReferenceSuggestions,
   currentWorkspaceFileReferenceQuery,
@@ -11,10 +21,6 @@ import {
 import { detectSupportedImageFile, hasSupportedImageExtension } from './image-file-support.js';
 import { detectSupportedVideoFile, hasSupportedVideoExtension } from './video-file-support.js';
 
-const createIgnore = ignore as unknown as (options?: {
-  allowRelativePaths?: boolean;
-}) => Ignore;
-
 const DEFAULT_MAX_CONTENT_CHARS = 24_000;
 const DEFAULT_IGNORED_DIRECTORY_NAMES = new Set(['.git', 'target', 'node_modules', 'bin', 'obj']);
 const IGNORE_FILE_NAMES = ['.gitignore', '.ignore'] as const;
@@ -22,6 +28,11 @@ const IGNORE_FILE_NAMES = ['.gitignore', '.ignore'] as const;
 interface WorkspaceFileIndexCacheEntry {
   promise: Promise<string[]>;
   files?: string[];
+}
+
+interface IgnoreMatcherEntry {
+  baseRelPath: string;
+  matcher: Ignore;
 }
 
 const workspaceFileIndexCache = new Map<string, WorkspaceFileIndexCacheEntry>();
@@ -56,9 +67,9 @@ export interface ResolveWorkspaceFileReferenceAttachmentsOptions {
   maxContentChars?: number;
 }
 
-interface IgnoreMatcherEntry {
-  baseRelPath: string;
-  matcher: Ignore;
+export interface WorkspaceFileReferenceIndexSnapshot {
+  ready: boolean;
+  files: string[];
 }
 
 export async function listWorkspaceFileReferenceSuggestions(
@@ -113,6 +124,21 @@ export async function primeWorkspaceFileReferenceIndexCache(workspaceRoot: strin
   const root = await canonicalWorkspaceRoot(workspaceRoot);
   const entry = ensureWorkspaceFileReferenceIndexCacheEntry(root);
   entry.promise.catch(() => undefined);
+}
+
+export async function getWorkspaceFileReferenceIndexSnapshot(
+  workspaceRoot: string,
+): Promise<WorkspaceFileReferenceIndexSnapshot> {
+  const root = await canonicalWorkspaceRoot(workspaceRoot);
+  const entry = workspaceFileIndexCache.get(root);
+  if (!entry?.files) {
+    return { ready: false, files: [] };
+  }
+
+  return {
+    ready: true,
+    files: [...entry.files],
+  };
 }
 
 export async function clearWorkspaceFileReferenceIndexCache(workspaceRoot?: string): Promise<void> {
@@ -255,57 +281,113 @@ async function localFileAttachmentFromAbsolutePath(
 }
 
 async function collectWorkspaceFileReferenceIndexUncached(workspaceRoot: string): Promise<string[]> {
-  const rootMatchers = await readIgnoreMatchers(workspaceRoot, '');
-  const files: string[] = [];
+  const viaGit = await collectWorkspaceFileIndexViaGit(workspaceRoot);
+  if (viaGit !== null) {
+    return viaGit;
+  }
 
-  await walkWorkspaceFiles(workspaceRoot, '', rootMatchers, files);
+  return collectWorkspaceFileIndexViaFastGlob(workspaceRoot);
+}
+
+async function collectWorkspaceFileIndexViaGit(workspaceRoot: string): Promise<string[] | null> {
+  try {
+    await stat(resolve(workspaceRoot, '.git'));
+  } catch {
+    return null;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+      {
+        cwd: workspaceRoot,
+        windowsHide: true,
+        maxBuffer: GIT_LS_FILES_MAX_BUFFER,
+      },
+    );
+
+    return stdout
+      .split('\0')
+      .filter((entry) => entry.length > 0)
+      .map((entry) => entry.replace(/\\/gu, '/'))
+      .filter((entry) => pathPassesDefaultIgnoredDirectories(entry));
+  } catch {
+    return null;
+  }
+}
+
+async function collectWorkspaceFileIndexViaFastGlob(workspaceRoot: string): Promise<string[]> {
+  const globIgnore = [
+    '**/.git/**',
+    ...Array.from(DEFAULT_IGNORED_DIRECTORY_NAMES).map((directory) => `**/${directory}/**`),
+  ];
+
+  const entries = await fg('**/*', {
+    cwd: workspaceRoot,
+    onlyFiles: true,
+    dot: true,
+    followSymbolicLinks: false,
+    suppressErrors: true,
+    ignore: globIgnore,
+  });
+
+  const files: string[] = [];
+  const matcherCache = new Map<string, IgnoreMatcherEntry[]>();
+
+  for (const entry of entries) {
+    const relativePath = entry.replace(/\\/gu, '/');
+    const parentDirRelPath = relativePath.includes('/')
+      ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+      : '';
+    if (
+      parentDirRelPath
+        .split('/')
+        .some((segment) => DEFAULT_IGNORED_DIRECTORY_NAMES.has(segment))
+    ) {
+      continue;
+    }
+
+    const matchers = await cachedIgnoreMatchersForRelativeDir(
+      workspaceRoot,
+      parentDirRelPath,
+      matcherCache,
+    );
+    if (shouldIgnoreWorkspacePath(relativePath, false, matchers)) {
+      continue;
+    }
+
+    files.push(relativePath);
+  }
+
   return files;
 }
 
-async function walkWorkspaceFiles(
+async function cachedIgnoreMatchersForRelativeDir(
   workspaceRoot: string,
-  currentDirRelPath: string,
-  parentMatchers: readonly IgnoreMatcherEntry[],
-  files: string[],
-): Promise<void> {
-  const currentDirAbsolutePath = currentDirRelPath
-    ? resolve(workspaceRoot, ...currentDirRelPath.split('/'))
-    : workspaceRoot;
-  const currentMatchers = [...parentMatchers, ...(await readIgnoreMatchers(workspaceRoot, currentDirRelPath))];
-
-  let entries;
-  try {
-    entries = await readdir(currentDirAbsolutePath, { withFileTypes: true });
-  } catch {
-    return;
+  dirRelPath: string,
+  cache: Map<string, IgnoreMatcherEntry[]>,
+): Promise<IgnoreMatcherEntry[]> {
+  const cached = cache.get(dirRelPath);
+  if (cached) {
+    return cached;
   }
 
-  for (const entry of entries) {
-    if (entry.name === '.' || entry.name === '..' || entry.isSymbolicLink()) {
-      continue;
-    }
+  const segments = dirRelPath ? dirRelPath.split('/').filter((segment) => segment.length > 0) : [];
+  let matchers: IgnoreMatcherEntry[] = [];
+  let currentRelPath = '';
 
-    const childRelPath = currentDirRelPath ? `${currentDirRelPath}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      if (DEFAULT_IGNORED_DIRECTORY_NAMES.has(entry.name)) {
-        continue;
-      }
-      if (shouldIgnoreWorkspacePath(childRelPath, true, currentMatchers)) {
-        continue;
-      }
-      await walkWorkspaceFiles(workspaceRoot, childRelPath, currentMatchers, files);
-      continue;
+  for (let index = 0; index <= segments.length; index += 1) {
+    matchers = [...matchers, ...(await readIgnoreMatchers(workspaceRoot, currentRelPath))];
+    if (index < segments.length) {
+      currentRelPath = currentRelPath
+        ? `${currentRelPath}/${segments[index]}`
+        : segments[index]!;
     }
-
-    if (!entry.isFile()) {
-      continue;
-    }
-    if (shouldIgnoreWorkspacePath(childRelPath, false, currentMatchers)) {
-      continue;
-    }
-
-    files.push(childRelPath);
   }
+
+  cache.set(dirRelPath, matchers);
+  return matchers;
 }
 
 async function readIgnoreMatchers(
@@ -402,6 +484,11 @@ function relativePathFromMatcherBase(baseRelPath: string, targetRelativePath: st
   }
 
   return targetRelativePath.slice(baseRelPath.length + 1);
+}
+
+function pathPassesDefaultIgnoredDirectories(relativePath: string): boolean {
+  const segments = relativePath.replace(/\\/gu, '/').split('/');
+  return !segments.some((segment) => DEFAULT_IGNORED_DIRECTORY_NAMES.has(segment));
 }
 
 async function resolveWorkspaceFileReferencePath(
