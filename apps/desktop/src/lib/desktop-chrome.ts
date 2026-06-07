@@ -7,6 +7,10 @@ import { cn } from "@/lib/utils";
 export const instantHoverMotionClass =
   "!transition-[opacity,transform,box-shadow] duration-150";
 
+/** 侧栏壳层 / 顶栏槽位宽度过渡，与 SessionSidebarShell 一致 */
+export const DESKTOP_SHELL_LAYOUT_TRANSITION =
+  "transition-[width,margin,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0";
+
 /** ghost 在 aria-expanded 时默认带 bg-muted，顶栏图标按钮需全透明底 */
 export const DESKTOP_CHROME_TOGGLE_ICON_BTN = cn(
   "size-7 shrink-0 bg-transparent text-foreground/90 hover:bg-foreground/[0.06] hover:text-foreground dark:hover:bg-foreground/10 aria-expanded:bg-transparent dark:aria-expanded:bg-transparent aria-expanded:text-foreground aria-expanded:hover:bg-foreground/[0.06] dark:aria-expanded:hover:bg-foreground/10 [&_svg]:size-3.5",

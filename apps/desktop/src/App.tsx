@@ -170,6 +170,7 @@ import {
 } from "@/components/ui/filtered-overlay-menu";
 import {
   DESKTOP_CHROME_TOGGLE_ICON_BTN,
+  DESKTOP_SHELL_LAYOUT_TRANSITION,
   DESKTOP_OVERLAY_LIST_ACTION_ITEM,
   DESKTOP_OVERLAY_LIST_GROUP_LABEL,
   DESKTOP_OVERLAY_LIST_ITEM,
@@ -1838,12 +1839,12 @@ function DesktopLayoutChromeBar({
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 items-center">
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
+          className={cn(DESKTOP_CHROME_TOGGLE_ICON_BTN, "mr-1")}
           onClick={onToggleSessionSidebar}
           aria-label={sessionSidebarOpen ? t('app.hideSidebar') : t('app.showSidebar')}
           aria-expanded={sessionSidebarOpen}
@@ -1851,18 +1852,30 @@ function DesktopLayoutChromeBar({
         >
           {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
         </Button>
-        {!sessionSidebarOpen && onNewSession ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
-            onClick={onNewSession}
-            disabled={newSessionBusy}
-            aria-label={t("sidebar.newSession")}
+        {onNewSession ? (
+          <div
+            className={cn(
+              "shrink-0 overflow-hidden",
+              DESKTOP_SHELL_LAYOUT_TRANSITION,
+              sessionSidebarOpen
+                ? "pointer-events-none mr-0 w-0 opacity-0"
+                : "mr-1 w-7 opacity-100",
+            )}
+            aria-hidden={sessionSidebarOpen}
           >
-            <Plus className="size-3.5" aria-hidden />
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
+              onClick={onNewSession}
+              disabled={newSessionBusy}
+              tabIndex={sessionSidebarOpen ? -1 : undefined}
+              aria-label={t("sidebar.newSession")}
+            >
+              <Plus className="size-3.5" aria-hidden />
+            </Button>
+          </div>
         ) : null}
         {trimmedSessionTitle ? (
           <span
