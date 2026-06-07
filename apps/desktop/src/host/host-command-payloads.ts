@@ -97,4 +97,5 @@ export type CommandPayloads = {
   readWorkspaceTextFile: { relativePath: string };
   writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };
   rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
+  setSubagentViewerTarget: { parentToolCallId: string | null };
 };

@@ -44,6 +44,7 @@ export interface BuildDesktopSnapshotInput {
   conversation: ConversationSnapshot;
   activeSession?: ActiveSessionSnapshot;
   composerSessionKey: string;
+  subagentViewer?: DesktopSnapshot['subagentViewer'];
 }
 
 export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopSnapshot {
@@ -120,6 +121,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     conversation: input.conversation,
     ...(input.activeSession ? { activeSession: { ...input.activeSession } } : {}),
     composerSessionKey: input.composerSessionKey,
+    ...(input.subagentViewer ? { subagentViewer: input.subagentViewer } : {}),
   };
 }
 

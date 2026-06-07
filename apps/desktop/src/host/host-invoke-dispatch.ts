@@ -64,6 +64,7 @@ export interface HostCommandDelegate {
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   rewindAndSubmitMessage(request: CommandPayloads['rewindAndSubmitMessage']['request']): Promise<unknown>;
+  setSubagentViewerTarget(parentToolCallId: string | null): Promise<unknown>;
 }
 
 type HostCommandHandler<Command extends HostCommandName> = (
@@ -131,6 +132,7 @@ const hostCommandDispatch = {
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   rewindAndSubmitMessage: (host, payload) => host.rewindAndSubmitMessage(payload.request),
+  setSubagentViewerTarget: (host, payload) => host.setSubagentViewerTarget(payload.parentToolCallId),
 } satisfies { [Command in HostCommandName]: HostCommandHandler<Command> };
 
 export function createHostInvokeDispatch(host: HostCommandDelegate) {

@@ -134,6 +134,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   poll() {
     return ipcRenderer.invoke('desktop:invoke', 'poll');
   },
+  setSubagentViewerTarget(parentToolCallId: string | null) {
+    return ipcRenderer.invoke('desktop:invoke', 'setSubagentViewerTarget', { parentToolCallId });
+  },
   listDreamsOverview() {
     return ipcRenderer.invoke('desktop:invoke', 'listDreamsOverview');
   },

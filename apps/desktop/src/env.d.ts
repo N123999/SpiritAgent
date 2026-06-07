@@ -92,6 +92,7 @@ declare global {
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
+    setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
     dreamSubscribe(callback: (snapshot: DesktopSnapshot) => void): () => void;
     sessionListSubscribe(callback: () => void): () => void;

@@ -600,6 +600,20 @@ export interface DesktopSnapshot {
   activeSession?: ActiveSessionSnapshot;
   /** Stable key for per-session composer draft persistence (`filePath` or synthetic bundle id). */
   composerSessionKey: string;
+  /** Active SubAgent viewer overlay; present while renderer has a tool card open in viewer mode. */
+  subagentViewer?: SubagentViewerSnapshot;
+}
+
+export type SubagentViewerSessionStatus = 'running' | 'completed' | 'failed' | 'blocked';
+
+export interface SubagentViewerSnapshot {
+  parentToolCallId: string;
+  sessionId: string;
+  status: SubagentViewerSessionStatus;
+  /** Same text as run_subagent tool card headlineDetail (delegated task). */
+  promptText: string;
+  messages: ConversationMessageSnapshot[];
+  pendingAuxState?: PendingAssistantAux;
 }
 
 export interface DesktopExtensionCssLayer {
@@ -896,6 +910,7 @@ export interface PendingToolApprovalSnapshot {
   toolName: string;
   prompt: string;
   trustTarget?: string;
+  subagentSessionId?: string;
 }
 
 export type DesktopApprovalDecision =

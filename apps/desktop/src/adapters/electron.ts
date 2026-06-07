@@ -141,6 +141,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     poll() {
       return bridge.poll();
     },
+    setSubagentViewerTarget(parentToolCallId) {
+      return bridge.setSubagentViewerTarget(parentToolCallId);
+    },
     listDreamsOverview() {
       return bridge.listDreamsOverview();
     },

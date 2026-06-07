@@ -98,6 +98,7 @@ export interface HostApi {
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
+  setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
   subscribeDreamUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
   subscribeSessionListUpdates?(callback: () => void): () => void;
