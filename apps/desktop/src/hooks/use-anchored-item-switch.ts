@@ -59,6 +59,44 @@ export function deriveAnchoredItemSwitchAnchorId(
   return activeItemId ?? lingerAnchorId;
 }
 
+const ANCHORED_ITEM_SWITCH_RELATED_OVERLAY_SELECTOR = '[data-slot="select-content"]';
+
+export type AnchoredItemSwitchRelatedTargetRefs = {
+  triggerZone: HTMLDivElement | null;
+  content: HTMLDivElement | null;
+};
+
+function isDomNode(target: EventTarget | null): target is Node {
+  if (target === null || typeof target !== 'object') {
+    return false;
+  }
+  return 'nodeType' in target && typeof (target as Node).contains === 'function';
+}
+
+function domTargetClosest(target: EventTarget, selector: string): Element | null {
+  const element =
+    'closest' in target && typeof (target as Element).closest === 'function'
+      ? (target as Element)
+      : 'parentElement' in target
+        ? (target as Node).parentElement
+        : null;
+  return element?.closest(selector) ?? null;
+}
+
+/** Returns true when `target` is inside the trigger zone, panel content, or a nested overlay (e.g. Select portal). */
+export function isWithinAnchoredItemSwitchRelatedTarget(
+  target: EventTarget | null,
+  refs: AnchoredItemSwitchRelatedTargetRefs,
+): boolean {
+  if (!isDomNode(target)) {
+    return false;
+  }
+  if (refs.triggerZone?.contains(target) || refs.content?.contains(target)) {
+    return true;
+  }
+  return domTargetClosest(target, ANCHORED_ITEM_SWITCH_RELATED_OVERLAY_SELECTOR) !== null;
+}
+
 /** Pure state transitions for tests and the React hook. */
 export class AnchoredItemSwitchStateModel<TItem> {
   activeItem: TItem | null = null;
@@ -234,16 +272,23 @@ export function useAnchoredItemSwitch<TItem>({
     [clearHoverCloseTimer, clearHoverOpenTimer, getItemId, openDelayMs],
   );
 
+  const isRelatedTarget = useCallback((target: EventTarget | null) => {
+    return isWithinAnchoredItemSwitchRelatedTarget(target, {
+      triggerZone: triggerZoneRef.current,
+      content: contentRef.current,
+    });
+  }, []);
+
   const handleTriggerZonePointerLeave = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const related = event.relatedTarget;
-      if (related instanceof Node && contentRef.current?.contains(related)) {
+      if (isDomNode(related) && isRelatedTarget(related)) {
         return;
       }
       pointerItemRef.current = null;
       setPointerItemId(null);
     },
-    [],
+    [isRelatedTarget],
   );
 
   useEffect(() => {
@@ -270,11 +315,12 @@ export function useAnchoredItemSwitch<TItem>({
     }
     const handleDocumentPointerMove = (event: PointerEvent) => {
       const target = event.target;
-      const inside =
-        target instanceof Node &&
-        (Boolean(triggerZoneRef.current?.contains(target)) ||
-          Boolean(contentRef.current?.contains(target)));
-      if (inside) {
+      if (
+        isWithinAnchoredItemSwitchRelatedTarget(target, {
+          triggerZone: triggerZoneRef.current,
+          content: contentRef.current,
+        })
+      ) {
         clearHoverCloseTimer();
         return;
       }
@@ -306,16 +352,24 @@ export function useAnchoredItemSwitch<TItem>({
       onFocusOutside: (event: Event) => event.preventDefault(),
       onPointerEnter: clearHoverCloseTimer,
       onPointerDownOutside: (event) => {
-        const target = event.target;
-        if (target instanceof Node && triggerZoneRef.current?.contains(target)) {
+        if (
+          isWithinAnchoredItemSwitchRelatedTarget(event.target, {
+            triggerZone: triggerZoneRef.current,
+            content: contentRef.current,
+          })
+        ) {
           event.preventDefault();
           return;
         }
         scheduleHoverClose();
       },
       onInteractOutside: (event) => {
-        const target = event.target;
-        if (target instanceof Node && triggerZoneRef.current?.contains(target)) {
+        if (
+          isWithinAnchoredItemSwitchRelatedTarget(event.target, {
+            triggerZone: triggerZoneRef.current,
+            content: contentRef.current,
+          })
+        ) {
           event.preventDefault();
           return;
         }

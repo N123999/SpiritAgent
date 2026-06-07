@@ -1,5 +1,7 @@
 import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-name';
 
+import { formatCompactTokenCount } from '@/lib/format-compact-token-count';
+
 import type {
   DesktopModelCatalogHint,
   DesktopModelProvider,
@@ -163,6 +165,70 @@ type PricingLabelKey =
   | 'settings.modelDetailPricingOutput'
   | 'settings.modelDetailPricingImage'
   | 'settings.modelDetailPricingRequest';
+
+type ModelCatalogDetailFieldLabelKey =
+  | 'settings.modelDetailLabelContext'
+  | 'settings.modelDetailLabelInput'
+  | 'settings.modelDetailLabelOutput'
+  | 'settings.modelDetailLabelImage'
+  | 'settings.modelDetailLabelRequest';
+
+export type ModelCatalogDetailField = {
+  id: string;
+  label: string;
+  value: string;
+};
+
+export function buildModelCatalogDetailFields(input: {
+  contextLength?: number;
+  pricing?: PreviewModelCatalogPricing;
+  t: (key: ModelCatalogDetailFieldLabelKey) => string;
+}): ModelCatalogDetailField[] {
+  const fields: ModelCatalogDetailField[] = [];
+  if (input.contextLength !== undefined) {
+    fields.push({
+      id: 'context',
+      label: input.t('settings.modelDetailLabelContext'),
+      value: `${formatCompactTokenCount(input.contextLength)} tokens`,
+    });
+  }
+  const pricing = input.pricing;
+  if (pricing) {
+    const inputPrice = formatUsdPerMillionTokens(pricing.inputPerTokenUsd);
+    if (inputPrice) {
+      fields.push({
+        id: 'input',
+        label: input.t('settings.modelDetailLabelInput'),
+        value: `${inputPrice} / M tokens`,
+      });
+    }
+    const outputPrice = formatUsdPerMillionTokens(pricing.outputPerTokenUsd);
+    if (outputPrice) {
+      fields.push({
+        id: 'output',
+        label: input.t('settings.modelDetailLabelOutput'),
+        value: `${outputPrice} / M tokens`,
+      });
+    }
+    const imagePrice = formatUsdFlatRate(pricing.imagePerUnitUsd);
+    if (imagePrice) {
+      fields.push({
+        id: 'image',
+        label: input.t('settings.modelDetailLabelImage'),
+        value: imagePrice,
+      });
+    }
+    const requestPrice = formatUsdFlatRate(pricing.requestPerCallUsd);
+    if (requestPrice) {
+      fields.push({
+        id: 'request',
+        label: input.t('settings.modelDetailLabelRequest'),
+        value: requestPrice,
+      });
+    }
+  }
+  return fields;
+}
 
 export function formatModelCatalogPricingLines(
   pricing: PreviewModelCatalogPricing | undefined,

@@ -38,15 +38,15 @@ import { parseModelContextLength } from "@/lib/model-context-length";
 import type { FontPreference } from "@/lib/font";
 import { changeLanguage, VALID_LANGUAGES } from "@/lib/i18n";
 import type { ThemePreference } from "@/lib/theme";
+import { ModelCatalogDetailPanel } from "@/components/model-catalog-detail-panel";
 import {
   buildModelCatalogDetailMap,
   buildModelCatalogDisplayTitleMap,
-  formatModelCatalogPricingLines,
-  modelCatalogDisplayTitle,
   modelDisplayTitleFromMap,
   modelSettingsRowAriaLabel,
   providerSupportsModelCatalogDetail,
 } from "@/lib/model-catalog-detail";
+import { modelCapabilityLabel } from "@/lib/model-capability-label";
 import { cn } from "@/lib/utils";
 import {
   HoverDetailTooltip,
@@ -357,11 +357,6 @@ function resolveCustomConnectApiBase(
   customApiBase: string,
 ): string {
   return resolveProviderConnectApiBase("custom", transportKind, customApiBase);
-}
-
-function modelCapabilityLabel(value: DesktopModelCapability): string {
-  const option = modelCapabilityOptions.find((item) => item.value === value);
-  return option ? i18n.t(option.labelKey, { defaultValue: option.label }) : value;
 }
 
 function normalizeModelCapabilitySelection(
@@ -2095,34 +2090,6 @@ function ModelSettingsRowWithHover({
   );
 }
 
-function ModelCatalogDetailPanel({
-  model,
-  catalogEntry,
-}: {
-  model: SettingsModelProfile;
-  catalogEntry: PreviewModelCatalogEntry;
-}) {
-  const { t } = useTranslation();
-  const title = modelCatalogDisplayTitle(model, catalogEntry);
-  const pricingLines = formatModelCatalogPricingLines(catalogEntry.pricing, t);
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium leading-snug text-foreground">{title}</p>
-      {catalogEntry.description?.trim() ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">{catalogEntry.description}</p>
-      ) : null}
-      {pricingLines.length > 0 ? (
-        <ul className="space-y-1 text-[11px] text-muted-foreground">
-          {pricingLines.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
 function ModelsSettingsPanel({
   settings,
   snapshot,
@@ -2643,7 +2610,13 @@ function ModelsSettingsPanel({
                           if (!catalogEntry) {
                             return null;
                           }
-                          return <ModelCatalogDetailPanel model={row} catalogEntry={catalogEntry} />;
+                          return (
+                            <ModelCatalogDetailPanel
+                              model={row}
+                              catalogEntry={catalogEntry}
+                              providerLabel={providerLabel(provider)}
+                            />
+                          );
                         }}
                       </HoverDetailTooltip.Content>
                     </HoverDetailTooltip>

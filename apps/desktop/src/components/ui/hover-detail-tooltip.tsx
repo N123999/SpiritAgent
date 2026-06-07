@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   type ComponentProps,
@@ -72,37 +73,56 @@ function HoverDetailTooltipRoot<TItem>({
   anchorLingerMs,
   children,
 }: HoverDetailTooltipProps<TItem>) {
-  const state = useAnchoredItemSwitch({
+  const {
+    open,
+    activeItem,
+    anchorItemId,
+    getTriggerProps,
+    triggerZoneRef,
+    onTriggerZonePointerLeave,
+    contentRef,
+    contentInteractionProps,
+    dismissActiveItem,
+  } = useAnchoredItemSwitch({
     getItemId,
     openDelayMs,
     closeDelayMs,
     anchorLingerMs,
   });
 
+  const handlePopoverOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && open) {
+        dismissActiveItem();
+      }
+    },
+    [dismissActiveItem, open],
+  );
+
   const contextValue = useMemo(
     (): HoverDetailTooltipContextValue<TItem> => ({
-      getTriggerProps: state.getTriggerProps,
-      anchorItemId: state.anchorItemId,
-      triggerZoneRef: state.triggerZoneRef,
-      onTriggerZonePointerLeave: state.onTriggerZonePointerLeave,
-      contentRef: state.contentRef,
-      contentInteractionProps: state.contentInteractionProps,
-      activeItem: state.activeItem,
+      getTriggerProps,
+      anchorItemId,
+      triggerZoneRef,
+      onTriggerZonePointerLeave,
+      contentRef,
+      contentInteractionProps,
+      activeItem,
     }),
     [
-      state.activeItem,
-      state.anchorItemId,
-      state.contentInteractionProps,
-      state.contentRef,
-      state.getTriggerProps,
-      state.onTriggerZonePointerLeave,
-      state.triggerZoneRef,
+      activeItem,
+      anchorItemId,
+      contentInteractionProps,
+      contentRef,
+      getTriggerProps,
+      onTriggerZonePointerLeave,
+      triggerZoneRef,
     ],
   );
 
   return (
     <HoverDetailTooltipContext.Provider value={contextValue}>
-      <Popover open={state.open} modal={false}>
+      <Popover open={open} onOpenChange={handlePopoverOpenChange} modal={false}>
         {children}
       </Popover>
     </HoverDetailTooltipContext.Provider>

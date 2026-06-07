@@ -9,10 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import {
-  modelReasoningEffortOptions,
-  modelReasoningEffortLabel,
-} from "@spirit-agent/core/reasoning-effort";
+import { modelReasoningEffortLabel } from "@spirit-agent/core/reasoning-effort";
 import {
   charCountToCodeUnitIndex,
   codeUnitIndexToCharCount,
@@ -79,9 +76,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  AnchoredDropdownSubMenu,
-  useAnchoredDropdownSubMenuContext,
-} from "@/components/ui/anchored-dropdown-sub-menu";
+  HoverDetailTooltip,
+  useHoverDetailTooltipContext,
+} from "@/components/ui/hover-detail-tooltip";
+import { ModelPickerInspectorPanel } from "@/components/model-picker-inspector-panel";
 import {
   Dialog,
   DialogClose,
@@ -185,11 +183,11 @@ import {
   DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
   DESKTOP_OVERLAY_LIST_ITEM_SECONDARY,
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
-  DESKTOP_OVERLAY_SHORT_SUBCONTENT,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { readWorkspaceToolsWidthPx } from "@/lib/layout-prefs";
 import {
+  buildModelCatalogDetailMap,
   buildModelCatalogDisplayTitleMap,
   modelDisplayTitleFromMap,
 } from "@/lib/model-catalog-detail";
@@ -263,33 +261,30 @@ function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReaso
 
 type ModelPickerItem = DesktopSnapshot["config"]["models"][number];
 
-function ModelPickerReasoningRow({
+function ModelPickerRow({
   model,
   displayTitle,
-  modelSummary,
   isActive,
   onSelectModel,
 }: {
   model: ModelPickerItem;
   displayTitle: string;
-  modelSummary: string;
   isActive: boolean;
   onSelectModel: () => void;
 }) {
-  const { getTriggerProps } = useAnchoredDropdownSubMenuContext<ModelPickerItem>();
-  const { onPointerEnter } = getTriggerProps(model);
+  const { getTriggerProps } = useHoverDetailTooltipContext<ModelPickerItem>();
+  const { onPointerEnter, isHighlighted } = getTriggerProps(model);
 
   return (
-    <AnchoredDropdownSubMenu.Anchor itemId={model.name}>
+    <HoverDetailTooltip.Anchor itemId={model.name}>
       <div
         role="menuitem"
         tabIndex={-1}
         className={cn(
           DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
           "cursor-pointer outline-none focus:bg-accent focus:text-accent-foreground",
-          isActive && "bg-accent/40",
+          (isActive || isHighlighted) && "bg-accent/40",
         )}
-        title={modelSummary}
         onPointerEnter={onPointerEnter}
         onClick={onSelectModel}
         onKeyDown={(event) => {
@@ -299,16 +294,11 @@ function ModelPickerReasoningRow({
           }
         }}
       >
-        <div className="flex min-w-0 flex-1 items-baseline gap-x-1.5 overflow-hidden">
-          <span className={cn(DESKTOP_OVERLAY_LIST_ITEM_PRIMARY, "min-w-0 truncate")}>
-            {displayTitle}
-          </span>
-          <span className="shrink-0 text-xs font-normal text-muted-foreground">
-            {modelReasoningEffortLabel(model.reasoningEffort)}
-          </span>
-        </div>
+        <span className={cn(DESKTOP_OVERLAY_LIST_ITEM_PRIMARY, "min-w-0 truncate")}>
+          {displayTitle}
+        </span>
       </div>
-    </AnchoredDropdownSubMenu.Anchor>
+    </HoverDetailTooltip.Anchor>
   );
 }
 
@@ -917,6 +907,10 @@ function ComposerSurface({
     () => buildModelCatalogDisplayTitleMap(models, catalogHints),
     [catalogHints, models],
   );
+  const catalogDetailByModelName = useMemo(
+    () => buildModelCatalogDetailMap(models, catalogHints),
+    [catalogHints, models],
+  );
   const activeModelSummary = activeModelProfile
     ? formatModelPickerLabel(
         modelDisplayTitleFromMap(activeModelProfile.name, displayTitleByModelName),
@@ -1040,11 +1034,11 @@ function ComposerSurface({
                 {filteredModelGroups.length === 0 ? (
                   <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t('app.noMatches')}</p>
                 ) : (
-                  <AnchoredDropdownSubMenu<ModelPickerItem>
+                  <HoverDetailTooltip<ModelPickerItem>
                     getItemId={(model) => model.name}
                     openDelayMs={0}
                   >
-                    <AnchoredDropdownSubMenu.TriggerZone>
+                    <HoverDetailTooltip.TriggerZone>
                       {filteredModelGroups.map((group) => (
                         <div key={group.provider} className="mb-2 last:mb-0">
                           <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
@@ -1055,17 +1049,12 @@ function ComposerSurface({
                               model.name,
                               displayTitleByModelName,
                             );
-                            const modelSummary = formatModelPickerLabel(
-                              displayTitle,
-                              model.reasoningEffort,
-                            );
 
                             return (
-                              <ModelPickerReasoningRow
+                              <ModelPickerRow
                                 key={`${group.provider}:${model.name}`}
                                 model={model}
                                 displayTitle={displayTitle}
-                                modelSummary={modelSummary}
                                 isActive={activeModelProfile?.name === model.name}
                                 onSelectModel={() => {
                                   onModelSelect(model.name);
@@ -1077,49 +1066,42 @@ function ComposerSurface({
                           })}
                         </div>
                       ))}
-                    </AnchoredDropdownSubMenu.TriggerZone>
-                    <AnchoredDropdownSubMenu.Content className={DESKTOP_OVERLAY_SHORT_SUBCONTENT}>
+                    </HoverDetailTooltip.TriggerZone>
+                    <HoverDetailTooltip.Content
+                      side="right"
+                      align="start"
+                      sideOffset={8}
+                      collisionPadding={16}
+                      className="z-[100] w-80 max-w-[min(20rem,calc(100vw-2rem))] p-3"
+                    >
                       {(activeItem) => {
                         const model = activeItem as ModelPickerItem | null;
                         if (!model) {
                           return null;
                         }
-                        const displayTitle = modelDisplayTitleFromMap(
-                          model.name,
-                          displayTitleByModelName,
+                        const group = filteredModelGroups.find((entry) =>
+                          entry.items.some((item) => item.name === model.name),
                         );
-                        const modelSummary = formatModelPickerLabel(
-                          displayTitle,
-                          model.reasoningEffort,
-                        );
+                        const providerLabel = group
+                          ? t(group.labelKey, { defaultValue: group.fallbackLabel })
+                          : model.provider ?? model.name;
 
-                        return modelReasoningEffortOptions({
-                          provider: model.provider,
-                          model: model.name,
-                          ...(model.supportedReasoningEfforts !== undefined
-                            ? { supportedEfforts: model.supportedReasoningEfforts }
-                            : {}),
-                          transportKind: model.transportKind,
-                        }).map((option) => (
-                          <DropdownMenuItem
-                            key={option.value}
-                            onSelect={() => {
-                              onModelReasoningEffortSelect(model.name, option.value);
-                              onModelSelect(model.name);
+                        return (
+                          <ModelPickerInspectorPanel
+                            model={model}
+                            catalogEntry={catalogDetailByModelName.get(model.name)}
+                            providerLabel={providerLabel}
+                            onReasoningEffortChange={(modelName, effort) => {
+                              onModelReasoningEffortSelect(modelName, effort);
+                              onModelSelect(modelName);
                               setModelFilter("");
                               setModelMenuOpen(false);
                             }}
-                            className={cn(
-                              model.reasoningEffort === option.value && "bg-accent/40",
-                            )}
-                            title={modelSummary}
-                          >
-                            {option.label}
-                          </DropdownMenuItem>
-                        ));
+                          />
+                        );
                       }}
-                    </AnchoredDropdownSubMenu.Content>
-                  </AnchoredDropdownSubMenu>
+                    </HoverDetailTooltip.Content>
+                  </HoverDetailTooltip>
                 )}
               </FilteredOverlayMenu>
             ) : (

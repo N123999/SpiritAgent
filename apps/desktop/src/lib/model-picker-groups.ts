@@ -12,7 +12,7 @@ import type {
 
 const PROVIDER_ORDER: DesktopModelProvider[] = [...MODEL_PROVIDER_PICKER_ORDER];
 
-function providerLabelMetadata(provider: DesktopModelProvider): { labelKey: string; fallbackLabel: string } {
+export function providerLabelMetadata(provider: DesktopModelProvider): { labelKey: string; fallbackLabel: string } {
   const row = PROVIDER_PICKER_ROWS.find((item) => item.id === provider);
   return row ? { labelKey: row.labelKey, fallbackLabel: row.fallbackLabel } : { labelKey: provider, fallbackLabel: provider };
 }

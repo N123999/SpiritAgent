@@ -6,6 +6,7 @@ import {
   DEFAULT_ANCHORED_ITEM_SWITCH_OPEN_DELAY_MS,
   deriveAnchoredItemSwitchAnchorId,
   deriveAnchoredItemSwitchOpen,
+  isWithinAnchoredItemSwitchRelatedTarget,
 } from '../../src/hooks/use-anchored-item-switch.ts';
 
 const getItemId = (item) => item.id;
@@ -63,4 +64,15 @@ test('beginClose keeps linger anchor id until cleared', () => {
 
 test('open delay default matches hover-detail-tooltip precedent', () => {
   assert.equal(DEFAULT_ANCHORED_ITEM_SWITCH_OPEN_DELAY_MS, 400);
+});
+
+test('isWithinAnchoredItemSwitchRelatedTarget returns false for null and non-node targets', () => {
+  assert.equal(
+    isWithinAnchoredItemSwitchRelatedTarget(null, { triggerZone: null, content: null }),
+    false,
+  );
+  assert.equal(
+    isWithinAnchoredItemSwitchRelatedTarget('outside', { triggerZone: null, content: null }),
+    false,
+  );
 });
