@@ -52,7 +52,6 @@ export async function generateSessionTitleFromModelTask(
       userPrompt,
       schemaName: 'session_title',
       schema: SESSION_TITLE_JSON_SCHEMA,
-      includeToolAgentHostPrompt: false,
     },
   );
 
