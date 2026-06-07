@@ -40,6 +40,7 @@ export function mapPendingToolApproval(input: {
   request: DesktopToolRequest;
   prompt: string;
   trustTarget?: unknown;
+  subagentSessionId?: string;
 }): PendingToolApprovalSnapshot {
   return {
     toolName: displayTitleForTool(
@@ -52,6 +53,9 @@ export function mapPendingToolApproval(input: {
     ),
     ...(typeof input.trustTarget === 'string'
       ? { trustTarget: input.trustTarget }
+      : {}),
+    ...(typeof input.subagentSessionId === 'string' && input.subagentSessionId.trim()
+      ? { subagentSessionId: input.subagentSessionId.trim() }
       : {}),
   };
 }

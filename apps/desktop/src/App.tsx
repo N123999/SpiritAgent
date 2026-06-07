@@ -118,6 +118,7 @@ import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
 import { ComposerTodoCard } from "@/components/composer-todo-card";
 import { MinimalToolCallCard } from "@/components/minimal-tool-call-card";
+import { PendingApprovalCard } from "@/components/pending-approval-card";
 import { SubagentViewerBanner } from "@/components/subagent-viewer-banner";
 import { ToolCallDiffHostProvider } from "@/components/tool-call-diff-host-context";
 import { isMinimalToolCallMessage, toolHasExpandableContent } from "@/lib/tool-call-display";
@@ -2045,6 +2046,13 @@ export default function App() {
       : snapshot?.conversation.pendingAuxState;
   const rewindWarnings = snapshot?.conversation.rewindWarnings ?? [];
   const pendingApproval = snapshot?.conversation.pendingToolApproval;
+  const showPendingApprovalInComposer = Boolean(
+    pendingApproval
+    && (
+      !subagentViewActive
+      || pendingApproval.subagentSessionId === snapshot?.subagentViewer?.sessionId
+    ),
+  );
   const pendingQuestions = runtime.pendingQuestions;
   useLocalFileAttachmentPreviews(
     runtime.composerLocalFileAttachments,
@@ -3357,88 +3365,30 @@ export default function App() {
                   </div>
                 ) : null}
 
-                {pendingApproval ? (
-                  <Card className="border-border/50 bg-background/55 text-sm shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
-                    <CardHeader className="space-y-1.5 px-3 py-2.5">
-                      <CardTitle className="min-w-0 truncate text-sm leading-tight">
-                        {pendingApproval.toolName}
-                      </CardTitle>
-                      <CardDescription className="text-xs leading-relaxed">
-                        <ScrollArea
-                          type="always"
-                          className="pr-3 [&>[data-radix-scroll-area-viewport]]:max-h-24 [&>[data-radix-scroll-area-viewport]]:overscroll-contain"
-                        >
-                          <div className="whitespace-pre-wrap">
-                            {pendingApproval.prompt}
-                          </div>
-                        </ScrollArea>
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid gap-2 px-3 pb-3 pt-0">
-                      <div className="grid gap-1.5">
-                        <Button
-                          size="sm"
-                          className="h-8 w-full justify-start px-2.5"
-                          onClick={() => void runtime.submitApproval({ kind: "allow" })}
-                          disabled={runtime.busyAction === "approve"}
-                        >
-                          <Check data-icon="inline-start" />
-                          {t('app.allow')}
-                          <CornerDownLeft className="ml-auto size-3.5 shrink-0 opacity-70" aria-hidden />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-full justify-start px-2.5"
-                          onClick={() =>
-                            void runtime.submitApproval({ kind: "allow", persistTrust: true })
-                          }
-                          disabled={
-                            runtime.busyAction === "approve" || !pendingApproval.trustTarget
-                          }
-                        >
-                          <ShieldCheck data-icon="inline-start" />
-                          {t('app.alwaysTrust')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-full justify-start px-2.5"
-                          onClick={() => void runtime.submitApproval({ kind: "deny" })}
-                          disabled={runtime.busyAction === "approve"}
-                        >
-                          <X data-icon="inline-start" />
-                          {t('app.deny')}
-                        </Button>
-                      </div>
-                      <div className="flex min-h-9 items-stretch overflow-hidden rounded-md border border-input bg-transparent focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20">
-                        <Textarea
-                          value={runtime.approvalGuidance}
-                          onChange={(event) => runtime.setApprovalGuidance(event.target.value)}
-                          placeholder={t('app.approvalGuidancePlaceholder')}
-                          className="min-h-9 flex-1 resize-none rounded-none border-0 bg-transparent px-2.5 py-2 text-sm shadow-none focus-visible:ring-0"
-                        />
-                        <Button
-                          size="icon-sm"
-                          variant="outline"
-                          className="h-auto w-9 self-stretch rounded-none border-0 border-l border-border/60 bg-transparent text-muted-foreground shadow-none hover:bg-muted/35 hover:text-foreground disabled:bg-transparent"
-                          onClick={() =>
-                            void runtime.submitApproval({
-                              kind: "guidance",
-                              userMessage: runtime.approvalGuidance,
-                            })
-                          }
-                          disabled={
-                            runtime.busyAction === "approve" ||
-                            runtime.approvalGuidance.trim().length === 0
-                          }
-                        >
-                          <MessageSquareText />
-                          <span className="sr-only">{t('app.sendGuidance')}</span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                {showPendingApprovalInComposer && pendingApproval ? (
+                  <PendingApprovalCard
+                    pendingApproval={pendingApproval}
+                    approvalGuidance={runtime.approvalGuidance}
+                    approveBusy={runtime.busyAction === "approve"}
+                    onApprovalGuidanceChange={runtime.setApprovalGuidance}
+                    onSubmitApproval={(decision) => {
+                      if (decision.kind === "allow") {
+                        void runtime.submitApproval({
+                          kind: "allow",
+                          ...(decision.persistTrust ? { persistTrust: true } : {}),
+                        });
+                        return;
+                      }
+                      if (decision.kind === "deny") {
+                        void runtime.submitApproval({ kind: "deny" });
+                        return;
+                      }
+                      void runtime.submitApproval({
+                        kind: "guidance",
+                        userMessage: decision.userMessage ?? "",
+                      });
+                    }}
+                  />
                 ) : null}
 
                 <div className="relative">

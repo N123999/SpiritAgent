@@ -2137,7 +2137,15 @@ class DesktopHostService {
           ? { pendingAuxState: mapPendingAuxState(pendingAux)! }
           : {}),
         ...(pendingApproval
-          ? { pendingToolApproval: mapPendingToolApproval(pendingApproval) }
+          ? {
+              pendingToolApproval: mapPendingToolApproval({
+                toolName: pendingApproval.toolName,
+                request: pendingApproval.request as DesktopToolRequest,
+                prompt: pendingApproval.prompt,
+                trustTarget: pendingApproval.trustTarget,
+                subagentSessionId: pendingApproval.subagentSessionId,
+              }),
+            }
           : {}),
         ...(pendingQuestions
           ? { pendingQuestions: mapPendingQuestions(pendingQuestions) }
