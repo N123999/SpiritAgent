@@ -19,7 +19,7 @@ export function ActionPickerRow({ item }: ActionPickerRowProps) {
 
   if (isNewSessionAction(item)) {
     return (
-      <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
         <Plus className="size-3.5 shrink-0 opacity-70" aria-hidden />
         <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-popover-foreground">
           {t(item.labelKey)}
@@ -36,7 +36,7 @@ export function ActionPickerRow({ item }: ActionPickerRowProps) {
     : item.description ?? ''
 
   return (
-    <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
+    <div className="flex min-w-0 items-center gap-2 overflow-hidden">
       <SlashCommandIcon kind={item.kind} />
       <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-popover-foreground">
         {item.name}

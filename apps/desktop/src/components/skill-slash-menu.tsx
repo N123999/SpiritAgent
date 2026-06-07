@@ -68,7 +68,7 @@ export function SkillSlashMenu({
                   onFocus={() => onSelectIndex(index)}
                   onClick={() => onApplySuggestion(suggestion)}
                 >
-                  <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                     <SlashSuggestionIcon kind={suggestion.kind} />
                     <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-foreground">
                       {suggestion.name}
