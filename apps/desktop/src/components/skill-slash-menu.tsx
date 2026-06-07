@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   CircleHelp,
@@ -10,7 +11,10 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { instantHoverMotionClass } from '@/lib/desktop-chrome'
+import {
+  DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT,
+  instantHoverMotionClass,
+} from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
 import type { SkillSlashSuggestion, SkillSlashSuggestionKind } from '@/lib/skill-slash'
 
@@ -42,48 +46,64 @@ export function SkillSlashMenu({
   onSelectIndex,
   onApplySuggestion,
 }: SkillSlashMenuProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (selectedIndex < 0) {
+      return
+    }
+
+    const selectedItem = scrollViewportRef.current?.querySelector<HTMLElement>(
+      `[data-skill-slash-index="${selectedIndex}"]`,
+    )
+    selectedItem?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIndex, suggestions])
+
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
-      {suggestions.length > 0 ? (
-        <div className="grid w-full min-w-0 gap-0.5 p-1.5" onMouseLeave={() => onSelectIndex(-1)}>
-          {suggestions.map((suggestion, index) => {
-            const description = suggestion.descriptionKey
-              ? t(suggestion.descriptionKey)
-              : suggestion.description ?? ''
-            return (
-              <button
-                key={suggestion.id}
-                type="button"
-                title={`${suggestion.name} — ${description}`}
-                className={cn(
-                  'w-full min-w-0 max-w-full overflow-hidden rounded-xl bg-transparent px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
-                  instantHoverMotionClass,
-                  index === selectedIndex
-                    ? 'bg-foreground/[0.06] text-foreground'
-                    : 'text-foreground hover:bg-foreground/[0.05]',
-                )}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => onSelectIndex(index)}
-                onFocus={() => onSelectIndex(index)}
-                onClick={() => onApplySuggestion(suggestion)}
-              >
-                <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
-                  <SlashSuggestionIcon kind={suggestion.kind} />
-                  <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-foreground">
-                    {suggestion.name}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-xs leading-6 text-muted-foreground">
-                    {description}
-                  </span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="px-3 py-2.5 text-sm text-muted-foreground">{t('app.noMatches')}</div>
-      )}
+      <div ref={scrollViewportRef} className={DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT}>
+        {suggestions.length > 0 ? (
+          <div className="grid w-full min-w-0 gap-0.5 p-1.5" onMouseLeave={() => onSelectIndex(-1)}>
+            {suggestions.map((suggestion, index) => {
+              const description = suggestion.descriptionKey
+                ? t(suggestion.descriptionKey)
+                : suggestion.description ?? ''
+              return (
+                <button
+                  key={suggestion.id}
+                  type="button"
+                  data-skill-slash-index={index}
+                  title={`${suggestion.name} — ${description}`}
+                  className={cn(
+                    'w-full min-w-0 max-w-full overflow-hidden rounded-xl bg-transparent px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
+                    instantHoverMotionClass,
+                    index === selectedIndex
+                      ? 'bg-foreground/[0.06] text-foreground'
+                      : 'text-foreground hover:bg-foreground/[0.05]',
+                  )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => onSelectIndex(index)}
+                  onFocus={() => onSelectIndex(index)}
+                  onClick={() => onApplySuggestion(suggestion)}
+                >
+                  <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
+                    <SlashSuggestionIcon kind={suggestion.kind} />
+                    <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-foreground">
+                      {suggestion.name}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs leading-6 text-muted-foreground">
+                      {description}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="px-3 py-2.5 text-sm text-muted-foreground">{t('app.noMatches')}</div>
+        )}
+      </div>
     </div>
   )
 }

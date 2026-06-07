@@ -111,6 +111,10 @@ export const DESKTOP_OVERLAY_LIST_SUB_TRIGGER =
 export const DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL =
   "flex h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-[min(24rem,calc(100vw-1.25rem))] flex-col overflow-hidden p-0 text-xs";
 
+/** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）滚动视口高度 */
+export const DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT =
+  "no-scrollbar max-h-[min(16rem,34vh)] overscroll-contain overflow-x-hidden overflow-y-auto outline-none";
+
 /** 阻止滚轮穿透到背后会话/列表 */
 export function stopOverlayScrollPropagation(event: {
   stopPropagation(): void;

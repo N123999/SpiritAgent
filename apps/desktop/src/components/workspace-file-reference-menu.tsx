@@ -9,7 +9,10 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { instantHoverMotionClass } from '@/lib/desktop-chrome'
+import {
+  DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT,
+  instantHoverMotionClass,
+} from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
 
 type WorkspaceFileReferenceMenuProps = {
@@ -52,7 +55,7 @@ export function WorkspaceFileReferenceMenu({
     >
       <div
         ref={scrollViewportRef}
-        className="no-scrollbar max-h-[min(16rem,34vh)] overscroll-contain overflow-x-hidden overflow-y-auto outline-none"
+        className={DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT}
       >
         <CommandList className="max-h-none overflow-visible" onMouseLeave={() => onSelectIndex(-1)}>
           {suggestions.map((path, index) => (
