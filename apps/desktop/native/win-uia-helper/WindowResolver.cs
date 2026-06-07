@@ -20,7 +20,10 @@ internal static class WindowResolver
         var matches = candidates.Where(candidate =>
         {
             var processOk = normalizedProcess == null
-                || NormalizeProcessName(candidate.ProcessName) == normalizedProcess;
+                || string.Equals(
+                    NormalizeProcessName(candidate.ProcessName),
+                    normalizedProcess,
+                    StringComparison.OrdinalIgnoreCase);
             var titleOk = string.IsNullOrWhiteSpace(windowTitle)
                 || candidate.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase);
             return processOk && titleOk;
