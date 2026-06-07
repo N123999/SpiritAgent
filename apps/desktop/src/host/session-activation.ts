@@ -66,11 +66,13 @@ export interface SessionActivationContext {
   setLastRuntimeError(error: string): void;
   scheduleSessionExtensionWarmup(event: HostExtensionEvent): void;
   buildSnapshot(): DesktopSnapshot;
+  clearSubagentViewerTarget(): void;
 }
 
 export async function resetSessionCommand(ctx: SessionActivationContext): Promise<DesktopSnapshot> {
   return ctx.runSerialized(async () => {
     await ctx.ensureInitialized(undefined, { fastPath: true });
+    ctx.clearSubagentViewerTarget();
 
     const state = ctx.requireState();
     const leaving = ctx.sessionRegistry().getActive();
@@ -101,6 +103,8 @@ export async function openSessionCommand(
   filePath: string,
 ): Promise<DesktopSnapshot> {
   return ctx.runSerialized(async () => {
+    ctx.clearSubagentViewerTarget();
+
     const leaving = ctx.sessionRegistry().getActive();
     const leavingMessageCount = leaving?.messageTimeline.toMessages().length ?? 0;
     if (

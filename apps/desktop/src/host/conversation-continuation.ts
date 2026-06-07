@@ -7,7 +7,6 @@ import {
   buildArchiveMessagesFromConversation,
 } from './sessions.js';
 import {
-  hasActiveRunSubagentToolInMessages,
   hasInFlightSubagentDelegationInMessages,
   isSubagentStatusSurfaceMessage,
   messageIndexIsInCurrentTurn,
@@ -342,7 +341,10 @@ function describeContinuationMessage(message: ConversationMessageSnapshot): stri
 
 function purgeSubagentLeakTextInCurrentTurn(bundle: SessionBundle): void {
   const messages = bundle.messageTimeline.toMessages();
-  if (!hasActiveRunSubagentToolInMessages(messages)) {
+  const liveSubagentSession = bundle.archiveSubagentSessions.some(
+    (session) => session.summary.status === 'running' || session.summary.status === 'blocked',
+  );
+  if (!hasInFlightSubagentDelegationInMessages(messages) && !liveSubagentSession) {
     return;
   }
 
@@ -354,23 +356,16 @@ function purgeSubagentLeakTextInCurrentTurn(bundle: SessionBundle): void {
     }
   }
 
-  let activeSubagentToolIndex = -1;
+  let runSubagentIndex = -1;
   for (let index = lastUserIndex + 1; index < messages.length; index += 1) {
     const message = messages[index];
-    if (
-      message?.role === 'assistant' &&
-      message.tool?.toolName === 'run_subagent' &&
-      (message.tool.phase === 'preview' || message.tool.phase === 'running')
-    ) {
-      activeSubagentToolIndex = index;
+    if (message?.role === 'assistant' && message.tool?.toolName === 'run_subagent') {
+      runSubagentIndex = index;
     }
   }
 
-  if (activeSubagentToolIndex < 0) {
-    return;
-  }
-
-  for (let index = activeSubagentToolIndex + 1; index < messages.length; index += 1) {
+  const startIndex = runSubagentIndex >= 0 ? runSubagentIndex + 1 : lastUserIndex + 1;
+  for (let index = startIndex; index < messages.length; index += 1) {
     const message = messages[index];
     if (message.role !== 'assistant' || message.tool || !message.content.trim()) {
       break;

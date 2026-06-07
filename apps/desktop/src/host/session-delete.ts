@@ -52,6 +52,7 @@ export async function deleteSessionCommand(
     }
 
     if (wasActive) {
+      ctx.clearSubagentViewerTarget();
       const bundle = registry.beginNewActive(state.workspaceRoot);
       await ctx.finalizeTodoScopeForNewActiveBundle(bundle, state.workspaceRoot);
       ctx.resetStreamingPlacementState(true, bundle);

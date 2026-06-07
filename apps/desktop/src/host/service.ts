@@ -665,6 +665,7 @@ class DesktopHostService {
       scheduleSessionExtensionWarmup: (event) =>
         this.scheduleExtensionWarmup({ type: 'session', event }),
       buildSnapshot: () => this.buildSnapshot(),
+      clearSubagentViewerTarget: () => this.clearSubagentViewerTarget(),
     };
   }
 
@@ -1369,6 +1370,10 @@ class DesktopHostService {
     const trimmed = parentToolCallId?.trim();
     this.subagentViewerTargetToolCallId = trimmed && trimmed.length > 0 ? trimmed : null;
     return this.buildSnapshot();
+  }
+
+  private clearSubagentViewerTarget(): void {
+    this.subagentViewerTargetToolCallId = null;
   }
 
   private applyDrainedRuntimeHostEvents(
