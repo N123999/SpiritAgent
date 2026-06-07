@@ -8,6 +8,7 @@ import {
   persistProviderBuiltinToolRoundToState,
   resolveAiSdkStreamAssistantText,
   shouldResumeStreamingAfterProviderSearch,
+  shouldUseGatewaySdkProviderWebSearchStreamPatch,
   shouldUseSdkProviderWebSearchMultiStep,
 } from './sdk-provider-web-search-loop.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
@@ -19,8 +20,21 @@ const gatewayConfig: OpenResponsesTransportConfig = {
   llmVendor: 'vercel-ai-gateway',
 };
 
-test('shouldUseSdkProviderWebSearchMultiStep matches gateway', () => {
+const openAiConfig: OpenResponsesTransportConfig = {
+  transportKind: 'open-responses',
+  apiKey: 'test',
+  model: 'gpt-5.4',
+  llmVendor: 'openai',
+};
+
+test('shouldUseSdkProviderWebSearchMultiStep matches gateway and openai', () => {
   assert.equal(shouldUseSdkProviderWebSearchMultiStep(gatewayConfig), true);
+  assert.equal(shouldUseSdkProviderWebSearchMultiStep(openAiConfig), true);
+});
+
+test('shouldUseGatewaySdkProviderWebSearchStreamPatch is gateway-only', () => {
+  assert.equal(shouldUseGatewaySdkProviderWebSearchStreamPatch(gatewayConfig), true);
+  assert.equal(shouldUseGatewaySdkProviderWebSearchStreamPatch(openAiConfig), false);
 });
 
 test('buildSdkProviderWebSearchStopWhen returns stop condition for gateway', () => {
@@ -60,6 +74,36 @@ test('shouldResumeStreamingAfterProviderSearch when only preamble streamed', () 
       0,
       'Latest models include Example.',
       { text: 'Latest models include Example.', finalStepText: 'Latest models include Example.', sdkStepCount: 2 },
+    ),
+    false,
+  );
+});
+
+test('shouldResumeStreamingAfterProviderSearch skips when single-step metadata already has full answer', () => {
+  assert.equal(
+    shouldResumeStreamingAfterProviderSearch(
+      gatewayConfig,
+      new Set(['call_search']),
+      0,
+      'Searching now.',
+      {
+        text: 'Searching now.\n\nLatest models include Example.',
+        finalStepText: 'Searching now.\n\nLatest models include Example.',
+        sdkStepCount: 1,
+      },
+    ),
+    false,
+  );
+});
+
+test('shouldResumeStreamingAfterProviderSearch is disabled for non-gateway providers', () => {
+  assert.equal(
+    shouldResumeStreamingAfterProviderSearch(
+      openAiConfig,
+      new Set(['call_search']),
+      0,
+      'Searching now.',
+      { text: 'Searching now.', finalStepText: 'Searching now.', sdkStepCount: 1 },
     ),
     false,
   );

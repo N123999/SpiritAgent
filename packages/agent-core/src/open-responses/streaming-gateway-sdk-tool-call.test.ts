@@ -43,6 +43,51 @@ async function collectGatewayToolRound(
   return result;
 }
 
+test('gateway sdk stream skips resume when single-step metadata already has full answer', async () => {
+  async function* stream(): AsyncGenerator<TextStreamPart<any>> {
+    yield { type: 'text-delta', id: 'text-0', text: 'Searching now.' };
+    yield { type: 'tool-call', toolCallId: 'call_search', toolName: 'web_search', input: { query: 'latest models' } };
+    yield {
+      type: 'tool-result',
+      toolCallId: 'call_search',
+      toolName: 'web_search',
+      input: { query: 'latest models' },
+      output: { results: [{ title: 'Example', url: 'https://example.com', snippet: 'hello' }], id: 'search-1' },
+    };
+  }
+
+  const state: ToolAgentState = { messages: [], steps: 0 };
+  const completion = createDeferred<ToolAgentRoundCompletion<ToolAgentState>>();
+  const usageSource = {
+    text: Promise.resolve('Searching now.\n\nLatest models include Example.'),
+    steps: Promise.resolve([
+      { text: 'Searching now.\n\nLatest models include Example.' },
+    ]),
+  } as Parameters<typeof responsesEventStreamToRuntimeEvents>[2];
+
+  for await (const _event of responsesEventStreamToRuntimeEvents(
+    gatewayConfig,
+    stream(),
+    usageSource,
+    state,
+    [],
+    completion,
+  )) {
+    // drain
+  }
+
+  const result = await completion.promise;
+  assert.equal(result.kind, 'success');
+  if (result.kind !== 'success') {
+    throw new Error('expected success completion');
+  }
+  assert.equal(result.result.resumeStreamingAfterProviderSearch, undefined);
+  assert.equal(
+    extractLastAssistantText(result.result.state),
+    'Searching now.\n\nLatest models include Example.',
+  );
+});
+
 test('gateway sdk stream merges final step text after executed web_search', async () => {
   async function* stream(): AsyncGenerator<TextStreamPart<any>> {
     yield { type: 'text-delta', id: 'text-0', text: 'Searching now.' };
@@ -127,6 +172,9 @@ test('gateway sdk stream persists provider search results before synthesis follo
   }
   assert.equal(result.result.resumeStreamingAfterProviderSearch, true);
   assert.equal(result.result.state.messages.length, 3);
+  const assistantMessage = result.result.state.messages.at(1);
+  assert.ok(isJsonObject(assistantMessage));
+  assert.equal(assistantMessage.content, '好的，让我搜一下。');
   const toolMessage = result.result.state.messages.at(-1);
   assert.ok(isJsonObject(toolMessage));
   assert.equal(toolMessage.role, 'tool');

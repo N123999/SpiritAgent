@@ -5,7 +5,10 @@ import type { JsonValue, ToolCallRequest } from '../ports.js';
 import { isJsonObject, type ToolAgentState } from '../tool-agent.js';
 import { isResponsesBuiltInToolName } from './responses-built-in-tools.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
-import { resolveProviderWebSearchMode } from './web-search-eligibility.js';
+import {
+  resolveProviderWebSearchMode,
+  type ProviderWebSearchMode,
+} from './web-search-eligibility.js';
 
 export const SDK_PROVIDER_WEB_SEARCH_STEP_LIMIT = 5;
 
@@ -13,6 +16,17 @@ export function shouldUseSdkProviderWebSearchMultiStep(
   config: OpenResponsesTransportConfig,
 ): boolean {
   const mode = resolveProviderWebSearchMode(config);
+  return isSdkProviderWebSearchMode(mode);
+}
+
+/** Gateway v3 language-model 流式补丁：tool-result 追踪、续跑合成（非 OpenAI/xAI SDK 路径）。 */
+export function shouldUseGatewaySdkProviderWebSearchStreamPatch(
+  config: OpenResponsesTransportConfig,
+): boolean {
+  return resolveProviderWebSearchMode(config) === 'gateway-sdk-web-search';
+}
+
+function isSdkProviderWebSearchMode(mode: ProviderWebSearchMode | undefined): boolean {
   return mode === 'gateway-sdk-web-search'
     || mode === 'openai-sdk-web-search'
     || mode === 'xai-sdk-web-search';
@@ -192,7 +206,7 @@ export function shouldResumeStreamingAfterProviderSearch(
   resolved: { text: string; finalStepText: string; sdkStepCount: number },
 ): boolean {
   if (
-    !shouldUseSdkProviderWebSearchMultiStep(config)
+    !shouldUseGatewaySdkProviderWebSearchStreamPatch(config)
     || executedProviderBuiltinToolCallIds.size === 0
     || pendingHostCallCount > 0
   ) {
@@ -203,9 +217,20 @@ export function shouldResumeStreamingAfterProviderSearch(
     return false;
   }
 
+  const streamed = streamedText.trim();
   const merged = resolved.text.trim();
+  const finalStep = resolved.finalStepText.trim();
+
   if (!merged) {
     return true;
+  }
+
+  // SDK 单步 metadata 已含完整合成答案，而流式 delta 只覆盖了前言。
+  if (finalStep.length > streamed.length && finalStep.startsWith(streamed)) {
+    return false;
+  }
+  if (merged.length > streamed.length && merged.startsWith(streamed) && finalStep.length > 0) {
+    return false;
   }
 
   return resolved.sdkStepCount < 2;

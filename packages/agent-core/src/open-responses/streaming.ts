@@ -26,7 +26,7 @@ import {
   persistProviderBuiltinToolRoundToState,
   resolveAiSdkStreamAssistantText,
   shouldResumeStreamingAfterProviderSearch,
-  shouldUseSdkProviderWebSearchMultiStep,
+  shouldUseGatewaySdkProviderWebSearchStreamPatch,
 } from './sdk-provider-web-search-loop.js';
 interface AggregatedStreamingToolCall {
   index: number;
@@ -103,7 +103,7 @@ export async function* responsesEventStreamToRuntimeEvents(
         case 'tool-result': {
           sawAnswerOrToolOutput = true;
           if (
-            shouldUseSdkProviderWebSearchMultiStep(config)
+            shouldUseGatewaySdkProviderWebSearchStreamPatch(config)
             && typeof part.toolCallId === 'string'
             && isResponsesBuiltInToolName(part.toolName)
           ) {
@@ -139,7 +139,7 @@ export async function* responsesEventStreamToRuntimeEvents(
         case 'tool-error': {
           sawAnswerOrToolOutput = true;
           if (
-            shouldUseSdkProviderWebSearchMultiStep(config)
+            shouldUseGatewaySdkProviderWebSearchStreamPatch(config)
             && typeof part.toolCallId === 'string'
             && isResponsesBuiltInToolName(part.toolName)
           ) {
@@ -311,7 +311,7 @@ export async function* responsesEventStreamToRuntimeEvents(
         attachResponseIdToAssistantMessage(
           config,
           buildStreamingAssistantMessage(
-            assistantContent,
+            resolvedAssistantContent,
             reasoningContent,
             toolCalls,
             new Set(),
