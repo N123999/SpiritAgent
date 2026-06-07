@@ -36,6 +36,11 @@ import {
   renderResponsesTransportError,
 } from './ai-sdk-message-bridge.js';
 import {
+  buildSdkProviderWebSearchStopWhen,
+  collectExecutedProviderBuiltinToolCallIdsFromSteps,
+  filterPendingHostToolCalls,
+} from './sdk-provider-web-search-loop.js';
+import {
   appendApplyPatchToolCallsToAssistantMessage,
   beginApplyPatchBridgeRound,
   buildResponsesTraceTools,
@@ -46,6 +51,7 @@ import {
   takeLastExtractedApplyPatchCalls,
 } from './apply-patch-bridge.js';
 import { shouldUseOpenAiSdkApplyPatchTool } from './apply-patch-eligibility.js';
+import { isResponsesBuiltInToolName } from './responses-built-in-tools.js';
 import { xaiResponsesRejectsLocalFunctionTools } from './web-search-eligibility.js';
 import {
   buildResponsesGenerateTools,
@@ -165,6 +171,7 @@ export class AiSdkOpenResponsesTransport
       return await runWithApplyPatchBridgeContext(async () => {
         const generateTools = buildResponsesGenerateTools(config, normalizedTools);
         const hasGenerateTools = Object.keys(generateTools).length > 0;
+        const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
         const result = await generateText({
           model: createResponsesLanguageModel(config) as any,
           messages: openAiMessagesToResponsesAiSdkMessages(requestMessages, config) as any,
@@ -175,6 +182,7 @@ export class AiSdkOpenResponsesTransport
                 toolChoice: 'auto' as const,
               }
             : {}),
+          ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
           providerOptions: buildResponsesProviderOptions(config, previousResponseId),
           maxRetries: 0,
         });
@@ -182,11 +190,20 @@ export class AiSdkOpenResponsesTransport
         const applyPatchCalls = shouldUseOpenAiSdkApplyPatchTool(config)
           ? []
           : takeLastExtractedApplyPatchCalls();
+        const executedProviderBuiltinToolCallIds = collectExecutedProviderBuiltinToolCallIdsFromSteps(
+          result.steps,
+        );
+        const pendingAssistantToolCalls = result.toolCalls.filter(
+          (toolCall) => !(
+            isResponsesBuiltInToolName(toolCall.toolName)
+            && executedProviderBuiltinToolCallIds.has(toolCall.toolCallId)
+          ),
+        );
         const assistantMessage = attachResponseIdToAssistantMessage(
           config,
           buildAssistantMessageFromResponsesGenerateText(
             result.text,
-            result.toolCalls,
+            pendingAssistantToolCalls,
             result.reasoningText ?? '',
           ),
           extractResponseIdFromGenerateTextResult(result),
@@ -201,7 +218,10 @@ export class AiSdkOpenResponsesTransport
         }
         const usage = await readAiSdkUsage(result);
         const calls = mergeToolCallsWithApplyPatch(
-          extractToolCallsFromAiSdk(result.toolCalls),
+          filterPendingHostToolCalls(
+            extractToolCallsFromAiSdk(pendingAssistantToolCalls),
+            executedProviderBuiltinToolCallIds,
+          ),
           applyPatchCalls,
         );
         if (calls.length > 0) {
@@ -282,9 +302,11 @@ export class AiSdkOpenResponsesTransport
       const generateTools = buildResponsesGenerateTools(config, normalizedTools);
       const hasGenerateTools = Object.keys(generateTools).length > 0;
       const providerOptions = buildResponsesProviderOptions(config, previousResponseId);
+      const sdkMessages = openAiMessagesToResponsesAiSdkMessages(requestMessages, config);
+      const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
       const result: { fullStream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = streamText({
         model: createResponsesLanguageModel(config) as any,
-        messages: openAiMessagesToResponsesAiSdkMessages(requestMessages, config) as any,
+        messages: sdkMessages as any,
         allowSystemInMessages: true,
         ...(hasGenerateTools
           ? {
@@ -292,6 +314,7 @@ export class AiSdkOpenResponsesTransport
               toolChoice: 'auto' as const,
             }
           : {}),
+        ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
         providerOptions,
         includeRawChunks: true,
         maxRetries: 0,

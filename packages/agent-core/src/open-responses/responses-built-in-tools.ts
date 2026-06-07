@@ -320,6 +320,63 @@ export function buildResponsesBuiltInToolArgumentsJson(
   return JSON.stringify(payload);
 }
 
+/** Gateway AI SDK `tool-result` → Desktop builtin tool card (phase + _spiritUi output). */
+export function buildGatewaySdkProviderBuiltinToolResultArgumentsJson(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+  failed: boolean,
+): string | undefined {
+  if (!isResponsesBuiltInToolName(toolName)) {
+    return undefined;
+  }
+
+  if (toolName === 'web_search') {
+    const inputObj = isJsonObject(input as JsonValue) ? (input as JsonObject) : {};
+    const query = readStringField(inputObj, 'query') ?? '';
+    const sources: JsonObject[] = [];
+
+    if (!failed && isJsonObject(output as JsonValue)) {
+      const results = (output as JsonObject).results;
+      if (Array.isArray(results)) {
+        for (const result of results) {
+          if (!isJsonObject(result as JsonValue)) {
+            continue;
+          }
+          const entry = result as JsonObject;
+          const url = readStringField(entry, 'url');
+          if (!url) {
+            continue;
+          }
+          const source: JsonObject = { type: 'url', url };
+          const title = readStringField(entry, 'title');
+          const snippet = readStringField(entry, 'snippet');
+          if (title) {
+            source.title = title;
+          }
+          if (snippet) {
+            source.snippet = snippet;
+          }
+          sources.push(source);
+        }
+      }
+    }
+
+    const item: JsonObject = {
+      type: 'web_search_call',
+      status: failed ? 'failed' : 'completed',
+      action: {
+        type: 'search',
+        query,
+        sources,
+      },
+    };
+    return buildResponsesBuiltInToolArgumentsJson(item, 'web_search');
+  }
+
+  return undefined;
+}
+
 function readStringField(record: JsonObject, key: string): string | undefined {
   const value = record[key];
   if (typeof value !== 'string') {

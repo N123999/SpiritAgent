@@ -1102,16 +1102,26 @@ export class DesktopMessageTimeline {
   private ensureStreamingAssistantTextRowAfterTools(
     segment: DesktopTimelineSegment,
   ): DesktopTimelineRow {
-    for (let index = segment.rows.length - 1; index >= 0; index -= 1) {
-      const row = segment.rows[index];
-      if (row?.kind === 'assistant-text' && row.section === 'after-tools') {
-        segment.activeAssistantTextRowId = row.rowId;
-        return row;
-      }
+    const existing = this.findAfterToolsAssistantTextRow(segment);
+    if (existing) {
+      segment.activeAssistantTextRowId = existing.rowId;
+      return existing;
     }
     const row = this.createAssistantTextRow(segment, 'after-tools', true);
     segment.activeAssistantTextRowId = row.rowId;
     return row;
+  }
+
+  private findAfterToolsAssistantTextRow(
+    segment: DesktopTimelineSegment,
+  ): DesktopTimelineRow | undefined {
+    for (let index = segment.rows.length - 1; index >= 0; index -= 1) {
+      const row = segment.rows[index];
+      if (row?.kind === 'assistant-text' && row.section === 'after-tools') {
+        return row;
+      }
+    }
+    return undefined;
   }
 
   private ensureActiveAssistantTextRow(mode: 'text' | 'aux'): DesktopTimelineRow {
@@ -1126,13 +1136,23 @@ export class DesktopMessageTimeline {
             return row;
           }
           existing.section = 'after-tools';
-        } else if (mode === 'aux' && !existing.content.trim()) {
-          if (hasRowAux(existing)) {
-            const row = this.createAssistantTextRow(segment, 'tools', true);
-            segment.activeAssistantTextRowId = row.rowId;
-            return row;
+        } else if (mode === 'aux') {
+          if (existing.content.trim() && segmentAllToolsTerminal(segment)) {
+            // Gateway provider-search resume：工具前前缀已落在 before-tools 行，全部工具完成后合成思考须写到 after-tools。
+            const afterToolsRow =
+              this.findAfterToolsAssistantTextRow(segment)
+              ?? this.createAssistantTextRow(segment, 'after-tools', true);
+            segment.activeAssistantTextRowId = afterToolsRow.rowId;
+            return afterToolsRow;
           }
-          existing.section = 'tools';
+          if (!existing.content.trim()) {
+            if (hasRowAux(existing)) {
+              const row = this.createAssistantTextRow(segment, 'tools', true);
+              segment.activeAssistantTextRowId = row.rowId;
+              return row;
+            }
+            existing.section = 'tools';
+          }
         }
         return existing;
       }
@@ -1476,6 +1496,17 @@ function canReuseToolMessageAcrossTurns(tool: ToolBlockSnapshot | undefined): bo
 
 function segmentHasToolRows(segment: DesktopTimelineSegment): boolean {
   return segment.rows.some((row) => row.kind === 'tool');
+}
+
+function segmentAllToolsTerminal(segment: DesktopTimelineSegment): boolean {
+  const toolRows = segment.rows.filter((row) => row.kind === 'tool');
+  if (toolRows.length === 0) {
+    return false;
+  }
+  return toolRows.every((row) => {
+    const phase = row.tool?.phase;
+    return phase === 'succeeded' || phase === 'failed';
+  });
 }
 
 function segmentHasPostToolAssistantAnswer(segment: DesktopTimelineSegment): boolean {

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   accumulateResponsesBuiltInToolPreviewsFromRawChunk,
+  buildGatewaySdkProviderBuiltinToolResultArgumentsJson,
   buildResponsesBuiltInToolArgumentsJson,
   buildResponsesBuiltInToolCardData,
   isGenericProviderWebSearchQuery,
@@ -119,6 +120,36 @@ test('resolveResponsesBuiltInToolStreamPhase maps terminal statuses', () => {
     ),
     'succeeded',
   );
+});
+
+test('buildGatewaySdkProviderBuiltinToolResultArgumentsJson marks completed with output', () => {
+  const json = buildGatewaySdkProviderBuiltinToolResultArgumentsJson(
+    'web_search',
+    { query: 'latest models', max_results: 10 },
+    {
+      results: [
+        { title: 'Example', url: 'https://example.com/page', snippet: 'hello' },
+      ],
+      id: 'search-1',
+    },
+    false,
+  );
+  assert.ok(json);
+  assert.equal(resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(json!), 'succeeded');
+  const ui = parseResponsesBuiltInToolUiFromArgumentsJson(json!);
+  assert.match(ui?.outputExcerpt ?? '', /example\.com/);
+  assert.equal(ui?.sourceCount, 1);
+});
+
+test('buildGatewaySdkProviderBuiltinToolResultArgumentsJson marks failed on tool-error', () => {
+  const json = buildGatewaySdkProviderBuiltinToolResultArgumentsJson(
+    'web_search',
+    { query: 'latest models' },
+    { error: 'search failed' },
+    true,
+  );
+  assert.ok(json);
+  assert.equal(resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(json!), 'failed');
 });
 
 test('accumulateResponsesBuiltInToolPreviewsFromRawChunk marks completed on output_item.done', () => {

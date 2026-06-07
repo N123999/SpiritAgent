@@ -16,8 +16,18 @@ import type { OpenResponsesTransportConfig } from './responses-compat.js';
 import { renderResponsesTransportError } from './ai-sdk-message-bridge.js';
 import {
   accumulateResponsesBuiltInToolPreviewsFromRawChunk,
+  buildGatewaySdkProviderBuiltinToolResultArgumentsJson,
   createResponsesBuiltInPreviewStreamState,
+  isResponsesBuiltInToolName,
 } from './responses-built-in-tools.js';
+import {
+  type AccumulatedProviderBuiltinToolResult,
+  filterPendingHostToolCalls,
+  persistProviderBuiltinToolRoundToState,
+  resolveAiSdkStreamAssistantText,
+  shouldResumeStreamingAfterProviderSearch,
+  shouldUseSdkProviderWebSearchMultiStep,
+} from './sdk-provider-web-search-loop.js';
 interface AggregatedStreamingToolCall {
   index: number;
   id: string;
@@ -61,6 +71,8 @@ export async function* responsesEventStreamToRuntimeEvents(
   let sawAnswerOrToolOutput = false;
   let nextToolIndex = 0;
   let providerPreviewState = createResponsesBuiltInPreviewStreamState();
+  const executedProviderBuiltinToolCallIds = new Set<string>();
+  const providerBuiltinToolResults = new Map<string, AccumulatedProviderBuiltinToolResult>();
   let responseId: string | undefined;
   /** Open Responses SDK 已发 reasoning-delta；raw SSE 为同内容镜像，再 yield 会 TheThe / says says。 */
   let activeReasoningDeltaId: string | undefined;
@@ -86,6 +98,78 @@ export async function* responsesEventStreamToRuntimeEvents(
           sawAnswerOrToolOutput = true;
           assistantContent += part.text;
           yield { kind: 'assistant-chunk', text: part.text };
+          break;
+        }
+        case 'tool-result': {
+          sawAnswerOrToolOutput = true;
+          if (
+            shouldUseSdkProviderWebSearchMultiStep(config)
+            && typeof part.toolCallId === 'string'
+            && isResponsesBuiltInToolName(part.toolName)
+          ) {
+            executedProviderBuiltinToolCallIds.add(part.toolCallId);
+            providerBuiltinToolResults.set(part.toolCallId, {
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              argumentsJson: JSON.stringify(part.input ?? {}),
+              output: part.output,
+            });
+            const succeededArgumentsJson = buildGatewaySdkProviderBuiltinToolResultArgumentsJson(
+              part.toolName,
+              part.input,
+              part.output,
+              false,
+            );
+            if (succeededArgumentsJson) {
+              const existing = findToolCallByStreamId(toolCalls, part.toolCallId);
+              if (existing) {
+                existing.functionArguments = succeededArgumentsJson;
+                existing.readyPreviewEmitted = true;
+              }
+              yield {
+                kind: 'streaming-tool-preview',
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                argumentsJson: succeededArgumentsJson,
+              };
+            }
+          }
+          break;
+        }
+        case 'tool-error': {
+          sawAnswerOrToolOutput = true;
+          if (
+            shouldUseSdkProviderWebSearchMultiStep(config)
+            && typeof part.toolCallId === 'string'
+            && isResponsesBuiltInToolName(part.toolName)
+          ) {
+            executedProviderBuiltinToolCallIds.add(part.toolCallId);
+            providerBuiltinToolResults.set(part.toolCallId, {
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              argumentsJson: JSON.stringify(part.input ?? {}),
+              output: part,
+            });
+            const failedArgumentsJson = buildGatewaySdkProviderBuiltinToolResultArgumentsJson(
+              part.toolName,
+              part.input,
+              part,
+              true,
+            );
+            if (failedArgumentsJson) {
+              const existing = findToolCallByStreamId(toolCalls, part.toolCallId);
+              if (existing) {
+                existing.functionArguments = failedArgumentsJson;
+                existing.readyPreviewEmitted = true;
+              }
+              yield {
+                kind: 'streaming-tool-preview',
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                argumentsJson: failedArgumentsJson,
+              };
+            }
+          }
           break;
         }
         case 'tool-call': {
@@ -199,14 +283,57 @@ export async function* responsesEventStreamToRuntimeEvents(
       throw new Error('流式 Responses 响应无任何 text / tool 输出。');
     }
 
-    const assistantMessage = attachResponseIdToAssistantMessage(
-      config,
-      buildStreamingAssistantMessage(assistantContent, reasoningContent, toolCalls),
-      responseId,
-    );
-    nextState.messages.push(assistantMessage);
+    const resolvedAssistant = await resolveAiSdkStreamAssistantText(usageSource, assistantContent);
+    const resolvedAssistantContent = resolvedAssistant.text;
+    if (resolvedAssistantContent.length > assistantContent.length) {
+      const tail = resolvedAssistantContent.slice(assistantContent.length);
+      if (tail) {
+        yield { kind: 'assistant-chunk', text: tail };
+        sawAnswerOrToolOutput = true;
+      }
+    }
 
-    const calls = extractToolCallsFromAggregatedMap(toolCalls);
+    const calls = filterPendingHostToolCalls(
+      extractToolCallsFromAggregatedMap(toolCalls),
+      executedProviderBuiltinToolCallIds,
+    );
+    const resumeStreamingAfterProviderSearch = shouldResumeStreamingAfterProviderSearch(
+      config,
+      executedProviderBuiltinToolCallIds,
+      calls.length,
+      assistantContent,
+      resolvedAssistant,
+    );
+
+    if (resumeStreamingAfterProviderSearch) {
+      persistProviderBuiltinToolRoundToState(
+        nextState,
+        attachResponseIdToAssistantMessage(
+          config,
+          buildStreamingAssistantMessage(
+            assistantContent,
+            reasoningContent,
+            toolCalls,
+            new Set(),
+          ),
+          responseId,
+        ),
+        providerBuiltinToolResults,
+        executedProviderBuiltinToolCallIds,
+      );
+    } else {
+      const assistantMessage = attachResponseIdToAssistantMessage(
+        config,
+        buildStreamingAssistantMessage(
+          resolvedAssistantContent,
+          reasoningContent,
+          toolCalls,
+          executedProviderBuiltinToolCallIds,
+        ),
+        responseId,
+      );
+      nextState.messages.push(assistantMessage);
+    }
     const applyPatchCallIds = calls
       .filter((call) => call.name === APPLY_PATCH_HOST_TOOL_NAME)
       .map((call) => call.id);
@@ -221,6 +348,9 @@ export async function* responsesEventStreamToRuntimeEvents(
         step: calls.length > 0 ? { kind: 'tool-calls', calls } : { kind: 'final-response-ready' },
         requestTrace,
         ...(usage ? { usage } : {}),
+        ...(resumeStreamingAfterProviderSearch
+          ? { resumeStreamingAfterProviderSearch: true }
+          : {}),
       },
     });
     yield { kind: 'done' };
@@ -242,8 +372,10 @@ function buildStreamingAssistantMessage(
   assistantContent: string,
   reasoningContent: string,
   toolCalls: Map<number, AggregatedStreamingToolCall>,
+  omitToolCallIds: ReadonlySet<string> = new Set(),
 ): JsonValue {
   const functionToolCalls = [...toolCalls.values()]
+    .filter((call) => !omitToolCallIds.has(call.id))
     .sort((left, right) => left.index - right.index)
     .map((call) => ({
       index: call.index,

@@ -70,7 +70,7 @@ export function openAiMessagesToResponsesAiSdkMessages(
   }
   const toolCallNames = buildToolCallNameIndex(messages);
 
-  return messages.flatMap((message) => {
+  const sdkMessages = messages.flatMap((message) => {
     if (!isJsonObject(message) || typeof message.role !== 'string') {
       return [];
     }
@@ -96,6 +96,8 @@ export function openAiMessagesToResponsesAiSdkMessages(
         return [];
     }
   });
+
+  return sdkMessages;
 }
 
 export function buildAssistantMessageFromResponsesGenerateText(

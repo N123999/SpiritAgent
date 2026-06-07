@@ -110,6 +110,45 @@ test('post-tool thinking in the same segment stays below provider tool rows', ()
   ]);
 });
 
+test('post-tool thinking aux routes to after-tools row when before-tools body already exists', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('search again');
+  timeline.beginAssistantSegment('initial');
+  timeline.updatePendingAssistantAux('thinking', '好的，让我试试修复后的 search。');
+  timeline.appendAssistantTextChunk('好的，让我试试修复后的 search。');
+  timeline.finalizeThinkingSegment('好的，让我试试修复后的 search。', 'before-next-tool');
+  timeline.upsertToolMessage('web-1', {
+    toolCallId: 'web-1',
+    toolName: 'web_search',
+    phase: 'succeeded',
+    headline: 'Web search',
+    detailLines: ['10 sources'],
+    argsExcerpt: '{}',
+  });
+  timeline.updatePendingAssistantAux('thinking', 'Search is fixed; summarizing results.');
+  timeline.appendAssistantTextChunk('Here is the summary.');
+  timeline.finalizeThinkingSegment('Search is fixed; summarizing results.', 'after-stream');
+  timeline.completeActiveAssistantSegment();
+
+  const messages = timeline.toMessages();
+  const preToolBody = messages.find(
+    (message) =>
+      message.content.includes('让我试试')
+      && !message.aux?.thinking?.includes('summarizing'),
+  );
+  assert.ok(preToolBody);
+  assert.equal(preToolBody.aux?.thinking?.includes('summarizing'), undefined);
+
+  assert.deepEqual(visibleRowTokens(messages), [
+    'user:search again',
+    'thinking:好的，让我试试修复后的 search。',
+    'assistant:好的，让我试试修复后的 search。',
+    'tool:web-1:succeeded',
+    'thinking:Search is fixed; summarizing results.',
+    'assistant:Here is the summary.',
+  ]);
+});
+
 test('first answer text chunk settles in-flight post-tool thinking without duplicate rows', () => {
   const timeline = createTimeline();
   timeline.beginUserTurn('search DeepSeek');

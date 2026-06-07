@@ -3,6 +3,7 @@ import { setImmediate as waitForImmediate } from 'node:timers/promises';
 import type {
   AskQuestionsResult,
   AuthorizationDecision,
+  JsonObject,
   JsonValue,
   LlmMessage,
   ToolExecutionOutput,
@@ -21,7 +22,7 @@ import {
   registerPendingApplyPatchCallIds,
 } from '../open-responses/apply-patch-bridge.js';
 import { APPLY_PATCH_HOST_TOOL_NAME } from '../open-responses/apply-patch-eligibility.js';
-import { appendToolResultMessages } from '../tool-agent.js';
+import { appendToolResultMessages, isJsonObject } from '../tool-agent.js';
 import { buildEarlyExecutableArgumentsJson } from '../tool-streaming-preview-gate.js';
 import {
   applyDeferredUserGuidance,

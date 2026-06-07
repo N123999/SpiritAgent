@@ -477,6 +477,8 @@ export interface ToolAgentRoundResult<State = JsonValue> {
   step: ToolAgentStep;
   requestTrace: JsonValue[];
   usage?: LlmTokenUsage;
+  /** Provider SDK executed built-in search in-stream but the answer step is not ready yet. */
+  resumeStreamingAfterProviderSearch?: boolean;
 }
 
 export type ToolAgentRoundCompletion<State = JsonValue> =

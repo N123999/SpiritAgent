@@ -501,9 +501,12 @@ export async function handlePendingStreamEvent<
 
   if (event.kind === 'done') {
     pending.streamEnded = true;
+    const resumeAfterProviderSearch =
+      pending.completion?.kind === 'success'
+      && pending.completion.result.resumeStreamingAfterProviderSearch === true;
     if (!runtime.pendingAssistantTextStore.trim()) {
       runtime.emitEvent({ kind: 'remove-pending-assistant' });
-    } else {
+    } else if (!resumeAfterProviderSearch) {
       runtime.historyStore.push({
         role: 'assistant',
         content: createLlmMessageContentFromText(runtime.pendingAssistantTextStore),
@@ -516,6 +519,11 @@ export async function handlePendingStreamEvent<
 
     if (pending.completionHandled && pending.completion?.kind === 'success') {
       const round = pending.completion.result;
+      if (round.resumeStreamingAfterProviderSearch) {
+        clearPendingStreamingState(runtime);
+        await startStreamingRound(runtime, round.state, pending.pendingUserInput, pending.turn, false);
+        return true;
+      }
       if (round.step.kind === 'tool-calls') {
         const earlyToolExecutions = pending.earlyToolExecutions;
         clearPendingStreamingState(runtime);
@@ -673,6 +681,16 @@ export async function handlePendingStreamingCompletion<
   const round = completion.result;
   runtime.appendTrace(round.requestTrace, pending.turn);
   emitContextUsageUpdated(runtime.emitEvent.bind(runtime), round.usage);
+
+  if (round.resumeStreamingAfterProviderSearch) {
+    const lastHistoryMessage = runtime.historyStore.at(-1);
+    if (lastHistoryMessage?.role === 'assistant') {
+      runtime.historyStore.pop();
+    }
+    clearPendingStreamingState(runtime);
+    await startStreamingRound(runtime, round.state, pending.pendingUserInput, pending.turn, false);
+    return;
+  }
 
   if (round.step.kind === 'tool-calls') {
     if (!pending.streamEnded && !runtime.pendingAssistantTextStore.trim()) {
