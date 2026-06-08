@@ -4,6 +4,7 @@ import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
 import type { PlanSnapshot } from '../types.js';
 import {
   discoverWorkspaceRoot,
+  applyLlmClientVersionFromApp,
   applyLlmHttpVersionFromConfig,
   loadConfig,
   loadHostMetadata,
@@ -74,6 +75,7 @@ export async function ensureInitializedCommand(
 
   const loadedConfig = await loadConfig();
   applyLlmHttpVersionFromConfig(loadedConfig);
+  applyLlmClientVersionFromApp();
   await ensureBuiltinUserSkills(spiritAgentDataDir());
   const previousState = ctx.state();
   const previousBinding = normalizeWorkspaceBinding(

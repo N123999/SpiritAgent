@@ -45,6 +45,7 @@ import {
   normalizeDreamConfig,
   normalizeAgentsConfig,
   normalizeNetworksConfig,
+  applyLlmClientVersionFromApp,
   applyLlmHttpVersionFromConfig,
   normalizeModelCapabilities,
   normalizeWebHostConfig,
@@ -221,6 +222,7 @@ export async function updateConfigCommand(
         llmHttpVersion: request.networks.llmHttpVersion,
       });
       applyLlmHttpVersionFromConfig(state.config);
+      applyLlmClientVersionFromApp();
     }
     await saveConfig(state.config);
     if (request.apiKey?.trim()) {

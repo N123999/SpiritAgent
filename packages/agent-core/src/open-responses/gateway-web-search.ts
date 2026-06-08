@@ -1,5 +1,6 @@
 import { createGateway } from '@ai-sdk/gateway';
 
+import { getLlmFetch } from '../llm-fetch.js';
 import type { JsonObject } from '../ports.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
 
@@ -8,7 +9,7 @@ export function shouldUseGatewayWebSearch(config: OpenResponsesTransportConfig):
 }
 
 export function buildGatewayWebSearchTool(config: OpenResponsesTransportConfig): unknown {
-  return createGateway({ apiKey: config.apiKey }).tools.perplexitySearch();
+  return createGateway({ apiKey: config.apiKey, fetch: getLlmFetch() }).tools.perplexitySearch();
 }
 
 export function buildGatewayResponsesWebSearchToolRequestEntry(): JsonObject {

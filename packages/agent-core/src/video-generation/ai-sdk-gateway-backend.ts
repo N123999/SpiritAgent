@@ -1,6 +1,7 @@
 import { createGateway, type GatewayVideoModelId } from '@ai-sdk/gateway';
 import { experimental_generateVideo as generateVideo } from 'ai';
 
+import { getLlmFetch } from '../llm-fetch.js';
 import type { OpenAiVideoGenerationConfig } from '../openai/openai-compat.js';
 
 /** Gateway 视频走 v3 AI 协议（默认 `…/v3/ai/video-model`），不能用 chat 预设的 `/v1` baseUrl。 */
@@ -27,7 +28,10 @@ export class AiSdkGatewayVideoBackend implements VideoGenerationBackend {
     request: VideoGenerationRequest,
     saveGeneratedVideo: (request: GeneratedVideoSaveRequest) => Promise<GeneratedVideoFile>,
   ): Promise<ToolExecutionOutput> {
-    const provider = createGateway(resolveAiGatewayVideoProviderOptions(config));
+    const provider = createGateway({
+      ...resolveAiGatewayVideoProviderOptions(config),
+      fetch: getLlmFetch(),
+    });
 
     console.error('[agent-core][generate-video] request.start', {
       adapter: this.id,

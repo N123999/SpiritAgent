@@ -106,6 +106,10 @@ export interface RuntimeSetLlmHttpVersionParams {
   llmHttpVersion: 'http1.1' | 'http2';
 }
 
+export interface RuntimeSetLlmClientVersionParams {
+  clientVersion: string;
+}
+
 export interface RuntimeSetLoopEnabledParams {
   enabled: boolean;
 }

@@ -1,3 +1,4 @@
+import { getLlmFetch } from '../llm-fetch.js';
 import type { OpenAiVideoGenerationConfig } from '../openai/openai-compat.js';
 import type {
   GeneratedVideoFile,
@@ -38,7 +39,7 @@ export class OpenRouterVideosBackend implements VideoGenerationBackend {
       createUrl,
     });
 
-    const createResponse = await fetch(createUrl, {
+    const createResponse = await getLlmFetch()(createUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -65,7 +66,7 @@ export class OpenRouterVideosBackend implements VideoGenerationBackend {
     }
 
     const completed = await pollUntil(async () => {
-      const statusResponse = await fetch(pollingUrl, {
+      const statusResponse = await getLlmFetch()(pollingUrl, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
         },

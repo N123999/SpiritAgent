@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 
+import { getLlmFetch } from '../llm-fetch.js';
 import type { OpenAiTransportConfig } from './openai-compat.js';
 
 /** Moonshot AI 视频理解：经 Files API 上传，purpose 必须为 video。 */
@@ -28,7 +29,7 @@ export async function uploadMoonshotVideoFile(
   form.append('file', new Blob([bytes]), basename(absolutePath));
   form.append('purpose', 'video');
 
-  const response = await fetch(`${normalizeMoonshotApiBase(config.baseUrl)}/files`, {
+  const response = await getLlmFetch()(`${normalizeMoonshotApiBase(config.baseUrl)}/files`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.apiKey}`,

@@ -1,3 +1,4 @@
+import { getLlmFetch } from '../llm-fetch.js';
 import type { OpenAiVideoGenerationConfig } from '../openai/openai-compat.js';
 import type {
   GeneratedVideoFile,
@@ -42,7 +43,7 @@ export class VolcengineArkVideoBackend implements VideoGenerationBackend {
       resolution: request.resolution,
     });
 
-    const createResponse = await fetch(createUrl, {
+    const createResponse = await getLlmFetch()(createUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -70,7 +71,7 @@ export class VolcengineArkVideoBackend implements VideoGenerationBackend {
 
     const statusUrl = `${baseUrl}/contents/generations/tasks/${encodeURIComponent(taskId)}`;
     const completed = await pollUntil(async () => {
-      const statusResponse = await fetch(statusUrl, {
+      const statusResponse = await getLlmFetch()(statusUrl, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
         },

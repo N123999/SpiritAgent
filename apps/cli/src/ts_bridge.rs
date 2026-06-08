@@ -619,6 +619,7 @@ impl TsBridgeRuntime {
         runtime.set_todo_session_key(&session_key)?;
         runtime.initialize_bridge()?;
         runtime.apply_llm_http_version_from_config()?;
+        runtime.apply_llm_client_version_from_build()?;
         Ok(runtime)
     }
 
@@ -1331,6 +1332,19 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
+    pub fn set_llm_client_version(&mut self, client_version: &str) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已处于失败状态。"));
+        }
+        self.call_bridge(
+            "runtime.setLlmClientVersion",
+            Some(json!({
+                "clientVersion": client_version,
+            })),
+        )?;
+        Ok(())
+    }
+
     pub fn store_config(&mut self, config: AppConfig) {
         self.config = config;
     }
@@ -1341,6 +1355,13 @@ impl TsBridgeRuntime {
         }
         let version = self.config.networks.llm_http_version.clone();
         self.set_llm_http_version(&version)
+    }
+
+    fn apply_llm_client_version_from_build(&mut self) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已处于失败状态。"));
+        }
+        self.set_llm_client_version(env!("CARGO_PKG_VERSION"))
     }
 
     pub fn abort(&mut self) {
@@ -1773,6 +1794,7 @@ impl TsBridgeRuntime {
         )?;
         self.apply_snapshot(serde_json::from_value(snapshot)?);
         self.apply_llm_http_version_from_config()?;
+        self.apply_llm_client_version_from_build()?;
         Ok(())
     }
 

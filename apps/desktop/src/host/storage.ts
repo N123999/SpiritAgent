@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import {
   mkdir,
   readdir,
@@ -15,6 +16,7 @@ import { Entry } from '@napi-rs/keyring';
 import i18n from '../lib/i18n-host.js';
 import { normalizeLightweightChatModel } from './lightweight-chat-model.js';
 import {
+  configureLlmClientVersion,
   configureLlmHttpVersion,
   normalizeLlmHttpVersion,
   type LlmHttpVersion,
@@ -590,6 +592,17 @@ export function normalizeNetworksConfig(raw: unknown): DesktopNetworksConfigFile
   return {
     llmHttpVersion: normalizeLlmHttpVersion(record.llmHttpVersion),
   };
+}
+
+const require = createRequire(import.meta.url);
+const desktopPackageVersion = (require('../../package.json') as { version: string }).version;
+
+export function resolveDesktopAppVersion(): string {
+  return desktopPackageVersion;
+}
+
+export function applyLlmClientVersionFromApp(): void {
+  configureLlmClientVersion(resolveDesktopAppVersion());
 }
 
 export function applyLlmHttpVersionFromConfig(config: Pick<DesktopConfigFile, 'networks'>): void {

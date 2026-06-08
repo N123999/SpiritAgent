@@ -684,7 +684,7 @@ function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
 function createAiSdkImageModel(config: OpenAiImageGenerationConfig): any {
   if (isVercelAiGatewayImageConfig(config)) {
     // Gateway 生图走 v3 image-model 协议，不能复用 chat 预设的 /v1 baseUrl。
-    return createGateway({ apiKey: config.apiKey }).image(config.model);
+    return createGateway({ apiKey: config.apiKey, fetch: getLlmFetch() }).image(config.model);
   }
 
   return createAiSdkOpenAiCompatibleProvider(config, { includeChatVendorExtras: false }).imageModel(config.model);
