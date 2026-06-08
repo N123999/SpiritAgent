@@ -1788,6 +1788,14 @@ function isWin32ElectronShell(): boolean {
   return /Windows/i.test(navigator.userAgent);
 }
 
+/** macOS Electron：`titleBarStyle: hiddenInset`，需预留红绿灯安全区 */
+function isDarwinElectronShell(): boolean {
+  if (!isElectronChrome()) {
+    return false;
+  }
+  return window.spiritDesktop?.platform === "darwin";
+}
+
 function WebHostPairingGate({
   busy,
   error,
@@ -1969,6 +1977,9 @@ export default function App() {
   const snapshot = runtime.snapshot;
   /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
   const isElectronShell = isElectronChrome();
+  const winElectronChrome = isWin32ElectronShell();
+  const darwinElectronChrome = isDarwinElectronShell();
+  const desktopTitleBarChrome = winElectronChrome || darwinElectronChrome;
   const useMicaBackdrop =
     isElectronShell && (snapshot?.config.windowsMica !== false);
 
@@ -1982,6 +1993,17 @@ export default function App() {
       document.documentElement.classList.remove("spirit-desktop-native");
     }
   }, [isElectronShell]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (darwinElectronChrome) {
+      document.documentElement.classList.add("spirit-desktop-darwin");
+    } else {
+      document.documentElement.classList.remove("spirit-desktop-darwin");
+    }
+  }, [darwinElectronChrome]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -2414,7 +2436,6 @@ export default function App() {
   const previousPlanModifiedAtRef = useRef<number | undefined>(undefined);
   const previousPlanExistsRef = useRef<boolean | undefined>(undefined);
   const previousActiveSessionPathRef = useRef<string | null>(null);
-  const winElectronChrome = isWin32ElectronShell();
   const settingsMode = activeSurface === "settings";
   const marketplaceMode = activeSurface === "marketplace";
   const slashQuery = useMemo(() => currentSkillSlashQuery(runtime.composer), [runtime.composer]);
@@ -3116,7 +3137,7 @@ export default function App() {
         <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} />
       ) : null}
       <div data-spirit-surface="app-body" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {!winElectronChrome ? (
+        {!desktopTitleBarChrome ? (
           <div
             className={cn(
               "h-px w-full shrink-0",
