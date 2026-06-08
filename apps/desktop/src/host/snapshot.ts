@@ -102,6 +102,21 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
       discovered: input.metadata.skills.discovered,
       enabled: input.metadata.skills.enabled,
     },
+    rulesList: input.metadata.rules.entries.map((entry) => ({
+      id: entry.source.id,
+      title: entry.source.title,
+      shortLabel: entry.source.shortLabel,
+      scope: entry.source.scope,
+      rootKind: entry.source.rootKind,
+      exists: entry.exists,
+      enabled: entry.enabled,
+      ...(entry.preview
+        ? {
+            previewExcerpt: entry.preview.excerpt,
+            previewTruncated: entry.preview.truncated,
+          }
+        : {}),
+    })),
     skillsList: input.metadata.skills.entries.map((entry) => ({
       id: entry.source.id,
       name: entry.source.name,

@@ -490,6 +490,23 @@ export interface SubmitCreateSkillSlashRequest {
   rawText: string;
 }
 
+export type DesktopRuleScope = 'workspace' | 'user';
+
+/** 在固定规则槽位创建 Markdown 规则文件，根目录由 `rootKind` 决定。 */
+export interface CreateRuleRequest {
+  rootKind: DesktopSkillRootKind;
+  /** 写入正文种子，必填。 */
+  description: string;
+}
+
+export interface DeleteRuleRequest {
+  id: string;
+}
+
+export interface SubmitCreateRuleSlashRequest {
+  rawText: string;
+}
+
 export interface RewindAndSubmitMessageRequest {
   messageId: number;
   text: string;
@@ -509,6 +526,18 @@ export interface DesktopSkillListItem {
   scope: DesktopSkillScope;
   rootKind: DesktopSkillRootKind;
   enabled: boolean;
+}
+
+export interface DesktopRuleListItem {
+  id: string;
+  title: string;
+  shortLabel: string;
+  scope: DesktopRuleScope;
+  rootKind: DesktopSkillRootKind;
+  exists: boolean;
+  enabled: boolean;
+  previewExcerpt?: string;
+  previewTruncated?: boolean;
 }
 
 /** 与 CLI `chat_store` 已保存的 `*.json` 文件一致。 */
@@ -600,6 +629,8 @@ export interface DesktopSnapshot {
   webHost: DesktopWebHostSnapshot;
   rules: DiscoverySummary;
   skills: DiscoverySummary;
+  /** 固定槽位的全部 Rules（含未创建），供设置页列表。 */
+  rulesList: DesktopRuleListItem[];
   /** 当前工作区与用户目录下发现的全部 Skills，供设置页列表。 */
   skillsList: DesktopSkillListItem[];
   extensionsList: DesktopExtensionListItem[];

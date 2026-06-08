@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { discoverRuleEntries, discoverSkillEntries } from './discovery.js';
+import { discoverRuleEntries, discoverSkillEntries, loadRuleDiscoveryResult } from './discovery.js';
 import {
   SKILLS_DIR_NAME,
   USER_RULE_FILE_NAME,
@@ -28,6 +28,29 @@ test('discoverRuleEntries skips workspace sources when includeWorkspaceScope is 
     });
     const scopes = entries.filter((entry) => entry.exists).map((entry) => entry.source.scope);
     assert.deepEqual(scopes, ['user']);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('loadRuleDiscoveryResult exposes entries with rootKind for fixed slots', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-discovery-rules-'));
+  const spiritDataDir = join(workspaceRoot, 'spirit-data');
+  await mkdir(spiritDataDir, { recursive: true });
+
+  try {
+    const result = await loadRuleDiscoveryResult({
+      workspaceRoot,
+      spiritDataDir,
+    });
+
+    assert.equal(result.entries.length, 3);
+    assert.deepEqual(
+      result.entries.map((entry) => entry.source.rootKind),
+      ['workspaceSpirit', 'workspaceAgents', 'user'],
+    );
+    assert.equal(result.discovered, 0);
+    assert.equal(result.enabled, 0);
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }

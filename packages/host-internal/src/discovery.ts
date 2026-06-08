@@ -29,9 +29,12 @@ export type HostRuleScope = 'workspace' | 'user';
 export type HostSkillScope = 'workspace' | 'user';
 export type HostSkillRootKind = 'workspaceSpirit' | 'workspaceAgents' | 'user';
 
+export type HostRuleRootKind = HostSkillRootKind;
+
 export interface HostRuleSource {
   id: string;
   scope: HostRuleScope;
+  rootKind: HostRuleRootKind;
   title: string;
   shortLabel: string;
   path: string;
@@ -62,6 +65,8 @@ export interface HostRuleDiscoveryResult {
   discovered: number;
   enabled: number;
   enabledRules: HostEnabledRule[];
+  /** 全部发现项（含未创建），供宿主设置页等列清单。 */
+  entries: readonly HostRuleEntry[];
 }
 
 export interface HostSkillSource {
@@ -185,12 +190,14 @@ export async function discoverRuleEntries(
         buildRuleSource(
           paths.workspaceSpiritRuleFile,
           'workspace',
+          'workspaceSpirit',
           '工作区 Spirit 规则',
           WORKSPACE_SPIRIT_RULE_FILE_NAME.replace(/\\/gu, '/'),
         ),
         buildRuleSource(
           paths.workspaceAgentsRuleFile,
           'workspace',
+          'workspaceAgents',
           '工作区 AGENTS 规则',
           WORKSPACE_RULE_FILE_NAME,
         ),
@@ -198,7 +205,7 @@ export async function discoverRuleEntries(
     : [];
   const sources = await Promise.all([
     ...workspaceSources,
-    buildRuleSource(paths.userRuleFile, 'user', '用户规则', USER_RULE_FILE_NAME),
+    buildRuleSource(paths.userRuleFile, 'user', 'user', '用户规则', USER_RULE_FILE_NAME),
   ]);
 
   return Promise.all(
@@ -244,6 +251,7 @@ export async function loadRuleDiscoveryResult(
     discovered: entries.filter((entry) => entry.exists).length,
     enabled: enabledRulesResult.length,
     enabledRules: enabledRulesResult,
+    entries,
   };
 }
 
@@ -367,12 +375,14 @@ export function buildStartImplementingUserTurn(
 async function buildRuleSource(
   filePath: string,
   scope: HostRuleScope,
+  rootKind: HostRuleRootKind,
   title: string,
   shortLabel: string,
 ): Promise<HostRuleSource> {
   return {
     id: await stablePathId(filePath),
     scope,
+    rootKind,
     title,
     shortLabel,
     path: filePath,
