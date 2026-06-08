@@ -47,6 +47,7 @@ import {
   providerSupportsModelCatalogDetail,
 } from "@/lib/model-catalog-detail";
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
+import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
 import { cn } from "@/lib/utils";
 import {
   HoverDetailTooltip,
@@ -3764,11 +3765,10 @@ function AppearanceSettingsPanel({
   font,
   onFontChange,
   settings,
-  isElectronShell,
   onSavePatch,
 }: Pick<
   SettingsViewProps,
-  "theme" | "onThemeChange" | "font" | "onFontChange" | "settings" | "isElectronShell" | "onSavePatch"
+  "theme" | "onThemeChange" | "font" | "onFontChange" | "settings" | "onSavePatch"
 >) {
   const { t } = useTranslation();
   return (
@@ -3826,14 +3826,18 @@ function AppearanceSettingsPanel({
       </SettingsRow>
 
       <SettingsRow
-        label={t('settings.windowsMica')}
-        description={isElectronShell ? t('settings.windowsMicaDescription') : t('settings.windowsMicaUnsupported')}
-        htmlFor="settings-windows-mica"
+        label={t('settings.blurEffect')}
+        description={
+          isNativeBackdropBlurSupported()
+            ? t('settings.blurEffectDescription')
+            : t('settings.blurEffectUnsupported')
+        }
+        htmlFor="settings-blur-effect"
       >
-        {isElectronShell ? (
+        {isNativeBackdropBlurSupported() ? (
           <div className="flex justify-end">
             <Checkbox
-              id="settings-windows-mica"
+              id="settings-blur-effect"
               checked={settings.windowsMica}
               onCheckedChange={(value) => void onSavePatch({ windowsMica: value === true })}
               className="size-5"
@@ -4109,7 +4113,6 @@ export function SettingsView({
                 font={font}
                 onFontChange={onFontChange}
                 settings={settings}
-                isElectronShell={isElectronShell}
                 onSavePatch={onSavePatch}
               />
             ) : tab === "networks" ? (

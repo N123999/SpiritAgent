@@ -419,15 +419,16 @@ function resolveWindowIconPath(): string | undefined {
 const WIN32_APP_BACKGROUND_DARK = '#0a0a0a';
 const WIN32_APP_BACKGROUND_LIGHT = '#fafafa';
 
-/** 与 Tauri `frame_chrome` 一致：开 Mica 时用透明背景把绘制交给 DWM，避免与系统浅色不同步时出现大块「假白」。 */
-function electronRootBackgroundForBackdrop(mica: boolean, darkContent: boolean): string {
-  if (process.platform === 'win32' && mica) {
+/** 与 Tauri `frame_chrome` 一致：开原生模糊时用透明背景，把绘制交给系统合成层。 */
+function electronRootBackgroundForBackdrop(blurEnabled: boolean, darkContent: boolean): string {
+  if (blurEnabled && (process.platform === 'win32' || process.platform === 'darwin')) {
     return '#00000000';
   }
   return darkContent ? WIN32_APP_BACKGROUND_DARK : WIN32_APP_BACKGROUND_LIGHT;
 }
 
-function readWindowsMicaFromDisk(): boolean {
+/** 配置键仍为 `windowsMica`，表示各平台原生窗口模糊（Win Mica / macOS Vibrancy）。 */
+function readBackdropBlurFromDisk(): boolean {
   const filePath = configFilePath();
   if (!existsSync(filePath)) {
     return true;
@@ -440,6 +441,12 @@ function readWindowsMicaFromDisk(): boolean {
   } catch {
     return true;
   }
+}
+
+const MACOS_WINDOW_VIBRANCY = 'under-window' as const;
+
+function nativeBackdropBlurActive(blurEnabled: boolean): boolean {
+  return blurEnabled && (process.platform === 'win32' || process.platform === 'darwin');
 }
 
 /** 与 `src/lib/theme.ts` 中 `THEME_STORAGE_KEY` 保持一致 */
@@ -480,11 +487,11 @@ async function readRendererThemePrefs(
 
 function applyRendererThemePrefs(window: BrowserWindow, prefs: RendererThemePrefs): void {
   nativeTheme.themeSource = prefs.nativeTheme;
-  applyWin32Backdrop(window, prefs.dark);
+  applyNativeWindowBackdrop(window, prefs.dark);
 }
 
 /**
- * 不依赖 preload IPC：从 localStorage 读主题并同步 Mica/DWM。
+ * 不依赖 preload IPC：从 localStorage 读主题并同步原生窗口材质。
  */
 async function syncBrowserWindowFrameFromRendererStorage(
   window: BrowserWindow,
@@ -497,18 +504,26 @@ async function syncBrowserWindowFrameFromRendererStorage(
   return prefs;
 }
 
-function applyWin32Backdrop(window: BrowserWindow, darkContent: boolean): void {
-  const mica = readWindowsMicaFromDisk();
+function applyNativeWindowBackdrop(window: BrowserWindow, darkContent: boolean): void {
+  const blurEnabled = readBackdropBlurFromDisk();
 
   if (process.platform === 'win32') {
     try {
-      window.setBackgroundMaterial(mica ? 'mica' : 'none');
+      window.setBackgroundMaterial(blurEnabled ? 'mica' : 'none');
     } catch (err) {
       console.error('[spirit-desktop] setBackgroundMaterial failed', err);
     }
+  } else if (process.platform === 'darwin') {
+    try {
+      window.setVibrancy(blurEnabled ? MACOS_WINDOW_VIBRANCY : null);
+    } catch (err) {
+      console.error('[spirit-desktop] setVibrancy failed', err);
+    }
   }
 
-  window.setBackgroundColor(electronRootBackgroundForBackdrop(mica, darkContent));
+  window.setBackgroundColor(
+    electronRootBackgroundForBackdrop(nativeBackdropBlurActive(blurEnabled), darkContent),
+  );
 
   if (process.platform === 'win32') {
     syncWindowsImmersiveDarkMode(window, darkContent);
@@ -532,10 +547,10 @@ function applyWin32Backdrop(window: BrowserWindow, darkContent: boolean): void {
 }
 
 async function createMainWindow(): Promise<BrowserWindow> {
-  const micaOnDisk = readWindowsMicaFromDisk();
+  const blurOnDisk = readBackdropBlurFromDisk();
   const initialDark = nativeTheme.shouldUseDarkColors;
   const initialBg = electronRootBackgroundForBackdrop(
-    process.platform === 'win32' && micaOnDisk,
+    nativeBackdropBlurActive(blurOnDisk),
     initialDark,
   );
   const preloadPath = path.join(__dirname, 'preload.cjs');
@@ -555,6 +570,12 @@ async function createMainWindow(): Promise<BrowserWindow> {
     minHeight: 720,
     ...(windowIcon ? { icon: windowIcon } : {}),
     backgroundColor: initialBg,
+    ...(process.platform === 'darwin' && blurOnDisk
+      ? {
+          vibrancy: MACOS_WINDOW_VIBRANCY,
+          visualEffectState: 'followWindow',
+        }
+      : {}),
     titleBarStyle:
       process.platform === 'darwin' ? 'hiddenInset' : process.platform === 'win32' ? 'hidden' : undefined,
     titleBarOverlay:
@@ -812,7 +833,7 @@ if (gotSpiritSingleInstanceLock) {
         console.warn('[spirit-desktop] desktop:sync-window-frame: no BrowserWindow for sender');
         return;
       }
-      applyWin32Backdrop(window, request.dark);
+      applyNativeWindowBackdrop(window, request.dark);
     },
   );
 

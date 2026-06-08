@@ -213,6 +213,7 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
+import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
@@ -1981,7 +1982,7 @@ export default function App() {
   const darwinElectronChrome = isDarwinElectronShell();
   const desktopTitleBarChrome = winElectronChrome || darwinElectronChrome;
   const useMicaBackdrop =
-    isElectronShell && (snapshot?.config.windowsMica !== false);
+    isNativeBackdropBlurSupported() && snapshot?.config.windowsMica !== false;
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -2048,14 +2049,14 @@ export default function App() {
     };
   }, [snapshot?.extensionCss]);
 
-  // 与 `config.windows_mica` 持久化对齐（保存 Mica 开关后桌面宿主会先按系统主题同步一帧，此处用 `html.dark` 再拉齐）
+  // 与 `config.windows_mica` 持久化对齐（保存模糊开关后桌面宿主会先按系统主题同步一帧，此处用 `html.dark` 再拉齐）
   useEffect(() => {
     if (!isElectronShell) {
       return;
     }
     syncDesktopWindowFrame(resolveDark(theme), desktopNativeThemeForPreference(theme));
-    // 主题变更由 `applyThemeToDocument` 同步边框；此处仅随 Mica 配置变更
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 windowsMica / Electron 壳
+    // 主题变更由 `applyThemeToDocument` 同步边框；此处仅随模糊效果配置变更
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 windowsMica / 原生模糊宿主
   }, [isElectronShell, snapshot?.config.windowsMica]);
 
   const compactionDemo = useCompactionUiDemo();

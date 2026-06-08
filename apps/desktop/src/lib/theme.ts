@@ -74,7 +74,7 @@ export function syncDesktopWindowFrame(
       import.meta.env.DEV
     ) {
       console.warn(
-        "[spirit-desktop] 无 spiritDesktop 预加载桥，窗口/Mica IPC 未发送（检查 preload 与 webPreferences）",
+        "[spirit-desktop] 无 spiritDesktop 预加载桥，窗口材质 IPC 未发送（检查 preload 与 webPreferences）",
       );
     }
     return;
