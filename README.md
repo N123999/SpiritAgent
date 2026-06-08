@@ -19,19 +19,19 @@ Spirit Agent is a monorepo for a **tool-using coding agent** that runs against a
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Hosts                                                      │
-│  ┌──────────────────────┐    ┌──────────────────────────┐  │
-│  │  Desktop (Electron)  │    │  CLI (Rust + TUI)        │  │
-│  │  React UI, Git, PTY  │    │  Terminal-first workflow │  │
-│  └──────────┬───────────┘    └────────────┬─────────────┘  │
-│             │                              │                 │
-│             └──────────────┬───────────────┘                 │
-│                            ▼                                 │
-│              packages/host-internal                          │
-│              discovery, tools, workspace, extensions         │
-│                            │                                 │
-│                            ▼                                 │
-│              packages/agent-core                             │
-│              runtime, prompts, tool contracts, transports    │
+│  ┌──────────────────────┐    ┌──────────────────────────┐   │
+│  │  Desktop (Electron)  │    │  CLI (Rust + TUI)        │   │
+│  │  React UI, Git, PTY  │    │  Terminal-first workflow │   │
+│  └──────────┬───────────┘    └─────────────┬────────────┘   │
+│             │                              │                │
+│             └──────────────┬───────────────┘                │
+│                            ▼                                │
+│                  packages/host-internal                     │
+│           discovery, tools, workspace, extensions           │
+│                            │                                │
+│                            ▼                                │
+│                   packages/agent-core                       │
+│         runtime, prompts, tool contracts, transports        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
