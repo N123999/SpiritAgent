@@ -80,3 +80,11 @@ export function findRunSubagentToolPhase(
   }
   return undefined;
 }
+
+export function isRunSubagentToolCallPending(
+  messages: ReadonlyArray<ConversationMessageSnapshot>,
+  toolCallId: string,
+): boolean {
+  const phase = findRunSubagentToolPhase(messages, toolCallId);
+  return phase === 'preview' || phase === 'running' || phase === 'pending-approval';
+}

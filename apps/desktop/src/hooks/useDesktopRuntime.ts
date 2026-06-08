@@ -22,6 +22,7 @@ import {
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
+import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
 import { useDesktopSystemNotifications } from "@/hooks/useDesktopSystemNotifications";
 import type {
   AddModelRequest,
@@ -1892,7 +1893,12 @@ export function useDesktopRuntime() {
       const next = await api.setSubagentViewerTarget(parentToolCallId);
       applySnapshot(next);
       setRuntimeError("");
-      return true;
+      if (!parentToolCallId?.trim()) {
+        return true;
+      }
+      const trimmed = parentToolCallId.trim();
+      return Boolean(next.subagentViewer)
+        || isRunSubagentToolCallPending(next.conversation.messages, trimmed);
     } catch (error) {
       setRuntimeError(describeError(error));
       return false;

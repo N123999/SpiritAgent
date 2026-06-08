@@ -155,6 +155,7 @@ import { UserMessageBubble } from "@/components/user-message-bubble";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useElementBoxHeight } from "@/hooks/use-element-box-height";
 import { useSubagentViewer } from "@/hooks/useSubagentViewer";
+import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
@@ -2139,9 +2140,16 @@ export default function App() {
 
   useEffect(() => {
     if (subagentViewer.active && !snapshot?.subagentViewer) {
+      const toolCallId = subagentViewer.toolCallId;
+      const stillStarting = toolCallId
+        ? isRunSubagentToolCallPending(snapshot?.conversation.messages ?? [], toolCallId)
+        : false;
+      if (stillStarting) {
+        return;
+      }
       void subagentViewer.close();
     }
-  }, [snapshot?.subagentViewer, subagentViewer]);
+  }, [snapshot?.conversation.messages, snapshot?.subagentViewer, subagentViewer]);
 
   useEffect(() => {
     if (rewindDraft && subagentViewer.active) {

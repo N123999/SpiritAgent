@@ -178,6 +178,14 @@ interface PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
   streamingEmitBeginResponse: boolean;
 }
 
+interface PendingSubagentBatchContinuation<State, ToolRequest> {
+  parentState: State;
+  parentPendingUserInput: string;
+  parentTurn: RuntimeTurnContext<ToolRequest>;
+  resumeAsStreaming: boolean;
+  streamingEmitBeginResponse: boolean;
+}
+
 type RunSubagentToolExecutionResult<ToolRequest, TrustTarget> =
   | { kind: 'not-handled' }
   | { kind: 'started' }
@@ -224,8 +232,12 @@ export class AgentRuntime<
     | undefined;
   private pendingHistoryCompaction: PendingHistoryCompaction<State, ToolRequest> | undefined;
   private childSessionsStore: RuntimeSubagentSessionArchiveEntry[];
-  private pendingSubagentExecution:
-    | PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+  private pendingSubagentExecutions = new Map<
+    string,
+    PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+  >();
+  private pendingSubagentBatchContinuation:
+    | PendingSubagentBatchContinuation<State, ToolRequest>
     | undefined;
   private completedTurnResultStore:
     | RuntimeTurnResult<State, ToolRequest, TrustTarget>
@@ -307,26 +319,31 @@ export class AgentRuntime<
     };
   }
 
-  drainActiveChildSessionEvents(): {
+  drainActiveChildSessionEvents(): Array<{
     sessionId: string;
     parentToolCallId: string;
     events: RuntimeEvent<ToolRequest>[];
-  } | undefined {
-    const pending = this.pendingSubagentExecution;
-    if (!pending) {
-      return undefined;
+  }> {
+    const drains: Array<{
+      sessionId: string;
+      parentToolCallId: string;
+      events: RuntimeEvent<ToolRequest>[];
+    }> = [];
+
+    for (const pending of this.pendingSubagentExecutions.values()) {
+      drains.push({
+        sessionId: pending.childRecord.summary.sessionId,
+        parentToolCallId: pending.childRecord.summary.parentToolCallId,
+        events: pending.childRuntime.drainEvents(),
+      });
     }
 
-    return {
-      sessionId: pending.childRecord.summary.sessionId,
-      parentToolCallId: pending.childRecord.summary.parentToolCallId,
-      events: pending.childRuntime.drainEvents(),
-    };
+    return drains;
   }
 
   childSessionPendingAuxState(sessionId: string): PendingAssistantAux | undefined {
-    const pending = this.pendingSubagentExecution;
-    if (!pending || pending.childRecord.summary.sessionId !== sessionId) {
+    const pending = this.findPendingSubagentBySessionId(sessionId);
+    if (!pending) {
       return undefined;
     }
 
@@ -400,7 +417,7 @@ export class AgentRuntime<
   }
 
   pendingAuxState(): PendingAssistantAux | undefined {
-    if (this.pendingSubagentExecution) {
+    if (this.pendingSubagentExecutions.size > 0) {
       const frame = ['|', '/', '-', '\\'][this.thinkingSpinnerIndexStore % 4] ?? '|';
       return {
         kind: 'thinking',
@@ -435,14 +452,14 @@ export class AgentRuntime<
     return (
       this.pendingApproval !== undefined ||
       this.pendingManualApproval !== undefined ||
-      this.pendingSubagentExecution?.childRuntime.hasPendingApproval() === true
+      this.findPendingSubagentWithApproval() !== undefined
     );
   }
 
   hasPendingQuestions(): boolean {
     return (
       this.pendingQuestions !== undefined ||
-      this.pendingSubagentExecution?.childRuntime.hasPendingQuestions() === true
+      this.findPendingSubagentWithQuestions() !== undefined
     );
   }
 
@@ -470,13 +487,14 @@ export class AgentRuntime<
       };
     }
 
-    if (this.pendingSubagentExecution) {
-      const approval = this.pendingSubagentExecution.childRuntime.currentPendingApproval();
+    const pendingSubagent = this.findPendingSubagentWithApproval();
+    if (pendingSubagent) {
+      const approval = pendingSubagent.childRuntime.currentPendingApproval();
       if (approval) {
         return {
           ...approval,
-          subagentSessionId: this.pendingSubagentExecution.childRecord.summary.sessionId,
-          subagentTitle: this.pendingSubagentExecution.childRecord.summary.title,
+          subagentSessionId: pendingSubagent.childRecord.summary.sessionId,
+          subagentTitle: pendingSubagent.childRecord.summary.title,
         };
       }
     }
@@ -494,8 +512,9 @@ export class AgentRuntime<
       };
     }
 
-    if (this.pendingSubagentExecution) {
-      return this.pendingSubagentExecution.childRuntime.currentPendingQuestions();
+    const pendingSubagent = this.findPendingSubagentWithQuestions();
+    if (pendingSubagent) {
+      return pendingSubagent.childRuntime.currentPendingQuestions();
     }
 
     return undefined;
@@ -516,7 +535,72 @@ export class AgentRuntime<
   private cachePendingSubagentExecution(
     pending: PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>,
   ): void {
-    this.pendingSubagentExecution = pending;
+    this.pendingSubagentExecutions.set(pending.parentToolCallId, pending);
+  }
+
+  private findPendingSubagentBySessionId(
+    sessionId: string,
+  ): PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> | undefined {
+    for (const pending of this.pendingSubagentExecutions.values()) {
+      if (pending.childRecord.summary.sessionId === sessionId) {
+        return pending;
+      }
+    }
+    return undefined;
+  }
+
+  private findPendingSubagentWithApproval():
+    | PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+    | undefined {
+    for (const pending of this.pendingSubagentExecutions.values()) {
+      if (pending.childRuntime.hasPendingApproval()) {
+        return pending;
+      }
+    }
+    return undefined;
+  }
+
+  private findPendingSubagentWithQuestions():
+    | PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+    | undefined {
+    for (const pending of this.pendingSubagentExecutions.values()) {
+      if (pending.childRuntime.hasPendingQuestions()) {
+        return pending;
+      }
+    }
+    return undefined;
+  }
+
+  private firstPendingSubagentExecution():
+    | PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+    | undefined {
+    return this.pendingSubagentExecutions.values().next().value;
+  }
+
+  private ensureSubagentBatchContinuation(
+    state: State,
+    parentPendingUserInput: string,
+    parentTurn: RuntimeTurnContext<ToolRequest>,
+    resumeAsStreaming: boolean,
+    streamingEmitBeginResponse: boolean,
+  ): void {
+    if (!this.pendingSubagentBatchContinuation) {
+      this.pendingSubagentBatchContinuation = {
+        parentState: state,
+        parentPendingUserInput,
+        parentTurn,
+        resumeAsStreaming,
+        streamingEmitBeginResponse,
+      };
+    }
+  }
+
+  private clearPendingSubagentState(): void {
+    for (const pending of this.pendingSubagentExecutions.values()) {
+      pending.childRuntime.abort();
+    }
+    this.pendingSubagentExecutions.clear();
+    this.pendingSubagentBatchContinuation = undefined;
   }
 
   private buildPendingSubagentExecution(
@@ -552,7 +636,7 @@ export class AgentRuntime<
       this.pendingToolCallContinuation !== undefined ||
       this.pendingBackgroundToolExecution !== undefined ||
       this.pendingHistoryCompaction !== undefined ||
-      this.pendingSubagentExecution !== undefined ||
+      this.pendingSubagentExecutions.size > 0 ||
       this.pendingQuestions !== undefined ||
       this.hasPendingApproval()
     );
@@ -579,8 +663,7 @@ export class AgentRuntime<
     this.pendingApproval = undefined;
     this.pendingManualApproval = undefined;
     this.pendingQuestions = undefined;
-    this.pendingSubagentExecution?.childRuntime.abort();
-    this.pendingSubagentExecution = undefined;
+    this.clearPendingSubagentState();
     this.pendingBackgroundToolStatusStore = undefined;
     this.clearPendingStreamingState();
     this.clearPendingNonStreamingState();
@@ -589,7 +672,9 @@ export class AgentRuntime<
   hasPendingManualApproval(): boolean {
     return (
       this.pendingManualApproval !== undefined ||
-      this.pendingSubagentExecution?.childRuntime.hasPendingManualApproval() === true
+      [...this.pendingSubagentExecutions.values()].some(
+        (pending) => pending.childRuntime.hasPendingManualApproval(),
+      )
     );
   }
 
@@ -603,7 +688,7 @@ export class AgentRuntime<
     this.pendingUserTurnStore = undefined;
     this.pendingApproval = undefined;
     this.pendingManualApproval = undefined;
-    this.pendingSubagentExecution = undefined;
+    this.clearPendingSubagentState();
     this.childSessionsStore = [];
   }
 
@@ -622,7 +707,7 @@ export class AgentRuntime<
     this.pendingUserTurnStore = undefined;
     this.pendingApproval = undefined;
     this.pendingManualApproval = undefined;
-    this.pendingSubagentExecution = undefined;
+    this.clearPendingSubagentState();
     this.childSessionsStore = (archive.subagentSessions ?? []).map((entry) => ({
       summary: { ...entry.summary },
       llmHistory: entry.llmHistory.map((message) => normalizeStoredLlmMessage(message)),
@@ -899,7 +984,7 @@ export class AgentRuntime<
   ): Promise<void> {
     const pending = this.pendingApproval;
     if (!pending) {
-      if (this.pendingSubagentExecution) {
+      if (this.pendingSubagentExecutions.size > 0) {
         await this.continuePendingSubagentApproval(decision);
         return;
       }
@@ -1109,8 +1194,8 @@ export class AgentRuntime<
     result: AskQuestionsResult,
   ): Promise<void> {
     if (!this.pendingQuestions) {
-      const pendingSubagent = this.pendingSubagentExecution;
-      if (!pendingSubagent || !pendingSubagent.childRuntime.hasPendingQuestions()) {
+      const pendingSubagent = this.findPendingSubagentWithQuestions();
+      if (!pendingSubagent) {
         throw new Error('当前没有待回答的问题表单。');
       }
 
@@ -1664,7 +1749,7 @@ export class AgentRuntime<
       toolCallId,
       pendingUserInput,
       state,
-      remainingCalls,
+      [],
       turn,
       resumeAsStreaming,
       streamingEmitBeginResponse,
@@ -1691,6 +1776,23 @@ export class AgentRuntime<
     }
 
     if (outcome.kind === 'started') {
+      this.ensureSubagentBatchContinuation(
+        state,
+        pendingUserInput,
+        turn,
+        resumeAsStreaming,
+        streamingEmitBeginResponse,
+      );
+      if (remainingCalls.length > 0) {
+        await this.processToolCallsAsync(
+          state,
+          pendingUserInput,
+          remainingCalls,
+          turn,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        );
+      }
       return true;
     }
 
@@ -2159,7 +2261,7 @@ export class AgentRuntime<
   }
 
   private currentAuxKind(): AssistantAuxKind | undefined {
-    if (this.pendingSubagentExecution) {
+    if (this.pendingSubagentExecutions.size > 0) {
       return 'thinking';
     }
 
@@ -2169,7 +2271,7 @@ export class AgentRuntime<
   }
 
   private currentAuxText(): string | undefined {
-    if (this.pendingSubagentExecution) {
+    if (this.pendingSubagentExecutions.size > 0) {
       return undefined;
     }
 
@@ -2179,9 +2281,14 @@ export class AgentRuntime<
   }
 
   private currentSubagentStatusText(): string {
-    const pending = this.pendingSubagentExecution;
+    const pendingCount = this.pendingSubagentExecutions.size;
+    const pending = this.firstPendingSubagentExecution();
     if (!pending) {
       return 'SubAgent: 运行中';
+    }
+
+    if (pendingCount > 1) {
+      return `SubAgent: ${pendingCount} running`;
     }
 
     const title = pending.childRecord.summary.title.trim() || 'SubAgent';
@@ -2653,7 +2760,7 @@ export class AgentRuntime<
     if (resumeAsStreaming) {
       try {
         await childRuntime.startUserTurnStreaming(childUserTurn);
-        this.pendingSubagentExecution = {
+        this.cachePendingSubagentExecution({
           parentRequest,
           parentToolCallId,
           parentPendingUserInput,
@@ -2664,7 +2771,7 @@ export class AgentRuntime<
           childRecord: record,
           resumeAsStreaming,
           streamingEmitBeginResponse,
-        };
+        });
         this.refreshChildSessionRecord(record, childRuntime);
         record.summary.status = childRuntime.currentPendingApproval() ? 'blocked' : 'running';
         return { kind: 'started' };
@@ -2786,7 +2893,7 @@ export class AgentRuntime<
   private async continuePendingSubagentApproval(
     decision: RuntimeApprovalDecision,
   ): Promise<void> {
-    const pending = this.pendingSubagentExecution;
+    const pending = this.findPendingSubagentWithApproval();
     if (!pending) {
       throw new Error('当前没有待确认的工具调用。');
     }
@@ -2804,48 +2911,59 @@ export class AgentRuntime<
   }
 
   private async pollPendingSubagentExecution(): Promise<void> {
-    const pending = this.pendingSubagentExecution;
-    if (!pending) {
+    if (this.pendingSubagentExecutions.size === 0) {
       return;
     }
 
-    await pending.childRuntime.poll();
-    // 不在此处 drain：子会话事件由 desktop syncSubagentConversationProjections 消费。
-    this.refreshChildSessionRecord(pending.childRecord, pending.childRuntime);
+    for (const pending of [...this.pendingSubagentExecutions.values()]) {
+      await pending.childRuntime.poll();
+      // 不在此处 drain：子会话事件由 desktop syncSubagentConversationProjections 消费。
+      this.refreshChildSessionRecord(pending.childRecord, pending.childRuntime);
 
-    const childApproval = pending.childRuntime.currentPendingApproval();
-    if (childApproval) {
-      pending.childRecord.summary.status = 'blocked';
-      pending.childRecord.summary.latestMessage = `等待前台确认: ${childApproval.toolName}`;
-      delete pending.childRecord.summary.completedAtUnixMs;
-      delete pending.childRecord.summary.finalOutput;
-      delete pending.childRecord.summary.error;
-      return;
-    }
-
-    const result = pending.childRuntime.takeCompletedTurnResult();
-    if (!result) {
-      if (pending.childRuntime.isBusy()) {
-        pending.childRecord.summary.status = 'running';
+      const childApproval = pending.childRuntime.currentPendingApproval();
+      if (childApproval) {
+        pending.childRecord.summary.status = 'blocked';
+        pending.childRecord.summary.latestMessage = `等待前台确认: ${childApproval.toolName}`;
+        delete pending.childRecord.summary.completedAtUnixMs;
+        delete pending.childRecord.summary.finalOutput;
+        delete pending.childRecord.summary.error;
+        continue;
       }
-      return;
-    }
 
-    if (result.kind === 'requires-approval') {
-      pending.childRecord.summary.status = 'blocked';
-      pending.childRecord.summary.latestMessage = `等待前台确认: ${result.approval.toolName}`;
-      return;
-    }
+      const result = pending.childRuntime.takeCompletedTurnResult();
+      if (!result) {
+        if (pending.childRuntime.isBusy()) {
+          pending.childRecord.summary.status = 'running';
+        }
+        continue;
+      }
 
-    if (result.kind === 'requires-questions') {
-      this.updateSubagentQuestionsBlockedState(
-        pending.childRecord,
-        pending.childRuntime.currentPendingQuestions() ?? result.questions,
-      );
-      return;
-    }
+      if (result.kind === 'requires-approval') {
+        pending.childRecord.summary.status = 'blocked';
+        pending.childRecord.summary.latestMessage = `等待前台确认: ${result.approval.toolName}`;
+        continue;
+      }
 
-    this.pendingSubagentExecution = undefined;
+      if (result.kind === 'requires-questions') {
+        this.updateSubagentQuestionsBlockedState(
+          pending.childRecord,
+          pending.childRuntime.currentPendingQuestions() ?? result.questions,
+        );
+        continue;
+      }
+
+      if (result.kind === 'completed' || result.kind === 'failed') {
+        await this.finishPendingSubagentExecution(pending, result);
+      }
+    }
+  }
+
+  private async finishPendingSubagentExecution(
+    pending: PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>,
+    result: Extract<RuntimeTurnResult<State, ToolRequest, TrustTarget>, { kind: 'completed' | 'failed' }>,
+  ): Promise<void> {
+    this.pendingSubagentExecutions.delete(pending.parentToolCallId);
+
     const output = result.kind === 'completed'
       ? { text: resolveSubagentResultText(result.assistantText, pending.childRecord, false), failed: false }
       : {
@@ -2885,38 +3003,56 @@ export class AgentRuntime<
     pending.parentTurn.toolExecutions.push(finishedExecution);
     this.emitEvent({ kind: 'tool-execution-finished', execution: finishedExecution });
 
+    const batch = this.pendingSubagentBatchContinuation;
+    const baseState = batch?.parentState ?? pending.parentState;
     const resumedState = this.options.appendToolResultMessage(
-      pending.parentState,
+      baseState,
       pending.parentToolCallId,
       parentToolResultText,
     );
+    if (batch) {
+      batch.parentState = resumedState;
+    }
+
+    if (this.pendingSubagentExecutions.size > 0) {
+      return;
+    }
+
+    const finalState = batch?.parentState ?? resumedState;
+    const continuation = batch ?? {
+      parentPendingUserInput: pending.parentPendingUserInput,
+      parentTurn: pending.parentTurn,
+      resumeAsStreaming: pending.resumeAsStreaming,
+      streamingEmitBeginResponse: pending.streamingEmitBeginResponse,
+    };
+    this.pendingSubagentBatchContinuation = undefined;
 
     if (pending.parentRemainingCalls.length > 0) {
       await this.processToolCallsAsync(
-        resumedState,
-        pending.parentPendingUserInput,
+        finalState,
+        continuation.parentPendingUserInput,
         pending.parentRemainingCalls,
-        pending.parentTurn,
-        pending.resumeAsStreaming,
-        pending.streamingEmitBeginResponse,
+        continuation.parentTurn,
+        continuation.resumeAsStreaming,
+        continuation.streamingEmitBeginResponse,
       );
       return;
     }
 
-    if (pending.resumeAsStreaming) {
+    if (continuation.resumeAsStreaming) {
       await this.startStreamingRound(
-        resumedState,
-        pending.parentPendingUserInput,
-        pending.parentTurn,
-        pending.streamingEmitBeginResponse,
+        finalState,
+        continuation.parentPendingUserInput,
+        continuation.parentTurn,
+        continuation.streamingEmitBeginResponse,
       );
       return;
     }
 
     this.startToolAgentRoundAsync(
-      resumedState,
-      pending.parentPendingUserInput,
-      pending.parentTurn,
+      finalState,
+      continuation.parentPendingUserInput,
+      continuation.parentTurn,
     );
   }
 

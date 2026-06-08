@@ -182,23 +182,25 @@ export function syncSubagentConversationProjections(
     return;
   }
 
-  const childDrain = runtime.drainActiveChildSessionEvents();
-  if (!childDrain) {
+  const childDrains = runtime.drainActiveChildSessionEvents();
+  if (childDrains.length === 0) {
     return;
   }
 
-  const session = resolveSubagentSessionForProjection(bundle, runtime, childDrain.sessionId);
-  if (!session) {
-    return;
-  }
+  for (const childDrain of childDrains) {
+    const session = resolveSubagentSessionForProjection(bundle, runtime, childDrain.sessionId);
+    if (!session) {
+      continue;
+    }
 
-  const projection = ensureSubagentConversationProjection(bundle, session);
-  projection.applyDrainedEvents(childDrain.events);
-  const syncedMessages = projection.toMessages();
-  bundle.subagentDesktopMessagesBySessionId.set(
-    childDrain.sessionId,
-    syncedMessages,
-  );
+    const projection = ensureSubagentConversationProjection(bundle, session);
+    projection.applyDrainedEvents(childDrain.events);
+    const syncedMessages = projection.toMessages();
+    bundle.subagentDesktopMessagesBySessionId.set(
+      childDrain.sessionId,
+      syncedMessages,
+    );
+  }
 }
 
 export function cloneSubagentDesktopMessagesRecord(

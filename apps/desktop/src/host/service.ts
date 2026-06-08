@@ -1394,7 +1394,8 @@ class DesktopHostService {
   async setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot> {
     const trimmed = parentToolCallId?.trim();
     this.subagentViewerTargetToolCallId = trimmed && trimmed.length > 0 ? trimmed : null;
-    return this.buildSnapshot();
+    const snapshot = await this.buildSnapshot();
+    return snapshot;
   }
 
   private clearSubagentViewerTarget(): void {

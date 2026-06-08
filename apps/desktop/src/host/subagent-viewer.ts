@@ -21,6 +21,7 @@ import {
   ensureSubagentConversationProjection,
   syncSubagentConversationProjections,
 } from './subagent-conversation-projection.js';
+import { isRunSubagentToolCallPending } from './subagent-stream-sync.js';
 
 function enrichSubagentToolBlock(input: {
   toolName: string;
@@ -105,37 +106,134 @@ function countThinkingRows(messages: readonly ConversationMessageSnapshot[]): nu
   return messages.filter((message) => message.aux?.thinking?.trim()).length;
 }
 
+function lastAssistantTextContent(messages: readonly ConversationMessageSnapshot[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === 'assistant' && typeof message.content === 'string') {
+      return message.content;
+    }
+  }
+  return '';
+}
+
+function patchCompletedAssistantOutput(
+  messages: ConversationMessageSnapshot[],
+  finalOutput: string | undefined,
+): ConversationMessageSnapshot[] {
+  const trimmed = finalOutput?.trim();
+  if (!trimmed) {
+    return messages;
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== 'assistant') {
+      continue;
+    }
+
+    const current = typeof message.content === 'string' ? message.content : '';
+    if (current.length >= trimmed.length) {
+      return messages;
+    }
+
+    const patched = messages.map((entry) => ({ ...entry }));
+    patched[index] = {
+      ...message,
+      content: trimmed,
+      pending: false,
+    };
+    return patched;
+  }
+
+  return messages;
+}
+
 function resolveSubagentViewerMessages(input: {
   projected?: ConversationMessageSnapshot[];
   historyMessages: ConversationMessageSnapshot[];
   isLiveSession: boolean;
+  finalOutput?: string;
 }): { messages: ConversationMessageSnapshot[]; source: string } {
   const projected = input.projected?.map((message) => ({ ...message })) ?? [];
   const history = input.historyMessages;
 
   if (input.isLiveSession && projected.length > 0) {
-    return { messages: projected, source: 'projected-live' };
+    return {
+      messages: patchCompletedAssistantOutput(projected, input.finalOutput),
+      source: 'projected-live',
+    };
   }
   if (projected.length === 0) {
-    return { messages: history, source: history.length > 0 ? 'history-only' : 'empty' };
+    return {
+      messages: patchCompletedAssistantOutput(history, input.finalOutput),
+      source: history.length > 0 ? 'history-only' : 'empty',
+    };
   }
   if (history.length === 0) {
-    return { messages: projected, source: 'projected-only' };
+    return {
+      messages: patchCompletedAssistantOutput(projected, input.finalOutput),
+      source: 'projected-only',
+    };
+  }
+
+  if (!input.isLiveSession) {
+    const projectedLast = lastAssistantTextContent(projected);
+    const historyLast = lastAssistantTextContent(history);
+    if (historyLast.length > projectedLast.length) {
+      return {
+        messages: patchCompletedAssistantOutput(history, input.finalOutput),
+        source: 'history-longer-completed',
+      };
+    }
+    if (projectedLast.length > historyLast.length) {
+      return {
+        messages: patchCompletedAssistantOutput(projected, input.finalOutput),
+        source: 'projected-longer-completed',
+      };
+    }
   }
 
   const projectedThinking = countThinkingRows(projected);
   const historyThinking = countThinkingRows(history);
   if (projectedThinking > historyThinking) {
-    return { messages: projected, source: 'projected-richer-thinking' };
+    return {
+      messages: patchCompletedAssistantOutput(projected, input.finalOutput),
+      source: 'projected-richer-thinking',
+    };
   }
   if (historyThinking > projectedThinking) {
-    return { messages: history, source: 'history-richer-thinking' };
+    return {
+      messages: patchCompletedAssistantOutput(history, input.finalOutput),
+      source: 'history-richer-thinking',
+    };
   }
 
   if (projected.length >= history.length) {
-    return { messages: projected, source: 'projected-parity' };
+    return {
+      messages: patchCompletedAssistantOutput(projected, input.finalOutput),
+      source: 'projected-parity',
+    };
   }
-  return { messages: history, source: 'history-parity' };
+  return {
+    messages: patchCompletedAssistantOutput(history, input.finalOutput),
+    source: 'history-parity',
+  };
+}
+
+export function isSubagentViewerTargetPending(
+  bundle: SessionBundle,
+  toolCallId: string,
+): boolean {
+  const trimmed = toolCallId.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (resolveSubagentSessionByToolCallId(bundle, trimmed)) {
+    return true;
+  }
+
+  return isRunSubagentToolCallPending(bundle.messageTimeline.toMessages(), trimmed);
 }
 
 export function buildSubagentViewerSnapshot(
@@ -176,6 +274,7 @@ export function buildSubagentViewerSnapshot(
     projected,
     historyMessages,
     isLiveSession,
+    finalOutput: session.summary.finalOutput,
   });
   const messages = resolved.messages;
 
