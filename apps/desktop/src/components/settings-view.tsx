@@ -1050,10 +1050,29 @@ function SkillsSettingsPanel({
   );
 }
 
-const ruleCreateRootOptions = skillCreateRootOptions;
+const ruleCreateRootOptions: Array<{
+  kind: DesktopSkillRootKind;
+  labelKey?: string;
+  labelFallback: string;
+  hintKey: string;
+}> = [
+  { kind: "user", labelKey: 'settings.skillUserDirShort', labelFallback: 'User', hintKey: 'settings.ruleUserDirHint' },
+  { kind: "workspaceSpirit", labelFallback: ".spirit", hintKey: 'settings.ruleWorkspaceSpiritHint' },
+  { kind: "workspaceAgents", labelFallback: ".agents", hintKey: 'settings.ruleWorkspaceAgentsHint' },
+];
 
 function ruleLocationLabel(item: DesktopRuleListItem): string {
   return skillRootKindLabel(item.rootKind);
+}
+
+function ruleFileBaseName(shortLabel: string): string {
+  const normalized = shortLabel.replace(/\\/g, "/");
+  const slash = normalized.lastIndexOf("/");
+  return slash >= 0 ? normalized.slice(slash + 1) : normalized;
+}
+
+function rulePreviewOneLine(excerpt: string): string {
+  return excerpt.replace(/\s*\r?\n+\s*/g, " ").trim();
 }
 
 function RulesSettingsPanel({
@@ -1079,9 +1098,9 @@ function RulesSettingsPanel({
   const [createRootKind, setCreateRootKind] = useState<DesktopSkillRootKind>("user");
 
   const workspaceBindingDisabled = snapshot?.workspaceBinding === "none";
-  const items = (snapshot?.rulesList ?? []).filter(
-    (item) => !workspaceBindingDisabled || item.scope === "user",
-  );
+  const items = (snapshot?.rulesList ?? [])
+    .filter((item) => item.exists)
+    .filter((item) => !workspaceBindingDisabled || item.scope === "user");
   const availableRuleCreateRootOptions = workspaceBindingDisabled
     ? ruleCreateRootOptions.filter((option) => option.kind === "user")
     : ruleCreateRootOptions;
@@ -1147,23 +1166,23 @@ function RulesSettingsPanel({
             >
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{item.title}</span>
+                  <span className="text-sm font-medium text-foreground">{ruleFileBaseName(item.shortLabel)}</span>
                   <Badge variant="secondary" className="text-muted-foreground">
                     {ruleLocationLabel(item)}
                   </Badge>
-                  {!item.exists ? (
-                    <Badge variant="secondary" className="text-muted-foreground">
-                      {t('settings.ruleNotCreated')}
-                    </Badge>
-                  ) : null}
-                  {item.exists && !item.enabled ? (
+                  {!item.enabled ? (
                     <Badge variant="secondary" className="text-muted-foreground">
                       {t('settings.ruleDisabled')}
                     </Badge>
                   ) : null}
                 </div>
                 {item.previewExcerpt ? (
-                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{item.previewExcerpt}</p>
+                  <p
+                    className="truncate text-xs text-muted-foreground"
+                    title={rulePreviewOneLine(item.previewExcerpt)}
+                  >
+                    {rulePreviewOneLine(item.previewExcerpt)}
+                  </p>
                 ) : null}
                 <p className="truncate font-mono text-[0.65rem] text-muted-foreground/90" title={item.shortLabel}>
                   {item.shortLabel}
@@ -1174,7 +1193,7 @@ function RulesSettingsPanel({
                 variant="destructive"
                 size="sm"
                 className="shrink-0 self-start sm:self-center"
-                disabled={rulesBusy || !item.exists}
+                disabled={rulesBusy}
                 onClick={() => setDeleteTarget(item)}
               >
                 {t('common.delete')}
@@ -1198,11 +1217,11 @@ function RulesSettingsPanel({
             <DialogDescription>
               {deleteTarget?.rootKind === "workspaceAgents"
                 ? t('settings.deleteRuleConfirmAgents', {
-                    name: deleteTarget?.title ?? '',
+                    name: deleteTarget ? ruleFileBaseName(deleteTarget.shortLabel) : '',
                     location: deleteTarget ? ruleLocationLabel(deleteTarget) : '',
                   })
                 : t('settings.deleteRuleConfirm', {
-                    name: deleteTarget?.title ?? '',
+                    name: deleteTarget ? ruleFileBaseName(deleteTarget.shortLabel) : '',
                     location: deleteTarget ? ruleLocationLabel(deleteTarget) : '',
                   })}
             </DialogDescription>
@@ -1256,7 +1275,6 @@ function RulesSettingsPanel({
         <DialogContent className="sm:max-w-md" showCloseButton>
           <DialogHeader>
             <DialogTitle>{t('settings.newRule')}</DialogTitle>
-            <DialogDescription>{t('settings.newRuleDescription')}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
             <div className="grid gap-2">
@@ -1292,12 +1310,13 @@ function RulesSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-rule-desc">{t('settings.description')}</Label>
-              <Input
+              <Textarea
                 id="new-rule-desc"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 placeholder={t('settings.ruleDescPlaceholder')}
                 autoComplete="off"
+                className="min-h-24 resize-y"
                 required
               />
             </div>
