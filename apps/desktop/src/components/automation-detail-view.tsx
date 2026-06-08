@@ -48,26 +48,19 @@ export function AutomationDetailView({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="mx-auto flex w-full max-w-4xl min-h-0 flex-1 flex-col px-4 py-8">
         <div className="space-y-4">
-          <div className="space-y-2">
-            <nav className="flex flex-wrap items-center gap-1 text-sm">
-              <button
-                type="button"
-                onClick={onBack}
-                className="font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {t("automations.detailBack")}
-              </button>
-              <ChevronRight className="size-3.5 text-muted-foreground/70" aria-hidden />
-              <span className="font-semibold text-foreground">
-                {definition?.title ?? listFallback?.title ?? automationId}
-              </span>
-            </nav>
-            {definition?.overview ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                {definition.overview}
-              </p>
-            ) : null}
-          </div>
+          <nav className="flex flex-wrap items-center gap-1 text-sm">
+            <button
+              type="button"
+              onClick={onBack}
+              className="font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {t("automations.detailBack")}
+            </button>
+            <ChevronRight className="size-3.5 text-muted-foreground/70" aria-hidden />
+            <span className="font-semibold text-foreground">
+              {definition?.title ?? listFallback?.title ?? automationId}
+            </span>
+          </nav>
 
           <div className={cn(loading && "opacity-70")}>
             <AutomationKanban
