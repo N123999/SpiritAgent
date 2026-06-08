@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { invokeDesktopHostCommand } from '../src/host/service.js';
 import {
   loadConfig,
+  migrateLegacyCwdSpiritAgentDataDir,
   resolveDefaultSpiritAgentDataDir,
   setSpiritAgentDataDirOverride,
   type DesktopWebHostConfigFile,
@@ -20,6 +21,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 setSpiritAgentDataDirOverride(resolveDefaultSpiritAgentDataDir());
+await migrateLegacyCwdSpiritAgentDataDir();
 
 const { host, port } = resolveDesktopWebHostFromEnv();
 let webHostConfig: DesktopWebHostConfigFile = (await loadConfig()).webHost;
