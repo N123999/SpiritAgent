@@ -788,6 +788,7 @@
     "compactionAssistantReply": "Continuing based on the compressed context: I will add a \"Context Compression\" style demo entry in Settings and check the spacing between the Compaction block and subsequent assistant replies."
   },
   "slash": {
+    "createRule": "Create or tighten a rule file in natural language (default .spirit/rule.md)",
     "createSkill": "Create or tighten a SKILL.md in natural language",
     "logSession": "Export current session llm_history and full API request traces and open automatically",
     "startImplementing": "Read the active Spirit plan and start implementing",

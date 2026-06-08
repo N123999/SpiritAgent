@@ -788,6 +788,7 @@
     "compactionAssistantReply": "已根据压缩后的上下文继续：我会在设置里补「上下文压缩」样式演示入口，并核对 Compaction 区块与后续助手回复的间距。"
   },
   "slash": {
+    "createRule": "用自然语言创建或收紧规则文件（默认 .spirit/rule.md）",
     "createSkill": "用自然语言创建或收紧一个 SKILL.md",
     "logSession": "导出当前会话 llm_history 与完整 API 请求轨迹并自动打开",
     "startImplementing": "读取当前 Spirit 计划并开始实现",

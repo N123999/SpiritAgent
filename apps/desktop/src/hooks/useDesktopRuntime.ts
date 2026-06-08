@@ -14,6 +14,7 @@ import {
   type ComposerLocalFileAttachmentView,
 } from "@/lib/local-file-attachments";
 import {
+  isCreateRuleSlashInput,
   isCreateSkillSlashInput,
   isCompactSlashInput,
   isLogSessionSlashInput,
@@ -1763,14 +1764,19 @@ export function useDesktopRuntime() {
       const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
       if (
         hasLocalFiles &&
-        (isCreateSkillSlashInput(text) ||
+        (isCreateRuleSlashInput(text) ||
+          isCreateSkillSlashInput(text) ||
           isCompactSlashInput(text) ||
           skillSlash)
       ) {
         setRuntimeError(i18n.t('error.attachmentsNotSupportedWithSlash'));
         return false;
       }
-      const next = isCreateSkillSlashInput(text)
+      const next = isCreateRuleSlashInput(text)
+        ? await api.submitCreateRuleSlash({
+            rawText: text,
+          })
+        : isCreateSkillSlashInput(text)
         ? await api.submitCreateSkillSlash({
             rawText: text,
           })

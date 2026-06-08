@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  BookText,
   CircleHelp,
   ClipboardList,
   FoldVertical,
@@ -12,6 +13,7 @@ import {
 import type { SkillSlashSuggestionKind } from '@/lib/skill-slash'
 
 export const SLASH_SUGGESTION_ICONS: Record<SkillSlashSuggestionKind, LucideIcon> = {
+  'create-rule': BookText,
   'create-skill': Wand2,
   'log-session': ScrollText,
   compact: FoldVertical,

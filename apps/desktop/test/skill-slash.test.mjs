@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildSkillSlashSuggestions } from "../src/lib/skill-slash.ts";
+import {
+  buildSkillSlashSuggestions,
+  isCreateRuleSlashInput,
+} from "../src/lib/skill-slash.ts";
+
+test("buildSkillSlashSuggestions includes create-rule command", () => {
+  const suggestions = buildSkillSlashSuggestions("/create", []);
+  assert.ok(suggestions.some((item) => item.kind === "create-rule" && item.alias === "/create-rule"));
+});
+
+test("isCreateRuleSlashInput matches command with prompt", () => {
+  assert.equal(isCreateRuleSlashInput("/create-rule 使用中文 commit"), true);
+  assert.equal(isCreateRuleSlashInput("/create-skill foo"), false);
+});
 
 test("buildSkillSlashSuggestions excludes start-implementing slash", () => {
   const suggestions = buildSkillSlashSuggestions("/", []);
