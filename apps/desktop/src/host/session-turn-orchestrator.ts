@@ -245,7 +245,7 @@ export async function sendQueuedUserTurnNowCommand(
     throw new Error(i18n.t('error.pendingApprovalSend'));
   }
 
-  const [item] = bundle.queuedUserTurns.splice(index, 1);
+  const item = bundle.queuedUserTurns[index];
   if (!item) {
     throw new Error(i18n.t('error.queuedUserTurnNotFound'));
   }
@@ -255,11 +255,18 @@ export async function sendQueuedUserTurnNowCommand(
     await abortConversationInContext(ctx);
   }
 
-  return submitUserTurnAfterInitializedCommand(ctx, item.text, {
-    displayText: item.displayText,
-    preallocatedMessageId: item.messageId,
-    explicitWorkspaceFiles: explicitWorkspaceFilesFromQueuedItem(item),
-  });
+  bundle.queuedUserTurns.splice(index, 1);
+  try {
+    return await submitUserTurnAfterInitializedCommand(ctx, item.text, {
+      displayText: item.displayText,
+      preallocatedMessageId: item.messageId,
+      explicitWorkspaceFiles: explicitWorkspaceFilesFromQueuedItem(item),
+    });
+  } catch (error) {
+    bundle.queuedUserTurns.splice(index, 0, item);
+    await ctx.persistCurrentSessionIfNeeded();
+    throw error;
+  }
 }
 
 export async function drainQueuedUserTurnIfIdle(
@@ -273,11 +280,17 @@ export async function drainQueuedUserTurnIfIdle(
   if (!next) {
     return;
   }
-  await submitUserTurnAfterInitializedCommand(ctx, next.text, {
-    displayText: next.displayText,
-    preallocatedMessageId: next.messageId,
-    explicitWorkspaceFiles: explicitWorkspaceFilesFromQueuedItem(next),
-  });
+  try {
+    await submitUserTurnAfterInitializedCommand(ctx, next.text, {
+      displayText: next.displayText,
+      preallocatedMessageId: next.messageId,
+      explicitWorkspaceFiles: explicitWorkspaceFilesFromQueuedItem(next),
+    });
+  } catch (error) {
+    bundle.queuedUserTurns.unshift(next);
+    await ctx.persistCurrentSessionIfNeeded();
+    throw error;
+  }
 }
 
 export async function pollCommand(ctx: SessionTurnOrchestratorContext): Promise<DesktopSnapshot> {
@@ -321,6 +334,7 @@ export async function tickSessionCommand(
     applyDrainedRuntimeHostEvents(ctx, bundle, []);
   }
   if (options.light) {
+    await drainQueuedUserTurnIfIdle(ctx, bundle);
     return;
   }
   orchestration.runtimeEvents.consumeCompletedTurnResult();

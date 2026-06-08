@@ -111,6 +111,17 @@ test('cloneQueuedUserTurns deep-copies queue payload', () => {
   assert.equal(source[0].explicitWorkspaceFiles[0].path, '/tmp/a.png');
 });
 
+test('shift then unshift restores queue head after failed dequeue', () => {
+  const bundle = createBundle({
+    queuedUserTurns: [queuedItem('a', 1, 'one'), queuedItem('b', 2, 'two')],
+  });
+  const removed = shiftNextQueuedUserTurn(bundle);
+  assert.equal(removed?.queueId, 'a');
+  assert.equal(bundle.queuedUserTurns.length, 1);
+  bundle.queuedUserTurns.unshift(removed);
+  assert.deepEqual(bundle.queuedUserTurns.map((item) => item.queueId), ['a', 'b']);
+});
+
 test('shiftNextQueuedUserTurn removes head item', () => {
   const bundle = createBundle({
     queuedUserTurns: [queuedItem('a', 1, 'one'), queuedItem('b', 2, 'two')],
