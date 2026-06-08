@@ -299,6 +299,7 @@
     "sessionNavAria": "Sessions and Settings Sidebar",
     "newSession": "New Session",
     "extensions": "Extensions",
+    "automations": "Automations",
     "workspace": "Workspace",
     "noWorkspaceSessions": "No workspace",
     "settingsTabsAria": "Settings Tabs",
@@ -319,6 +320,20 @@
     "window": "Window",
     "help": "Help",
     "appMenu": "Application Menu"
+  },
+  "automations": {
+    "title": "Automations",
+    "subtitle": "Automate repetitive actions through background agents.",
+    "generate": "Generate automation",
+    "generateComingSoon": "Coming soon",
+    "create": "Create automation",
+    "empty": "No automations configured",
+    "disabled": "Disabled",
+    "detailBack": "Automations",
+    "inProgress": "In progress",
+    "completed": "Completed",
+    "noRuns": "No runs yet",
+    "openSession": "Open session"
   },
   "marketplace": {
     "verified": "Verified",

@@ -299,6 +299,7 @@
     "sessionNavAria": "会话与设置侧栏",
     "newSession": "新会话",
     "extensions": "扩展",
+    "automations": "自动化",
     "workspace": "工作区",
     "noWorkspaceSessions": "无工作区",
     "settingsTabsAria": "设置页签",
@@ -319,6 +320,20 @@
     "window": "窗口",
     "help": "帮助",
     "appMenu": "应用菜单"
+  },
+  "automations": {
+    "title": "自动化",
+    "subtitle": "通过后台智能体，实现重复动作自动化。",
+    "generate": "生成自动化",
+    "generateComingSoon": "即将推出",
+    "create": "创建自动化",
+    "empty": "未配置自动化",
+    "disabled": "已禁用",
+    "detailBack": "自动化",
+    "inProgress": "进行中",
+    "completed": "已完成",
+    "noRuns": "暂无运行记录",
+    "openSession": "打开会话"
   },
   "marketplace": {
     "verified": "已验证",
