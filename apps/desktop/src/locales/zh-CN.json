@@ -703,6 +703,7 @@
     "attachmentsNotSupportedWithSlash": "附加文件暂不支持与 Slash 指令一起发送。",
     "hostNotSupportLogSession": "当前宿主不支持 /log-session。",
     "pendingApprovalSend": "当前正在等待审批或问卷，无法直接发送新消息。",
+    "queuedUserTurnNotFound": "未找到该排队消息。",
     "completeQuestionnaire": "请先完成问卷。",
     "completeRequiredQuestion": "请先完成必答问题：{{title}}",
     "autoWorktreeNameFailedMissingFields": "自动生成 Worktree 名称失败：模型未返回 worktreeName 或 branchName 字段。",

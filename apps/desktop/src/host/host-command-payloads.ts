@@ -28,6 +28,7 @@ import type {
   RememberWorkspaceRequest,
   RemoveModelRequest,
   RemoveProviderModelsRequest,
+  QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   RunExtensionRequest,
   SubmitCreateRuleSlashRequest,
@@ -109,5 +110,8 @@ export type CommandPayloads = {
   writeHostTextFile: { request: WriteHostTextFileRequest };
   statHostTextFile: { absolutePath: string };
   rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
+  reorderQueuedUserTurn: { request: QueuedUserTurnRequest };
+  sendQueuedUserTurnNow: { request: QueuedUserTurnRequest };
+  removeQueuedUserTurn: { request: QueuedUserTurnRequest };
   setSubagentViewerTarget: { parentToolCallId: string | null };
 };

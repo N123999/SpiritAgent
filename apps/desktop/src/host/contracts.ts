@@ -77,6 +77,9 @@ export type HostCommandName =
   | 'writeHostTextFile'
   | 'statHostTextFile'
   | 'rewindAndSubmitMessage'
+  | 'reorderQueuedUserTurn'
+  | 'sendQueuedUserTurnNow'
+  | 'removeQueuedUserTurn'
   | 'setSubagentViewerTarget';
 
 /** 与 `apps/cli/src/tool_runtime.rs` 中 `ToolRequest` 对齐的宿主工具请求。 */
@@ -97,6 +100,7 @@ export interface StoredDesktopSession extends ChatArchive {
   approvalLevel?: ApprovalLevel;
   contextUsage?: ConversationContextUsageSnapshot;
   subagentDesktopMessages?: Record<string, ConversationMessageSnapshot[]>;
+  queuedUserTurns?: import('./message-queue.js').QueuedUserTurn[];
 }
 
 export type DesktopHostCommitRequest = CommitChangesRequest;

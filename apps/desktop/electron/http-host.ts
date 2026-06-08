@@ -838,6 +838,48 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/queue/reorder') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('reorderQueuedUserTurn', {
+        request: {
+          queueId: typeof jsonBody?.queueId === 'string' ? jsonBody.queueId : '',
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/queue/send-now') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('sendQueuedUserTurnNow', {
+        request: {
+          queueId: typeof jsonBody?.queueId === 'string' ? jsonBody.queueId : '',
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/queue/remove') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('removeQueuedUserTurn', {
+        request: {
+          queueId: typeof jsonBody?.queueId === 'string' ? jsonBody.queueId : '',
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/poll') {
     writeJson(request, response, 200, await runHostCommand('poll'));
     return;

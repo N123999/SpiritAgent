@@ -96,6 +96,9 @@ declare global {
     abortConversation(): Promise<DesktopSnapshot>;
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
+    reorderQueuedUserTurn(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;
+    sendQueuedUserTurnNow(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;
+    removeQueuedUserTurn(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;
     poll(): Promise<DesktopSnapshot>;
     setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;

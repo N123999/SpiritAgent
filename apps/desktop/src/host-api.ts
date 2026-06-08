@@ -34,6 +34,7 @@ import type {
   PreviewModelsResponse,
   QueryWorkspaceFileReferenceSuggestionsRequest,
   RememberWorkspaceRequest,
+  QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   SubmitUserTurnRequest,
   SessionListItem,
@@ -105,6 +106,9 @@ export interface HostApi {
   abortConversation(): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
+  reorderQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;
+  sendQueuedUserTurnNow(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;
+  removeQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;
   poll(): Promise<DesktopSnapshot>;
   setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;

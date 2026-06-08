@@ -147,7 +147,7 @@ export function sessionBundleFromRestored(
     deferredRuntimeRefreshWhileBusy: false,
     deferredRuntimeHostEvents: [],
     responsesBuiltInPreviewSeenCallIds: new Set(),
-    queuedUserTurns: [],
+    queuedUserTurns: restored.queuedUserTurns ? [...restored.queuedUserTurns] : [],
     conversationRevision: 0,
     ...(restored.activePlanPath ? { activePlanPath: restored.activePlanPath } : {}),
     ...(restored.sessionTitleSource ? { sessionTitleSource: restored.sessionTitleSource } : {}),

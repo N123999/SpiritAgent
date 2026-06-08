@@ -10,6 +10,7 @@ import type {
 } from '../types.js';
 import { extractActivePlanPathFromLlmHistory, normalizeApprovalLevel } from '@spirit-agent/host-internal';
 import type { ApprovalLevel } from '@spirit-agent/host-internal';
+import type { QueuedUserTurn } from './message-queue.js';
 import type { SessionTitleSource, StoredDesktopSession } from './contracts.js';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
 import type { SessionBundle } from './session-bundle.js';
@@ -53,6 +54,7 @@ export interface RestoredSessionState {
   sessionTitleSource?: SessionTitleSource;
   contextUsage?: ConversationContextUsageSnapshot;
   subagentDesktopMessagesBySessionId?: Map<string, ConversationMessageSnapshot[]>;
+  queuedUserTurns?: QueuedUserTurn[];
 }
 
 export function isEphemeralCommitSessionPath(filePath: string): boolean {
@@ -200,6 +202,9 @@ export function restoreStoredSessionState(input: {
           ),
         }
       : {}),
+    ...(input.loaded.queuedUserTurns?.length
+      ? { queuedUserTurns: cloneQueuedUserTurns(input.loaded.queuedUserTurns) }
+      : {}),
   };
 }
 
@@ -218,6 +223,7 @@ export function buildStoredDesktopSession(input: {
   approvalLevel: ApprovalLevel;
   contextUsage?: ConversationContextUsageSnapshot;
   subagentDesktopMessages?: Record<string, ConversationMessageSnapshot[]>;
+  queuedUserTurns?: QueuedUserTurn[];
 }): StoredDesktopSession {
   return {
     ...input.archive,
@@ -236,7 +242,22 @@ export function buildStoredDesktopSession(input: {
     rewind: input.rewind,
     ...(input.contextUsage ? { contextUsage: { ...input.contextUsage } } : {}),
     ...(input.subagentDesktopMessages ? { subagentDesktopMessages: input.subagentDesktopMessages } : {}),
+    ...(input.queuedUserTurns?.length
+      ? { queuedUserTurns: cloneQueuedUserTurns(input.queuedUserTurns) }
+      : {}),
   };
+}
+
+export function cloneQueuedUserTurns(queued: readonly QueuedUserTurn[]): QueuedUserTurn[] {
+  return queued.map((item) => ({
+    ...item,
+    ...(item.explicitWorkspaceFiles
+      ? { explicitWorkspaceFiles: item.explicitWorkspaceFiles.map((file) => ({ ...file })) }
+      : {}),
+    ...(item.localFileAttachments
+      ? { localFileAttachments: item.localFileAttachments.map((attachment) => ({ ...attachment })) }
+      : {}),
+  }));
 }
 
 export function sanitizeConversationMessagesForPersistence(

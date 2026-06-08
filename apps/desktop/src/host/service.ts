@@ -93,6 +93,7 @@ import type {
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
   PendingAssistantAux,
+  QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   RememberWorkspaceRequest,
   RemoveModelRequest,
@@ -180,6 +181,7 @@ import {
   pollCommand,
   replyPendingApprovalCommand,
   replyPendingQuestionsCommand,
+  sendQueuedUserTurnNowCommand,
   submitUserTurnAfterInitializedCommand,
   tickSessionCommand,
   type SessionTurnOrchestratorContext,
@@ -190,6 +192,8 @@ import {
   appendQueuedUserTurnSnapshots,
   canEnqueueUserTurn,
   enqueueUserTurnCommand,
+  removeQueuedUserTurnCommand,
+  reorderQueuedUserTurnCommand,
 } from './message-queue.js';
 import {
   openSessionCommand,
@@ -1281,6 +1285,27 @@ class DesktopHostService {
 
   async abortConversation(): Promise<DesktopSnapshot> {
     return abortConversationCommand(this.sessionTurnContext());
+  }
+
+  async reorderQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      return reorderQueuedUserTurnCommand(this.sessionTurnContext(), request.queueId);
+    });
+  }
+
+  async sendQueuedUserTurnNow(request: QueuedUserTurnRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      return sendQueuedUserTurnNowCommand(this.sessionTurnContext(), request.queueId);
+    });
+  }
+
+  async removeQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await this.ensureInitialized(undefined, { fastPath: true });
+      return removeQueuedUserTurnCommand(this.sessionTurnContext(), request.queueId);
+    });
   }
 
   async continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot> {

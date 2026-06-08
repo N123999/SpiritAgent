@@ -6,6 +6,7 @@ import {
   buildArchiveAssistantAuxFromConversation,
   buildArchiveMessagesFromConversation,
   buildStoredDesktopSession,
+  cloneQueuedUserTurns,
   sanitizeConversationMessagesForPersistence,
 } from './sessions.js';
 import { serializeSubagentDesktopMessagesRecord } from './subagent-conversation-projection.js';
@@ -82,6 +83,9 @@ export async function persistDesktopSessionBundle(
             bundle.subagentDesktopMessagesBySessionId,
           ),
         }
+      : {}),
+    ...(bundle.queuedUserTurns.length > 0
+      ? { queuedUserTurns: cloneQueuedUserTurns(bundle.queuedUserTurns) }
       : {}),
   });
   if (bumpListSortAt) {

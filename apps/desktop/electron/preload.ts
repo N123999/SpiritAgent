@@ -140,6 +140,15 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   rewindAndSubmitMessage(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'rewindAndSubmitMessage', { request });
   },
+  reorderQueuedUserTurn(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'reorderQueuedUserTurn', { request });
+  },
+  sendQueuedUserTurnNow(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'sendQueuedUserTurnNow', { request });
+  },
+  removeQueuedUserTurn(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'removeQueuedUserTurn', { request });
+  },
   poll() {
     return ipcRenderer.invoke('desktop:invoke', 'poll');
   },

@@ -518,6 +518,10 @@ export interface SubmitUserTurnRequest {
   localFilePaths?: string[];
 }
 
+export interface QueuedUserTurnRequest {
+  queueId: string;
+}
+
 export interface DesktopSkillListItem {
   id: string;
   name: string;
@@ -899,6 +903,7 @@ export interface ConversationMessageSnapshot {
   canContinue?: boolean;
   /** UI-only projection for unsent queued user turns (not in message timeline). */
   queued?: boolean;
+  queueId?: string;
 }
 
 export interface MessageRewindDraftState {

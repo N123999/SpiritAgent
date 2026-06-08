@@ -52,6 +52,7 @@ export function projectQueuedUserTurnSnapshots(
     content: item.displayText,
     pending: false,
     queued: true,
+    queueId: item.queueId,
     ...(item.localFileAttachments?.length ? { localFileAttachments: item.localFileAttachments } : {}),
   }));
 }
@@ -154,6 +155,30 @@ export function removeQueuedUserTurn(bundle: SessionBundle, queueId: string): Qu
   }
   const [removed] = bundle.queuedUserTurns.splice(index, 1);
   return removed;
+}
+
+export async function reorderQueuedUserTurnCommand(
+  ctx: SessionTurnOrchestratorContext,
+  queueId: string,
+): Promise<DesktopSnapshot> {
+  const bundle = ctx.activeBundle();
+  if (!moveQueuedUserTurnUp(bundle, queueId)) {
+    throw new Error(i18n.t('error.queuedUserTurnNotFound'));
+  }
+  await ctx.persistCurrentSessionIfNeeded();
+  return ctx.buildSnapshot();
+}
+
+export async function removeQueuedUserTurnCommand(
+  ctx: SessionTurnOrchestratorContext,
+  queueId: string,
+): Promise<DesktopSnapshot> {
+  const bundle = ctx.activeBundle();
+  if (!removeQueuedUserTurn(bundle, queueId)) {
+    throw new Error(i18n.t('error.queuedUserTurnNotFound'));
+  }
+  await ctx.persistCurrentSessionIfNeeded();
+  return ctx.buildSnapshot();
 }
 
 export function moveQueuedUserTurnUp(bundle: SessionBundle, queueId: string): boolean {

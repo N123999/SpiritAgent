@@ -12,6 +12,7 @@ import {
   shiftNextQueuedUserTurn,
 } from '../../dist-electron/src/host/message-queue.js';
 import { createEmptySessionBundle } from '../../dist-electron/src/host/session-bundle.js';
+import { cloneQueuedUserTurns } from '../../dist-electron/src/host/sessions.js';
 
 function createBundle(overrides = {}) {
   const bundle = createEmptySessionBundle('/tmp/workspace');
@@ -94,6 +95,20 @@ test('moveQueuedUserTurnUp swaps with previous item', () => {
   assert.equal(moveQueuedUserTurnUp(bundle, 'b'), true);
   assert.deepEqual(bundle.queuedUserTurns.map((item) => item.queueId), ['b', 'a']);
   assert.equal(moveQueuedUserTurnUp(bundle, 'b'), false);
+});
+
+test('cloneQueuedUserTurns deep-copies queue payload', () => {
+  const source = [
+    {
+      ...queuedItem('a', 1, 'one'),
+      explicitWorkspaceFiles: [{ kind: 'image', path: '/tmp/a.png', attachedAtUnixMs: 1 }],
+    },
+  ];
+  const cloned = cloneQueuedUserTurns(source);
+  assert.notEqual(cloned, source);
+  assert.notEqual(cloned[0].explicitWorkspaceFiles, source[0].explicitWorkspaceFiles);
+  cloned[0].explicitWorkspaceFiles[0].path = '/tmp/b.png';
+  assert.equal(source[0].explicitWorkspaceFiles[0].path, '/tmp/a.png');
 });
 
 test('shiftNextQueuedUserTurn removes head item', () => {

@@ -703,6 +703,7 @@
     "attachmentsNotSupportedWithSlash": "Attachments are not yet supported with Slash commands.",
     "hostNotSupportLogSession": "The current host does not support /log-session.",
     "pendingApprovalSend": "Currently waiting for approval or questionnaire; cannot send a new message directly.",
+    "queuedUserTurnNotFound": "Queued message was not found.",
     "completeQuestionnaire": "Please complete the questionnaire first.",
     "completeRequiredQuestion": "Please complete the required question first: {{title}}",
     "autoWorktreeNameFailedMissingFields": "Auto-generating Worktree name failed: model did not return worktreeName or branchName field.",

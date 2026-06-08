@@ -31,6 +31,7 @@ import type {
   PreviewModelsRequest,
   PreviewModelsResponse,
   QueryWorkspaceFileReferenceSuggestionsRequest,
+  QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -198,6 +199,15 @@ export function createWebHostApi(): HostApi {
     },
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/rewind-submit', request);
+    },
+    reorderQueuedUserTurn(request: QueuedUserTurnRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/queue/reorder', request);
+    },
+    sendQueuedUserTurnNow(request: QueuedUserTurnRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/queue/send-now', request);
+    },
+    removeQueuedUserTurn(request: QueuedUserTurnRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/queue/remove', request);
     },
     poll() {
       return post<DesktopSnapshot>(baseUrl, '/api/poll');
