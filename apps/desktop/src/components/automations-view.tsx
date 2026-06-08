@@ -87,7 +87,7 @@ export function AutomationsView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col px-4 py-8">
+      <div className="mx-auto flex w-full max-w-4xl min-h-0 flex-1 flex-col px-4 py-8">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-1">
