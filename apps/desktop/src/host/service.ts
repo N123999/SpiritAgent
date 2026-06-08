@@ -267,7 +267,9 @@ import {
 import {
   buildArchiveAssistantAuxFromConversation,
   buildArchiveMessagesFromConversation,
+  buildLlmHistoryFallbackFromDesktopMessages,
   deriveDisplayNameFromSeed,
+  restoreStoredSessionState,
   type EphemeralSessionRecord,
   nextMessageIdFromMessages,
   rememberEphemeralSessionRecord,
@@ -296,6 +298,7 @@ import {
   isProvisionalSessionPath,
   provisionalNewSessionPath,
   loadHostMetadata,
+  loadStoredSession,
   modelSecretKeyPresence,
   resolveApiKeyForConfigModel,
   createDesktopExtensionStateStore,
@@ -365,6 +368,7 @@ import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot, buildModelCatalogHints } from './snapshot.js';
 import {
   applyToolCallSummaryCopy,
+  restoreMessagesFromArchive,
 } from './message-ordering.js';
 import {
   mapPendingAuxState,
@@ -1752,9 +1756,12 @@ class DesktopHostService {
     bundle.runtimeTransport = createLlmTransport(runtimeTransportConfig);
 
     const desktopMessages = bundle.messageTimeline.toMessages();
+    const llmHistoryForRuntime = bundle.archiveHistory.length > 0
+      ? bundle.archiveHistory
+      : buildLlmHistoryFallbackFromDesktopMessages(desktopMessages);
     const runtime = this.createRuntime(
       runtimeTransportConfig,
-      bundle.archiveHistory,
+      llmHistoryForRuntime,
       state.metadata.rules.enabledRules,
       state.metadata.skills.enabledSkillCatalog,
       state.metadata.planMetadata,
@@ -1768,14 +1775,17 @@ class DesktopHostService {
       bundle.runtimeTransport,
       bundle,
     );
-    if (bundle.archiveSubagentSessions.length > 0 || bundle.archiveHistory.length > 0) {
+    if (bundle.archiveSubagentSessions.length > 0 || llmHistoryForRuntime.length > 0) {
       runtime.replaceFromArchive({
         messages: buildArchiveMessagesFromConversation(desktopMessages),
         assistantAux: buildArchiveAssistantAuxFromConversation(desktopMessages),
-        llmHistory: bundle.archiveHistory,
+        llmHistory: llmHistoryForRuntime,
         subagentSessions: bundle.archiveSubagentSessions ?? [],
         loopEnabled: bundle.loopEnabled,
       });
+      if (bundle.archiveHistory.length === 0 && llmHistoryForRuntime.length > 0) {
+        bundle.archiveHistory = llmHistoryForRuntime;
+      }
     }
     runtime.setLoopEnabled(bundle.loopEnabled);
     const toolExecutor = await this.ensureToolExecutor(bundle);
@@ -1983,7 +1993,36 @@ class DesktopHostService {
       notifySessionListUpdated: () => {
         this.notifySessionListUpdated();
       },
+      syncSessionFromDisk: (sessionPath) => this.syncAutomationSessionFromDisk(sessionPath),
     };
+  }
+
+  private async syncAutomationSessionFromDisk(sessionPath: string): Promise<void> {
+    const loaded = await loadStoredSession(sessionPath);
+    const workspaceRoot = loaded.workspaceRoot ?? this.requireState().workspaceRoot;
+    const restored = restoreStoredSessionState({
+      filePath: sessionPath,
+      loaded,
+      fallbackMessages: restoreMessagesFromArchive(loaded),
+    });
+    const synced = this.sessionRegistry.reloadWarmBundleFromRestoredIfIdle(
+      sessionPath,
+      workspaceRoot,
+      restored,
+      (messages, timelineSnapshot) => this.createMessageTimelineFromMessages(messages, timelineSnapshot),
+    );
+    if (!synced) {
+      return;
+    }
+    const bundle = this.sessionRegistry.findBySessionPath(sessionPath);
+    if (!bundle) {
+      return;
+    }
+    if (this.sessionRegistry.activeSessionId() === path.resolve(sessionPath)) {
+      await this.refreshRuntimeForBundle(bundle);
+      this.syncActiveRuntimePointer();
+      this.emitLiveSnapshotUpdate();
+    }
   }
 
   private async refreshAutomationsListCache(): Promise<void> {

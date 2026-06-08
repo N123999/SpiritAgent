@@ -49,6 +49,7 @@ export interface RunDesktopAutomationOnceInput {
 export interface RunDesktopAutomationOnceDeps {
   onRunUpdated?(automationId: string): void;
   notifySessionListUpdated?(): void;
+  syncSessionFromDisk?(sessionPath: string): void | Promise<void>;
 }
 
 export async function runDesktopAutomationOnce(
@@ -120,7 +121,7 @@ export async function runDesktopAutomationOnce(
       basicInfo: buildDesktopRuntimeBasicInfo(input.definition.workspaceRoot, toolExecutor),
     });
 
-    await persistAutomationSession({
+    await persistAutomationSession(deps, {
       sessionPath,
       definition: input.definition,
       runId,
@@ -134,6 +135,7 @@ export async function runDesktopAutomationOnce(
     deps.notifySessionListUpdated?.();
 
     let result = await runtime.submitUserTurn(input.definition.overview);
+
     for (let guard = 0; guard < AUTOMATION_RUN_MAX_GUARD_ROUNDS; guard += 1) {
       if (result.kind === 'requires-approval') {
         if (input.definition.approvalLevel === 'full-approval') {
@@ -141,7 +143,7 @@ export async function runDesktopAutomationOnce(
           continue;
         }
         run = await store.updateRun(input.definition.id, runId, { status: 'blocked' });
-        await persistAutomationSession({
+        await persistAutomationSession(deps, {
           sessionPath,
           definition: input.definition,
           runId,
@@ -162,7 +164,7 @@ export async function runDesktopAutomationOnce(
           continue;
         }
         run = await store.updateRun(input.definition.id, runId, { status: 'blocked' });
-        await persistAutomationSession({
+        await persistAutomationSession(deps, {
           sessionPath,
           definition: input.definition,
           runId,
@@ -187,7 +189,7 @@ export async function runDesktopAutomationOnce(
       throw new Error(`Automation run did not complete: ${result.kind}`);
     }
 
-    await persistAutomationSession({
+    await persistAutomationSession(deps, {
       sessionPath,
       definition: input.definition,
       runId,
@@ -219,7 +221,19 @@ export async function runDesktopAutomationOnce(
   }
 }
 
-async function persistAutomationSession(input: {
+async function notifyAutomationSessionPersisted(
+  deps: RunDesktopAutomationOnceDeps,
+  sessionPath: string,
+): Promise<void> {
+  if (!deps.syncSessionFromDisk) {
+    return;
+  }
+  await deps.syncSessionFromDisk(sessionPath);
+}
+
+async function persistAutomationSession(
+  deps: RunDesktopAutomationOnceDeps,
+  input: {
   sessionPath: string;
   definition: HostAutomationDefinition;
   runId: string;
@@ -229,7 +243,8 @@ async function persistAutomationSession(input: {
   gitBranch?: string;
   sessionDisplayName: string;
   approvalLevel: HostAutomationDefinition['approvalLevel'];
-}): Promise<void> {
+  },
+): Promise<void> {
   const archive = input.runtime.toArchive([], []);
   const storedBase: StoredDesktopSession = {
     ...archive,
@@ -244,9 +259,10 @@ async function persistAutomationSession(input: {
     rewind: createDesktopRewindMetadata(),
   };
   const fallbackMessages = restoreMessagesFromArchive(storedBase);
+  const assistantText = lastAssistantTextFromHistory(archive.llmHistory);
   const desktopMessages = fallbackMessages.length > 0
     ? fallbackMessages
-    : buildSeedAutomationMessages(input.overview, lastAssistantTextFromHistory(archive.llmHistory));
+    : buildSeedAutomationMessages(input.overview, assistantText);
 
   await saveStoredSession(
     input.sessionPath,
@@ -265,6 +281,7 @@ async function persistAutomationSession(input: {
       automationRunId: input.runId,
     }),
   );
+  await notifyAutomationSessionPersisted(deps, input.sessionPath);
 }
 
 function lastAssistantTextFromHistory(

@@ -41,7 +41,7 @@ function hourOptions(): number[] {
 }
 
 function minuteOptions(): number[] {
-  return [0, 15, 30, 45];
+  return Array.from({ length: 60 }, (_, index) => index);
 }
 
 type AutomationScheduleMenuProps = {
