@@ -3318,6 +3318,13 @@ export default function App() {
                   void runtime.openSession(path);
                 }}
                 getAutomation={runtime.getAutomation}
+                updateAutomation={(id, patch) => void runtime.updateAutomation(id, patch)}
+                settingsDisabled={!runtime.apiReady || runtime.busyAction === "automation"}
+                onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
+                  if (path) {
+                    void runtime.rememberWorkspaceRoot({ workspaceRoot: path });
+                  }
+                })}
               />
             ) : (
               <AutomationsView
