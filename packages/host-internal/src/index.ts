@@ -4,6 +4,7 @@ export * from './discovery.js';
 export * from './git-workspace.js';
 export * from './git-log-graph.js';
 export * from './dreams.js';
+export * from './automations.js';
 export * from './todos.js';
 export * from './extensions.js';
 export * from './file-rewind.js';
