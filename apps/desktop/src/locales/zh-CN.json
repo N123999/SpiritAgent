@@ -348,6 +348,7 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekly": "每周",
+      "weeklyAt": "每{{weekday}} {{time}}",
       "weekday": "星期",
       "hour": "时",
       "minute": "分",

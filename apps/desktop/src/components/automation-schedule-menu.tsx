@@ -84,6 +84,7 @@ export function AutomationScheduleMenu({
     dailyPrefix: t("automations.schedule.daily"),
     weeklyPrefix: t("automations.schedule.weekly"),
     weekdays: WEEKDAY_OPTIONS.map((option) => t(option.labelKey)),
+    formatWeekly: (weekday, time) => t("automations.schedule.weeklyAt", { weekday, time }),
   });
 
   return (

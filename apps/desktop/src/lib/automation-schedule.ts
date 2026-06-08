@@ -12,6 +12,7 @@ export interface DesktopAutomationScheduleFormatLabels {
   dailyPrefix: string;
   weeklyPrefix: string;
   weekdays: readonly string[];
+  formatWeekly?(weekday: string, time: string): string;
 }
 
 function formatTimeOfDay(hour: number, minute: number): string {
@@ -30,5 +31,8 @@ export function formatDesktopAutomationScheduleLabel(
     return `${labels.dailyPrefix} ${time}`;
   }
   const weekday = labels.weekdays[schedule.weekday] ?? String(schedule.weekday);
+  if (labels.formatWeekly) {
+    return labels.formatWeekly(weekday, time);
+  }
   return `${labels.weeklyPrefix} ${weekday} ${time}`;
 }

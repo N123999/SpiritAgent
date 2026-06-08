@@ -348,6 +348,7 @@
       "hourly": "Hourly",
       "daily": "Daily",
       "weekly": "Weekly",
+      "weeklyAt": "Weekly {{weekday}} {{time}}",
       "weekday": "Weekday",
       "hour": "Hour",
       "minute": "Minute",

@@ -132,7 +132,7 @@ export function formatScheduleLabel(
     return `${l.dailyPrefix} ${time}`;
   }
   const weekday = l.weekdays[schedule.weekday] ?? String(schedule.weekday);
-  return `${l.weeklyPrefix} ${weekday} ${time}`;
+  return `每${weekday} ${time}`;
 }
 
 export interface ScheduleFormatLabels {

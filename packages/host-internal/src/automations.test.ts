@@ -113,7 +113,7 @@ test('computeNextRunAt advances schedule', () => {
 test('formatScheduleLabel renders weekly label', () => {
   assert.equal(
     formatScheduleLabel({ kind: 'weekly', weekday: 1, hour: 9, minute: 0 }),
-    '每周 周一 09:00',
+    '每周一 09:00',
   );
   assert.equal(formatScheduleLabel({ kind: 'hourly' }), '每小时');
 });
