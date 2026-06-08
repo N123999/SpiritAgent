@@ -468,6 +468,18 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   }) {
     return ipcRenderer.invoke('desktop:sync-attention-pending', flags) as Promise<void>;
   },
+  getWindowFullScreen() {
+    return ipcRenderer.invoke('desktop:get-window-fullscreen') as Promise<boolean>;
+  },
+  subscribeWindowFullScreen(callback: (fullScreen: boolean) => void) {
+    const onChange = (_event: Electron.IpcRendererEvent, fullScreen: boolean) => {
+      callback(fullScreen === true);
+    };
+    ipcRenderer.on('desktop:window-fullscreen-changed', onChange);
+    return () => {
+      ipcRenderer.removeListener('desktop:window-fullscreen-changed', onChange);
+    };
+  },
   subscribeAppAwayChanged(callback: (away: boolean) => void) {
     const onAway = (_event: Electron.IpcRendererEvent, payload: { away?: boolean }) => {
       callback(payload?.away === true);
