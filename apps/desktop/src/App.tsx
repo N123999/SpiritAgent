@@ -3329,6 +3329,13 @@ export default function App() {
                   setSelectedAutomationId(automationId);
                   setActiveSurface("automation-detail");
                 }}
+                onDeleteAutomation={async (automationId) => {
+                  await runtime.deleteAutomation(automationId);
+                  if (selectedAutomationId === automationId) {
+                    setSelectedAutomationId(null);
+                    setActiveSurface("automations");
+                  }
+                }}
               />
             )}
             <CreateAutomationDialog
