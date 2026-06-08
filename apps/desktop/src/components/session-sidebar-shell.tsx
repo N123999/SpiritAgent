@@ -108,6 +108,7 @@ export function SessionSidebarShell({
       data-spirit-surface="session-sidebar-shell"
       className={cn(
         "relative flex h-full min-h-0 shrink-0 flex-row self-stretch overflow-hidden",
+        !useMicaBackdrop && "bg-sidebar",
         isResizing
           ? "transition-none"
           : "transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
