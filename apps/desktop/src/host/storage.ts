@@ -194,17 +194,21 @@ export function resolveDefaultSpiritAgentDataDir(): string {
   return path.join(homedir(), '.spirit-agent');
 }
 
-export function spiritAgentDataDir(): string {
-  if (spiritAgentDataDirOverride) {
-    return spiritAgentDataDirOverride;
-  }
-
+export function resolveConfiguredSpiritAgentDataDir(): string {
   const envOverride = process.env[ENV_SPIRIT_AGENT_DATA_DIR]?.trim();
   if (envOverride) {
     return envOverride;
   }
 
   return resolveDefaultSpiritAgentDataDir();
+}
+
+export function spiritAgentDataDir(): string {
+  if (spiritAgentDataDirOverride) {
+    return spiritAgentDataDirOverride;
+  }
+
+  return resolveConfiguredSpiritAgentDataDir();
 }
 
 export function chatsDirPath(): string {

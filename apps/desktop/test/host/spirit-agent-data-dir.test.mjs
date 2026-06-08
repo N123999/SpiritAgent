@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { resolveDefaultSpiritAgentDataDir } from '../../dist-electron/src/host/storage.js';
+import {
+  resolveConfiguredSpiritAgentDataDir,
+  resolveDefaultSpiritAgentDataDir,
+} from '../../dist-electron/src/host/storage.js';
 
 async function withEnv(vars, run) {
   const previous = new Map();
@@ -53,4 +56,20 @@ test('resolveDefaultSpiritAgentDataDir uses Application Support on macOS', async
   } finally {
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test('resolveConfiguredSpiritAgentDataDir honors SPIRIT_AGENT_DATA_DIR', async () => {
+  await withEnv(
+    {
+      SPIRIT_AGENT_DATA_DIR: '/tmp/spirit-agent-custom-data-dir',
+      APPDATA: '/tmp/spirit-agent-appdata',
+      HOME: '/tmp/spirit-agent-home',
+    },
+    async () => {
+      assert.equal(
+        resolveConfiguredSpiritAgentDataDir(),
+        '/tmp/spirit-agent-custom-data-dir',
+      );
+    },
+  );
 });

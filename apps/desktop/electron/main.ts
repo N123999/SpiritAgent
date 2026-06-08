@@ -87,7 +87,7 @@ const gotSpiritSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSpiritSingleInstanceLock) {
   app.quit();
 } else {
-  const spiritDataDir = resolveDefaultSpiritAgentDataDir();
+  const spiritDataDir = resolveConfiguredSpiritAgentDataDir();
   app.setPath('userData', spiritDataDir);
   setSpiritAgentDataDirOverride(spiritDataDir);
 
@@ -119,7 +119,7 @@ import {
 import {
   configFilePath,
   loadConfig,
-  resolveDefaultSpiritAgentDataDir,
+  resolveConfiguredSpiritAgentDataDir,
   setSpiritAgentDataDirOverride,
   spiritAgentDataDir,
   type DesktopWebHostConfigFile,
