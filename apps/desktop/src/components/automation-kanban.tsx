@@ -19,7 +19,11 @@ export function AutomationKanban({ runs, sessions, onOpenSession }: AutomationKa
 
   return (
     <div className="grid min-h-[20rem] grid-cols-1 gap-4 md:grid-cols-2">
-      <KanbanColumn title={t("automations.inProgress")} emptyLabel={t("automations.noRuns")}>
+      <KanbanColumn
+        title={t("automations.inProgress")}
+        emptyLabel={t("automations.noRuns")}
+        indicatorClassName="border-orange-500"
+      >
         {inProgress.map((run) => (
           <AutomationRunCard
             key={run.id}
@@ -29,7 +33,11 @@ export function AutomationKanban({ runs, sessions, onOpenSession }: AutomationKa
           />
         ))}
       </KanbanColumn>
-      <KanbanColumn title={t("automations.completed")} emptyLabel={t("automations.noRuns")}>
+      <KanbanColumn
+        title={t("automations.completed")}
+        emptyLabel={t("automations.noRuns")}
+        indicatorClassName="border-green-500"
+      >
         {completed.map((run) => (
           <AutomationRunCard
             key={run.id}
@@ -46,17 +54,25 @@ export function AutomationKanban({ runs, sessions, onOpenSession }: AutomationKa
 function KanbanColumn({
   title,
   emptyLabel,
+  indicatorClassName,
   children,
 }: {
   title: string;
   emptyLabel: string;
+  indicatorClassName: string;
   children: ReactNode;
 }) {
   const hasItems = Boolean(children);
 
   return (
     <div className="flex min-h-[16rem] flex-col rounded-lg border border-border/40 bg-background/60">
-      <div className="border-b border-border/35 px-4 py-3 text-sm font-medium text-foreground">{title}</div>
+      <div className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground">
+        <span
+          className={cn("size-2.5 shrink-0 rounded-full border-2 bg-transparent", indicatorClassName)}
+          aria-hidden
+        />
+        {title}
+      </div>
       <div className="flex flex-1 flex-col gap-2 p-3">
         {hasItems ? children : (
           <p className="py-8 text-center text-xs text-muted-foreground">{emptyLabel}</p>
