@@ -176,7 +176,6 @@
     "ruleDisabled": "已关闭",
     "deleteRule": "删除规则",
     "deleteRuleConfirm": "确定删除「{{name}}」（{{location}}）？将移除对应规则文件。",
-    "deleteRuleConfirmAgents": "确定删除「{{name}}」（{{location}}）？AGENTS.md 可能被 Copilot、Cursor 等工具共用，删除后需自行恢复。",
     "ruleDescPlaceholder": "简要说明要约束的编码行为",
     "saveLocation": "保存位置",
     "name": "名称",

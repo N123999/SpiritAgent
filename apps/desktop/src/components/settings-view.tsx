@@ -1062,6 +1062,15 @@ const ruleCreateRootOptions: Array<{
 ];
 
 function ruleLocationLabel(item: DesktopRuleListItem): string {
+  if (item.rootKind === "user") {
+    return i18n.t('settings.skillUserDir');
+  }
+  if (item.rootKind === "workspaceSpirit") {
+    return i18n.t('settings.skillWorkspaceSpirit');
+  }
+  if (item.rootKind === "workspaceAgents") {
+    return i18n.t('settings.ruleWorkspaceAgentsHint');
+  }
   return skillRootKindLabel(item.rootKind);
 }
 
@@ -1215,15 +1224,10 @@ function RulesSettingsPanel({
           <DialogHeader>
             <DialogTitle>{t('settings.deleteRule')}</DialogTitle>
             <DialogDescription>
-              {deleteTarget?.rootKind === "workspaceAgents"
-                ? t('settings.deleteRuleConfirmAgents', {
-                    name: deleteTarget ? ruleFileBaseName(deleteTarget.shortLabel) : '',
-                    location: deleteTarget ? ruleLocationLabel(deleteTarget) : '',
-                  })
-                : t('settings.deleteRuleConfirm', {
-                    name: deleteTarget ? ruleFileBaseName(deleteTarget.shortLabel) : '',
-                    location: deleteTarget ? ruleLocationLabel(deleteTarget) : '',
-                  })}
+              {t('settings.deleteRuleConfirm', {
+                name: deleteTarget ? ruleFileBaseName(deleteTarget.shortLabel) : '',
+                location: deleteTarget ? ruleLocationLabel(deleteTarget) : '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">

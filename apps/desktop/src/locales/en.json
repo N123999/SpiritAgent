@@ -176,7 +176,6 @@
     "ruleDisabled": "Disabled",
     "deleteRule": "Delete Rule",
     "deleteRuleConfirm": "Are you sure you want to delete \"{{name}}\" ({{location}})? This removes the rule file.",
-    "deleteRuleConfirmAgents": "Are you sure you want to delete \"{{name}}\" ({{location}})? AGENTS.md may be shared with Copilot, Cursor, or other tools.",
     "ruleDescPlaceholder": "Briefly describe the coding constraints to enforce",
     "saveLocation": "Save Location",
     "name": "Name",
