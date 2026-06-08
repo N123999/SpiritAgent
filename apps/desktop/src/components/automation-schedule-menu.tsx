@@ -19,10 +19,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH } from "@/lib/desktop-chrome";
-import { formatScheduleLabel, type HostAutomationSchedule, type HostAutomationWeekday } from "@spirit-agent/host-internal";
+import {
+  formatDesktopAutomationScheduleLabel,
+  type DesktopAutomationSchedule,
+  type DesktopAutomationWeekday,
+} from "@/lib/automation-schedule";
 import { cn } from "@/lib/utils";
 
-const WEEKDAY_OPTIONS: Array<{ value: HostAutomationWeekday; labelKey: string }> = [
+const WEEKDAY_OPTIONS: Array<{ value: DesktopAutomationWeekday; labelKey: string }> = [
   { value: 0, labelKey: "automations.schedule.weekday0" },
   { value: 1, labelKey: "automations.schedule.weekday1" },
   { value: 2, labelKey: "automations.schedule.weekday2" },
@@ -41,9 +45,9 @@ function minuteOptions(): number[] {
 }
 
 type AutomationScheduleMenuProps = {
-  schedule: HostAutomationSchedule;
+  schedule: DesktopAutomationSchedule;
   disabled?: boolean;
-  onScheduleChange(schedule: HostAutomationSchedule): void;
+  onScheduleChange(schedule: DesktopAutomationSchedule): void;
 };
 
 export function AutomationScheduleMenu({
@@ -52,7 +56,7 @@ export function AutomationScheduleMenu({
   onScheduleChange,
 }: AutomationScheduleMenuProps) {
   const { t } = useTranslation();
-  const label = formatScheduleLabel(schedule, {
+  const label = formatDesktopAutomationScheduleLabel(schedule, {
     hourly: t("automations.schedule.hourly"),
     dailyPrefix: t("automations.schedule.daily"),
     weeklyPrefix: t("automations.schedule.weekly"),
@@ -131,10 +135,10 @@ function WeeklyScheduleSub({
   onConfirm,
 }: {
   title: string;
-  onConfirm(weekday: HostAutomationWeekday, hour: number, minute: number): void;
+  onConfirm(weekday: DesktopAutomationWeekday, hour: number, minute: number): void;
 }) {
   const { t } = useTranslation();
-  const [weekday, setWeekday] = useState<HostAutomationWeekday>(1);
+  const [weekday, setWeekday] = useState<DesktopAutomationWeekday>(1);
   const [hour, setHour] = useState(9);
   const [minute, setMinute] = useState(0);
 
@@ -149,7 +153,7 @@ function WeeklyScheduleSub({
             </p>
             <Select
               value={String(weekday)}
-              onValueChange={(value) => setWeekday(Number(value) as HostAutomationWeekday)}
+              onValueChange={(value) => setWeekday(Number(value) as DesktopAutomationWeekday)}
             >
               <SelectTrigger className="h-8">
                 <SelectValue />

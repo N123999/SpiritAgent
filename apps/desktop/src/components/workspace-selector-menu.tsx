@@ -14,8 +14,8 @@ import {
   DESKTOP_OVERLAY_LIST_ITEM,
   DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
   DESKTOP_OVERLAY_LIST_ITEM_SECONDARY,
+  instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
-import { instantHoverMotionClass } from "@/lib/overlay-motion";
 import {
   resolveWorkspaceSelectorLabel,
   sameWorkspacePath,
