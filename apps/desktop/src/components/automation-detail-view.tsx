@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
 import { AutomationKanban } from "@/components/automation-kanban";
-import type { DesktopAutomationDetail, DesktopSnapshot, SessionListItem } from "@/types";
+import { AutomationSettingsPanel } from "@/components/automation-settings-panel";
+import type {
+  DesktopAutomationDetail,
+  DesktopSnapshot,
+  DesktopUpdateAutomationRequest,
+  SessionListItem,
+} from "@/types";
 import { cn } from "@/lib/utils";
 
 type AutomationDetailViewProps = {
@@ -13,6 +19,12 @@ type AutomationDetailViewProps = {
   onBack(): void;
   onOpenSession(sessionPath: string): void;
   getAutomation(automationId: string): Promise<DesktopAutomationDetail | undefined>;
+  updateAutomation(
+    automationId: string,
+    patch: DesktopUpdateAutomationRequest,
+  ): void | Promise<void>;
+  onAddWorkspace?(): void | Promise<void>;
+  settingsDisabled?: boolean;
 };
 
 type AutomationDetailTab = "kanban" | "settings";
@@ -69,28 +81,40 @@ export function AutomationDetailView({
   onBack,
   onOpenSession,
   getAutomation,
+  updateAutomation,
+  onAddWorkspace,
+  settingsDisabled,
 }: AutomationDetailViewProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<AutomationDetailTab>("kanban");
   const [detail, setDetail] = useState<DesktopAutomationDetail | undefined>();
   const [loading, setLoading] = useState(true);
+  const showInitialLoadingRef = useRef(true);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const next = await getAutomation(automationId);
       setDetail(next);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [automationId, getAutomation]);
 
   useEffect(() => {
     setActiveTab("kanban");
+    showInitialLoadingRef.current = true;
   }, [automationId]);
 
   useEffect(() => {
-    void refresh();
+    void refresh({ silent: !showInitialLoadingRef.current }).finally(() => {
+      showInitialLoadingRef.current = false;
+    });
   }, [refresh, snapshot?.automationsList]);
 
   const definition = detail?.definition;
@@ -123,6 +147,19 @@ export function AutomationDetailView({
                   onOpenSession={onOpenSession}
                 />
               </div>
+            ) : null}
+            {activeTab === "settings" ? (
+              <AutomationSettingsPanel
+                automationId={automationId}
+                definition={definition}
+                snapshot={snapshot}
+                disabled={settingsDisabled}
+                onAddWorkspace={onAddWorkspace}
+                onSave={async (patch) => {
+                  await updateAutomation(automationId, patch);
+                  await refresh({ silent: true });
+                }}
+              />
             ) : null}
           </AutomationDetailTabs>
         </div>
