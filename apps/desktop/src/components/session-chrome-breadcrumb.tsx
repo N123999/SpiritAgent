@@ -41,7 +41,7 @@ export function SessionChromeBreadcrumb({
             <BreadcrumbLink asChild>
               <button
                 type="button"
-                className="min-w-0 truncate text-foreground/90"
+                className="electron-no-drag min-w-0 truncate text-foreground/90"
                 title={trimmedSessionTitle}
                 onClick={onExitSubagentViewer}
               >

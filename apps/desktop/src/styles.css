@@ -171,14 +171,17 @@ html.spirit-desktop-darwin {
   --spirit-macos-traffic-lights-inset-left: 4.875rem;
 }
 
-html.spirit-desktop-darwin [data-spirit-surface="main-frame"] {
+/* 仅侧栏下移避让左上红绿灯；主区顶栏与标题栏同高同排 */
+html.spirit-desktop-darwin #session-sidebar-panel {
   position: relative;
+  padding-top: var(--spirit-macos-titlebar-inset);
 }
 
-html.spirit-desktop-darwin [data-spirit-surface="main-frame"]::before {
+/* 侧栏列顶缘透明拖拽带（绝对定位，不占 flex 布局） */
+html.spirit-desktop-darwin #session-sidebar-panel::before {
   content: "";
   position: absolute;
-  z-index: 50;
+  z-index: 0;
   top: 0;
   right: 0;
   left: 0;
@@ -186,21 +189,23 @@ html.spirit-desktop-darwin [data-spirit-surface="main-frame"]::before {
   -webkit-app-region: drag;
 }
 
-/* 仅侧栏下移避让左上红绿灯；主区顶栏与标题栏同高同排 */
-html.spirit-desktop-darwin #session-sidebar-panel {
-  padding-top: var(--spirit-macos-titlebar-inset);
-}
-
+/* 顶栏空白区可拖，仅按钮/链接 no-drag（与 Windows 自绘标题栏一致） */
 html.spirit-desktop-darwin [data-spirit-surface="layout-chrome"] {
-  position: relative;
-  z-index: 51;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
   transition: padding-left 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+html.spirit-desktop-darwin [data-spirit-surface="layout-chrome"] button,
+html.spirit-desktop-darwin [data-spirit-surface="layout-chrome"] a {
+  -webkit-app-region: no-drag;
+}
+
 html.spirit-desktop-darwin [data-spirit-surface="workspace-panel"] > div:first-child {
-  position: relative;
-  z-index: 51;
+  -webkit-app-region: drag;
+}
+
+html.spirit-desktop-darwin [data-spirit-surface="workspace-panel"] > div:first-child button,
+html.spirit-desktop-darwin [data-spirit-surface="workspace-panel"] > div:first-child a {
   -webkit-app-region: no-drag;
 }
 
@@ -216,7 +221,7 @@ html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen {
   --spirit-macos-traffic-lights-inset-left: 0px;
 }
 
-html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen [data-spirit-surface="main-frame"]::before {
+html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen #session-sidebar-panel::before {
   content: none;
 }
 
