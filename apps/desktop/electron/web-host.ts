@@ -2,7 +2,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { invokeDesktopHostCommand } from '../src/host/service.js';
-import { loadConfig, type DesktopWebHostConfigFile } from '../src/host/storage.js';
+import {
+  loadConfig,
+  resolveDefaultSpiritAgentDataDir,
+  setSpiritAgentDataDirOverride,
+  type DesktopWebHostConfigFile,
+} from '../src/host/storage.js';
 import { setDesktopWebHostRuntimeStatus } from '../src/host/web-host-state.js';
 import {
   createDesktopHttpHost,
@@ -13,6 +18,8 @@ import { resolveRendererDistPath } from './renderer-dist.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+setSpiritAgentDataDirOverride(resolveDefaultSpiritAgentDataDir());
 
 const { host, port } = resolveDesktopWebHostFromEnv();
 let webHostConfig: DesktopWebHostConfigFile = (await loadConfig()).webHost;

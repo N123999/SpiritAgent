@@ -87,6 +87,10 @@ const gotSpiritSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSpiritSingleInstanceLock) {
   app.quit();
 } else {
+  const spiritDataDir = resolveDefaultSpiritAgentDataDir();
+  app.setPath('userData', spiritDataDir);
+  setSpiritAgentDataDirOverride(spiritDataDir);
+
   app.on('second-instance', (_event, argv) => {
     handleSpiritNotificationProtocolArgv(argv);
   });
@@ -115,6 +119,8 @@ import {
 import {
   configFilePath,
   loadConfig,
+  resolveDefaultSpiritAgentDataDir,
+  setSpiritAgentDataDirOverride,
   spiritAgentDataDir,
   type DesktopWebHostConfigFile,
 } from '../src/host/storage.js';
