@@ -21,6 +21,23 @@ test('parseCreateRuleRequest accepts user scope prefix', () => {
   assert.equal(parsed.prompt, '跨仓库提交约定');
 });
 
+test('parseCreateRuleRequest prefers compound scope prefixes over short ones', () => {
+  const userLevel = parseCreateRuleRequest('user-level 跨仓库约定');
+  assert.ok(!(userLevel instanceof Error));
+  assert.equal(userLevel.scope, 'user');
+  assert.equal(userLevel.prompt, '跨仓库约定');
+
+  const repoLevel = parseCreateRuleRequest('repo-level 仓库测试要求');
+  assert.ok(!(repoLevel instanceof Error));
+  assert.equal(repoLevel.scope, 'workspace');
+  assert.equal(repoLevel.prompt, '仓库测试要求');
+
+  const workspaceLevel = parseCreateRuleRequest('workspace-level 工作区 lint');
+  assert.ok(!(workspaceLevel instanceof Error));
+  assert.equal(workspaceLevel.scope, 'workspace');
+  assert.equal(workspaceLevel.prompt, '工作区 lint');
+});
+
 test('parseCreateRuleSlashPrompt defaults to workspace scope', () => {
   const parsed = parseCreateRuleSlashPrompt('/create-rule 使用简体中文写 commit');
   assert.ok(!(parsed instanceof Error));

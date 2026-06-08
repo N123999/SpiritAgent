@@ -150,7 +150,9 @@ export async function deleteRuleFile(
 }
 
 function matchPrefix(input: string, prefixes: readonly string[]): string | undefined {
-  for (const prefix of prefixes) {
+  // 较长前缀优先，避免 user/repo/workspace 抢先匹配 user-level/repo-level/workspace-level。
+  const sortedPrefixes = [...prefixes].sort((left, right) => right.length - left.length);
+  for (const prefix of sortedPrefixes) {
     const remainder = input.startsWith(prefix) ? input.slice(prefix.length) : undefined;
     if (remainder === undefined) {
       continue;
