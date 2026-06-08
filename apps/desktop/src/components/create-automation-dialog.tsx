@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ApprovalLevelMenu } from "@/components/approval-level-menu";
@@ -48,10 +48,18 @@ export function CreateAutomationDialog({
   const [reasoningEffort, setReasoningEffort] = useState<DesktopModelReasoningEffort | undefined>();
   const [approvalLevel, setApprovalLevel] = useState<ApprovalLevel>("default");
 
+  const initializedForOpenRef = useRef(false);
+
   useEffect(() => {
-    if (!open || !snapshot) {
+    if (!open) {
+      initializedForOpenRef.current = false;
       return;
     }
+    if (!snapshot || initializedForOpenRef.current) {
+      return;
+    }
+
+    initializedForOpenRef.current = true;
     setTitle("");
     setOverview("");
     setSchedule({ kind: "daily", hour: 20, minute: 0 });
