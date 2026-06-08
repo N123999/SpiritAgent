@@ -78,7 +78,7 @@ export function GitChangesActions({
     () => ({
       push: t("workspace.git.push"),
       merge: t("app.merge"),
-      merged: "Merged",
+      merged: t("app.merged"),
     }),
     [t],
   );

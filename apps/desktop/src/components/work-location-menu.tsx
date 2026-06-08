@@ -10,17 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-const WORK_LOCATION_OPTIONS: Array<{
-  value: WorkLocationKind;
-  label: string;
-}> = [
-  { value: "local", label: "Local" },
-  { value: "worktree", label: "Worktree" },
-];
-
-function workLocationLabel(workLocation: WorkLocationKind): string {
-  return WORK_LOCATION_OPTIONS.find((option) => option.value === workLocation)?.label ?? "Local";
-}
+const WORK_LOCATION_OPTIONS: WorkLocationKind[] = ["local", "worktree"];
 
 type WorkLocationMenuProps = {
   workLocation: WorkLocationKind;
@@ -34,6 +24,8 @@ export function WorkLocationMenu({
   onWorkLocationChange,
 }: WorkLocationMenuProps) {
   const { t } = useTranslation();
+  const workLocationLabel = (kind: WorkLocationKind) =>
+    kind === "worktree" ? t("composer.workLocationWorktree") : t("composer.workLocationLocal");
   const label = workLocationLabel(workLocation);
 
   return (
@@ -62,14 +54,14 @@ export function WorkLocationMenu({
       >
         {WORK_LOCATION_OPTIONS.map((option) => (
           <DropdownMenuItem
-            key={option.value}
-            onSelect={() => onWorkLocationChange(option.value)}
+            key={option}
+            onSelect={() => onWorkLocationChange(option)}
             className={cn(
               "flex flex-col items-start gap-0.5",
-              workLocation === option.value && "bg-accent/40",
+              workLocation === option && "bg-accent/40",
             )}
           >
-            <span>{option.label}</span>
+            <span>{workLocationLabel(option)}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

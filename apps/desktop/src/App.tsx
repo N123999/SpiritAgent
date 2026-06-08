@@ -3724,7 +3724,7 @@ export default function App() {
               {pendingQuestions?.request.title ?? t('app.needMoreQuestions')}
             </DialogTitle>
             <DialogDescription>
-              Use the structured questionnaire below to resume the host runtime.
+              {t('app.questionnaireDescription')}
             </DialogDescription>
           </DialogHeader>
 
