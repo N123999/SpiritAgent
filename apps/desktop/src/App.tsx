@@ -2004,7 +2004,23 @@ export default function App() {
       document.documentElement.classList.add("spirit-desktop-darwin");
     } else {
       document.documentElement.classList.remove("spirit-desktop-darwin");
+      document.documentElement.classList.remove("spirit-desktop-darwin-fullscreen");
     }
+  }, [darwinElectronChrome]);
+
+  useEffect(() => {
+    if (!darwinElectronChrome || typeof document === "undefined") {
+      return;
+    }
+    const bridge = window.spiritDesktop;
+    if (!bridge?.getWindowFullScreen || !bridge.subscribeWindowFullScreen) {
+      return;
+    }
+    const applyFullscreenChrome = (fullScreen: boolean) => {
+      document.documentElement.classList.toggle("spirit-desktop-darwin-fullscreen", fullScreen);
+    };
+    void bridge.getWindowFullScreen().then(applyFullscreenChrome);
+    return bridge.subscribeWindowFullScreen(applyFullscreenChrome);
   }, [darwinElectronChrome]);
 
   useEffect(() => {

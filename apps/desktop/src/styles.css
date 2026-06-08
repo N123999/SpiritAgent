@@ -210,6 +210,16 @@ html.spirit-desktop-darwin
   padding-left: var(--spirit-macos-traffic-lights-inset-left);
 }
 
+/* 全屏时红绿灯隐藏，取消顶栏/侧栏安全区内边距与拖拽带 */
+html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen {
+  --spirit-macos-titlebar-inset: 0px;
+  --spirit-macos-traffic-lights-inset-left: 0px;
+}
+
+html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen [data-spirit-surface="main-frame"]::before {
+  content: none;
+}
+
 /* Desktop 且开启原生模糊时：根层透明，便于宿主窗口绘制系统材质；Web 版保持实色。 */
 html.spirit-desktop-native.spirit-desktop-mica,
 html.spirit-desktop-native.spirit-desktop-mica body,

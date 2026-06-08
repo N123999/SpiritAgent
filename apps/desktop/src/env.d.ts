@@ -219,6 +219,8 @@ declare global {
       needsQuestions: boolean;
       needsTaskComplete: boolean;
     }): Promise<void>;
+    getWindowFullScreen(): Promise<boolean>;
+    subscribeWindowFullScreen(callback: (fullScreen: boolean) => void): () => void;
     subscribeAppAwayChanged(callback: (away: boolean) => void): () => void;
     subscribeNotifyRefresh(callback: () => void): () => void;
     subscribeApprovalFromNotification(

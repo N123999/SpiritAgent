@@ -603,6 +603,18 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
   await syncBrowserWindowFrameFromRendererStorage(window);
 
+  if (process.platform === 'darwin') {
+    const broadcastWindowFullscreen = () => {
+      if (window.isDestroyed()) {
+        return;
+      }
+      window.webContents.send('desktop:window-fullscreen-changed', window.isFullScreen());
+    };
+    window.on('enter-full-screen', broadcastWindowFullscreen);
+    window.on('leave-full-screen', broadcastWindowFullscreen);
+    broadcastWindowFullscreen();
+  }
+
   const webContentsId = window.webContents.id;
   window.once('closed', () => {
     destroyAllPageViewsForHostId(webContentsId);
@@ -823,6 +835,11 @@ if (gotSpiritSingleInstanceLock) {
       popupApplicationMenuSection(win, payload.section, payload.clientX, payload.clientY);
     },
   );
+
+  ipcMain.handle('desktop:get-window-fullscreen', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    return window?.isFullScreen() ?? false;
+  });
 
   ipcMain.handle(
     'desktop:sync-window-frame',
