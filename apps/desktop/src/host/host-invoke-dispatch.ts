@@ -28,8 +28,11 @@ export interface HostCommandDelegate {
   runExtension(request: CommandPayloads['runExtension']['request']): Promise<unknown>;
   updateExtensionSettings(request: CommandPayloads['updateExtensionSettings']['request']): Promise<unknown>;
   updateExtensionSecret(request: CommandPayloads['updateExtensionSecret']['request']): Promise<unknown>;
+  createRule(request: CommandPayloads['createRule']['request']): Promise<unknown>;
   createSkill(request: CommandPayloads['createSkill']['request']): Promise<unknown>;
+  deleteRule(request: CommandPayloads['deleteRule']['request']): Promise<unknown>;
   deleteSkill(request: CommandPayloads['deleteSkill']['request']): Promise<unknown>;
+  submitCreateRuleSlash(request: CommandPayloads['submitCreateRuleSlash']['request']): Promise<unknown>;
   submitCreateSkillSlash(request: CommandPayloads['submitCreateSkillSlash']['request']): Promise<unknown>;
   submitSkillSlash(request: CommandPayloads['submitSkillSlash']['request']): Promise<unknown>;
   submitGitChip(request: CommandPayloads['submitGitChip']['request']): Promise<unknown>;
@@ -102,8 +105,11 @@ const hostCommandDispatch = {
   runExtension: (host, payload) => host.runExtension(payload.request),
   updateExtensionSettings: (host, payload) => host.updateExtensionSettings(payload.request),
   updateExtensionSecret: (host, payload) => host.updateExtensionSecret(payload.request),
+  createRule: (host, payload) => host.createRule(payload.request),
   createSkill: (host, payload) => host.createSkill(payload.request),
+  deleteRule: (host, payload) => host.deleteRule(payload.request),
   deleteSkill: (host, payload) => host.deleteSkill(payload.request),
+  submitCreateRuleSlash: (host, payload) => host.submitCreateRuleSlash(payload.request),
   submitCreateSkillSlash: (host, payload) => host.submitCreateSkillSlash(payload.request),
   submitSkillSlash: (host, payload) => host.submitSkillSlash(payload.request),
   submitGitChip: (host, payload) => host.submitGitChip(payload.request),

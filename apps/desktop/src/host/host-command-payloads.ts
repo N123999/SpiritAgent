@@ -11,9 +11,11 @@ import type {
   BootstrapRequest,
   CheckoutGitBranchRequest,
   CommitChangesRequest,
+  CreateRuleRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteRuleRequest,
   DeleteSkillRequest,
   DesktopApprovalDecision,
   ImportExtensionRequest,
@@ -28,6 +30,7 @@ import type {
   RemoveProviderModelsRequest,
   RewindAndSubmitMessageRequest,
   RunExtensionRequest,
+  SubmitCreateRuleSlashRequest,
   SubmitCreateSkillSlashRequest,
   SubmitGitChipRequest,
   SubmitSkillSlashRequest,
@@ -74,8 +77,11 @@ export type CommandPayloads = {
   runExtension: { request: RunExtensionRequest };
   updateExtensionSettings: { request: UpdateExtensionSettingsRequest };
   updateExtensionSecret: { request: UpdateExtensionSecretRequest };
+  createRule: { request: CreateRuleRequest };
   createSkill: { request: CreateSkillRequest };
+  deleteRule: { request: DeleteRuleRequest };
   deleteSkill: { request: DeleteSkillRequest };
+  submitCreateRuleSlash: { request: SubmitCreateRuleSlashRequest };
   submitCreateSkillSlash: { request: SubmitCreateSkillSlashRequest };
   submitSkillSlash: { request: SubmitSkillSlashRequest };
   submitGitChip: { request: SubmitGitChipRequest };

@@ -71,11 +71,20 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   updateExtensionSecret(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'updateExtensionSecret', { request });
   },
+  createRule(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'createRule', { request });
+  },
   createSkill(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'createSkill', { request });
   },
+  deleteRule(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'deleteRule', { request });
+  },
   deleteSkill(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'deleteSkill', { request });
+  },
+  submitCreateRuleSlash(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'submitCreateRuleSlash', { request });
   },
   submitCreateSkillSlash(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'submitCreateSkillSlash', { request });

@@ -12,6 +12,7 @@ test('buildDesktopSnapshot maps rulesList from metadata entries', () => {
       recentWorkspaces: [],
       dreams: {},
       networks: { llmHttpVersion: 'http2' },
+      webHost: { enabled: false },
     },
     git: { available: false },
     metadata: {

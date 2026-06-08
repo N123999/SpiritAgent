@@ -9,9 +9,11 @@ import type {
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
   ReadGitHistoryRequest,
+  CreateRuleRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteRuleRequest,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
@@ -37,6 +39,7 @@ import type {
   WorkspaceReadTextFileResult,
   WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
+  SubmitCreateRuleSlashRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -124,11 +127,20 @@ export function createWebHostApi(): HostApi {
     updateExtensionSecret(request: UpdateExtensionSecretRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/extensions/secret', request);
     },
+    createRule(request: CreateRuleRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/rules', request);
+    },
     createSkill(request: CreateSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills', request);
     },
+    deleteRule(request: DeleteRuleRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/rules/remove', request);
+    },
     deleteSkill(request: DeleteSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills/remove', request);
+    },
+    submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/rules/create-slash', request);
     },
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills/create-slash', request);

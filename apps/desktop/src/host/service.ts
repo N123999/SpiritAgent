@@ -66,8 +66,10 @@ import type {
   CheckoutGitBranchRequest,
   ConversationMessageSnapshot,
   ConversationTodoSnapshot,
+  CreateRuleRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
+  DeleteRuleRequest,
   DeleteMcpServerRequest,
   DesktopDreamOverviewItem,
   DesktopApprovalDecision,
@@ -102,6 +104,7 @@ import type {
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   SubmitUserTurnRequest,
+  SubmitCreateRuleSlashRequest,
   SubmitCreateSkillSlashRequest,
   SubmitGitChipRequest,
   SubmitSkillSlashRequest,
@@ -125,8 +128,10 @@ import {
 } from './host-model-commands.js';
 import {
   addMcpServerCommand,
+  createRuleCommand,
   createSkillCommand,
   deleteExtensionCommand,
+  deleteRuleCommand,
   deleteMcpServerCommand,
   deleteSkillCommand,
   getMarketplaceExtensionDetailCommand,
@@ -137,6 +142,7 @@ import {
   listMarketplaceExtensionsCommand,
   prepareMarketplaceExtensionInstallCommand,
   runExtensionCommand,
+  submitCreateRuleSlashCommand,
   submitCreateSkillSlashCommand,
   submitSkillSlashCommand,
   updateExtensionSecretCommand,
@@ -942,6 +948,14 @@ class DesktopHostService {
     return createSkillCommand(this.extensionCommandContext(), request);
   }
 
+  async createRule(request: CreateRuleRequest): Promise<DesktopSnapshot> {
+    return createRuleCommand(this.extensionCommandContext(), request);
+  }
+
+  async deleteRule(request: DeleteRuleRequest): Promise<DesktopSnapshot> {
+    return deleteRuleCommand(this.extensionCommandContext(), request);
+  }
+
   async addMcpServer(request: AddMcpServerRequest): Promise<DesktopSnapshot> {
     return addMcpServerCommand(this.extensionCommandContext(), request);
   }
@@ -1014,6 +1028,10 @@ class DesktopHostService {
 
   async submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot> {
     return submitCreateSkillSlashCommand(this.extensionCommandContext(), request);
+  }
+
+  async submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest): Promise<DesktopSnapshot> {
+    return submitCreateRuleSlashCommand(this.extensionCommandContext(), request);
   }
 
   async submitStartImplementing(): Promise<DesktopSnapshot> {

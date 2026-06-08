@@ -73,8 +73,11 @@ declare global {
     runExtension(request: RunExtensionRequest): Promise<DesktopSnapshot>;
     updateExtensionSettings(request: UpdateExtensionSettingsRequest): Promise<DesktopSnapshot>;
     updateExtensionSecret(request: UpdateExtensionSecretRequest): Promise<DesktopSnapshot>;
+    createRule(request: CreateRuleRequest): Promise<DesktopSnapshot>;
     createSkill(request: CreateSkillRequest): Promise<DesktopSnapshot>;
+    deleteRule(request: DeleteRuleRequest): Promise<DesktopSnapshot>;
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
+    submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest): Promise<DesktopSnapshot>;
     submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
     submitGitChip(request: SubmitGitChipRequest): Promise<DesktopSnapshot>;

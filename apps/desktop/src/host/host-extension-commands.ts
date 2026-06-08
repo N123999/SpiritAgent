@@ -8,6 +8,14 @@ import {
   parseCreateSkillSlashPrompt,
 } from './skills.js';
 import {
+  buildCreateRuleUserTurn,
+  buildRuleDiscoveryContext,
+  createRuleFile,
+  deleteRuleFile,
+  ensureWorkspaceSpiritDir,
+  parseCreateRuleSlashPrompt,
+} from './rules.js';
+import {
   addDesktopMcpServer,
   deleteDesktopMcpServer,
   inspectDesktopMcpServer,
@@ -21,9 +29,11 @@ import { invalidateSharedUserMcpToolingCache } from '@spirit-agent/core';
 import i18n from '../lib/i18n-host.js';
 import type {
   AddMcpServerRequest,
+  CreateRuleRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteRuleRequest,
   DeleteSkillRequest,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
@@ -34,6 +44,7 @@ import type {
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
+  SubmitCreateRuleSlashRequest,
   SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateExtensionSecretRequest,
@@ -119,6 +130,55 @@ async function ensureInitializedForReadOnlyMarketplace(
     return;
   }
   await ctx.runSerialized(() => ctx.ensureInitialized());
+}
+
+export async function createRuleCommand(
+  ctx: HostExtensionCommandContext,
+  request: CreateRuleRequest,
+): Promise<DesktopSnapshot> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    if (ctx.isRuntimeBusy()) {
+      throw new Error(i18n.t('error.runtimeBusyRule'));
+    }
+    const state = ctx.requireState();
+    const rootKind = request.rootKind ?? 'workspaceSpirit';
+    if (
+      state.workspaceBinding === 'none'
+      && (rootKind === 'workspaceSpirit' || rootKind === 'workspaceAgents')
+    ) {
+      throw new Error(i18n.t('error.workspaceRulesUnavailable'));
+    }
+    await createRuleFile(state.workspaceRoot, request);
+
+    await ctx.refreshRuntime();
+    ctx.setLastRuntimeError('');
+    await ctx.persistCurrentSessionIfNeeded();
+    return ctx.buildSnapshot();
+  });
+}
+
+export async function deleteRuleCommand(
+  ctx: HostExtensionCommandContext,
+  request: DeleteRuleRequest,
+): Promise<DesktopSnapshot> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    if (ctx.isRuntimeBusy()) {
+      throw new Error(i18n.t('error.runtimeBusyDeleteRule'));
+    }
+    const state = ctx.requireState();
+    await deleteRuleFile(
+      state.workspaceRoot,
+      request,
+      buildRuleDiscoveryContext(state.workspaceRoot, state.workspaceBinding),
+    );
+
+    await ctx.refreshRuntime();
+    ctx.setLastRuntimeError('');
+    await ctx.persistCurrentSessionIfNeeded();
+    return ctx.buildSnapshot();
+  });
 }
 
 export async function createSkillCommand(
@@ -452,6 +512,44 @@ export async function submitSkillSlashCommand(
       {
         displayText: request.rawText,
         turnSkills: [payload],
+      },
+    );
+  });
+}
+
+export async function submitCreateRuleSlashCommand(
+  ctx: HostExtensionCommandContext,
+  request: SubmitCreateRuleSlashRequest,
+): Promise<DesktopSnapshot> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized(undefined, { fastPath: true });
+    const runtime = ctx.requireRuntime();
+    if (runtime.isBusy()) {
+      throw new Error(i18n.t('error.runtimeBusy'));
+    }
+
+    const rawText = request.rawText.trim();
+    if (!rawText) {
+      throw new Error(i18n.t('error.messageRequired'));
+    }
+
+    const parsed = parseCreateRuleSlashPrompt(rawText);
+    if (parsed instanceof Error) {
+      return ctx.appendInlineAssistantReply(rawText, parsed.message);
+    }
+
+    const state = ctx.requireState();
+    if (parsed.scope === 'workspace') {
+      if (state.workspaceBinding === 'none') {
+        throw new Error(i18n.t('error.workspaceRulesUnavailable'));
+      }
+      await ensureWorkspaceSpiritDir(state.workspaceRoot);
+    }
+
+    return ctx.submitUserTurnAfterInitialized(
+      buildCreateRuleUserTurn(state.workspaceRoot, parsed),
+      {
+        displayText: rawText,
       },
     );
   });

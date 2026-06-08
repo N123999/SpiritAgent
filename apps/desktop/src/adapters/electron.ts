@@ -78,11 +78,20 @@ export async function createElectronHostApi(): Promise<HostApi> {
     updateExtensionSecret(request) {
       return bridge.updateExtensionSecret(request);
     },
+    createRule(request) {
+      return bridge.createRule(request);
+    },
     createSkill(request) {
       return bridge.createSkill(request);
     },
+    deleteRule(request) {
+      return bridge.deleteRule(request);
+    },
     deleteSkill(request) {
       return bridge.deleteSkill(request);
+    },
+    submitCreateRuleSlash(request) {
+      return bridge.submitCreateRuleSlash(request);
     },
     submitCreateSkillSlash(request) {
       return bridge.submitCreateSkillSlash(request);

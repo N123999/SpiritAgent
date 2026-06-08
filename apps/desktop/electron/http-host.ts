@@ -580,6 +580,51 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/rules') {
+    const rootKind = parseSkillRootKind(jsonBody?.rootKind);
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('createRule', {
+        request: {
+          rootKind,
+          description:
+            typeof jsonBody?.description === 'string' ? jsonBody.description : '',
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/rules/remove') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('deleteRule', {
+        request: {
+          id: typeof jsonBody?.id === 'string' ? jsonBody.id : '',
+        },
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/rules/create-slash') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('submitCreateRuleSlash', {
+        request: {
+          rawText: typeof jsonBody?.rawText === 'string' ? jsonBody.rawText : '',
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/skills/submit') {
     writeJson(
       request,
