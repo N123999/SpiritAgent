@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { HostAutomationRun } from "@spirit-agent/host-internal";
-import type { SessionListItem } from "@/types";
+import type { DesktopAutomationRun, SessionListItem } from "@/types";
 import { cn } from "@/lib/utils";
 
 type AutomationKanbanProps = {
-  runs: HostAutomationRun[];
+  runs: DesktopAutomationRun[];
   sessions: SessionListItem[];
   onOpenSession(sessionPath: string): void;
 };
@@ -72,7 +71,7 @@ function AutomationRunCard({
   title,
   onOpen,
 }: {
-  run: HostAutomationRun;
+  run: DesktopAutomationRun;
   title: string;
   onOpen: () => void;
 }) {

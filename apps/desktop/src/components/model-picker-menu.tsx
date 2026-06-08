@@ -15,15 +15,15 @@ import {
   DESKTOP_OVERLAY_LIST_GROUP_LABEL,
   DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
+  instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import {
   buildModelCatalogDetailMap,
   buildModelCatalogDisplayTitleMap,
   modelDisplayTitleFromMap,
-  modelReasoningEffortLabel,
-} from "@/lib/model-display";
+} from "@/lib/model-catalog-detail";
+import { modelReasoningEffortLabel } from "@spirit-agent/core/reasoning-effort";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
-import { instantHoverMotionClass } from "@/lib/overlay-motion";
 import type { DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
 import { cn } from "@/lib/utils";
 

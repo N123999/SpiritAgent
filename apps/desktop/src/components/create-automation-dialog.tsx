@@ -13,8 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { DesktopCreateAutomationRequest, DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
-import type { ApprovalLevel, HostAutomationSchedule } from "@spirit-agent/host-internal";
+import type {
+  ApprovalLevel,
+  DesktopAutomationSchedule,
+  DesktopCreateAutomationRequest,
+  DesktopModelReasoningEffort,
+  DesktopSnapshot,
+} from "@/types";
 import { cn } from "@/lib/utils";
 
 type CreateAutomationDialogProps = {
@@ -37,7 +42,7 @@ export function CreateAutomationDialog({
   const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [overview, setOverview] = useState("");
-  const [schedule, setSchedule] = useState<HostAutomationSchedule>({ kind: "daily", hour: 20, minute: 0 });
+  const [schedule, setSchedule] = useState<DesktopAutomationSchedule>({ kind: "daily", hour: 20, minute: 0 });
   const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [modelName, setModelName] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState<DesktopModelReasoningEffort | undefined>();
@@ -88,7 +93,7 @@ export function CreateAutomationDialog({
             )}
           />
         </div>
-        <DialogFooter className="flex-col gap-3 border-t border-border/40 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <DialogFooter className="mx-0 mb-0 flex-col gap-3 border-t border-border/40 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             <AutomationScheduleMenu
               schedule={schedule}
