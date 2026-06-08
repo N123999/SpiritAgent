@@ -95,6 +95,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
+import { AutomationsView } from "@/components/automations-view";
 import { MarketplaceView } from "@/components/marketplace-view";
 import {
   ComposerLocalFileStrip,
@@ -2261,12 +2262,14 @@ export default function App() {
     runtime.readLocalImagePreviewDataUrl,
   );
 
-  const [activeSurface, setActiveSurface] = useState<"conversation" | "settings" | "marketplace">(
-    "conversation",
-  );
-  const [lastNonSettingsSurface, setLastNonSettingsSurface] = useState<"conversation" | "marketplace">(
-    "conversation",
-  );
+  const [activeSurface, setActiveSurface] = useState<
+    "conversation" | "settings" | "marketplace" | "automations" | "automation-detail"
+  >("conversation");
+  const [lastNonSettingsSurface, setLastNonSettingsSurface] = useState<
+    "conversation" | "marketplace" | "automations"
+  >("conversation");
+  const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(null);
+  const [createAutomationDialogOpen, setCreateAutomationDialogOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsSidebarTab>("models");
   const [extensionSettingsId, setExtensionSettingsId] = useState<string | null>(null);
   const sessionSidebarChromeApiRef = useRef<SessionSidebarChromeApi | null>(null);
@@ -2456,6 +2459,8 @@ export default function App() {
   const previousActiveSessionPathRef = useRef<string | null>(null);
   const settingsMode = activeSurface === "settings";
   const marketplaceMode = activeSurface === "marketplace";
+  const automationsMode = activeSurface === "automations" || activeSurface === "automation-detail";
+  const automationDetailMode = activeSurface === "automation-detail";
   const slashQuery = useMemo(() => currentSkillSlashQuery(runtime.composer), [runtime.composer]);
   const slashSuggestions = useMemo(
     () => buildSkillSlashSuggestions(slashQuery, snapshot?.skillsList ?? []),
@@ -3187,15 +3192,28 @@ export default function App() {
               setLastNonSettingsSurface("marketplace");
               setActiveSurface("marketplace");
             }}
+            onOpenAutomations={() => {
+              sessionSidebarChromeApiRef.current?.openSidebar();
+              setLastNonSettingsSurface("automations");
+              setSelectedAutomationId(null);
+              setActiveSurface("automations");
+            }}
             onOpenSettings={() => {
               sessionSidebarChromeApiRef.current?.openSidebar();
               if (activeSurface !== "settings") {
-                setLastNonSettingsSurface(activeSurface === "marketplace" ? "marketplace" : "conversation");
+                setLastNonSettingsSurface(
+                  activeSurface === "marketplace"
+                    ? "marketplace"
+                    : activeSurface === "automations" || activeSurface === "automation-detail"
+                      ? "automations"
+                      : "conversation",
+                );
               }
               setActiveSurface("settings");
             }}
             onBackToSessions={() => setActiveSurface(lastNonSettingsSurface)}
             marketplaceActive={marketplaceMode}
+            automationsActive={automationsMode}
             settingsTab={settingsTab}
             extensionSettingsId={extensionSettingsId}
             extensionSettingsItems={extensionSettingsItems}
@@ -3274,6 +3292,23 @@ export default function App() {
                 setLastNonSettingsSurface("conversation");
                 setActiveSurface("conversation");
                 applySlashSuggestion(`${CREATE_RULE_SLASH_ALIAS} `);
+              }}
+            />
+          </div>
+        ) : automationsMode ? (
+          <div data-spirit-surface="automations-layout" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+            <DesktopLayoutChromeBar
+              useMicaBackdrop={useMicaBackdrop}
+              showWorkspaceToggle={false}
+            />
+            <AutomationsView
+              snapshot={snapshot}
+              apiReady={runtime.apiReady}
+              busyAction={runtime.busyAction}
+              onCreateAutomation={() => setCreateAutomationDialogOpen(true)}
+              onOpenAutomation={(automationId) => {
+                setSelectedAutomationId(automationId);
+                setActiveSurface("automation-detail");
               }}
             />
           </div>

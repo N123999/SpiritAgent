@@ -76,9 +76,11 @@ type SessionSidebarProps = {
   onSelectSession: (path: string) => void;
   onNewSession: () => void;
   onOpenMarketplace?: () => void;
+  onOpenAutomations?: () => void;
   onOpenSettings: () => void;
   onBackToSessions?: () => void;
   marketplaceActive?: boolean;
+  automationsActive?: boolean;
   settingsTab?: SettingsSidebarTab;
   extensionSettingsId?: string | null;
   extensionSettingsItems?: Array<{
@@ -512,9 +514,11 @@ function SessionSidebarInner({
   onSelectSession,
   onNewSession,
   onOpenMarketplace,
+  onOpenAutomations,
   onOpenSettings,
   onBackToSessions,
   marketplaceActive = false,
+  automationsActive = false,
   settingsTab = "models",
   extensionSettingsId = null,
   extensionSettingsItems = [],
@@ -731,6 +735,31 @@ function SessionSidebarInner({
             <Package className="size-3.5" aria-hidden />
             <span className={cn(narrow && "sr-only")}>{t('sidebar.extensions')}</span>
           </Button>
+          {onOpenAutomations ? (
+            <Button
+              type="button"
+              variant={sidebarNavButtonVariant(micaStyle, automationsActive)}
+              size={narrow ? "icon" : "sm"}
+              title={narrow ? t('sidebar.automations') : undefined}
+              aria-current={automationsActive ? "page" : undefined}
+              className={cn(
+                "text-xs",
+                sidebarItemDefaultTextClass,
+                sidebarInteractionMotionClass,
+                automationsActive
+                  ? sidebarItemSelectedClass(micaStyle)
+                  : sidebarItemHoverClass(micaStyle),
+                narrow
+                  ? "size-8 shrink-0"
+                  : "h-8 w-full justify-start gap-2",
+              )}
+              disabled={disabled}
+              onClick={onOpenAutomations}
+            >
+              <Bot className="size-3.5" aria-hidden />
+              <span className={cn(narrow && "sr-only")}>{t('sidebar.automations')}</span>
+            </Button>
+          ) : null}
         </div>
       )}
 
