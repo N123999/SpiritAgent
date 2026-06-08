@@ -333,7 +333,26 @@
     "inProgress": "In progress",
     "completed": "Completed",
     "noRuns": "No runs yet",
-    "openSession": "Open session"
+    "openSession": "Open session",
+    "dialogTitle": "Create automation",
+    "dialogTitlePlaceholder": "Automation title",
+    "dialogOverviewPlaceholder": "Briefly explain what this automation should do",
+    "dialogEvent": "Event",
+    "schedule": {
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "weekday": "Weekday",
+      "hour": "Hour",
+      "minute": "Minute",
+      "weekday0": "Sunday",
+      "weekday1": "Monday",
+      "weekday2": "Tuesday",
+      "weekday3": "Wednesday",
+      "weekday4": "Thursday",
+      "weekday5": "Friday",
+      "weekday6": "Saturday"
+    }
   },
   "marketplace": {
     "verified": "Verified",

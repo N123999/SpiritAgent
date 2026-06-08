@@ -333,7 +333,26 @@
     "inProgress": "进行中",
     "completed": "已完成",
     "noRuns": "暂无运行记录",
-    "openSession": "打开会话"
+    "openSession": "打开会话",
+    "dialogTitle": "创建自动化",
+    "dialogTitlePlaceholder": "自动化标题",
+    "dialogOverviewPlaceholder": "简要说明这个自动化该做什么",
+    "dialogEvent": "事件",
+    "schedule": {
+      "hourly": "每小时",
+      "daily": "每天",
+      "weekly": "每周",
+      "weekday": "星期",
+      "hour": "时",
+      "minute": "分",
+      "weekday0": "周日",
+      "weekday1": "周一",
+      "weekday2": "周二",
+      "weekday3": "周三",
+      "weekday4": "周四",
+      "weekday5": "周五",
+      "weekday6": "周六"
+    }
   },
   "marketplace": {
     "verified": "已验证",
