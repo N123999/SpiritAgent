@@ -102,7 +102,17 @@ declare global {
     poll(): Promise<DesktopSnapshot>;
     setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot>;
     listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
+    listAutomations(): Promise<import('./types.js').DesktopAutomationListItem[]>;
+    getAutomation(automationId: string): Promise<import('./types.js').DesktopAutomationDetail | undefined>;
+    createAutomation(request: import('./types.js').DesktopCreateAutomationRequest): Promise<DesktopSnapshot>;
+    updateAutomation(
+      automationId: string,
+      patch: import('./types.js').DesktopUpdateAutomationRequest,
+    ): Promise<DesktopSnapshot>;
+    deleteAutomation(automationId: string): Promise<DesktopSnapshot>;
+    setAutomationEnabled(automationId: string, enabled: boolean): Promise<DesktopSnapshot>;
     dreamSubscribe(callback: (snapshot: DesktopSnapshot) => void): () => void;
+    automationsSubscribe(callback: (snapshot: DesktopSnapshot) => void): () => void;
     sessionListSubscribe(callback: () => void): () => void;
     replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot>;
     replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;

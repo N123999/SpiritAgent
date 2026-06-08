@@ -218,6 +218,30 @@ export function createWebHostApi(): HostApi {
     listDreamsOverview() {
       return get<DesktopDreamOverviewItem[]>(baseUrl, '/api/dreams');
     },
+    listAutomations() {
+      return get<import('../types.js').DesktopAutomationListItem[]>(baseUrl, '/api/automations');
+    },
+    getAutomation(automationId: string) {
+      return get<import('../types.js').DesktopAutomationDetail | undefined>(
+        baseUrl,
+        `/api/automations/${encodeURIComponent(automationId)}`,
+      );
+    },
+    createAutomation(request) {
+      return post<DesktopSnapshot>(baseUrl, '/api/automations', request);
+    },
+    updateAutomation(automationId, patch) {
+      return post<DesktopSnapshot>(baseUrl, `/api/automations/${encodeURIComponent(automationId)}`, patch);
+    },
+    deleteAutomation(automationId) {
+      return post<DesktopSnapshot>(baseUrl, `/api/automations/${encodeURIComponent(automationId)}/delete`);
+    },
+    setAutomationEnabled(automationId, enabled) {
+      return post<DesktopSnapshot>(baseUrl, `/api/automations/${encodeURIComponent(automationId)}/enabled`, { enabled });
+    },
+    subscribeAutomationsUpdates() {
+      return () => {};
+    },
     replyPendingApproval(decision) {
       return post<DesktopSnapshot>(baseUrl, '/api/approval', { decision });
     },

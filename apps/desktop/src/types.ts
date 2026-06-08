@@ -7,6 +7,8 @@ import type { DesktopAgentMode } from './lib/agent-mode.js';
 export type { DesktopAgentMode };
 import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult, ApprovalLevel } from '@spirit-agent/host-internal';
 
+export type { ApprovalLevel };
+
 import type { BrowserElementAttachment } from './lib/browser-element-attachment.js';
 import type { ComposerLocalFileAttachmentView } from './lib/local-file-attachments.js';
 
@@ -652,6 +654,7 @@ export interface DesktopSnapshot {
   composerSessionKey: string;
   /** Active SubAgent viewer overlay; present while renderer has a tool card open in viewer mode. */
   subagentViewer?: SubagentViewerSnapshot;
+  automationsList: DesktopAutomationListItem[];
 }
 
 export type SubagentViewerSessionStatus = 'running' | 'completed' | 'failed' | 'blocked';
@@ -731,6 +734,74 @@ export interface DesktopDreamOverviewItem {
   workspaceRoot: string;
   gitBranch: string;
   updatedAtUnixMs: number;
+}
+
+export interface DesktopAutomationListItem {
+  id: string;
+  title: string;
+  scheduleLabel: string;
+  enabled: boolean;
+  lastRunAtUnixMs?: number;
+  updatedAtUnixMs: number;
+}
+
+export type {
+  DesktopAutomationSchedule,
+  DesktopAutomationWeekday,
+} from './lib/automation-schedule.js';
+
+export type DesktopAutomationRunStatus = 'running' | 'blocked' | 'completed' | 'failed';
+
+export interface DesktopAutomationRun {
+  id: string;
+  automationId: string;
+  sessionPath: string;
+  status: DesktopAutomationRunStatus;
+  startedAtUnixMs: number;
+  completedAtUnixMs?: number;
+  error?: string;
+}
+
+export interface DesktopAutomationDefinition {
+  id: string;
+  title: string;
+  overview: string;
+  schedule: import('./lib/automation-schedule.js').DesktopAutomationSchedule;
+  workspaceRoot: string;
+  modelName: string;
+  reasoningEffort?: DesktopModelReasoningEffort;
+  approvalLevel: ApprovalLevel;
+  enabled: boolean;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  lastFiredAtUnixMs?: number;
+}
+
+export interface DesktopAutomationDetail {
+  definition: DesktopAutomationDefinition;
+  runs: DesktopAutomationRun[];
+}
+
+export interface DesktopCreateAutomationRequest {
+  title: string;
+  overview: string;
+  schedule: import('./lib/automation-schedule.js').DesktopAutomationSchedule;
+  workspaceRoot: string;
+  modelName: string;
+  reasoningEffort?: DesktopModelReasoningEffort;
+  approvalLevel: ApprovalLevel;
+  enabled?: boolean;
+}
+
+export interface DesktopUpdateAutomationRequest {
+  title?: string;
+  overview?: string;
+  schedule?: import('./lib/automation-schedule.js').DesktopAutomationSchedule;
+  workspaceRoot?: string;
+  modelName?: string;
+  reasoningEffort?: DesktopModelReasoningEffort;
+  approvalLevel?: ApprovalLevel;
+  enabled?: boolean;
 }
 
 export interface DesktopGitSnapshot {

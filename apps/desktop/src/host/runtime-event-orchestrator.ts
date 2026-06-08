@@ -6,6 +6,7 @@ import {
   type JsonObject,
   type RuntimeEvent,
   type RuntimeToolExecution,
+  type RuntimeTurnResult,
 } from '@spirit-agent/core';
 import { toolCallPhaseShowsShimmer } from '../lib/tool-call-shimmer.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
@@ -215,6 +216,12 @@ export class DesktopRuntimeEventOrchestrator {
       return;
     }
 
+    this.applyCompletedTurnResult(result);
+  }
+
+  applyCompletedTurnResult(
+    result: RuntimeTurnResult<unknown, DesktopToolRequest, string>,
+  ): void {
     this.integrateToolExecutions(result.toolExecutions, 'turn-result');
     switch (result.kind) {
       case 'completed': {
@@ -281,6 +288,11 @@ export class DesktopRuntimeEventOrchestrator {
     }
 
     this.options.refreshArchiveFromRuntime();
+  }
+
+  syncTurnTailState(): void {
+    this.syncPendingToolStates();
+    this.syncAssistantPrefixFromHistoryBeforeToolRow();
   }
 
   applyRuntimeHostEvents(events: RuntimeEvent<DesktopToolRequest>[]): void {

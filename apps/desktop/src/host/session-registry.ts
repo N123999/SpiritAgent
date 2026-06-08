@@ -230,6 +230,23 @@ export class SessionRegistry {
     return bundle.runtime?.isBusy() === true;
   }
 
+  reloadWarmBundleFromRestoredIfIdle(
+    filePath: string,
+    workspaceRoot: string,
+    restored: RestoredSessionState,
+    createTimeline: (
+      messages: ConversationMessageSnapshot[],
+      timelineSnapshot?: DesktopTimelineTurnSnapshot[],
+    ) => DesktopMessageTimeline,
+  ): boolean {
+    const existing = this.findBySessionPath(filePath);
+    if (!existing || existing.runtime?.isBusy()) {
+      return false;
+    }
+    this.applyRestoredToBundle(existing, workspaceRoot, restored, createTimeline);
+    return true;
+  }
+
   clear(): void {
     this.bundles.clear();
     this.activeId = undefined;

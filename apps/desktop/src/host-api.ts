@@ -16,7 +16,11 @@ import type {
   DeleteMcpServerRequest,
   DeleteRuleRequest,
   DesktopApprovalDecision,
+  DesktopAutomationDetail,
+  DesktopAutomationListItem,
+  DesktopCreateAutomationRequest,
   DesktopDreamOverviewItem,
+  DesktopUpdateAutomationRequest,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -112,7 +116,14 @@ export interface HostApi {
   poll(): Promise<DesktopSnapshot>;
   setSubagentViewerTarget(parentToolCallId: string | null): Promise<DesktopSnapshot>;
   listDreamsOverview(): Promise<DesktopDreamOverviewItem[]>;
+  listAutomations(): Promise<DesktopAutomationListItem[]>;
+  getAutomation(automationId: string): Promise<DesktopAutomationDetail | undefined>;
+  createAutomation(request: DesktopCreateAutomationRequest): Promise<DesktopSnapshot>;
+  updateAutomation(automationId: string, patch: DesktopUpdateAutomationRequest): Promise<DesktopSnapshot>;
+  deleteAutomation(automationId: string): Promise<DesktopSnapshot>;
+  setAutomationEnabled(automationId: string, enabled: boolean): Promise<DesktopSnapshot>;
   subscribeDreamUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
+  subscribeAutomationsUpdates?(callback: (snapshot: DesktopSnapshot) => void): () => void;
   subscribeSessionListUpdates?(callback: () => void): () => void;
   replyPendingApproval(decision: DesktopApprovalDecision): Promise<DesktopSnapshot>;
   replyPendingQuestions(result: AskQuestionsResult): Promise<DesktopSnapshot>;

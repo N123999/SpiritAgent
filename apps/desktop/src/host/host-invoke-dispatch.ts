@@ -52,6 +52,12 @@ export interface HostCommandDelegate {
   continueAssistantCompletion(messageId: number): Promise<unknown>;
   poll(): Promise<unknown>;
   listDreamsOverview(): Promise<unknown>;
+  listAutomations(): Promise<unknown>;
+  getAutomation(automationId: string): Promise<unknown>;
+  createAutomation(request: CommandPayloads['createAutomation']['request']): Promise<unknown>;
+  updateAutomation(automationId: string, patch: CommandPayloads['updateAutomation']['patch']): Promise<unknown>;
+  deleteAutomation(automationId: string): Promise<unknown>;
+  setAutomationEnabled(automationId: string, enabled: boolean): Promise<unknown>;
   replyPendingApproval(decision: CommandPayloads['replyPendingApproval']['decision']): Promise<unknown>;
   replyPendingQuestions(result: CommandPayloads['replyPendingQuestions']['result']): Promise<unknown>;
   resetSession(): Promise<unknown>;
@@ -132,6 +138,12 @@ const hostCommandDispatch = {
   continueAssistantCompletion: (host, payload) => host.continueAssistantCompletion(payload.messageId),
   poll: (host) => host.poll(),
   listDreamsOverview: (host) => host.listDreamsOverview(),
+  listAutomations: (host) => host.listAutomations(),
+  getAutomation: (host, payload) => host.getAutomation(payload.automationId),
+  createAutomation: (host, payload) => host.createAutomation(payload.request),
+  updateAutomation: (host, payload) => host.updateAutomation(payload.automationId, payload.patch),
+  deleteAutomation: (host, payload) => host.deleteAutomation(payload.automationId),
+  setAutomationEnabled: (host, payload) => host.setAutomationEnabled(payload.automationId, payload.enabled),
   replyPendingApproval: (host, payload) => host.replyPendingApproval(payload.decision),
   replyPendingQuestions: (host, payload) => host.replyPendingQuestions(payload.result),
   resetSession: (host) => host.resetSession(),

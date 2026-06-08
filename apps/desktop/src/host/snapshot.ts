@@ -1,6 +1,7 @@
 import type {
   ActiveSessionSnapshot,
   ConversationSnapshot,
+  DesktopAutomationListItem,
   DesktopDreamCollectorSnapshot,
   DesktopExtensionCssLayer,
   DesktopExtensionListItem,
@@ -45,6 +46,7 @@ export interface BuildDesktopSnapshotInput {
   activeSession?: ActiveSessionSnapshot;
   composerSessionKey: string;
   subagentViewer?: DesktopSnapshot['subagentViewer'];
+  automationsList: DesktopAutomationListItem[];
 }
 
 export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopSnapshot {
@@ -137,6 +139,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     ...(input.activeSession ? { activeSession: { ...input.activeSession } } : {}),
     composerSessionKey: input.composerSessionKey,
     ...(input.subagentViewer ? { subagentViewer: input.subagentViewer } : {}),
+    automationsList: input.automationsList.map((item) => ({ ...item })),
   };
 }
 

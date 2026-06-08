@@ -158,6 +158,24 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   listDreamsOverview() {
     return ipcRenderer.invoke('desktop:invoke', 'listDreamsOverview');
   },
+  listAutomations() {
+    return ipcRenderer.invoke('desktop:invoke', 'listAutomations');
+  },
+  getAutomation(automationId: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'getAutomation', { automationId });
+  },
+  createAutomation(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'createAutomation', { request });
+  },
+  updateAutomation(automationId: string, patch: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'updateAutomation', { automationId, patch });
+  },
+  deleteAutomation(automationId: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'deleteAutomation', { automationId });
+  },
+  setAutomationEnabled(automationId: string, enabled: boolean) {
+    return ipcRenderer.invoke('desktop:invoke', 'setAutomationEnabled', { automationId, enabled });
+  },
   dreamSubscribe(callback: (snapshot: unknown) => void) {
     const onDreamUpdate = (_event: Electron.IpcRendererEvent, snapshot: unknown) => {
       callback(snapshot);
@@ -165,6 +183,15 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
     ipcRenderer.on('desktop:dream-updated', onDreamUpdate);
     return () => {
       ipcRenderer.removeListener('desktop:dream-updated', onDreamUpdate);
+    };
+  },
+  automationsSubscribe(callback: (snapshot: unknown) => void) {
+    const onAutomationsUpdate = (_event: Electron.IpcRendererEvent, snapshot: unknown) => {
+      callback(snapshot);
+    };
+    ipcRenderer.on('desktop:automations-updated', onAutomationsUpdate);
+    return () => {
+      ipcRenderer.removeListener('desktop:automations-updated', onAutomationsUpdate);
     };
   },
   sessionListSubscribe(callback: () => void) {

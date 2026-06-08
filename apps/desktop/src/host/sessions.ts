@@ -224,6 +224,8 @@ export function buildStoredDesktopSession(input: {
   contextUsage?: ConversationContextUsageSnapshot;
   subagentDesktopMessages?: Record<string, ConversationMessageSnapshot[]>;
   queuedUserTurns?: QueuedUserTurn[];
+  automationId?: string;
+  automationRunId?: string;
 }): StoredDesktopSession {
   return {
     ...input.archive,
@@ -234,6 +236,8 @@ export function buildStoredDesktopSession(input: {
     ...(input.sessionTitleSource ? { sessionTitleSource: input.sessionTitleSource } : {}),
     workspaceRoot: input.workspaceRoot,
     ...(input.gitBranch ? { gitBranch: input.gitBranch } : {}),
+    ...(input.automationId ? { automationId: input.automationId } : {}),
+    ...(input.automationRunId ? { automationRunId: input.automationRunId } : {}),
     ...(input.activePlanPath ? { activePlanPath: input.activePlanPath } : {}),
     desktopMessages: sanitizeConversationMessagesForPersistence(input.desktopMessages),
     ...(input.desktopMessageTimeline
@@ -280,6 +284,19 @@ export function sanitizeConversationMessagesForPersistence(
     const { canRewind: _canRewind, ...persisted } = normalized;
     return [persisted];
   });
+}
+
+/** 当磁盘 llmHistory 为空但 desktop 消息已有往返时，供 runtime 恢复的最小 llm 历史。 */
+export function buildLlmHistoryFallbackFromDesktopMessages(
+  messages: ConversationMessageSnapshot[],
+): ChatArchive['llmHistory'] {
+  return archiveProjectableConversationMessages(messages)
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [],
+    }));
 }
 
 export function buildArchiveMessagesFromConversation(

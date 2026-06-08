@@ -71,7 +71,11 @@ import type {
   DeleteExtensionRequest,
   DeleteRuleRequest,
   DeleteMcpServerRequest,
+  DesktopAutomationDetail,
+  DesktopAutomationListItem,
+  DesktopCreateAutomationRequest,
   DesktopDreamOverviewItem,
+  DesktopUpdateAutomationRequest,
   DesktopApprovalDecision,
   DesktopMcpServerInspection,
   DesktopExtensionListItem,
@@ -213,6 +217,18 @@ import {
   type DreamCollectorServiceContext,
 } from './dream-collector-service.js';
 import {
+  startAutomationSchedulerMonitorIfNeeded as startAutomationSchedulerMonitorIfNeededFromService,
+  type AutomationSchedulerServiceContext,
+} from './automation-scheduler-service.js';
+import {
+  createAutomationCommand,
+  deleteAutomationCommand,
+  getAutomationCommand,
+  listAutomationsCommand,
+  setAutomationEnabledCommand,
+  updateAutomationCommand,
+} from './host-automation-commands.js';
+import {
   clearAssistantContinuationMarkers as clearAssistantContinuationMarkersFromService,
   latestContinuableAssistantMessage as latestContinuableAssistantMessageFromService,
   logContinuationSnapshotState as logContinuationSnapshotStateFromService,
@@ -251,7 +267,9 @@ import {
 import {
   buildArchiveAssistantAuxFromConversation,
   buildArchiveMessagesFromConversation,
+  buildLlmHistoryFallbackFromDesktopMessages,
   deriveDisplayNameFromSeed,
+  restoreStoredSessionState,
   type EphemeralSessionRecord,
   nextMessageIdFromMessages,
   rememberEphemeralSessionRecord,
@@ -280,6 +298,7 @@ import {
   isProvisionalSessionPath,
   provisionalNewSessionPath,
   loadHostMetadata,
+  loadStoredSession,
   modelSecretKeyPresence,
   resolveApiKeyForConfigModel,
   createDesktopExtensionStateStore,
@@ -349,6 +368,7 @@ import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot, buildModelCatalogHints } from './snapshot.js';
 import {
   applyToolCallSummaryCopy,
+  restoreMessagesFromArchive,
 } from './message-ordering.js';
 import {
   mapPendingAuxState,
@@ -458,7 +478,11 @@ class DesktopHostService {
   private dreamCollectorRunning = false;
   private dreamCollectorLastTickUnixMs = 0;
   private dreamCollectorMonitorTimer: ReturnType<typeof setInterval> | undefined;
+  private automationMonitorTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly runningAutomationIds = new Set<string>();
+  private automationsListCache: DesktopAutomationListItem[] = [];
   private readonly dreamUpdateListeners = new Set<(snapshot: DesktopSnapshot) => void>();
+  private readonly automationUpdateListeners = new Set<(snapshot: DesktopSnapshot) => void>();
   private readonly sessionListUpdateListeners = new Set<() => void>();
   private readonly sessionTitleGenerationInFlight = new Set<string>();
   private subagentViewerTargetToolCallId: string | null = null;
@@ -892,6 +916,8 @@ class DesktopHostService {
         ...(request?.workspaceBinding === 'none' ? { preserveRecentWorkspaces: true } : {}),
       });
       this.startDreamCollectorMonitorIfNeeded();
+      this.startAutomationSchedulerMonitorIfNeeded();
+      await this.refreshAutomationsListCache();
       return this.buildSnapshot();
     });
     this.scheduleExtensionWarmup({ type: 'startup', workspaceRoot: snapshot.workspaceRoot });
@@ -903,6 +929,14 @@ class DesktopHostService {
     this.startDreamCollectorMonitorIfNeeded();
     return () => {
       this.dreamUpdateListeners.delete(listener);
+    };
+  }
+
+  subscribeAutomationsUpdates(listener: (snapshot: DesktopSnapshot) => void): () => void {
+    this.automationUpdateListeners.add(listener);
+    this.startAutomationSchedulerMonitorIfNeeded();
+    return () => {
+      this.automationUpdateListeners.delete(listener);
     };
   }
 
@@ -1476,6 +1510,53 @@ class DesktopHostService {
     return listDreamsOverviewCommand(this.workspaceGitCommandContext());
   }
 
+  async listAutomations(): Promise<DesktopAutomationListItem[]> {
+    return listAutomationsCommand();
+  }
+
+  async getAutomation(automationId: string): Promise<DesktopAutomationDetail | undefined> {
+    return getAutomationCommand(automationId);
+  }
+
+  async createAutomation(request: DesktopCreateAutomationRequest): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await createAutomationCommand(request);
+      await this.refreshAutomationsListCache();
+      this.emitAutomationUpdate();
+      return this.buildSnapshot();
+    });
+  }
+
+  async updateAutomation(
+    automationId: string,
+    patch: DesktopUpdateAutomationRequest,
+  ): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await updateAutomationCommand(automationId, patch);
+      await this.refreshAutomationsListCache();
+      this.emitAutomationUpdate();
+      return this.buildSnapshot();
+    });
+  }
+
+  async deleteAutomation(automationId: string): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await deleteAutomationCommand(automationId);
+      await this.refreshAutomationsListCache();
+      this.emitAutomationUpdate();
+      return this.buildSnapshot();
+    });
+  }
+
+  async setAutomationEnabled(automationId: string, enabled: boolean): Promise<DesktopSnapshot> {
+    return this.runSerialized(async () => {
+      await setAutomationEnabledCommand(automationId, enabled);
+      await this.refreshAutomationsListCache();
+      this.emitAutomationUpdate();
+      return this.buildSnapshot();
+    });
+  }
+
   async listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult> {
     return listWorkspaceExplorerChildrenCommand(this.workspaceGitCommandContext(), relativePath);
   }
@@ -1675,9 +1756,12 @@ class DesktopHostService {
     bundle.runtimeTransport = createLlmTransport(runtimeTransportConfig);
 
     const desktopMessages = bundle.messageTimeline.toMessages();
+    const llmHistoryForRuntime = bundle.archiveHistory.length > 0
+      ? bundle.archiveHistory
+      : buildLlmHistoryFallbackFromDesktopMessages(desktopMessages);
     const runtime = this.createRuntime(
       runtimeTransportConfig,
-      bundle.archiveHistory,
+      llmHistoryForRuntime,
       state.metadata.rules.enabledRules,
       state.metadata.skills.enabledSkillCatalog,
       state.metadata.planMetadata,
@@ -1691,14 +1775,17 @@ class DesktopHostService {
       bundle.runtimeTransport,
       bundle,
     );
-    if (bundle.archiveSubagentSessions.length > 0 || bundle.archiveHistory.length > 0) {
+    if (bundle.archiveSubagentSessions.length > 0 || llmHistoryForRuntime.length > 0) {
       runtime.replaceFromArchive({
         messages: buildArchiveMessagesFromConversation(desktopMessages),
         assistantAux: buildArchiveAssistantAuxFromConversation(desktopMessages),
-        llmHistory: bundle.archiveHistory,
+        llmHistory: llmHistoryForRuntime,
         subagentSessions: bundle.archiveSubagentSessions ?? [],
         loopEnabled: bundle.loopEnabled,
       });
+      if (bundle.archiveHistory.length === 0 && llmHistoryForRuntime.length > 0) {
+        bundle.archiveHistory = llmHistoryForRuntime;
+      }
     }
     runtime.setLoopEnabled(bundle.loopEnabled);
     const toolExecutor = await this.ensureToolExecutor(bundle);
@@ -1872,6 +1959,84 @@ class DesktopHostService {
       },
       this.dreamCollectorContext(),
     );
+  }
+
+  private startAutomationSchedulerMonitorIfNeeded(): void {
+    startAutomationSchedulerMonitorIfNeededFromService(
+      this.automationMonitorTimer,
+      (timer) => {
+        this.automationMonitorTimer = timer;
+      },
+      this.automationSchedulerContext(),
+    );
+  }
+
+  private automationSchedulerContext(): AutomationSchedulerServiceContext {
+    return {
+      initialized: () => this.initialized,
+      config: () => this.state?.config,
+      runningAutomationIds: () => this.runningAutomationIds,
+      markAutomationRunning: (automationId, running) => {
+        if (running) {
+          this.runningAutomationIds.add(automationId);
+        } else {
+          this.runningAutomationIds.delete(automationId);
+        }
+      },
+      onAutomationUpdated: (automationId) => {
+        void this.runSerialized(async () => {
+          await this.refreshAutomationsListCache();
+          this.emitAutomationUpdate();
+          void automationId;
+        });
+      },
+      notifySessionListUpdated: () => {
+        this.notifySessionListUpdated();
+      },
+      syncSessionFromDisk: (sessionPath) => this.syncAutomationSessionFromDisk(sessionPath),
+    };
+  }
+
+  private async syncAutomationSessionFromDisk(sessionPath: string): Promise<void> {
+    const loaded = await loadStoredSession(sessionPath);
+    const workspaceRoot = loaded.workspaceRoot ?? this.requireState().workspaceRoot;
+    const restored = restoreStoredSessionState({
+      filePath: sessionPath,
+      loaded,
+      fallbackMessages: restoreMessagesFromArchive(loaded),
+    });
+    const synced = this.sessionRegistry.reloadWarmBundleFromRestoredIfIdle(
+      sessionPath,
+      workspaceRoot,
+      restored,
+      (messages, timelineSnapshot) => this.createMessageTimelineFromMessages(messages, timelineSnapshot),
+    );
+    if (!synced) {
+      return;
+    }
+    const bundle = this.sessionRegistry.findBySessionPath(sessionPath);
+    if (!bundle) {
+      return;
+    }
+    if (this.sessionRegistry.activeSessionId() === path.resolve(sessionPath)) {
+      await this.refreshRuntimeForBundle(bundle);
+      this.syncActiveRuntimePointer();
+      this.emitLiveSnapshotUpdate();
+    }
+  }
+
+  private async refreshAutomationsListCache(): Promise<void> {
+    this.automationsListCache = await listAutomationsCommand();
+  }
+
+  private emitAutomationUpdate(): void {
+    if (!this.state || this.automationUpdateListeners.size === 0) {
+      return;
+    }
+    const snapshot = this.buildSnapshot();
+    for (const listener of this.automationUpdateListeners) {
+      listener(snapshot);
+    }
   }
 
   private setDreamCollectorStatus(next: DesktopDreamCollectorSnapshot): void {
@@ -2262,6 +2427,7 @@ class DesktopHostService {
             return subagentViewer ? { subagentViewer } : {};
           })()
         : {}),
+      automationsList: this.automationsListCache.map((item) => ({ ...item })),
     });
   }
 
@@ -2858,6 +3024,12 @@ export function subscribeDesktopDreamUpdates(
   listener: (snapshot: DesktopSnapshot) => void,
 ): () => void {
   return desktopHostService.subscribeDreamUpdates(listener);
+}
+
+export function subscribeDesktopAutomationsUpdates(
+  listener: (snapshot: DesktopSnapshot) => void,
+): () => void {
+  return desktopHostService.subscribeAutomationsUpdates(listener);
 }
 
 export function subscribeDesktopSessionListUpdates(listener: () => void): () => void {

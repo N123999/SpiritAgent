@@ -506,6 +506,12 @@ function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDe
     ...(parsed.subagentDesktopMessages && typeof parsed.subagentDesktopMessages === 'object'
       ? { subagentDesktopMessages: parsed.subagentDesktopMessages as Record<string, ConversationMessageSnapshot[]> }
       : {}),
+    ...(typeof parsed.automationId === 'string' && parsed.automationId.trim()
+      ? { automationId: parsed.automationId.trim() }
+      : {}),
+    ...(typeof parsed.automationRunId === 'string' && parsed.automationRunId.trim()
+      ? { automationRunId: parsed.automationRunId.trim() }
+      : {}),
   } satisfies StoredDesktopSession;
 }
 

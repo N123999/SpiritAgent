@@ -165,8 +165,29 @@ export async function createElectronHostApi(): Promise<HostApi> {
     listDreamsOverview() {
       return bridge.listDreamsOverview();
     },
+    listAutomations() {
+      return bridge.listAutomations();
+    },
+    getAutomation(automationId) {
+      return bridge.getAutomation(automationId);
+    },
+    createAutomation(request) {
+      return bridge.createAutomation(request);
+    },
+    updateAutomation(automationId, patch) {
+      return bridge.updateAutomation(automationId, patch);
+    },
+    deleteAutomation(automationId) {
+      return bridge.deleteAutomation(automationId);
+    },
+    setAutomationEnabled(automationId, enabled) {
+      return bridge.setAutomationEnabled(automationId, enabled);
+    },
     subscribeDreamUpdates(callback) {
       return bridge.dreamSubscribe(callback);
+    },
+    subscribeAutomationsUpdates(callback) {
+      return bridge.automationsSubscribe(callback);
     },
     subscribeSessionListUpdates(callback) {
       return bridge.sessionListSubscribe(callback);

@@ -42,7 +42,11 @@ import type {
   DeleteSkillRequest,
   DesktopApprovalDecision,
   DesktopModelReasoningEffort,
+  DesktopAutomationDetail,
+  DesktopAutomationListItem,
+  DesktopCreateAutomationRequest,
   DesktopDreamOverviewItem,
+  DesktopUpdateAutomationRequest,
   DesktopMarketplaceCatalogItem,
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
@@ -91,7 +95,8 @@ type BusyAction =
   | "extensions"
   | "lspInstall"
   | "marketplace"
-  | "git";
+  | "git"
+  | "automation";
 
 const DREAM_IDLE_POLL_INTERVAL_MS = 30_000;
 const GIT_STATE_POLL_INTERVAL_MS = 5_000;
@@ -590,6 +595,84 @@ export function useDesktopRuntime() {
     return api.listDreamsOverview();
   }, [api]);
 
+  const listAutomations = useCallback(async (): Promise<DesktopAutomationListItem[]> => {
+    if (!api) {
+      return [];
+    }
+    return api.listAutomations();
+  }, [api]);
+
+  const getAutomation = useCallback(async (automationId: string): Promise<DesktopAutomationDetail | undefined> => {
+    if (!api) {
+      return undefined;
+    }
+    return api.getAutomation(automationId);
+  }, [api]);
+
+  const createAutomation = useCallback(async (request: DesktopCreateAutomationRequest) => {
+    if (!api) {
+      return;
+    }
+    setBusyAction("automation");
+    try {
+      const next = await api.createAutomation(request);
+      applySnapshot(next);
+      setRuntimeError("");
+    } catch (error) {
+      setRuntimeError(describeError(error));
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot]);
+
+  const updateAutomation = useCallback(async (automationId: string, patch: DesktopUpdateAutomationRequest) => {
+    if (!api) {
+      return;
+    }
+    setBusyAction("automation");
+    try {
+      const next = await api.updateAutomation(automationId, patch);
+      applySnapshot(next);
+      setRuntimeError("");
+    } catch (error) {
+      setRuntimeError(describeError(error));
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot]);
+
+  const deleteAutomation = useCallback(async (automationId: string) => {
+    if (!api) {
+      return;
+    }
+    setBusyAction("automation");
+    try {
+      const next = await api.deleteAutomation(automationId);
+      applySnapshot(next);
+      setRuntimeError("");
+    } catch (error) {
+      setRuntimeError(describeError(error));
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot]);
+
+  const setAutomationEnabled = useCallback(async (automationId: string, enabled: boolean) => {
+    if (!api) {
+      return;
+    }
+    setBusyAction("automation");
+    try {
+      const next = await api.setAutomationEnabled(automationId, enabled);
+      applySnapshot(next);
+      setRuntimeError("");
+    } catch (error) {
+      setRuntimeError(describeError(error));
+    } finally {
+      setBusyAction("");
+    }
+  }, [api, applySnapshot]);
+
   const bootstrap = useCallback(async (request?: BootstrapRequest) => {
     if (!api) {
       return;
@@ -937,6 +1020,17 @@ export function useDesktopRuntime() {
       if (needRefreshSessions) {
         void refreshSessions();
       }
+    });
+  }, [api, applySnapshot, refreshSessions]);
+
+  useEffect(() => {
+    if (!api?.subscribeAutomationsUpdates) {
+      return;
+    }
+
+    return api.subscribeAutomationsUpdates((next) => {
+      applySnapshot(next);
+      void refreshSessions();
     });
   }, [api, applySnapshot, refreshSessions]);
 
@@ -2478,6 +2572,12 @@ export function useDesktopRuntime() {
     questionError,
     refreshSessions,
     listDreamsOverview,
+    listAutomations,
+    getAutomation,
+    createAutomation,
+    updateAutomation,
+    deleteAutomation,
+    setAutomationEnabled,
     runtimeError,
     sessions,
     unseenCompletedSessionPaths,

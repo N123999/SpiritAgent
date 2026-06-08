@@ -18,6 +18,8 @@ import type {
   DeleteRuleRequest,
   DeleteSkillRequest,
   DesktopApprovalDecision,
+  DesktopCreateAutomationRequest,
+  DesktopUpdateAutomationRequest,
   ImportExtensionRequest,
   InstallLspProviderRequest,
   InstallMarketplaceExtensionRequest,
@@ -94,6 +96,12 @@ export type CommandPayloads = {
   continueAssistantCompletion: { messageId: number };
   poll: undefined;
   listDreamsOverview: undefined;
+  listAutomations: undefined;
+  getAutomation: { automationId: string };
+  createAutomation: { request: DesktopCreateAutomationRequest };
+  updateAutomation: { automationId: string; patch: DesktopUpdateAutomationRequest };
+  deleteAutomation: { automationId: string };
+  setAutomationEnabled: { automationId: string; enabled: boolean };
   replyPendingApproval: { decision: DesktopApprovalDecision };
   replyPendingQuestions: { result: AskQuestionsResult };
   resetSession: undefined;

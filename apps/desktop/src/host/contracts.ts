@@ -61,6 +61,12 @@ export type HostCommandName =
   | 'continueAssistantCompletion'
   | 'poll'
   | 'listDreamsOverview'
+  | 'listAutomations'
+  | 'getAutomation'
+  | 'createAutomation'
+  | 'updateAutomation'
+  | 'deleteAutomation'
+  | 'setAutomationEnabled'
   | 'replyPendingApproval'
   | 'replyPendingQuestions'
   | 'resetSession'
@@ -101,6 +107,8 @@ export interface StoredDesktopSession extends ChatArchive {
   contextUsage?: ConversationContextUsageSnapshot;
   subagentDesktopMessages?: Record<string, ConversationMessageSnapshot[]>;
   queuedUserTurns?: import('./message-queue.js').QueuedUserTurn[];
+  automationId?: string;
+  automationRunId?: string;
 }
 
 export type DesktopHostCommitRequest = CommitChangesRequest;
