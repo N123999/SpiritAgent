@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
@@ -15,6 +15,53 @@ type AutomationDetailViewProps = {
   getAutomation(automationId: string): Promise<DesktopAutomationDetail | undefined>;
 };
 
+type AutomationDetailTab = "kanban" | "settings";
+
+const AUTOMATION_DETAIL_TABS: ReadonlyArray<{
+  id: AutomationDetailTab;
+  labelKey: "automations.tabKanban" | "automations.tabSettings";
+}> = [
+  { id: "kanban", labelKey: "automations.tabKanban" },
+  { id: "settings", labelKey: "automations.tabSettings" },
+];
+
+function AutomationDetailTabs({
+  activeTab,
+  onTabChange,
+  children,
+}: {
+  activeTab: AutomationDetailTab;
+  onTabChange(tab: AutomationDetailTab): void;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1 pt-0.5" role="tablist" aria-label={t("automations.detailTabsAria")}>
+        {AUTOMATION_DETAIL_TABS.map(({ id, labelKey }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === id}
+            className={cn(
+              "rounded-md px-3 py-2 text-sm",
+              activeTab === id
+                ? "font-medium text-foreground underline decoration-foreground/80 underline-offset-[10px]"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+            onClick={() => onTabChange(id)}
+          >
+            {t(labelKey)}
+          </button>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function AutomationDetailView({
   automationId,
   snapshot,
@@ -24,6 +71,7 @@ export function AutomationDetailView({
   getAutomation,
 }: AutomationDetailViewProps) {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<AutomationDetailTab>("kanban");
   const [detail, setDetail] = useState<DesktopAutomationDetail | undefined>();
   const [loading, setLoading] = useState(true);
 
@@ -36,6 +84,10 @@ export function AutomationDetailView({
       setLoading(false);
     }
   }, [automationId, getAutomation]);
+
+  useEffect(() => {
+    setActiveTab("kanban");
+  }, [automationId]);
 
   useEffect(() => {
     void refresh();
@@ -62,13 +114,17 @@ export function AutomationDetailView({
             </span>
           </nav>
 
-          <div className={cn(loading && "opacity-70")}>
-            <AutomationKanban
-              runs={detail?.runs ?? []}
-              sessions={sessions}
-              onOpenSession={onOpenSession}
-            />
-          </div>
+          <AutomationDetailTabs activeTab={activeTab} onTabChange={setActiveTab}>
+            {activeTab === "kanban" ? (
+              <div className={cn(loading && "opacity-70")}>
+                <AutomationKanban
+                  runs={detail?.runs ?? []}
+                  sessions={sessions}
+                  onOpenSession={onOpenSession}
+                />
+              </div>
+            ) : null}
+          </AutomationDetailTabs>
         </div>
       </div>
     </div>
