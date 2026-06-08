@@ -286,6 +286,19 @@ export function sanitizeConversationMessagesForPersistence(
   });
 }
 
+/** 当磁盘 llmHistory 为空但 desktop 消息已有往返时，供 runtime 恢复的最小 llm 历史。 */
+export function buildLlmHistoryFallbackFromDesktopMessages(
+  messages: ConversationMessageSnapshot[],
+): ChatArchive['llmHistory'] {
+  return archiveProjectableConversationMessages(messages)
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+      imagePaths: [],
+    }));
+}
+
 export function buildArchiveMessagesFromConversation(
   messages: ConversationMessageSnapshot[],
 ): ChatArchive['messages'] {

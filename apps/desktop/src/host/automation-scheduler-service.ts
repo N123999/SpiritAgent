@@ -17,6 +17,7 @@ export interface AutomationSchedulerServiceContext {
   markAutomationRunning(automationId: string, running: boolean): void;
   onAutomationUpdated(automationId: string): void;
   notifySessionListUpdated(): void;
+  syncSessionFromDisk?(sessionPath: string): void | Promise<void>;
 }
 
 export function startAutomationSchedulerMonitorIfNeeded(
@@ -71,6 +72,7 @@ export async function tickAutomationScheduler(ctx: AutomationSchedulerServiceCon
       {
         onRunUpdated: (automationId) => ctx.onAutomationUpdated(automationId),
         notifySessionListUpdated: () => ctx.notifySessionListUpdated(),
+        syncSessionFromDisk: (sessionPath) => ctx.syncSessionFromDisk?.(sessionPath),
       },
     )
       .then(async () => {
