@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 
@@ -44,6 +43,20 @@ function minuteOptions(): number[] {
   return Array.from({ length: 60 }, (_, index) => index);
 }
 
+function resolveDailyTime(schedule: DesktopAutomationSchedule): { hour: number; minute: number } {
+  if (schedule.kind === "daily" || schedule.kind === "weekly") {
+    return { hour: schedule.hour, minute: schedule.minute };
+  }
+  return { hour: 20, minute: 0 };
+}
+
+function resolveWeeklyWeekday(schedule: DesktopAutomationSchedule): DesktopAutomationWeekday {
+  if (schedule.kind === "weekly") {
+    return schedule.weekday;
+  }
+  return 1;
+}
+
 type AutomationScheduleMenuProps = {
   schedule: DesktopAutomationSchedule;
   disabled?: boolean;
@@ -83,12 +96,13 @@ export function AutomationScheduleMenu({
         </DropdownMenuItem>
         <DailyScheduleSub
           title={t("automations.schedule.daily")}
-          onConfirm={(hour, minute) => onScheduleChange({ kind: "daily", hour, minute })}
+          schedule={schedule}
+          onScheduleChange={onScheduleChange}
         />
         <WeeklyScheduleSub
           title={t("automations.schedule.weekly")}
-          onConfirm={(weekday, hour, minute) =>
-            onScheduleChange({ kind: "weekly", weekday, hour, minute })}
+          schedule={schedule}
+          onScheduleChange={onScheduleChange}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -97,33 +111,26 @@ export function AutomationScheduleMenu({
 
 function DailyScheduleSub({
   title,
-  onConfirm,
+  schedule,
+  onScheduleChange,
 }: {
   title: string;
-  onConfirm(hour: number, minute: number): void;
+  schedule: DesktopAutomationSchedule;
+  onScheduleChange(schedule: DesktopAutomationSchedule): void;
 }) {
-  const { t } = useTranslation();
-  const [hour, setHour] = useState(20);
-  const [minute, setMinute] = useState(0);
+  const { hour, minute } = resolveDailyTime(schedule);
 
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>{title}</DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="z-[130] p-0">
-        <div className="w-56 space-y-3 p-3">
+        <div className="w-56 p-3">
           <ScheduleTimeFields
             hour={hour}
             minute={minute}
-            onHourChange={setHour}
-            onMinuteChange={setMinute}
+            onHourChange={(nextHour) => onScheduleChange({ kind: "daily", hour: nextHour, minute })}
+            onMinuteChange={(nextMinute) => onScheduleChange({ kind: "daily", hour, minute: nextMinute })}
           />
-          <button
-            type="button"
-            className="h-8 w-full rounded-md bg-primary text-xs font-medium text-primary-foreground"
-            onClick={() => onConfirm(hour, minute)}
-          >
-            {t("common.confirm")}
-          </button>
         </div>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -132,15 +139,16 @@ function DailyScheduleSub({
 
 function WeeklyScheduleSub({
   title,
-  onConfirm,
+  schedule,
+  onScheduleChange,
 }: {
   title: string;
-  onConfirm(weekday: DesktopAutomationWeekday, hour: number, minute: number): void;
+  schedule: DesktopAutomationSchedule;
+  onScheduleChange(schedule: DesktopAutomationSchedule): void;
 }) {
   const { t } = useTranslation();
-  const [weekday, setWeekday] = useState<DesktopAutomationWeekday>(1);
-  const [hour, setHour] = useState(9);
-  const [minute, setMinute] = useState(0);
+  const { hour, minute } = resolveDailyTime(schedule);
+  const weekday = resolveWeeklyWeekday(schedule);
 
   return (
     <DropdownMenuSub>
@@ -148,12 +156,17 @@ function WeeklyScheduleSub({
       <DropdownMenuSubContent className="z-[130] p-0">
         <div className="w-56 space-y-3 p-3">
           <div className="space-y-1">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              {t("automations.schedule.weekday")}
-            </p>
+            <p className="text-xs text-muted-foreground">{t("automations.schedule.weekday")}</p>
             <Select
               value={String(weekday)}
-              onValueChange={(value) => setWeekday(Number(value) as DesktopAutomationWeekday)}
+              onValueChange={(value) => {
+                onScheduleChange({
+                  kind: "weekly",
+                  weekday: Number(value) as DesktopAutomationWeekday,
+                  hour,
+                  minute,
+                });
+              }}
             >
               <SelectTrigger className="h-8">
                 <SelectValue />
@@ -170,16 +183,11 @@ function WeeklyScheduleSub({
           <ScheduleTimeFields
             hour={hour}
             minute={minute}
-            onHourChange={setHour}
-            onMinuteChange={setMinute}
+            onHourChange={(nextHour) =>
+              onScheduleChange({ kind: "weekly", weekday, hour: nextHour, minute })}
+            onMinuteChange={(nextMinute) =>
+              onScheduleChange({ kind: "weekly", weekday, hour, minute: nextMinute })}
           />
-          <button
-            type="button"
-            className="h-8 w-full rounded-md bg-primary text-xs font-medium text-primary-foreground"
-            onClick={() => onConfirm(weekday, hour, minute)}
-          >
-            {t("common.confirm")}
-          </button>
         </div>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -202,9 +210,7 @@ function ScheduleTimeFields({
   return (
     <div className="grid grid-cols-2 gap-2">
       <div className="space-y-1">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          {t("automations.schedule.hour")}
-        </p>
+        <p className="text-xs text-muted-foreground">{t("automations.schedule.hour")}</p>
         <Select value={String(hour)} onValueChange={(value) => onHourChange(Number(value))}>
           <SelectTrigger className="h-8">
             <SelectValue />
@@ -219,9 +225,7 @@ function ScheduleTimeFields({
         </Select>
       </div>
       <div className="space-y-1">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          {t("automations.schedule.minute")}
-        </p>
+        <p className="text-xs text-muted-foreground">{t("automations.schedule.minute")}</p>
         <Select value={String(minute)} onValueChange={(value) => onMinuteChange(Number(value))}>
           <SelectTrigger className="h-8">
             <SelectValue />
