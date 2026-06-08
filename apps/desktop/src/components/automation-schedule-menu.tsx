@@ -57,6 +57,16 @@ function resolveWeeklyWeekday(schedule: DesktopAutomationSchedule): DesktopAutom
   return 1;
 }
 
+function toDailySchedule(schedule: DesktopAutomationSchedule): Extract<DesktopAutomationSchedule, { kind: "daily" }> {
+  const { hour, minute } = resolveDailyTime(schedule);
+  return { kind: "daily", hour, minute };
+}
+
+function toWeeklySchedule(schedule: DesktopAutomationSchedule): Extract<DesktopAutomationSchedule, { kind: "weekly" }> {
+  const { hour, minute } = resolveDailyTime(schedule);
+  return { kind: "weekly", weekday: resolveWeeklyWeekday(schedule), hour, minute };
+}
+
 type AutomationScheduleMenuProps = {
   schedule: DesktopAutomationSchedule;
   disabled?: boolean;
@@ -119,10 +129,13 @@ function DailyScheduleSub({
   onScheduleChange(schedule: DesktopAutomationSchedule): void;
 }) {
   const { hour, minute } = resolveDailyTime(schedule);
+  const activateDaily = () => onScheduleChange(toDailySchedule(schedule));
 
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger>{title}</DropdownMenuSubTrigger>
+      <DropdownMenuSubTrigger onSelect={activateDaily} onClick={activateDaily}>
+        {title}
+      </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="z-[130] p-0">
         <div className="w-56 p-3">
           <ScheduleTimeFields
@@ -149,10 +162,13 @@ function WeeklyScheduleSub({
   const { t } = useTranslation();
   const { hour, minute } = resolveDailyTime(schedule);
   const weekday = resolveWeeklyWeekday(schedule);
+  const activateWeekly = () => onScheduleChange(toWeeklySchedule(schedule));
 
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger>{title}</DropdownMenuSubTrigger>
+      <DropdownMenuSubTrigger onSelect={activateWeekly} onClick={activateWeekly}>
+        {title}
+      </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="z-[130] p-0">
         <div className="w-56 space-y-3 p-3">
           <div className="space-y-1">
