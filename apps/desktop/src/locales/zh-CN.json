@@ -560,7 +560,14 @@
     "placeholderGenerateVideo": "描述要生成的视频…",
     "contextUsageAria": "上下文已用 {{percent}}%，{{inputTokens}} / {{contextLength}} tokens",
     "contextUsageHoverPercent": "{{percent}}% 上下文已用",
-    "contextUsageHoverTokens": "{{input}} / {{total}} tokens"
+    "contextUsageHoverTokens": "{{input}} / {{total}} tokens",
+    "enqueueWhileBusy": "加入消息队列"
+  },
+  "queue": {
+    "moveUp": "上移",
+    "sendNow": "发送",
+    "delete": "删除",
+    "actionsAria": "排队消息操作"
   },
   "error": {
     "runtimeBusy": "当前已有响应或审批在处理中，请稍候。",

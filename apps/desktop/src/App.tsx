@@ -1110,17 +1110,28 @@ function ComposerSurface({
               <span className="px-1 text-xs text-muted-foreground">{t('app.noModelsAvailable')}</span>
             )}
           </div>
+          {(() => {
+            const hasComposerPayload =
+              value.trim().length > 0 || localFileAttachments.length > 0;
+            const showAbortButton = canAbort && Boolean(onAbort) && !hasComposerPayload;
+            return (
           <Button
             type="button"
             className={cn(
               "size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5",
               instantHoverMotionClass,
             )}
-            onClick={canAbort ? onAbort : onSubmit}
-            disabled={canAbort ? false : !canSend || busy}
-            title={canAbort ? t('app.abort') : t('app.send')}
+            onClick={showAbortButton ? onAbort : onSubmit}
+            disabled={showAbortButton ? false : !canSend || (busy && !canAbort)}
+            title={
+              showAbortButton
+                ? t('app.abort')
+                : canAbort && hasComposerPayload
+                  ? t('composer.enqueueWhileBusy')
+                  : t('app.send')
+            }
           >
-            {canAbort ? (
+            {showAbortButton ? (
               <Square className="size-3.5" strokeWidth={2.4} aria-hidden />
             ) : busy ? (
               <LoaderCircle className="size-3.5 animate-spin" />
@@ -1128,6 +1139,8 @@ function ComposerSurface({
               <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
             )}
           </Button>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1435,7 +1448,8 @@ function MessageCard({
 }) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
-  const canStartRewind = isUser && message.canRewind === true && !message.pending;
+  const canStartRewind =
+    isUser && message.canRewind === true && !message.pending && message.queued !== true;
   const userBubble =
     "rounded-2xl rounded-br-md border border-border/50 bg-muted px-3 py-2.5 shadow-sm";
   const subagentStatusSurface =
@@ -1540,6 +1554,7 @@ function MessageCard({
             message={message}
             userBubbleClassName={userBubble}
             canStartRewind={canStartRewind}
+            queued={message.queued === true}
             onRewindStart={() => onRewindStart(message, listIndex)}
             readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
           />
@@ -2110,14 +2125,17 @@ export default function App() {
         : t("app.typeMessage");
   const conversationInterruptible = runtime.summary.canInterrupt && !runtime.busyAction;
   const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
+  const composerHasPayload =
+    Boolean(runtime.composer.trim()) || runtime.composerLocalFileAttachments.length > 0;
   const composerCanSend =
     !compactionDemo.active &&
     !subagentViewActive &&
-    (Boolean(runtime.composer.trim()) || runtime.composerLocalFileAttachments.length > 0) &&
+    composerHasPayload &&
     !activeSessionReadOnly &&
     runtime.busyAction !== "session" &&
     !pendingApproval &&
     !pendingQuestions &&
+    (runtime.summary.canSend || conversationInterruptible) &&
     !(runtime.busyAction === "send" && !conversationInterruptible);
   const startImplementingDisabled =
     !snapshot?.runtimeReady ||

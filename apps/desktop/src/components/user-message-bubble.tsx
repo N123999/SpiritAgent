@@ -59,6 +59,7 @@ type UserMessageBubbleProps = {
   message: ConversationMessageSnapshot;
   userBubbleClassName: string;
   canStartRewind: boolean;
+  queued?: boolean;
   onRewindStart(): void;
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
 };
@@ -67,6 +68,7 @@ export function UserMessageBubble({
   message,
   userBubbleClassName,
   canStartRewind,
+  queued = false,
   onRewindStart,
   readLocalImagePreviewDataUrl,
 }: UserMessageBubbleProps) {
@@ -99,7 +101,9 @@ export function UserMessageBubble({
     return null;
   }
 
-  const rewindBubbleClassName = cn(
+  const bubbleClassName = cn(
+    userBubbleClassName,
+    queued && "opacity-60",
     canStartRewind &&
       "cursor-pointer transition-colors hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
   );
@@ -116,7 +120,7 @@ export function UserMessageBubble({
       {showText ? (
         <div
           data-spirit-surface="message-bubble"
-          className={cn(userBubbleClassName, rewindBubbleClassName)}
+          className={bubbleClassName}
           role={canStartRewind ? "button" : undefined}
           tabIndex={canStartRewind ? 0 : undefined}
           onClick={canStartRewind ? onRewindStart : undefined}
@@ -143,7 +147,8 @@ export function UserMessageBubble({
       ) : null}
       {hasAttachments ? (
         <div
-          className={cn("w-full", !showText && rewindBubbleClassName)}
+          className={cn("w-full", !showText && queued && "opacity-60", !showText && canStartRewind &&
+            "cursor-pointer transition-colors hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none")}
           role={!showText && canStartRewind ? "button" : undefined}
           tabIndex={!showText && canStartRewind ? 0 : undefined}
           onClick={!showText && canStartRewind ? onRewindStart : undefined}

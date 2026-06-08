@@ -560,7 +560,14 @@
     "placeholderGenerateVideo": "Describe the video to generate…",
     "contextUsageAria": "Context used {{percent}}%, {{inputTokens}} / {{contextLength}} tokens",
     "contextUsageHoverPercent": "{{percent}}% context used",
-    "contextUsageHoverTokens": "{{input}} / {{total}} tokens"
+    "contextUsageHoverTokens": "{{input}} / {{total}} tokens",
+    "enqueueWhileBusy": "Add to message queue"
+  },
+  "queue": {
+    "moveUp": "Move up",
+    "sendNow": "Send now",
+    "delete": "Delete",
+    "actionsAria": "Queued message actions"
   },
   "error": {
     "runtimeBusy": "A response or approval is already being processed. Please wait.",
