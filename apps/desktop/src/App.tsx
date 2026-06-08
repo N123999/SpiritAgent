@@ -96,6 +96,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
 import { AutomationsView } from "@/components/automations-view";
+import { AutomationDetailView } from "@/components/automation-detail-view";
+import { CreateAutomationDialog } from "@/components/create-automation-dialog";
 import { MarketplaceView } from "@/components/marketplace-view";
 import {
   ComposerLocalFileStrip,
@@ -3301,15 +3303,45 @@ export default function App() {
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
             />
-            <AutomationsView
+            {automationDetailMode && selectedAutomationId ? (
+              <AutomationDetailView
+                automationId={selectedAutomationId}
+                snapshot={snapshot}
+                sessions={runtime.sessions}
+                onBack={() => {
+                  setSelectedAutomationId(null);
+                  setActiveSurface("automations");
+                }}
+                onOpenSession={(path) => {
+                  setLastNonSettingsSurface("conversation");
+                  setActiveSurface("conversation");
+                  void runtime.openSession(path);
+                }}
+                getAutomation={runtime.getAutomation}
+              />
+            ) : (
+              <AutomationsView
+                snapshot={snapshot}
+                apiReady={runtime.apiReady}
+                busyAction={runtime.busyAction}
+                onCreateAutomation={() => setCreateAutomationDialogOpen(true)}
+                onOpenAutomation={(automationId) => {
+                  setSelectedAutomationId(automationId);
+                  setActiveSurface("automation-detail");
+                }}
+              />
+            )}
+            <CreateAutomationDialog
+              open={createAutomationDialogOpen}
+              onOpenChange={setCreateAutomationDialogOpen}
               snapshot={snapshot}
-              apiReady={runtime.apiReady}
-              busyAction={runtime.busyAction}
-              onCreateAutomation={() => setCreateAutomationDialogOpen(true)}
-              onOpenAutomation={(automationId) => {
-                setSelectedAutomationId(automationId);
-                setActiveSurface("automation-detail");
-              }}
+              disabled={!runtime.apiReady || runtime.busyAction === "automation"}
+              onSubmit={(request) => void runtime.createAutomation(request)}
+              onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
+                if (path) {
+                  void runtime.rememberWorkspaceRoot({ workspaceRoot: path });
+                }
+              })}
             />
           </div>
         ) : marketplaceMode ? (
