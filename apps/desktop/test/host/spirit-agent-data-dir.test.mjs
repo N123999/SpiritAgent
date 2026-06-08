@@ -1,15 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import {
-  migrateLegacyCwdSpiritAgentDataDir,
-  resolveDefaultSpiritAgentDataDir,
-  setSpiritAgentDataDirOverride,
-  spiritAgentDataDir,
-} from '../../dist-electron/src/host/storage.js';
+import { resolveDefaultSpiritAgentDataDir } from '../../dist-electron/src/host/storage.js';
 
 async function withEnv(vars, run) {
   const previous = new Map();
@@ -57,33 +52,5 @@ test('resolveDefaultSpiritAgentDataDir uses Application Support on macOS', async
     );
   } finally {
     await rm(home, { recursive: true, force: true });
-  }
-});
-
-test('migrateLegacyCwdSpiritAgentDataDir copies cwd legacy config into override target', async () => {
-  const previousCwd = process.cwd();
-  const workspace = await mkdtemp(path.join(tmpdir(), 'spirit-agent-migrate-'));
-  const legacyDir = path.join(workspace, '.spirit-agent');
-  const targetDir = path.join(workspace, 'canonical-data-dir');
-
-  try {
-    process.chdir(workspace);
-    setSpiritAgentDataDirOverride(targetDir);
-    await mkdir(legacyDir, { recursive: true });
-    await writeFile(
-      path.join(legacyDir, 'config.json'),
-      JSON.stringify({ activeModel: 'legacy-model', models: [] }),
-      'utf8',
-    );
-
-    await migrateLegacyCwdSpiritAgentDataDir();
-
-    assert.equal(spiritAgentDataDir(), targetDir);
-    const migratedConfig = await readFile(path.join(targetDir, 'config.json'), 'utf8');
-    assert.match(migratedConfig, /legacy-model/);
-  } finally {
-    setSpiritAgentDataDirOverride(undefined);
-    process.chdir(previousCwd);
-    await rm(workspace, { recursive: true, force: true });
   }
 });

@@ -9,7 +9,6 @@ import {
   loadConfig,
   loadHostMetadata,
   mergeRecentWorkspaceRoots,
-  migrateLegacyCwdSpiritAgentDataDir,
   normalizeWorkspaceBinding,
   resolveDesktopHomeDirectory,
   saveConfig,
@@ -74,7 +73,6 @@ export async function ensureInitializedCommand(
     ? path.resolve(workspaceRootOverride.trim())
     : undefined;
 
-  await migrateLegacyCwdSpiritAgentDataDir();
   const loadedConfig = await loadConfig();
   applyLlmHttpVersionFromConfig(loadedConfig);
   applyLlmClientVersionFromApp();

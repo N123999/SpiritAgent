@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
 import {
-  cp,
   mkdir,
   readdir,
   readFile,
@@ -206,28 +205,6 @@ export function spiritAgentDataDir(): string {
   }
 
   return resolveDefaultSpiritAgentDataDir();
-}
-
-export async function migrateLegacyCwdSpiritAgentDataDir(): Promise<void> {
-  const targetDir = spiritAgentDataDir();
-  const targetConfig = path.join(targetDir, CONFIG_FILE_NAME);
-  if (existsSync(targetConfig)) {
-    return;
-  }
-
-  const legacyDir = path.resolve('.spirit-agent');
-  const legacyConfig = path.join(legacyDir, CONFIG_FILE_NAME);
-  if (!existsSync(legacyConfig)) {
-    return;
-  }
-
-  if (path.resolve(targetDir) === path.resolve(legacyDir)) {
-    return;
-  }
-
-  await mkdir(targetDir, { recursive: true });
-  await cp(legacyDir, targetDir, { recursive: true, force: false });
-  console.info(`[spirit-agent] Migrated legacy data from ${legacyDir} to ${targetDir}`);
 }
 
 export function chatsDirPath(): string {

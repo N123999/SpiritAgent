@@ -119,7 +119,6 @@ import {
 import {
   configFilePath,
   loadConfig,
-  migrateLegacyCwdSpiritAgentDataDir,
   resolveDefaultSpiritAgentDataDir,
   setSpiritAgentDataDirOverride,
   spiritAgentDataDir,
@@ -600,7 +599,6 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
 if (gotSpiritSingleInstanceLock) {
   app.whenReady().then(async () => {
-  await migrateLegacyCwdSpiritAgentDataDir();
   installSpiritGeneratedAssetProtocolHandler({
     resolveManagedGeneratedAssetPath,
     videoPreviewMimeType,
