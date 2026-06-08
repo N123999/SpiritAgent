@@ -69,12 +69,7 @@ export function AutomationDetailView({
             ) : null}
           </div>
 
-          <div
-            className={cn(
-              "rounded-lg border border-border/40 bg-background/80 p-4",
-              loading && "opacity-70",
-            )}
-          >
+          <div className={cn(loading && "opacity-70")}>
             <AutomationKanban
               runs={detail?.runs ?? []}
               sessions={sessions}
