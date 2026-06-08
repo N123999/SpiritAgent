@@ -167,6 +167,8 @@ body {
 /* macOS hiddenInset：顶缘透明拖拽区，分区背景延伸至窗口顶，内容以 padding 避让红绿灯 */
 html.spirit-desktop-darwin {
   --spirit-macos-titlebar-inset: 2rem;
+  /* hiddenInset 红绿灯占用宽度（约 12px 边距 + 三键 + 间距） */
+  --spirit-macos-traffic-lights-inset-left: 4.875rem;
 }
 
 html.spirit-desktop-darwin [data-spirit-surface="main-frame"] {
@@ -184,12 +186,28 @@ html.spirit-desktop-darwin [data-spirit-surface="main-frame"]::before {
   -webkit-app-region: drag;
 }
 
-html.spirit-desktop-darwin #session-sidebar-panel,
-html.spirit-desktop-darwin [data-spirit-surface="conversation-shell"],
-html.spirit-desktop-darwin [data-spirit-surface="settings-shell"],
-html.spirit-desktop-darwin [data-spirit-surface="marketplace-layout"],
-html.spirit-desktop-darwin [data-spirit-surface="workspace-panel"] {
+/* 仅侧栏下移避让左上红绿灯；主区顶栏与标题栏同高同排 */
+html.spirit-desktop-darwin #session-sidebar-panel {
   padding-top: var(--spirit-macos-titlebar-inset);
+}
+
+html.spirit-desktop-darwin [data-spirit-surface="layout-chrome"] {
+  position: relative;
+  z-index: 51;
+  -webkit-app-region: no-drag;
+  transition: padding-left 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.spirit-desktop-darwin [data-spirit-surface="workspace-panel"] > div:first-child {
+  position: relative;
+  z-index: 51;
+  -webkit-app-region: no-drag;
+}
+
+/* 侧栏收起时主区顶栏从窗口左缘开始，需右移避让红绿灯 */
+html.spirit-desktop-darwin
+  [data-spirit-surface="layout-chrome"][data-session-sidebar-open="false"] {
+  padding-left: var(--spirit-macos-traffic-lights-inset-left);
 }
 
 /* Desktop 且开启原生模糊时：根层透明，便于宿主窗口绘制系统材质；Web 版保持实色。 */

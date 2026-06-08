@@ -1892,6 +1892,7 @@ function DesktopLayoutChromeBar({
       role="toolbar"
       aria-label={t('app.sidebarAndTools')}
       data-spirit-surface="layout-chrome"
+      data-session-sidebar-open={sessionSidebarOpen ? "true" : "false"}
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 px-1.5",
         showTrailingActions ? "justify-between" : "justify-start",
