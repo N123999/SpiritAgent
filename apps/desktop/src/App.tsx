@@ -2725,6 +2725,14 @@ export default function App() {
         applyAskSlash();
         return;
       }
+      if (suggestion.kind === "skill") {
+        runtime.setComposer("");
+        setSlashSelectedIndex(-1);
+        queueMicrotask(() => {
+          composerRichInputRef.current?.insertSkillChip(suggestion.alias);
+        });
+        return;
+      }
       applySlashSuggestion(`${suggestion.alias} `);
     },
     [applyLoopSlash, applyPlanSlash, applyAskSlash],
