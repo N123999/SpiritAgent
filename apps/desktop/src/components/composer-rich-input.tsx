@@ -118,6 +118,7 @@ export type ComposerRichInputHandle = {
   insertPlanChip(options?: InsertAgentModeChipOptions): void;
   insertAskChip(options?: InsertAgentModeChipOptions): void;
   removeAgentModeChip(): void;
+  insertSkillChip(alias: string): void;
   /** 发送成功后由宿主调用：恢复 chip（若仍为 plan/ask）并将光标置于 chip 后。 */
   resetAfterSend(agentMode: DesktopAgentMode): void;
   getSegments(): RichSegment[];
@@ -442,6 +443,26 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [insertAgentModeChip],
     );
 
+    const insertSkillChip = useCallback(
+      (alias: string) => {
+        const div = divRef.current;
+        if (div) {
+          div.focus();
+        }
+        const current = segmentsRef.current;
+        const caret = selectionToCaret(div!, current) ?? caretAtEnd(current);
+        // Remove any existing skill chip first (only one active skill at a time)
+        const filtered = mergeAdjacentTextSegments(current.filter((s) => s.kind !== "skill"));
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(
+          filtered,
+          caret,
+          { kind: "skill", alias },
+        );
+        commitSegments(next, nextCaret);
+      },
+      [commitSegments],
+    );
+
     const removeAgentModeChip = useCallback(() => {
       if (!hasAgentModeSegment(segmentsRef.current)) {
         return;
@@ -487,6 +508,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertPlanChip,
         insertAskChip,
         removeAgentModeChip,
+        insertSkillChip,
         resetAfterSend,
         getSegments,
         setSegments: (next: RichSegment[]) => applySegments(next),
@@ -499,6 +521,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertPlanChip,
         insertAskChip,
         removeAgentModeChip,
+        insertSkillChip,
         resetAfterSend,
         getSegments,
         applySegments,
