@@ -36,6 +36,8 @@ export function parseCreateAutomationSchedule(value: unknown): HostAutomationSch
 
 export const CREATE_AUTOMATION_CONTRIBUTED_TOOL: ContributedHostToolDefinition = {
   name: CREATE_AUTOMATION_TOOL_NAME,
+  excludeFromAskMode: true,
+  agentModeExposure: 'agent',
   description:
     'Create a scheduled Desktop automation that runs an agent turn with your prompt on the current workspace. ' +
     'Use when the user asks to automate recurring work (daily reports, weekly checks, hourly monitoring). ' +

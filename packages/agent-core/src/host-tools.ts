@@ -19,6 +19,13 @@ export interface ContributedHostToolDefinition {
   name: string;
   description: string;
   inputSchema: JsonObject;
+  /** When true, omitted from tools list in Ask mode. */
+  excludeFromAskMode?: boolean;
+  /**
+   * When `agent`, only exposed in Agent mode (hidden in Plan/Ask).
+   * Default: exposed in every mode that merges contributed tools.
+   */
+  agentModeExposure?: 'all' | 'agent';
 }
 
 export type DreamHostToolName =
@@ -427,6 +434,38 @@ export function buildBuiltinHostToolDefinitions(
       },
     ),
   ];
+}
+
+export function filterContributedToolDefinitionsForAgentMode(
+  definitions: readonly ContributedHostToolDefinition[],
+  agentMode: SpiritAgentMode,
+): ContributedHostToolDefinition[] {
+  return definitions.filter((definition) => {
+    if (definition.agentModeExposure === 'agent' && agentMode !== 'agent') {
+      return false;
+    }
+    if (isAskAgentMode(agentMode) && definition.excludeFromAskMode === true) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/** Reject contributed host tools hidden for the current agent mode (e.g. prior-turn calls in Ask). */
+export function assertContributedHostToolAllowed(
+  toolName: string,
+  agentMode: SpiritAgentMode,
+  contributedDefinitions: readonly ContributedHostToolDefinition[],
+  availableToolDefinitions: JsonValue,
+): void {
+  const trimmed = toolName.trim();
+  const definition = contributedDefinitions.find((item) => item.name === trimmed);
+  if (!definition) {
+    return;
+  }
+  if (filterContributedToolDefinitionsForAgentMode([definition], agentMode).length === 0) {
+    throwUnknownToolError(trimmed, toolNamesFromDefinitions(availableToolDefinitions));
+  }
 }
 
 export function buildContributedHostToolDefinitions(
