@@ -15,10 +15,14 @@ const sampleTool = (overrides: Partial<ContributedHostToolDefinition> = {}): Con
   ...overrides,
 });
 
-test('filterContributedToolDefinitionsForAgentMode hides agent-only tools in Plan and Ask', () => {
+test('filterContributedToolDefinitionsForAgentMode hides agent-only tools in Plan and Ask but exposes in Debug', () => {
   const definitions = [sampleTool({ name: 'create_automation', agentModeExposure: 'agent' })];
   assert.deepEqual(
     filterContributedToolDefinitionsForAgentMode(definitions, 'agent').map((item) => item.name),
+    ['create_automation'],
+  );
+  assert.deepEqual(
+    filterContributedToolDefinitionsForAgentMode(definitions, 'debug').map((item) => item.name),
     ['create_automation'],
   );
   assert.deepEqual(filterContributedToolDefinitionsForAgentMode(definitions, 'plan'), []);
