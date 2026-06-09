@@ -232,6 +232,33 @@ html.spirit-desktop-native.spirit-desktop-mica #app {
   background: transparent;
 }
 
+/*
+ * 启动层透明 + 原生模糊：须隐藏其下的应用布局，否则会合成进系统材质（macOS 尤甚）。
+ * 退场时与启动层 opacity 同步交叉淡入，全程保持模糊材质不关。
+ */
+html.spirit-desktop-native.spirit-desktop-mica.spirit-launch-splash-active
+  [data-spirit-surface="app-shell"]
+  > :not([data-spirit-surface="launch-splash"]) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.spirit-desktop-native.spirit-desktop-mica.spirit-launch-splash-exiting
+  [data-spirit-surface="app-shell"]
+  > :not([data-spirit-surface="launch-splash"]) {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 500ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.spirit-desktop-native.spirit-desktop-mica.spirit-launch-splash-exiting
+    [data-spirit-surface="app-shell"]
+    > :not([data-spirit-surface="launch-splash"]) {
+    transition-duration: 200ms;
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--spirit-ui-font-stack);
