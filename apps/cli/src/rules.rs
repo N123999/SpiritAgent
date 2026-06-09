@@ -24,12 +24,6 @@ pub enum RuleScope {
     User,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CreateRuleRequest {
-    pub scope: RuleScope,
-    pub prompt: String,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleSource {
@@ -84,10 +78,6 @@ impl RuleStateFile {
     pub fn set_enabled(&mut self, rule_id: impl Into<String>, enabled: bool) {
         self.enabled_overrides.insert(rule_id.into(), enabled);
     }
-}
-
-pub fn create_rule_usage() -> String {
-    t!("tui.rules.create_rule_usage").into_owned()
 }
 
 pub fn workspace_rule_path(workspace_root: &Path) -> PathBuf {
@@ -211,64 +201,6 @@ pub fn rule_scope_label(scope: RuleScope) -> &'static str {
     }
 }
 
-pub fn parse_create_rule_request(input: &str) -> Result<CreateRuleRequest> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Err(anyhow!(create_rule_usage()));
-    }
-
-    if let Some((scope, remainder)) = parse_leading_rule_scope(trimmed) {
-        let prompt = remainder.trim();
-        if prompt.is_empty() {
-            return Err(anyhow!(create_rule_usage()));
-        }
-
-        return Ok(CreateRuleRequest {
-            scope,
-            prompt: prompt.to_string(),
-        });
-    }
-
-    Ok(CreateRuleRequest {
-        scope: RuleScope::Workspace,
-        prompt: trimmed.to_string(),
-    })
-}
-
-pub fn build_create_rule_user_turn(workspace_root: &Path, request: &CreateRuleRequest) -> String {
-    let scope_label = rule_scope_label(request.scope);
-    let target_path = rule_path_for_scope(workspace_root, request.scope);
-    let target_exists = target_path.exists();
-    let scope_hint = match request.scope {
-        RuleScope::Workspace => {
-            "优先提炼当前仓库真实存在的目录边界、代码风格差异、验证命令和高价值限制。"
-        }
-        RuleScope::User => "优先提炼跨仓库通用的个人偏好、默认协作方式和稳定工作习惯。",
-    };
-    let target_note = if target_exists {
-        "目标文件已存在；如果要更新，先读取原文并压缩重写，不要在旧内容后面继续堆砌模板化废话。"
-    } else {
-        "目标文件目前不存在；如果内容确定且路径可写，直接创建即可。"
-    };
-    let write_note = match request.scope {
-        RuleScope::Workspace => format!(
-            "目标文件位于当前工作区内。你可以在内容确认后使用 create_file 或 edit_file 写入 {}。写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
-            target_path.display()
-        ),
-        RuleScope::User => format!(
-            "目标文件位于 Spirit 托管的用户目录：{}。你可以在内容确认后使用 create_file 或 edit_file 写入；该路径虽在工作区外，但属于允许写入的托管范围，写入仍会经过正常审批；不要假设自己已经拿到权限，也不要在工具成功前声称“已创建”或“已更新”。",
-            target_path.display()
-        ),
-    };
-
-    format!(
-        "你现在在处理一个 /create-rule 请求。\n\n目标:\n- scope: {scope_label}\n- target_path: {target_path}\n- workspace_root: {workspace_root}\n\n用户需求:\n{user_prompt}\n\n要求:\n- 先把它当成一次正常的 assistant 对话来处理，正常流式输出，不要伪装成后台静默生成器。\n- 最终规则文件是给后续 LLM 看的，不是给人类流程管理看的。\n- 保持内容短、硬、可执行；优先保留真正影响编码行为的约束。\n- 需要事实时先读取仓库内相关文件，不要臆造项目结构、技术栈或工作流。\n- 避免空话和人类治理废话，例如生效日期、发布流程、分支策略、贡献者流程、严重级别分层、泛化检查清单、冗长示例。\n- 规则文件必须以 Markdown 一级标题开头，正文优先使用短标题和短 bullet。\n- 如果某条信息不会改变后续 agent 的行为，就不要写进文件。\n- {scope_hint}\n- {target_note}\n- {write_note}\n\n交付方式:\n- 如果你能直接在目标路径落盘，就在确认内容后使用文件工具写入。\n- 如果不能直接落盘，就把最终文件内容完整贴在回复里，并明确说明未写入。",
-        target_path = target_path.display(),
-        workspace_root = workspace_root.display(),
-        user_prompt = request.prompt,
-    )
-}
-
 fn discover_rule_entry(source: RuleSource, state: &RuleStateFile) -> Result<RuleEntry> {
     if !source.path.exists() {
         return Ok(RuleEntry {
@@ -291,60 +223,6 @@ fn discover_rule_entry(source: RuleSource, state: &RuleStateFile) -> Result<Rule
         enabled,
         content: Some(content),
         preview,
-    })
-}
-
-fn parse_leading_rule_scope(input: &str) -> Option<(RuleScope, &str)> {
-    const USER_PREFIXES: &[&str] = &[
-        "user",
-        "user-level",
-        "用户级规则",
-        "用户级",
-        "用户规则",
-        "用户",
-        "全局规则",
-        "全局",
-        "个人规则",
-        "个人",
-    ];
-    const WORKSPACE_PREFIXES: &[&str] = &[
-        "repo",
-        "repository",
-        "workspace",
-        "repo-level",
-        "workspace-level",
-        "仓库级规则",
-        "仓库级",
-        "仓库规则",
-        "仓库",
-        "工作区规则",
-        "工作区",
-        "项目规则",
-        "项目",
-    ];
-
-    match_prefix(input, USER_PREFIXES)
-        .map(|rest| (RuleScope::User, rest))
-        .or_else(|| {
-            match_prefix(input, WORKSPACE_PREFIXES).map(|rest| (RuleScope::Workspace, rest))
-        })
-}
-
-fn match_prefix<'a>(input: &'a str, prefixes: &[&str]) -> Option<&'a str> {
-    prefixes.iter().find_map(|prefix| {
-        let remainder = input.strip_prefix(prefix)?;
-        if remainder.is_empty() {
-            return Some(remainder);
-        }
-
-        let first = remainder.chars().next()?;
-        if first.is_whitespace() || matches!(first, ':' | '：' | '-' | '，' | ',' | ';' | '；') {
-            return Some(remainder.trim_start_matches(|ch: char| {
-                ch.is_whitespace() || matches!(ch, ':' | '：' | '-' | '，' | ',' | ';' | '；')
-            }));
-        }
-
-        None
     })
 }
 
@@ -677,62 +555,4 @@ mod tests {
         assert!(preview.excerpt.chars().count() <= RULE_PREVIEW_MAX_CHARS + 1);
     }
 
-    #[test]
-    fn parse_create_rule_request_defaults_to_workspace_scope() {
-        let request = parse_create_rule_request("补充当前仓库的测试要求").expect("parse request");
-
-        assert_eq!(request.scope, RuleScope::Workspace);
-        assert_eq!(request.prompt, "补充当前仓库的测试要求");
-    }
-
-    #[test]
-    fn parse_create_rule_request_recognizes_user_scope_prefixes() {
-        let request =
-            parse_create_rule_request("用户级：强调简洁回答和先查代码").expect("parse request");
-
-        assert_eq!(request.scope, RuleScope::User);
-        assert_eq!(request.prompt, "强调简洁回答和先查代码");
-    }
-
-    #[test]
-    fn parse_create_rule_request_requires_prompt_after_scope() {
-        let error = parse_create_rule_request("repo").expect_err("missing prompt should fail");
-
-        assert_eq!(error.to_string(), create_rule_usage());
-    }
-
-    #[test]
-    fn build_create_rule_user_turn_pushes_compact_llm_focused_constraints() {
-        let workspace_root = PathBuf::from("C:/workspace/demo");
-        let request = CreateRuleRequest {
-            scope: RuleScope::Workspace,
-            prompt: "补充构建命令和禁止事项".to_string(),
-        };
-
-        let prompt = build_create_rule_user_turn(&workspace_root, &request);
-
-        assert!(prompt.contains("正常流式输出"));
-        assert!(prompt.contains("给后续 LLM 看的"));
-        assert!(prompt.contains("create_file 或 edit_file"));
-        assert!(prompt.contains("不要假设自己已经拿到权限"));
-        assert!(prompt.contains("补充构建命令和禁止事项"));
-        assert!(prompt.contains(".spirit"));
-        assert!(prompt.contains("rule.md"));
-    }
-
-    #[test]
-    fn build_create_rule_user_turn_mentions_spirit_managed_user_write_scope() {
-        let workspace_root = PathBuf::from("C:/workspace/demo");
-        let request = CreateRuleRequest {
-            scope: RuleScope::User,
-            prompt: "强调先读代码再改".to_string(),
-        };
-
-        let prompt = build_create_rule_user_turn(&workspace_root, &request);
-
-        assert!(prompt.contains("Spirit 托管的用户目录"));
-        assert!(prompt.contains("允许写入的托管范围"));
-        assert!(prompt.contains("create_file 或 edit_file"));
-        assert!(prompt.contains("rule.md"));
-    }
 }

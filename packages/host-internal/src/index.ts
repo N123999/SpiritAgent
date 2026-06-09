@@ -14,7 +14,6 @@ export * from './marketplace.js';
 export * from './model-provider-presets.js';
 export * from './openai-models.js';
 export * from './reasoning-effort.js';
-export * from './skills.js';
 export * from './runtime.js';
 export * from './session-title.js';
 export * from './subagent-viewer.js';
