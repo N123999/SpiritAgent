@@ -24,6 +24,7 @@ type AutomationsViewProps = {
   apiReady: boolean;
   busyAction: string;
   onCreateAutomation: () => void;
+  onGenerateAutomation: () => void;
   onOpenAutomation: (automationId: string) => void;
   onDeleteAutomation?: (automationId: string) => void | Promise<void>;
 };
@@ -33,12 +34,14 @@ export function AutomationsView({
   apiReady,
   busyAction,
   onCreateAutomation,
+  onGenerateAutomation,
   onOpenAutomation,
   onDeleteAutomation,
 }: AutomationsViewProps) {
   const { t } = useTranslation();
   const items = snapshot?.automationsList ?? [];
   const automationBusy = busyAction === "automation";
+  const generateBusy = busyAction === "reset";
   const canDeleteAutomation = Boolean(onDeleteAutomation) && apiReady && !automationBusy;
 
   const [contextMenuAutomation, setContextMenuAutomation] = useState<DesktopAutomationListItem | null>(null);
@@ -102,8 +105,9 @@ export function AutomationsView({
                 variant="outline"
                 size="sm"
                 className="shrink-0 gap-1.5"
-                disabled
-                title={t("automations.generateComingSoon")}
+                disabled={!apiReady || automationBusy || generateBusy}
+                title={t("automations.generateTooltip")}
+                onClick={onGenerateAutomation}
               >
                 <Sparkles className="size-3.5 shrink-0" aria-hidden />
                 {t("automations.generate")}
