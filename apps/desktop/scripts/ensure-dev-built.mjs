@@ -137,3 +137,8 @@ ensure(
   ),
   () => npmRun(desktopRoot, 'build:electron'),
 );
+
+spawnSync('node', ['scripts/ensure-pty-spawn-helper.mjs'], {
+  cwd: desktopRoot,
+  stdio: 'inherit',
+});

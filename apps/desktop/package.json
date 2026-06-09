@@ -15,6 +15,7 @@
   "scripts": {
     "build:deps": "npm --prefix ../../packages/agent-core run build && npm --prefix ../../packages/host-internal run build:tsc",
     "ensure:dev-built": "node scripts/ensure-dev-built.mjs",
+    "postinstall": "node scripts/ensure-pty-spawn-helper.mjs",
     "dev": "node scripts/ensure-dev-built.mjs && concurrently -k -n electron,renderer \"npm run dev:electron:run\" \"npm run dev:renderer\"",
     "dev:renderer": "vite --strictPort --host 127.0.0.1 --port 1420",
     "dev:electron": "node scripts/ensure-dev-built.mjs && wait-on tcp:127.0.0.1:1420 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:1420 electron dist-electron/electron/main.js",
