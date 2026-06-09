@@ -45,6 +45,16 @@ export function isResponsesBuiltInToolCard(toolName: string): boolean {
   return RESPONSES_BUILT_IN_TOOL_NAMES.has(toolName);
 }
 
+function countDiagnosticsIssues(outputExcerpt: string | undefined): number {
+  if (!outputExcerpt) {
+    return 0;
+  }
+  return outputExcerpt
+    .split('\n')
+    .filter((line) => /^(error|warning)\s/.test(line.trim()))
+    .length;
+}
+
 export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts {
   const headline = tool.headline.trim();
   const snapshotDetail = tool.headlineDetail?.trim();
@@ -62,6 +72,39 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
       ...shellToolSummaryFromReason(headline),
       ...(command ? { detail: command } : {}),
     };
+  }
+
+  if (tool.toolName === 'get_diagnostics') {
+    if (
+      tool.phase === 'preview' ||
+      tool.phase === 'running' ||
+      tool.phase === 'pending-approval'
+    ) {
+      return {
+        headline: i18n.t('tool.diagnosticsChecking'),
+        ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+      };
+    }
+    if (tool.phase === 'succeeded') {
+      const output = tool.outputExcerpt?.trim() ?? '';
+      if (output.startsWith('No errors or warnings')) {
+        return {
+          headline: i18n.t('tool.diagnosticsNoIssues'),
+          ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+        };
+      }
+      const issueCount = countDiagnosticsIssues(tool.outputExcerpt);
+      if (issueCount === 0) {
+        return {
+          headline: i18n.t('tool.diagnosticsNoIssues'),
+          ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+        };
+      }
+      return {
+        headline: i18n.t('tool.diagnosticsIssueCount', { count: issueCount }),
+        ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+      };
+    }
   }
 
   return {

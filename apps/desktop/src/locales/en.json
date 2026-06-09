@@ -835,7 +835,11 @@
     "lspErrorCount_one": "{{count}} error",
     "lspErrorCount_other": "{{count}} errors",
     "lspWarningCount_one": "{{count}} warning",
-    "lspWarningCount_other": "{{count}} warnings"
+    "lspWarningCount_other": "{{count}} warnings",
+    "diagnosticsChecking": "Checking",
+    "diagnosticsNoIssues": "No issues",
+    "diagnosticsIssueCount_one": "{{count}} issue",
+    "diagnosticsIssueCount_other": "{{count}} issues"
   },
   "demo": {
     "compactionUserText": "Please continue implementing the Desktop connection wizard: automatically compress history when context approaches the limit, and retain the most recent round of tool results.",

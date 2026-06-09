@@ -385,6 +385,13 @@ export function toolCallSummaryCopyForRequest(
       }
       return { headline: extensionToolName };
     }
+    case 'get_diagnostics': {
+      const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
+      return {
+        headline: i18n.t('tool.diagnosticsChecking'),
+        ...(rawPath ? { headlineDetail: truncateSummaryDetail(displayBasename(rawPath)) } : {}),
+      };
+    }
     default:
       return undefined;
   }
