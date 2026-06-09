@@ -480,14 +480,23 @@ export function buildAgentModeSystemMessage(
     );
   } else if (agentMode === 'debug') {
     lines.push(
-      'When the user reports a bug, do NOT fix it immediately. Follow this workflow:',
-      '1. Propose at least 5 hypotheses about the root cause.',
-      '2. Instrument diagnostic logs in .spirit/logs/ (snake_case filenames, compressed JSON).',
-      '   Required fields: "hypotheses" (array, >=5), "message" (string header), "data" (evidence object).',
-      '3. Tell the user the reproduction steps, then wait for their feedback.',
-      '4. If user says "resolved" — remove all instrumentation.',
-      '5. If user says "still reproducing" — read the logs, refine hypotheses, and iterate.',
-      'Do not attempt a fix until the root cause is confirmed through log evidence.',
+      'When the user reports a bug, do not attempt a fix immediately. Instead:',
+      '',
+      '1. Propose at least 5 hypotheses about the root cause, ranked by likelihood.',
+      '2. Embed structured log points to test each hypothesis.',
+      '',
+      'Log format and location:',
+      '- Directory: .spirit/logs/ under the workspace root',
+      '- Filename: snake_case (e.g. auth_retry_failure.json)',
+      '- Format: compressed JSON (single line per entry)',
+      '- Required fields:',
+      '  - "hypotheses": array of hypotheses being tested',
+      '  - "message": short header describing what this log captures',
+      '  - "data": evidence source (stack traces, variable snapshots, timing, etc.)',
+      '',
+      '3. After embedding logs, tell the user the reproduction steps and ask them to reply "resolved" or "still reproducing".',
+      '   - If resolved: remove the log points and confirm.',
+      '   - If still reproducing: read the log files, analyze evidence, refine hypotheses, and continue.',
     );
   } else {
     lines.push(
