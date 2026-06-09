@@ -25,6 +25,11 @@ test('ensureBuiltinUserSkills seeds missing skills without overwriting', async (
       const content = await readFile(skillPath, 'utf8');
       assert.match(content, /^---\r?\nname: /);
     }
+    for (const name of ['create-rule', 'create-skill']) {
+      const skillPath = join(spiritDataDir, 'skills', name, 'SKILL.md');
+      const content = await readFile(skillPath, 'utf8');
+      assert.match(content, /^---\r?\nname: /);
+    }
 
     await ensureBuiltinUserSkills(spiritDataDir);
     const first = await readFile(join(spiritDataDir, 'skills', 'git-commit', 'SKILL.md'), 'utf8');

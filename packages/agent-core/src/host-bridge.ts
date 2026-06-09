@@ -575,6 +575,7 @@ interface CliHostInternalModule {
       archiveFileName?: string;
     }>;
   };
+  ensureBuiltinAuthoringSkills?: (spiritDataDir: string) => Promise<void>;
   buildCreateSkillUserTurn?: (
     workspaceRoot: string,
     instructionPaths: { workspaceSpiritSkillsDir: string; userSkillsDir: string },
@@ -784,6 +785,9 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
 
   const loaded = await import(pathToFileURL(modulePath).href);
   const module = loaded as unknown as CliHostInternalModule;
+  if (typeof module.ensureBuiltinAuthoringSkills === 'function') {
+    await module.ensureBuiltinAuthoringSkills(spiritDataDir);
+  }
   const extensionManager =
     typeof module.createHostExtensionManager === 'function'
       ? module.createHostExtensionManager({ spiritDataDir, hostKind: 'cli' })
