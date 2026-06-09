@@ -684,6 +684,47 @@ test('create_plan writes plans/{name}.md and rejects duplicate names', async () 
   }
 });
 
+test('create_automation writes automation file when defaults are provided', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-create-automation-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  let createdId: string | undefined;
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      {
+        getAutomationCreateDefaults: () => ({
+          workspaceRoot,
+          modelName: 'test-model',
+          approvalLevel: 'default',
+        }),
+        onAutomationCreated: (definition) => {
+          createdId = definition.id;
+        },
+      },
+    );
+    const request = await service.requestFromFunctionCall(
+      'create_automation',
+      JSON.stringify({
+        overview: 'Check CI status and summarize failures.',
+        schedule: { kind: 'weekly', weekday: 1, hour: 9, minute: 0 },
+      }),
+    );
+
+    assert.equal(request.name, 'create_automation');
+    assert.equal(request.title, 'Check CI status and summarize failures.');
+    assert.deepEqual(request.schedule, { kind: 'weekly', weekday: 1, hour: 9, minute: 0 });
+
+    const output = await service.execute(request);
+    assert.match(String(output), /\[automation\]\naction: create_automation\nid: /);
+    assert.ok(createdId);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('create_file is rejected for new files under plans/', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-plans-whitelist-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
