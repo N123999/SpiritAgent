@@ -1,3 +1,5 @@
+import { formatScheduleLabel, normalizeAutomationSchedule } from '@spirit-agent/host-internal';
+
 import i18n from '../lib/i18n-host.js';
 import type {
   LlmMessageContent,
@@ -228,6 +230,16 @@ export function toolCallSummaryCopyForRequest(
       return {
         headline: i18n.t('tool.create'),
         headlineDetail: truncateSummaryDetail(displayBasename(label)),
+      };
+    }
+    case 'create_automation': {
+      const title = typeof record.title === 'string' ? record.title.trim() : '';
+      const schedule = normalizeAutomationSchedule(record.schedule);
+      const scheduleLabel = schedule ? formatScheduleLabel(schedule) : '';
+      const detail = [title, scheduleLabel].filter((part) => part.length > 0).join(' · ');
+      return {
+        headline: i18n.t('automations.create'),
+        headlineDetail: truncateSummaryDetail(detail || 'automation'),
       };
     }
     case 'apply_patch': {

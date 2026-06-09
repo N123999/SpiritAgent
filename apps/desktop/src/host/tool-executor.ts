@@ -9,10 +9,13 @@ import {
   createLlmVideoContentPart,
   createLlmTextContentPart,
   buildBuiltinHostToolDefinitions,
+  buildContributedHostToolDefinitions,
   buildDreamHostToolDefinitions,
   buildDreamReadHostToolDefinitions,
   assertAgentModeAllowsHostTool,
+  assertContributedHostToolAllowed,
   assertFinishTaskToolAllowed,
+  filterContributedToolDefinitionsForAgentMode,
   filterHostToolDefinitionsForAgentMode,
   isPlanAgentMode,
   enrichUnknownToolError,
@@ -41,6 +44,9 @@ import {
   appendLspDiagnosticsAfterWriteIfNeeded,
 } from '@spirit-agent/host-internal/lsp';
 import {
+  CREATE_AUTOMATION_CONTRIBUTED_TOOL,
+  type HostAutomationCreateDefaults,
+  type HostAutomationDefinition,
   type HostDreamScope,
   type HostDreamSourceSessionRef,
   type HostTodoScope,
@@ -67,6 +73,8 @@ type DesktopDreamToolMode = 'read-only' | 'collector';
 
 const READ_ONLY_DREAM_TOOL_NAMES = new Set<DreamHostToolName>(['dream_list', 'dream_read']);
 
+const DESKTOP_HOST_CONTRIBUTED_TOOL_DEFINITIONS = [CREATE_AUTOMATION_CONTRIBUTED_TOOL];
+
 function isDreamToolRequest(request: DesktopToolRequest): request is Extract<DesktopToolRequest, { name: DreamHostToolName }> {
   return typeof request?.name === 'string' && request.name.startsWith('dream_');
 }
@@ -83,6 +91,7 @@ export class DesktopToolExecutor
   private readonly dreamToolMode: DesktopDreamToolMode | undefined;
   private readonly todoScope: HostTodoScope | undefined;
   private extensionToolDefinitions: JsonValue[];
+  private readonly hostContributedToolsEnabled: boolean;
   private loopToolDefinitions: JsonValue[] = [];
   private loopToolExposureEnabled = false;
   private planToolDefinitions: JsonValue[] = [];
@@ -105,11 +114,15 @@ export class DesktopToolExecutor
       dreamToolMode?: DesktopDreamToolMode;
       dreamSourceSession?: HostDreamSourceSessionRef;
       todoScope?: HostTodoScope;
+      hostContributedToolsEnabled?: boolean;
+      getAutomationCreateDefaults?: () => HostAutomationCreateDefaults;
+      onAutomationCreated?: (definition: HostAutomationDefinition) => void;
     } = {},
   ) {
     this.mcp = options.mcp ?? new McpService(workspaceRoot);
     this.lsp = options.lsp;
     this.extensionToolDefinitions = [...(options.extensionToolDefinitions ?? [])];
+    this.hostContributedToolsEnabled = options.hostContributedToolsEnabled === true;
     this.dreamScope = options.dreamScope;
     this.todoScope = options.todoScope;
     this.dreamToolMode = options.dreamScope ? (options.dreamToolMode ?? 'collector') : undefined;
@@ -131,6 +144,10 @@ export class DesktopToolExecutor
       ...(options.dreamScope ? { dreamScope: options.dreamScope } : {}),
       ...(options.dreamSourceSession ? { dreamSourceSession: options.dreamSourceSession } : {}),
       ...(options.todoScope ? { todoScope: options.todoScope } : {}),
+      ...(options.getAutomationCreateDefaults
+        ? { getAutomationCreateDefaults: options.getAutomationCreateDefaults }
+        : {}),
+      ...(options.onAutomationCreated ? { onAutomationCreated: options.onAutomationCreated } : {}),
       availableToolDefinitions: () => this.toolDefinitionsJson(),
     });
   }
@@ -219,9 +236,18 @@ export class DesktopToolExecutor
       this.agentMode,
     );
     const hostDefinitionItems = Array.isArray(mergedHostDefinitions) ? mergedHostDefinitions : [];
+    const hostContributedToolDefinitions = this.hostContributedToolsEnabled
+      ? buildContributedHostToolDefinitions(
+          filterContributedToolDefinitionsForAgentMode(
+            DESKTOP_HOST_CONTRIBUTED_TOOL_DEFINITIONS,
+            this.agentMode,
+          ),
+        )
+      : [];
 
     return mergeToolDefinitions(
       ...hostDefinitionItems,
+      ...hostContributedToolDefinitions,
       ...this.extensionToolDefinitions,
       ...this.mcp.toolDefinitionsJson(),
       ...(this.lsp?.enabled
@@ -249,6 +275,14 @@ export class DesktopToolExecutor
     const availableDefinitions = this.toolDefinitionsJson();
     assertFinishTaskToolAllowed(name, this.loopToolExposureEnabled, availableDefinitions);
     assertAgentModeAllowsHostTool(name, this.agentMode, availableDefinitions);
+    if (this.hostContributedToolsEnabled) {
+      assertContributedHostToolAllowed(
+        name,
+        this.agentMode,
+        DESKTOP_HOST_CONTRIBUTED_TOOL_DEFINITIONS,
+        availableDefinitions,
+      );
+    }
     try {
       const localMcpRequest = await this.mcp.requestFromFunctionCall(name, argumentsJson);
       if (localMcpRequest) {
