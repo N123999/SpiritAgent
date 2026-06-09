@@ -50,27 +50,27 @@ export function SpiritGlassLogo({ width = 72, className, ...props }: SpiritGlass
       width={width}
       height={height}
       aria-hidden
-      className={cn("block overflow-visible select-none", className)}
+      className={cn("spirit-glass-logo block overflow-visible select-none", className)}
       {...props}
     >
       <defs>
         <linearGradient id={fillId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.16)" />
-          <stop offset="40%" stopColor="rgba(255,255,255,0.04)" />
-          <stop offset="100%" stopColor="rgba(220,230,255,0.02)" />
+          <stop offset="0%" stopColor="var(--spirit-agent-fill-strong)" />
+          <stop offset="40%" stopColor="var(--spirit-agent-fill-mid)" />
+          <stop offset="100%" stopColor="var(--spirit-agent-fill-tail)" />
         </linearGradient>
 
         <linearGradient id={innerId} x1="100%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.06)" />
+          <stop offset="0%" stopColor="var(--spirit-agent-inner-strong)" />
           <stop offset="45%" stopColor="rgba(255,255,255,0)" />
-          <stop offset="100%" stopColor="rgba(200,220,255,0.03)" />
+          <stop offset="100%" stopColor="var(--spirit-agent-inner-tail)" />
         </linearGradient>
 
         <linearGradient id={fresnelId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgba(190,215,255,0.35)" />
-          <stop offset="25%" stopColor="rgba(255,200,200,0.1)" />
-          <stop offset="55%" stopColor="rgba(200,255,215,0.1)" />
-          <stop offset="100%" stopColor="rgba(215,200,255,0.25)" />
+          <stop offset="0%" stopColor="var(--spirit-agent-fresnel-a)" />
+          <stop offset="25%" stopColor="var(--spirit-agent-fresnel-b)" />
+          <stop offset="55%" stopColor="var(--spirit-agent-fresnel-c)" />
+          <stop offset="100%" stopColor="var(--spirit-agent-fresnel-d)" />
         </linearGradient>
 
         <filter id={blurSmId} x="-20%" y="-20%" width="140%" height="140%">
@@ -96,7 +96,7 @@ export function SpiritGlassLogo({ width = 72, className, ...props }: SpiritGlass
       <path
         d={SPIRIT_GLASS_LOGO_PATH}
         fill="none"
-        stroke="rgba(255,255,255,0.65)"
+        stroke="var(--spirit-agent-stroke-main)"
         strokeWidth="0.5"
         strokeLinejoin="round"
       />
@@ -104,7 +104,7 @@ export function SpiritGlassLogo({ width = 72, className, ...props }: SpiritGlass
       <path
         d={SPIRIT_GLASS_LOGO_PATH}
         fill="none"
-        stroke="rgba(255,255,255,0.2)"
+        stroke="var(--spirit-agent-stroke-soft)"
         strokeWidth="1.5"
         filter={`url(#${blurSmId})`}
         opacity="0.5"

@@ -421,6 +421,38 @@ html.spirit-desktop-native.spirit-desktop-mica.spirit-launch-splash-exiting
     background: color-mix(in srgb, var(--foreground) 28%, transparent);
   }
 
+  /*
+   * 玻璃品牌标主题色：与 n123999/me `project-spirit-agent-preview` 一致。
+   * 默认浅色 UI；`html.dark` 为暗色（原 spiritagent.app CTA 白描边方案）。
+   */
+  .spirit-glass-logo {
+    --spirit-agent-fill-strong: rgba(31, 31, 31, 0.06);
+    --spirit-agent-fill-mid: rgba(31, 31, 31, 0.025);
+    --spirit-agent-fill-tail: rgba(31, 31, 31, 0.01);
+    --spirit-agent-inner-strong: rgba(255, 255, 255, 0.28);
+    --spirit-agent-inner-tail: rgba(31, 31, 31, 0.018);
+    --spirit-agent-fresnel-a: rgba(31, 31, 31, 0.12);
+    --spirit-agent-fresnel-b: rgba(31, 31, 31, 0.055);
+    --spirit-agent-fresnel-c: rgba(31, 31, 31, 0.045);
+    --spirit-agent-fresnel-d: rgba(31, 31, 31, 0.1);
+    --spirit-agent-stroke-main: rgba(31, 31, 31, 0.34);
+    --spirit-agent-stroke-soft: rgba(31, 31, 31, 0.1);
+  }
+
+  html.dark .spirit-glass-logo {
+    --spirit-agent-fill-strong: rgba(255, 255, 255, 0.16);
+    --spirit-agent-fill-mid: rgba(255, 255, 255, 0.04);
+    --spirit-agent-fill-tail: rgba(220, 230, 255, 0.02);
+    --spirit-agent-inner-strong: rgba(255, 255, 255, 0.06);
+    --spirit-agent-inner-tail: rgba(200, 220, 255, 0.03);
+    --spirit-agent-fresnel-a: rgba(190, 215, 255, 0.35);
+    --spirit-agent-fresnel-b: rgba(255, 200, 200, 0.1);
+    --spirit-agent-fresnel-c: rgba(200, 255, 215, 0.1);
+    --spirit-agent-fresnel-d: rgba(215, 200, 255, 0.25);
+    --spirit-agent-stroke-main: rgba(255, 255, 255, 0.65);
+    --spirit-agent-stroke-soft: rgba(255, 255, 255, 0.2);
+  }
+
   /* 骨架屏式：宽柔渐变 + 平移 background，避免窄条「镀铬高光」的复古感 */
   @keyframes spirit-launch-shimmer-bg {
     0% {
