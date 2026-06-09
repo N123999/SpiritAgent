@@ -1,7 +1,7 @@
 export const DEBUG_CHIP_CLASS =
-  "inline-flex items-center gap-1 rounded-md border border-purple-200/90 bg-purple-50 px-1.5 py-0.5 text-xs font-medium leading-none text-purple-900 select-none align-middle mx-0.5 dark:border-purple-700/60 dark:bg-purple-950 dark:text-purple-300";
+  "inline-flex items-center gap-1 rounded-md border border-red-200/90 bg-red-50 px-1.5 py-0.5 text-xs font-medium leading-none text-red-900 select-none align-middle mx-0.5 dark:border-red-700/60 dark:bg-red-950 dark:text-red-300";
 
-export const DEBUG_CHIP_ICON_CLASS = "text-purple-600 dark:text-purple-400";
+export const DEBUG_CHIP_ICON_CLASS = "text-red-600 dark:text-red-400";
 
 export function makeDebugChipNode(doc: Document, label = "Debug"): HTMLElement {
   const span = doc.createElement("span");
