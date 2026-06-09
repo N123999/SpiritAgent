@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 
 import {
-  formatLspDiagnosticsSummaryLabel,
   lspDiagnosticsCounts,
   toolCardSecondaryTextClass,
 } from "@/lib/file-tool-lsp-diagnostics-display";
@@ -15,8 +14,8 @@ export function FileToolLspDiagnosticsBadge({
 }) {
   const { t } = useTranslation();
   const { errorCount, warningCount } = lspDiagnosticsCounts(diagnostics);
-  const label = formatLspDiagnosticsSummaryLabel(errorCount, warningCount, t);
-  if (!label) {
+  const totalIssues = errorCount + warningCount;
+  if (totalIssues === 0) {
     return null;
   }
 
@@ -27,7 +26,7 @@ export function FileToolLspDiagnosticsBadge({
         toolCardSecondaryTextClass,
       )}
     >
-      {label}
+      {t("tool.diagnosticsIssueCount", { count: totalIssues })}
     </span>
   );
 }
