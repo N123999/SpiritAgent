@@ -17,6 +17,7 @@ import {
   trimMessageTextAroundElements,
   messageContentToRichSegments,
   parseMessageContentParts,
+  segmentsEqual,
 } from "../src/lib/composer-segment-model.ts";
 import {
   ensureLoopPinned,
@@ -516,4 +517,107 @@ test("domParsedMissingRequiredAgentChip when shell has ask but dom lost it", () 
     true,
   );
   assert.equal(shouldPinAgentModeChip({ hostMode: "ask", dismissed: true }), false);
+});
+
+// --- Skill chip tests ---
+
+test("segmentsToMessageText serializes skill chip as alias", () => {
+  const message = segmentsToMessageText([
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " fix typo" },
+  ]);
+  assert.equal(message, "/git-commit fix typo");
+});
+
+test("segmentsToPlainText returns empty for skill chip", () => {
+  const segs = [
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " extra" },
+  ];
+  assert.equal(segmentsToPlainText(segs), " extra");
+});
+
+test("insertSegmentAtCaret inserts skill chip with trailing space", () => {
+  const { segments, caret } = insertSegmentAtCaret(
+    [{ kind: "text", value: "" }],
+    { segmentIndex: 0, offset: 0 },
+    { kind: "skill", alias: "/git-push" },
+  );
+  assert.deepEqual(segments, [
+    { kind: "skill", alias: "/git-push" },
+    { kind: "text", value: " " },
+  ]);
+  assert.equal(caret.segmentIndex, 1);
+  assert.equal(caret.offset, 1);
+});
+
+test("isCaretAtInlineChipRemovalPoint detects caret after skill chip", () => {
+  const segs = [
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " " },
+  ];
+  assert.equal(
+    isCaretAtInlineChipRemovalPoint(segs, { segmentIndex: 1, offset: 0 }),
+    true,
+  );
+  assert.equal(
+    isCaretAtInlineChipRemovalPoint(segs, { segmentIndex: 1, offset: 1 }),
+    false,
+  );
+});
+
+test("removeInlineChipAtRemovalPoint removes skill chip on backspace", () => {
+  const segs = [
+    { kind: "skill", alias: "/git-merge" },
+    { kind: "text", value: " " },
+  ];
+  const removed = removeInlineChipAtRemovalPoint(segs, { segmentIndex: 1, offset: 0 });
+  assert.deepEqual(removed?.segments, [{ kind: "text", value: " " }]);
+  assert.equal(removed?.caret.segmentIndex, 0);
+  assert.equal(removed?.caret.offset, 0);
+});
+
+test("syncSegmentsFromExternalValue preserves skill chip", () => {
+  const synced = syncSegmentsFromExternalValue(
+    [
+      { kind: "text", value: "old" },
+      { kind: "skill", alias: "/git-commit" },
+    ],
+    "new",
+  );
+  assert.deepEqual(synced, [
+    { kind: "text", value: "new" },
+    { kind: "skill", alias: "/git-commit" },
+  ]);
+});
+
+test("segmentsEqual compares skill chips by alias", () => {
+  const a = [{ kind: "skill", alias: "/git-commit" }];
+  const b = [{ kind: "skill", alias: "/git-commit" }];
+  const c = [{ kind: "skill", alias: "/git-push" }];
+  assert.equal(segmentsEqual(a, b), true);
+  assert.equal(segmentsEqual(a, c), false);
+});
+
+test("composerShowsPlaceholder false when skill chip present", () => {
+  assert.equal(
+    composerShowsPlaceholder(
+      [{ kind: "skill", alias: "/git-commit" }, { kind: "text", value: " " }],
+      { composing: false, attachmentCount: 0 },
+    ),
+    false,
+  );
+});
+
+test("normalizeCaretForInlineAttachmentChips snaps caret on skill chip", () => {
+  const segs = [
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " tail" },
+  ];
+  const snapped = normalizeCaretForInlineAttachmentChips(segs, {
+    segmentIndex: 0,
+    offset: 0,
+  });
+  assert.equal(snapped.segmentIndex, 1);
+  assert.equal(snapped.offset, 1);
 });

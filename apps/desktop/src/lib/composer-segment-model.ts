@@ -9,7 +9,8 @@ export type RichSegment =
   | { kind: "workspaceFile"; path: string }
   | { kind: "loop" }
   | { kind: "plan" }
-  | { kind: "ask" };
+  | { kind: "ask" }
+  | { kind: "skill"; alias: string };
 
 export type ActiveWorkspaceFileReferenceQuery = {
   start: number;
@@ -92,6 +93,10 @@ export function segmentsToAttachments(segs: RichSegment[]): BrowserElementAttach
     .map((s) => s.attachment);
 }
 
+export function hasSkillSegment(segs: RichSegment[]): boolean {
+  return segs.some((s) => s.kind === "skill");
+}
+
 /** Separator between serialized parts; avoids extra blank lines around inline chips. */
 export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): string {
   if (prev.kind === "text" && next.kind === "text") return "";
@@ -112,7 +117,7 @@ export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): s
     return "\n";
   }
 
-  if (prev.kind === "workspaceFile" || next.kind === "workspaceFile") {
+  if (prev.kind === "workspaceFile" || next.kind === "workspaceFile" || prev.kind === "skill" || next.kind === "skill") {
     return "";
   }
 
@@ -131,7 +136,9 @@ export function segmentsToMessageText(segs: RichSegment[]): string {
         ? seg.value
         : seg.kind === "workspaceFile"
           ? workspaceFilePlainToken(seg.path)
-          : browserElementContextText(seg.attachment);
+          : seg.kind === "skill"
+            ? seg.alias
+            : browserElementContextText(seg.attachment);
     if (seg.kind === "text" && !piece) continue;
 
     if (!out) {
@@ -182,6 +189,9 @@ export function segmentsEqual(a: RichSegment[], b: RichSegment[]): boolean {
     if (seg.kind === "ask" && other.kind === "ask") {
       return true;
     }
+    if (seg.kind === "skill" && other.kind === "skill") {
+      return seg.alias === other.alias;
+    }
     return false;
   });
 }
@@ -203,8 +213,8 @@ function pinAgentModeChipFromSegments(
 export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string): RichSegment[] {
   const loopPinned = segs.some((s) => s.kind === "loop");
   const inlineChips = segs.filter(
-    (s): s is Extract<RichSegment, { kind: "element" | "workspaceFile" }> =>
-      s.kind === "element" || s.kind === "workspaceFile",
+    (s): s is Extract<RichSegment, { kind: "element" | "workspaceFile" | "skill" }> =>
+      s.kind === "element" || s.kind === "workspaceFile" || s.kind === "skill",
   );
 
   let body: RichSegment[];
@@ -216,7 +226,7 @@ export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string
     const out: RichSegment[] = [];
     let textApplied = false;
     for (const seg of segs) {
-      if (seg.kind === "element" || seg.kind === "workspaceFile") {
+      if (seg.kind === "element" || seg.kind === "workspaceFile" || seg.kind === "skill") {
         out.push(seg);
       } else if (seg.kind === "text" && !textApplied) {
         out.push({ kind: "text", value });
@@ -247,8 +257,8 @@ function textFollowingChipInsert(after: string): string {
 
 function isInlineChipSegment(
   seg: RichSegment | undefined,
-): seg is Extract<RichSegment, { kind: "element" | "workspaceFile" | "loop" }> {
-  return seg?.kind === "element" || seg?.kind === "workspaceFile" || seg?.kind === "loop";
+): seg is Extract<RichSegment, { kind: "element" | "workspaceFile" | "loop" | "skill" }> {
+  return seg?.kind === "element" || seg?.kind === "workspaceFile" || seg?.kind === "loop" || seg?.kind === "skill";
 }
 
 export function insertSegmentAtCaret(
@@ -317,6 +327,17 @@ export function insertSegmentAtCaret(
     );
     if (fileIndex >= 0) {
       afterIndex = fileIndex + 1;
+      const trailing = normalized[afterIndex];
+      if (trailing?.kind === "text" && trailing.value.startsWith(" ")) {
+        caretOffset = 1;
+      }
+    }
+  } else if (newSegment.kind === "skill") {
+    const skillIndex = normalized.findIndex(
+      (s) => s.kind === "skill" && s.alias === newSegment.alias,
+    );
+    if (skillIndex >= 0) {
+      afterIndex = skillIndex + 1;
       const trailing = normalized[afterIndex];
       if (trailing?.kind === "text" && trailing.value.startsWith(" ")) {
         caretOffset = 1;

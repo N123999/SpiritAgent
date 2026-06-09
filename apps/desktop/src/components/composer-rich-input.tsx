@@ -35,6 +35,7 @@ import {
   ensureLoopPinned,
   hasAgentModeSegment,
   hasLoopSegment,
+  hasSkillSegment,
   insertAgentModeSegment,
   insertLoopSegment,
   insertSegmentAtCaret,
@@ -118,6 +119,7 @@ export type ComposerRichInputHandle = {
   insertPlanChip(options?: InsertAgentModeChipOptions): void;
   insertAskChip(options?: InsertAgentModeChipOptions): void;
   removeAgentModeChip(): void;
+  insertSkillChip(alias: string): void;
   /** 发送成功后由宿主调用：恢复 chip（若仍为 plan/ask）并将光标置于 chip 后。 */
   resetAfterSend(agentMode: DesktopAgentMode): void;
   getSegments(): RichSegment[];
@@ -442,6 +444,23 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [insertAgentModeChip],
     );
 
+    const insertSkillChip = useCallback(
+      (alias: string) => {
+        const div = divRef.current;
+        if (div) {
+          div.focus();
+        }
+        // 始终从空 segments 开始，确保斜杠查询文本不会残留
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(
+          emptySegments(),
+          { segmentIndex: 0, offset: 0 },
+          { kind: "skill", alias },
+        );
+        commitSegments(next, nextCaret);
+      },
+      [commitSegments],
+    );
+
     const removeAgentModeChip = useCallback(() => {
       if (!hasAgentModeSegment(segmentsRef.current)) {
         return;
@@ -487,6 +506,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertPlanChip,
         insertAskChip,
         removeAgentModeChip,
+        insertSkillChip,
         resetAfterSend,
         getSegments,
         setSegments: (next: RichSegment[]) => applySegments(next),
@@ -499,6 +519,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertPlanChip,
         insertAskChip,
         removeAgentModeChip,
+        insertSkillChip,
         resetAfterSend,
         getSegments,
         applySegments,
@@ -600,7 +621,6 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       const plain = segmentsToPlainText(current);
       const localPlain = normalizeComposerPlain(plain);
       const externalPlain = normalizeComposerPlain(value);
-
       if (skipExternalValueSyncRef.current) {
         const expected = lastSyncedToParentPlainRef.current;
         if (expected !== null && externalPlain !== expected) {
@@ -646,6 +666,11 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           return;
         }
         if (agentModeChipDismissedRef.current && !hasAgentModeSegment(current)) {
+          return;
+        }
+        // Skill chip 存在时，parent 侧 value 为空（segmentsToPlainText 对 skill 返回 ""），
+        // 但 chip 本身应保留，勿清空。
+        if (hasSkillSegment(current) && isComposerPlainEmpty(plain)) {
           return;
         }
         commitSegments(emptySegments(), { segmentIndex: 0, offset: 0 });
