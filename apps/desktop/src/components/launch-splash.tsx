@@ -1,5 +1,7 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
+import { useTheme } from "@/hooks/useTheme";
+import { spiritAgentBrandIconSrc } from "@/lib/brand-icon";
 import { cn } from "@/lib/utils";
 
 const EXIT_MS = 520;
@@ -7,30 +9,35 @@ const EXIT_MS = 520;
 /** 加载结束后延迟再播退场（毫秒），0 表示立即退场 */
 const EXIT_DELAY_BEFORE_MS = 0;
 
-const ICON_SRC = "./spirit-agent-icon.png";
-
 type Phase = "running" | "leaving" | "gone";
 
 type LaunchSplashProps = {
   /** 为 true 时显示加载态；变为 false 时播放退场后卸载 */
   active: boolean;
-};
-
-const iconMaskStyle: CSSProperties = {
-  WebkitMaskImage: `url(${ICON_SRC})`,
-  maskImage: `url(${ICON_SRC})`,
-  WebkitMaskSize: "contain",
-  maskSize: "contain",
-  WebkitMaskRepeat: "no-repeat",
-  maskRepeat: "no-repeat",
-  WebkitMaskPosition: "center",
-  maskPosition: "center",
+  /** 与侧栏一致：原生窗口模糊时启动层透明，透出系统材质 */
+  useMicaBackdrop?: boolean;
 };
 
 /**
  * 首屏启动：居中品牌图标 + 骨架屏式线性闪光，宿主就绪后淡出。
  */
-export function LaunchSplash({ active }: LaunchSplashProps) {
+export function LaunchSplash({ active, useMicaBackdrop = false }: LaunchSplashProps) {
+  const { resolvedDark } = useTheme();
+  const iconSrc = spiritAgentBrandIconSrc(resolvedDark);
+  const iconMaskStyle = useMemo<CSSProperties>(
+    () => ({
+      WebkitMaskImage: `url(${iconSrc})`,
+      maskImage: `url(${iconSrc})`,
+      WebkitMaskSize: "contain",
+      maskSize: "contain",
+      WebkitMaskRepeat: "no-repeat",
+      maskRepeat: "no-repeat",
+      WebkitMaskPosition: "center",
+      maskPosition: "center",
+    }),
+    [iconSrc],
+  );
+
   const [phase, setPhase] = useState<Phase>(() => (active ? "running" : "gone"));
 
   useEffect(() => {
@@ -59,6 +66,19 @@ export function LaunchSplash({ active }: LaunchSplashProps) {
     return () => window.clearTimeout(id);
   }, [phase]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    if (phase === "gone") {
+      root.classList.remove("spirit-launch-splash-active", "spirit-launch-splash-exiting");
+      return;
+    }
+    root.classList.add("spirit-launch-splash-active");
+    root.classList.toggle("spirit-launch-splash-exiting", phase === "leaving");
+    return () => {
+      root.classList.remove("spirit-launch-splash-active", "spirit-launch-splash-exiting");
+    };
+  }, [phase]);
+
   if (phase === "gone") {
     return null;
   }
@@ -67,9 +87,11 @@ export function LaunchSplash({ active }: LaunchSplashProps) {
 
   return (
     <div
+      data-spirit-surface="launch-splash"
       aria-hidden={exiting}
       className={cn(
-        "fixed inset-0 z-[200] flex items-center justify-center bg-background",
+        "fixed inset-0 z-[200] flex items-center justify-center",
+        useMicaBackdrop ? "bg-transparent" : "bg-background",
         "transition-opacity duration-500 ease-out motion-reduce:duration-200",
         exiting ? "pointer-events-none opacity-0" : "opacity-100",
       )}
@@ -81,7 +103,7 @@ export function LaunchSplash({ active }: LaunchSplashProps) {
         )}
       >
         <img
-          src={ICON_SRC}
+          src={iconSrc}
           alt=""
           width={72}
           height={72}

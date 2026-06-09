@@ -3171,7 +3171,7 @@ export default function App() {
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
-      <LaunchSplash active={launchSplashActive} />
+      <LaunchSplash active={launchSplashActive} useMicaBackdrop={useMicaBackdrop} />
       {winElectronChrome ? (
         <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} />
       ) : null}
