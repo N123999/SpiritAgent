@@ -34,11 +34,6 @@ pub enum SkillRootKind {
     User,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CreateSkillRequest {
-    pub prompt: String,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillSource {
@@ -129,10 +124,6 @@ struct ParsedSkillDocument {
 struct ParsedSkillFrontmatter {
     name: Option<String>,
     description: Option<String>,
-}
-
-pub fn create_skill_usage() -> &'static str {
-    "用法: /create-skill <自然语言需求>"
 }
 
 pub fn skills_usage() -> &'static str {
@@ -275,17 +266,6 @@ pub fn build_activate_skill_user_turn(skill_name: &str, extra_note: &str) -> Str
     }
 
     trimmed.to_string()
-}
-
-pub fn parse_create_skill_request(input: &str) -> Result<CreateSkillRequest> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Err(anyhow!(create_skill_usage()));
-    }
-
-    Ok(CreateSkillRequest {
-        prompt: trimmed.to_string(),
-    })
 }
 
 pub fn validate_skill_name(name: &str) -> Result<()> {
@@ -930,29 +910,6 @@ mod tests {
         let enabled = enabled_skill_catalog(&entries);
         assert_eq!(enabled.len(), 1);
         assert_eq!(enabled[0].name, "code-review");
-    }
-
-    #[test]
-    fn parse_create_skill_request_preserves_natural_language_prompt() {
-        let request = parse_create_skill_request("做一个用于代码审查 diff 的 Skill")
-            .expect("parse create skill request");
-
-        assert_eq!(request.prompt, "做一个用于代码审查 diff 的 Skill");
-    }
-
-    #[test]
-    fn parse_create_skill_request_keeps_explicit_user_scope_intent_in_prompt() {
-        let request = parse_create_skill_request("生成一个用户级 Skill，用于跨仓库代码审查")
-            .expect("parse create skill request");
-
-        assert!(request.prompt.contains("用户级 Skill"));
-    }
-
-    #[test]
-    fn parse_create_skill_request_rejects_empty_prompt() {
-        let error = parse_create_skill_request("   ").expect_err("empty prompt should fail");
-
-        assert!(error.to_string().contains("/create-skill"));
     }
 
     #[test]

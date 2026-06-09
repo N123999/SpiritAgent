@@ -2,7 +2,6 @@ import type { DesktopSkillListItem } from '@/types'
 
 export type SkillSlashSuggestionKind =
   | 'create-rule'
-  | 'create-skill'
   | 'log-session'
   | 'compact'
   | 'loop'
@@ -29,7 +28,6 @@ export function skillSlashAlias(skillName: string): string {
 }
 
 export const CREATE_RULE_SLASH_ALIAS = '/create-rule'
-export const CREATE_SKILL_SLASH_ALIAS = '/create-skill'
 export const LOG_SESSION_SLASH_ALIAS = '/log-session'
 export const COMPACT_SLASH_ALIAS = '/compact'
 export const LOOP_SLASH_ALIAS = '/loop'
@@ -43,13 +41,6 @@ export const STATIC_SLASH_COMMANDS: readonly SkillSlashSuggestion[] = [
     name: 'create-rule',
     descriptionKey: 'slash.createRule',
     kind: 'create-rule',
-  },
-  {
-    id: 'command:create-skill',
-    alias: CREATE_SKILL_SLASH_ALIAS,
-    name: 'create-skill',
-    descriptionKey: 'slash.createSkill',
-    kind: 'create-skill',
   },
   {
     id: 'command:log-session',
@@ -135,16 +126,6 @@ export function isCreateRuleSlashInput(input: string): boolean {
   }
 
   const remainder = trimmed.slice(CREATE_RULE_SLASH_ALIAS.length)
-  return remainder.length === 0 || /^\s/u.test(remainder)
-}
-
-export function isCreateSkillSlashInput(input: string): boolean {
-  const trimmed = input.trim()
-  if (!trimmed.startsWith(CREATE_SKILL_SLASH_ALIAS)) {
-    return false
-  }
-
-  const remainder = trimmed.slice(CREATE_SKILL_SLASH_ALIAS.length)
   return remainder.length === 0 || /^\s/u.test(remainder)
 }
 

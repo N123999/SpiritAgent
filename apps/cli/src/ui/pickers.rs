@@ -253,7 +253,6 @@ pub(in crate::ui) fn suggestion_summary(suggestion: &InputSuggestion) -> String 
         "/mcp" => t!("ui.suggestion.summary.mcp").into_owned(),
         "/create-rule" => t!("ui.suggestion.summary.create_rule").into_owned(),
         "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
-        "/create-skill" => t!("ui.suggestion.summary.create_skill").into_owned(),
         "/skills" => t!("ui.suggestion.summary.skills").into_owned(),
         "/extensions" => t!("ui.suggestion.summary.extensions").into_owned(),
         "/log" => t!("ui.suggestion.summary.log").into_owned(),
@@ -335,11 +334,6 @@ pub(in crate::ui) fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec
         "/rules" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),
             "    /rules".to_string(),
-        ],
-        "/create-skill" => vec![
-            t!("ui.suggestion.usage.heading").into_owned(),
-            format!("    {}", t!("ui.suggestion.usage.create_skill.default")),
-            format!("    {}", t!("ui.suggestion.usage.create_skill.user")),
         ],
         "/skills" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),

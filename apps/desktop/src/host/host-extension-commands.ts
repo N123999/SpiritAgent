@@ -1,11 +1,8 @@
 import {
   buildActiveSkillPayload,
   buildActivateSkillUserTurn,
-  buildCreateSkillUserTurn,
   createSkillFile,
   deleteSkillDir,
-  desktopInstructionPaths,
-  parseCreateSkillSlashPrompt,
 } from './skills.js';
 import {
   buildCreateRuleUserTurn,
@@ -45,7 +42,6 @@ import type {
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
   SubmitCreateRuleSlashRequest,
-  SubmitCreateSkillSlashRequest,
   SubmitSkillSlashRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
@@ -548,41 +544,6 @@ export async function submitCreateRuleSlashCommand(
 
     return ctx.submitUserTurnAfterInitialized(
       buildCreateRuleUserTurn(state.workspaceRoot, parsed),
-      {
-        displayText: rawText,
-      },
-    );
-  });
-}
-
-export async function submitCreateSkillSlashCommand(
-  ctx: HostExtensionCommandContext,
-  request: SubmitCreateSkillSlashRequest,
-): Promise<DesktopSnapshot> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized(undefined, { fastPath: true });
-    const runtime = ctx.requireRuntime();
-    if (runtime.isBusy()) {
-      throw new Error(i18n.t('error.runtimeBusy'));
-    }
-
-    const rawText = request.rawText.trim();
-    if (!rawText) {
-      throw new Error(i18n.t('error.messageRequired'));
-    }
-
-    const prompt = parseCreateSkillSlashPrompt(rawText);
-    if (prompt instanceof Error) {
-      return ctx.appendInlineAssistantReply(rawText, prompt.message);
-    }
-
-    const state = ctx.requireState();
-    return ctx.submitUserTurnAfterInitialized(
-      buildCreateSkillUserTurn(
-        state.workspaceRoot,
-        desktopInstructionPaths(state.workspaceRoot),
-        prompt,
-      ),
       {
         displayText: rawText,
       },

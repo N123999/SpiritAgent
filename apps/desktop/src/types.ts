@@ -488,10 +488,6 @@ export interface SubmitGitChipRequest {
   extraNote?: string;
 }
 
-export interface SubmitCreateSkillSlashRequest {
-  rawText: string;
-}
-
 export type DesktopRuleScope = 'workspace' | 'user';
 
 /** 在固定规则槽位创建 Markdown 规则文件，根目录由 `rootKind` 决定。 */

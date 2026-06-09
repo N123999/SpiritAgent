@@ -884,21 +884,6 @@ impl TsBridgeRuntime {
         Ok(PathBuf::from(path))
     }
 
-    pub fn build_create_skill_user_turn(&mut self, prompt: &str) -> Result<String> {
-        let value = self.call_bridge(
-            "hostInternal.buildCreateSkillUserTurn",
-            Some(json!({
-                "prompt": prompt,
-                "includeManagedUserRootNote": true,
-                "deliveryWriteInstruction": "如果你能直接在目标路径落盘，就在确认内容后使用 create_file 或 edit_file 写入。",
-            })),
-        )?;
-        value
-            .as_str()
-            .map(str::to_owned)
-            .ok_or_else(|| anyhow!("hostInternal.buildCreateSkillUserTurn 返回值无效"))
-    }
-
     pub fn list_extensions(&mut self) -> Result<Vec<CliExtensionEntry>> {
         let value = self.call_bridge("hostInternal.listExtensions", None)?;
         Ok(serde_json::from_value(value)?)

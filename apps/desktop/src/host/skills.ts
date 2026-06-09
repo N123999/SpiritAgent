@@ -8,7 +8,6 @@ import type {
   OpenAiActiveSkillResourceEntry,
 } from '@spirit-agent/core';
 import {
-  buildCreateSkillUserTurn as buildSharedCreateSkillUserTurn,
   resolveInstructionPaths,
   SKILL_FILE_NAME,
   validateSkillName,
@@ -150,29 +149,6 @@ export function buildActivateSkillUserTurn(skillName: string, extraNote: string)
     return i18n.t('slash.activateSkillPrompt', { skillName });
   }
   return trimmed;
-}
-
-const CREATE_SKILL_PROMPT_HINT =
-  '请在 /create-skill 后描述你想生成或收紧的 Skill，例如：/create-skill 做一个用于排查 Electron 白屏的 Skill';
-
-export function parseCreateSkillSlashPrompt(input: string): string | Error {
-  const trimmed = input.trim();
-  const prompt = trimmed.startsWith('/create-skill')
-    ? trimmed.slice('/create-skill'.length).trim()
-    : trimmed;
-  if (!prompt) {
-    return new Error(CREATE_SKILL_PROMPT_HINT);
-  }
-
-  return prompt;
-}
-
-export function buildCreateSkillUserTurn(
-  workspaceRoot: string,
-  instructionPaths: ReturnType<typeof resolveInstructionPaths>,
-  prompt: string,
-): string {
-  return buildSharedCreateSkillUserTurn(workspaceRoot, instructionPaths, prompt);
 }
 
 export async function buildActiveSkillPayload(

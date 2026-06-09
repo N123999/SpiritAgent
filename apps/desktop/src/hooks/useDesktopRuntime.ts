@@ -15,7 +15,6 @@ import {
 } from "@/lib/local-file-attachments";
 import {
   isCreateRuleSlashInput,
-  isCreateSkillSlashInput,
   isCompactSlashInput,
   isLogSessionSlashInput,
   matchSkillSlashInput,
@@ -1854,20 +1853,13 @@ export function useDesktopRuntime() {
       const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
       if (
         hasLocalFiles &&
-        (isCreateRuleSlashInput(text) ||
-          isCreateSkillSlashInput(text) ||
-          isCompactSlashInput(text) ||
-          skillSlash)
+        (isCreateRuleSlashInput(text) || isCompactSlashInput(text) || skillSlash)
       ) {
         setRuntimeError(i18n.t('error.attachmentsNotSupportedWithSlash'));
         return false;
       }
       const next = isCreateRuleSlashInput(text)
         ? await api.submitCreateRuleSlash({
-            rawText: text,
-          })
-        : isCreateSkillSlashInput(text)
-        ? await api.submitCreateSkillSlash({
             rawText: text,
           })
         : skillSlash

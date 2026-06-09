@@ -32,7 +32,6 @@ import type {
   RewindAndSubmitMessageRequest,
   SubmitUserTurnRequest,
   SessionListItem,
-  SubmitCreateSkillSlashRequest,
   SubmitGitChipRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -78,7 +77,6 @@ declare global {
     deleteRule(request: DeleteRuleRequest): Promise<DesktopSnapshot>;
     deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
     submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest): Promise<DesktopSnapshot>;
-    submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
     submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
     submitGitChip(request: SubmitGitChipRequest): Promise<DesktopSnapshot>;
     submitStartImplementing(): Promise<DesktopSnapshot>;

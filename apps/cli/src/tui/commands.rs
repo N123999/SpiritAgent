@@ -781,38 +781,6 @@ impl TuiShell {
         let _ = self.submit_runtime_user_turn(generation_prompt, None);
     }
 
-    pub(crate) fn handle_create_skill_slash(&mut self, message: &str) {
-        let tail = message
-            .strip_prefix("/create-skill")
-            .map(str::trim)
-            .unwrap_or("");
-        let request = match skills::parse_create_skill_request(tail) {
-            Ok(request) => request,
-            Err(err) => {
-                self.push_agent_message(err.to_string());
-                return;
-            }
-        };
-
-        if self.runtime.is_busy() {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: t!("tui.busy.pending_reply").into_owned(),
-                tool_block: None,
-            });
-            return;
-        }
-
-        let generation_prompt = match self.runtime.build_create_skill_user_turn(&request.prompt) {
-            Ok(prompt) => prompt,
-            Err(err) => {
-                self.push_agent_message(err.to_string());
-                return;
-            }
-        };
-        let _ = self.submit_runtime_user_turn(generation_prompt, None);
-    }
-
     pub(crate) fn handle_start_implementing_slash(&mut self) {
         if self.runtime.is_busy() {
             self.messages.push(ChatMessage {

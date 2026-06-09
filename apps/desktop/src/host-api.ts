@@ -48,7 +48,6 @@ import type {
   WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
   SubmitCreateRuleSlashRequest,
-  SubmitCreateSkillSlashRequest,
   SubmitGitChipRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -90,7 +89,6 @@ export interface HostApi {
   deleteRule(request: DeleteRuleRequest): Promise<DesktopSnapshot>;
   deleteSkill(request: DeleteSkillRequest): Promise<DesktopSnapshot>;
   submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest): Promise<DesktopSnapshot>;
-  submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot>;
   submitSkillSlash(request: SubmitSkillSlashRequest): Promise<DesktopSnapshot>;
   submitGitChip(request: SubmitGitChipRequest): Promise<DesktopSnapshot>;
   submitStartImplementing(): Promise<DesktopSnapshot>;

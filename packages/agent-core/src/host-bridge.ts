@@ -576,15 +576,6 @@ interface CliHostInternalModule {
     }>;
   };
   ensureBuiltinAuthoringSkills?: (spiritDataDir: string) => Promise<void>;
-  buildCreateSkillUserTurn?: (
-    workspaceRoot: string,
-    instructionPaths: { workspaceSpiritSkillsDir: string; userSkillsDir: string },
-    prompt: string,
-    options?: {
-      includeManagedUserRootNote?: boolean;
-      deliveryWriteInstruction?: string;
-    },
-  ) => string;
   resolveInstructionPaths?: (context: { workspaceRoot: string; spiritDataDir: string }) => {
     rulesStateFile: string;
     skillsStateFile: string;
@@ -1838,36 +1829,6 @@ peer.on('hostInternal.writeSkillState', async (rawParams) => {
     enabledOverrides: params.enabledOverrides ?? {},
   });
   return paths.skillsStateFile;
-});
-
-peer.on('hostInternal.buildCreateSkillUserTurn', async (rawParams) => {
-  const params = (rawParams ?? {}) as {
-    prompt?: string;
-    includeManagedUserRootNote?: boolean;
-    deliveryWriteInstruction?: string;
-  };
-  const hostInternal = await requireCliHostInternal();
-  if (!hostInternal.module.resolveInstructionPaths || !hostInternal.module.buildCreateSkillUserTurn) {
-    throw new Error('host-internal 模块未导出 create-skill prompt 构建接口。');
-  }
-  const paths = hostInternal.module.resolveInstructionPaths({
-    workspaceRoot: hostInternal.workspaceRoot,
-    spiritDataDir: hostInternal.spiritDataDir,
-  });
-  return hostInternal.module.buildCreateSkillUserTurn(
-    hostInternal.workspaceRoot,
-    {
-      workspaceSpiritSkillsDir: paths.workspaceSpiritSkillsDir,
-      userSkillsDir: paths.userSkillsDir,
-    },
-    typeof params.prompt === 'string' ? params.prompt : '',
-    {
-      includeManagedUserRootNote: params.includeManagedUserRootNote === true,
-      ...(params.deliveryWriteInstruction?.trim()
-        ? { deliveryWriteInstruction: params.deliveryWriteInstruction.trim() }
-        : {}),
-    },
-  );
 });
 
 peer.on('hostInternal.listExtensions', async () => {

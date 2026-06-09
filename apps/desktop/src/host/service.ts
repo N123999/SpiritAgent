@@ -110,7 +110,6 @@ import type {
   PrepareMarketplaceExtensionInstallRequest,
   SubmitUserTurnRequest,
   SubmitCreateRuleSlashRequest,
-  SubmitCreateSkillSlashRequest,
   SubmitGitChipRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
@@ -148,7 +147,6 @@ import {
   prepareMarketplaceExtensionInstallCommand,
   runExtensionCommand,
   submitCreateRuleSlashCommand,
-  submitCreateSkillSlashCommand,
   submitSkillSlashCommand,
   updateExtensionSecretCommand,
   updateExtensionSettingsCommand,
@@ -1067,10 +1065,6 @@ class DesktopHostService {
     const snapshot = await submitGitChipCommand(this.extensionCommandContext(), request);
     void this.runCoalescedGitRefresh();
     return snapshot;
-  }
-
-  async submitCreateSkillSlash(request: SubmitCreateSkillSlashRequest): Promise<DesktopSnapshot> {
-    return submitCreateSkillSlashCommand(this.extensionCommandContext(), request);
   }
 
   async submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest): Promise<DesktopSnapshot> {

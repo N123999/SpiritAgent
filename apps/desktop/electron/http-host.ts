@@ -566,20 +566,6 @@ async function handleApiRequest({
     return;
   }
 
-  if (request.method === 'POST' && pathname === '/api/skills/create-slash') {
-    writeJson(
-      request,
-      response,
-      200,
-      await runHostCommand('submitCreateSkillSlash', {
-        request: {
-          rawText: typeof jsonBody?.rawText === 'string' ? jsonBody.rawText : '',
-        },
-      }),
-    );
-    return;
-  }
-
   if (request.method === 'POST' && pathname === '/api/rules') {
     const rootKind = parseSkillRootKind(jsonBody?.rootKind);
     writeJson(

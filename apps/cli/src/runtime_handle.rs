@@ -115,10 +115,6 @@ impl RuntimeHandle {
         self.runtime.write_skill_state(enabled_overrides)
     }
 
-    pub fn build_create_skill_user_turn(&mut self, prompt: &str) -> Result<String> {
-        self.runtime.build_create_skill_user_turn(prompt)
-    }
-
     pub fn reload_host_metadata(&mut self, agent_mode: &str) -> Result<()> {
         self.runtime.reload_host_metadata(agent_mode)
     }
