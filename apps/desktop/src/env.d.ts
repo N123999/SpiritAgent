@@ -47,6 +47,8 @@ import type {
 declare global {
   interface SpiritDesktopApi {
     platform: NodeJS.Platform;
+    /** 同步读取磁盘 `windowsMica`；首屏 snapshot 未就绪时与 Electron 窗口材质对齐。 */
+    readNativeBackdropBlur(): boolean;
     bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
     rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
     commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot>;

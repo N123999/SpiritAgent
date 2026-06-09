@@ -8,6 +8,7 @@ import {
   applyClickablePointerCursorToDocument,
   getStoredClickablePointerCursor,
 } from './lib/clickable-pointer-cursor';
+import { applyDesktopNativeChromeToDocument } from './lib/desktop-shell';
 import { applyFontToDocument, getStoredFont } from './lib/font';
 import { applyThemeToDocument, getStoredTheme } from './lib/theme';
 import 'katex/dist/katex.min.css';
@@ -23,6 +24,7 @@ if (typeof document !== 'undefined') {
     );
   }
   applyThemeToDocument(getStoredTheme());
+  applyDesktopNativeChromeToDocument();
   applyFontToDocument(getStoredFont());
   applyClickablePointerCursorToDocument(getStoredClickablePointerCursor());
 }

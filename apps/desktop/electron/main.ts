@@ -417,8 +417,8 @@ function resolveWindowIconPath(): string | undefined {
   return undefined;
 }
 
-/** 与 `src/styles.css` 中 `.dark` 的 `--background`（oklch(0.145 0 0) ≈ #0a0a0a）一致；关 Mica 时 titleBarOverlay 与窗口底色用此值，勿用通用 #171717 */
-const WIN32_APP_BACKGROUND_DARK = '#0a0a0a';
+/** 与 `src/styles.css` Void 暗色 `--background`（#000000）一致；关 Mica 时窗口底色用此值，避免 WebView 透底呈 Chromium #121212 */
+const WIN32_APP_BACKGROUND_DARK = '#000000';
 const WIN32_APP_BACKGROUND_LIGHT = '#fafafa';
 
 /** 与 Tauri `frame_chrome` 一致：开原生模糊时用透明背景，把绘制交给系统合成层。 */
@@ -845,6 +845,10 @@ if (gotSpiritSingleInstanceLock) {
       popupApplicationMenuSection(win, payload.section, payload.clientX, payload.clientY);
     },
   );
+
+  ipcMain.on('desktop:read-native-backdrop-blur', (event) => {
+    event.returnValue = readBackdropBlurFromDisk();
+  });
 
   ipcMain.handle('desktop:get-window-fullscreen', (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);

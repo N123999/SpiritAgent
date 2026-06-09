@@ -13,3 +13,46 @@ export function isNativeBackdropBlurPlatform(
 export function isNativeBackdropBlurSupported(): boolean {
   return isNativeBackdropBlurPlatform(desktopShellPlatform());
 }
+
+export function isElectronChrome(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (window.spiritDesktop) {
+    return true;
+  }
+  return typeof navigator !== "undefined" && /\bElectron\//.test(navigator.userAgent);
+}
+
+/** 与 Electron `readBackdropBlurFromDisk` 对齐；首屏 snapshot 未就绪时用于避免误开 Mica 透明层。 */
+export function readStoredNativeBackdropBlur(): boolean {
+  if (!isNativeBackdropBlurSupported()) {
+    return false;
+  }
+  try {
+    return window.spiritDesktop?.readNativeBackdropBlur() !== false;
+  } catch {
+    return true;
+  }
+}
+
+export function resolveUseMicaBackdrop(windowsMica: boolean | undefined): boolean {
+  if (!isNativeBackdropBlurSupported()) {
+    return false;
+  }
+  if (windowsMica === undefined) {
+    return readStoredNativeBackdropBlur();
+  }
+  return windowsMica !== false;
+}
+
+/** 首屏前写入 Desktop 原生壳 class，避免启动层在 snapshot 就绪前误用 Mica 透明样式。 */
+export function applyDesktopNativeChromeToDocument(): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const root = document.documentElement;
+  const native = isElectronChrome();
+  root.classList.toggle("spirit-desktop-native", native);
+  root.classList.toggle("spirit-desktop-mica", native && readStoredNativeBackdropBlur());
+}

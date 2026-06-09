@@ -2,6 +2,9 @@ import { clipboard, contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('spiritDesktop', {
   platform: process.platform,
+  readNativeBackdropBlur() {
+    return ipcRenderer.sendSync('desktop:read-native-backdrop-blur') as boolean;
+  },
   bootstrap(request?: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'bootstrap', { request });
   },

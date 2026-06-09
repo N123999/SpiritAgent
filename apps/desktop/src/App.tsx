@@ -215,7 +215,7 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
-import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
+import { isElectronChrome, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
@@ -1773,16 +1773,6 @@ function AskQuestionField({
   );
 }
 
-function isElectronChrome(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-  if (window.spiritDesktop) {
-    return true;
-  }
-  return typeof navigator !== "undefined" && /\bElectron\//.test(navigator.userAgent);
-}
-
 /** Windows Electron：使用 `titleBarOverlay` + 自绘顶栏；macOS 仍走系统菜单栏 */
 function isWin32ElectronShell(): boolean {
   if (!isElectronChrome() || typeof navigator === "undefined") {
@@ -1985,8 +1975,7 @@ export default function App() {
   const winElectronChrome = isWin32ElectronShell();
   const darwinElectronChrome = isDarwinElectronShell();
   const desktopTitleBarChrome = winElectronChrome || darwinElectronChrome;
-  const useMicaBackdrop =
-    isNativeBackdropBlurSupported() && snapshot?.config.windowsMica !== false;
+  const useMicaBackdrop = resolveUseMicaBackdrop(snapshot?.config.windowsMica);
 
   useEffect(() => {
     if (typeof document === "undefined") {
