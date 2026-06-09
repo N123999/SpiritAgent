@@ -42,6 +42,19 @@ test('buildAgentModeSystemMessage: legacy planMode true maps to Plan', () => {
   assert.ok(message.includes('You are in Plan mode.'));
 });
 
+test('buildAgentModeSystemMessage: Debug mode guidance', () => {
+  const message = buildAgentModeSystemMessage({ path: '', exists: false, agentMode: 'debug' });
+  assert.ok(message.includes('You are in Debug mode.'));
+  assert.ok(message.includes('do NOT fix it immediately'));
+  assert.ok(message.includes('at least 5 hypotheses'));
+  assert.ok(message.includes('.spirit/logs/'));
+  assert.ok(message.includes('"hypotheses"'));
+  assert.ok(message.includes('"message"'));
+  assert.ok(message.includes('"data"'));
+  assert.ok(message.includes('resolved'));
+  assert.ok(message.includes('still reproducing'));
+});
+
 test('buildToolAgentMessages embeds SPIRIT_AGENT_MODE in system message', () => {
   const messages = buildToolAgentMessages({
     historyMessages: [],
