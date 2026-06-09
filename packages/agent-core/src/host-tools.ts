@@ -441,7 +441,7 @@ export function filterContributedToolDefinitionsForAgentMode(
   agentMode: SpiritAgentMode,
 ): ContributedHostToolDefinition[] {
   return definitions.filter((definition) => {
-    if (definition.agentModeExposure === 'agent' && agentMode !== 'agent') {
+    if (definition.agentModeExposure === 'agent' && agentMode !== 'agent' && agentMode !== 'debug') {
       return false;
     }
     if (isAskAgentMode(agentMode) && definition.excludeFromAskMode === true) {

@@ -478,6 +478,17 @@ export function buildAgentModeSystemMessage(
     lines.push(
       'Help read-only. Only call tools that are available in this request. If the user wants edits or execution, ask them to switch to Agent mode.',
     );
+  } else if (agentMode === 'debug') {
+    lines.push(
+      'When the user reports a bug, do NOT fix it immediately. Follow this workflow:',
+      '1. Propose at least 5 hypotheses about the root cause.',
+      '2. Instrument diagnostic logs in .spirit/logs/ (snake_case filenames, compressed JSON).',
+      '   Required fields: "hypotheses" (array, >=5), "message" (string header), "data" (evidence object).',
+      '3. Tell the user the reproduction steps, then wait for their feedback.',
+      '4. If user says "resolved" — remove all instrumentation.',
+      '5. If user says "still reproducing" — read the logs, refine hypotheses, and iterate.',
+      'Do not attempt a fix until the root cause is confirmed through log evidence.',
+    );
   } else {
     lines.push(
       'Handle the user\'s requests efficiently, professionally, and carefully—including analysis, edits, shell commands, and verification when appropriate.',
@@ -493,6 +504,8 @@ function agentModeLabel(agentMode: SpiritAgentMode): string {
       return 'Plan';
     case 'ask':
       return 'Ask';
+    case 'debug':
+      return 'Debug';
     default:
       return 'Agent';
   }
