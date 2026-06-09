@@ -48,7 +48,6 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/subagents",
     "/image",
     "/mcp",
-    "/create-rule",
     "/rules",
     "/skills",
     "/extensions",
@@ -72,7 +71,6 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/subagents",
     "/image",
     "/mcp",
-    "/create-rule",
     "/rules",
     "/skills",
     "/extensions",
@@ -137,7 +135,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 
 fn command_replacement(command: &str) -> String {
     match command {
-        "/model" | "/sessions" | "/subagents" | "/image" | "/mcp" | "/create-rule" | "/log"
+        "/model" | "/sessions" | "/subagents" | "/image" | "/mcp" | "/log"
         | "/language" | "/approval" | "/networks" | "/extensions" => {
             format!("{} ", command)
         }
@@ -192,10 +190,6 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
 
     if query == "/mcp" || query.starts_with("/mcp ") {
         return vec![primary_help_suggestion("/mcp", query)];
-    }
-
-    if query == "/create-rule" || query.starts_with("/create-rule ") {
-        return vec![primary_help_suggestion("/create-rule", query)];
     }
 
     if query == "/rules" || query.starts_with("/rules ") {
@@ -381,7 +375,6 @@ pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> 
         "- /image clear".to_string(),
         "- /mcp [list|add|inspect|tools|resources|prompts]".to_string(),
         "- /<server>_<prompt> [args_json | user_message]".to_string(),
-        "- /create-rule [repo|user] <需求描述>".to_string(),
         "- /rules".to_string(),
         "- /skills".to_string(),
         "- /extensions [list|import <zip>|remove <id>|marketplace [query]]".to_string(),
@@ -408,7 +401,6 @@ pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> 
         "- /model add 打开底部表单：选提供商与添加方式、填写端点与 API Key；提交后将请求上游 /models（预设为批量导入全部 id，自定义可选单条）；也可一行 /model add <name> <api_base> <api_key>；成功后会切换当前模型。".to_string(),
         "- MCP prompt 会以一级 slash 命令暴露，例如 /github_issue_to_fix_workflow；若尾部是合法 JSON object，会直接作为 prompt 参数，其他文本会作为附加用户消息发给 LLM。".to_string(),
         "- 省略尾部且 prompt 定义了参数时，会自动打开参数表单；表单最后一栏可填写附加说明。".to_string(),
-        "- /create-rule 会走正常 assistant 对话来起草或收紧规则；repo 目标默认写入工作区 .spirit/rule.md，user 目标写入 Spirit 用户目录 rule.md，两者都走标准工具审批；同时仍会扫描仓库根 AGENTS.md（兼容其他工具）。".to_string(),
         "- /rules 打开可滚动的规则启用清单；Enter 切换当前规则，Esc 保存并关闭，鼠标滚轮可浏览长内容。".to_string(),
         "- /skills 打开可滚动的技能启用清单；Enter 切换当前技能，Esc 保存并关闭，鼠标滚轮可浏览长内容。".to_string(),
         "- /extensions 不带参数时会打开已安装扩展面板；/extensions marketplace 会进入极简 marketplace flow：先用 slash 选择扩展，再进入“概述 + README + 底部动作 slash”页面，Enter 前进、Esc 返回；支持用 query 作为初始过滤。/extensions list 会输出当前已安装扩展，/extensions import <zip> 导入 ZIP，/extensions remove <id> 删除扩展；面板里的启用/禁用切换暂未实现。".to_string(),
@@ -456,7 +448,6 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/subagents" => shell.handle_subagents_slash(message),
         "/image" => shell.handle_image_slash(message),
         "/mcp" => shell.handle_mcp_slash(message),
-        "/create-rule" => shell.handle_create_rule_slash(message),
         "/rules" => shell.handle_rules_slash(&parts[1..]),
         "/skills" => shell.handle_skills_slash(&parts[1..]),
         "/extensions" => shell.handle_extensions_slash(message),
@@ -502,7 +493,6 @@ mod tests {
         assert!(help.contains("/mcp add"));
         assert!(help.contains("/model add"));
         assert!(help.contains("底部表单"));
-        assert!(help.contains("/create-rule"));
         assert!(help.contains("/rules"));
         assert!(help.contains("/skills"));
         assert!(help.contains("/extensions"));

@@ -39,7 +39,6 @@ export type HostCommandName =
   | 'createSkill'
   | 'deleteRule'
   | 'deleteSkill'
-  | 'submitCreateRuleSlash'
   | 'submitSkillSlash'
   | 'submitGitChip'
   | 'submitStartImplementing'

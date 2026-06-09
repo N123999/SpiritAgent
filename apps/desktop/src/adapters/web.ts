@@ -40,7 +40,6 @@ import type {
   WorkspaceReadTextFileResult,
   WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
-  SubmitCreateRuleSlashRequest,
   SubmitSkillSlashRequest,
   UpdateConfigRequest,
   DesktopModelProvider,
@@ -138,9 +137,6 @@ export function createWebHostApi(): HostApi {
     },
     deleteSkill(request: DeleteSkillRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills/remove', request);
-    },
-    submitCreateRuleSlash(request: SubmitCreateRuleSlashRequest) {
-      return post<DesktopSnapshot>(baseUrl, '/api/rules/create-slash', request);
     },
     submitSkillSlash(request: SubmitSkillSlashRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/skills/submit', request);

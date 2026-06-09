@@ -748,39 +748,6 @@ impl TuiShell {
         }
     }
 
-    pub(crate) fn handle_create_rule_slash(&mut self, message: &str) {
-        let tail = message
-            .strip_prefix("/create-rule")
-            .map(str::trim)
-            .unwrap_or("");
-        let request = match rules::parse_create_rule_request(tail) {
-            Ok(request) => request,
-            Err(err) => {
-                self.push_agent_message(err.to_string());
-                return;
-            }
-        };
-
-        if self.runtime.is_busy() {
-            self.messages.push(ChatMessage {
-                role: MessageRole::Agent,
-                content: t!("tui.busy.pending_reply").into_owned(),
-                tool_block: None,
-            });
-            return;
-        }
-
-        let workspace_root = self.app_paths.workspace_root();
-        if request.scope == RuleScope::Workspace {
-            if let Err(err) = rules::ensure_workspace_spirit_dir(&workspace_root) {
-                self.push_agent_message(err.to_string());
-                return;
-            }
-        }
-        let generation_prompt = rules::build_create_rule_user_turn(&workspace_root, &request);
-        let _ = self.submit_runtime_user_turn(generation_prompt, None);
-    }
-
     pub(crate) fn handle_start_implementing_slash(&mut self) {
         if self.runtime.is_busy() {
             self.messages.push(ChatMessage {

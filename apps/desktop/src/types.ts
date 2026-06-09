@@ -501,10 +501,6 @@ export interface DeleteRuleRequest {
   id: string;
 }
 
-export interface SubmitCreateRuleSlashRequest {
-  rawText: string;
-}
-
 export interface RewindAndSubmitMessageRequest {
   messageId: number;
   text: string;

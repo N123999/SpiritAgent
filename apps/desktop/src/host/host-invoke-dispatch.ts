@@ -32,7 +32,6 @@ export interface HostCommandDelegate {
   createSkill(request: CommandPayloads['createSkill']['request']): Promise<unknown>;
   deleteRule(request: CommandPayloads['deleteRule']['request']): Promise<unknown>;
   deleteSkill(request: CommandPayloads['deleteSkill']['request']): Promise<unknown>;
-  submitCreateRuleSlash(request: CommandPayloads['submitCreateRuleSlash']['request']): Promise<unknown>;
   submitSkillSlash(request: CommandPayloads['submitSkillSlash']['request']): Promise<unknown>;
   submitGitChip(request: CommandPayloads['submitGitChip']['request']): Promise<unknown>;
   submitStartImplementing(): Promise<unknown>;
@@ -117,7 +116,6 @@ const hostCommandDispatch = {
   createSkill: (host, payload) => host.createSkill(payload.request),
   deleteRule: (host, payload) => host.deleteRule(payload.request),
   deleteSkill: (host, payload) => host.deleteSkill(payload.request),
-  submitCreateRuleSlash: (host, payload) => host.submitCreateRuleSlash(payload.request),
   submitSkillSlash: (host, payload) => host.submitSkillSlash(payload.request),
   submitGitChip: (host, payload) => host.submitGitChip(payload.request),
   submitStartImplementing: (host) => host.submitStartImplementing(),
