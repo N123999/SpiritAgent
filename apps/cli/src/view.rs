@@ -30,6 +30,7 @@ pub enum MainInputMode {
     Agent,
     Plan,
     Ask,
+    Debug,
 }
 
 impl MainInputMode {
@@ -38,6 +39,7 @@ impl MainInputMode {
             Self::Agent => "agent",
             Self::Plan => "plan",
             Self::Ask => "ask",
+            Self::Debug => "debug",
         }
     }
 }

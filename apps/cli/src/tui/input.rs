@@ -236,7 +236,8 @@ impl TuiShell {
         let next = match self.input.mode {
             MainInputMode::Agent => MainInputMode::Plan,
             MainInputMode::Plan => MainInputMode::Ask,
-            MainInputMode::Ask => MainInputMode::Agent,
+            MainInputMode::Ask => MainInputMode::Debug,
+            MainInputMode::Debug => MainInputMode::Agent,
         };
         self.set_input_mode(next);
     }

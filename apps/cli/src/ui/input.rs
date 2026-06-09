@@ -11,6 +11,7 @@ pub(in crate::ui) fn input_mode_title(input_mode: MainInputMode) -> String {
         MainInputMode::Agent => t!("ui.input.title_agent").into_owned(),
         MainInputMode::Plan => t!("ui.input.title_plan").into_owned(),
         MainInputMode::Ask => t!("ui.input.title_ask").into_owned(),
+        MainInputMode::Debug => t!("ui.input.title_debug").into_owned(),
     }
 }
 
@@ -33,6 +34,7 @@ pub(in crate::ui) fn input_block_border_style(
         MainInputMode::Agent => conversation_body_text_style(),
         MainInputMode::Plan => Style::default().fg(Color::Yellow),
         MainInputMode::Ask => Style::default().fg(Color::Cyan),
+        MainInputMode::Debug => Style::default().fg(Color::Magenta),
     }
 }
 
@@ -51,6 +53,7 @@ pub(in crate::ui) fn input_text_style(
         MainInputMode::Agent => Style::default().fg(Color::White),
         MainInputMode::Plan => Style::default().fg(Color::Yellow),
         MainInputMode::Ask => Style::default().fg(Color::Cyan),
+        MainInputMode::Debug => Style::default().fg(Color::Magenta),
     }
 }
 
@@ -68,6 +71,7 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
         MainInputMode::Agent => t!("ui.footer.mode.agent"),
         MainInputMode::Plan => t!("ui.footer.mode.plan"),
         MainInputMode::Ask => t!("ui.footer.mode.ask"),
+        MainInputMode::Debug => t!("ui.footer.mode.debug"),
     };
     let loop_label = if app.loop_enabled {
         t!("ui.footer.loop.on")
