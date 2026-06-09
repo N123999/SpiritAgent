@@ -1896,29 +1896,28 @@ class DesktopHostService {
             dreamScope,
             dreamToolMode: 'read-only' as const,
           }
-        : {
-            hostContributedToolsEnabled: true,
-            getAutomationCreateDefaults: () => {
-              const currentState = this.requireState();
-              const activeModel = currentState.config.models.find(
-                (model) => model.name === currentState.config.activeModel,
-              );
-              return {
-                workspaceRoot,
-                modelName: currentState.config.activeModel,
-                ...(activeModel?.reasoningEffort
-                  ? { reasoningEffort: activeModel.reasoningEffort }
-                  : {}),
-                approvalLevel: bundle.approvalLevel,
-              };
-            },
-            onAutomationCreated: () => {
-              void this.runSerialized(async () => {
-                await this.refreshAutomationsListCache();
-                this.emitAutomationUpdate();
-              });
-            },
-          }),
+        : {}),
+      hostContributedToolsEnabled: true,
+      getAutomationCreateDefaults: () => {
+        const currentState = this.requireState();
+        const activeModel = currentState.config.models.find(
+          (model) => model.name === currentState.config.activeModel,
+        );
+        return {
+          workspaceRoot,
+          modelName: currentState.config.activeModel,
+          ...(activeModel?.reasoningEffort
+            ? { reasoningEffort: activeModel.reasoningEffort }
+            : {}),
+          approvalLevel: bundle.approvalLevel,
+        };
+      },
+      onAutomationCreated: () => {
+        void this.runSerialized(async () => {
+          await this.refreshAutomationsListCache();
+          this.emitAutomationUpdate();
+        });
+      },
       ...(todoScope ? { todoScope } : {}),
     });
   }
