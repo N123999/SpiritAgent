@@ -385,13 +385,6 @@ export function toolCallSummaryCopyForRequest(
       }
       return { headline: extensionToolName };
     }
-    case 'get_diagnostics': {
-      const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
-      return {
-        headline: i18n.t('tool.diagnosticsChecking'),
-        ...(rawPath ? { headlineDetail: truncateSummaryDetail(displayBasename(rawPath)) } : {}),
-      };
-    }
     default:
       return undefined;
   }
@@ -984,6 +977,16 @@ export function toolCallSummaryForStreamingPreview(
   const custom = request !== undefined ? toolCallSummaryCopyForRequest(toolName, request) : undefined;
   if (custom) {
     return custom;
+  }
+
+  if (toolName === 'get_diagnostics' && request && typeof request === 'object') {
+    const rawPath = typeof (request as Record<string, unknown>).path === 'string'
+      ? (request as Record<string, unknown>).path as string
+      : '';
+    return {
+      headline: i18n.t('tool.diagnosticsChecking'),
+      ...(rawPath.trim() ? { headlineDetail: truncateSummaryDetail(displayBasename(rawPath.trim())) } : {}),
+    };
   }
 
   return {

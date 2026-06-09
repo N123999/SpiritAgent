@@ -98,7 +98,7 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
       };
     }
     if (tool.phase === 'failed') {
-      // 失败时透传上游 headline（如「工具执行失败: get_diagnostics」），不覆盖为 Checking
+      // 失败时透传上游 headline（如「工具执行失败: get_diagnostics」）
       return {
         headline,
         ...(snapshotDetail ? { detail: snapshotDetail } : {}),

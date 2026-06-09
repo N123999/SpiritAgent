@@ -58,6 +58,7 @@ import {
   toolCallSummaryCopyForResponsesBuiltInTool,
   toolCallSummaryForPhase,
   toolCallSummaryForStreamingPreview,
+  type ToolCallSummaryCopy,
   isFinishTaskToolName,
   lastAssistantPlainTextInHistory,
   latestUnsyncedAssistantTextInCurrentTurn,
@@ -431,7 +432,9 @@ export class DesktopRuntimeEventOrchestrator {
             ? { headline: i18n.t('tool.generateImage') }
             : event.toolName === 'generate_video'
               ? { headline: i18n.t('tool.generateVideo') }
-              : toolCallSummaryForPhase('running', event.toolName, event.request);
+              : event.toolName === 'get_diagnostics'
+                ? diagnosticsCheckingSummary(event.request)
+                : toolCallSummaryForPhase('running', event.toolName, event.request);
         const runningTool: ToolBlockSnapshot = this.attachLineDelta(
           applyToolCallSummaryCopy(
             {
@@ -1056,6 +1059,16 @@ function truncateText(value: string, maxChars: number): string {
     return value;
   }
   return `${chars.slice(0, maxChars).join('')}...<truncated>`;
+}
+
+function diagnosticsCheckingSummary(request: unknown): ToolCallSummaryCopy {
+  const record = request && typeof request === 'object' ? (request as Record<string, unknown>) : undefined;
+  const rawPath = typeof record?.path === 'string' ? record.path.trim() : '';
+  const basename = rawPath.split(/[\\/]/).filter(Boolean).pop() ?? '';
+  return {
+    headline: i18n.t('tool.diagnosticsChecking'),
+    ...(basename ? { headlineDetail: basename.length > 80 ? `${basename.slice(0, 77)}…` : basename } : {}),
+  };
 }
 
 export function splitRuntimeEventsForIncrementalResponsesBuiltInToolPreview(
