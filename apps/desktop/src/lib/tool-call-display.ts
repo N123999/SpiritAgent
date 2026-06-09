@@ -49,6 +49,18 @@ function countDiagnosticsIssues(outputExcerpt: string | undefined): number {
   if (!outputExcerpt) {
     return 0;
   }
+  // 优先从 header 解析真实总数，避免 maxItems 截断导致低估：
+  // "Diagnostics for src/x.ts (8 shown, 7 more omitted):" → 15
+  // "Diagnostics for src/x.ts (3 shown):" → 3
+  const headerMatch = /^Diagnostics for .+?\((\d+) shown(?:,\s*(\d+) more omitted)?\):/.exec(
+    outputExcerpt,
+  );
+  if (headerMatch) {
+    const shown = Number(headerMatch[1]) || 0;
+    const omitted = Number(headerMatch[2]) || 0;
+    return shown + omitted;
+  }
+  // 兜底：按行统计（无 header 时）
   return outputExcerpt
     .split('\n')
     .filter((line) => /^(error|warning)\s/.test(line.trim()))
@@ -82,6 +94,13 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
     ) {
       return {
         headline: i18n.t('tool.diagnosticsChecking'),
+        ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+      };
+    }
+    if (tool.phase === 'failed') {
+      // 失败时透传上游 headline（如「工具执行失败: get_diagnostics」），不覆盖为 Checking
+      return {
+        headline,
         ...(snapshotDetail ? { detail: snapshotDetail } : {}),
       };
     }
