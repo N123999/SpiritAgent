@@ -2467,9 +2467,9 @@ export function useDesktopRuntime() {
     [api],
   );
 
-  const resetSession = useCallback(async () => {
+  const resetSession = useCallback(async (): Promise<boolean> => {
     if (!api) {
-      return;
+      return false;
     }
 
     const navGeneration = sessionNavigationGenerationRef.current + 1;
@@ -2479,14 +2479,16 @@ export function useDesktopRuntime() {
       stashSessionUi(snapshotRef.current);
       const next = await api.resetSession();
       if (navGeneration !== sessionNavigationGenerationRef.current) {
-        return;
+        return false;
       }
       applySnapshot(next, { navGeneration });
       restoreSessionUi(next);
       setRuntimeError("");
       void refreshSessions();
+      return true;
     } catch (error) {
       setRuntimeError(describeError(error));
+      return false;
     } finally {
       if (navGeneration === sessionNavigationGenerationRef.current) {
         setBusyAction("");

@@ -2462,7 +2462,10 @@ export default function App() {
     setLastNonSettingsSurface("conversation");
     setActiveSurface("conversation");
     const seed = t("automations.generateComposerSeed");
-    await runtime.resetSession();
+    const resetOk = await runtime.resetSession();
+    if (!resetOk) {
+      return;
+    }
     runtime.setComposer(seed);
     setSlashSelectedIndex(-1);
     queueMicrotask(() => {
