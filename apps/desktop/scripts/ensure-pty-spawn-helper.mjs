@@ -10,11 +10,22 @@ function ensureExecutable(filePath) {
   if (!fs.existsSync(filePath)) {
     return false;
   }
-  const mode = fs.statSync(filePath).mode;
+  let mode;
+  try {
+    mode = fs.statSync(filePath).mode;
+  } catch (err) {
+    console.error(`[dev] stat failed for ${filePath}:`, err);
+    process.exit(1);
+  }
   if ((mode & 0o111) !== 0) {
     return false;
   }
-  fs.chmodSync(filePath, mode | 0o755);
+  try {
+    fs.chmodSync(filePath, mode | 0o755);
+  } catch (err) {
+    console.error(`[dev] chmod failed for ${filePath}:`, err);
+    process.exit(1);
+  }
   console.log(`[dev] chmod +x ${path.relative(desktopRoot, filePath)}`);
   return true;
 }

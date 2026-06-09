@@ -84,6 +84,16 @@ function npmRun(cwd, script) {
   }
 }
 
+function runNodeScript(cwd, script) {
+  const result = spawnSync('node', [script], {
+    cwd,
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
 function ensure(name, stale, build) {
   if (force || stale) {
     console.log(`[dev] building ${name}...`);
@@ -138,7 +148,4 @@ ensure(
   () => npmRun(desktopRoot, 'build:electron'),
 );
 
-spawnSync('node', ['scripts/ensure-pty-spawn-helper.mjs'], {
-  cwd: desktopRoot,
-  stdio: 'inherit',
-});
+runNodeScript(desktopRoot, 'scripts/ensure-pty-spawn-helper.mjs');
