@@ -2438,13 +2438,15 @@ export default function App() {
   const handleComposerAgentModeChange = useCallback(
     (agentMode: DesktopAgentMode) => {
       void runtime.saveSettingsPatch({ agentMode });
-      if (agentMode === "plan" || agentMode === "ask") {
+      if (agentMode === "plan" || agentMode === "ask" || agentMode === "debug") {
         runtime.setAgentModeChipDismissed(false);
       }
       if (agentMode === "plan") {
         composerRichInputRef.current?.insertPlanChip({ clearText: false });
       } else if (agentMode === "ask") {
         composerRichInputRef.current?.insertAskChip({ clearText: false });
+      } else if (agentMode === "debug") {
+        composerRichInputRef.current?.insertDebugChip({ clearText: false });
       } else {
         composerRichInputRef.current?.removeAgentModeChip();
       }
@@ -2711,6 +2713,13 @@ export default function App() {
     composerRichInputRef.current?.insertAskChip({ clearText: true });
   }, [runtime]);
 
+  const applyDebugSlash = useCallback(() => {
+    setSlashSelectedIndex(-1);
+    void runtime.saveSettingsPatch({ agentMode: "debug" });
+    runtime.setComposer("");
+    composerRichInputRef.current?.insertDebugChip({ clearText: true });
+  }, [runtime]);
+
   const applySlashSuggestionItem = useCallback(
     (suggestion: SkillSlashSuggestion) => {
       if (suggestion.kind === "loop") {
@@ -2723,6 +2732,10 @@ export default function App() {
       }
       if (suggestion.kind === "ask") {
         applyAskSlash();
+        return;
+      }
+      if (suggestion.kind === "debug") {
+        applyDebugSlash();
         return;
       }
       if (suggestion.kind === "skill") {

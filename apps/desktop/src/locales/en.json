@@ -851,6 +851,7 @@
     "loop": "Enable autonomous loop until finish_task or remove the chip with Backspace",
     "plan": "Switch to Plan mode or remove the chip with Backspace",
     "ask": "Switch to Ask mode or remove the chip with Backspace",
+    "debug": "Switch to Debug mode or remove the chip with Backspace",
     "activateSkillPrompt": "Please handle the current task according to skill \"{{skillName}}\"."
   }
 }

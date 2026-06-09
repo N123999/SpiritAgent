@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  Bug,
   CircleHelp,
   ClipboardList,
   FoldVertical,
@@ -16,5 +17,6 @@ export const SLASH_SUGGESTION_ICONS: Record<SkillSlashSuggestionKind, LucideIcon
   loop: Repeat,
   plan: ClipboardList,
   ask: CircleHelp,
+  debug: Bug,
   skill: Sparkles,
 }

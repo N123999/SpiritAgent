@@ -851,6 +851,7 @@
     "loop": "开启自主循环，直至 finish_task 或手动退格关闭",
     "plan": "切换到 Plan 模式，或退格移除 chip 回到 Agent",
     "ask": "切换到 Ask 模式，或退格移除 chip 回到 Agent",
+    "debug": "切换到 Debug 模式，或退格移除 chip 回到 Agent",
     "activateSkillPrompt": "请按 skill \"{{skillName}}\" 处理当前任务。"
   }
 }
