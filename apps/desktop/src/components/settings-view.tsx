@@ -118,6 +118,8 @@ type SettingsViewProps = {
   onThemeChange: (value: ThemePreference) => void;
   font: FontPreference;
   onFontChange: (value: FontPreference) => void;
+  clickablePointerCursor: boolean;
+  onClickablePointerCursorChange: (enabled: boolean) => void;
   settings: SettingsFormState;
   snapshot: DesktopSnapshot | null;
   runtimeError: string;
@@ -3764,11 +3766,20 @@ function AppearanceSettingsPanel({
   onThemeChange,
   font,
   onFontChange,
+  clickablePointerCursor,
+  onClickablePointerCursorChange,
   settings,
   onSavePatch,
 }: Pick<
   SettingsViewProps,
-  "theme" | "onThemeChange" | "font" | "onFontChange" | "settings" | "onSavePatch"
+  | "theme"
+  | "onThemeChange"
+  | "font"
+  | "onFontChange"
+  | "clickablePointerCursor"
+  | "onClickablePointerCursorChange"
+  | "settings"
+  | "onSavePatch"
 >) {
   const { t } = useTranslation();
   return (
@@ -3846,6 +3857,21 @@ function AppearanceSettingsPanel({
         ) : (
           <p className="text-sm text-muted-foreground sm:text-right">—</p>
         )}
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('settings.clickablePointerCursor')}
+        description={t('settings.clickablePointerCursorDescription')}
+        htmlFor="settings-clickable-pointer-cursor"
+      >
+        <div className="flex justify-end">
+          <Checkbox
+            id="settings-clickable-pointer-cursor"
+            checked={clickablePointerCursor}
+            onCheckedChange={(value) => onClickablePointerCursorChange(value === true)}
+            className="size-5"
+          />
+        </div>
       </SettingsRow>
     </div>
   );
@@ -3977,6 +4003,8 @@ export function SettingsView({
   onThemeChange,
   font,
   onFontChange,
+  clickablePointerCursor,
+  onClickablePointerCursorChange,
   settings,
   snapshot,
   runtimeError,
@@ -4112,6 +4140,8 @@ export function SettingsView({
                 onThemeChange={onThemeChange}
                 font={font}
                 onFontChange={onFontChange}
+                clickablePointerCursor={clickablePointerCursor}
+                onClickablePointerCursorChange={onClickablePointerCursorChange}
                 settings={settings}
                 onSavePatch={onSavePatch}
               />

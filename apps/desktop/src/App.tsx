@@ -163,6 +163,7 @@ import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
+import { useClickablePointerCursor } from "@/hooks/useClickablePointerCursor";
 import { useFont } from "@/hooks/useFont";
 import { useTheme } from "@/hooks/useTheme";
 import { isManagedGeneratedVideoRef } from "@/lib/managed-generated-asset";
@@ -1978,6 +1979,7 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { font, setFont } = useFont();
+  const { clickablePointerCursor, setClickablePointerCursor } = useClickablePointerCursor();
   const runtime = useDesktopRuntime();
   const snapshot = runtime.snapshot;
   /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
@@ -3248,6 +3250,8 @@ export default function App() {
               onThemeChange={setTheme}
               font={font}
               onFontChange={setFont}
+              clickablePointerCursor={clickablePointerCursor}
+              onClickablePointerCursorChange={setClickablePointerCursor}
               settings={runtime.settings}
               snapshot={snapshot}
               runtimeError={runtime.runtimeError}

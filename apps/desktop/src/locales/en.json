@@ -99,6 +99,8 @@
     "llmHttpVersionHttp11": "HTTP/1.1",
     "llmHttpVersionHttp2": "HTTP/2",
     "blurEffectUnsupported": "Current host does not support this option.",
+    "clickablePointerCursor": "Hand cursor on hover",
+    "clickablePointerCursorDescription": "Show a hand cursor over buttons, links, and other clickable controls.",
     "langZhCN": "Simplified Chinese",
     "langEn": "English",
     "remoteStatus": "Remote Status",

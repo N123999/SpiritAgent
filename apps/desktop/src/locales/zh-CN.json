@@ -99,6 +99,8 @@
     "llmHttpVersionHttp11": "HTTP/1.1",
     "llmHttpVersionHttp2": "HTTP/2",
     "blurEffectUnsupported": "当前宿主不支持此选项。",
+    "clickablePointerCursor": "悬停显示手型",
+    "clickablePointerCursorDescription": "开启后，悬停在按钮、链接等可点击元素上时显示手型光标。",
     "langZhCN": "简体中文",
     "langEn": "English",
     "remoteStatus": "远程状态",
