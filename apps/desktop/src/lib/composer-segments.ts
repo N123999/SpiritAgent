@@ -10,6 +10,7 @@ import {
 import { makeLoopChipNode } from "@/lib/loop-chip-styles";
 import { makePlanChipNode } from "@/lib/plan-chip-styles";
 import { makeAskChipNode } from "@/lib/ask-chip-styles";
+import { makeSkillChipNode } from "@/lib/skill-chip-styles";
 
 export {
   caretAtEnd,
@@ -59,6 +60,7 @@ export {
 
 export { makePlanChipNode } from "@/lib/plan-chip-styles";
 export { makeAskChipNode } from "@/lib/ask-chip-styles";
+export { makeSkillChipNode } from "@/lib/skill-chip-styles";
 
 function mergeTextIntoLast(segs: RichSegment[], chunk: string): void {
   const last = segs[segs.length - 1];
@@ -132,6 +134,13 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
     }
     return;
   }
+  if (el.dataset.skillChip === "true" || el.getAttribute("data-skill-chip") === "true") {
+    const alias = el.dataset.skillAlias ?? el.getAttribute("data-skill-alias");
+    if (alias) {
+      segs.push({ kind: "skill", alias });
+    }
+    return;
+  }
   if (el.tagName === "BR") {
     mergeTextIntoLast(segs, "\n");
     return;
@@ -164,6 +173,8 @@ export function segmentsToDom(
       frag.appendChild(makeAskChipNode(doc, opts?.askLabel ?? "Ask"));
     } else if (seg.kind === "workspaceFile") {
       frag.appendChild(makeFileChipNode(seg.path, doc));
+    } else if (seg.kind === "skill") {
+      frag.appendChild(makeSkillChipNode(seg.alias, doc));
     } else {
       frag.appendChild(makeChipNode(seg.attachment, doc));
     }
