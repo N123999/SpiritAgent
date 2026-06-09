@@ -57,7 +57,7 @@ function buildSectionTemplate(
             void dialog.showMessageBox(win, {
               type: 'info',
               title: 'Spirit Agent',
-              message: 'Spirit Agent Desktop',
+              message: 'Spirit Agent',
               detail: `版本 ${app.getVersion()}`,
             });
           },
