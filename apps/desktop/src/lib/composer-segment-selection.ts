@@ -17,6 +17,8 @@ function isChip(el: HTMLElement): boolean {
     el.getAttribute("data-plan-chip") === "true" ||
     el.dataset.askChip === "true" ||
     el.getAttribute("data-ask-chip") === "true" ||
+    el.dataset.debugChip === "true" ||
+    el.getAttribute("data-debug-chip") === "true" ||
     el.dataset.skillChip === "true" ||
     el.getAttribute("data-skill-chip") === "true"
   );

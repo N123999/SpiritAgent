@@ -54,12 +54,12 @@ export function buildSegmentsAfterSend(agentMode: DesktopAgentMode): RichSegment
   });
 }
 
-const STRUCTURAL_KINDS = new Set(["loop", "plan", "ask"]);
+const STRUCTURAL_KINDS = new Set(["loop", "plan", "ask", "debug"]);
 
 /** DOM 只驱动正文/附件；loop/plan/ask 以 shell（segments state）为准。 */
 export function synchronizeTextFromDom(shell: RichSegment[], domParsed: RichSegment[]): RichSegment[] {
   const loopSegs = shell.filter((s) => s.kind === "loop");
-  const modeSegs = shell.filter((s) => s.kind === "plan" || s.kind === "ask");
+  const modeSegs = shell.filter((s) => s.kind === "plan" || s.kind === "ask" || s.kind === "debug");
   const domBody = domParsed.filter((s) => !STRUCTURAL_KINDS.has(s.kind));
   return mergeAdjacentTextSegments([...loopSegs, ...modeSegs, ...domBody]);
 }

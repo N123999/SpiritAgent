@@ -28,6 +28,7 @@ import {
   synchronizeTextFromDom,
   type AgentModeChipPolicy,
 } from "@/lib/composer-agent-mode-policy";
+import type { AgentModeChipKind } from "@/lib/composer-agent-mode-segments";
 import {
   domToSegments,
   emptySegments,
@@ -118,6 +119,7 @@ export type ComposerRichInputHandle = {
   removeLoopChip(): void;
   insertPlanChip(options?: InsertAgentModeChipOptions): void;
   insertAskChip(options?: InsertAgentModeChipOptions): void;
+  insertDebugChip(options?: InsertAgentModeChipOptions): void;
   removeAgentModeChip(): void;
   insertSkillChip(alias: string): void;
   /** 发送成功后由宿主调用：恢复 chip（若仍为 plan/ask）并将光标置于 chip 后。 */
@@ -419,7 +421,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     }, [applyComposerPolicy, commitSegments]);
 
     const insertAgentModeChip = useCallback(
-      (mode: "plan" | "ask", options?: InsertAgentModeChipOptions) => {
+      (mode: AgentModeChipKind, options?: InsertAgentModeChipOptions) => {
         const div = divRef.current;
         if (div) {
           div.focus();
@@ -441,6 +443,11 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
 
     const insertAskChip = useCallback(
       (options?: InsertAgentModeChipOptions) => insertAgentModeChip("ask", options),
+      [insertAgentModeChip],
+    );
+
+    const insertDebugChip = useCallback(
+      (options?: InsertAgentModeChipOptions) => insertAgentModeChip("debug", options),
       [insertAgentModeChip],
     );
 
@@ -505,6 +512,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         removeLoopChip,
         insertPlanChip,
         insertAskChip,
+        insertDebugChip,
         removeAgentModeChip,
         insertSkillChip,
         resetAfterSend,
@@ -518,6 +526,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         removeLoopChip,
         insertPlanChip,
         insertAskChip,
+        insertDebugChip,
         removeAgentModeChip,
         insertSkillChip,
         resetAfterSend,

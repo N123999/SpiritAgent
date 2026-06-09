@@ -10,6 +10,7 @@ export type RichSegment =
   | { kind: "loop" }
   | { kind: "plan" }
   | { kind: "ask" }
+  | { kind: "debug" }
   | { kind: "skill"; alias: string };
 
 export type ActiveWorkspaceFileReferenceQuery = {
@@ -126,7 +127,7 @@ export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): s
 
 export function segmentsToMessageText(segs: RichSegment[]): string {
   const merged = mergeAdjacentTextSegments(segs).filter(
-    (s) => s.kind !== "loop" && s.kind !== "plan" && s.kind !== "ask",
+    (s) => s.kind !== "loop" && s.kind !== "plan" && s.kind !== "ask" && s.kind !== "debug",
   );
   let out = "";
   for (let i = 0; i < merged.length; i++) {
@@ -200,11 +201,11 @@ function pinAgentModeChipFromSegments(
   body: RichSegment[],
   segs: RichSegment[],
 ): RichSegment[] {
-  const modeChip = segs.find((s) => s.kind === "plan" || s.kind === "ask");
-  if (modeChip?.kind !== "plan" && modeChip?.kind !== "ask") {
+  const modeChip = segs.find((s) => s.kind === "plan" || s.kind === "ask" || s.kind === "debug");
+  if (modeChip?.kind !== "plan" && modeChip?.kind !== "ask" && modeChip?.kind !== "debug") {
     return body;
   }
-  const withoutMode = body.filter((s) => s.kind !== "plan" && s.kind !== "ask");
+  const withoutMode = body.filter((s) => s.kind !== "plan" && s.kind !== "ask" && s.kind !== "debug");
   const loopPart = withoutMode.filter((s) => s.kind === "loop");
   const rest = withoutMode.filter((s) => s.kind !== "loop");
   return mergeAdjacentTextSegments([...loopPart, { kind: modeChip.kind }, ...rest]);
