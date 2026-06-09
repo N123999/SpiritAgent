@@ -803,8 +803,13 @@ impl TuiShell {
             return;
         }
 
-        let workspace_root = self.app_paths.workspace_root();
-        let generation_prompt = skills::build_create_skill_user_turn(&workspace_root, &request);
+        let generation_prompt = match self.runtime.build_create_skill_user_turn(&request.prompt) {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                self.push_agent_message(err.to_string());
+                return;
+            }
+        };
         let _ = self.submit_runtime_user_turn(generation_prompt, None);
     }
 
