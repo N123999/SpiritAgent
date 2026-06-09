@@ -48,6 +48,8 @@ import {
 import {
   CREATE_AUTOMATION_TOOL_NAME,
   deriveAutomationTitle,
+  formatCreateAutomationApprovalLabel,
+  parseCreateAutomationApprovalLevel,
   parseCreateAutomationSchedule,
 } from './automation-host-tool.js';
 import {
@@ -310,6 +312,7 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       title: string;
       overview: string;
       schedule: HostAutomationSchedule;
+      approval_level: ApprovalLevel;
     };
 
 export type HostAuthorizationDecision<QuestionSpec = HostAskQuestionsQuestionSpec> =
@@ -414,7 +417,6 @@ export interface HostAutomationCreateDefaults {
   workspaceRoot: string;
   modelName: string;
   reasoningEffort?: ModelReasoningEffort;
-  approvalLevel: ApprovalLevel;
 }
 
 export interface NodeHostToolServiceOptions {
@@ -766,6 +768,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           title: deriveAutomationTitle(overview, explicitTitle),
           overview,
           schedule: parseCreateAutomationSchedule(scheduleValue),
+          approval_level: parseCreateAutomationApprovalLevel(parsed.approval_level),
         };
       }
       case 'edit_file':
@@ -957,6 +960,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
             `高风险工具调用: 创建自动化\n` +
             `标题: ${request.title}\n` +
             `调度: ${formatScheduleLabel(request.schedule)}\n` +
+            `运行审批: ${formatCreateAutomationApprovalLabel(request.approval_level)}\n` +
             `概述长度: ${[...request.overview].length} 字符`,
         };
       case 'edit_file':
@@ -1962,7 +1966,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       workspaceRoot: defaults.workspaceRoot,
       modelName: defaults.modelName,
       ...(defaults.reasoningEffort ? { reasoningEffort: defaults.reasoningEffort } : {}),
-      approvalLevel: defaults.approvalLevel,
+      approvalLevel: request.approval_level,
       enabled: true,
     });
     this.onAutomationCreated?.(definition);

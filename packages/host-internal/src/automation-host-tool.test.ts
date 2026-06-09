@@ -6,6 +6,7 @@ import {
   CREATE_AUTOMATION_TOOL_NAME,
   buildAutomationHostToolDefinitions,
   deriveAutomationTitle,
+  parseCreateAutomationApprovalLevel,
   parseCreateAutomationSchedule,
 } from './automation-host-tool.js';
 
@@ -51,4 +52,10 @@ test('parseCreateAutomationSchedule accepts hourly daily weekly', () => {
 
 test('parseCreateAutomationSchedule rejects invalid input', () => {
   assert.throws(() => parseCreateAutomationSchedule({ kind: 'monthly' }), /Invalid automation schedule/);
+});
+
+test('parseCreateAutomationApprovalLevel defaults to default and accepts full-approval', () => {
+  assert.equal(parseCreateAutomationApprovalLevel(undefined), 'default');
+  assert.equal(parseCreateAutomationApprovalLevel('full-approval'), 'full-approval');
+  assert.equal(parseCreateAutomationApprovalLevel('full-access'), 'full-approval');
 });

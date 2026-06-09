@@ -1910,7 +1910,6 @@ class DesktopHostService {
           ...(lightweightModel.profile.reasoningEffort
             ? { reasoningEffort: lightweightModel.profile.reasoningEffort }
             : {}),
-          approvalLevel: bundle.approvalLevel,
         };
       },
       onAutomationCreated: () => {

@@ -698,7 +698,6 @@ test('create_automation writes automation file when defaults are provided', asyn
         getAutomationCreateDefaults: () => ({
           workspaceRoot,
           modelName: 'test-model',
-          approvalLevel: 'default',
         }),
         onAutomationCreated: (definition) => {
           createdId = definition.id;
@@ -716,6 +715,7 @@ test('create_automation writes automation file when defaults are provided', asyn
     assert.equal(request.name, 'create_automation');
     assert.equal(request.title, 'Check CI status and summarize failures.');
     assert.deepEqual(request.schedule, { kind: 'weekly', weekday: 1, hour: 9, minute: 0 });
+    assert.equal(request.approval_level, 'default');
 
     const output = await service.execute(request);
     assert.match(String(output), /\[automation\]\naction: create_automation\nid: /);

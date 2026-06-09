@@ -8,6 +8,8 @@ import {
 import type { HostAutomationSchedule } from './automations.js';
 import { normalizeAutomationSchedule } from './automations.js';
 
+export type CreateAutomationApprovalLevel = 'default' | 'full-approval';
+
 export const CREATE_AUTOMATION_TOOL_NAME = 'create_automation';
 
 const AUTOMATION_TITLE_MAX_CHARS = 80;
@@ -24,6 +26,24 @@ export function deriveAutomationTitle(overview: string, explicitTitle?: string):
   return [...firstLine].length > AUTOMATION_TITLE_MAX_CHARS
     ? [...firstLine].slice(0, AUTOMATION_TITLE_MAX_CHARS).join('')
     : firstLine;
+}
+
+export function parseCreateAutomationApprovalLevel(value: unknown): CreateAutomationApprovalLevel {
+  if (value === undefined) {
+    return 'default';
+  }
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('Invalid approval_level for create_automation.');
+  }
+  const trimmed = value.trim();
+  if (trimmed === 'full-approval' || trimmed === 'full-access') {
+    return 'full-approval';
+  }
+  return 'default';
+}
+
+export function formatCreateAutomationApprovalLabel(level: CreateAutomationApprovalLevel): string {
+  return level === 'full-approval' ? '跳过审批' : '默认审批';
 }
 
 export function parseCreateAutomationSchedule(value: unknown): HostAutomationSchedule {
@@ -54,6 +74,12 @@ export const CREATE_AUTOMATION_CONTRIBUTED_TOOL: ContributedHostToolDefinition =
         type: 'string',
         description:
           'Short list title shown in the Automations UI. Optional; defaults to the first line of overview (max 80 characters).',
+      },
+      approval_level: {
+        type: 'string',
+        enum: ['default', 'full-approval'],
+        description:
+          'Approval policy when the automation runs. default: normal tool approval prompts; full-approval: skip high-risk approval prompts for that automation run. Omit to use default.',
       },
       schedule: {
         type: 'object',
