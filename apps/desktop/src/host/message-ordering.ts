@@ -979,6 +979,16 @@ export function toolCallSummaryForStreamingPreview(
     return custom;
   }
 
+  if (toolName === 'get_diagnostics' && request && typeof request === 'object') {
+    const rawPath = typeof (request as Record<string, unknown>).path === 'string'
+      ? (request as Record<string, unknown>).path as string
+      : '';
+    return {
+      headline: i18n.t('tool.diagnosticsChecking'),
+      ...(rawPath.trim() ? { headlineDetail: truncateSummaryDetail(displayBasename(rawPath.trim())) } : {}),
+    };
+  }
+
   return {
     headline: hasBlockingToolAheadOfSameTurnPreview(messages, toolCallId)
       ? i18n.t('tool.queued', { toolName })

@@ -835,7 +835,11 @@
     "lspErrorCount_one": "{{count}} 个错误",
     "lspErrorCount_other": "{{count}} 个错误",
     "lspWarningCount_one": "{{count}} 个警告",
-    "lspWarningCount_other": "{{count}} 个警告"
+    "lspWarningCount_other": "{{count}} 个警告",
+    "diagnosticsChecking": "检查中",
+    "diagnosticsNoIssues": "没有问题",
+    "diagnosticsIssueCount_one": "{{count}} 个问题",
+    "diagnosticsIssueCount_other": "{{count}} 个问题"
   },
   "demo": {
     "compactionUserText": "请继续实现 Desktop 连接向导：在上下文接近上限时自动压缩历史，并保留最近一轮工具结果。",
