@@ -1040,7 +1040,7 @@ function SessionSidebarInner({
                 <>
                   <div className="h-2" aria-hidden />
                   {narrow ? null : (
-                    <p className="px-2.5 pb-1 text-[0.65rem] text-sidebar-faint-foreground">
+                    <p className="px-2.5 pb-1 text-[0.65rem] text-sidebar-item-foreground">
                       {t('sidebar.extensionSettings')}
                     </p>
                   )}
