@@ -378,7 +378,8 @@ function SessionListLoadMore({ hiddenCount, nested, disabled, onLoadMore }: Sess
       className={cn(
         "w-full py-1 text-left text-[0.65rem] text-sidebar-faint-foreground outline-none",
         nested ? "pr-2.5 pl-8" : "px-2.5",
-        "rounded-md focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
+        "rounded-md hover:text-sidebar-foreground/75 focus-visible:text-sidebar-foreground/75",
+        "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
         disabled && "pointer-events-none opacity-50",
       )}
     >
