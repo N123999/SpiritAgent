@@ -10,6 +10,7 @@ import {
 import { makeLoopChipNode } from "@/lib/loop-chip-styles";
 import { makePlanChipNode } from "@/lib/plan-chip-styles";
 import { makeAskChipNode } from "@/lib/ask-chip-styles";
+import { makeDebugChipNode } from "@/lib/debug-chip-styles";
 import { makeSkillChipNode } from "@/lib/skill-chip-styles";
 
 export {
@@ -61,6 +62,7 @@ export {
 
 export { makePlanChipNode } from "@/lib/plan-chip-styles";
 export { makeAskChipNode } from "@/lib/ask-chip-styles";
+export { makeDebugChipNode } from "@/lib/debug-chip-styles";
 export { makeSkillChipNode } from "@/lib/skill-chip-styles";
 
 function mergeTextIntoLast(segs: RichSegment[], chunk: string): void {
@@ -115,6 +117,10 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
     segs.push({ kind: "ask" });
     return;
   }
+  if (el.dataset.debugChip === "true" || el.getAttribute("data-debug-chip") === "true") {
+    segs.push({ kind: "debug" });
+    return;
+  }
   if (el.dataset.elementChip === "true" || el.getAttribute("data-element-chip") === "true") {
     const id = el.dataset.elementId;
     const tag = el.dataset.elementTag;
@@ -154,7 +160,7 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
 export function segmentsToDom(
   segs: RichSegment[],
   doc: Document,
-  opts?: { loopLabel?: string; planLabel?: string; askLabel?: string },
+  opts?: { loopLabel?: string; planLabel?: string; askLabel?: string; debugLabel?: string },
 ): DocumentFragment {
   const frag = doc.createDocumentFragment();
   for (const seg of segs) {
@@ -172,6 +178,8 @@ export function segmentsToDom(
       frag.appendChild(makePlanChipNode(doc, opts?.planLabel ?? "Plan"));
     } else if (seg.kind === "ask") {
       frag.appendChild(makeAskChipNode(doc, opts?.askLabel ?? "Ask"));
+    } else if (seg.kind === "debug") {
+      frag.appendChild(makeDebugChipNode(doc, opts?.debugLabel ?? "Debug"));
     } else if (seg.kind === "workspaceFile") {
       frag.appendChild(makeFileChipNode(seg.path, doc));
     } else if (seg.kind === "skill") {
@@ -186,7 +194,7 @@ export function segmentsToDom(
 export function renderSegmentsToElement(
   root: HTMLElement,
   segs: RichSegment[],
-  opts?: { loopLabel?: string; planLabel?: string; askLabel?: string },
+  opts?: { loopLabel?: string; planLabel?: string; askLabel?: string; debugLabel?: string },
 ): void {
   root.replaceChildren(segmentsToDom(segs, root.ownerDocument, opts));
 }

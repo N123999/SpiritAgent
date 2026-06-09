@@ -3,26 +3,26 @@ import type { RichSegment, SegmentCaret } from "./composer-segment-model";
 import { emptySegments, mergeAdjacentTextSegments } from "./composer-segment-model";
 import { hasLoopSegment, removeLoopSegment } from "./composer-loop-segments";
 
-export type AgentModeChipKind = "plan" | "ask";
+export type AgentModeChipKind = "plan" | "ask" | "debug";
 
 export function isAgentModeChipKind(mode: DesktopAgentMode): mode is AgentModeChipKind {
-  return mode === "plan" || mode === "ask";
+  return mode === "plan" || mode === "ask" || mode === "debug";
 }
 
 export function hasAgentModeSegment(segs: RichSegment[]): boolean {
-  return segs.some((s) => s.kind === "plan" || s.kind === "ask");
+  return segs.some((s) => s.kind === "plan" || s.kind === "ask" || s.kind === "debug");
 }
 
 export function currentAgentModeSegment(segs: RichSegment[]): AgentModeChipKind | undefined {
-  const found = segs.find((s) => s.kind === "plan" || s.kind === "ask");
-  if (found?.kind === "plan" || found?.kind === "ask") {
+  const found = segs.find((s) => s.kind === "plan" || s.kind === "ask" || s.kind === "debug");
+  if (found?.kind === "plan" || found?.kind === "ask" || found?.kind === "debug") {
     return found.kind;
   }
   return undefined;
 }
 
 export function removeAgentModeSegment(segs: RichSegment[]): RichSegment[] {
-  return mergeAdjacentTextSegments(segs.filter((s) => s.kind !== "plan" && s.kind !== "ask"));
+  return mergeAdjacentTextSegments(segs.filter((s) => s.kind !== "plan" && s.kind !== "ask" && s.kind !== "debug"));
 }
 
 function tailAfterModeChip(rest: RichSegment[]): RichSegment[] {
@@ -37,7 +37,7 @@ function tailAfterModeChip(rest: RichSegment[]): RichSegment[] {
 }
 
 function agentModeChipIndex(segs: RichSegment[]): number {
-  return segs.findIndex((s) => s.kind === "plan" || s.kind === "ask");
+  return segs.findIndex((s) => s.kind === "plan" || s.kind === "ask" || s.kind === "debug");
 }
 
 /** Caret in the trailing text segment after a pinned Plan/Ask chip (never on the chip segment). */
