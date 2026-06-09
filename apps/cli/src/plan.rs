@@ -31,7 +31,7 @@ pub fn user_plans_dir() -> PathBuf {
 impl PlanMetadata {
     pub fn spirit_agent_mode(&self) -> &str {
         match self.agent_mode.as_str() {
-            "agent" | "plan" | "ask" => self.agent_mode.as_str(),
+            "agent" | "plan" | "ask" | "debug" => self.agent_mode.as_str(),
             _ if self.plan_mode => "plan",
             _ => "agent",
         }
