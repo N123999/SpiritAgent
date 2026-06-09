@@ -450,13 +450,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         if (div) {
           div.focus();
         }
-        const current = segmentsRef.current;
-        const caret = selectionToCaret(div!, current) ?? caretAtEnd(current);
-        // Remove any existing skill chip first (only one active skill at a time)
-        const filtered = mergeAdjacentTextSegments(current.filter((s) => s.kind !== "skill"));
+        // 始终从空 segments 开始，确保斜杠查询文本不会残留
         const { segments: next, caret: nextCaret } = insertSegmentAtCaret(
-          filtered,
-          caret,
+          emptySegments(),
+          { segmentIndex: 0, offset: 0 },
           { kind: "skill", alias },
         );
         commitSegments(next, nextCaret);
