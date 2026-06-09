@@ -1060,7 +1060,7 @@ const ruleCreateRootOptions: Array<{
 }> = [
   { kind: "user", labelKey: 'settings.skillUserDirShort', labelFallback: 'User', hintKey: 'settings.ruleUserDirHint' },
   { kind: "workspaceSpirit", labelFallback: ".spirit", hintKey: 'settings.ruleWorkspaceSpiritHint' },
-  { kind: "workspaceAgents", labelFallback: ".agents", hintKey: 'settings.ruleWorkspaceAgentsHint' },
+  { kind: "workspaceAgents", labelFallback: "AGENTS.md", hintKey: 'settings.ruleWorkspaceAgentsHint' },
 ];
 
 function ruleLocationLabel(item: DesktopRuleListItem): string {
