@@ -1,8 +1,15 @@
-import { writeFile, mkdtemp } from 'node:fs/promises';
+import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type * as schema from '@agentclientprotocol/sdk';
+
+export interface ExtractedImages {
+  /** File paths for explicitImages */
+  paths: string[];
+  /** Cleanup function to delete temp files (no-op if no temp files were created) */
+  cleanup: () => Promise<void>;
+}
 
 /**
  * Extracts image content blocks from an ACP prompt and resolves them to file paths.
@@ -15,8 +22,8 @@ import type * as schema from '@agentclientprotocol/sdk';
  */
 export async function extractPromptImages(
   prompt: schema.ContentBlock[],
-): Promise<string[]> {
-  const images: string[] = [];
+): Promise<ExtractedImages> {
+  const paths: string[] = [];
   let tempDir: string | undefined;
 
   for (const block of prompt) {
@@ -34,7 +41,7 @@ export async function extractPromptImages(
           // Use fileURLToPath for cross-platform path conversion
           // (handles Windows /C:/... → C:\... etc.)
           const filePath = fileURLToPath(uri);
-          images.push(filePath);
+          paths.push(filePath);
           continue;
         } catch {
           // Fall through to data handling
@@ -51,13 +58,19 @@ export async function extractPromptImages(
         tempDir = await mkdtemp(path.join(tmpdir(), 'acp-images-'));
       }
       const ext = mimeTypeToExt(image.mimeType);
-      const filePath = path.join(tempDir, `image-${images.length}${ext}`);
+      const filePath = path.join(tempDir, `image-${paths.length}${ext}`);
       await writeFile(filePath, Buffer.from(image.data, 'base64'));
-      images.push(filePath);
+      paths.push(filePath);
     }
   }
 
-  return images;
+  const cleanup = async (): Promise<void> => {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  };
+
+  return { paths, cleanup };
 }
 
 function mimeTypeToExt(mimeType: string): string {

@@ -162,10 +162,15 @@ export class SpiritAcpAgent implements acp.Agent {
 
     try {
       // Extract images from content blocks
-      const explicitImages = await extractPromptImages(params.prompt);
+      const { paths: explicitImages, cleanup: cleanupImages } = await extractPromptImages(params.prompt);
 
-      // Use streaming start so onEvent fires real-time chunks
-      await session.runtime.startUserTurnStreaming(userInput, explicitImages);
+      try {
+        // Use streaming start so onEvent fires real-time chunks
+        await session.runtime.startUserTurnStreaming(userInput, explicitImages);
+      } finally {
+        // Clean up temp files regardless of turn outcome
+        cleanupImages().catch(() => {});
+      }
       const result = await session.runtime.waitForCompletedTurnResult();
 
       // Check if a newer prompt has superseded this one
