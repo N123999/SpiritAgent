@@ -243,16 +243,16 @@ export class SpiritAcpAgent implements acp.Agent {
         ).then((allowed) => {
           if (allowed) {
             session.runtime.resumePendingQuestions({
-              kind: 'answered',
-              answers: {},
-            } as any).catch((err) => {
+              status: 'answered',
+              answers: [],
+            }).catch((err) => {
               console.error('Failed to resume questions:', err);
             });
           } else {
             session.runtime.resumePendingQuestions({
-              kind: 'cancelled',
-            } as any).catch((err) => {
-              console.error('Failed to cancel questions:', err);
+              status: 'skipped',
+            }).catch((err) => {
+              console.error('Failed to skip questions:', err);
             });
           }
         }).catch((err) => {
