@@ -21,7 +21,7 @@ import {
   type SessionSidebarChromeApi,
   useSessionSidebarChrome,
 } from "@/contexts/session-sidebar-chrome-context";
-import { type DesktopAgentMode } from "@/lib/agent-mode";
+import { cycleAgentMode, type DesktopAgentMode } from "@/lib/agent-mode";
 import {
   resolveComposerDirectMediaTool,
   type DirectMediaTool,
@@ -3232,6 +3232,19 @@ export default function App() {
   const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     handleComposerSuggestionKeyDown(event);
     if (event.defaultPrevented) {
+      return;
+    }
+    // Shift+Tab — 循环切换 Agent 模式（Agent → Plan → Ask → Debug → Agent）
+    if (
+      event.key === 'Tab' &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      const nextMode = cycleAgentMode(runtime.settings.agentMode);
+      handleComposerAgentModeChange(nextMode);
       return;
     }
     if (
