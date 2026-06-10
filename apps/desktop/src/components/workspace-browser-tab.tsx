@@ -17,6 +17,7 @@ import {
   PICKER_INJECT_CSS,
   type PickerMarqueeResult,
 } from "@/lib/browser-element-picker";
+import { desktopMicaBrowserTintClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceBrowserTabProps = {
@@ -33,6 +34,8 @@ export type WorkspaceBrowserTabProps = {
   browserTabEnabled?: boolean;
   /** 当前浏览器工具标签是否为右侧工作区激活页 */
   isActive?: boolean;
+  /** Windows 云母 / macOS Vibrancy：页槽使用略高的半透明底色。 */
+  useMicaBackdrop?: boolean;
 };
 
 type LocalListeningEndpoint = {
@@ -250,6 +253,7 @@ export function WorkspaceBrowserTab({
   onElementPicked,
   browserTabEnabled = false,
   isActive = false,
+  useMicaBackdrop = false,
 }: WorkspaceBrowserTabProps) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -772,7 +776,8 @@ export function WorkspaceBrowserTab({
             <div
               ref={pageSlotRef}
               className={cn(
-                "electron-no-drag absolute inset-0 bg-background",
+                "electron-no-drag absolute inset-0",
+                desktopMicaBrowserTintClass(useMicaBackdrop),
                 isPickerActive && "cursor-crosshair",
               )}
             />

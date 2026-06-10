@@ -47,6 +47,7 @@ import {
   providerSupportsModelCatalogDetail,
 } from "@/lib/model-catalog-detail";
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
+import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
 import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
 import { cn } from "@/lib/utils";
 import {
@@ -159,6 +160,8 @@ type SettingsViewProps = {
   onGenerateRuleNavigate?: () => void;
   /** 开发者页：在对话区播放上下文压缩 UI 演示（不调用模型）。 */
   onStartCompactionUiDemo?: () => void;
+  /** Windows 云母 / macOS Vibrancy：内层透明以避免与 settings-shell 双层 tint 叠深。 */
+  useMicaBackdrop?: boolean;
 };
 
 const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = [
@@ -4040,6 +4043,7 @@ export function SettingsView({
   onGenerateSkillNavigate,
   onGenerateRuleNavigate,
   onStartCompactionUiDemo,
+  useMicaBackdrop = false,
 }: SettingsViewProps) {
   const { t } = useTranslation();
   const extensionSettingsItem = extensionSettingsId
@@ -4047,7 +4051,7 @@ export function SettingsView({
     : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className={cn("flex min-h-0 flex-1 flex-col", desktopMicaTintClass(useMicaBackdrop))}>
       <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">

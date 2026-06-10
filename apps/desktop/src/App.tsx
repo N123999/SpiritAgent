@@ -216,6 +216,7 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
+import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import { desktopShellPlatform, isElectronChrome, isNativeBackdropBlurSupported, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
@@ -1889,7 +1890,7 @@ function DesktopLayoutChromeBar({
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 px-1.5",
         showTrailingActions ? "justify-between" : "justify-start",
-        useMicaBackdrop ? "bg-transparent" : "bg-background",
+        desktopMicaTintClass(useMicaBackdrop),
       )}
     >
       <div className="flex min-w-0 items-center">
@@ -3350,12 +3351,13 @@ export default function App() {
         </SessionSidebarShell>
 
         {settingsMode ? (
-          <div data-spirit-surface="settings-shell" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+          <div data-spirit-surface="settings-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
             />
             <SettingsView
+              useMicaBackdrop={useMicaBackdrop}
               tab={settingsTab}
               extensionSettingsId={extensionSettingsId}
               theme={theme}
@@ -3414,11 +3416,12 @@ export default function App() {
             />
           </div>
         ) : automationsMode ? (
-          <div data-spirit-surface="automations-layout" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+          <div data-spirit-surface="automations-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
             />
+            <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintClass(useMicaBackdrop))}>
             {automationDetailMode && selectedAutomationId ? (
               <AutomationDetailView
                 automationId={selectedAutomationId}
@@ -3474,14 +3477,16 @@ export default function App() {
                 }
               })}
             />
+            </div>
           </div>
         ) : marketplaceMode ? (
-          <div data-spirit-surface="marketplace-layout" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+          <div data-spirit-surface="marketplace-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
             />
             <MarketplaceView
+              useMicaBackdrop={useMicaBackdrop}
               snapshot={snapshot}
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
@@ -3494,8 +3499,8 @@ export default function App() {
             />
           </div>
         ) : (
-          <div data-spirit-surface="conversation-layout" className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-background min-w-0">
-            <div data-spirit-surface="conversation-shell" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background min-w-0">
+          <div data-spirit-surface="conversation-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
+            <div data-spirit-surface="conversation-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
               <DesktopLayoutChromeBar
                 useMicaBackdrop={useMicaBackdrop}
                 showWorkspaceToggle
@@ -3515,11 +3520,11 @@ export default function App() {
                 onNewSession={isEmptySession ? undefined : handleNewSession}
                 newSessionBusy={newSessionBusy}
               />
-            <div data-spirit-surface="conversation-stage" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
+            <div data-spirit-surface="conversation-stage" className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintClass(useMicaBackdrop))}>
               {compactionDemo.active ? (
                 <div
                   data-spirit-surface="compaction-ui-demo-banner"
-                  className="shrink-0 bg-background"
+                  className={cn("shrink-0", desktopMicaTintInnerClass(useMicaBackdrop))}
                 >
                   <div
                     className={cn(
@@ -3551,14 +3556,14 @@ export default function App() {
               ) : null}
               <ScrollArea
                 data-spirit-surface="conversation-scroll"
-                className="min-h-0 flex-1 bg-background"
+                className={cn("min-h-0 flex-1", desktopMicaTintInnerClass(useMicaBackdrop))}
                 type="hover"
                 scrollHideDelay={450}
               >
                 {/* min-h-full：短内容仍铺满视口；pb ≥ dock 实测高度 + 留白，审批卡弹出时同步增高 */}
                 <div
                   data-spirit-surface="conversation-scroll-body"
-                  className="min-h-full w-full bg-background"
+                  className={cn("min-h-full w-full", desktopMicaTintInnerClass(useMicaBackdrop))}
                   style={
                     !isEmptySession || subagentViewActive
                       ? { paddingBottom: conversationScrollBedPaddingPx }
@@ -3922,7 +3927,8 @@ export default function App() {
                   {!isEmptySession ? (
                     <div
                       className={cn(
-                        "pointer-events-none relative z-0 -mt-4 bg-background pt-[calc(1rem+0.375rem)] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]",
+                        "pointer-events-none relative z-0 -mt-4 pt-[calc(1rem+0.375rem)] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]",
+                        desktopMicaTintInnerClass(useMicaBackdrop),
                         CONVERSATION_GUTTER_NEG_X,
                         CONVERSATION_GUTTER_X,
                       )}
@@ -3954,6 +3960,7 @@ export default function App() {
             </div>
             <div data-spirit-surface="workspace-dock">
             <WorkspaceToolsDock
+              useMicaBackdrop={useMicaBackdrop}
               workspaceRoot={snapshot?.workspaceRoot ?? ""}
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
               readWorkspaceTextFile={runtime.readWorkspaceTextFile}

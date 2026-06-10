@@ -18,6 +18,10 @@ import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceGitTab } from "@/components/workspace-git-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import { instantHoverMotionClass } from "@/lib/desktop-chrome";
+import {
+  desktopMicaTintClass,
+  desktopMicaWorkspaceTabSelectedClass,
+} from "@/lib/desktop-mica-surface";
 import { maskFadeHorizontalEnd } from "@/lib/mask-styles";
 import {
   WORKSPACE_TOOLS_MIN_WIDTH_PX,
@@ -106,6 +110,8 @@ export type WorkspaceToolsDockProps = {
   readGitHistory: (request?: ReadGitHistoryRequest) => Promise<GitHistorySnapshot>;
   submitGitChip: (request: SubmitGitChipRequest) => Promise<boolean>;
   className?: string;
+  /** Windows 云母 / macOS Vibrancy：工作区面板使用半透明主题底色。 */
+  useMicaBackdrop?: boolean;
 };
 
 function WorkspaceToolsDockInner({
@@ -146,6 +152,7 @@ function WorkspaceToolsDockInner({
   readGitHistory,
   submitGitChip,
   className,
+  useMicaBackdrop = false,
 }: WorkspaceToolsDockProps) {
   const { t } = useTranslation();
   const [isResizing, setIsResizing] = useState(false);
@@ -348,6 +355,7 @@ function WorkspaceToolsDockInner({
           className={cn(
             "group relative z-10 w-1 shrink-0 cursor-col-resize touch-none select-none",
             "before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']",
+            desktopMicaTintClass(useMicaBackdrop),
           )}
           onPointerDown={onResizePointerDown}
           onPointerMove={onResizePointerMove}
@@ -363,7 +371,10 @@ function WorkspaceToolsDockInner({
         <aside
           id="workspace-tools-panel"
           data-spirit-surface="workspace-panel"
-          className="flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-background text-foreground"
+          className={cn(
+            "flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden text-foreground",
+            desktopMicaTintClass(useMicaBackdrop),
+          )}
           style={{ width: widthPx }}
           aria-label={t('workspace.workspaceTools')}
         >
@@ -392,7 +403,12 @@ function WorkspaceToolsDockInner({
                       "group/tab relative flex shrink-0 items-stretch rounded-t-md border border-transparent",
                       displayTitle ? "max-w-[9rem]" : "max-w-[3rem]",
                       selected
-                        ? "border-border/40 border-b-background bg-background text-foreground shadow-sm"
+                        ? cn(
+                            "border-border/40 text-foreground shadow-sm",
+                            useMicaBackdrop
+                              ? cn("border-b-transparent", desktopMicaWorkspaceTabSelectedClass(useMicaBackdrop))
+                              : "border-b-background bg-background",
+                          )
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     )}
                   >
@@ -500,6 +516,7 @@ function WorkspaceToolsDockInner({
                       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
                         <WorkspaceShellTab
                           workspaceRoot={workspaceRoot}
+                          useMicaBackdrop={useMicaBackdrop}
                           onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                           suspendTerminalResize={isResizing}
                         />
@@ -512,6 +529,7 @@ function WorkspaceToolsDockInner({
                         browserUrl={item.browserUrl}
                         browserTabEnabled={browserTabEnabled}
                         isActive={selected}
+                        useMicaBackdrop={useMicaBackdrop}
                         onBrowserUrlChange={(url) => handleBrowserUrlChange(item.id, url)}
                         onOpenUrlInNewTab={onBrowserOpenInNewTab}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
