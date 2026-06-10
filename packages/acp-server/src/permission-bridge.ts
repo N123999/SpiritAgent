@@ -1,14 +1,13 @@
 import type { JsonValue, RuntimeApprovalDecision, RuntimePendingApproval } from '@spirit-agent/core';
 import type { AgentSideConnection } from '@agentclientprotocol/sdk';
 import type * as schema from '@agentclientprotocol/sdk';
+import { mapToolNameToKind, buildToolCallTitle } from './tool-call-mapper.js';
 
 /**
  * Handles a runtime approval request by asking the ACP client for permission.
  *
- * Converts agent-core's AuthorizationDecision into an ACP requestPermission call,
+ * Converts agent-core's RuntimePendingApproval into an ACP requestPermission call,
  * then maps the client's response back to a RuntimeApprovalDecision.
- *
- * Stub: to be fully implemented in Phase 4.
  */
 export async function handleApprovalRequest(
   connection: AgentSideConnection,
@@ -16,13 +15,26 @@ export async function handleApprovalRequest(
   approval: RuntimePendingApproval<JsonValue, JsonValue>,
 ): Promise<RuntimeApprovalDecision> {
   try {
+    const toolCallId = approval.toolCallId ?? `approval_${Date.now()}`;
+    const kind = mapToolNameToKind(approval.toolName);
+
+    // Try to build a descriptive title from the approval prompt
+    const title = approval.prompt || approval.toolName;
+
     const response = await connection.requestPermission({
       sessionId,
       toolCall: {
-        toolCallId: approval.toolCallId ?? `approval_${Date.now()}`,
-        title: approval.toolName,
-        kind: 'other',
+        toolCallId,
+        title,
+        kind: kind as schema.ToolKind,
         status: 'pending',
+        content: [{
+          type: 'content',
+          content: {
+            type: 'text',
+            text: approval.prompt || `Tool ${approval.toolName} requires permission.`,
+          },
+        }],
       },
       options: buildPermissionOptions(approval),
     });
@@ -31,6 +43,44 @@ export async function handleApprovalRequest(
   } catch {
     // If permission request fails (e.g. connection closed), deny the operation
     return { kind: 'deny', resultText: 'Permission request failed.' };
+  }
+}
+
+/**
+ * Handles a questions-requested event by degrading to a simple allow/deny prompt.
+ *
+ * In MVP, we don't support the full questions UI, so we present the questions
+ * as text and ask for allow/deny.
+ */
+export async function handleQuestionsRequest(
+  connection: AgentSideConnection,
+  sessionId: string,
+  questions: { prompt?: string; questions?: unknown[] },
+): Promise<boolean> {
+  try {
+    const description = questions.prompt ?? 'The agent needs additional input.';
+    const response = await connection.requestPermission({
+      sessionId,
+      toolCall: {
+        toolCallId: `questions_${Date.now()}`,
+        title: 'Agent needs input',
+        kind: 'other',
+        status: 'pending',
+        content: [{
+          type: 'content',
+          content: { type: 'text', text: description },
+        }],
+      },
+      options: [
+        { optionId: 'allow', name: 'Continue', kind: 'allow_once' },
+        { optionId: 'reject', name: 'Cancel', kind: 'reject_once' },
+      ],
+    });
+
+    return response.outcome.outcome !== 'cancelled'
+      && response.outcome.optionId === 'allow';
+  } catch {
+    return false;
   }
 }
 

@@ -5,7 +5,7 @@ import { AVAILABLE_MODES } from './types.js';
 import type { AcpServerConfig } from './types.js';
 import { SessionManager } from './session-manager.js';
 import { mapRuntimeEventToUpdate } from './event-mapper.js';
-import { handleApprovalRequest } from './permission-bridge.js';
+import { handleApprovalRequest, handleQuestionsRequest } from './permission-bridge.js';
 
 /**
  * Spirit Agent implementation of the ACP Agent interface.
@@ -174,15 +174,32 @@ export class SpiritAcpAgent implements acp.Agent {
       return;
     }
 
-    // Handle questions-requested by degrading to deny (MVP)
+    // Handle questions-requested by degrading to permission prompt (MVP)
     if (event.kind === 'questions-requested') {
       const session = this.sessionManager.getSession(sessionId);
       if (session) {
-        // For MVP, auto-deny questions
-        session.runtime.resumePendingQuestions({
-          kind: 'cancelled',
-        } as any).catch((err) => {
-          console.error('Failed to resume questions:', err);
+        const questions = event.questions as unknown as { prompt?: string; questions?: unknown[] };
+        handleQuestionsRequest(
+          this.connection,
+          sessionId,
+          questions,
+        ).then((allowed) => {
+          if (allowed) {
+            session.runtime.resumePendingQuestions({
+              kind: 'answered',
+              answers: {},
+            } as any).catch((err) => {
+              console.error('Failed to resume questions:', err);
+            });
+          } else {
+            session.runtime.resumePendingQuestions({
+              kind: 'cancelled',
+            } as any).catch((err) => {
+              console.error('Failed to cancel questions:', err);
+            });
+          }
+        }).catch((err) => {
+          console.error('Questions request failed:', err);
         });
       }
       return;
