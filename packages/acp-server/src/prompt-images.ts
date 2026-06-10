@@ -1,6 +1,7 @@
 import { writeFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type * as schema from '@agentclientprotocol/sdk';
 
 /**
@@ -30,7 +31,9 @@ export async function extractPromptImages(
       const uri = image.uri;
       if (uri.startsWith('file://')) {
         try {
-          const filePath = new URL(uri).pathname;
+          // Use fileURLToPath for cross-platform path conversion
+          // (handles Windows /C:/... → C:\... etc.)
+          const filePath = fileURLToPath(uri);
           images.push(filePath);
           continue;
         } catch {
