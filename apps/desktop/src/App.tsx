@@ -3357,6 +3357,7 @@ export default function App() {
               showWorkspaceToggle={false}
             />
             <SettingsView
+              useMicaBackdrop={useMicaBackdrop}
               tab={settingsTab}
               extensionSettingsId={extensionSettingsId}
               theme={theme}
@@ -3483,6 +3484,7 @@ export default function App() {
               showWorkspaceToggle={false}
             />
             <MarketplaceView
+              useMicaBackdrop={useMicaBackdrop}
               snapshot={snapshot}
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
@@ -3955,6 +3957,7 @@ export default function App() {
             </div>
             <div data-spirit-surface="workspace-dock">
             <WorkspaceToolsDock
+              useMicaBackdrop={useMicaBackdrop}
               workspaceRoot={snapshot?.workspaceRoot ?? ""}
               listExplorerChildren={runtime.listWorkspaceExplorerChildren}
               readWorkspaceTextFile={runtime.readWorkspaceTextFile}

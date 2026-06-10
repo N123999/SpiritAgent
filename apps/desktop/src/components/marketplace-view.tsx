@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
 import type {
   DesktopExtensionListItem,
@@ -48,6 +49,8 @@ type MarketplaceViewProps = {
     version?: string;
     reviewAcknowledged?: boolean;
   }) => Promise<void>;
+  /** Windows 云母 / macOS Vibrancy：内层透明以避免与 marketplace-layout 双层 tint 叠深。 */
+  useMicaBackdrop?: boolean;
 };
 
 type MarketplaceTab = "readme" | "changelog" | "versions";
@@ -108,6 +111,7 @@ export function MarketplaceView({
   onGetMarketplaceExtensionReadme,
   onPrepareMarketplaceExtensionInstall,
   onInstallMarketplaceExtension,
+  useMicaBackdrop = false,
 }: MarketplaceViewProps) {
   const { t } = useTranslation();
   const [catalog, setCatalog] = useState<DesktopMarketplaceCatalogItem[]>([]);
@@ -412,7 +416,7 @@ export function MarketplaceView({
   const listEmpty = filteredCatalog.length === 0 && !loadingCatalog;
 
   return (
-    <div data-spirit-surface="marketplace-shell" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-sm">
+    <div data-spirit-surface="marketplace-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintInnerClass(useMicaBackdrop))}>
       {detailExtensionId === null ? (
         <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
           <div
