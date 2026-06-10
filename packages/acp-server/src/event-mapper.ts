@@ -3,12 +3,34 @@ import type * as schema from '@agentclientprotocol/sdk';
 import { mapToolNameToKind, buildToolCallTitle, extractToolCallLocations } from './tool-call-mapper.js';
 
 /**
+ * Per-session state for tracking streaming deltas.
+ *
+ * The `update-pending-assistant-thinking` event carries the full accumulated
+ * thinking text (not a delta). We must compute the delta ourselves to avoid
+ * the ACP client concatenating full-text chunks into garbled output.
+ */
+export interface EventMapperState {
+  /** Length of thinking text already sent to the client */
+  sentThinkingLength: number;
+}
+
+/**
+ * Creates a fresh per-session mapper state.
+ */
+export function createEventMapperState(): EventMapperState {
+  return { sentThinkingLength: 0 };
+}
+
+/**
  * Maps a RuntimeEvent to an ACP session/update notification payload.
  * Returns undefined for events that should not be forwarded (e.g. approval-requested).
+ *
+ * @param state - Mutable per-session state used to compute streaming deltas.
  */
 export function mapRuntimeEventToUpdate(
   event: RuntimeEvent<JsonValue>,
   sessionId: string,
+  state: EventMapperState,
 ): schema.SessionNotification | undefined {
   switch (event.kind) {
     case 'assistant-chunk':
@@ -23,17 +45,30 @@ export function mapRuntimeEventToUpdate(
         },
       } as schema.SessionNotification;
 
-    case 'update-pending-assistant-thinking':
+    case 'update-pending-assistant-thinking': {
+      // event.text is the full accumulated thinking text, not a delta.
+      // Extract only the new portion since last emission.
+      const fullText = event.text;
+      const delta = fullText.slice(state.sentThinkingLength);
+      state.sentThinkingLength = fullText.length;
+      if (delta.length === 0) return undefined;
       return {
         sessionId,
         update: {
-          sessionUpdate: 'agent_message_chunk',
+          sessionUpdate: 'agent_thought_chunk',
           content: {
             type: 'text',
-            text: event.text,
+            text: delta,
           },
         },
       } as schema.SessionNotification;
+    }
+
+    case 'assistant-thinking-segment-finalized':
+      // A thinking segment ended — reset the sent length tracker
+      // so the next thinking segment starts fresh.
+      state.sentThinkingLength = 0;
+      return undefined;
 
     case 'streaming-tool-preview': {
       const kind = mapToolNameToKind(event.toolName);
@@ -115,7 +150,6 @@ export function mapRuntimeEventToUpdate(
     case 'begin-assistant-response':
     case 'assistant-response-completed':
     case 'remove-pending-assistant':
-    case 'assistant-thinking-segment-finalized':
     case 'update-pending-assistant-compaction':
     case 'approval-resolved':
     case 'history-compacted':
