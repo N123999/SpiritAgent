@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
+import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
 import type {
   DesktopExtensionListItem,
@@ -416,7 +416,7 @@ export function MarketplaceView({
   const listEmpty = filteredCatalog.length === 0 && !loadingCatalog;
 
   return (
-    <div data-spirit-surface="marketplace-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintInnerClass(useMicaBackdrop))}>
+    <div data-spirit-surface="marketplace-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintClass(useMicaBackdrop))}>
       {detailExtensionId === null ? (
         <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
           <div
@@ -514,7 +514,7 @@ export function MarketplaceView({
         </ScrollArea>
       ) : (
         <>
-          <div className="shrink-0 bg-background/90 backdrop-blur-sm">
+          <div className={cn("shrink-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <div className={cn("mx-auto flex items-center px-3 py-2", MARKETPLACE_READING_W)}>
               <Button
                 type="button"

@@ -355,6 +355,7 @@ function WorkspaceToolsDockInner({
           className={cn(
             "group relative z-10 w-1 shrink-0 cursor-col-resize touch-none select-none",
             "before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']",
+            desktopMicaTintClass(useMicaBackdrop),
           )}
           onPointerDown={onResizePointerDown}
           onPointerMove={onResizePointerMove}

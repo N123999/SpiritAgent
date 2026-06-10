@@ -1890,7 +1890,7 @@ function DesktopLayoutChromeBar({
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 px-1.5",
         showTrailingActions ? "justify-between" : "justify-start",
-        useMicaBackdrop ? "bg-transparent" : "bg-background",
+        desktopMicaTintClass(useMicaBackdrop),
       )}
     >
       <div className="flex min-w-0 items-center">
@@ -3351,7 +3351,7 @@ export default function App() {
         </SessionSidebarShell>
 
         {settingsMode ? (
-          <div data-spirit-surface="settings-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintClass(useMicaBackdrop))}>
+          <div data-spirit-surface="settings-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
@@ -3416,11 +3416,12 @@ export default function App() {
             />
           </div>
         ) : automationsMode ? (
-          <div data-spirit-surface="automations-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintClass(useMicaBackdrop))}>
+          <div data-spirit-surface="automations-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
             />
+            <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintClass(useMicaBackdrop))}>
             {automationDetailMode && selectedAutomationId ? (
               <AutomationDetailView
                 automationId={selectedAutomationId}
@@ -3476,9 +3477,10 @@ export default function App() {
                 }
               })}
             />
+            </div>
           </div>
         ) : marketplaceMode ? (
-          <div data-spirit-surface="marketplace-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintClass(useMicaBackdrop))}>
+          <div data-spirit-surface="marketplace-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", desktopMicaTintInnerClass(useMicaBackdrop))}>
             <DesktopLayoutChromeBar
               useMicaBackdrop={useMicaBackdrop}
               showWorkspaceToggle={false}
@@ -3498,7 +3500,7 @@ export default function App() {
           </div>
         ) : (
           <div data-spirit-surface="conversation-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
-            <div data-spirit-surface="conversation-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col min-w-0", desktopMicaTintClass(useMicaBackdrop))}>
+            <div data-spirit-surface="conversation-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
               <DesktopLayoutChromeBar
                 useMicaBackdrop={useMicaBackdrop}
                 showWorkspaceToggle
@@ -3518,7 +3520,7 @@ export default function App() {
                 onNewSession={isEmptySession ? undefined : handleNewSession}
                 newSessionBusy={newSessionBusy}
               />
-            <div data-spirit-surface="conversation-stage" className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintInnerClass(useMicaBackdrop))}>
+            <div data-spirit-surface="conversation-stage" className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintClass(useMicaBackdrop))}>
               {compactionDemo.active ? (
                 <div
                   data-spirit-surface="compaction-ui-demo-banner"
