@@ -108,10 +108,11 @@ export function ensureAgentModePinned(
   if (current === agentMode && hasAgentModeSegment(segs)) {
     const modeIndex = agentModeChipIndex(segs);
     const loopIndex = segs.findIndex((s) => s.kind === "loop");
-    if (loopIndex >= 0 && modeIndex >= 0 && modeIndex < loopIndex) {
-      return insertAgentModeSegment(segs, agentMode).segments;
+    if (loopIndex < 0) {
+      return mergeAdjacentTextSegments(segs);
     }
-    if (loopIndex < 0 || modeIndex === loopIndex + 1) {
+    const adjacent = modeIndex === loopIndex + 1 || loopIndex === modeIndex + 1;
+    if (adjacent) {
       return mergeAdjacentTextSegments(segs);
     }
     return insertAgentModeSegment(segs, agentMode).segments;
