@@ -117,16 +117,10 @@ export function mapRuntimeEventToUpdate(
       return undefined;
 
     case 'replace-pending-assistant':
-      return {
-        sessionId,
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: {
-            type: 'text',
-            text: event.text,
-          },
-        },
-      } as schema.SessionNotification;
+      // This event replaces the entire pending assistant text.
+      // ACP's agent_message_chunk is append-only, so we cannot faithfully
+      // represent a full-text replacement. Skip to avoid duplicate content.
+      return undefined;
 
     case 'background-tool-status':
       return {
