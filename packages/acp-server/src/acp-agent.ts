@@ -20,6 +20,8 @@ export class SpiritAcpAgent implements acp.Agent {
   private readonly sessionManager: SessionManager;
   /** Per-session event mapper state for tracking streaming deltas */
   private readonly mapperStates = new Map<string, EventMapperState>();
+  /** Per-session prompt generation counter to prevent stale turn results */
+  private readonly promptGenerations = new Map<string, number>();
 
   constructor(connection: acp.AgentSideConnection, config: AcpServerConfig) {
     this.connection = connection;
@@ -132,6 +134,10 @@ export class SpiritAcpAgent implements acp.Agent {
     }
     session.pendingPrompt = new AbortController();
 
+    // Increment generation so stale prompt completions are discarded
+    const generation = (this.promptGenerations.get(params.sessionId) ?? 0) + 1;
+    this.promptGenerations.set(params.sessionId, generation);
+
     // Extract text from prompt content blocks
     let userInput = extractPromptText(params.prompt);
 
@@ -162,6 +168,11 @@ export class SpiritAcpAgent implements acp.Agent {
       await session.runtime.startUserTurnStreaming(userInput, explicitImages);
       const result = await session.runtime.waitForCompletedTurnResult();
 
+      // Check if a newer prompt has superseded this one
+      if (this.promptGenerations.get(params.sessionId) !== generation) {
+        return { stopReason: 'cancelled' };
+      }
+
       session.pendingPrompt = null;
 
       // Map turn result to stop reason
@@ -171,6 +182,11 @@ export class SpiritAcpAgent implements acp.Agent {
 
       return { stopReason: 'end_turn' };
     } catch (err) {
+      // Stale generation — a newer prompt took over, treat as cancelled
+      if (this.promptGenerations.get(params.sessionId) !== generation) {
+        return { stopReason: 'cancelled' };
+      }
+
       const aborted = session.pendingPrompt?.signal.aborted ?? false;
       session.pendingPrompt = null;
 
