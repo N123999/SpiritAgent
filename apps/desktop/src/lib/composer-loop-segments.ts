@@ -1,21 +1,65 @@
 import type { RichSegment, SegmentCaret } from "./composer-segment-model";
 import { emptySegments, mergeAdjacentTextSegments } from "./composer-segment-model";
 
+const AGENT_MODE_KINDS = new Set(["plan", "ask", "debug"]);
+
+function isAgentModeKind(kind: RichSegment["kind"]): boolean {
+  return AGENT_MODE_KINDS.has(kind);
+}
+
+export function loopChipIndex(segs: RichSegment[]): number {
+  return segs.findIndex((s) => s.kind === "loop");
+}
+
 export function hasLoopSegment(segs: RichSegment[]): boolean {
-  return segs.some((s) => s.kind === "loop");
+  return loopChipIndex(segs) >= 0;
 }
 
 export function removeLoopSegment(segs: RichSegment[]): RichSegment[] {
   return mergeAdjacentTextSegments(segs.filter((s) => s.kind !== "loop"));
 }
 
-/** Keep at most one loop chip pinned at index 0. */
-export function ensureLoopPinned(segs: RichSegment[]): RichSegment[] {
-  if (!hasLoopSegment(segs)) {
-    return mergeAdjacentTextSegments(segs);
+/** Insert loop after existing structural chips (plan/ask/debug), before body text. */
+function loopInsertIndex(segs: RichSegment[]): number {
+  let insertAt = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const kind = segs[i]?.kind;
+    if (kind === "plan" || kind === "ask" || kind === "debug") {
+      insertAt = i + 1;
+    } else {
+      break;
+    }
   }
-  const rest = segs.filter((s) => s.kind !== "loop");
-  return mergeAdjacentTextSegments([{ kind: "loop" }, ...rest]);
+  return insertAt;
+}
+
+/** Keep at most one loop chip in the structural prefix; preserve order vs plan/ask/debug. */
+export function ensureLoopPinned(segs: RichSegment[]): RichSegment[] {
+  const merged = mergeAdjacentTextSegments(segs);
+  if (!hasLoopSegment(merged)) {
+    return merged;
+  }
+
+  const firstLoopIndex = loopChipIndex(merged);
+  const agentIndex = merged.findIndex((s) => isAgentModeKind(s.kind));
+  const body = merged.filter((s) => s.kind !== "loop" && !isAgentModeKind(s.kind));
+  const loopSeg = { kind: "loop" as const };
+  const agentSeg = agentIndex >= 0 ? merged[agentIndex] : null;
+
+  const structural: RichSegment[] = [];
+  if (agentSeg && firstLoopIndex >= 0) {
+    if (agentIndex < firstLoopIndex) {
+      structural.push(agentSeg, loopSeg);
+    } else {
+      structural.push(loopSeg, agentSeg);
+    }
+  } else if (firstLoopIndex >= 0) {
+    structural.push(loopSeg);
+  } else if (agentSeg) {
+    structural.push(agentSeg);
+  }
+
+  return mergeAdjacentTextSegments([...structural, ...body]);
 }
 
 /** Match element chip: add a trailing space when nothing follows the chip. */
@@ -35,34 +79,33 @@ export function insertLoopSegment(segs: RichSegment[]): {
   caret: SegmentCaret;
 } {
   const rest = removeLoopSegment(segs);
+  const merged = mergeAdjacentTextSegments(rest);
+  const insertAt = loopInsertIndex(merged);
   const normalized = mergeAdjacentTextSegments([
+    ...merged.slice(0, insertAt),
     { kind: "loop" },
-    ...tailAfterLoopChip(rest),
+    ...tailAfterLoopChip(merged.slice(insertAt)),
   ]);
-  const textIndex = normalized.findIndex((s) => s.kind === "text");
-  const caretSegmentIndex = textIndex >= 0 ? textIndex : normalized.length;
-  const textSeg = textIndex >= 0 ? normalized[textIndex] : undefined;
-  const caretOffset =
-    textSeg?.kind === "text" && textSeg.value.startsWith(" ") ? 1 : 0;
   return {
     segments: normalized,
-    caret: { segmentIndex: caretSegmentIndex, offset: caretOffset },
+    caret: caretAfterLoopChip(normalized),
   };
 }
 
 export function caretAfterLoopChip(segs: RichSegment[]): SegmentCaret {
   const merged = mergeAdjacentTextSegments(segs);
-  if (merged[0]?.kind !== "loop") {
+  const loopIndex = loopChipIndex(merged);
+  if (loopIndex < 0) {
     return { segmentIndex: 0, offset: 0 };
   }
-  const textIndex = merged.findIndex((s, i) => i > 0 && s.kind === "text");
+  const textIndex = merged.findIndex((s, i) => i > loopIndex && s.kind === "text");
   if (textIndex >= 0) {
     const textSeg = merged[textIndex];
     const offset =
       textSeg?.kind === "text" && textSeg.value.startsWith(" ") ? 1 : 0;
     return { segmentIndex: textIndex, offset };
   }
-  return { segmentIndex: 1, offset: 0 };
+  return { segmentIndex: loopIndex + 1, offset: 0 };
 }
 
 /** DOM/selection often reports segment 0 on the chip; snap to the typed position after it. */
@@ -77,10 +120,11 @@ export function normalizeCaretForPinnedLoopChip(
     return caretAfterLoopChip(segs);
   }
   const merged = mergeAdjacentTextSegments(segs);
-  if (merged[0]?.kind !== "loop") {
+  const loopIndex = loopChipIndex(merged);
+  if (loopIndex < 0) {
     return caret;
   }
-  if (caret.segmentIndex <= 0) {
+  if (caret.segmentIndex <= loopIndex) {
     return caretAfterLoopChip(merged);
   }
   return caret;
@@ -92,14 +136,11 @@ export function isCaretAtLoopRemovalPoint(
   caret: SegmentCaret,
 ): boolean {
   const merged = mergeAdjacentTextSegments(segs);
-  if (merged[0]?.kind !== "loop") {
+  const loopIndex = loopChipIndex(merged);
+  if (loopIndex < 0) {
     return false;
   }
-  const at = merged[caret.segmentIndex];
-  if (at?.kind === "text") {
-    return caret.segmentIndex === 1 && caret.offset === 0;
-  }
-  return caret.segmentIndex === 1 && caret.offset === 0;
+  return caret.segmentIndex === loopIndex + 1 && caret.offset === 0;
 }
 
 export function emptySegmentsWithOptionalLoop(loopEnabled: boolean): RichSegment[] {

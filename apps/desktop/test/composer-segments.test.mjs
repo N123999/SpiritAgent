@@ -250,12 +250,22 @@ test("syncSegmentsFromExternalValue replaces text while keeping elements", () =>
   ]);
 });
 
-test("insertLoopSegment pins loop at index 0", () => {
+test("insertLoopSegment pins loop before body text", () => {
   const { segments } = insertLoopSegment([
     { kind: "text", value: "hello" },
   ]);
   assert.equal(segments[0]?.kind, "loop");
   assert.equal(segments[1]?.kind === "text" && segments[1].value, "hello");
+  assert.equal(hasLoopSegment(segments), true);
+});
+
+test("insertLoopSegment appends loop after existing agent mode chip", () => {
+  const { segments } = insertLoopSegment([
+    { kind: "ask" },
+    { kind: "text", value: " " },
+  ]);
+  assert.equal(segments[0]?.kind, "ask");
+  assert.equal(segments[1]?.kind, "loop");
   assert.equal(hasLoopSegment(segments), true);
 });
 
@@ -269,7 +279,7 @@ test("insertLoopSegment adds trailing space after loop when composer empty", () 
   assert.equal(caret.offset, 1);
 });
 
-test("ensureLoopPinned deduplicates and moves loop to front", () => {
+test("ensureLoopPinned deduplicates and moves misplaced loop before body", () => {
   const pinned = ensureLoopPinned([
     { kind: "text", value: "tail" },
     { kind: "loop" },
@@ -277,6 +287,17 @@ test("ensureLoopPinned deduplicates and moves loop to front", () => {
   ]);
   assert.equal(pinned.filter((s) => s.kind === "loop").length, 1);
   assert.equal(pinned[0]?.kind, "loop");
+});
+
+test("ensureLoopPinned preserves ask then loop order", () => {
+  const pinned = ensureLoopPinned([
+    { kind: "ask" },
+    { kind: "loop" },
+    { kind: "text", value: "work" },
+  ]);
+  assert.equal(pinned[0]?.kind, "ask");
+  assert.equal(pinned[1]?.kind, "loop");
+  assert.equal(pinned[2]?.kind === "text" && pinned[2].value, "work");
 });
 
 test("segmentsToMessageText ignores loop chip", () => {
@@ -551,6 +572,15 @@ test("synchronizeTextFromDom keeps shell chips and adopts dom text", () => {
   assert.equal(merged[1]?.kind === "text" && merged[1].value, "hello");
 });
 
+test("synchronizeTextFromDom preserves ask then loop shell order", () => {
+  const shell = [{ kind: "ask" }, { kind: "loop" }, { kind: "text", value: " " }];
+  const dom = [{ kind: "text", value: "hello" }];
+  const merged = synchronizeTextFromDom(shell, dom);
+  assert.equal(merged[0]?.kind, "ask");
+  assert.equal(merged[1]?.kind, "loop");
+  assert.equal(merged[2]?.kind === "text" && merged[2].value, "hello");
+});
+
 test("normalizeCaretForPinnedLoopChip snaps caret before loop to after chip", () => {
   const segs = [{ kind: "loop" }, { kind: "text", value: " " }];
   const snapped = normalizeCaretForPinnedLoopChip(segs, { segmentIndex: 0, offset: 0 });
@@ -562,6 +592,17 @@ test("normalizeCaretForPinnedLoopChip snaps caret before loop to after chip", ()
   );
   assert.equal(
     isCaretAtLoopRemovalPoint(segs, { segmentIndex: 1, offset: 0 }),
+    true,
+  );
+});
+
+test("normalizeCaretForPinnedLoopChip snaps caret on ask-then-loop chips", () => {
+  const segs = [{ kind: "ask" }, { kind: "loop" }, { kind: "text", value: " " }];
+  const snapped = normalizeCaretForPinnedLoopChip(segs, { segmentIndex: 1, offset: 0 });
+  assert.equal(snapped.segmentIndex, 2);
+  assert.equal(snapped.offset, 1);
+  assert.equal(
+    isCaretAtLoopRemovalPoint(segs, { segmentIndex: 2, offset: 0 }),
     true,
   );
 });
