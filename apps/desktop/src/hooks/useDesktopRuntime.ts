@@ -509,6 +509,14 @@ export function useDesktopRuntime() {
         turnInFlight && current.agentMode !== configAgentMode
           ? current.agentMode
           : configAgentMode;
+      // saveSettingsPatch 乐观更新后、poll 快照尚未追上时，勿覆盖本地 chip 模式。
+      if (
+        !chipDismissed &&
+        isAgentModeChipKind(current.agentMode) &&
+        current.agentMode !== configAgentMode
+      ) {
+        agentMode = current.agentMode;
+      }
       // 用户 Backspace 去掉 chip 后，poll 不得再把 settings.agentMode 设回 ask/plan（否则 agentMode effect 会重插 chip）。
       if (chipDismissed && isAgentModeChipKind(agentMode)) {
         agentMode = "agent";

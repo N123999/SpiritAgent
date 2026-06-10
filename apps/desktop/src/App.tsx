@@ -2747,6 +2747,7 @@ export default function App() {
     setSlashSelectedIndex(-1);
     setDismissedSlashQueryKey(null);
     void runtime.saveSettingsPatch({ agentMode: "plan" });
+    runtime.setAgentModeChipDismissed(false);
     composerRichInputRef.current?.insertPlanChip({ clearText: false });
     if (slashQuery) {
       composerRichInputRef.current?.removeSkillSlashQuery(slashQuery);
@@ -2757,6 +2758,7 @@ export default function App() {
     setSlashSelectedIndex(-1);
     setDismissedSlashQueryKey(null);
     void runtime.saveSettingsPatch({ agentMode: "ask" });
+    runtime.setAgentModeChipDismissed(false);
     composerRichInputRef.current?.insertAskChip({ clearText: false });
     if (slashQuery) {
       composerRichInputRef.current?.removeSkillSlashQuery(slashQuery);
@@ -2767,6 +2769,7 @@ export default function App() {
     setSlashSelectedIndex(-1);
     setDismissedSlashQueryKey(null);
     void runtime.saveSettingsPatch({ agentMode: "debug" });
+    runtime.setAgentModeChipDismissed(false);
     composerRichInputRef.current?.insertDebugChip({ clearText: false });
     if (slashQuery) {
       composerRichInputRef.current?.removeSkillSlashQuery(slashQuery);

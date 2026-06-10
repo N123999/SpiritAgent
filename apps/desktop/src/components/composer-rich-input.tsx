@@ -449,6 +449,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         return;
       }
       const next = applyComposerPolicy(removeLoopSegment(segmentsRef.current));
+      loopEnabledRef.current = false;
       hadLoopRef.current = false;
       commitSegments(next, { segmentIndex: 0, offset: 0 }, { syncLoop: false });
       onLoopEnabledChangeRef.current?.(false);
@@ -464,6 +465,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         agentModeChipDismissedRef.current = false;
         onAgentModeChipDismissChangeRef.current?.(false);
         const { segments: next, caret } = insertAgentModeSegment(base, mode);
+        // Pin policy to the mode being inserted; host agentMode prop may lag saveSettingsPatch / poll.
+        agentModeRef.current = mode;
         hadAgentModeRef.current = true;
         commitSegments(next, caret, { syncAgentMode: false });
       },
@@ -660,8 +663,17 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       }
 
       const domSegs = domToSegments(div);
+      const domEqual = segmentsEqual(domSegs, segments);
+
       if (skipRenderRef.current) {
         skipRenderRef.current = false;
+        if (!domEqual) {
+          renderSegmentsToElement(div, segments, {
+            loopLabel: loopChipLabel,
+            planLabel: planChipLabel,
+            askLabel: askChipLabel,
+          });
+        }
         if (pendingCaretRef.current) {
           const caret = normalizeCaretForComposer(segments, pendingCaretRef.current);
           caretToDomRange(div, segments, caret);
@@ -671,7 +683,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         return;
       }
 
-      if (segmentsEqual(domSegs, segments)) {
+      if (domEqual) {
         if (pendingCaretRef.current) {
           const caret = normalizeCaretForComposer(segments, pendingCaretRef.current);
           caretToDomRange(div, segments, caret);
@@ -733,12 +745,12 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
 
       // Parent cleared composer after send: 由 resetAfterSend 恢复 chip；此处仅处理 loop shell。
       if (!value && attachmentCount === 0 && (plain || hasElements || hasLoopSegment(current) || hasAgentModeSegment(current))) {
-        if (loopEnabled || loopEnabledRef.current) {
-          const { segments: next, caret } = insertLoopSegment(emptySegments());
-          commitSegments(applyComposerPolicy(next), caret, { syncLoop: false, syncAgentMode: false });
+        if (hasLoopSegment(current) && isComposerPlainEmpty(plain) && !hasElements) {
           return;
         }
-        if (hasLoopSegment(current) && !plain && !hasElements) {
+        if ((loopEnabled || loopEnabledRef.current) && !hasLoopSegment(current)) {
+          const { segments: next, caret } = insertLoopSegment(emptySegments());
+          commitSegments(applyComposerPolicy(next), caret, { syncLoop: false, syncAgentMode: false });
           return;
         }
         // 发消息后 resetAfterSend 已恢复 chip；busy poll 时勿反复 empty→policy 重插（日志 B 根因）。

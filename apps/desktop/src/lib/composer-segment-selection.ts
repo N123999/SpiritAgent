@@ -457,7 +457,12 @@ export function caretToDomRange(
       placed = true;
       break;
     }
-    if (segIdx === index - 1 && caret.offset === 0) {
+    // Only when the target segment is text at offset 0 (start of text right after this chip).
+    if (
+      segIdx === index - 1 &&
+      caret.offset === 0 &&
+      segments[index]?.kind === "text"
+    ) {
       range.setStartAfter(node);
       range.collapse(true);
       placed = true;
