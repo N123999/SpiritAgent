@@ -6,7 +6,7 @@
 
 **An open-source AI agent built to multiply your productivity** — grounded in your workspace, equipped with real tools, and ready to plan, execute, and ship alongside you.
 
-[Desktop app](#desktop) · [CLI](#cli) · [Agent Core](#agent-core) · [Development](#development)
+[Desktop app](#desktop) · [CLI](#cli) · [ACP Server](#acp-server) · [Agent Core](#agent-core) · [Development](#development)
 
 > This project is under active development. Behavior and APIs may change between releases.
 
@@ -19,22 +19,21 @@
 Spirit Agent is a monorepo for a **tool-using coding agent** that runs against a real project root. The same runtime powers a native desktop workspace and a terminal UI. Shared logic lives in TypeScript packages; hosts add platform-specific execution, discovery, and UI.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Hosts                                                      │
-│  ┌──────────────────────┐    ┌──────────────────────────┐   │
-│  │  Desktop (Electron)  │    │  CLI (Rust + TUI)        │   │
-│  │  React UI, Git, PTY  │    │  Terminal-first workflow │   │
-│  └──────────┬───────────┘    └─────────────┬────────────┘   │
-│             │                              │                │
-│             └──────────────┬───────────────┘                │
-│                            ▼                                │
-│                  packages/host-internal                     │
-│           discovery, tools, workspace, extensions           │
-│                            │                                │
-│                            ▼                                │
-│                   packages/agent-core                       │
-│         runtime, prompts, tool contracts, transports        │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│  Hosts                                                │
+│  ┌──────────────┐ ┌──────────┐ ┌───────────────────┐  │
+│  │   Desktop    │ │   CLI    │ │    ACP Server     │  │
+│  │  (Electron)  │ │  (Rust)  │ │  stdio / ndJSON   │  │
+│  └──────┬───────┘ └─────┬────┘ └───────────┬───────┘  │
+│         └───────────────┼──────────────────┘          │
+│                         ▼                             │
+│               packages/host-internal                  │
+│            discovery, tools, workspace                │
+│                         │                             │
+│                         ▼                             │
+│                packages/agent-core                    │
+│          runtime, prompts, tool contracts             │
+└───────────────────────────────────────────────────────┘
 ```
 
 ## Agent Core
@@ -109,6 +108,41 @@ The [Rust CLI](apps/cli) (`spirit-agent`) provides a terminal-first host with an
 npm run dev:cli    # build TS packages, then cargo run -p spirit-agent
 ```
 
+## ACP Server
+
+[`packages/acp-server`](packages/acp-server) is a thin adapter that exposes Spirit Agent as an [Agent Client Protocol](https://agentclientprotocol.com) (ACP) server over stdio / ndJSON. Any ACP-compatible editor — such as **Zed** or **JetBrains Junie** — can connect to Spirit Agent as its AI coding engine without bespoke integration.
+
+- **Protocol surface** — `initialize`, `session/new`, `session/prompt`, `session/cancel`, `session/close`, `session/set_mode`.
+- **Streaming & thinking** — real-time `agent_message_chunk` streaming and `agent_thought_chunk` for model reasoning output.
+- **Permission bridge** — tool approval via ACP `request_permission` with allow-once / always-allow / reject options.
+- **Slash commands** — workspace and user Skills are advertised as `available_commands_update`; typing `/skill-name` activates the skill and injects its instructions into the system prompt.
+- **Local execution** — tools run in-process via `NodeHostToolService` (no JSON-RPC peer over stdio, which is reserved for ACP ndJSON).
+
+### Quick start (Zed)
+
+Add to your Zed `settings.json`:
+
+```json
+"agent_servers": {
+  "Spirit Agent": {
+    "command": "node",
+    "args": ["path/to/packages/acp-server/dist/src/stdio-entry.js"],
+    "env": {
+      "SPIRIT_ACP_API_KEY": "${SPIRIT_ACP_API_KEY}",
+      "SPIRIT_ACP_MODEL": "",
+      "SPIRIT_ACP_BASE_URL": ""
+    }
+  }
+}
+```
+
+| Environment variable | Required | Description |
+| --- | --- | --- |
+| `SPIRIT_ACP_API_KEY` | Yes | LLM provider API key |
+| `SPIRIT_ACP_MODEL` | No | Model name (default: `gpt-4.1-mini`) |
+| `SPIRIT_ACP_BASE_URL` | No | Custom LLM endpoint URL |
+| `SPIRIT_ACP_WORKSPACE` | No | Workspace root (default: `cwd` from client) |
+
 ## Development
 
 **Requirements:** Node.js 22+, npm. Rust toolchain required for CLI builds.
@@ -118,7 +152,7 @@ npm run dev:cli    # build TS packages, then cargo run -p spirit-agent
 | `npm run dev:desktop` | Build shared packages and start Desktop (Vite + Electron) |
 | `npm run dev:desktop:web` | Desktop renderer with browser web host |
 | `npm run dev:cli` | CLI with TUI |
-| `npm run build` | Production build of agent-core, host-internal, and Desktop |
+| `npm run build` | Production build of agent-core, host-internal, acp-server, and Desktop |
 | `npm run eval:compare` | Run eval comparison after agent-core changes |
 
 ### Repository layout
@@ -130,6 +164,7 @@ apps/
 packages/
   agent-core/        Agent runtime, prompts, tool definitions, transports, MCP, eval
   host-internal/     Shared host discovery, tools, extensions, LSP helpers
+  acp-server/        ACP (Agent Client Protocol) server adapter for editor integration
 scripts/             Release, eval, and repo automation
 ```
 

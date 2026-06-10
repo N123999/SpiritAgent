@@ -6,7 +6,7 @@
 
 **一款旨在成倍提升生产力的开源 AI 智能体** — 扎根于你的工作区，配备真实工具，随时与你一起规划、执行并交付成果。
 
-[Desktop 应用](#desktop) · [CLI](#cli) · [Agent Core](#agent-core) · [开发](#开发)
+[Desktop 应用](#desktop) · [CLI](#cli) · [ACP Server](#acp-server) · [Agent Core](#agent-core) · [开发](#开发)
 
 > 本项目仍在积极开发中。各版本之间的行为与 API 可能发生变化。
 
@@ -19,22 +19,21 @@
 Spirit Agent 是一个 **工具型编程智能体** 的 monorepo，以真实项目根目录为运行上下文。同一套运行时同时驱动原生桌面工作区与终端界面。共享逻辑位于 TypeScript 包中；各宿主在此基础上叠加平台相关的执行、发现与 UI。
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Hosts                                                      │
-│  ┌──────────────────────┐    ┌──────────────────────────┐   │
-│  │  Desktop (Electron)  │    │  CLI (Rust + TUI)        │   │
-│  │  React UI, Git, PTY  │    │  Terminal-first workflow │   │
-│  └──────────┬───────────┘    └─────────────┬────────────┘   │
-│             │                              │                │
-│             └──────────────┬───────────────┘                │
-│                            ▼                                │
-│                  packages/host-internal                     │
-│           discovery, tools, workspace, extensions           │
-│                            │                                │
-│                            ▼                                │
-│                   packages/agent-core                       │
-│         runtime, prompts, tool contracts, transports        │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│  Hosts                                                │
+│  ┌──────────────┐ ┌──────────┐ ┌───────────────────┐  │
+│  │   Desktop    │ │   CLI    │ │    ACP Server     │  │
+│  │  (Electron)  │ │  (Rust)  │ │  stdio / ndJSON   │  │
+│  └──────┬───────┘ └─────┬────┘ └───────────┬───────┘  │
+│         └───────────────┼──────────────────┘          │
+│                         ▼                             │
+│               packages/host-internal                  │
+│            discovery, tools, workspace                │
+│                         │                             │
+│                         ▼                             │
+│                packages/agent-core                    │
+│          runtime, prompts, tool contracts             │
+└───────────────────────────────────────────────────────┘
 ```
 
 ## Agent Core
@@ -109,6 +108,41 @@ Desktop 专属开发与目录说明见 [apps/desktop/README.md](../apps/desktop/
 npm run dev:cli    # 构建 TS 包，然后 cargo run -p spirit-agent
 ```
 
+## ACP Server
+
+[`packages/acp-server`](../packages/acp-server) 是一个薄适配层，通过 stdio / ndJSON 将 Spirit Agent 以 [Agent Client Protocol](https://agentclientprotocol.com)（ACP）服务器的形式对外暴露。任何兼容 ACP 的编辑器 — 如 **Zed** 或 **JetBrains Junie** — 都可以直接接入 Spirit Agent 作为其 AI 编码引擎，无需定制集成。
+
+- **协议表面** — `initialize`、`session/new`、`session/prompt`、`session/cancel`、`session/close`、`session/set_mode`。
+- **流式与思考** — 实时 `agent_message_chunk` 流式输出，以及 `agent_thought_chunk` 用于模型推理过程展示。
+- **权限桥接** — 通过 ACP `request_permission` 进行工具审批，支持 allow-once / always-allow / reject 选项。
+- **Slash 命令** — 工作区与用户级 Skills 通过 `available_commands_update` 注册为命令；输入 `/skill-name` 即可激活 Skill 并将其指令注入系统提示词。
+- **本地执行** — 工具通过 `NodeHostToolService` 在进程内执行（stdio 保留给 ACP ndJSON，不使用 JSON-RPC peer）。
+
+### 快速开始（Zed）
+
+在 Zed 的 `settings.json` 中添加：
+
+```json
+"agent_servers": {
+  "Spirit Agent": {
+    "command": "node",
+    "args": ["path/to/packages/acp-server/dist/src/stdio-entry.js"],
+    "env": {
+      "SPIRIT_ACP_API_KEY": "${SPIRIT_ACP_API_KEY}",
+      "SPIRIT_ACP_MODEL": "",
+      "SPIRIT_ACP_BASE_URL": ""
+    }
+  }
+}
+```
+
+| 环境变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `SPIRIT_ACP_API_KEY` | 是 | LLM 提供商 API 密钥 |
+| `SPIRIT_ACP_MODEL` | 否 | 模型名称（默认：`gpt-4.1-mini`） |
+| `SPIRIT_ACP_BASE_URL` | 否 | 自定义 LLM 端点 URL |
+| `SPIRIT_ACP_WORKSPACE` | 否 | 工作区根路径（默认：客户端传入的 `cwd`） |
+
 ## 开发
 
 **环境要求：** Node.js 22+、npm。构建 CLI 需要 Rust 工具链。
@@ -118,7 +152,7 @@ npm run dev:cli    # 构建 TS 包，然后 cargo run -p spirit-agent
 | `npm run dev:desktop` | 构建共享包并启动 Desktop（Vite + Electron） |
 | `npm run dev:desktop:web` | Desktop 渲染器 + 浏览器 Web 宿主 |
 | `npm run dev:cli` | 带 TUI 的 CLI |
-| `npm run build` | 生产构建 agent-core、host-internal 与 Desktop |
+| `npm run build` | 生产构建 agent-core、host-internal、acp-server 与 Desktop |
 | `npm run eval:compare` | 在 agent-core 变更后运行 eval 对比 |
 
 ### 仓库结构
@@ -130,6 +164,7 @@ apps/
 packages/
   agent-core/        智能体运行时、提示词、工具定义、传输层、MCP、eval
   host-internal/     共享宿主发现、工具、扩展、LSP 辅助
+  acp-server/        ACP (Agent Client Protocol) 服务器适配器，用于编辑器集成
 scripts/             发布、eval 与仓库自动化
 ```
 
