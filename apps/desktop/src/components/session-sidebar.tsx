@@ -35,7 +35,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { sidebarScrollEdgeFadeClass, sidebarSessionsScrollTopGapClass } from "@/lib/mask-styles";
+import { sidebarSessionsScrollTopGapClass } from "@/lib/mask-styles";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -65,6 +65,7 @@ import type { SessionListItem } from "@/types";
 
 /** 平台快捷键提示，模块加载时计算（平台不会运行时变化）。 */
 const newSessionShortcutLabel = shortcutLabel("N");
+
 
 function samePath(a: string, b: string): boolean {
   return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
@@ -637,22 +638,17 @@ function readSidebarScrollEdgeFades(viewport: HTMLElement): SidebarScrollEdgeFad
   };
 }
 
-function sidebarScrollEdgeOverlayTopClass(active: boolean): string {
-  return cn(
-    "pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-150",
-    sidebarScrollEdgeFadeClass,
-    active ? "opacity-100" : "opacity-0",
-    "bg-gradient-to-b from-sidebar to-transparent",
-  );
-}
+const SIDEBAR_SCROLL_MASK =
+  "linear-gradient(to bottom, rgb(0 0 0 / var(--sidebar-mask-top-alpha)) 0, black 2rem, black calc(100% - 2rem), rgb(0 0 0 / var(--sidebar-mask-bottom-alpha)) 100%)";
 
-function sidebarScrollEdgeOverlayBottomClass(active: boolean): string {
-  return cn(
-    "pointer-events-none absolute inset-x-0 bottom-0 z-10 transition-opacity duration-150",
-    sidebarScrollEdgeFadeClass,
-    active ? "opacity-100" : "opacity-0",
-    "bg-gradient-to-t from-sidebar to-transparent",
-  );
+function sidebarScrollAreaMaskStyle(top: boolean, bottom: boolean): React.CSSProperties {
+  return {
+    "--sidebar-mask-top-alpha": top ? "0" : "1",
+    "--sidebar-mask-bottom-alpha": bottom ? "0" : "1",
+    maskImage: SIDEBAR_SCROLL_MASK,
+    WebkitMaskImage: SIDEBAR_SCROLL_MASK,
+    transition: "--sidebar-mask-top-alpha 150ms, --sidebar-mask-bottom-alpha 150ms",
+  } as React.CSSProperties;
 }
 
 const sidebarMicaSelectedClass = cn(
@@ -839,7 +835,8 @@ function SessionSidebarInner({
   }, [unboundSessions.length]);
 
   useEffect(() => {
-    if (micaStyle || (!settingsMode && narrow)) {
+    const suppressScrollFade = !settingsMode && narrow;
+    if (suppressScrollFade) {
       setScrollEdgeFades({ top: false, bottom: false });
       return;
     }
@@ -1014,7 +1011,12 @@ function SessionSidebarInner({
         )}
         aria-hidden={!settingsMode && narrow}
       >
-        <ScrollArea className="h-full min-h-0 min-w-0" type="hover" scrollHideDelay={450}>
+        <ScrollArea
+          className="h-full min-h-0 min-w-0"
+          type="hover"
+          scrollHideDelay={450}
+          style={sidebarScrollAreaMaskStyle(scrollEdgeFades.top, scrollEdgeFades.bottom)}
+        >
           {settingsMode ? (
             <nav className="flex min-w-0 flex-col gap-0.5 p-1.5" aria-label={t('sidebar.settingsTabsAria')}>
               {settingsTabs.map((tab) => {
@@ -1164,12 +1166,6 @@ function SessionSidebarInner({
             </div>
           )}
         </ScrollArea>
-        {!micaStyle ? (
-          <>
-            <div className={sidebarScrollEdgeOverlayTopClass(scrollEdgeFades.top)} aria-hidden />
-            <div className={sidebarScrollEdgeOverlayBottomClass(scrollEdgeFades.bottom)} aria-hidden />
-          </>
-        ) : null}
       </div>
 
       {!settingsMode ? (
