@@ -601,7 +601,7 @@ const sidebarInteractionMotionClass =
   "!transition-[opacity,transform,box-shadow] duration-150 active:!translate-y-0";
 
 /** 侧栏交互项默认字色/图标色；hover 与选中回到 sidebar-foreground */
-const sidebarItemDefaultTextClass = "text-popover-foreground";
+const sidebarItemDefaultTextClass = "text-sidebar-action-foreground";
 
 const sidebarItemActiveTextClass = "!text-sidebar-foreground";
 
