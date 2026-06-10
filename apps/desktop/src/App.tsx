@@ -2721,8 +2721,13 @@ export default function App() {
   };
 
   const applySlashSuggestion = (replacement: string) => {
-    runtime.setComposer(replacement);
+    if (slashQuery) {
+      composerRichInputRef.current?.replaceSkillSlashQuery(slashQuery, replacement, true);
+    } else {
+      runtime.setComposer(replacement);
+    }
     setSlashSelectedIndex(-1);
+    setDismissedSlashQueryKey(null);
     queueMicrotask(() => {
       composerRichInputRef.current?.focus();
     });

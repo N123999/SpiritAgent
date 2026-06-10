@@ -16,7 +16,9 @@ import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-select
 import {
   caretAtEnd,
   caretToPlainTextOffset,
+  replaceSkillSlashQueryInSegments,
   replaceWorkspaceFileReferenceInSegments,
+  type ActiveSkillSlashQuery,
   type ActiveWorkspaceFileReferenceQuery,
 } from "@/lib/composer-segment-model";
 import {
@@ -122,6 +124,12 @@ export type ComposerRichInputHandle = {
   insertDebugChip(options?: InsertAgentModeChipOptions): void;
   removeAgentModeChip(): void;
   insertSkillChip(alias: string): void;
+  replaceSkillSlashQuery(
+    query: ActiveSkillSlashQuery,
+    replacement: string,
+    finalize?: boolean,
+  ): void;
+  removeSkillSlashQuery(query: ActiveSkillSlashQuery): void;
   /** 发送成功后由宿主调用：恢复 chip（若仍为 plan/ask）并将光标置于 chip 后。 */
   resetAfterSend(agentMode: DesktopAgentMode): void;
   getSegments(): RichSegment[];
@@ -381,6 +389,31 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments],
     );
 
+    const replaceSkillSlashQuery = useCallback(
+      (query: ActiveSkillSlashQuery, replacement: string, finalize = false) => {
+        const div = divRef.current;
+        if (!div) {
+          return;
+        }
+        div.focus();
+        const { segments: next, caret } = replaceSkillSlashQueryInSegments(
+          segmentsRef.current,
+          query,
+          replacement,
+          finalize,
+        );
+        commitSegments(next, caret);
+      },
+      [commitSegments],
+    );
+
+    const removeSkillSlashQuery = useCallback(
+      (query: ActiveSkillSlashQuery) => {
+        replaceSkillSlashQuery(query, "", false);
+      },
+      [replaceSkillSlashQuery],
+    );
+
     const applySegments = useCallback(
       (next: RichSegment[], caret?: SegmentCaret | null, notifyParent = true) => {
         commitSegments(next, caret ?? caretAtEnd(mergeAdjacentTextSegments(next)), {
@@ -515,6 +548,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertDebugChip,
         removeAgentModeChip,
         insertSkillChip,
+        replaceSkillSlashQuery,
+        removeSkillSlashQuery,
         resetAfterSend,
         getSegments,
         setSegments: (next: RichSegment[]) => applySegments(next),
@@ -522,6 +557,8 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [
         insertAttachment,
         insertWorkspaceFileReference,
+        replaceSkillSlashQuery,
+        removeSkillSlashQuery,
         insertLoopChip,
         removeLoopChip,
         insertPlanChip,

@@ -10,6 +10,7 @@ import {
   normalizeComposerPlain,
   messageSegmentSeparator,
   plainTextOffsetToCaret,
+  replaceSkillSlashQueryInSegments,
   replaceWorkspaceFileReferenceInSegments,
   segmentsToMessageText,
   segmentsToPlainText,
@@ -381,6 +382,52 @@ test("plainTextOffsetToCaret roundtrips with workspace file chip", () => {
   const offset = caretToPlainTextOffset(segs, caret);
   const roundtrip = plainTextOffsetToCaret(segs, offset);
   assert.deepEqual(roundtrip, caret);
+});
+
+test("replaceSkillSlashQueryInSegments removes slash token and keeps loop chip", () => {
+  const { segments } = replaceSkillSlashQueryInSegments(
+    [
+      { kind: "loop" },
+      { kind: "text", value: "hi /git" },
+    ],
+    { start: 3, end: 7, raw: "/git" },
+    "",
+  );
+  assert.deepEqual(segments, [
+    { kind: "loop" },
+    { kind: "text", value: "hi " },
+  ]);
+});
+
+test("replaceSkillSlashQueryInSegments replaces mid-text slash token with finalized text", () => {
+  const { segments, caret } = replaceSkillSlashQueryInSegments(
+    [{ kind: "text", value: "see /log" }],
+    { start: 4, end: 8, raw: "/log" },
+    "/log-session",
+    true,
+  );
+  assert.deepEqual(segments, [{ kind: "text", value: "see /log-session " }]);
+  assert.equal(caret.segmentIndex, 0);
+  assert.equal(caret.offset, 17);
+});
+
+test("replaceSkillSlashQueryInSegments keeps inline file chip when replacing nearby slash token", () => {
+  const initial = [
+    { kind: "workspaceFile", path: "src/foo.ts" },
+    { kind: "text", value: " /git" },
+  ];
+  const slashStart = caretToPlainTextOffset(initial, { segmentIndex: 1, offset: 1 });
+  const slashEnd = caretToPlainTextOffset(initial, { segmentIndex: 1, offset: 5 });
+  const { segments } = replaceSkillSlashQueryInSegments(
+    initial,
+    { start: slashStart, end: slashEnd, raw: "/git" },
+    "",
+  );
+  assert.equal(segments.some((s) => s.kind === "workspaceFile"), true);
+  assert.deepEqual(
+    segments.filter((s) => s.kind === "text"),
+    [{ kind: "text", value: " " }],
+  );
 });
 
 test("replaceWorkspaceFileReferenceInSegments inserts chip and caret after finalize space", () => {

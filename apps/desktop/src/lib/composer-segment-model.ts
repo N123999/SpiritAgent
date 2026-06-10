@@ -19,6 +19,12 @@ export type ActiveWorkspaceFileReferenceQuery = {
   raw: string;
 };
 
+export type ActiveSkillSlashQuery = {
+  start: number;
+  end: number;
+  raw: string;
+};
+
 export function normalizeWorkspaceFilePath(path: string): string {
   return path.replace(/\\/gu, "/");
 }
@@ -458,6 +464,47 @@ export function replaceWorkspaceFileReferenceInSegments(
   return {
     segments: normalized,
     caret: { segmentIndex: afterIndex, offset: caretOffset },
+  };
+}
+
+export function replaceSkillSlashQueryInSegments(
+  segs: RichSegment[],
+  query: ActiveSkillSlashQuery,
+  replacement: string,
+  finalize = false,
+): { segments: RichSegment[]; caret: SegmentCaret } {
+  const merged = mergeAdjacentTextSegments(segs);
+  const startCaret = plainTextOffsetToCaret(merged, query.start);
+  const endCaret = plainTextOffsetToCaret(merged, query.end);
+  const index = startCaret.segmentIndex;
+  const seg = merged[index];
+
+  if (seg?.kind !== "text" || endCaret.segmentIndex !== index) {
+    return { segments: merged, caret: caretAtEnd(merged) };
+  }
+
+  const before = seg.value.slice(0, startCaret.offset);
+  const after = seg.value.slice(endCaret.offset);
+  let insertText = replacement;
+  if (finalize && insertText.length > 0) {
+    const needsSpace = after.length === 0 || !/^\s/u.test(after.charAt(0));
+    if (needsSpace && !insertText.endsWith(" ")) {
+      insertText += " ";
+    }
+  }
+
+  const combined = `${before}${insertText}${after}`;
+  const next: RichSegment[] = [
+    ...merged.slice(0, index),
+    ...(combined ? [{ kind: "text" as const, value: combined }] : []),
+    ...merged.slice(index + 1),
+  ];
+
+  const normalized = mergeAdjacentTextSegments(next);
+  const caretPlainOffset = query.start + Array.from(insertText).length;
+  return {
+    segments: normalized,
+    caret: plainTextOffsetToCaret(normalized, caretPlainOffset),
   };
 }
 
