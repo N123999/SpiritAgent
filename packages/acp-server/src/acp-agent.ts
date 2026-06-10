@@ -241,13 +241,15 @@ export class SpiritAcpAgent implements acp.Agent {
           sessionId,
           event.approval as any,
         ).then((decision) => {
-          session.runtime.continuePendingApproval(decision);
+          // The pending approval may have been cleared by cancel/abort
+          // in the meantime. Catch the rejection to avoid unhandled errors.
+          session.runtime.continuePendingApproval(decision).catch(() => {});
         }).catch((err) => {
           console.error('Permission request failed:', err);
           session.runtime.continuePendingApproval({
             kind: 'deny',
             resultText: 'Permission request failed.',
-          });
+          }).catch(() => {});
         });
       }
       return;
