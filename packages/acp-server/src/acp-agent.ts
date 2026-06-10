@@ -235,11 +235,18 @@ export class SpiritAcpAgent implements acp.Agent {
     if (event.kind === 'questions-requested') {
       const session = this.sessionManager.getSession(sessionId);
       if (session) {
-        const questions = event.questions as unknown as { prompt?: string; questions?: unknown[] };
+        // RuntimePendingQuestions has nested .questions (AskQuestionsRequest) with .title
+        const pending = event.questions as unknown as {
+          questions?: { title?: string };
+          toolName?: string;
+        };
+        const description = pending.questions?.title
+          ?? pending.toolName
+          ?? 'The agent needs additional input.';
         handleQuestionsRequest(
           this.connection,
           sessionId,
-          questions,
+          { prompt: description },
         ).then((allowed) => {
           if (allowed) {
             session.runtime.resumePendingQuestions({
