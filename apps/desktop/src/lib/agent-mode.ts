@@ -13,6 +13,16 @@ export function resolveDesktopAgentMode(input?: {
   return input?.planMode === true ? 'plan' : 'agent';
 }
 
+/** Cycle to the next agent mode: Agent → Plan → Ask → Debug → Agent (matches CLI Tab order). */
+export function cycleAgentMode(current: DesktopAgentMode): DesktopAgentMode {
+  switch (current) {
+    case 'agent': return 'plan';
+    case 'plan':  return 'ask';
+    case 'ask':   return 'debug';
+    case 'debug': return 'agent';
+  }
+}
+
 export function runModeLabel(mode: DesktopAgentMode): string {
   switch (mode) {
     case 'plan':
