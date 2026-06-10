@@ -1,3 +1,8 @@
+import {
+  charCountToCodeUnitIndex,
+  codeUnitIndexToCharCount,
+} from '@spirit-agent/host-internal'
+
 import type { DesktopSkillListItem } from '@/types'
 
 export type SkillSlashSuggestionKind =
@@ -79,8 +84,94 @@ export const STATIC_SLASH_COMMANDS: readonly SkillSlashSuggestion[] = [
   },
 ] as const
 
+export interface ActiveSkillSlashQuery {
+  start: number
+  end: number
+  raw: string
+}
+
+export function skillSlashQueryKey(query: ActiveSkillSlashQuery): string {
+  return `${query.start}\u0000${query.end}\u0000${query.raw}`
+}
+
+function previousCodePointIndex(input: string, fromIndex: number): number {
+  const previousIndex = fromIndex - 1
+  if (previousIndex <= 0) {
+    return 0
+  }
+
+  const codeUnit = input.charCodeAt(previousIndex)
+  if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+    return previousIndex - 1
+  }
+  return previousIndex
+}
+
+function tokenStart(input: string, cursor: number): number {
+  for (let index = cursor; index > 0; ) {
+    const previousIndex = previousCodePointIndex(input, index)
+    const codePoint = input.codePointAt(previousIndex)
+    if (codePoint === undefined) {
+      break
+    }
+
+    const char = String.fromCodePoint(codePoint)
+    if (/\s/u.test(char)) {
+      return index
+    }
+    index = previousIndex
+  }
+
+  return 0
+}
+
+function tokenEnd(input: string, cursor: number): number {
+  for (let index = cursor; index < input.length; ) {
+    const codePoint = input.codePointAt(index)
+    if (codePoint === undefined) {
+      break
+    }
+
+    const char = String.fromCodePoint(codePoint)
+    if (/\s/u.test(char)) {
+      return index
+    }
+    index += codePoint > 0xffff ? 2 : 1
+  }
+
+  return input.length
+}
+
+export function currentSkillSlashQueryAtCursor(
+  input: string,
+  cursorChars: number,
+): ActiveSkillSlashQuery | undefined {
+  if (!input || input.includes('\n')) {
+    return undefined
+  }
+
+  const cursor = charCountToCodeUnitIndex(input, cursorChars)
+  const start = tokenStart(input, cursor)
+  const end = tokenEnd(input, cursor)
+  if (start >= end) {
+    return undefined
+  }
+
+  const token = input.slice(start, end)
+  if (!token.startsWith('/') || /\s/u.test(token.slice(1))) {
+    return undefined
+  }
+
+  return {
+    start: codeUnitIndexToCharCount(input, start),
+    end: codeUnitIndexToCharCount(input, end),
+    raw: token,
+  }
+}
+
+/** Whole-composer slash query when the caret is at the end of trimmed input. */
 export function currentSkillSlashQuery(input: string | undefined): string | undefined {
-  if (!input || !input.startsWith('/') || input.includes('\n')) {
+  if (!input) {
     return undefined
   }
 
@@ -89,11 +180,7 @@ export function currentSkillSlashQuery(input: string | undefined): string | unde
     return undefined
   }
 
-  if (/\s/u.test(trimmedRight.slice(1))) {
-    return undefined
-  }
-
-  return trimmedRight
+  return currentSkillSlashQueryAtCursor(input, Array.from(trimmedRight).length)?.raw
 }
 
 export function buildSkillSlashSuggestions(

@@ -204,7 +204,8 @@ import {
 } from "@/lib/action-palette";
 import {
   buildSkillSlashSuggestions,
-  currentSkillSlashQuery,
+  currentSkillSlashQueryAtCursor,
+  skillSlashQueryKey,
   type SkillSlashSuggestion,
 } from "@/lib/skill-slash";
 import {
@@ -2407,6 +2408,7 @@ export default function App() {
     useState<WorkspaceFileReferenceSuggestionsResponse>(null);
   const [fileReferenceSelectedIndex, setFileReferenceSelectedIndex] = useState(-1);
   const [dismissedFileReferenceKey, setDismissedFileReferenceKey] = useState<string | null>(null);
+  const [dismissedSlashQueryKey, setDismissedSlashQueryKey] = useState<string | null>(null);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const [branchCheckoutDialogOpen, setBranchCheckoutDialogOpen] = useState(false);
@@ -2505,12 +2507,6 @@ export default function App() {
   const marketplaceMode = activeSurface === "marketplace";
   const automationsMode = activeSurface === "automations" || activeSurface === "automation-detail";
   const automationDetailMode = activeSurface === "automation-detail";
-  const slashQuery = useMemo(() => currentSkillSlashQuery(runtime.composer), [runtime.composer]);
-  const slashSuggestions = useMemo(
-    () => buildSkillSlashSuggestions(slashQuery, snapshot?.skillsList ?? []),
-    [slashQuery, snapshot?.skillsList],
-  );
-
   useEffect(() => {
     const plan = snapshot?.plan;
     const sessionPath = snapshot?.activeSession?.filePath ?? null;
@@ -2577,6 +2573,20 @@ export default function App() {
     () => codeUnitIndexToCharCount(runtime.composer, composerCursorCodeUnits),
     [composerCursorCodeUnits, runtime.composer],
   );
+  const slashQuery = useMemo(() => {
+    const query = currentSkillSlashQueryAtCursor(runtime.composer, composerCursorChars);
+    if (!query) {
+      return undefined;
+    }
+    if (dismissedSlashQueryKey === skillSlashQueryKey(query)) {
+      return undefined;
+    }
+    return query;
+  }, [composerCursorChars, dismissedSlashQueryKey, runtime.composer]);
+  const slashSuggestions = useMemo(
+    () => buildSkillSlashSuggestions(slashQuery?.raw, snapshot?.skillsList ?? []),
+    [slashQuery, snapshot?.skillsList],
+  );
   const fileReferenceQuery = useMemo(
     () => currentWorkspaceFileReferenceQuery(runtime.composer, composerCursorChars),
     [composerCursorChars, runtime.composer],
@@ -2607,7 +2617,7 @@ export default function App() {
 
   useEffect(() => {
     setSlashSelectedIndex(-1);
-  }, [slashQuery]);
+  }, [slashQuery?.raw, slashQuery?.start, slashQuery?.end]);
 
   useEffect(() => {
     if (!fileReferenceQuery || dismissedFileReferenceKey === fileReferenceQueryKey) {
@@ -2857,6 +2867,7 @@ export default function App() {
     setFileReferenceSelectedIndex(-1);
     setFileReferenceSuggestions(null);
     setDismissedFileReferenceKey(null);
+    setDismissedSlashQueryKey(null);
     queueMicrotask(() => {
       composerRichInputRef.current?.focus();
     });
@@ -3137,43 +3148,52 @@ export default function App() {
       }
     }
 
-    if (!slashQuery || slashSuggestions.length === 0) {
-      return;
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setSlashSelectedIndex((current) => {
-        if (current < 0) {
-          return 0;
-        }
-        return (current + 1) % slashSuggestions.length;
-      });
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setSlashSelectedIndex((current) =>
-        current <= 0 ? slashSuggestions.length - 1 : current - 1,
-      );
-      return;
-    }
-
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const selected = slashSuggestions[slashSelectedIndex] ?? slashSuggestions[0];
-      if (selected) {
-        applySlashSuggestionItem(selected);
+    if (slashQuery) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissedSlashQueryKey(skillSlashQueryKey(slashQuery));
+        setSlashSelectedIndex(-1);
+        return;
       }
-      return;
-    }
 
-    if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-      event.preventDefault();
-      const selected = slashSuggestions[slashSelectedIndex] ?? slashSuggestions[0];
-      if (selected) {
-        applySlashSuggestionItem(selected);
+      if (slashSuggestions.length === 0) {
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSlashSelectedIndex((current) => {
+          if (current < 0) {
+            return 0;
+          }
+          return (current + 1) % slashSuggestions.length;
+        });
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSlashSelectedIndex((current) =>
+          current <= 0 ? slashSuggestions.length - 1 : current - 1,
+        );
+        return;
+      }
+
+      if (event.key === "Tab") {
+        event.preventDefault();
+        const selected = slashSuggestions[slashSelectedIndex] ?? slashSuggestions[0];
+        if (selected) {
+          applySlashSuggestionItem(selected);
+        }
+        return;
+      }
+
+      if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        const selected = slashSuggestions[slashSelectedIndex] ?? slashSuggestions[0];
+        if (selected) {
+          applySlashSuggestionItem(selected);
+        }
       }
     }
   };

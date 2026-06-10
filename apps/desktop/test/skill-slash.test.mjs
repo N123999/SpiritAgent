@@ -3,18 +3,10 @@ import { test } from "node:test";
 
 import {
   buildSkillSlashSuggestions,
-  isCreateRuleSlashInput,
+  currentSkillSlashQuery,
+  currentSkillSlashQueryAtCursor,
+  skillSlashQueryKey,
 } from "../src/lib/skill-slash.ts";
-
-test("buildSkillSlashSuggestions includes create-rule command", () => {
-  const suggestions = buildSkillSlashSuggestions("/create", []);
-  assert.ok(suggestions.some((item) => item.kind === "create-rule" && item.alias === "/create-rule"));
-});
-
-test("isCreateRuleSlashInput matches command with prompt", () => {
-  assert.equal(isCreateRuleSlashInput("/create-rule 使用中文 commit"), true);
-  assert.equal(isCreateRuleSlashInput("/create-skill foo"), false);
-});
 
 test("buildSkillSlashSuggestions excludes start-implementing slash", () => {
   const suggestions = buildSkillSlashSuggestions("/", []);
@@ -42,4 +34,56 @@ test("buildSkillSlashSuggestions filters plan by prefix", () => {
   const suggestions = buildSkillSlashSuggestions("/p", []);
   assert.ok(suggestions.some((item) => item.kind === "plan"));
   assert.equal(buildSkillSlashSuggestions("/ask", []).some((item) => item.kind === "plan"), false);
+});
+
+test("currentSkillSlashQueryAtCursor matches slash token in middle of text", () => {
+  const input = "hello /git";
+  const query = currentSkillSlashQueryAtCursor(input, Array.from(input).length);
+  assert.deepEqual(query, {
+    start: 6,
+    end: 10,
+    raw: "/git",
+  });
+});
+
+test("currentSkillSlashQueryAtCursor matches leading slash token", () => {
+  const input = "/loop";
+  const query = currentSkillSlashQueryAtCursor(input, Array.from(input).length);
+  assert.deepEqual(query, { start: 0, end: 5, raw: "/loop" });
+});
+
+test("currentSkillSlashQueryAtCursor matches mid-text plan token", () => {
+  const input = "please /plan";
+  const query = currentSkillSlashQueryAtCursor(input, Array.from(input).length);
+  assert.deepEqual(query, {
+    start: 7,
+    end: 12,
+    raw: "/plan",
+  });
+});
+
+test("currentSkillSlashQueryAtCursor rejects slash command followed by extra text", () => {
+  assert.equal(
+    currentSkillSlashQueryAtCursor("/loop extra", Array.from("/loop extra").length),
+    undefined,
+  );
+  assert.equal(
+    currentSkillSlashQueryAtCursor("hi /foo bar", Array.from("hi /foo bar").length),
+    undefined,
+  );
+});
+
+test("currentSkillSlashQueryAtCursor returns undefined when caret is outside slash token", () => {
+  assert.equal(currentSkillSlashQueryAtCursor("hello world", 5), undefined);
+});
+
+test("currentSkillSlashQuery delegates to cursor-at-end behavior", () => {
+  assert.equal(currentSkillSlashQuery("/loop"), "/loop");
+  assert.equal(currentSkillSlashQuery("text /git"), "/git");
+  assert.equal(currentSkillSlashQuery("hello world"), undefined);
+});
+
+test("skillSlashQueryKey is stable for the same query", () => {
+  const query = { start: 1, end: 5, raw: "/git" };
+  assert.equal(skillSlashQueryKey(query), "1\u00005\u0000/git");
 });
