@@ -848,6 +848,61 @@ if (gotSpiritSingleInstanceLock) {
     },
   );
 
+  ipcMain.handle(
+    'desktop:execute-window-action',
+    (event, action: string) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      switch (action) {
+        case 'quit':
+          app.quit();
+          break;
+        case 'minimize':
+          (win ?? BrowserWindow.getFocusedWindow())?.minimize();
+          break;
+        case 'maximize': {
+          const w = win ?? BrowserWindow.getFocusedWindow();
+          if (w) {
+            if (w.isMaximized()) {
+              w.unmaximize();
+            } else {
+              w.maximize();
+            }
+          }
+          break;
+        }
+        case 'close':
+          (win ?? BrowserWindow.getFocusedWindow())?.close();
+          break;
+        case 'toggleFullscreen': {
+          const w = win ?? BrowserWindow.getFocusedWindow();
+          if (w) {
+            w.setFullScreen(!w.isFullScreen());
+          }
+          break;
+        }
+        case 'toggleDevTools':
+          event.sender.toggleDevTools();
+          break;
+        case 'reload':
+          event.sender.reload();
+          break;
+        case 'forceReload':
+          event.sender.reloadIgnoringCache();
+          break;
+        case 'showAbout':
+          void dialog.showMessageBox(win ?? BrowserWindow.getFocusedWindow()!, {
+            type: 'info',
+            title: 'Spirit Agent',
+            message: 'Spirit Agent',
+            detail: `版本 ${app.getVersion()}`,
+          });
+          break;
+        default:
+          break;
+      }
+    },
+  );
+
   ipcMain.on('desktop:read-native-backdrop-blur', (event) => {
     event.returnValue = readBackdropBlurFromDisk();
   });

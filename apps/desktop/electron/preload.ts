@@ -298,6 +298,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   ) {
     return ipcRenderer.invoke('desktop:application-menu-popup', { section, clientX, clientY });
   },
+  executeWindowAction(action: string) {
+    return ipcRenderer.invoke('desktop:execute-window-action', action);
+  },
   ptyCreate(request: { cwd: string; cols: number; rows: number }) {
     return ipcRenderer.invoke('desktop:pty-create', request);
   },

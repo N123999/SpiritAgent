@@ -5,22 +5,15 @@ import { useTheme } from "@/hooks/useTheme";
 import { spiritAgentTitleBarIconSrc } from "@/lib/brand-icon";
 import { sessionSidebarShellWidth } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
-
-const MENU_ENTRIES = [
-  { labelKey: "titleBar.file", section: "file" as const },
-  { labelKey: "titleBar.edit", section: "edit" as const },
-  { labelKey: "titleBar.view", section: "view" as const },
-  { labelKey: "titleBar.window", section: "window" as const },
-  { labelKey: "titleBar.help", section: "help" as const },
-];
-
-function popupMenuAtAnchor(
-  el: HTMLElement,
-  section: (typeof MENU_ENTRIES)[number]["section"],
-): void {
-  const r = el.getBoundingClientRect();
-  void window.spiritDesktop?.popupApplicationMenu(section, r.left, r.bottom);
-}
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
 
 type DesktopTitleBarProps = {
   /** 与根布局云母透明策略一致 */
@@ -39,6 +32,10 @@ const TITLE_BAR_ICON_PX = 14;
 
 /** 云母顶栏黑底标（`build/icon.png` 内图案更小，恢复迁移透明标前的 20px） */
 const TITLE_BAR_ICON_MICA_PX = 20;
+
+function execWindowAction(action: string): void {
+  void window.spiritDesktop?.executeWindowAction(action);
+}
 
 function TitleBarAppIcon({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
   const { resolvedDark } = useTheme();
@@ -67,25 +64,125 @@ function TitleBarAppIcon({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
 
 function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
   const { t } = useTranslation();
+  const isDevChrome = import.meta.env.DEV;
   return (
-    <>
+    <div className="electron-no-drag flex shrink-0 items-center gap-1">
       <TitleBarAppIcon useMicaBackdrop={useMicaBackdrop} />
-      <nav
-        className="electron-no-drag flex shrink-0 items-center gap-0.5 text-[13px] leading-none"
+      <Menubar
+        className="h-auto border-none bg-transparent p-0 shadow-none"
         aria-label={t('titleBar.appMenu')}
       >
-        {MENU_ENTRIES.map(({ labelKey, section }) => (
-          <button
-            key={section}
-            type="button"
-            className="rounded px-2 py-1.5 text-foreground/90 hover:bg-foreground/10 dark:hover:bg-white/10"
-            onClick={(e) => popupMenuAtAnchor(e.currentTarget, section)}
-          >
-            {t(labelKey)}
-          </button>
-        ))}
-      </nav>
-    </>
+        <MenubarMenu>
+          <MenubarTrigger className="px-2 py-1 text-[13px] text-foreground/90">
+            {t('titleBar.file')}
+          </MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onSelect={() => void window.spiritDesktop?.resetSession()}>
+              {t('titleBar.newSession')}
+              <MenubarShortcut>Ctrl+N</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem onSelect={() => execWindowAction('quit')}>
+              {t('titleBar.quit')}
+              <MenubarShortcut>Ctrl+Q</MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+
+        <MenubarMenu>
+          <MenubarTrigger className="px-2 py-1 text-[13px] text-foreground/90">
+            {t('titleBar.edit')}
+          </MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onSelect={() => document.execCommand('undo')}>
+              {t('titleBar.undo')}
+              <MenubarShortcut>Ctrl+Z</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={() => document.execCommand('redo')}>
+              {t('titleBar.redo')}
+              <MenubarShortcut>Ctrl+Y</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem onSelect={() => document.execCommand('cut')}>
+              {t('titleBar.cut')}
+              <MenubarShortcut>Ctrl+X</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={() => document.execCommand('copy')}>
+              {t('titleBar.copy')}
+              <MenubarShortcut>Ctrl+C</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={() => document.execCommand('paste')}>
+              {t('titleBar.paste')}
+              <MenubarShortcut>Ctrl+V</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={() => document.execCommand('selectAll')}>
+              {t('titleBar.selectAll')}
+              <MenubarShortcut>Ctrl+A</MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+
+        <MenubarMenu>
+          <MenubarTrigger className="px-2 py-1 text-[13px] text-foreground/90">
+            {t('titleBar.view')}
+          </MenubarTrigger>
+          <MenubarContent>
+            {isDevChrome && (
+              <>
+                <MenubarItem onSelect={() => execWindowAction('reload')}>
+                  {t('titleBar.reload')}
+                  <MenubarShortcut>Ctrl+R</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem onSelect={() => execWindowAction('forceReload')}>
+                  {t('titleBar.forceReload')}
+                  <MenubarShortcut>Ctrl+Shift+R</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem onSelect={() => execWindowAction('toggleDevTools')}>
+                  {t('titleBar.devTools')}
+                  <MenubarShortcut>F12</MenubarShortcut>
+                </MenubarItem>
+                <MenubarSeparator />
+              </>
+            )}
+            <MenubarItem onSelect={() => execWindowAction('toggleFullscreen')}>
+              {t('titleBar.toggleFullscreen')}
+              <MenubarShortcut>F11</MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+
+        <MenubarMenu>
+          <MenubarTrigger className="px-2 py-1 text-[13px] text-foreground/90">
+            {t('titleBar.window')}
+          </MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onSelect={() => execWindowAction('minimize')}>
+              {t('titleBar.minimize')}
+              <MenubarShortcut>Win+↓</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={() => execWindowAction('maximize')}>
+              {t('titleBar.maximize')}
+              <MenubarShortcut>Win+↑</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={() => execWindowAction('close')}>
+              {t('titleBar.close')}
+              <MenubarShortcut>Alt+F4</MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+
+        <MenubarMenu>
+          <MenubarTrigger className="px-2 py-1 text-[13px] text-foreground/90">
+            {t('titleBar.help')}
+          </MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onSelect={() => execWindowAction('showAbout')}>
+              {t('titleBar.about')}
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+      </Menubar>
+    </div>
   );
 }
 

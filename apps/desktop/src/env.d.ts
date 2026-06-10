@@ -151,6 +151,7 @@ declare global {
       clientX: number,
       clientY: number,
     ): Promise<void>;
+    executeWindowAction(action: string): Promise<void>;
     ptyCreate(request: {
       cwd: string;
       cols: number;
