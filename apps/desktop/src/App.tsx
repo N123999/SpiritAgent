@@ -215,7 +215,7 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
-import { isElectronChrome, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
+import { desktopShellPlatform, isElectronChrome, isNativeBackdropBlurSupported, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
@@ -2448,8 +2448,11 @@ export default function App() {
     void runtime.resetSession();
   }, [runtime]);
 
-  // Cmd/Ctrl+N — 全局快捷键触发新会话
+  // Cmd/Ctrl+N — 全局快捷键触发新会话（macOS 由系统菜单 accelerator 处理，此处跳过）
   useEffect(() => {
+    if (desktopShellPlatform() === 'darwin') {
+      return;
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
         return;
