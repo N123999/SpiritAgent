@@ -2083,7 +2083,7 @@ export class AgentRuntime<
     this.completedTurnResultStore = result;
   }
 
-  private async waitForCompletedTurnResult(): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+  async waitForCompletedTurnResult(): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
     return waitForCompletedTurnResultInternal(
       this as unknown as TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
     );

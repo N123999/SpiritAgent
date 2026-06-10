@@ -4,7 +4,7 @@ import type { JsonValue, RuntimeEvent } from '@spirit-agent/core';
 import { AVAILABLE_MODES } from './types.js';
 import type { AcpServerConfig } from './types.js';
 import { SessionManager } from './session-manager.js';
-import { mapRuntimeEventToUpdate } from './event-mapper.js';
+import { mapRuntimeEventToUpdate, createEventMapperState, type EventMapperState } from './event-mapper.js';
 import { handleApprovalRequest, handleQuestionsRequest } from './permission-bridge.js';
 
 /**
@@ -16,6 +16,8 @@ export class SpiritAcpAgent implements acp.Agent {
   private readonly connection: acp.AgentSideConnection;
   private readonly config: AcpServerConfig;
   private readonly sessionManager: SessionManager;
+  /** Per-session event mapper state for tracking streaming deltas */
+  private readonly mapperStates = new Map<string, EventMapperState>();
 
   constructor(connection: acp.AgentSideConnection, config: AcpServerConfig) {
     this.connection = connection;
@@ -55,6 +57,9 @@ export class SpiritAcpAgent implements acp.Agent {
       workspaceRoot,
       (sessionId, event) => this.handleRuntimeEvent(sessionId, event),
     );
+
+    // Create fresh mapper state for this session
+    this.mapperStates.set(result.sessionId, createEventMapperState());
 
     return {
       sessionId: result.sessionId,
@@ -103,8 +108,13 @@ export class SpiritAcpAgent implements acp.Agent {
     // Extract text from prompt content blocks
     const userInput = extractPromptText(params.prompt);
 
+    // Reset thinking delta tracker for the new prompt turn
+    this.mapperStates.set(params.sessionId, createEventMapperState());
+
     try {
-      const result = await session.runtime.submitUserTurn(userInput);
+      // Use streaming start so onEvent fires real-time chunks
+      await session.runtime.startUserTurnStreaming(userInput);
+      const result = await session.runtime.waitForCompletedTurnResult();
 
       session.pendingPrompt = null;
 
@@ -144,6 +154,7 @@ export class SpiritAcpAgent implements acp.Agent {
     params: schema.CloseSessionRequest,
   ): Promise<schema.CloseSessionResponse | void> {
     await this.sessionManager.closeSession(params.sessionId);
+    this.mapperStates.delete(params.sessionId);
     return {};
   }
 
@@ -206,7 +217,12 @@ export class SpiritAcpAgent implements acp.Agent {
     }
 
     // Forward other events to ACP client
-    const update = mapRuntimeEventToUpdate(event, sessionId);
+    let mapperState = this.mapperStates.get(sessionId);
+    if (!mapperState) {
+      mapperState = createEventMapperState();
+      this.mapperStates.set(sessionId, mapperState);
+    }
+    const update = mapRuntimeEventToUpdate(event, sessionId, mapperState);
     if (update) {
       this.connection.sessionUpdate(update).catch((err) => {
         console.error('Failed to send session update:', err);

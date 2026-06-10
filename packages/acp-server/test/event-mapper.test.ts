@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mapRuntimeEventToUpdate } from '../src/event-mapper.js';
+import { mapRuntimeEventToUpdate, createEventMapperState } from '../src/event-mapper.js';
 import type { RuntimeEvent, JsonValue } from '@spirit-agent/core';
 
 const SESSION_ID = 'sess_test123';
+
+/** Helper: create a fresh mapper state and call mapRuntimeEventToUpdate */
+function map(event: RuntimeEvent<JsonValue>, state = createEventMapperState()) {
+  return mapRuntimeEventToUpdate(event, SESSION_ID, state);
+}
 
 // --- assistant-chunk ---
 
 test('assistant-chunk → agent_message_chunk', () => {
   const event: RuntimeEvent<JsonValue> = { kind: 'assistant-chunk', text: 'Hello world' };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   assert.equal(result.sessionId, SESSION_ID);
   const update = (result as any).update;
@@ -28,7 +33,7 @@ test('streaming-tool-preview → tool_call with proper kind and title', () => {
     toolName: 'read_file',
     argumentsJson: JSON.stringify({ path: '/home/user/main.ts' }),
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   const update = (result as any).update;
   assert.equal(update.sessionUpdate, 'tool_call');
@@ -47,7 +52,7 @@ test('streaming-tool-preview: run_shell_command → execute kind', () => {
     toolName: 'run_shell_command',
     argumentsJson: JSON.stringify({ command: 'npm test' }),
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   const update = (result as any).update;
   assert.equal(update.kind, 'execute');
@@ -62,7 +67,7 @@ test('tool-call-started → tool_call_update in_progress', () => {
     toolName: 'read_file',
     request: {} as JsonValue,
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   const update = (result as any).update;
   assert.equal(update.sessionUpdate, 'tool_call_update');
@@ -83,7 +88,7 @@ test('tool-execution-finished: success → completed', () => {
       failed: false,
     },
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   const update = (result as any).update;
   assert.equal(update.status, 'completed');
@@ -102,7 +107,7 @@ test('tool-execution-finished: failure → failed', () => {
       failed: true,
     },
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   const update = (result as any).update;
   assert.equal(update.status, 'failed');
@@ -119,7 +124,7 @@ test('context-usage-updated → usage_update', () => {
       totalTokens: 1500,
     },
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.ok(result);
   const update = (result as any).update;
   assert.equal(update.sessionUpdate, 'usage_update');
@@ -133,18 +138,74 @@ test('approval-requested → undefined', () => {
     kind: 'approval-requested',
     approval: {} as any,
   };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.equal(result, undefined);
 });
 
 test('begin-assistant-response → undefined', () => {
   const event: RuntimeEvent<JsonValue> = { kind: 'begin-assistant-response' };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.equal(result, undefined);
 });
 
 test('history-compacted → undefined', () => {
   const event: RuntimeEvent<JsonValue> = { kind: 'history-compacted', droppedMessages: 5 };
-  const result = mapRuntimeEventToUpdate(event, SESSION_ID);
+  const result = map(event);
   assert.equal(result, undefined);
+});
+
+// --- thinking delta tracking ---
+
+test('update-pending-assistant-thinking: emits delta, not full text', () => {
+  const state = createEventMapperState();
+
+  // First chunk: "Hello" (full text = "Hello", delta = "Hello")
+  const r1 = mapRuntimeEventToUpdate(
+    { kind: 'update-pending-assistant-thinking', text: 'Hello' } as RuntimeEvent<JsonValue>,
+    SESSION_ID, state,
+  );
+  assert.ok(r1);
+  assert.equal((r1 as any).update.content.text, 'Hello');
+
+  // Second chunk: full text = "Hello world", delta = " world"
+  const r2 = mapRuntimeEventToUpdate(
+    { kind: 'update-pending-assistant-thinking', text: 'Hello world' } as RuntimeEvent<JsonValue>,
+    SESSION_ID, state,
+  );
+  assert.ok(r2);
+  assert.equal((r2 as any).update.content.text, ' world');
+
+  // Third chunk: same full text, delta = "" → should return undefined
+  const r3 = mapRuntimeEventToUpdate(
+    { kind: 'update-pending-assistant-thinking', text: 'Hello world' } as RuntimeEvent<JsonValue>,
+    SESSION_ID, state,
+  );
+  assert.equal(r3, undefined);
+});
+
+test('assistant-thinking-segment-finalized resets delta tracker', () => {
+  const state = createEventMapperState();
+
+  // First thinking segment
+  mapRuntimeEventToUpdate(
+    { kind: 'update-pending-assistant-thinking', text: 'Segment 1' } as RuntimeEvent<JsonValue>,
+    SESSION_ID, state,
+  );
+  assert.equal(state.sentThinkingLength, 9);
+
+  // Finalize segment → reset tracker
+  const finalized = mapRuntimeEventToUpdate(
+    { kind: 'assistant-thinking-segment-finalized', text: 'Segment 1' } as RuntimeEvent<JsonValue>,
+    SESSION_ID, state,
+  );
+  assert.equal(finalized, undefined);
+  assert.equal(state.sentThinkingLength, 0);
+
+  // New segment starts fresh
+  const r = mapRuntimeEventToUpdate(
+    { kind: 'update-pending-assistant-thinking', text: 'New' } as RuntimeEvent<JsonValue>,
+    SESSION_ID, state,
+  );
+  assert.ok(r);
+  assert.equal((r as any).update.content.text, 'New');
 });
