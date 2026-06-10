@@ -23,6 +23,7 @@ import {
   rebuildLlmToolAgentStateAfterCompaction,
   type LlmToolAgentState,
   type LlmToolAgentBasicInfo,
+  type LlmActiveSkill,
   type LlmEnabledRule,
   type LlmEnabledSkillCatalogEntry,
   type LlmPlanMetadata,
@@ -51,6 +52,8 @@ export interface AcpRuntimeResult {
   enabledRules: LlmEnabledRule[];
   enabledSkillCatalog: LlmEnabledSkillCatalogEntry[];
   planMetadata: LlmPlanMetadata | undefined;
+  /** Mutable array reference — mutations are seen by state factory closures */
+  activeSkills: LlmActiveSkill[];
 }
 
 /**
@@ -115,7 +118,10 @@ export async function createAcpRuntime(
     : undefined;
   const providerWebSearchPromptSection = buildProviderWebSearchPromptSection(transportConfig);
 
-  // 7. State factory functions
+  // 7. Mutable active skills array — closures capture the reference, not the value
+  const activeSkills: LlmActiveSkill[] = [];
+
+  // 8. State factory functions
   const createToolAgentState = (messages: LlmMessage[], userInput: string) =>
     startLlmToolAgentState(
       messages,
@@ -123,7 +129,7 @@ export async function createAcpRuntime(
       workspaceRoot,
       enabledRules,
       enabledSkillCatalog,
-      [], // activeSkills — no active skills for MVP
+      activeSkills,
       transportConfig.model,
       planMetadata,
       [], // extensionSystemPrompts
@@ -141,7 +147,7 @@ export async function createAcpRuntime(
       workspaceRoot,
       enabledRules,
       enabledSkillCatalog,
-      [], // activeSkills
+      activeSkills,
       transportConfig.model,
       planMetadata,
       [], // extensionSystemPrompts
@@ -178,7 +184,7 @@ export async function createAcpRuntime(
         workspaceRoot,
         enabledRules,
         enabledSkillCatalog,
-        [], // activeSkills
+        activeSkills,
         transportConfig.model,
         planMetadata,
         [], // extensionSystemPrompts
@@ -215,5 +221,6 @@ export async function createAcpRuntime(
     enabledRules,
     enabledSkillCatalog,
     planMetadata,
+    activeSkills,
   };
 }
