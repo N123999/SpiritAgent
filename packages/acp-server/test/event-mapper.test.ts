@@ -115,7 +115,7 @@ test('tool-execution-finished: failure → failed', () => {
 
 // --- context-usage-updated ---
 
-test('context-usage-updated → usage_update', () => {
+test('context-usage-updated → undefined (no context window info available)', () => {
   const event: RuntimeEvent<JsonValue> = {
     kind: 'context-usage-updated',
     usage: {
@@ -125,10 +125,8 @@ test('context-usage-updated → usage_update', () => {
     },
   };
   const result = map(event);
-  assert.ok(result);
-  const update = (result as any).update;
-  assert.equal(update.sessionUpdate, 'usage_update');
-  assert.equal(update.used, 1500);
+  // LlmTokenUsage has no context window size, so we skip to avoid misleading size == used
+  assert.equal(result, undefined);
 });
 
 // --- events that should return undefined ---

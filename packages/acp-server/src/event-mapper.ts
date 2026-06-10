@@ -112,14 +112,9 @@ export function mapRuntimeEventToUpdate(
     }
 
     case 'context-usage-updated':
-      return {
-        sessionId,
-        update: {
-          sessionUpdate: 'usage_update',
-          used: event.usage.totalTokens ?? 0,
-          size: event.usage.totalTokens ?? 0,
-        },
-      } as schema.SessionNotification;
+      // LlmTokenUsage doesn't include context window size.
+      // Skip the update rather than sending misleading size == used.
+      return undefined;
 
     case 'replace-pending-assistant':
       return {
