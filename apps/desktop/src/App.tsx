@@ -3435,7 +3435,7 @@ export default function App() {
                 settingsDisabled={!runtime.apiReady || runtime.busyAction === "automation"}
                 onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
                   if (path) {
-                    void runtime.rememberWorkspaceRoot({ workspaceRoot: path });
+                    void runtime.rememberWorkspaceRoot(path);
                   }
                 })}
               />
@@ -3467,7 +3467,7 @@ export default function App() {
               onSubmit={(request) => void runtime.createAutomation(request)}
               onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
                 if (path) {
-                  void runtime.rememberWorkspaceRoot({ workspaceRoot: path });
+                  void runtime.rememberWorkspaceRoot(path);
                 }
               })}
             />

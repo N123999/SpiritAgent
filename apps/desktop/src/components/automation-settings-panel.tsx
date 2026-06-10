@@ -193,7 +193,7 @@ export function AutomationSettingsPanel({
               if (!patch) {
                 return;
               }
-              void onSave(patch).then(() => {
+              void Promise.resolve(onSave(patch)).then(() => {
                 initializedForAutomationIdRef.current = null;
               });
             }}

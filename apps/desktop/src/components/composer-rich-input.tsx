@@ -524,9 +524,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const insertSkillChip = useCallback(
       (alias: string) => {
         const div = divRef.current;
-        if (div) {
-          div.focus();
+        if (!div) {
+          return;
         }
+        div.focus();
         const current = segmentsRef.current;
         const caret = selectionToCaret(div, current) ?? caretAtEnd(current);
         const { segments: next, caret: nextCaret } = insertSegmentAtCaret(current, caret, {

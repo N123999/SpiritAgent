@@ -90,6 +90,7 @@ type BusyAction =
   | "modelsPreview"
   | "mcps"
   | "skills"
+  | "rules"
   | "extensions"
   | "lspInstall"
   | "marketplace"

@@ -1,7 +1,7 @@
 import {
   charCountToCodeUnitIndex,
   codeUnitIndexToCharCount,
-} from '@spirit-agent/host-internal'
+} from '@spirit-agent/host-internal/workspace-file-reference-query'
 
 import type { DesktopSkillListItem } from '@/types'
 

@@ -3394,7 +3394,7 @@ function ModelsSettingsPanel({
           </DialogHeader>
 
           <div className="grid gap-3 py-1">
-            {providerShowsConnectTransportPicker(selectedProvider) ? (
+            {selectedProvider && providerShowsConnectTransportPicker(selectedProvider) ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-transport">{t('settings.apiType')}</Label>
                 <Select
