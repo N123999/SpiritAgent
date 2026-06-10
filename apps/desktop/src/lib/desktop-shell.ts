@@ -56,3 +56,18 @@ export function applyDesktopNativeChromeToDocument(): void {
   root.classList.toggle("spirit-desktop-native", native);
   root.classList.toggle("spirit-desktop-mica", native && readStoredNativeBackdropBlur());
 }
+
+/** 当前宿主是否为 macOS（Electron preload 注入的平台值）。 */
+export function isMacDesktopPlatform(): boolean {
+  return desktopShellPlatform() === "darwin";
+}
+
+/**
+ * 根据当前平台格式化快捷键标签。
+ * - macOS: `mod` → `⌘`，拼接无分隔符（如 `⌘N`）
+ * - Windows / Linux: `mod` → `Ctrl`，用 `+` 拼接（如 `Ctrl+N`）
+ */
+export function shortcutLabel(key: string): string {
+  const letter = key.toUpperCase();
+  return isMacDesktopPlatform() ? `⌘${letter}` : `Ctrl+${letter}`;
+}

@@ -215,7 +215,7 @@ import {
 } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
-import { isElectronChrome, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
+import { desktopShellPlatform, isElectronChrome, isNativeBackdropBlurSupported, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
@@ -2447,6 +2447,43 @@ export default function App() {
     setActiveSurface("conversation");
     void runtime.resetSession();
   }, [runtime]);
+
+  // Cmd/Ctrl+N — 全局快捷键触发新会话（macOS 由系统菜单 accelerator 处理，此处跳过）
+  useEffect(() => {
+    if (desktopShellPlatform() === 'darwin') {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'n') {
+        return;
+      }
+      // 用户在 composer / 富文本编辑区内按键时不触发
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
+      event.preventDefault();
+      handleNewSession();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleNewSession]);
+
+  // Electron File 菜单 → “新会话” IPC 订阅
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeNewSession) {
+      return;
+    }
+    return bridge.subscribeNewSession(handleNewSession);
+  }, [handleNewSession]);
+
   const handleGenerateAutomation = useCallback(async () => {
     setLastNonSettingsSurface("conversation");
     setActiveSurface("conversation");

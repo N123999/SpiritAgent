@@ -536,4 +536,13 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       ipcRenderer.removeListener('desktop:approval-from-notification', onApproval);
     };
   },
+  subscribeNewSession(callback: () => void) {
+    const onNewSession = () => {
+      callback();
+    };
+    ipcRenderer.on('desktop:new-session', onNewSession);
+    return () => {
+      ipcRenderer.removeListener('desktop:new-session', onNewSession);
+    };
+  },
 });

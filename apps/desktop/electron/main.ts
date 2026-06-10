@@ -126,7 +126,7 @@ import {
   type DesktopWebHostConfigFile,
 } from '../src/host/storage.js';
 import { setDesktopWebHostRuntimeStatus } from '../src/host/web-host-state.js';
-import { type ApplicationMenuSection, popupApplicationMenuSection } from './application-menu.js';
+import { type ApplicationMenuSection, popupApplicationMenuSection, setMacOSApplicationMenu } from './application-menu.js';
 import {
   createDesktopHttpHost,
   createDesktopWebPairingCode,
@@ -647,6 +647,8 @@ if (gotSpiritSingleInstanceLock) {
   registerWindowsToastActivationHandler();
   if (process.platform === 'win32') {
     Menu.setApplicationMenu(null);
+  } else if (process.platform === 'darwin') {
+    setMacOSApplicationMenu();
   }
 
   setDesktopMarketplaceFetchImplementation((input, init) =>

@@ -235,6 +235,7 @@ declare global {
     subscribeApprovalFromNotification(
       callback: (payload: { decision: 'allow' | 'deny' }) => void,
     ): () => void;
+    subscribeNewSession(callback: () => void): () => void;
   }
 
   interface Window {
