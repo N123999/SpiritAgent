@@ -332,6 +332,13 @@ export function resolveToolLineDelta(tool: ToolBlockSnapshot): EditFileLineDelta
   return undefined;
 }
 
+export function resolveToolLineDeltaForDisplay(tool: ToolBlockSnapshot): EditFileLineDelta | undefined {
+  if (tool.phase === 'failed') {
+    return undefined;
+  }
+  return resolveToolLineDelta(tool);
+}
+
 /** @deprecated Use {@link resolveToolLineDelta}. */
 export function resolveEditFileLineDelta(tool: ToolBlockSnapshot): EditFileLineDelta | undefined {
   return resolveToolLineDelta(tool);

@@ -14,7 +14,7 @@ import { useToolCallDiffHost } from "@/components/tool-call-diff-host-context";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { resolveToolLineDelta } from "@/lib/edit-file-line-delta";
+import { resolveToolLineDeltaForDisplay } from "@/lib/edit-file-line-delta";
 import {
   type FileToolDiffSource,
   isFileDiffTool,
@@ -97,7 +97,8 @@ function ToolCallSummaryRow({
   detailTone?: ToolSummaryDetailTone;
 }) {
   const { t } = useTranslation("settings");
-  const editLineDelta = useMemo(() => resolveToolLineDelta(tool), [
+  const editLineDelta = useMemo(() => resolveToolLineDeltaForDisplay(tool), [
+    tool.phase,
     tool.toolName,
     tool.editLineDelta,
     tool.argsExcerpt,

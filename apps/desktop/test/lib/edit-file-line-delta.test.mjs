@@ -11,6 +11,7 @@ import {
   preserveDeleteFileLineDelta,
   editFileLineDeltaFromArgumentsJson,
   lineChangeCounts,
+  resolveToolLineDeltaForDisplay,
   toolLineDeltaFromArgumentsJson,
   toolLineDeltaFromRequest,
   tryExtractPartialJsonStringValue,
@@ -90,6 +91,30 @@ test('preserveDeleteFileLineDelta keeps prior removed count after file is gone',
   };
   assert.deepEqual(preserveDeleteFileLineDelta('delete_file', attached, prior).editLineDelta, prior);
   assert.equal(preserveDeleteFileLineDelta('create_file', attached, prior).editLineDelta, undefined);
+});
+
+test('resolveToolLineDeltaForDisplay hides delta when tool phase is failed', () => {
+  const argsExcerpt = JSON.stringify({ path: 'a.ts', content: 'line one\nline two\nline three' });
+  assert.deepEqual(
+    resolveToolLineDeltaForDisplay({
+      toolName: 'create_file',
+      phase: 'failed',
+      headline: '创建',
+      detailLines: [],
+      argsExcerpt,
+    }),
+    undefined,
+  );
+  assert.deepEqual(
+    resolveToolLineDeltaForDisplay({
+      toolName: 'create_file',
+      phase: 'succeeded',
+      headline: '创建',
+      detailLines: [],
+      argsExcerpt,
+    }),
+    { removed: 0, added: 3 },
+  );
 });
 
 test('preserveDeleteFileBaseline keeps prior text after delete succeeds', () => {

@@ -163,6 +163,19 @@ test('getToolCallSummaryParts: legacy Chinese "查看" headline still parsed', (
   );
 });
 
+test('getToolCallSummaryParts: get_diagnostics failed uses checking headline not tool.failed passthrough', () => {
+  assert.deepEqual(
+    getToolCallSummaryParts({
+      toolName: 'get_diagnostics',
+      phase: 'failed',
+      headline: '工具执行失败: get_diagnostics',
+      headlineDetail: 'App.tsx',
+      detailLines: [],
+    }),
+    { headline: '检查中', detail: 'App.tsx' },
+  );
+});
+
 test('getToolCallSummaryParts: shell verb uses tense in English', async () => {
   await i18n.changeLanguage('en');
   try {

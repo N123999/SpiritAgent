@@ -286,6 +286,13 @@ test('toolCallSummaryCopyForRequest: English verbs use past tense in succeeded p
   }
 });
 
+test('toolCallSummaryForPhase: get_diagnostics failed uses checking headline and basename', () => {
+  assert.deepEqual(
+    toolCallSummaryForPhase('failed', 'get_diagnostics', { path: 'src/App.tsx' }),
+    { headline: '检查中', headlineDetail: 'App.tsx' },
+  );
+});
+
 test('toolCallSummaryForPhase: English read_file uses Viewed in succeeded phase', async () => {
   await i18n.changeLanguage('en');
   try {
