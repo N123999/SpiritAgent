@@ -16,7 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL } from "@/lib/desktop-chrome";
+import {
+  DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL,
+  instantHoverMotionClass,
+} from "@/lib/desktop-chrome";
 import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
 import type {
@@ -526,7 +529,10 @@ export function MarketplaceView({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="-ml-2 h-8 gap-1 text-muted-foreground hover:text-foreground"
+                className={cn(
+                  "-ml-2 h-8 gap-1 text-muted-foreground hover:text-foreground",
+                  instantHoverMotionClass,
+                )}
                 onClick={closeDetail}
               >
                 <ArrowLeft className="size-4" aria-hidden />
