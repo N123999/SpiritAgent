@@ -66,7 +66,10 @@ export function ActionPopover({
           className={cn(
             'shrink-0 shadow-none',
             triggerVariant === 'ghost' &&
-              'size-7 rounded-full p-0 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+              cn(
+                'size-7 rounded-full p-0 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                'aria-expanded:bg-muted/35 aria-expanded:text-foreground aria-expanded:hover:bg-muted/50',
+              ),
             instantHoverMotionClass,
             triggerClassName,
           )}
@@ -80,35 +83,34 @@ export function ActionPopover({
         side="top"
         sideOffset={10}
         className={cn(
-          'w-max min-w-[11rem] max-w-[min(15rem,calc(100vw-1.25rem))]',
+          'flex w-max min-w-[11rem] max-w-[min(15rem,calc(100vw-1.25rem))] flex-col',
           DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
           DESKTOP_OVERLAY_LIST_LIST_PADDING,
+          DESKTOP_OVERLAY_LIST_LIST_GAP,
           contentClassName,
         )}
       >
         {heading ? (
           <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>{heading}</div>
         ) : null}
-        <div className={cn('grid', DESKTOP_OVERLAY_LIST_LIST_GAP)}>
-          {items.map((item) => (
-            <DropdownMenuItem
-              key={item.id}
-              disabled={item.disabled}
-              title={item.title}
-              className={cn(
-                'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
-                DESKTOP_OVERLAY_LIST_ITEM,
-                'text-popover-foreground',
-              )}
-              onSelect={() => {
-                void item.onSelect()
-              }}
-            >
-              {item.icon}
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            </DropdownMenuItem>
-          ))}
-        </div>
+        {items.map((item) => (
+          <DropdownMenuItem
+            key={item.id}
+            disabled={item.disabled}
+            title={item.title}
+            className={cn(
+              'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
+              DESKTOP_OVERLAY_LIST_ITEM,
+              'text-popover-foreground',
+            )}
+            onSelect={() => {
+              void item.onSelect()
+            }}
+          >
+            {item.icon}
+            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )
