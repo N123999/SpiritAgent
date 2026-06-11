@@ -507,11 +507,6 @@ export function MinimalToolCallCard({
   );
   const expandable = toolHasExpandableContent(tool);
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (isShell && tool.phase === "running") {
-      setOpen(true);
-    }
-  }, [isShell, tool.phase]);
   const showLspHover = shouldShowLspDiagnosticsOnToolCard(tool);
   const lspHoverItemId = tool.toolCallId ?? tool.toolName;
   const lspDiagnostics = showLspHover ? tool.lspWriteDiagnostics : undefined;
