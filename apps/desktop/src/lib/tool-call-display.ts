@@ -5,6 +5,7 @@ import {
   shellExpandableDetailLines,
   shellHasExpandableContent,
 } from '@/lib/shell-tool-display';
+import { phaseToVerbContext } from '@/lib/tool-verb-context';
 import type { ToolBlockSnapshot } from '@/types';
 
 export type ShellToolSummaryParts = {
@@ -26,15 +27,20 @@ const RESPONSES_BUILT_IN_TOOL_NAMES = new Set([
   'code_interpreter',
 ]);
 
-const LEGACY_READ_FILE_HEADLINE = /^查看\s+(.+)$/u;
+const LEGACY_READ_FILE_HEADLINE = /^(?:查看|View(?:ing|ed)?)\.?\s+(.+)$/u;
 
-function shellToolSummaryFromReason(reason: string): Pick<ToolCallSummaryParts, 'headline' | 'shellSummary'> {
+function shellToolSummaryFromReason(
+  reason: string,
+  phase: ToolBlockSnapshot['phase'],
+): Pick<ToolCallSummaryParts, 'headline' | 'shellSummary'> {
   const trimmed = reason.trim();
-  const defaultHeadline = i18n.t('tool.runCommand');
-  if (!trimmed || trimmed === defaultHeadline) {
+  const ctx = phaseToVerbContext(phase);
+  const tOpts = ctx ? { context: ctx } : {};
+  const defaultHeadline = i18n.t('tool.runCommand', tOpts);
+  if (!trimmed || trimmed === defaultHeadline || trimmed === i18n.t('tool.runCommand')) {
     return { headline: defaultHeadline };
   }
-  const verb = i18n.t('tool.runShellVerb');
+  const verb = i18n.t('tool.runShellVerb', tOpts);
   return {
     headline: `${verb} ${trimmed}`,
     shellSummary: { verb, reason: trimmed },
@@ -74,14 +80,15 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
   if (tool.toolName === 'read_file' && !snapshotDetail) {
     const legacy = LEGACY_READ_FILE_HEADLINE.exec(headline);
     if (legacy) {
-      return { headline: '查看', detail: legacy[1] };
+      const ctx = phaseToVerbContext(tool.phase);
+      return { headline: i18n.t('tool.view', ctx ? { context: ctx } : {}), detail: legacy[1] };
     }
   }
 
   if (tool.toolName === 'run_shell_command') {
     const command = snapshotDetail || parseShellCommand(tool);
     return {
-      ...shellToolSummaryFromReason(headline),
+      ...shellToolSummaryFromReason(headline, tool.phase),
       ...(command ? { detail: command } : {}),
     };
   }
