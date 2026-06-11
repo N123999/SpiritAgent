@@ -2357,6 +2357,36 @@ export function useDesktopRuntime() {
     [acknowledgeSessionAttention, api, applySnapshot, refreshSessions, restoreSessionUi],
   );
 
+  const deleteWorkspace = useCallback(
+    async (workspacePath: string) => {
+      if (!api?.forgetWorkspace) {
+        return;
+      }
+      const normalizedTarget = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+      const workspaceSessions = sessions.filter((s) => {
+        const root = (s.workspaceRoot ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+        return root === normalizedTarget;
+      });
+      setBusyAction("session");
+      try {
+        for (const session of workspaceSessions) {
+          acknowledgeSessionAttention(session.path);
+          await api.deleteSession(session.path);
+        }
+        const next = await api.forgetWorkspace({ workspaceRoot: workspacePath });
+        applySnapshot(next);
+        restoreSessionUi(next);
+        setRuntimeError("");
+        void refreshSessions();
+      } catch (error) {
+        setRuntimeError(describeError(error));
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [acknowledgeSessionAttention, api, applySnapshot, refreshSessions, restoreSessionUi, sessions],
+  );
+
   const listWorkspaceFileReferenceSuggestions = useCallback(
     async (
       request: QueryWorkspaceFileReferenceSuggestionsRequest,
@@ -2638,6 +2668,7 @@ export function useDesktopRuntime() {
     continueAssistantCompletion,
     openSession,
     deleteSession,
+    deleteWorkspace,
     listWorkspaceFileReferenceSuggestions,
     primeWorkspaceFileReferenceIndex,
     getWorkspaceFileReferenceIndex,
