@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   rememberWorkspaceRoot(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'rememberWorkspaceRoot', { request });
   },
+  forgetWorkspace(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'forgetWorkspace', { request });
+  },
   commitChanges(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'commitChanges', { request });
   },

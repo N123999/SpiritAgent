@@ -4,6 +4,7 @@ import type { CommandPayloads } from './host-command-payloads.js';
 export interface HostCommandDelegate {
   bootstrap(request?: CommandPayloads['bootstrap']['request']): Promise<unknown>;
   rememberWorkspaceRoot(request: CommandPayloads['rememberWorkspaceRoot']['request']): Promise<unknown>;
+  forgetWorkspace(request: CommandPayloads['forgetWorkspace']['request']): Promise<unknown>;
   commitChanges(request: CommandPayloads['commitChanges']['request']): Promise<unknown>;
   updateConfig(request: CommandPayloads['updateConfig']['request']): Promise<unknown>;
   installLspProvider(request: CommandPayloads['installLspProvider']['request']): Promise<unknown>;
@@ -90,6 +91,7 @@ type HostCommandHandler<Command extends HostCommandName> = (
 const hostCommandDispatch = {
   bootstrap: (host, payload) => host.bootstrap(payload?.request),
   rememberWorkspaceRoot: (host, payload) => host.rememberWorkspaceRoot(payload.request),
+  forgetWorkspace: (host, payload) => host.forgetWorkspace(payload.request),
   commitChanges: (host, payload) => host.commitChanges(payload.request),
   updateConfig: (host, payload) => host.updateConfig(payload.request),
   installLspProvider: (host, payload) => host.installLspProvider(payload.request),

@@ -28,6 +28,7 @@ import type {
   QueryWorkspaceFileReferenceSuggestionsRequest,
   ReadGitHistoryRequest,
   RememberWorkspaceRequest,
+  ForgetWorkspaceRequest,
   RemoveModelRequest,
   RemoveProviderModelsRequest,
   QueuedUserTurnRequest,
@@ -46,6 +47,7 @@ import type {
 export type CommandPayloads = {
   bootstrap: { request?: BootstrapRequest };
   rememberWorkspaceRoot: { request: RememberWorkspaceRequest };
+  forgetWorkspace: { request: ForgetWorkspaceRequest };
   commitChanges: { request: CommitChangesRequest };
   updateConfig: { request: UpdateConfigRequest };
   installLspProvider: { request: InstallLspProviderRequest };

@@ -22,6 +22,7 @@ import type {
   QueryWorkspaceFileReferenceSuggestionsRequest,
   ReadGitHistoryRequest,
   RememberWorkspaceRequest,
+  ForgetWorkspaceRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -48,6 +49,7 @@ import {
 import {
   listStoredSessions,
   mergeRecentWorkspaceRoots,
+  removeRecentWorkspaceRoot,
   normalizeWebHostConfig,
   saveConfig,
   spiritAgentDataDir,
@@ -102,6 +104,29 @@ export async function rememberWorkspaceRootCommand(
     state.config = {
       ...state.config,
       recentWorkspaces: mergeRecentWorkspaceRoots(state.config.recentWorkspaces, workspaceRoot),
+    };
+    await saveConfig(state.config);
+    return ctx.buildSnapshot();
+  });
+}
+
+export async function forgetWorkspaceRootCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  request: ForgetWorkspaceRequest,
+): Promise<DesktopSnapshot> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const workspaceRoot = request.workspaceRoot?.trim()
+      ? path.resolve(request.workspaceRoot.trim())
+      : '';
+    if (!workspaceRoot) {
+      throw new Error(i18n.t('error.workspacePathRequired'));
+    }
+
+    const state = ctx.requireState();
+    state.config = {
+      ...state.config,
+      recentWorkspaces: removeRecentWorkspaceRoot(state.config.recentWorkspaces, workspaceRoot),
     };
     await saveConfig(state.config);
     return ctx.buildSnapshot();

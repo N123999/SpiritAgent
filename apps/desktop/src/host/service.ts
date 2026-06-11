@@ -100,6 +100,7 @@ import type {
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   RememberWorkspaceRequest,
+  ForgetWorkspaceRequest,
   RemoveModelRequest,
   RemoveProviderModelsRequest,
   QueryWorkspaceFileReferenceSuggestionsRequest,
@@ -168,6 +169,7 @@ import {
   readWorkspaceTextFileCommand,
   refreshGitSnapshotCommand,
   rememberWorkspaceRootCommand,
+  forgetWorkspaceRootCommand,
   setWebHostAuthTokenHashCommand,
   statHostTextFileCommand,
   writeHostTextFileCommand,
@@ -945,6 +947,10 @@ class DesktopHostService {
 
   async rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot> {
     return rememberWorkspaceRootCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async forgetWorkspace(request: ForgetWorkspaceRequest): Promise<DesktopSnapshot> {
+    return forgetWorkspaceRootCommand(this.workspaceGitCommandContext(), request);
   }
 
   async commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot> {

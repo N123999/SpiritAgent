@@ -15,6 +15,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     rememberWorkspaceRoot(request) {
       return bridge.rememberWorkspaceRoot(request);
     },
+    forgetWorkspace(request) {
+      return bridge.forgetWorkspace(request);
+    },
     commitChanges(request) {
       return bridge.commitChanges(request);
     },

@@ -956,6 +956,16 @@ export function mergeRecentWorkspaceRoots(
   ].slice(0, MAX_RECENT_WORKSPACES);
 }
 
+export function removeRecentWorkspaceRoot(
+  existing: string[] | undefined,
+  workspaceRoot: string,
+): string[] {
+  const targetKey = normalizeWorkspaceKey(path.resolve(workspaceRoot));
+  return normalizeRecentWorkspaceRoots(existing).filter(
+    (entry) => normalizeWorkspaceKey(entry) !== targetKey,
+  );
+}
+
 function resolveSessionPath(filePath: string | undefined): string {
   const candidate = filePath?.trim() ? filePath.trim() : defaultNewSessionPath();
   const absolute = path.isAbsolute(candidate)

@@ -13,6 +13,7 @@ import type {
 export type HostCommandName =
   | 'bootstrap'
   | 'rememberWorkspaceRoot'
+  | 'forgetWorkspace'
   | 'commitChanges'
   | 'updateConfig'
   | 'installLspProvider'

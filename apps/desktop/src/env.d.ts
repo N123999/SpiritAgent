@@ -29,6 +29,7 @@ import type {
   PreviewModelsResponse,
   QueryWorkspaceFileReferenceSuggestionsRequest,
   RememberWorkspaceRequest,
+  ForgetWorkspaceRequest,
   RewindAndSubmitMessageRequest,
   SubmitUserTurnRequest,
   SessionListItem,
@@ -51,6 +52,7 @@ declare global {
     readNativeBackdropBlur(): boolean;
     bootstrap(request?: BootstrapRequest): Promise<DesktopSnapshot>;
     rememberWorkspaceRoot(request: RememberWorkspaceRequest): Promise<DesktopSnapshot>;
+    forgetWorkspace(request: ForgetWorkspaceRequest): Promise<DesktopSnapshot>;
     commitChanges(request: CommitChangesRequest): Promise<DesktopSnapshot>;
     updateConfig(request: UpdateConfigRequest): Promise<DesktopSnapshot>;
     installLspProvider(request: InstallLspProviderRequest): Promise<DesktopSnapshot>;

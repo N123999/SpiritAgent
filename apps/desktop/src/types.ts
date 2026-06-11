@@ -23,6 +23,10 @@ export interface RememberWorkspaceRequest {
   workspaceRoot: string;
 }
 
+export interface ForgetWorkspaceRequest {
+  workspaceRoot: string;
+}
+
 export interface CommitChangesRequest {
   message?: string;
 }
