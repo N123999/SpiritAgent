@@ -437,6 +437,9 @@ const SessionListRow = memo(function SessionListRow({
   onSelectPath,
 }: SessionListRowProps) {
   const { t } = useTranslation();
+  const hasIndicator =
+    (isBusy && !isBlocked) ||
+    (!selected && (isBlocked || showCompletedUnseen));
 
   return (
     <button
@@ -449,30 +452,36 @@ const SessionListRow = memo(function SessionListRow({
         "group flex w-full min-w-0 items-center overflow-hidden rounded-md text-left text-sm outline-none",
         sidebarInteractionMotionClass,
         "focus-visible:ring-2 focus-visible:ring-sidebar-ring/40",
-        nested ? "py-2 pr-2.5 pl-8" : "h-8 gap-2 px-2.5",
+        nested
+          ? "py-2 pr-2.5 pl-2.5 gap-2"
+          : hasIndicator
+            ? "h-8 pr-2.5 pl-2.5 gap-2"
+            : "h-8 px-2.5",
         selected
           ? sessionRowSelectedClass(micaStyle)
           : cn(sidebarItemDefaultTextClass, sessionRowHoverClass(micaStyle)),
       )}
     >
+      {(nested || hasIndicator) && (
+        <span className="flex w-3.5 shrink-0 items-center justify-center" aria-hidden>
+          {isBusy && !isBlocked ? (
+            <Spinner
+              className="size-3 shrink-0 text-primary"
+              aria-label={t('common.running')}
+            />
+          ) : !selected && isBlocked ? (
+            <SessionRowStatusDot tone="blocked" label={t("sidebar.sessionBlocked")} />
+          ) : !selected && showCompletedUnseen ? (
+            <SessionRowStatusDot tone="completed" label={t("sidebar.sessionCompleted")} />
+          ) : null}
+        </span>
+      )}
       <span
         className="min-w-0 flex-1 basis-0 truncate text-xs font-medium"
         title={displayName}
       >
         {displayName}
       </span>
-      {!selected && isBlocked ? (
-        <SessionRowStatusDot tone="blocked" label={t("sidebar.sessionBlocked")} />
-      ) : null}
-      {!selected && showCompletedUnseen ? (
-        <SessionRowStatusDot tone="completed" label={t("sidebar.sessionCompleted")} />
-      ) : null}
-      {isBusy && !isBlocked ? (
-        <Spinner
-          className="size-3 shrink-0 text-primary"
-          aria-label={t('common.running')}
-        />
-      ) : null}
     </button>
   );
 });
