@@ -482,7 +482,7 @@ export function MarketplaceView({
                         type="button"
                         onClick={() => openDetail(item.extensionId)}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-left transition-colors",
+                          "flex w-full items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-left",
                           "hover:border-border hover:bg-muted/30",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                         )}
