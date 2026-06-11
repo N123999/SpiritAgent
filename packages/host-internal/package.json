@@ -47,6 +47,10 @@
       "types": "./dist/storage.d.ts",
       "default": "./dist/storage.js"
     },
+    "./skill-paths": {
+      "types": "./dist/skill-paths.d.ts",
+      "default": "./dist/skill-paths.js"
+    },
     "./tools": {
       "types": "./dist/tools.d.ts",
       "default": "./dist/tools.js"

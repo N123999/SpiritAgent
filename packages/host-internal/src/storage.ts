@@ -3,10 +3,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { SKILLS_DIR_NAME } from './skill-paths.js';
+
+export { SKILL_FILE_NAME, SKILLS_DIR_NAME } from './skill-paths.js';
+
 export const SPIRIT_DIR_NAME = '.spirit';
 export const AGENTS_DIR_NAME = '.agents';
-export const SKILLS_DIR_NAME = 'skills';
-export const SKILL_FILE_NAME = 'SKILL.md';
 export const USER_RULE_FILE_NAME = 'rule.md';
 export const WORKSPACE_RULE_FILE_NAME = 'AGENTS.md';
 export const WORKSPACE_SPIRIT_RULE_FILE_NAME = path.join(SPIRIT_DIR_NAME, 'rule.md');

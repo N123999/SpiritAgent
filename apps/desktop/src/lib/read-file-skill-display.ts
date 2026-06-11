@@ -1,37 +1,15 @@
-import { SKILL_FILE_NAME } from '@spirit-agent/host-internal/storage';
+import {
+  isSkillMarkdownPath,
+  readFileToolDisplayBase,
+  skillFolderBasename,
+} from '@spirit-agent/host-internal/skill-paths';
 
 import type { ToolBlockSnapshot } from '../types.js';
 
+export { isSkillMarkdownPath, skillFolderBasename } from '@spirit-agent/host-internal/skill-paths';
+
 export const LEGACY_READ_FILE_HEADLINE =
   /^(?:查看|使用|View(?:ing|ed)?|Us(?:ing|ed)?)\u002e?\s+(.+)$/u;
-
-function normalizePath(path: string): string {
-  return path.trim().replace(/\\/g, '/');
-}
-
-function pathSegments(path: string): string[] {
-  return normalizePath(path).split('/').filter(Boolean);
-}
-
-function pathBasename(path: string): string {
-  const segments = pathSegments(path);
-  if (segments.length === 0) {
-    return normalizePath(path);
-  }
-  return segments[segments.length - 1] ?? normalizePath(path);
-}
-
-export function isSkillMarkdownPath(path: string): boolean {
-  return pathBasename(path) === SKILL_FILE_NAME;
-}
-
-export function skillFolderBasename(path: string): string {
-  const segments = pathSegments(path);
-  if (segments.length < 2) {
-    return pathBasename(path);
-  }
-  return segments[segments.length - 2] ?? pathBasename(path);
-}
 
 export function parseReadFilePathFromRequest(request: unknown): string {
   if (!request || typeof request !== 'object') {
@@ -78,20 +56,7 @@ export function readFileVerbKey(path: string): 'tool.use' | 'tool.view' {
 }
 
 export function readFileDisplayBase(path: string, emptyLabel: string): string {
-  const trimmed = path.trim();
-  if (!trimmed) {
-    return emptyLabel;
-  }
-  if (isSkillMarkdownPath(trimmed)) {
-    return skillFolderBasename(trimmed);
-  }
-
-  const normalized = normalizePath(trimmed);
-  const absolute = normalized.startsWith('/') || /^[A-Za-z]:\//u.test(normalized);
-  if (!absolute) {
-    return normalized;
-  }
-  return pathBasename(normalized);
+  return readFileToolDisplayBase(path, emptyLabel);
 }
 
 function positiveLineNumber(value: unknown): number | undefined {
