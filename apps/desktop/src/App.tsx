@@ -125,6 +125,7 @@ import { SettingsView } from "@/components/settings-view";
 import { ComposerTodoCard } from "@/components/composer-todo-card";
 import { MinimalToolCallCard } from "@/components/minimal-tool-call-card";
 import { PendingApprovalCard } from "@/components/pending-approval-card";
+import { ProcessCardCollapsible } from "@/components/process-card-collapsible";
 import { SessionChromeBreadcrumb } from "@/components/session-chrome-breadcrumb";
 import { ToolCallDiffHostProvider } from "@/components/tool-call-diff-host-context";
 import { isMinimalToolCallMessage, toolHasExpandableContent } from "@/lib/tool-call-display";
@@ -137,6 +138,7 @@ import {
   shouldShowAssistantCompactionCollapsible,
 } from "@/lib/conversation-compaction-ui";
 import { resolveTurnContinuePresentation } from "@/lib/conversation-continue-ui";
+import { buildConversationRenderItems } from "@/lib/conversation-process-groups";
 import {
   hasAssistantBodyTextLaterInTurn,
   isAssistantReasoningLive,
@@ -148,8 +150,8 @@ import {
   isGrayMetaLeadingMessage,
   isGrayMetaTrailingMessage,
   isStandaloneAssistantAuxMessage,
-  shouldCompactAfterPreviousMessage,
-  shouldTightenAfterPreviousMetaMessage,
+  shouldCompactAfterPreviousRenderItem,
+  shouldTightenAfterPreviousRenderItem,
 } from "@/lib/message-card-spacing";
 import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
 import { ActionPickerDialog } from "@/components/action-picker-dialog";
@@ -439,6 +441,7 @@ type SaveLocalImageAs = (filePath: string) => Promise<boolean>;
 
 function ToolCallCollapsible({
   tool,
+  variant = "standalone",
   readLocalImagePreviewDataUrl,
   readLocalVideoPreviewUrl,
   readManagedVideoPreviewUrl,
@@ -447,6 +450,7 @@ function ToolCallCollapsible({
   onAbortShell,
 }: {
   tool: ToolBlockSnapshot;
+  variant?: "standalone" | "process-nested";
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
   readLocalVideoPreviewUrl: ReadLocalVideoPreview;
   readManagedVideoPreviewUrl: ReadManagedVideoPreview;
@@ -481,6 +485,7 @@ function ToolCallCollapsible({
   return (
     <MinimalToolCallCard
       tool={tool}
+      variant={variant}
       onOpenSubagentViewer={onOpenSubagentViewer}
       onAbortShell={onAbortShell}
     />
@@ -1997,6 +2002,11 @@ export default function App() {
     subagentToolCallId: subagentViewer.toolCallId,
     compactionDemoActive: compactionDemo.active,
   });
+  const conversationRenderItems = useMemo(
+    () => buildConversationRenderItems(messages, conversationListScopeKey),
+    [conversationListScopeKey, messages],
+  );
+  const [processGroupManualOpen, setProcessGroupManualOpen] = useState<Record<string, boolean>>({});
   const turnContinue = useMemo(
     () => (compactionDemo.active || subagentViewActive ? undefined : resolveTurnContinuePresentation(messages)),
     [compactionDemo.active, messages, subagentViewActive],
@@ -3528,10 +3538,94 @@ export default function App() {
                             {t("app.subagentViewerEmpty")}
                           </p>
                         ) : null}
-                        {messages.map((message, index) => {
-                          const previous = messages[index - 1];
-                          const compactAfterPrevious = shouldCompactAfterPreviousMessage(previous, message);
-                          const tightenAfterPreviousMeta = shouldTightenAfterPreviousMetaMessage(previous, message);
+                        {conversationRenderItems.map((renderItem, renderIndex) => {
+                          const previousRenderItem = conversationRenderItems[renderIndex - 1];
+
+                          if (renderItem.kind === "process-group") {
+                            const anchorMessage = messages[renderItem.messageIndices[0]];
+                            if (!anchorMessage) {
+                              return null;
+                            }
+                            const compactAfterPrevious = shouldCompactAfterPreviousRenderItem(
+                              previousRenderItem,
+                              anchorMessage,
+                              messages,
+                            );
+                            const tightenAfterPreviousMeta = shouldTightenAfterPreviousRenderItem(
+                              previousRenderItem,
+                              anchorMessage,
+                              messages,
+                            );
+                            return (
+                              <div
+                                key={renderItem.groupId}
+                                id={renderItem.groupId}
+                                data-spirit-surface="message-row"
+                                data-spirit-message-role="assistant"
+                                data-spirit-message-pending="false"
+                                className={cn(
+                                  "scroll-mt-4 flex w-full justify-start pb-3 last:pb-0",
+                                  compactAfterPrevious && "-mt-4",
+                                  tightenAfterPreviousMeta && "-mt-3",
+                                )}
+                              >
+                                <div
+                                  data-spirit-surface="message-assistant"
+                                  className="min-w-0 w-full space-y-2"
+                                >
+                                  <ProcessCardCollapsible
+                                    groupId={renderItem.groupId}
+                                    messageIndices={renderItem.messageIndices}
+                                    messages={messages}
+                                    sealed={renderItem.sealed}
+                                    toolCounts={renderItem.toolCounts}
+                                    pendingAuxState={conversationPendingAuxState}
+                                    manualOpen={processGroupManualOpen[renderItem.groupId]}
+                                    onManualOpenChange={(open) => {
+                                      setProcessGroupManualOpen((current) => ({
+                                        ...current,
+                                        [renderItem.groupId]: open,
+                                      }));
+                                    }}
+                                    renderToolBlock={(message) => (
+                                      <ToolCallCollapsible
+                                        tool={message.tool!}
+                                        variant="process-nested"
+                                        readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
+                                        readLocalVideoPreviewUrl={runtime.readLocalVideoPreviewUrl}
+                                        readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}
+                                        saveLocalImageAs={runtime.saveLocalImageAs}
+                                        onOpenSubagentViewer={
+                                          subagentViewActive ? undefined : handleOpenSubagentViewer
+                                        }
+                                        onAbortShell={(toolCallId) => {
+                                          void runtime.abortShellCommand(toolCallId);
+                                        }}
+                                      />
+                                    )}
+                                    readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
+                                    readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          const index = renderItem.messageIndex;
+                          const message = messages[index];
+                          if (!message) {
+                            return null;
+                          }
+                          const compactAfterPrevious = shouldCompactAfterPreviousRenderItem(
+                            previousRenderItem,
+                            message,
+                            messages,
+                          );
+                          const tightenAfterPreviousMeta = shouldTightenAfterPreviousRenderItem(
+                            previousRenderItem,
+                            message,
+                            messages,
+                          );
                           const queuedBeforeCount = messages
                             .slice(0, index)
                             .filter((item) => item.queued === true).length;

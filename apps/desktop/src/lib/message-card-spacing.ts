@@ -1,4 +1,6 @@
 import type { ConversationMessageSnapshot } from '../types.js';
+import type { ConversationRenderItem } from './conversation-process-groups.js';
+import { resolveMessageForRenderSpacing } from './conversation-process-groups.js';
 import { isSubagentStatusSurfaceMessage } from './subagent-display.js';
 import { isMinimalToolCallMessage } from './tool-call-display.js';
 
@@ -92,4 +94,33 @@ export function shouldTightenAfterPreviousMetaMessage(
   }
 
   return isGrayMetaTrailingMessage(previous) && isGrayMetaLeadingMessage(current);
+}
+
+export function shouldTightenAfterPreviousRenderItem(
+  previousItem: ConversationRenderItem | undefined,
+  current: ConversationMessageSnapshot,
+  messages: readonly ConversationMessageSnapshot[],
+): boolean {
+  if (previousItem?.kind === 'process-group') {
+    return Boolean(
+      current.role === 'assistant' &&
+        !current.tool &&
+        current.content.trim(),
+    );
+  }
+  return shouldTightenAfterPreviousMetaMessage(
+    resolveMessageForRenderSpacing(previousItem, messages),
+    current,
+  );
+}
+
+export function shouldCompactAfterPreviousRenderItem(
+  previousItem: ConversationRenderItem | undefined,
+  current: ConversationMessageSnapshot,
+  messages: readonly ConversationMessageSnapshot[],
+): boolean {
+  return shouldCompactAfterPreviousMessage(
+    resolveMessageForRenderSpacing(previousItem, messages),
+    current,
+  );
 }

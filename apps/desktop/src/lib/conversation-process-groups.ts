@@ -140,3 +140,17 @@ export function isMessageHiddenByProcessGroup(
 }
 
 export { isProcessEligibleMetaMessage, isAssistantBodyTextMessage };
+
+export function resolveMessageForRenderSpacing(
+  item: ConversationRenderItem | undefined,
+  messages: readonly ConversationMessageSnapshot[],
+): ConversationMessageSnapshot | undefined {
+  if (!item) {
+    return undefined;
+  }
+  if (item.kind === 'message') {
+    return messages[item.messageIndex];
+  }
+  const lastIndex = item.messageIndices[item.messageIndices.length - 1];
+  return lastIndex === undefined ? undefined : messages[lastIndex];
+}
