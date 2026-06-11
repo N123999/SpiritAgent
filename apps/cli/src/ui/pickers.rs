@@ -464,53 +464,29 @@ pub(in crate::ui) fn build_chat_picker_lines(
 pub(in crate::ui) fn build_subagent_picker_lines(
     app: &TuiViewModel,
     max_items: usize,
-    max_width: usize,
 ) -> Vec<Line<'static>> {
     if app.subagent_sessions.is_empty() {
-        return vec![Line::from("当前没有子会话。")];
+        return vec![Line::from(t!("ui.picker.subagents.empty").into_owned())];
     }
 
     let selected = app
         .subagent_picker_index
         .min(app.subagent_sessions.len().saturating_sub(1));
     let total = app.subagent_sessions.len();
-    let window = max_items.max(1);
-    let start = if selected + 1 > window {
-        selected + 1 - window
-    } else {
-        0
-    };
-    let end = (start + window).min(total);
+    let (start, end) = inline_picker_bounds(total, selected, max_items);
 
     let mut lines = Vec::new();
     for idx in start..end {
         let item = &app.subagent_sessions[idx];
         let is_selected = idx == selected;
-        let (status_label, status_style) = subagent_status_badge(item.status, is_selected);
-        let title_style = if is_selected {
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        let title = truncate_to_width(&item.title, max_width.saturating_sub(12).max(8));
+        let (status_label, _) = subagent_status_badge(item.status, false);
+        let row_style = inline_picker_text_style(is_selected);
+        let meta_style = inline_picker_meta_style(is_selected);
         lines.push(Line::from(vec![
-            Span::styled(picker_selection_prefix(is_selected), title_style),
-            Span::styled(format!("[{}] ", status_label), status_style),
-            Span::styled(title, title_style),
+            Span::styled(picker_selection_prefix(is_selected), row_style),
+            Span::styled(item.title.clone(), row_style),
+            Span::styled(format!("  [{status_label}]"), meta_style),
         ]));
-
-        if let Some(latest) = item.latest_message.as_deref() {
-            lines.push(Line::from(Span::styled(
-                format!(
-                    "    {}",
-                    truncate_to_width(latest, max_width.saturating_sub(4))
-                ),
-                subtle_aux_text_style(),
-            )));
-        }
     }
 
     lines

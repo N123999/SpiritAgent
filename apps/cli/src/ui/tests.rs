@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     model_registry::AppConfig,
+    ports::SubagentSessionStatus,
     view::{
         AssistantAuxData, BottomFormFieldEditorView, BottomFormFieldView, BottomFormView,
         MainInputMode, MarketplaceFlowStep, MarketplaceViewModel, PendingAssistantAux,
@@ -335,6 +336,57 @@ fn sessions_picker_reuses_inline_picker_styles_and_scroll_window() {
     assert_eq!(text[2], "> session-3.json");
     assert_eq!(lines[0].spans[0].style.fg, subtle_aux_text_style().fg);
     assert_eq!(lines[2].spans[0].style.fg, Some(Color::White));
+}
+
+#[test]
+fn subagent_picker_reuses_inline_picker_styles_and_scroll_window() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/subagents"));
+    app.subagent_sessions = (0..7)
+        .map(|idx| SubagentSessionSummaryView {
+            session_id: format!("subagent-{idx}"),
+            title: format!("task-{idx}"),
+            status: SubagentSessionStatus::Running,
+            updated_at_unix_ms: 0,
+            latest_message: None,
+        })
+        .collect();
+    app.subagent_picker_index = 3;
+
+    let lines = build_subagent_picker_lines(&app, 5);
+    let text = render_text_lines(lines.clone());
+
+    assert_eq!(text[0], "  task-1  [running]");
+    assert_eq!(text[2], "> task-3  [running]");
+    assert_eq!(lines[0].spans[0].style.fg, subtle_aux_text_style().fg);
+    assert_eq!(lines[2].spans[0].style.fg, Some(Color::White));
+}
+
+#[test]
+fn subagent_picker_uses_inline_layout_without_border_or_title() {
+    let mut app = build_view_model(ChatMessage::new(MessageRole::User, "/subagents"));
+    app.subagent_picker_active = true;
+    app.subagent_sessions = vec![
+        SubagentSessionSummaryView {
+            session_id: "subagent-1".to_string(),
+            title: "first-task".to_string(),
+            status: SubagentSessionStatus::Completed,
+            updated_at_unix_ms: 0,
+            latest_message: None,
+        },
+        SubagentSessionSummaryView {
+            session_id: "subagent-2".to_string(),
+            title: "second-task".to_string(),
+            status: SubagentSessionStatus::Running,
+            updated_at_unix_ms: 0,
+            latest_message: None,
+        },
+    ];
+    app.subagent_picker_index = 1;
+
+    let lines = render_ui_lines(&app, 80, 20);
+
+    assert!(lines.iter().any(|line| line.contains("> second-task")));
+    assert!(!lines.iter().any(|line| line.contains("SubAgent 会话")));
 }
 
 #[test]

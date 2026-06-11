@@ -168,7 +168,7 @@ pub fn has_active_run_subagent_tool_in_messages(messages: &[ChatMessage]) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::ToolUiBlock;
+    use crate::view::{MessageRole, ToolUiBlock};
 
     #[test]
     fn detects_runtime_subagent_status_lines() {

@@ -453,16 +453,8 @@ pub fn draw_ui(
         let picker_lines = build_chat_picker_lines(&app, 5);
         draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_subagent_picker {
-        let picker_lines =
-            build_subagent_picker_lines(&app, 6, chunks[2].width.saturating_sub(2) as usize);
-        let picker_widget = Paragraph::new(picker_lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("SubAgent 会话"),
-            )
-            .wrap(Wrap { trim: true });
-        frame.render_widget(picker_widget, chunks[2]);
+        let picker_lines = build_subagent_picker_lines(&app, 5);
+        draw_inline_picker(frame, chunks[2], picker_lines);
     } else if show_image_picker {
         let picker_lines = build_image_picker_lines(&app, 5);
         let picker_widget = Paragraph::new(picker_lines)
