@@ -24,7 +24,7 @@ use crate::{
         McpStatusState, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
     rewind::{self, ConversationMessageSnapshot, DesktopRewindCheckpointSnapshot},
-    rules::{self, RuleEntry, RuleScope},
+    rules::RuleEntry,
     runtime_handle::RuntimeHandle,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry},

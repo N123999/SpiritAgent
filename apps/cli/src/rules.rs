@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::{

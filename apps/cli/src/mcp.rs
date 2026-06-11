@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(windows)]
 use crate::logging;
 
 const MCP_CONFIG_FILE_NAME: &str = "mcp.json";
