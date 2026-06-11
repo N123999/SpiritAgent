@@ -555,6 +555,41 @@ test('requestFromFunctionCall parses grep is_regexp flag', async () => {
   }
 });
 
+test('abortShellCommand terminates a running shell by toolCallId', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-abort-shell-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const request = service.attachRequestMetadata!(
+      {
+        name: 'run_shell_command',
+        command: 'sleep 30',
+        reason: 'test abort',
+      },
+      { toolCallId: 'call_sleep_30', toolName: 'run_shell_command' },
+    );
+
+    const executePromise = service.execute(request);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    assert.equal(service.abortShellCommand('call_sleep_30'), true);
+    assert.equal(service.abortShellCommand('call_sleep_30'), false);
+    assert.equal(service.abortShellCommand('unknown-id'), false);
+
+    const output = await executePromise;
+    assertTextToolOutput(output);
+    const parsed = JSON.parse(output) as { exitCode: number };
+    assert.equal(parsed.exitCode, -1);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('authorize returns need-approval for shell commands under default approval level', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-auth-default-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');

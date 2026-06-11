@@ -357,6 +357,7 @@ export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionS
   shouldExecuteInBackground?(request: HostToolRequest<QuestionSpec>): boolean;
   backgroundStatusText?(request: HostToolRequest<QuestionSpec>): string | undefined;
   abortRunningShellCommands?(): void;
+  abortShellCommand?(toolCallId: string): boolean;
   startMcpBackgroundRefresh(): void;
   mcpStatusSnapshot(): HostMcpStatusSnapshot;
   addMcpServer(name: string, config: HostJsonValue): Promise<string>;
@@ -521,7 +522,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly todoStore: HostTodoStore | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
-  private readonly activeShellKills = new Set<() => void>();
+  private readonly activeShellKills = new Map<string, () => void>();
   private availableToolDefinitions: (() => JsonValue) | undefined;
 
   constructor(
@@ -1024,8 +1025,13 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     switch (request.name) {
       case 'finish_task':
         return createHostToolTextOutput(request.summary?.trim() || 'Task marked complete.');
-      case 'run_shell_command':
-        return this.executeShell(request.command, this.requestMetadataFor(request)?.onOutputChunk);
+      case 'run_shell_command': {
+        const shellMetadata = this.requestMetadataFor(request);
+        return this.executeShell(request.command, {
+          ...(shellMetadata?.onOutputChunk ? { onOutputChunk: shellMetadata.onOutputChunk } : {}),
+          ...(shellMetadata?.toolCallId ? { toolCallId: shellMetadata.toolCallId } : {}),
+        });
+      }
       case 'web_fetch':
         return this.executeWebFetch(request.url);
       case 'list_directory_files':
@@ -1179,10 +1185,24 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   }
 
   abortRunningShellCommands(): void {
-    for (const kill of this.activeShellKills) {
+    for (const kill of this.activeShellKills.values()) {
       kill();
     }
     this.activeShellKills.clear();
+  }
+
+  abortShellCommand(toolCallId: string): boolean {
+    const trimmed = toolCallId.trim();
+    if (!trimmed) {
+      return false;
+    }
+    const kill = this.activeShellKills.get(trimmed);
+    if (!kill) {
+      return false;
+    }
+    kill();
+    this.activeShellKills.delete(trimmed);
+    return true;
   }
 
   backgroundStatusText(request: HostToolRequest<QuestionSpec>): string | undefined {
@@ -1725,20 +1745,25 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   private async executeShell(
     command: string,
-    onOutputChunk?: (chunk: string) => void,
+    options: { onOutputChunk?: (chunk: string) => void; toolCallId?: string } = {},
   ): Promise<string> {
     const shell = this.toolDefinitionEnvironment();
     const handle = runShellCommand({
       workspaceRoot: this.workspaceRoot,
       command,
-      ...(onOutputChunk ? { onOutputChunk } : {}),
+      ...(options.onOutputChunk ? { onOutputChunk: options.onOutputChunk } : {}),
     });
-    this.activeShellKills.add(handle.kill);
+    const toolCallId = options.toolCallId?.trim();
+    if (toolCallId) {
+      this.activeShellKills.set(toolCallId, handle.kill);
+    }
     let result;
     try {
       result = await handle.result;
     } finally {
-      this.activeShellKills.delete(handle.kill);
+      if (toolCallId) {
+        this.activeShellKills.delete(toolCallId);
+      }
     }
 
     return serializeRunShellCommandToolResult(
