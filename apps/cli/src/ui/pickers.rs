@@ -249,6 +249,7 @@ pub(in crate::ui) fn suggestion_summary(suggestion: &InputSuggestion) -> String 
         "/model" => t!("ui.suggestion.summary.model").into_owned(),
         "/compact" => t!("ui.suggestion.summary.compact").into_owned(),
         "/sessions" => t!("ui.suggestion.summary.sessions").into_owned(),
+        "/rewind" => t!("ui.suggestion.summary.rewind").into_owned(),
         "/image" => t!("ui.suggestion.summary.image").into_owned(),
         "/mcp" => t!("ui.suggestion.summary.mcp").into_owned(),
         "/rules" => t!("ui.suggestion.summary.rules").into_owned(),
@@ -302,9 +303,12 @@ pub(in crate::ui) fn suggestion_usage_lines(suggestion: &InputSuggestion) -> Vec
             "    /sessions".to_string(),
             "    /sessions save [path]".to_string(),
             "    /sessions load <file>".to_string(),
-            "    /sessions rewind".to_string(),
-            "    /sessions rewind <index> [new_message]".to_string(),
-            t!("ui.suggestion.usage.sessions.rewind_note").into_owned(),
+        ],
+        "/rewind" => vec![
+            t!("ui.suggestion.usage.heading").into_owned(),
+            "    /rewind".to_string(),
+            "    /rewind <index> [new_message]".to_string(),
+            t!("ui.suggestion.usage.rewind.note").into_owned(),
         ],
         "/image" => vec![
             t!("ui.suggestion.usage.heading").into_owned(),

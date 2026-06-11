@@ -184,16 +184,6 @@ impl TuiShell {
             self.load_chat_by_path(path.trim());
             return;
         }
-        if tail == "rewind" {
-            self.discard_last_matching_user_command(message);
-            self.open_rewind_picker();
-            return;
-        }
-        if let Some(rest) = tail.strip_prefix("rewind ") {
-            self.discard_last_matching_user_command(message);
-            self.handle_sessions_rewind(rest);
-            return;
-        }
         if tail == "load" {
             self.messages.push(ChatMessage {
                 role: MessageRole::Agent,
@@ -209,7 +199,20 @@ impl TuiShell {
         });
     }
 
-    fn handle_sessions_rewind(&mut self, rest: &str) {
+    pub(crate) fn handle_rewind_slash(&mut self, message: &str) {
+        self.discard_last_matching_user_command(message);
+        let tail = message
+            .strip_prefix("/rewind")
+            .map(str::trim)
+            .unwrap_or("");
+        if tail.is_empty() {
+            self.open_rewind_picker();
+            return;
+        }
+        self.handle_rewind_with_args(tail);
+    }
+
+    fn handle_rewind_with_args(&mut self, rest: &str) {
         let Some((index_text, replacement_text)) = split_first_token(rest) else {
             self.push_agent_message(t!("tui.session.rewind.usage").into_owned());
             return;

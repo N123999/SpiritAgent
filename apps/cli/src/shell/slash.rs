@@ -45,6 +45,7 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/model",
     "/compact",
     "/sessions",
+    "/rewind",
     "/subagents",
     "/image",
     "/mcp",
@@ -68,6 +69,7 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/model",
     "/compact",
     "/sessions",
+    "/rewind",
     "/subagents",
     "/image",
     "/mcp",
@@ -135,7 +137,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 
 fn command_replacement(command: &str) -> String {
     match command {
-        "/model" | "/sessions" | "/subagents" | "/image" | "/mcp" | "/log"
+        "/model" | "/sessions" | "/rewind" | "/subagents" | "/image" | "/mcp" | "/log"
         | "/language" | "/approval" | "/networks" | "/extensions" => {
             format!("{} ", command)
         }
@@ -178,6 +180,10 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
 
     if query == "/sessions" || query.starts_with("/sessions ") {
         return vec![primary_help_suggestion("/sessions", query)];
+    }
+
+    if query == "/rewind" || query.starts_with("/rewind ") {
+        return vec![primary_help_suggestion("/rewind", query)];
     }
 
     if query == "/subagents" || query.starts_with("/subagents ") {
@@ -367,8 +373,8 @@ pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> 
         "- /sessions".to_string(),
         "- /sessions save [path]".to_string(),
         "- /sessions load <file>".to_string(),
-        "- /sessions rewind".to_string(),
-        "- /sessions rewind <index> [new_message]".to_string(),
+        "- /rewind".to_string(),
+        "- /rewind <index> [new_message]".to_string(),
         "- /subagents [list|open <session_id>|close]".to_string(),
         "- /image <path> [prompt]".to_string(),
         "- /image pick".to_string(),
@@ -445,6 +451,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/model" => shell.handle_model_slash(&parts[1..]),
         "/compact" => shell.compact_history_for_slash(),
         "/sessions" => shell.handle_sessions_slash(message),
+        "/rewind" => shell.handle_rewind_slash(message),
         "/subagents" => shell.handle_subagents_slash(message),
         "/image" => shell.handle_image_slash(message),
         "/mcp" => shell.handle_mcp_slash(message),
