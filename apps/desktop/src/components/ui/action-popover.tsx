@@ -82,6 +82,9 @@ export function ActionPopover({
         align="start"
         side="top"
         sideOffset={10}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
         className={cn(
           'flex w-max min-w-[11rem] max-w-[min(15rem,calc(100vw-1.25rem))] flex-col',
           DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
