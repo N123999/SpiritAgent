@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 
 import {
@@ -24,6 +24,11 @@ export interface RunShellCommandResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+}
+
+export interface RunShellCommandHandle {
+  result: Promise<RunShellCommandResult>;
+  kill: () => void;
 }
 
 function shellSpawnInvocation(shellFile: string, command: string): { file: string; args: string[] } {
@@ -86,7 +91,7 @@ function decodeSpawnChunk(shellFile: string, chunk: Buffer): string {
   return decodeShellHostOutput(shellFile, chunk);
 }
 
-export function runShellCommand(options: RunShellCommandOptions): Promise<RunShellCommandResult> {
+export function runShellCommand(options: RunShellCommandOptions): RunShellCommandHandle {
   const { file: shellExecutable } = defaultShellForPty();
   const preparedCommand = prepareShellCommandForHostExecution(shellExecutable, options.command);
   const { file, args } = shellSpawnInvocation(shellExecutable, preparedCommand);
@@ -95,7 +100,17 @@ export function runShellCommand(options: RunShellCommandOptions): Promise<RunShe
     ? createChunkThrottle(options.onOutputChunk, options.chunkThrottleMs ?? DEFAULT_CHUNK_THROTTLE_MS)
     : undefined;
 
-  return new Promise((resolve) => {
+  let child: ChildProcess | undefined;
+  let killedByHost = false;
+
+  const kill = (): void => {
+    if (child !== undefined && !child.killed) {
+      killedByHost = true;
+      child.kill();
+    }
+  };
+
+  const result = new Promise<RunShellCommandResult>((resolve) => {
     let stdout = '';
     let stderr = '';
     let stdoutBytes = 0;
@@ -130,7 +145,7 @@ export function runShellCommand(options: RunShellCommandOptions): Promise<RunShe
       throttle?.push(decoded);
     };
 
-    const child = spawn(file, args, {
+    child = spawn(file, args, {
       cwd: options.workspaceRoot,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -152,8 +167,10 @@ export function runShellCommand(options: RunShellCommandOptions): Promise<RunShe
 
     child.on('close', (code) => {
       throttle?.flush();
-      exitCode = typeof code === 'number' ? code : -1;
+      exitCode = killedByHost ? -1 : typeof code === 'number' ? code : -1;
       resolve({ stdout, stderr, exitCode });
     });
   });
+
+  return { result, kill };
 }

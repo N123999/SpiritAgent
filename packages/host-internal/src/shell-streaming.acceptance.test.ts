@@ -55,3 +55,33 @@ test('NodeHostToolService streams incremental shell output via attachRequestMeta
     await rm(workspaceRoot, { recursive: true, force: true });
   }
 });
+
+test('NodeHostToolService.abortRunningShellCommands kills in-flight shell', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-shell-abort-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await import('node:fs/promises').then((fs) => fs.mkdir(spiritDataDir, { recursive: true }));
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      { getApprovalLevel: () => 'full-approval' },
+    );
+
+    const request = {
+      name: 'run_shell_command' as const,
+      command: 'sleep 30',
+      reason: 'abort-test',
+    };
+
+    const execution = service.execute(request);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    service.abortRunningShellCommands();
+    const output = await execution;
+    assert.match(String(output), /"exitCode":-1/);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});

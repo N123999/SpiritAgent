@@ -59,6 +59,7 @@ export interface LocalHostToolService {
   saveGeneratedImage?(request: GeneratedImageSaveRequest): Promise<GeneratedImageFile>;
   saveGeneratedVideo?(request: import('../ports.js').GeneratedVideoSaveRequest): Promise<import('../ports.js').GeneratedVideoFile>;
   attachRequestMetadata?(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue;
+  abortRunningShellCommands?(): void;
 }
 
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
@@ -346,6 +347,10 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     }
 
     return this.resolveRequestMetadata(request)?.backgroundStatusText;
+  }
+
+  abortRunningShellCommands(): void {
+    this.localHostService?.abortRunningShellCommands?.();
   }
 
   startMcpBackgroundRefresh(): void {

@@ -404,6 +404,10 @@ export class DesktopToolExecutor
     return this.tools.backgroundStatusText?.(request);
   }
 
+  abortRunningShellCommands(): void {
+    this.tools.abortRunningShellCommands();
+  }
+
   startMcpBackgroundRefresh(): void {
     this.mcp.startBackgroundRefreshInBackground(true);
   }

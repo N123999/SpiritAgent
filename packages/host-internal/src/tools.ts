@@ -356,6 +356,7 @@ export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionS
   ): HostToolRequest<QuestionSpec>;
   shouldExecuteInBackground?(request: HostToolRequest<QuestionSpec>): boolean;
   backgroundStatusText?(request: HostToolRequest<QuestionSpec>): string | undefined;
+  abortRunningShellCommands?(): void;
   startMcpBackgroundRefresh(): void;
   mcpStatusSnapshot(): HostMcpStatusSnapshot;
   addMcpServer(name: string, config: HostJsonValue): Promise<string>;
@@ -520,6 +521,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly todoStore: HostTodoStore | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
+  private readonly activeShellKills = new Set<() => void>();
   private availableToolDefinitions: (() => JsonValue) | undefined;
 
   constructor(
@@ -1176,6 +1178,13 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     return request.name === 'extension_tool' && request.execution_mode === 'background';
   }
 
+  abortRunningShellCommands(): void {
+    for (const kill of this.activeShellKills) {
+      kill();
+    }
+    this.activeShellKills.clear();
+  }
+
   backgroundStatusText(request: HostToolRequest<QuestionSpec>): string | undefined {
     if (request.name === 'run_shell_command') {
       // Shell status is shown on the tool card; do not mirror into thinking aux.
@@ -1719,11 +1728,18 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     onOutputChunk?: (chunk: string) => void,
   ): Promise<string> {
     const shell = this.toolDefinitionEnvironment();
-    const result = await runShellCommand({
+    const handle = runShellCommand({
       workspaceRoot: this.workspaceRoot,
       command,
       ...(onOutputChunk ? { onOutputChunk } : {}),
     });
+    this.activeShellKills.add(handle.kill);
+    let result;
+    try {
+      result = await handle.result;
+    } finally {
+      this.activeShellKills.delete(handle.kill);
+    }
 
     return serializeRunShellCommandToolResult(
       buildRunShellCommandToolResult({
