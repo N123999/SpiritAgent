@@ -1915,6 +1915,14 @@ export function useDesktopRuntime() {
     }
 
     try {
+      // Host switches to agent before the turn; exit chip mode locally so applySnapshot
+      // turn-in-flight / chip-preserve guards do not keep plan across the busy window.
+      agentModeChipDismissedRef.current = true;
+      setAgentModeChipDismissed(true);
+      const prevSettings = settingsRef.current;
+      const agentSettings = { ...prevSettings, agentMode: "agent" as DesktopAgentMode };
+      settingsRef.current = agentSettings;
+      setSettings(agentSettings);
       setBusyAction("send");
       const next = await api.submitStartImplementing();
       applySnapshot(next);

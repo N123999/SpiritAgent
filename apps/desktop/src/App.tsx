@@ -3991,6 +3991,7 @@ export default function App() {
               readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
               plan={snapshot?.plan ?? { path: "", exists: false }}
               onStartImplementing={() => {
+                handleComposerAgentModeChange("agent");
                 void runtime.submitStartImplementing();
               }}
               startImplementingDisabled={
