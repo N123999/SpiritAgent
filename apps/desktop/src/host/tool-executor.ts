@@ -408,6 +408,10 @@ export class DesktopToolExecutor
     this.tools.abortRunningShellCommands();
   }
 
+  abortShellCommand(toolCallId: string): boolean {
+    return this.tools.abortShellCommand(toolCallId);
+  }
+
   startMcpBackgroundRefresh(): void {
     this.mcp.startBackgroundRefreshInBackground(true);
   }

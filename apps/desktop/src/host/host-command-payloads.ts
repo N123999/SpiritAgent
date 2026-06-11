@@ -91,6 +91,7 @@ export type CommandPayloads = {
   compactHistory: undefined;
   submitUserTurn: SubmitUserTurnRequest;
   abortConversation: undefined;
+  abortShellCommand: { toolCallId: string };
   continueAssistantCompletion: { messageId: number };
   poll: undefined;
   listDreamsOverview: undefined;

@@ -877,6 +877,18 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/abort-shell-command') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('abortShellCommand', {
+        toolCallId: typeof jsonBody?.toolCallId === 'string' ? jsonBody.toolCallId : '',
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/continue') {
     writeJson(
       request,

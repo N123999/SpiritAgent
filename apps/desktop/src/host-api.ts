@@ -106,6 +106,7 @@ export interface HostApi {
   readGitWorkingTree(): Promise<GitWorkingTreeSnapshot>;
   readGitHistory(request?: ReadGitHistoryRequest): Promise<GitHistorySnapshot>;
   abortConversation(): Promise<DesktopSnapshot>;
+  abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
   reorderQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;

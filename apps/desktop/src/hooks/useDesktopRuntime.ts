@@ -1957,6 +1957,27 @@ export function useDesktopRuntime() {
     }
   }, [api, applySnapshot, refreshSessions]);
 
+  const abortShellCommand = useCallback(async (toolCallId: string): Promise<boolean> => {
+    if (!api?.abortShellCommand) {
+      return false;
+    }
+
+    const trimmed = toolCallId.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    try {
+      const next = await api.abortShellCommand(trimmed);
+      applySnapshot(next);
+      setRuntimeError("");
+      return true;
+    } catch (error) {
+      setRuntimeError(describeError(error));
+      return false;
+    }
+  }, [api, applySnapshot]);
+
   const setLoopEnabled = useCallback(async (enabled: boolean): Promise<boolean> => {
     if (!api) {
       return false;
@@ -2665,6 +2686,7 @@ export function useDesktopRuntime() {
     deleteRule,
     inspectMcpServer,
     abortConversation,
+    abortShellCommand,
     setLoopEnabled,
     setSubagentViewerTarget,
     setApprovalLevel,
