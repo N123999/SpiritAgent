@@ -951,7 +951,10 @@ fn process_key_event(
         KeyCode::Char(ch)
             if ch.eq_ignore_ascii_case(&'v') && key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
-            if let Err(e) = shell.paste_from_clipboard() {
+            // Try paste image first
+            if let Some(image_path) = load_clipboard_image() {
+                shell.add_pending_image_with_feedback(image_path);
+            } else if let Err(e) = shell.paste_from_clipboard() {
                 logging::log_event(&format!("clipboard paste failed: {}", e));
             } else if let Some(text) = load_clipboard_text() {
                 paste_tracker.prime_explicit_replay_suppression(&text, PasteTarget::MainInput, now);
@@ -1296,6 +1299,63 @@ fn load_clipboard_text() -> Option<String> {
     let text = arboard::Clipboard::new().ok()?.get_text().ok()?;
     let normalized = normalize_pasted_text(&text);
     (!normalized.is_empty()).then_some(normalized)
+}
+
+fn load_clipboard_image() -> Option<std::path::PathBuf> {
+    use image::{ImageBuffer, Rgba};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let mut clipboard = match arboard::Clipboard::new() {
+        Ok(c) => c,
+        Err(e) => {
+            logging::log_event(&format!("[clipboard] 无法访问剪贴板: {}", e));
+            return None;
+        }
+    };
+
+    let image = match clipboard.get_image() {
+        Ok(i) => i,
+        Err(_) => return None,
+    };
+
+    let temp_dir = std::env::temp_dir().join("spirit-agent").join("clipboard-images");
+    if let Err(e) = fs::create_dir_all(&temp_dir) {
+        logging::log_event(&format!("[clipboard] 无法创建临时目录: {}", e));
+        return None;
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    let filename = format!("clipboard_{}.png", timestamp);
+    let path = temp_dir.join(filename);
+
+    let rgba: Vec<u8> = image
+        .bytes
+        .chunks_exact(4)
+        .flat_map(|bgra| [bgra[2], bgra[1], bgra[0], bgra[3]])
+        .collect();
+
+    let img = match ImageBuffer::<Rgba<u8>, _>::from_vec(
+        image.width as u32,
+        image.height as u32,
+        rgba,
+    ) {
+        Some(i) => i,
+        None => {
+            logging::log_event("[clipboard] 图片格式转换失败");
+            return None;
+        }
+    };
+
+    if let Err(e) = img.save_with_format(&path, image::ImageFormat::Png) {
+        logging::log_event(&format!("[clipboard] 无法保存图片: {}", e));
+        return None;
+    }
+
+    Some(path)
 }
 
 fn load_multiline_clipboard_text() -> Option<String> {
