@@ -313,6 +313,16 @@ export function currentAuxKind<
     ) {
       return undefined;
     }
+    if (
+      runtime.pendingBackgroundToolExecution !== undefined &&
+      runtime.pendingStreamingRound === undefined &&
+      runtime.pendingToolAgentRound === undefined &&
+      !runtime.thinkingTextStore.trim() &&
+      !runtime.compactionTextStore.trim() &&
+      !runtime.pendingBackgroundToolStatusStore?.trim()
+    ) {
+      return undefined;
+    }
     return 'thinking';
   }
 

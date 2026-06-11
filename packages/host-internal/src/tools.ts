@@ -1178,7 +1178,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   backgroundStatusText(request: HostToolRequest<QuestionSpec>): string | undefined {
     if (request.name === 'run_shell_command') {
-      return `Shell: ${request.command}`;
+      // Shell status is shown on the tool card; do not mirror into thinking aux.
+      return undefined;
     }
     if (request.name !== 'extension_tool' || request.execution_mode !== 'background') {
       return undefined;
