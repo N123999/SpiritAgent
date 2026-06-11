@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/lib/i18n";
@@ -47,6 +47,11 @@ import {
   providerSupportsModelCatalogDetail,
 } from "@/lib/model-catalog-detail";
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
+import {
+  DESKTOP_FORM_FIELD_TRIGGER_INNER,
+  DESKTOP_FORM_INPUT_INNER,
+  DESKTOP_FORM_INPUT_SHELL,
+} from "@/lib/desktop-chrome";
 import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
 import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
 import { cn } from "@/lib/utils";
@@ -458,6 +463,17 @@ function modelDefaultActionLabel(roles: readonly ModelDefaultRole[]): string {
   return i18n.t('settings.selectDefaultRole');
 }
 
+function ProviderFormInput({
+  className,
+  ...props
+}: ComponentProps<typeof Input>) {
+  return (
+    <div className={DESKTOP_FORM_INPUT_SHELL}>
+      <Input className={cn(DESKTOP_FORM_INPUT_INNER, className)} {...props} />
+    </div>
+  );
+}
+
 function ModelCapabilitiesCombobox({
   value,
   disabled,
@@ -483,16 +499,17 @@ function ModelCapabilitiesCombobox({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled}>
-        <button
-          type="button"
-          disabled={disabled}
-          className={cn(
-            "flex min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent py-1 pr-2.5 pl-1.5 text-sm shadow-xs transition-colors outline-none dark:bg-input/30",
-            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-          )}
-        >
+      <div className={DESKTOP_FORM_INPUT_SHELL}>
+        <DropdownMenuTrigger asChild disabled={disabled}>
+          <button
+            type="button"
+            disabled={disabled}
+            className={cn(
+              DESKTOP_FORM_FIELD_TRIGGER_INNER,
+              "flex min-w-0 items-center justify-between gap-2 py-1 pr-2 pl-1.5 text-sm transition-colors outline-none",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             {selectedOptions.length > 0 ? (
               selectedOptions.map((option) => {
@@ -528,8 +545,9 @@ function ModelCapabilitiesCombobox({
             )}
           </span>
           <ChevronsUpDown className="size-4 shrink-0 opacity-60" aria-hidden />
-        </button>
-      </DropdownMenuTrigger>
+          </button>
+        </DropdownMenuTrigger>
+      </div>
       <DropdownMenuContent
         align="start"
         sideOffset={6}
@@ -3333,7 +3351,7 @@ function ModelsSettingsPanel({
             <DialogDescription>{t('settings.selectProviderDescription')}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
-            <Input
+            <ProviderFormInput
               value={providerQuery}
               onChange={(e) => setProviderQuery(e.target.value)}
               placeholder={t('common.search')}
@@ -3390,13 +3408,17 @@ function ModelsSettingsPanel({
             {selectedProvider && providerShowsConnectTransportPicker(selectedProvider) ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-transport">{t('settings.apiType')}</Label>
-                <Select
-                  value={connectTransportKind}
-                  onValueChange={(value) => setConnectTransportKind(value as DesktopTransportKind)}
-                >
-                  <SelectTrigger id="connect-api-transport">
-                    <SelectValue />
-                  </SelectTrigger>
+                <div className={DESKTOP_FORM_INPUT_SHELL}>
+                  <Select
+                    value={connectTransportKind}
+                    onValueChange={(value) => setConnectTransportKind(value as DesktopTransportKind)}
+                  >
+                    <SelectTrigger
+                      id="connect-api-transport"
+                      className={DESKTOP_FORM_FIELD_TRIGGER_INNER}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
                   <SelectContent>
                     {connectTransportOptionsForProvider(selectedProvider).map((option) => (
                       <SelectItem key={`${option.value}-${option.label}`} value={option.value}>
@@ -3404,7 +3426,8 @@ function ModelsSettingsPanel({
                       </SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
+                  </Select>
+                </div>
                 {(() => {
                   const transportSummary = connectTransportOptionsForProvider(selectedProvider)
                     .filter((option) => option.value === connectTransportKind)
@@ -3448,7 +3471,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" && customConnectMode === "single" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-model-name">{t('settings.modelName')}</Label>
-                <Input
+                <ProviderFormInput
                   id="connect-model-name"
                   value={connectName}
                   onChange={(e) => setConnectName(e.target.value)}
@@ -3470,7 +3493,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" && customConnectMode === "single" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-context-length">{t('settings.contextLength')}</Label>
-                <Input
+                <ProviderFormInput
                   id="connect-context-length"
                   type="number"
                   min={1}
@@ -3485,7 +3508,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-base">{t('settings.endpoint')}</Label>
-                <Input
+                <ProviderFormInput
                   id="connect-api-base"
                   value={connectApiBase}
                   onChange={(e) => setConnectApiBase(e.target.value)}
@@ -3499,7 +3522,7 @@ function ModelsSettingsPanel({
             ) : null}
             <div className="grid gap-2">
               <Label htmlFor="connect-api-key">API Key</Label>
-              <Input
+              <ProviderFormInput
                 id="connect-api-key"
                 type="password"
                 value={connectApiKey}

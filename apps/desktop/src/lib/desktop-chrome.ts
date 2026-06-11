@@ -102,6 +102,16 @@ export const DESKTOP_OVERLAY_LIST_FILTER_INPUT_GHOST = cn(
   "rounded-md dark:!bg-transparent",
 );
 
+/** 标准表单输入：与 PendingApprovalCard 指引输入一致（h-8） */
+export const DESKTOP_FORM_INPUT_SHELL = DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL;
+
+export const DESKTOP_FORM_INPUT_INNER =
+  "h-8 w-full min-w-0 rounded-none border-0 bg-transparent px-2.5 py-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
+
+/** 置于 DESKTOP_FORM_INPUT_SHELL 内的 Select / 自定义触发器 */
+export const DESKTOP_FORM_FIELD_TRIGGER_INNER =
+  "h-8 min-h-8 w-full rounded-none border-0 bg-transparent px-2.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
+
 /** Root 与 viewport 同步 max-h：仅约束 viewport 时 Root 会随内容撑高，滚动条轨道 h-full 失真 */
 export const DESKTOP_OVERLAY_LIST_SCROLL_AREA =
   "max-h-[min(17rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:max-h-[min(17rem,var(--radix-dropdown-menu-content-available-height))] [&>[data-radix-scroll-area-viewport]]:overscroll-contain";
