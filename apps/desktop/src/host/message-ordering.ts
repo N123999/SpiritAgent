@@ -13,6 +13,7 @@ import {
 } from '@spirit-agent/core';
 
 import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js';
+import { phaseToVerbContext } from '../lib/tool-verb-context.js';
 import {
   hasActiveRunSubagentToolInMessages,
   hasInFlightSubagentDelegationInMessages,
@@ -191,12 +192,15 @@ function planSlugFromCreatePlanRequest(record: Record<string, unknown>): string 
 export function toolCallSummaryCopyForRequest(
   toolName: string,
   request: unknown,
+  phase?: ToolBlockSnapshot['phase'],
 ): ToolCallSummaryCopy | undefined {
   if (!request || typeof request !== 'object') {
     return undefined;
   }
 
   const record = request as Record<string, unknown>;
+  const ctx = phase ? phaseToVerbContext(phase) : undefined;
+  const tOpts = ctx ? { context: ctx } : {};
 
   switch (toolName) {
     case 'run_shell_command': {
@@ -206,7 +210,7 @@ export function toolCallSummaryCopyForRequest(
         return undefined;
       }
       return {
-        headline: reason ?? i18n.t('tool.runCommand'),
+        headline: reason ?? i18n.t('tool.runCommand', tOpts),
         ...(command ? { headlineDetail: truncateSummaryDetail(command) } : {}),
       };
     }
@@ -216,7 +220,7 @@ export function toolCallSummaryCopyForRequest(
       const rawPath = typeof record.path === 'string' ? record.path : '';
       const basename = displayBasename(rawPath);
       const verb =
-        toolName === 'create_file' ? i18n.t('tool.create') : toolName === 'edit_file' ? i18n.t('tool.edit') : i18n.t('tool.delete');
+        toolName === 'create_file' ? i18n.t('tool.create', tOpts) : toolName === 'edit_file' ? i18n.t('tool.edit', tOpts) : i18n.t('tool.delete', tOpts);
       return {
         headline: verb,
         headlineDetail: truncateSummaryDetail(basename),
@@ -228,7 +232,7 @@ export function toolCallSummaryCopyForRequest(
         ? `plans/${planSlug.endsWith('.md') ? planSlug : `${planSlug}.md`}`
         : 'plans/';
       return {
-        headline: i18n.t('tool.create'),
+        headline: i18n.t('tool.create', tOpts),
         headlineDetail: truncateSummaryDetail(displayBasename(label)),
       };
     }
@@ -238,7 +242,7 @@ export function toolCallSummaryCopyForRequest(
       const scheduleLabel = schedule ? formatScheduleLabel(schedule) : '';
       const detail = [title, scheduleLabel].filter((part) => part.length > 0).join(' · ');
       return {
-        headline: i18n.t('automations.create'),
+        headline: i18n.t('automations.create', tOpts),
         headlineDetail: truncateSummaryDetail(detail || 'automation'),
       };
     }
@@ -252,11 +256,11 @@ export function toolCallSummaryCopyForRequest(
       const opType = typeof operation?.type === 'string' ? operation.type : '';
       const verb =
         opType === 'create_file'
-          ? i18n.t('tool.create')
+          ? i18n.t('tool.create', tOpts)
           : opType === 'update_file'
-            ? i18n.t('tool.edit')
+            ? i18n.t('tool.edit', tOpts)
             : opType === 'delete_file'
-              ? i18n.t('tool.delete')
+              ? i18n.t('tool.delete', tOpts)
               : 'Patch';
       return {
         headline: verb,
@@ -267,28 +271,28 @@ export function toolCallSummaryCopyForRequest(
       const query = typeof record.query === 'string' ? record.query.trim() : '';
       const prefix = record.is_regexp === true ? i18n.t('tool.regexPrefix') : '';
       return {
-        headline: i18n.t('tool.search'),
+        headline: i18n.t('tool.search', tOpts),
         ...(query ? { headlineDetail: truncateSummaryDetail(`${prefix}${query}`) } : {}),
       };
     }
     case 'glob': {
       const pattern = typeof record.pattern === 'string' ? record.pattern.trim() : '';
       return {
-        headline: i18n.t('tool.match'),
+        headline: i18n.t('tool.match', tOpts),
         ...(pattern ? { headlineDetail: truncateSummaryDetail(pattern) } : {}),
       };
     }
     case 'web_fetch': {
       const url = typeof record.url === 'string' ? record.url.trim() : '';
       return {
-        headline: i18n.t('tool.fetch'),
+        headline: i18n.t('tool.fetch', tOpts),
         ...(url ? { headlineDetail: truncateSummaryDetail(url) } : {}),
       };
     }
     case 'web_search': {
       const query = webSearchQueryFromArguments(record);
       return {
-        headline: i18n.t('tool.webSearch'),
+        headline: i18n.t('tool.webSearch', tOpts),
         ...(query && !isGenericProviderWebSearchQuery(query)
           ? { headlineDetail: truncateSummaryDetail(query) }
           : {}),
@@ -298,21 +302,21 @@ export function toolCallSummaryCopyForRequest(
       const code = typeof record.code === 'string' ? record.code.trim() : '';
       const firstLine = code.split(/\r?\n/u).find((line) => line.trim().length > 0)?.trim() ?? '';
       return {
-        headline: i18n.t('tool.codeInterpreter'),
+        headline: i18n.t('tool.codeInterpreter', tOpts),
         ...(firstLine ? { headlineDetail: truncateSummaryDetail(firstLine) } : {}),
       };
     }
     case 'list_directory_files': {
       const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
       return {
-        headline: i18n.t('tool.listDirectory'),
+        headline: i18n.t('tool.listDirectory', tOpts),
         ...(rawPath ? { headlineDetail: truncateSummaryDetail(displayPathForListDirectory(rawPath)) } : {}),
       };
     }
     case 'ask_questions': {
       const questions = Array.isArray(record.questions) ? record.questions : [];
       return {
-        headline: i18n.t('tool.askQuestions'),
+        headline: i18n.t('tool.askQuestions', tOpts),
         headlineDetail: questions.length > 0 ? i18n.t('tool.nQuestions', { count: questions.length }) : i18n.t('tool.question'),
       };
     }
@@ -322,26 +326,26 @@ export function toolCallSummaryCopyForRequest(
         typeof record.context_summary === 'string' ? record.context_summary.trim() : '';
       const previewSource = task || contextSummary;
       return {
-        headline: i18n.t('tool.subagent'),
+        headline: i18n.t('tool.subagent', tOpts),
         headlineDetail: previewSource
           ? truncateSummaryDetail(previewSource, SUBAGENT_TASK_PREVIEW_MAX)
           : i18n.t('tool.unspecifiedTask'),
       };
     }
     case 'dream_list':
-      return { headline: i18n.t('tool.dreamList') };
+      return { headline: i18n.t('tool.dreamList', tOpts) };
     case 'dream_read':
-      return dreamIdSummaryCopy(i18n.t('tool.dreamRead'), record);
+      return dreamIdSummaryCopy(i18n.t('tool.dreamRead', tOpts), record);
     case 'dream_update':
-      return dreamIdSummaryCopy(i18n.t('tool.dreamUpdate'), record);
+      return dreamIdSummaryCopy(i18n.t('tool.dreamUpdate', tOpts), record);
     case 'dream_delete':
-      return dreamIdSummaryCopy(i18n.t('tool.dreamDelete'), record);
+      return dreamIdSummaryCopy(i18n.t('tool.dreamDelete', tOpts), record);
     case 'dream_record': {
       const title = typeof record.title === 'string' ? record.title.trim() : '';
       const summary = typeof record.summary === 'string' ? record.summary.trim() : '';
       const detail = title || summary;
       return {
-        headline: i18n.t('tool.dreamRecord'),
+        headline: i18n.t('tool.dreamRecord', tOpts),
         ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
       };
     }
@@ -352,7 +356,7 @@ export function toolCallSummaryCopyForRequest(
           ? String((items[0] as Record<string, unknown>).title ?? '').trim()
           : '';
       return {
-        headline: i18n.t('tool.todoCreate'),
+        headline: i18n.t('tool.todoCreate', tOpts),
         headlineDetail: truncateSummaryDetail(
           items.length > 1
             ? i18n.t('tool.nItems', { count: items.length, firstTitle: firstTitle || '' })
@@ -364,19 +368,19 @@ export function toolCallSummaryCopyForRequest(
       const title = typeof record.title === 'string' ? record.title.trim() : '';
       const id = typeof record.id === 'string' ? record.id.trim() : '';
       return {
-        headline: i18n.t('tool.todoUpdate'),
+        headline: i18n.t('tool.todoUpdate', tOpts),
         headlineDetail: truncateSummaryDetail(title || id || ''),
       };
     }
     case 'todo_complete': {
       const id = typeof record.id === 'string' ? record.id.trim() : '';
       return {
-        headline: i18n.t('tool.todoComplete'),
+        headline: i18n.t('tool.todoComplete', tOpts),
         ...(id ? { headlineDetail: truncateSummaryDetail(id) } : {}),
       };
     }
     case 'todo_list':
-      return { headline: i18n.t('tool.todoList') };
+      return { headline: i18n.t('tool.todoList', tOpts) };
     case 'extension_tool': {
       const extensionToolName =
         typeof record.tool_name === 'string' ? record.tool_name.trim() : '';
@@ -407,10 +411,10 @@ export function toolCallSummaryForPhase(
   request: unknown,
 ): ToolCallSummaryCopy {
   if (toolName === 'read_file') {
-    return readFileSummaryCopy(request);
+    return readFileSummaryCopy(request, phase);
   }
 
-  const custom = toolCallSummaryCopyForRequest(toolName, request);
+  const custom = toolCallSummaryCopyForRequest(toolName, request, phase);
   if (custom) {
     return custom;
   }
@@ -971,10 +975,10 @@ export function toolCallSummaryForStreamingPreview(
   request?: unknown,
 ): ToolCallSummaryCopy {
   if (toolName === 'read_file') {
-    return readFileSummaryCopy(request);
+    return readFileSummaryCopy(request, 'running');
   }
 
-  const custom = request !== undefined ? toolCallSummaryCopyForRequest(toolName, request) : undefined;
+  const custom = request !== undefined ? toolCallSummaryCopyForRequest(toolName, request, 'running') : undefined;
   if (custom) {
     return custom;
   }
@@ -1005,9 +1009,11 @@ export function headlineForStreamingToolPreview(
   return toolCallSummaryForStreamingPreview(messages, toolCallId, toolName, request).headline;
 }
 
-function readFileSummaryCopy(request: unknown): ToolCallSummaryCopy {
+function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase']): ToolCallSummaryCopy {
+  const ctx = phase ? phaseToVerbContext(phase) : undefined;
+  const tOpts = ctx ? { context: ctx } : {};
   if (!request || typeof request !== 'object') {
-    return { headline: i18n.t('tool.view'), headlineDetail: i18n.t('tool.file') };
+    return { headline: i18n.t('tool.view', tOpts), headlineDetail: i18n.t('tool.file') };
   }
 
   const record = request as Record<string, unknown>;
@@ -1021,7 +1027,7 @@ function readFileSummaryCopy(request: unknown): ToolCallSummaryCopy {
   const detail = `${displayPath}${lineRange}`.trim();
 
   return {
-    headline: i18n.t('tool.view'),
+    headline: i18n.t('tool.view', tOpts),
     ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
   };
 }

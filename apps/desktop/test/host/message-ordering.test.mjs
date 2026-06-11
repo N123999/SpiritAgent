@@ -10,6 +10,7 @@ import {
   toolCallSummaryCopyForRequest,
   toolCallSummaryForPhase,
 } from '../../dist-electron/src/host/message-ordering.js';
+import i18n from '../../dist-electron/src/lib/i18n-host.js';
 
 test('toolCallSummaryCopyForRequest: write tools use verb headline + basename detail', () => {
   assert.deepEqual(
@@ -223,4 +224,80 @@ test('finishTaskNoticePreviewFromArguments streams partial summary text', () => 
     ),
     '任务以 确认每条消息输出完毕后调用 finish_task。 完成。',
   );
+});
+
+test('toolCallSummaryCopyForRequest: Chinese verbs unchanged across phases', () => {
+  const running = toolCallSummaryCopyForRequest('create_file', { path: 'a.ts' }, 'running');
+  const succeeded = toolCallSummaryCopyForRequest('create_file', { path: 'a.ts' }, 'succeeded');
+  assert.equal(running.headline, '创建');
+  assert.equal(succeeded.headline, '创建');
+
+  const viewRunning = toolCallSummaryForPhase('running', 'read_file', { path: 'b.ts' });
+  const viewDone = toolCallSummaryForPhase('succeeded', 'read_file', { path: 'b.ts' });
+  assert.equal(viewRunning.headline, '查看');
+  assert.equal(viewDone.headline, '查看');
+});
+
+test('toolCallSummaryCopyForRequest: English verbs use progressive in running phase', async () => {
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('create_file', { path: 'a.ts' }, 'running'),
+      { headline: 'Creating', headlineDetail: 'a.ts' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('edit_file', { path: 'b.ts' }, 'running'),
+      { headline: 'Editing', headlineDetail: 'b.ts' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('delete_file', { path: 'c.ts' }, 'running'),
+      { headline: 'Deleting', headlineDetail: 'c.ts' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('list_directory_files', { path: 'src/' }, 'running'),
+      { headline: 'Listing', headlineDetail: 'src/' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('grep', { query: 'TODO' }, 'running'),
+      { headline: 'Searching', headlineDetail: 'TODO' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
+test('toolCallSummaryCopyForRequest: English verbs use past tense in succeeded phase', async () => {
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('create_file', { path: 'a.ts' }, 'succeeded'),
+      { headline: 'Created', headlineDetail: 'a.ts' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('edit_file', { path: 'b.ts' }, 'succeeded'),
+      { headline: 'Edited', headlineDetail: 'b.ts' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest('list_directory_files', { path: 'src/' }, 'succeeded'),
+      { headline: 'Listed', headlineDetail: 'src/' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
+test('toolCallSummaryForPhase: English read_file uses Viewed in succeeded phase', async () => {
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      toolCallSummaryForPhase('succeeded', 'read_file', { path: '/proj/src/App.tsx' }),
+      { headline: 'Viewed', headlineDetail: 'App.tsx' },
+    );
+    assert.deepEqual(
+      toolCallSummaryForPhase('running', 'read_file', { path: '/proj/src/App.tsx' }),
+      { headline: 'Viewing', headlineDetail: 'App.tsx' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
 });

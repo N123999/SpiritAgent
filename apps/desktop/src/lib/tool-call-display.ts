@@ -5,6 +5,7 @@ import {
   shellExpandableDetailLines,
   shellHasExpandableContent,
 } from '@/lib/shell-tool-display';
+import { phaseToVerbContext } from '@/lib/tool-verb-context';
 import type { ToolBlockSnapshot } from '@/types';
 
 export type ShellToolSummaryParts = {
@@ -26,15 +27,72 @@ const RESPONSES_BUILT_IN_TOOL_NAMES = new Set([
   'code_interpreter',
 ]);
 
-const LEGACY_READ_FILE_HEADLINE = /^查看\s+(.+)$/u;
+const LEGACY_READ_FILE_HEADLINE = /^(?:查看|View(?:ing|ed)?)\u002e?\s+(.+)$/u;
 
-function shellToolSummaryFromReason(reason: string): Pick<ToolCallSummaryParts, 'headline' | 'shellSummary'> {
+/**
+ * Direct mapping from toolName to i18n verb key.
+ * Used by the renderer to re-translate headlines at render time so that
+ * switching the UI language instantly updates all tool cards.
+ */
+const TOOL_VERB_KEY_MAP: Record<string, string> = {
+  create_file: 'tool.create',
+  edit_file: 'tool.edit',
+  delete_file: 'tool.delete',
+  read_file: 'tool.view',
+  grep: 'tool.search',
+  glob: 'tool.match',
+  web_fetch: 'tool.fetch',
+  web_search: 'tool.webSearch',
+  code_interpreter: 'tool.codeInterpreter',
+  list_directory_files: 'tool.listDirectory',
+  ask_questions: 'tool.askQuestions',
+  run_subagent: 'tool.subagent',
+  dream_list: 'tool.dreamList',
+  dream_read: 'tool.dreamRead',
+  dream_update: 'tool.dreamUpdate',
+  dream_delete: 'tool.dreamDelete',
+  dream_record: 'tool.dreamRecord',
+  todo_create: 'tool.todoCreate',
+  todo_update: 'tool.todoUpdate',
+  todo_complete: 'tool.todoComplete',
+  todo_list: 'tool.todoList',
+  create_plan: 'tool.create',
+  create_automation: 'automations.create',
+};
+
+/**
+ * All known locale variants of the "runCommand" key (base + context suffixes).
+ * Used to detect whether a stored headline is the default translation (from
+ * any locale) vs a custom model-supplied reason.
+ */
+const RUN_COMMAND_DEFAULT_HEADLINES = new Set([
+  // zh-CN (base key; no _running/_succeeded variants → same value)
+  '运行命令',
+  // en base + context variants
+  'Run command',
+  'Running command',
+  'Ran command',
+]);
+
+/** Reverse-map an apply_patch headline back to its verb key. */
+const APPLY_PATCH_VERB_VARIANTS: ReadonlyArray<{ key: string; values: Set<string> }> = [
+  { key: 'tool.create', values: new Set(['创建', 'Create', 'Creating', 'Created']) },
+  { key: 'tool.edit', values: new Set(['编辑', 'Edit', 'Editing', 'Edited']) },
+  { key: 'tool.delete', values: new Set(['删除', 'Delete', 'Deleting', 'Deleted']) },
+];
+
+function shellToolSummaryFromReason(
+  reason: string,
+  phase: ToolBlockSnapshot['phase'],
+): Pick<ToolCallSummaryParts, 'headline' | 'shellSummary'> {
   const trimmed = reason.trim();
-  const defaultHeadline = i18n.t('tool.runCommand');
-  if (!trimmed || trimmed === defaultHeadline) {
+  const ctx = phaseToVerbContext(phase);
+  const tOpts = ctx ? { context: ctx } : {};
+  const defaultHeadline = i18n.t('tool.runCommand', tOpts);
+  if (!trimmed || RUN_COMMAND_DEFAULT_HEADLINES.has(trimmed)) {
     return { headline: defaultHeadline };
   }
-  const verb = i18n.t('tool.runShellVerb');
+  const verb = i18n.t('tool.runShellVerb', tOpts);
   return {
     headline: `${verb} ${trimmed}`,
     shellSummary: { verb, reason: trimmed },
@@ -74,14 +132,15 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
   if (tool.toolName === 'read_file' && !snapshotDetail) {
     const legacy = LEGACY_READ_FILE_HEADLINE.exec(headline);
     if (legacy) {
-      return { headline: '查看', detail: legacy[1] };
+      const ctx = phaseToVerbContext(tool.phase);
+      return { headline: i18n.t('tool.view', ctx ? { context: ctx } : {}), detail: legacy[1] };
     }
   }
 
   if (tool.toolName === 'run_shell_command') {
     const command = snapshotDetail || parseShellCommand(tool);
     return {
-      ...shellToolSummaryFromReason(headline),
+      ...shellToolSummaryFromReason(headline, tool.phase),
       ...(command ? { detail: command } : {}),
     };
   }
@@ -124,6 +183,29 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
         ...(snapshotDetail ? { detail: snapshotDetail } : {}),
       };
     }
+  }
+
+  // --- Dynamic re-translation for known tools ---
+  // Re-derive headline from toolName + phase using the renderer's current locale
+  // so that switching language instantly refreshes all tool card verbs.
+  if (tool.toolName === 'apply_patch') {
+    const matched = APPLY_PATCH_VERB_VARIANTS.find((entry) => entry.values.has(headline));
+    if (matched) {
+      const ctx = phaseToVerbContext(tool.phase);
+      return {
+        headline: i18n.t(matched.key, ctx ? { context: ctx } : {}),
+        ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+      };
+    }
+  }
+
+  const verbKey = TOOL_VERB_KEY_MAP[tool.toolName];
+  if (verbKey) {
+    const ctx = phaseToVerbContext(tool.phase);
+    return {
+      headline: i18n.t(verbKey, ctx ? { context: ctx } : {}),
+      ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+    };
   }
 
   return {

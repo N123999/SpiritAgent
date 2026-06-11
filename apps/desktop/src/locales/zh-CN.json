@@ -814,7 +814,7 @@
     "codeInterpreter": "代码解释器",
     "match": "匹配",
     "fetch": "抓取",
-    "listDirectory": "列出目录",
+    "listDirectory": "列出",
     "askQuestions": "询问",
     "nQuestions": "{{count}} 个问题",
     "question": "问题",
