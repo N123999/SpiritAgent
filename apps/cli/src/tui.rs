@@ -26,6 +26,7 @@ use crate::{
     rewind::{self, ConversationMessageSnapshot, DesktopRewindCheckpointSnapshot},
     rules::RuleEntry,
     runtime_handle::RuntimeHandle,
+    subagent_display::parse_pending_subagent_status_text,
     shell::{ask_questions, bottom_form, file_reference, manual_shell, slash},
     skills::{self, SkillEntry},
     ts_bridge::{
@@ -898,17 +899,7 @@ fn manual_shell_tool_command(command: &str) -> String {
 }
 
 fn is_standalone_subagent_status_aux(pending_aux: &PendingAssistantAux) -> bool {
-    let status = pending_aux
-        .status_text
-        .trim()
-        .strip_prefix("| ")
-        .or_else(|| pending_aux.status_text.trim().strip_prefix("/ "))
-        .or_else(|| pending_aux.status_text.trim().strip_prefix("- "))
-        .or_else(|| pending_aux.status_text.trim().strip_prefix("\\ "))
-        .unwrap_or(pending_aux.status_text.trim())
-        .trim();
-
-    !status.is_empty() && status != "Thinking..." && status != "Compressing..."
+    parse_pending_subagent_status_text(&pending_aux.status_text).is_some()
 }
 
 fn next_persisted_standalone_pending_aux(

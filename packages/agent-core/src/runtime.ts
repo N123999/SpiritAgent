@@ -2315,14 +2315,6 @@ export class AgentRuntime<
       return `${title}: ${truncateTextForSubagentSummary(backgroundProgress, 120)}`;
     }
 
-    const thinkingProgress = normalizeSubagentStatusProgress(
-      pending.childRuntime.thinkingText(),
-      title,
-    );
-    if (thinkingProgress) {
-      return `${title}: ${truncateTextForSubagentSummary(thinkingProgress, 120)}`;
-    }
-
     if (!pending.childRuntime.isBusy()) {
       const completedProgress = normalizeSubagentStatusProgress(
         resolveSubagentResultText('', pending.childRecord, false),

@@ -21,6 +21,7 @@ pub mod rewind;
 pub mod rules;
 pub mod runtime_handle;
 pub mod session;
+pub mod subagent_display;
 #[cfg(feature = "tui")]
 pub mod shell;
 pub mod skills;

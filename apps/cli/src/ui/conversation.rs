@@ -1,4 +1,8 @@
 use super::*;
+use crate::subagent_display::{
+    has_active_run_subagent_tool_in_messages,
+    parse_pending_subagent_status_text as parse_subagent_status_text,
+};
 
 const SPIRIT_LOGO_LINES: [&str; 6] = [
     " ███████╗██████╗ ██╗██████╗ ██╗████████╗ █████╗  ██████╗ ███████╗███╗   ██╗████████╗",
@@ -336,6 +340,10 @@ pub(in crate::ui) fn should_render_standalone_pending_aux(
     visible_message_count: usize,
 ) -> bool {
     if effective_standalone_pending_aux(app).is_none() {
+        return false;
+    }
+
+    if has_active_run_subagent_tool_in_messages(&app.messages) {
         return false;
     }
 
@@ -707,20 +715,7 @@ pub(in crate::ui) fn maybe_rewind_deemphasize_lines(
 }
 
 pub(in crate::ui) fn parse_pending_subagent_status_text(text: &str) -> Option<String> {
-    let status = text
-        .trim()
-        .strip_prefix("| ")
-        .or_else(|| text.trim().strip_prefix("/ "))
-        .or_else(|| text.trim().strip_prefix("- "))
-        .or_else(|| text.trim().strip_prefix("\\ "))
-        .unwrap_or(text.trim())
-        .trim();
-
-    if status.is_empty() || status == "Thinking..." || status == "Compressing..." {
-        return None;
-    }
-
-    Some(status.to_string())
+    parse_subagent_status_text(text)
 }
 
 pub(in crate::ui) fn split_embedded_thinking_content(text: &str) -> (String, Option<String>) {
