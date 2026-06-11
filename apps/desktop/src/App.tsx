@@ -2011,6 +2011,7 @@ export default function App() {
     [conversationListScopeKey, messages],
   );
   const conversationViewKey = `${composerSessionKey.trim() || "__no-session__"}:${conversationListScopeKey}`;
+  const processGroupManualOpenKey = (groupId: string) => `${conversationViewKey}:${groupId}`;
   const conversationPendingAuxState = subagentViewActive
     ? snapshot?.subagentViewer?.pendingAuxState
     : compactionDemo.active
@@ -3596,11 +3597,11 @@ export default function App() {
                                     toolCounts={renderItem.toolCounts}
                                     pendingAuxState={conversationPendingAuxState}
                                     playSealAnimation={shouldPlayProcessSealAnimation(renderItem.groupId)}
-                                    manualOpen={processGroupManualOpen[renderItem.groupId]}
+                                    manualOpen={processGroupManualOpen[processGroupManualOpenKey(renderItem.groupId)]}
                                     onManualOpenChange={(open) => {
                                       setProcessGroupManualOpen((current) => ({
                                         ...current,
-                                        [renderItem.groupId]: open,
+                                        [processGroupManualOpenKey(renderItem.groupId)]: open,
                                       }));
                                     }}
                                     renderToolBlock={(message) => (
