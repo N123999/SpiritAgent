@@ -258,6 +258,25 @@ impl TuiShell {
         self.image_picker_active = false;
     }
 
+    pub fn add_pending_image_with_feedback(&mut self, path: std::path::PathBuf) {
+        if !path.exists() {
+            super::logging::log_event(&format!("[clipboard] 图片文件不存在: {}", path.display()));
+            return;
+        }
+        let path_str = path.to_string_lossy().to_string();
+        self.runtime.add_pending_image(path_str.clone());
+        self.messages.push(super::ChatMessage {
+            role: super::MessageRole::Agent,
+            content: super::t!(
+                "tui.image_picker.added",
+                count = self.runtime.session().pending_image_paths().len(),
+                path = path_str
+            )
+            .into_owned(),
+            tool_block: None,
+        });
+    }
+
     pub fn select_next_image(&mut self) {
         if self.image_picker_files.is_empty() {
             return;
