@@ -36,27 +36,36 @@ export function resolveProcessSealLiveTurnActive(options: {
   return options.messages.some((message) => message.pending);
 }
 
-type ProcessSealAnimationPlanOptions = {
+export type ProcessSealPlanState = {
+  prevViewKey: string | null;
+  prevGroupIds: Set<string>;
+};
+
+export type ProcessSealAnimationPlanOptions = {
   liveTurnActive: boolean;
   composeTurnInFlight: boolean;
   sessionNavigationPending: boolean;
 };
 
-function useProcessSealAnimationPlan(
-  conversationViewKey: string,
-  renderItems: readonly ConversationRenderItem[],
-  options: ProcessSealAnimationPlanOptions,
-): (groupId: string) => boolean {
-  const prevViewKeyRef = useRef<string | null>(null);
-  const prevGroupIdsRef = useRef<Set<string>>(new Set());
-  const planRef = useRef(new Map<string, boolean>());
+export type ProcessSealAnimationPlanResult = {
+  nextState: ProcessSealPlanState;
+  shouldPlayByGroupId: Map<string, boolean>;
+};
 
-  const groupIds = processGroupIds(renderItems);
-  const groupIdsKey = groupIds.join('|');
-  const isFirstObservation = prevViewKeyRef.current === null;
+export function createInitialProcessSealPlanState(): ProcessSealPlanState {
+  return { prevViewKey: null, prevGroupIds: new Set() };
+}
+
+export function buildProcessSealAnimationPlan(
+  state: ProcessSealPlanState,
+  conversationViewKey: string,
+  groupIds: readonly string[],
+  options: ProcessSealAnimationPlanOptions,
+): ProcessSealAnimationPlanResult {
+  const isFirstObservation = state.prevViewKey === null;
   const viewKeyChanged =
-    !isFirstObservation && prevViewKeyRef.current !== conversationViewKey;
-  const newlyAppearedGroupIds = groupIds.filter((groupId) => !prevGroupIdsRef.current.has(groupId));
+    !isFirstObservation && state.prevViewKey !== conversationViewKey;
+  const newlyAppearedGroupIds = groupIds.filter((groupId) => !state.prevGroupIds.has(groupId));
 
   const shouldAnimateNewGroups = isFirstObservation
     ? false
@@ -65,13 +74,38 @@ function useProcessSealAnimationPlan(
         (options.liveTurnActive || options.composeTurnInFlight)
       : true;
 
-  planRef.current = new Map(
-    newlyAppearedGroupIds.map((groupId) => [groupId, shouldAnimateNewGroups]),
+  return {
+    nextState: {
+      prevViewKey: conversationViewKey,
+      prevGroupIds: new Set(groupIds),
+    },
+    shouldPlayByGroupId: new Map(
+      newlyAppearedGroupIds.map((groupId) => [groupId, shouldAnimateNewGroups]),
+    ),
+  };
+}
+
+function useProcessSealAnimationPlan(
+  conversationViewKey: string,
+  renderItems: readonly ConversationRenderItem[],
+  options: ProcessSealAnimationPlanOptions,
+): (groupId: string) => boolean {
+  const planStateRef = useRef(createInitialProcessSealPlanState());
+  const planRef = useRef(new Map<string, boolean>());
+
+  const groupIds = processGroupIds(renderItems);
+  const groupIdsKey = groupIds.join('|');
+
+  const { shouldPlayByGroupId, nextState } = buildProcessSealAnimationPlan(
+    planStateRef.current,
+    conversationViewKey,
+    groupIds,
+    options,
   );
+  planRef.current = shouldPlayByGroupId;
 
   useLayoutEffect(() => {
-    prevViewKeyRef.current = conversationViewKey;
-    prevGroupIdsRef.current = new Set(groupIds);
+    planStateRef.current = nextState;
   }, [conversationViewKey, groupIdsKey]);
 
   return (groupId: string) => planRef.current.get(groupId) ?? false;
