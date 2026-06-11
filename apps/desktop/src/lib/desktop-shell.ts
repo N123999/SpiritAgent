@@ -72,7 +72,13 @@ export function shortcutLabel(key: string): string {
   return isMacDesktopPlatform() ? `⌘${letter}` : `Ctrl+${letter}`;
 }
 
+/** Cmd/Ctrl + / shortcut keys for tooltip Kbd chips. */
+export function modSlashShortcutKbdKeys(): readonly string[] {
+  return isMacDesktopPlatform() ? ["⌘", "/"] : ["Ctrl", "/"];
+}
+
 /** Cmd/Ctrl + / shortcut label for the model picker. */
 export function modSlashShortcutLabel(): string {
-  return isMacDesktopPlatform() ? "⌘/" : "Ctrl+/";
+  const keys = modSlashShortcutKbdKeys();
+  return isMacDesktopPlatform() ? keys.join("") : keys.join("+");
 }

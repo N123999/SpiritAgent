@@ -466,7 +466,6 @@
     },
     "runMode": "Run Mode",
     "selectModel": "Select Model",
-    "modelPickerShortcut": "Select model ({{shortcut}})",
     "filterModels": "Filter models",
     "modelPickerContextTokens": "Context: {{value}} tokens",
     "modelPickerReasoningEffort": "Reasoning effort",

@@ -11,6 +11,7 @@ import {
   HoverDetailTooltip,
   useHoverDetailTooltipContext,
 } from "@/components/ui/hover-detail-tooltip";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DESKTOP_OVERLAY_LIST_GROUP_LABEL,
@@ -18,7 +19,7 @@ import {
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
-import { modSlashShortcutLabel } from "@/lib/desktop-shell";
+import { isMacDesktopPlatform, modSlashShortcutKbdKeys } from "@/lib/desktop-shell";
 import {
   notifyModelPickerFocused,
   registerModelPicker,
@@ -35,6 +36,24 @@ import type { DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
 import { cn } from "@/lib/utils";
 
 type ModelPickerItem = DesktopSnapshot["config"]["models"][number];
+
+function ModelPickerShortcutKbd() {
+  const keys = modSlashShortcutKbdKeys();
+
+  return (
+    <KbdGroup>
+      {isMacDesktopPlatform() ? (
+        keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+      ) : (
+        <>
+          <Kbd>Ctrl</Kbd>
+          <span>+</span>
+          <Kbd>/</Kbd>
+        </>
+      )}
+    </KbdGroup>
+  );
+}
 
 function ModelPickerRow({
   model,
@@ -159,10 +178,6 @@ export function ModelPickerMenu({
       )
     : activeModelName;
 
-  const shortcutHint = t("app.modelPickerShortcut", {
-    shortcut: modSlashShortcutLabel(),
-  });
-
   useEffect(() => {
     const id = registerModelPicker({
       open: () => setModelMenuOpen(true),
@@ -223,7 +238,7 @@ export function ModelPickerMenu({
               </FilteredOverlayMenuTrigger>
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={4}>
-              {shortcutHint}
+              {t("app.selectModel")} <ModelPickerShortcutKbd />
             </TooltipContent>
           </Tooltip>
         }
