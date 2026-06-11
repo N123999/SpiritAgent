@@ -555,57 +555,91 @@ function SessionListNav({
 
 type WorkspaceListNavProps = {
   canDeleteWorkspace: boolean;
+  canDeleteSession: boolean;
   contextMenuWorkspaceGroup: SessionWorkspaceGroup | null;
   contextMenuWorkspaceGroupRef: RefObject<SessionWorkspaceGroup | null>;
+  contextMenuSession: SessionListItem | null;
+  contextMenuSessionRef: RefObject<SessionListItem | null>;
   deleteWorkspaceBusy?: boolean;
-  onWorkspaceContextMenuCapture(event: MouseEvent<HTMLElement>): void;
-  onWorkspaceContextMenuOpenChange(open: boolean): void;
+  deleteSessionBusy?: boolean;
+  onContextMenuCapture(event: MouseEvent<HTMLElement>): void;
+  onContextMenuOpenChange(open: boolean): void;
   onRequestDeleteWorkspace(group: SessionWorkspaceGroup): void;
+  onRequestDeleteSession(session: SessionListItem): void;
   children: ReactNode;
 };
 
 function WorkspaceListNav({
   canDeleteWorkspace,
+  canDeleteSession,
   contextMenuWorkspaceGroup,
   contextMenuWorkspaceGroupRef,
+  contextMenuSession,
+  contextMenuSessionRef,
   deleteWorkspaceBusy,
-  onWorkspaceContextMenuCapture,
-  onWorkspaceContextMenuOpenChange,
+  deleteSessionBusy,
+  onContextMenuCapture,
+  onContextMenuOpenChange,
   onRequestDeleteWorkspace,
+  onRequestDeleteSession,
   children,
 }: WorkspaceListNavProps) {
   const { t } = useTranslation();
 
+  const canShowMenu = canDeleteWorkspace || canDeleteSession;
+
   const inner = (
     <div
       className="min-w-0"
-      onContextMenuCapture={canDeleteWorkspace ? onWorkspaceContextMenuCapture : undefined}
+      onContextMenuCapture={canShowMenu ? onContextMenuCapture : undefined}
     >
       {children}
     </div>
   );
 
-  if (!canDeleteWorkspace) {
+  if (!canShowMenu) {
     return inner;
   }
 
+  const isWorkspaceTarget = Boolean(contextMenuWorkspaceGroup ?? contextMenuWorkspaceGroupRef.current);
+  const sessionTarget = contextMenuSession ?? contextMenuSessionRef.current;
+  const sessionBusy = sessionTarget?.isBusy === true;
+
   return (
-    <ContextMenu onOpenChange={onWorkspaceContextMenuOpenChange}>
+    <ContextMenu onOpenChange={onContextMenuOpenChange}>
       <ContextMenuTrigger asChild>{inner}</ContextMenuTrigger>
-      <ContextMenuContent aria-label={t("sidebar.workspaceActions")}>
-        <ContextMenuItem
-          variant="destructive"
-          disabled={deleteWorkspaceBusy}
-          onSelect={() => {
-            const group = contextMenuWorkspaceGroupRef.current ?? contextMenuWorkspaceGroup;
-            if (group) {
-              onRequestDeleteWorkspace(group);
-            }
-          }}
-        >
-          <Trash2 aria-hidden />
-          {t("sidebar.deleteWorkspace")}
-        </ContextMenuItem>
+      <ContextMenuContent aria-label={isWorkspaceTarget ? t("sidebar.workspaceActions") : t("sidebar.sessionActions")}>
+        {isWorkspaceTarget && canDeleteWorkspace ? (
+          <ContextMenuItem
+            variant="destructive"
+            disabled={deleteWorkspaceBusy}
+            onSelect={() => {
+              const group = contextMenuWorkspaceGroupRef.current ?? contextMenuWorkspaceGroup;
+              if (group) {
+                onRequestDeleteWorkspace(group);
+              }
+            }}
+          >
+            <Trash2 aria-hidden />
+            {t("sidebar.deleteWorkspace")}
+          </ContextMenuItem>
+        ) : null}
+        {!isWorkspaceTarget && canDeleteSession ? (
+          <ContextMenuItem
+            variant="destructive"
+            disabled={deleteSessionBusy || sessionBusy}
+            title={sessionBusy ? t("sidebar.cannotDeleteBusySession") : undefined}
+            onSelect={() => {
+              const session = contextMenuSessionRef.current ?? contextMenuSession;
+              if (session) {
+                onRequestDeleteSession(session);
+              }
+            }}
+          >
+            <Trash2 aria-hidden />
+            {t("sidebar.deleteSession")}
+          </ContextMenuItem>
+        ) : null}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -837,27 +871,41 @@ function SessionSidebarInner({
 
   const handleWorkspaceContextMenuCapture = useCallback(
     (event: MouseEvent<HTMLElement>) => {
-      const btn = (event.target as HTMLElement).closest("[data-workspace-path]");
-      if (!btn) {
-        event.preventDefault();
-        return;
+      const workspaceBtn = (event.target as HTMLElement).closest("[data-workspace-path]");
+      if (workspaceBtn) {
+        const workspacePath = workspaceBtn.getAttribute("data-workspace-path");
+        const group = workspacePath ? workspaceGroupById.get(workspacePath) : undefined;
+        if (group) {
+          contextMenuWorkspaceGroupRef.current = group;
+          setContextMenuWorkspaceGroup(group);
+          contextMenuSessionRef.current = null;
+          setContextMenuSession(null);
+          return;
+        }
       }
-      const workspacePath = btn.getAttribute("data-workspace-path");
-      const group = workspacePath ? (workspaceGroupById.get(workspacePath) ?? workspaceGroupById.get(workspacePath)) : undefined;
-      if (!group) {
-        event.preventDefault();
-        return;
+
+      const sessionRow = (event.target as HTMLElement).closest("[data-session-path]");
+      if (sessionRow) {
+        const sessionPath = sessionRow.getAttribute("data-session-path");
+        const session = sessionPath ? sessionByPath.get(sessionPath) : undefined;
+        if (session) {
+          contextMenuSessionRef.current = session;
+          setContextMenuSession(session);
+          contextMenuWorkspaceGroupRef.current = null;
+          setContextMenuWorkspaceGroup(null);
+          return;
+        }
       }
-      contextMenuWorkspaceGroupRef.current = group;
-      setContextMenuWorkspaceGroup(group);
     },
-    [workspaceGroupById],
+    [sessionByPath, workspaceGroupById],
   );
 
   const handleWorkspaceContextMenuOpenChange = useCallback((open: boolean) => {
     if (!open) {
       contextMenuWorkspaceGroupRef.current = null;
       setContextMenuWorkspaceGroup(null);
+      contextMenuSessionRef.current = null;
+      setContextMenuSession(null);
     }
   }, []);
 
@@ -871,13 +919,11 @@ function SessionSidebarInner({
     (event: MouseEvent<HTMLElement>) => {
       const row = (event.target as HTMLElement).closest("[data-session-path]");
       if (!row) {
-        event.preventDefault();
         return;
       }
       const sessionPath = row.getAttribute("data-session-path");
       const session = sessionPath ? sessionByPath.get(sessionPath) : undefined;
       if (!session) {
-        event.preventDefault();
         return;
       }
       contextMenuSessionRef.current = session;
@@ -1208,30 +1254,25 @@ function SessionSidebarInner({
             </nav>
           ) : (
             <div className="min-w-0 px-1.5 pb-1.5">
-              <SessionListNav
-                ariaLabel={t('sidebar.workspaceSessionsAria')}
+              {workspaceGroups.length > 0 ? (
+                <p className="px-2.5 pt-2 pb-1 text-[0.65rem] text-sidebar-item-foreground">
+                  {t('sidebar.workspace')}
+                </p>
+              ) : null}
+              <WorkspaceListNav
+                canDeleteWorkspace={canDeleteWorkspace}
                 canDeleteSession={canDeleteSession}
+                contextMenuWorkspaceGroup={contextMenuWorkspaceGroup}
+                contextMenuWorkspaceGroupRef={contextMenuWorkspaceGroupRef}
                 contextMenuSession={contextMenuSession}
                 contextMenuSessionRef={contextMenuSessionRef}
+                deleteWorkspaceBusy={deleteWorkspaceBusy}
                 deleteSessionBusy={deleteSessionBusy}
-                onSessionContextMenuCapture={handleSessionContextMenuCapture}
-                onContextMenuOpenChange={handleContextMenuOpenChange}
-                onRequestDelete={handleContextMenuDelete}
+                onContextMenuCapture={handleWorkspaceContextMenuCapture}
+                onContextMenuOpenChange={handleWorkspaceContextMenuOpenChange}
+                onRequestDeleteWorkspace={handleWorkspaceContextMenuDelete}
+                onRequestDeleteSession={handleContextMenuDelete}
               >
-                {workspaceGroups.length > 0 ? (
-                  <p className="px-2.5 pt-2 pb-1 text-[0.65rem] text-sidebar-item-foreground">
-                    {t('sidebar.workspace')}
-                  </p>
-                ) : null}
-                <WorkspaceListNav
-                  canDeleteWorkspace={canDeleteWorkspace}
-                  contextMenuWorkspaceGroup={contextMenuWorkspaceGroup}
-                  contextMenuWorkspaceGroupRef={contextMenuWorkspaceGroupRef}
-                  deleteWorkspaceBusy={deleteWorkspaceBusy}
-                  onWorkspaceContextMenuCapture={handleWorkspaceContextMenuCapture}
-                  onWorkspaceContextMenuOpenChange={handleWorkspaceContextMenuOpenChange}
-                  onRequestDeleteWorkspace={handleWorkspaceContextMenuDelete}
-                >
                 {workspaceGroups.map((group) => {
                   const expanded = collapsedWorkspaceIds[group.id] !== false;
                   const panelId = `workspace-session-group-${group.id.replace(/[^a-z0-9_-]/g, "-")}`;
@@ -1262,10 +1303,20 @@ function SessionSidebarInner({
                     />
                   );
                 })}
-                </WorkspaceListNav>
-                {unboundSessions.length > 0 && workspaceGroups.length > 0 ? (
-                  <div className="h-2" aria-hidden />
-                ) : null}
+              </WorkspaceListNav>
+              {unboundSessions.length > 0 && workspaceGroups.length > 0 ? (
+                <div className="h-2" aria-hidden />
+              ) : null}
+              <SessionListNav
+                ariaLabel={t('sidebar.workspaceSessionsAria')}
+                canDeleteSession={canDeleteSession}
+                contextMenuSession={contextMenuSession}
+                contextMenuSessionRef={contextMenuSessionRef}
+                deleteSessionBusy={deleteSessionBusy}
+                onSessionContextMenuCapture={handleSessionContextMenuCapture}
+                onContextMenuOpenChange={handleContextMenuOpenChange}
+                onRequestDelete={handleContextMenuDelete}
+              >
                 {unboundSessions.length > 0 ? (
                   <>
                     <p className="px-2.5 pt-1 pb-1 text-[0.65rem] text-sidebar-item-foreground">
