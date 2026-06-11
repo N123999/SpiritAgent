@@ -65,7 +65,6 @@ import {
   AnimatedCollapseContent,
   AnimatedCollapseTrigger,
 } from "@/components/ui/animated-collapse";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Card,
   CardContent,
@@ -1200,7 +1199,7 @@ function AssistantCompactionCollapsible({
   const interactive = !autoExpanded;
 
   return (
-    <Collapsible
+    <AnimatedCollapse
       open={expanded}
       onOpenChange={(open) => {
         if (!interactive) {
@@ -1210,29 +1209,26 @@ function AssistantCompactionCollapsible({
       }}
       className="min-w-0 py-0.5"
     >
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
-            interactive ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50" : "cursor-default",
-          )}
-        >
-          <CompactionLabelWithShimmer active={compactionActive} />
-          {interactive ? (
-            <ChevronRight
-              className={cn(
-                "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
-                "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
-                expanded && "rotate-90",
-              )}
-              aria-hidden
-            />
-          ) : null}
-        </button>
-      </CollapsibleTrigger>
+      <AnimatedCollapseTrigger
+        className={cn(
+          "group flex w-full min-w-0 items-center gap-1 text-left outline-none",
+          interactive ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50" : "cursor-default",
+        )}
+      >
+        <CompactionLabelWithShimmer active={compactionActive} />
+        {interactive ? (
+          <ChevronRight
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+              "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+              expanded && "rotate-90",
+            )}
+            aria-hidden
+          />
+        ) : null}
+      </AnimatedCollapseTrigger>
       {showCompactionBody ? (
-        <CollapsibleContent className="min-w-0">
+        <AnimatedCollapseContent className="min-w-0">
           <div className="overflow-hidden pt-1.5 [&_p:last-child]:mb-0 [&_ul:last-child]:mb-0 [&_ol:last-child]:mb-0 [&_blockquote:last-child]:mb-0 [&_pre:last-child]:mb-0">
             <AgentMarkdownMessage
               content={compaction}
@@ -1242,9 +1238,9 @@ function AssistantCompactionCollapsible({
               readManagedVideoPreviewUrl={readManagedVideoPreviewUrl}
             />
           </div>
-        </CollapsibleContent>
+        </AnimatedCollapseContent>
       ) : null}
-    </Collapsible>
+    </AnimatedCollapse>
   );
 }
 
