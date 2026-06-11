@@ -27,6 +27,11 @@
 
 首次启动 Desktop Host 时，会将 `apps/desktop/builtin-skills/` 下的 `git-commit`、`git-push`、`git-merge` 种子到 `%APPDATA%/SpiritAgent/skills/`（已存在则不覆盖，可自行编辑）。Git 选项卡按钮与输入框斜杠菜单一致（如 `/git-commit`），在当前会话激活对应 Skill；不再使用后台 ephemeral 会话生成提交信息。
 
+## Shell 流式执行
+
+- `run_shell_command` 的 spawn 执行与增量输出契约在 `packages/host-internal`（`shell-execution.ts`）；`agent-core` 通过 `tool-execution-output-chunk` 事件转发增量文本。
+- Desktop 将会话 tool 卡实时投影输出；CLI 经 host-bridge 接收事件但 TUI 暂不渲染 chunk（最终仍一次性展示 `tool-execution-finished` 结果）。
+
 ## Agent / LLM 约定
 
 - 发给 LLM 的模型可见文本默认统一使用英文，包括但不限于系统消息、工具定义概述、工具描述、评估文案等；除非某个机制明确要求其他语言，否则不要混入中文或中英混写，以尽量减少输出质量波动。

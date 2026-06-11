@@ -587,6 +587,17 @@ enum BridgeRuntimeEvent {
     },
     #[serde(rename = "tool-execution-finished")]
     ToolExecutionFinished { execution: BridgeToolExecution },
+    /// Incremental shell stdout/stderr while `run_shell_command` runs in the background.
+    /// CLI TUI does not render chunks yet; Desktop projects them into tool cards.
+    #[serde(rename = "tool-execution-output-chunk")]
+    ToolExecutionOutputChunk {
+        #[serde(alias = "toolCallId")]
+        tool_call_id: String,
+        #[serde(alias = "toolName")]
+        tool_name: String,
+        request: Value,
+        chunk: String,
+    },
     #[serde(rename = "context-usage-updated")]
     ContextUsageUpdated { usage: BridgeLlmTokenUsage },
 }
@@ -2504,6 +2515,8 @@ impl TsBridgeRuntime {
                 }
                 BridgeRuntimeEvent::BackgroundToolStatus { .. } => {}
                 BridgeRuntimeEvent::ContextUsageUpdated { .. } => {}
+                // TODO(cli): project tool-execution-output-chunk into TUI shell tool cards.
+                BridgeRuntimeEvent::ToolExecutionOutputChunk { .. } => {}
                 BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
                     if execution.tool_name.starts_with("todo_") {
                         continue;
@@ -3966,6 +3979,36 @@ mod tests {
                     execution.request.get("name").and_then(Value::as_str),
                     Some("run_shell_command")
                 );
+            }
+            other => panic!("unexpected event variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_execution_output_chunk_event_deserializes() {
+        let value = json!({
+            "kind": "tool-execution-output-chunk",
+            "toolCallId": "call_shell",
+            "toolName": "run_shell_command",
+            "request": {
+                "name": "run_shell_command",
+                "command": "npm install"
+            },
+            "chunk": "added 1 package\n"
+        });
+
+        let event: BridgeRuntimeEvent =
+            serde_json::from_value(value).expect("event should deserialize");
+        match event {
+            BridgeRuntimeEvent::ToolExecutionOutputChunk {
+                tool_call_id,
+                tool_name,
+                chunk,
+                ..
+            } => {
+                assert_eq!(tool_call_id, "call_shell");
+                assert_eq!(tool_name, "run_shell_command");
+                assert_eq!(chunk, "added 1 package\n");
             }
             other => panic!("unexpected event variant: {other:?}"),
         }
