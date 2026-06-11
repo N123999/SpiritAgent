@@ -727,9 +727,17 @@ test("removeInlineChipAtRemovalPoint removes skill chip on backspace", () => {
     { kind: "text", value: " " },
   ];
   const removed = removeInlineChipAtRemovalPoint(segs, { segmentIndex: 1, offset: 0 });
-  assert.deepEqual(removed?.segments, [{ kind: "text", value: " " }]);
+  assert.deepEqual(removed?.segments, [{ kind: "text", value: "" }]);
   assert.equal(removed?.caret.segmentIndex, 0);
   assert.equal(removed?.caret.offset, 0);
+});
+
+test("removeInlineChipAtRemovalPoint strips double spacer after create-rule chip", () => {
+  const removed = removeInlineChipAtRemovalPoint(
+    [{ kind: "skill", alias: "/create-rule" }, { kind: "text", value: "  " }],
+    { segmentIndex: 1, offset: 0 },
+  );
+  assert.deepEqual(removed?.segments, [{ kind: "text", value: "" }]);
 });
 
 test("syncSegmentsFromExternalValue preserves skill chip", () => {

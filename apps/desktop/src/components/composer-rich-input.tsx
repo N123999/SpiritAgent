@@ -549,10 +549,17 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           alias,
         });
         if (options?.appendTrailingSpace) {
-          ({ segments: next, caret: nextCaret } = insertSegmentAtCaret(next, nextCaret, {
-            kind: "text",
-            value: " ",
-          }));
+          const trailing = next[nextCaret.segmentIndex];
+          const chipTailAlreadySpaced =
+            trailing?.kind === "text" &&
+            isComposerPlainEmpty(trailing.value) &&
+            nextCaret.offset > 0;
+          if (!chipTailAlreadySpaced) {
+            ({ segments: next, caret: nextCaret } = insertSegmentAtCaret(next, nextCaret, {
+              kind: "text",
+              value: " ",
+            }));
+          }
         }
         commitSegments(next, nextCaret);
       },
