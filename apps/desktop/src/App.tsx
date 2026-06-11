@@ -3445,9 +3445,7 @@ export default function App() {
               onDeleteRule={runtime.deleteRule}
               onListDreamsOverview={runtime.listDreamsOverview}
               onGenerateSkillNavigate={() => {
-                setLastNonSettingsSurface("conversation");
-                setActiveSurface("conversation");
-                applySlashSuggestion("/create-skill ");
+                prefillComposerSkillChip("create-skill");
               }}
               onGenerateRuleNavigate={() => {
                 setLastNonSettingsSurface("conversation");

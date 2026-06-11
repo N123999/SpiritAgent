@@ -154,7 +154,7 @@ type SettingsViewProps = {
   onCreateRule: (request: CreateRuleRequest) => Promise<void>;
   onDeleteRule: (request: DeleteRuleRequest) => Promise<void>;
   onListDreamsOverview: () => Promise<DesktopDreamOverviewItem[]>;
-  /** Skills 页「生成 Skill」：回到主对话区并预填 `/create-skill `，后续直接写自然语言。 */
+  /** Skills 页「生成 Skill」：回到主对话区并插入 create-skill Chip，后续直接写自然语言。 */
   onGenerateSkillNavigate?: () => void;
   /** Rules 页「生成规则」：回到主对话区并预填 `/create-rule `。 */
   onGenerateRuleNavigate?: () => void;
