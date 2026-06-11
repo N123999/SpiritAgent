@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL } from "@/lib/desktop-chrome";
 import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
 import type {
@@ -429,16 +430,21 @@ export function MarketplaceView({
               <div className="flex w-full flex-col items-center gap-2">
                 <p className="text-center text-lg font-medium tracking-tight text-foreground">{t('marketplace.title')}</p>
                 <div className="flex w-full max-w-sm items-center gap-1.5">
-                  <div className="relative min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      "relative min-w-0 flex-1",
+                      DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL,
+                    )}
+                  >
                     <Search
-                      className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                      className="pointer-events-none absolute left-2 top-1/2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground"
                       aria-hidden
                     />
                     <Input
                       value={searchText}
                       onChange={(event) => setSearchText(event.target.value)}
                       placeholder={t('marketplace.searchPlaceholder')}
-                      className="h-8 pl-8 text-sm"
+                      className="h-8 rounded-none border-0 bg-transparent pl-8 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
                     />
                   </div>
                   <Button
