@@ -99,7 +99,7 @@ export function ProcessCardCollapsible({
         ) : null}
       </AnimatedCollapseTrigger>
       <AnimatedCollapseContent className="min-w-0">
-        <div className="space-y-3">
+        <div className="space-y-3 pt-6">
           {messageIndices.map((messageIndex) => {
             const message = messages[messageIndex];
             if (!message) {
