@@ -429,9 +429,9 @@ export class DesktopRuntimeEventOrchestrator {
         }
         const runningSummary =
           event.toolName === 'generate_image'
-            ? { headline: i18n.t('tool.generateImage') }
+            ? { headline: i18n.t('tool.generateImage', { context: 'running' }) }
             : event.toolName === 'generate_video'
-              ? { headline: i18n.t('tool.generateVideo') }
+              ? { headline: i18n.t('tool.generateVideo', { context: 'running' }) }
               : event.toolName === 'get_diagnostics'
                 ? diagnosticsCheckingSummary(event.request)
                 : toolCallSummaryForPhase('running', event.toolName, event.request);
