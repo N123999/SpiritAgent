@@ -33,6 +33,7 @@ import {
 import { parseShellCommand, parseShellToolResult } from "@/lib/shell-tool-display";
 import {
   shouldShowLspDiagnosticsOnToolCard,
+  toolCardFailedStatusClass,
   toolCardFileNameDetailClass,
   toolCardSecondaryTextClass,
 } from "@/lib/file-tool-lsp-diagnostics-display";
@@ -64,6 +65,13 @@ function ToolCallDetailScrollPre({ children }: { children: string }) {
 
 export type ToolSummaryDetailTone = "default" | "shell-command";
 
+export type ToolSummaryStatusSuffixTone = "filename-detail" | "failed-status";
+
+const statusSuffixToneClass: Record<ToolSummaryStatusSuffixTone, string> = {
+  "filename-detail": toolCardFileNameDetailClass,
+  "failed-status": toolCardFailedStatusClass,
+};
+
 /**
  * 短工具卡摘要灰阶：主 100% + 次级 {@link toolCardSecondaryTextClass}；
  * shell 命令另保留更浅的 {@link toolCardFileNameDetailClass}。
@@ -88,11 +96,18 @@ function ToolCallSummaryRow({
   shimmerActive?: boolean;
   detailTone?: ToolSummaryDetailTone;
 }) {
+  const { t } = useTranslation("settings");
   const editLineDelta = useMemo(() => resolveToolLineDelta(tool), [
     tool.toolName,
     tool.editLineDelta,
     tool.argsExcerpt,
   ]);
+  const statusSuffix = tool.phase === "failed" ? t("failed") : undefined;
+  const statusSuffixTone: ToolSummaryStatusSuffixTone | undefined = statusSuffix
+    ? shellSummary
+      ? "failed-status"
+      : "filename-detail"
+    : undefined;
 
   const truncateSummary = detailTone === "shell-command";
 
@@ -110,6 +125,8 @@ function ToolCallSummaryRow({
           shellSummary={shellSummary}
           shimmerActive={shimmerActive}
           detailTone={detailTone}
+          statusSuffix={statusSuffix}
+          statusSuffixTone={statusSuffixTone}
         />
       </span>
       {editLineDelta ? (
@@ -132,12 +149,16 @@ export function MinimalToolSummary({
   shellSummary,
   shimmerActive = false,
   detailTone = "default",
+  statusSuffix,
+  statusSuffixTone = "filename-detail",
 }: {
   headline: string;
   detail?: string;
   shellSummary?: ShellToolSummaryParts;
   shimmerActive?: boolean;
   detailTone?: ToolSummaryDetailTone;
+  statusSuffix?: string;
+  statusSuffixTone?: ToolSummaryStatusSuffixTone;
 }) {
   const shimmerClass = shimmerActive
     ? "spirit-thinking-shimmer-text font-medium tracking-wide"
@@ -166,6 +187,12 @@ export function MinimalToolSummary({
         <>
           {" "}
           <span className={summaryDetailToneClass[detailTone]}>{detail}</span>
+        </>
+      ) : null}
+      {statusSuffix ? (
+        <>
+          {" "}
+          <span className={statusSuffixToneClass[statusSuffixTone]}>{statusSuffix}</span>
         </>
       ) : null}
     </span>

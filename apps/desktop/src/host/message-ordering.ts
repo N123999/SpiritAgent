@@ -313,6 +313,14 @@ export function toolCallSummaryCopyForRequest(
         ...(rawPath ? { headlineDetail: truncateSummaryDetail(displayPathForListDirectory(rawPath)) } : {}),
       };
     }
+    case 'get_diagnostics': {
+      const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
+      const basename = rawPath ? displayBasename(rawPath) : '';
+      return {
+        headline: i18n.t('tool.diagnosticsChecking'),
+        ...(basename ? { headlineDetail: truncateSummaryDetail(basename) } : {}),
+      };
+    }
     case 'ask_questions': {
       const questions = Array.isArray(record.questions) ? record.questions : [];
       return {

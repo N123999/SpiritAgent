@@ -157,9 +157,8 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
       };
     }
     if (tool.phase === 'failed') {
-      // 失败时透传上游 headline（如「工具执行失败: get_diagnostics」）
       return {
-        headline,
+        headline: i18n.t('tool.diagnosticsChecking'),
         ...(snapshotDetail ? { detail: snapshotDetail } : {}),
       };
     }

@@ -10,6 +10,10 @@ export const toolCardSecondaryTextClass =
 export const toolCardFileNameDetailClass =
   'text-muted-foreground/42 dark:text-muted-foreground/45';
 
+/** 四段式 shell 卡第四段（失败状态）；相对命令段在浅/深主题下分别更深/更淡以区分层级。 */
+export const toolCardFailedStatusClass =
+  'text-muted-foreground/58 dark:text-muted-foreground/38';
+
 /** @deprecated 与 {@link toolCardFileNameDetailClass} 相同。 */
 export const toolCardMutedDetailClass = toolCardFileNameDetailClass;
 
