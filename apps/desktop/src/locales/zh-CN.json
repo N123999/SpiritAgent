@@ -464,6 +464,7 @@
     },
     "runMode": "运行方式",
     "selectModel": "选择模型",
+    "modelPickerShortcut": "选择模型（{{shortcut}}）",
     "filterModels": "筛选模型",
     "modelPickerContextTokens": "上下文：{{value}} tokens",
     "modelPickerReasoningEffort": "推理强度",

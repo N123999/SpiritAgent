@@ -71,3 +71,8 @@ export function shortcutLabel(key: string): string {
   const letter = key.toUpperCase();
   return isMacDesktopPlatform() ? `⌘${letter}` : `Ctrl+${letter}`;
 }
+
+/** Cmd/Ctrl + / shortcut label for the model picker. */
+export function modSlashShortcutLabel(): string {
+  return isMacDesktopPlatform() ? "⌘/" : "Ctrl+/";
+}

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import './lib/i18n';
 import App from './App';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { ThemeProvider } from './hooks/useTheme';
 import {
   applyClickablePointerCursorToDocument,
@@ -38,7 +39,9 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <ThemeProvider>
-      <App />
+      <TooltipProvider delayDuration={300}>
+        <App />
+      </TooltipProvider>
     </ThemeProvider>
   </StrictMode>,
 );
