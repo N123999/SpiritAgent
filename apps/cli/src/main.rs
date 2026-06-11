@@ -988,6 +988,7 @@ fn process_key_event(
             shell.clamp_cursor();
             shell.refresh_suggestions();
         }
+        KeyCode::Enter if suggestion_mode => shell.apply_selected_suggestion(),
         KeyCode::Enter
             if shell.is_file_reference_mode_active()
                 && (shell.view_model().input_suggestion_loading

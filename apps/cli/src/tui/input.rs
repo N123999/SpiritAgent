@@ -591,7 +591,15 @@ impl TuiShell {
             .cloned()
         {
             match self.current_input_suggestion_kind() {
-                Some(InputSuggestionKind::Slash) => self.set_input(selected.replacement),
+                Some(InputSuggestionKind::Slash) => {
+                    let current = self.input.value.trim_end();
+                    let replacement = selected.replacement.trim_end();
+                    if current == replacement {
+                        self.submit_input();
+                        return;
+                    }
+                    self.set_input(selected.replacement);
+                }
                 Some(InputSuggestionKind::FileReference) => {
                     if !self.replace_current_file_reference(&selected.replacement, false) {
                         return;
