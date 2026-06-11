@@ -1,10 +1,16 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { type VariantProps } from 'class-variance-authority'
 
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
+  DESKTOP_OVERLAY_LIST_GROUP_LABEL,
   DESKTOP_OVERLAY_LIST_ITEM,
   DESKTOP_OVERLAY_LIST_LIST_PADDING,
   DESKTOP_OVERLAY_LIST_LIST_GAP,
@@ -36,42 +42,6 @@ type ActionPopoverProps = {
   triggerSize?: VariantProps<typeof buttonVariants>['size']
 }
 
-type ActionPopoverItemButtonProps = {
-  disabled?: boolean
-  icon: ReactNode
-  label: string
-  title?: string
-  onClick(): void
-}
-
-function ActionPopoverItemButton({
-  disabled = false,
-  icon,
-  label,
-  title,
-  onClick,
-}: ActionPopoverItemButtonProps) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      title={title}
-      className={cn(
-        'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
-        DESKTOP_OVERLAY_LIST_ITEM,
-        'text-popover-foreground hover:bg-accent hover:text-accent-foreground',
-        'focus-visible:bg-accent focus-visible:text-accent-foreground',
-        'disabled:pointer-events-none disabled:opacity-50',
-      )}
-      onClick={onClick}
-    >
-      {icon}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
-  )
-}
-
 export function ActionPopover({
   ariaLabel,
   title,
@@ -84,22 +54,10 @@ export function ActionPopover({
   triggerVariant = 'ghost',
   triggerSize = 'icon',
 }: ActionPopoverProps) {
-  const [open, setOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  // Radix 在 trigger 的 pointerdown / click 与 outside-dismiss 之间会打架；
-  // 这里记一拍，避免手动 toggle 后又被同次 click 反向切回去。
-  const suppressTriggerClickRef = useRef(false)
-
-  const closeAndRun = (action: () => void | Promise<void>) => {
-    setOpen(false)
-    void action()
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen} modal>
-      <PopoverTrigger asChild>
+    <DropdownMenu modal>
+      <DropdownMenuTrigger asChild>
         <Button
-          ref={triggerRef}
           type="button"
           variant={triggerVariant}
           size={triggerSize}
@@ -113,26 +71,11 @@ export function ActionPopover({
             triggerClassName,
           )}
           title={title}
-          onPointerDown={(event) => {
-            if (event.button !== 0 || event.ctrlKey || disabled) {
-              return
-            }
-            suppressTriggerClickRef.current = true
-            event.preventDefault()
-            setOpen((current) => !current)
-          }}
-          onClick={(event) => {
-            if (!suppressTriggerClickRef.current) {
-              return
-            }
-            suppressTriggerClickRef.current = false
-            event.preventDefault()
-          }}
         >
           {triggerIcon}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
         align="start"
         side="top"
         sideOffset={10}
@@ -142,36 +85,31 @@ export function ActionPopover({
           DESKTOP_OVERLAY_LIST_LIST_PADDING,
           contentClassName,
         )}
-        onPointerDownOutside={(event) => {
-          const target = event.target
-          if (!(target instanceof Node)) {
-            return
-          }
-          if (triggerRef.current?.contains(target)) {
-            // 点已打开的 trigger 时，应表现为一次正常 toggle；
-            // 不要先在 pointerdown 阶段当 outside 关闭，再在 click 阶段重新打开。
-            event.preventDefault()
-          }
-        }}
       >
-        <div role="menu" aria-label={ariaLabel}>
-          {heading ? (
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{heading}</div>
-          ) : null}
-          <div className={cn('grid', DESKTOP_OVERLAY_LIST_LIST_GAP)}>
-            {items.map((item) => (
-              <ActionPopoverItemButton
-                key={item.id}
-                disabled={item.disabled}
-                icon={item.icon}
-                label={item.label}
-                title={item.title}
-                onClick={() => closeAndRun(item.onSelect)}
-              />
-            ))}
-          </div>
+        {heading ? (
+          <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>{heading}</div>
+        ) : null}
+        <div className={cn('grid', DESKTOP_OVERLAY_LIST_LIST_GAP)}>
+          {items.map((item) => (
+            <DropdownMenuItem
+              key={item.id}
+              disabled={item.disabled}
+              title={item.title}
+              className={cn(
+                'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
+                DESKTOP_OVERLAY_LIST_ITEM,
+                'text-popover-foreground',
+              )}
+              onSelect={() => {
+                void item.onSelect()
+              }}
+            >
+              {item.icon}
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </DropdownMenuItem>
+          ))}
         </div>
-      </PopoverContent>
-    </Popover>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
