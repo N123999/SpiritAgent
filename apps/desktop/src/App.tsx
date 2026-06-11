@@ -192,6 +192,7 @@ import {
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { readWorkspaceToolsWidthPx } from "@/lib/layout-prefs";
+import { resolveModelPickerToOpen } from "@/lib/model-picker-shortcut-bridge";
 import {
   isNewSessionAction,
   type ActionPaletteItem,
@@ -2264,6 +2265,26 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.key !== "/") {
+        return;
+      }
+      const picker = resolveModelPickerToOpen();
+      if (!picker) {
+        return;
+      }
+      event.preventDefault();
+      picker.open();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const [composerCursorCodeUnits, setComposerCursorCodeUnits] = useState(0);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const [fileReferenceSuggestions, setFileReferenceSuggestions] =
