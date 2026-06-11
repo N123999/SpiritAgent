@@ -1466,6 +1466,13 @@ class DesktopHostService {
     return snapshot;
   }
 
+  async abortShellCommand(toolCallId: string): Promise<DesktopSnapshot> {
+    const bundle = this.activeBundle();
+    const toolExecutor = await this.ensureToolExecutor(bundle);
+    toolExecutor.abortShellCommand(toolCallId);
+    return this.buildSnapshot();
+  }
+
   private clearSubagentViewerTarget(): void {
     this.subagentViewerTargetToolCallId = null;
   }

@@ -57,6 +57,7 @@ export type HostCommandName =
   | 'readGitWorkingTree'
   | 'readGitHistory'
   | 'abortConversation'
+  | 'abortShellCommand'
   | 'continueAssistantCompletion'
   | 'poll'
   | 'listDreamsOverview'

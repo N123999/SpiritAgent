@@ -186,6 +186,9 @@ export function createWebHostApi(): HostApi {
     abortConversation() {
       return post<DesktopSnapshot>(baseUrl, '/api/abort');
     },
+    abortShellCommand(toolCallId: string) {
+      return post<DesktopSnapshot>(baseUrl, '/api/abort-shell-command', { toolCallId });
+    },
     continueAssistantCompletion(messageId: number) {
       return post<DesktopSnapshot>(baseUrl, '/api/continue', { messageId });
     },

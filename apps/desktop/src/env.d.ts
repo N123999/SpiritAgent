@@ -95,6 +95,7 @@ declare global {
     pushGitBranch(): Promise<DesktopSnapshot>;
     refreshGitSnapshot(): Promise<DesktopSnapshot>;
     abortConversation(): Promise<DesktopSnapshot>;
+    abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
     reorderQueuedUserTurn(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;
