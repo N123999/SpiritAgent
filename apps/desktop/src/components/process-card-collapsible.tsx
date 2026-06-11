@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +19,9 @@ import { isAssistantReasoningLive } from "@/lib/conversation-thinking-ui";
 import { cn } from "@/lib/utils";
 import type { ConversationMessageSnapshot, PendingAssistantAux } from "@/types";
 
+/** One frame plus layout buffer so AnimatedCollapse can sync height before collapsing. */
+const SEAL_COLLAPSE_LAYOUT_DELAY_MS = 32;
+
 type ReadManagedImagePreview = (reference: string) => Promise<string | null>;
 type ReadManagedVideoPreview = (reference: string) => Promise<string | null>;
 
@@ -31,6 +34,7 @@ export function ProcessCardCollapsible({
   pendingAuxState,
   manualOpen,
   onManualOpenChange,
+  playSealAnimation = false,
   renderToolBlock,
   readManagedImagePreviewDataUrl,
   readManagedVideoPreviewUrl,
@@ -43,12 +47,15 @@ export function ProcessCardCollapsible({
   pendingAuxState?: PendingAssistantAux;
   manualOpen?: boolean;
   onManualOpenChange?(open: boolean): void;
+  playSealAnimation?: boolean;
   renderToolBlock: (message: ConversationMessageSnapshot, messageIndex: number) => ReactNode;
   readManagedImagePreviewDataUrl: ReadManagedImagePreview;
   readManagedVideoPreviewUrl: ReadManagedVideoPreview;
 }) {
   const { t } = useTranslation();
   const summary = formatProcessGroupSummary(t, toolCounts, messages, messageIndices);
+  const playSealOnMountRef = useRef(playSealAnimation);
+  const [autoExpanded, setAutoExpanded] = useState(() => playSealOnMountRef.current);
   const [localManualOpen, setLocalManualOpen] = useState(false);
   const manualOpenControlled = manualOpen !== undefined;
   const manualOpenValue = manualOpenControlled ? manualOpen : localManualOpen;
@@ -59,7 +66,22 @@ export function ProcessCardCollapsible({
     }
     setLocalManualOpen(open);
   };
-  const expanded = manualOpenValue;
+
+  useLayoutEffect(() => {
+    if (!playSealOnMountRef.current) {
+      return;
+    }
+    setManualOpenValue(false);
+    setAutoExpanded(true);
+    const collapseTimer = window.setTimeout(() => {
+      setAutoExpanded(false);
+    }, SEAL_COLLAPSE_LAYOUT_DELAY_MS);
+    return () => {
+      window.clearTimeout(collapseTimer);
+    };
+  }, [groupId]);
+
+  const expanded = manualOpenValue || autoExpanded;
   const interactive = sealed;
 
   if (!summary) {
@@ -73,6 +95,7 @@ export function ProcessCardCollapsible({
         if (!interactive) {
           return;
         }
+        setAutoExpanded(false);
         setManualOpenValue(open);
       }}
       className="min-w-0 py-0.5"

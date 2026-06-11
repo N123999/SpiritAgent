@@ -223,7 +223,7 @@ test('buildConversationRenderItems assigns unique group ids within one turn', ()
   if (groups[0]?.kind !== 'process-group') {
     return;
   }
-  assert.equal(groups[0].groupId, 'main:process:3-4');
+  assert.equal(groups[0].groupId, 'main:process:3');
   assert.deepEqual(groups[0].messageIndices, [3, 4]);
 });
 

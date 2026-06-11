@@ -100,12 +100,8 @@ function shouldExposeLoneThinkingAsMessage(
   );
 }
 
-function buildProcessGroupId(
-  scopeKey: string,
-  _messages: readonly ConversationMessageSnapshot[],
-  messageIndices: readonly number[],
-): string {
-  return `${scopeKey}:process:${messageIndices.join('-')}`;
+function buildProcessGroupId(scopeKey: string, runStart: number): string {
+  return `${scopeKey}:process:${runStart}`;
 }
 
 export function buildConversationRenderItems(
@@ -116,13 +112,13 @@ export function buildConversationRenderItems(
   let pendingAuxIndices: number[] = [];
   let index = 0;
 
-  const pushProcessGroup = (messageIndices: readonly number[]) => {
+  const pushProcessGroup = (messageIndices: readonly number[], runStart: number) => {
     if (messageIndices.length === 0) {
       return;
     }
     items.push({
       kind: 'process-group',
-      groupId: buildProcessGroupId(scopeKey, messages, messageIndices),
+      groupId: buildProcessGroupId(scopeKey, runStart),
       messageIndices: [...messageIndices],
       sealed: true,
       toolCounts: collectToolCountsForIndices(messages, messageIndices),
@@ -168,13 +164,13 @@ export function buildConversationRenderItems(
 
     const combinedIndices = [...pendingAuxIndices, ...messageIndices];
     pendingAuxIndices = [];
-    pushProcessGroup(combinedIndices);
+    pushProcessGroup(combinedIndices, runStart);
   }
 
   if (pendingAuxIndices.length === 1 && shouldExposeLoneThinkingAsMessage(messages, pendingAuxIndices, pendingAuxIndices[0]!)) {
     items.push({ kind: 'message', messageIndex: pendingAuxIndices[0]! });
   } else if (pendingAuxIndices.length > 0) {
-    pushProcessGroup(pendingAuxIndices);
+    pushProcessGroup(pendingAuxIndices, pendingAuxIndices[0]!);
   }
 
   return items;

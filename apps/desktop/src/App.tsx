@@ -166,6 +166,7 @@ import { ActionPickerDialog } from "@/components/action-picker-dialog";
 import { WorkspaceFilePickerDialog } from "@/components/workspace-file-picker-dialog";
 import { QueuedUserMessageHoverActions } from "@/components/queued-user-message-hover-actions";
 import { UserMessageBubble } from "@/components/user-message-bubble";
+import { useProcessSealAnimationGate } from "@/lib/process-seal-animation";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useElementBoxHeight } from "@/hooks/use-element-box-height";
 import { useSubagentViewer } from "@/hooks/useSubagentViewer";
@@ -2009,6 +2010,22 @@ export default function App() {
     () => buildConversationRenderItems(messages, conversationListScopeKey),
     [conversationListScopeKey, messages],
   );
+  const conversationViewKey = `${composerSessionKey.trim() || "__no-session__"}:${conversationListScopeKey}`;
+  const conversationPendingAuxState = subagentViewActive
+    ? snapshot?.subagentViewer?.pendingAuxState
+    : compactionDemo.active
+      ? compactionDemo.pendingAuxState
+      : snapshot?.conversation.pendingAuxState;
+  const shouldPlayProcessSealAnimation = useProcessSealAnimationGate({
+    conversationViewKey,
+    renderItems: conversationRenderItems,
+    subagentViewActive,
+    compactionDemoActive: compactionDemo.active,
+    isBusy: snapshot?.conversation.isBusy,
+    busyAction: runtime.busyAction,
+    pendingAuxState: conversationPendingAuxState,
+    sessionMessages,
+  });
   const [processGroupManualOpen, setProcessGroupManualOpen] = useState<Record<string, boolean>>({});
   const turnContinue = useMemo(
     () => (compactionDemo.active || subagentViewActive ? undefined : resolveTurnContinuePresentation(messages)),
@@ -2017,11 +2034,6 @@ export default function App() {
   const isEmptySession = !compactionDemo.active && !subagentViewActive && sessionMessages.length === 0;
   /** 仅空会话展示工作区/分支等待选控件；有消息后隐藏（含无工作区绑定会话）。 */
   const showWorkspaceBindingControls = isEmptySession;
-  const conversationPendingAuxState = subagentViewActive
-    ? snapshot?.subagentViewer?.pendingAuxState
-    : compactionDemo.active
-      ? compactionDemo.pendingAuxState
-      : snapshot?.conversation.pendingAuxState;
   const [conversationListRemountEpoch, setConversationListRemountEpoch] = useState(0);
   const prevSessionMessageCountRef = useRef(sessionMessages.length);
 
@@ -3583,6 +3595,7 @@ export default function App() {
                                     sealed={renderItem.sealed}
                                     toolCounts={renderItem.toolCounts}
                                     pendingAuxState={conversationPendingAuxState}
+                                    playSealAnimation={shouldPlayProcessSealAnimation(renderItem.groupId)}
                                     manualOpen={processGroupManualOpen[renderItem.groupId]}
                                     onManualOpenChange={(open) => {
                                       setProcessGroupManualOpen((current) => ({
