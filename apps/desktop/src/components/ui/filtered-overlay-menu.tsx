@@ -101,6 +101,9 @@ export function FilteredOverlayMenu({
         className={contentClasses}
         onOpenAutoFocus={focusFilterInput}
         onEntryFocus={focusFilterInput}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
       >
         {showFilter ? (
           <div className={DESKTOP_OVERLAY_LIST_FILTER_HEADER}>

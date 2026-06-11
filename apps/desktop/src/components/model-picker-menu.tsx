@@ -126,12 +126,14 @@ export function ModelPickerMenu({
   const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState("");
+  const [triggerHovered, setTriggerHovered] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const registrationIdRef = useRef<string | null>(null);
   const reactId = useId();
 
   const isControlled = openProp !== undefined;
   const modelMenuOpen = isControlled ? openProp : internalOpen;
+  const tooltipOpen = triggerHovered && !modelMenuOpen && !disabled;
   const setModelMenuOpen = useCallback(
     (next: boolean) => {
       if (!isControlled) {
@@ -190,6 +192,12 @@ export function ModelPickerMenu({
     };
   }, [setModelMenuOpen]);
 
+  useEffect(() => {
+    if (modelMenuOpen) {
+      setTriggerHovered(false);
+    }
+  }, [modelMenuOpen]);
+
   const handleTriggerFocus = useCallback(() => {
     const id = registrationIdRef.current;
     if (id) {
@@ -216,7 +224,7 @@ export function ModelPickerMenu({
         onFilterChange={setModelFilter}
         filterPlaceholder={t("app.filterModels")}
         trigger={
-          <Tooltip>
+          <Tooltip open={tooltipOpen}>
             <TooltipTrigger asChild>
               <FilteredOverlayMenuTrigger asChild>
                 <button
@@ -224,6 +232,8 @@ export function ModelPickerMenu({
                   aria-label={t("app.selectModel")}
                   disabled={disabled}
                   onFocus={handleTriggerFocus}
+                  onPointerEnter={() => setTriggerHovered(true)}
+                  onPointerLeave={() => setTriggerHovered(false)}
                   className={cn(
                     "inline-flex h-7 min-w-0 max-w-full items-center gap-0.5 rounded-md border-0 bg-transparent px-1 text-left text-xs font-medium text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50",
                     instantHoverMotionClass,
