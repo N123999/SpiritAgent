@@ -40,11 +40,11 @@ export const DESKTOP_GIT_ACTION_MENU_TRIGGER = cn(
 );
 
 /**
- * 浮层菜单密度：长列表（模型/工作区 FilteredOverlayMenu）vs 短列表（Dropdown/ActionPopover）。
- * 代码常量用 LIST / SHORT；勿与「项数多少」混为一谈。
+ * 浮层菜单密度：统一使用 LIST 密度（text-xs / py-2），与模型 / 工作区选择器对齐。
+ * SHORT 系列仅保留给仍需要 text-sm 密度的局部场景。
  */
 
-/** 短列表：轻外壳，与 ActionPopover 一致 */
+/** 短列表：轻外壳（仅局部场景使用） */
 export const DESKTOP_OVERLAY_SHORT_SHELL = "rounded-lg shadow-md ring-0";
 
 export const DESKTOP_OVERLAY_SHORT_CONTENT = cn(
@@ -77,6 +77,12 @@ export const DESKTOP_OVERLAY_LIST_CONTENT = "max-h-none overflow-hidden p-0 text
 
 export const DESKTOP_OVERLAY_LIST_SHELL = "min-w-0 rounded-lg shadow-md ring-0";
 
+/** Dropdown 基元：长列表壳 + popover 面（密度对齐模型 / 工作区选择器） */
+export const DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE = cn(
+  DESKTOP_OVERLAY_LIST_SHELL,
+  "border border-border/80 bg-popover p-0 text-xs text-popover-foreground shadow-md backdrop-blur-sm",
+);
+
 export const DESKTOP_OVERLAY_LIST_WIDTH =
   "w-max min-w-[max(11rem,var(--radix-dropdown-menu-trigger-width))] max-w-[min(19rem,calc(100vw-1.25rem))]";
 
@@ -99,10 +105,12 @@ export const DESKTOP_OVERLAY_LIST_WORKSPACE_SCROLL_AREA =
 
 export const DESKTOP_OVERLAY_LIST_LIST_PADDING = "p-1 pr-1.5";
 
+export const DESKTOP_OVERLAY_LIST_LIST_GAP = "gap-0.5";
+
 export const DESKTOP_OVERLAY_LIST_GROUP_LABEL =
   "px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground";
 
-export const DESKTOP_OVERLAY_LIST_ITEM = "px-2 py-2";
+export const DESKTOP_OVERLAY_LIST_ITEM = "px-2 py-1.5";
 
 /** 长列表底部单行操作（添加工作区等），密度对齐 LIST 而非 Dropdown 默认 SHORT */
 export const DESKTOP_OVERLAY_LIST_ACTION_ITEM =
@@ -115,11 +123,11 @@ export const DESKTOP_OVERLAY_LIST_ITEM_SECONDARY =
   "truncate text-[11px] text-muted-foreground";
 
 export const DESKTOP_OVERLAY_LIST_SUB_TRIGGER =
-  "items-center gap-1.5 px-2.5 py-2 pr-2 text-xs";
+  "items-center gap-1.5 px-2.5 py-1.5 pr-2 text-xs";
 
 /** 工作区选择器全高面板 */
 export const DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL =
-  "flex h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-[min(24rem,calc(100vw-1.25rem))] flex-col overflow-hidden p-0 text-xs";
+  "flex h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-[min(24rem,calc(100vw-1.25rem))] max-w-[min(19rem,calc(100vw-1.25rem))] flex-col overflow-hidden p-0 text-xs";
 
 /** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）滚动视口高度 */
 export const DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT =

@@ -3,8 +3,7 @@ import { Check, ChevronRight } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import {
-  DESKTOP_OVERLAY_SHORT_DROPDOWN_SURFACE,
-  DESKTOP_OVERLAY_SHORT_ITEM,
+  DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
 } from "@/lib/desktop-chrome";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
@@ -38,7 +37,7 @@ function DropdownMenuSubTrigger({
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
       className={cn(
-        "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       {...props}
@@ -62,7 +61,7 @@ function DropdownMenuSubContent({
         className={cn(
           radixAnchoredOverlayMotion("dropdown-menu"),
           "spirit-scroll z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-32 overflow-y-auto overflow-x-hidden",
-          DESKTOP_OVERLAY_SHORT_DROPDOWN_SURFACE,
+          DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
           className,
         )}
         {...props}
@@ -84,7 +83,7 @@ function DropdownMenuContent({
         className={cn(
           radixAnchoredOverlayMotion("dropdown-menu"),
           "spirit-scroll z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-32 overflow-y-auto overflow-x-hidden",
-          DESKTOP_OVERLAY_SHORT_DROPDOWN_SURFACE,
+          DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
           className,
         )}
         {...props}
@@ -101,8 +100,7 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-sm outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
-        DESKTOP_OVERLAY_SHORT_ITEM,
+        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
         className,
       )}
       {...props}
@@ -121,7 +119,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       checked={checked}
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none",
+        "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pr-2 pl-8 text-xs outline-none",
         "focus:bg-accent focus:text-accent-foreground",
         "data-disabled:pointer-events-none data-disabled:opacity-50",
         className,

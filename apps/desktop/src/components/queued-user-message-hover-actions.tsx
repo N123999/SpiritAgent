@@ -8,10 +8,10 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import {
-  DESKTOP_OVERLAY_SHORT_ITEM,
-  DESKTOP_OVERLAY_SHORT_LIST_GAP,
-  DESKTOP_OVERLAY_SHORT_LIST_PADDING,
-  DESKTOP_OVERLAY_SHORT_SHELL,
+  DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
+  DESKTOP_OVERLAY_LIST_ITEM,
+  DESKTOP_OVERLAY_LIST_LIST_GAP,
+  DESKTOP_OVERLAY_LIST_LIST_PADDING,
 } from '@/lib/desktop-chrome';
 import { cn } from '@/lib/utils';
 
@@ -40,7 +40,7 @@ function QueueActionButton({ disabled = false, icon, label, onClick }: QueueActi
       disabled={disabled}
       className={cn(
         'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
-        DESKTOP_OVERLAY_SHORT_ITEM,
+        DESKTOP_OVERLAY_LIST_ITEM,
         'text-popover-foreground hover:bg-accent hover:text-accent-foreground',
         'focus-visible:bg-accent focus-visible:text-accent-foreground',
         'disabled:pointer-events-none disabled:opacity-50',
@@ -73,12 +73,12 @@ export function QueuedUserMessageHoverActions({
         side="left"
         align="end"
         sideOffset={8}
-        className={cn(DESKTOP_OVERLAY_SHORT_SHELL, 'w-44 p-0')}
+        className={cn(DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE, 'w-44 p-0')}
         aria-label={t('queue.actionsAria')}
       >
         <div
           role="menu"
-          className={cn('flex flex-col', DESKTOP_OVERLAY_SHORT_LIST_PADDING, DESKTOP_OVERLAY_SHORT_LIST_GAP)}
+          className={cn('flex flex-col', DESKTOP_OVERLAY_LIST_LIST_PADDING, DESKTOP_OVERLAY_LIST_LIST_GAP)}
         >
           <QueueActionButton
             disabled={busy || !canMoveUp}
