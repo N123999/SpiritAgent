@@ -151,6 +151,56 @@ test('getToolCallSummaryParts: run_shell_command default headline re-translates'
   }
 });
 
+test('getToolCallSummaryParts: read_file SKILL.md uses skill folder and use verb', async () => {
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      getToolCallSummaryParts({
+        toolName: 'read_file',
+        phase: 'running',
+        headline: '使用',
+        headlineDetail: 'foo',
+        argsExcerpt: '{"path":"skills/foo/SKILL.md"}',
+        detailLines: [],
+      }),
+      { headline: 'Using', detail: 'foo' },
+    );
+    assert.deepEqual(
+      getToolCallSummaryParts({
+        toolName: 'read_file',
+        phase: 'succeeded',
+        headline: '使用',
+        headlineDetail: 'git-commit',
+        argsExcerpt: '{"path":"skills/git-commit/SKILL.md"}',
+        detailLines: [],
+      }),
+      { headline: 'Used', detail: 'git-commit' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
+test('getToolCallSummaryParts: read_file SKILL.md re-translates from stored Chinese headline', async () => {
+  const tool = {
+    toolName: 'read_file',
+    phase: 'running',
+    headline: '使用',
+    headlineDetail: 'git-commit',
+    detailLines: [],
+  };
+
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(getToolCallSummaryParts(tool), {
+      headline: 'Using',
+      detail: 'git-commit',
+    });
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
 test('getToolCallSummaryParts: legacy Chinese "查看" headline still parsed', () => {
   assert.deepEqual(
     getToolCallSummaryParts({

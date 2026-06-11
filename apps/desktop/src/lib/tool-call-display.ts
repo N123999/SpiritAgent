@@ -5,6 +5,15 @@ import {
   shellExpandableDetailLines,
   shellHasExpandableContent,
 } from '@/lib/shell-tool-display';
+import {
+  LEGACY_READ_FILE_HEADLINE,
+  lineRangeForReadFile,
+  parseReadFilePathFromToolSnapshot,
+  parseReadFileRequestRecordFromArgsExcerpt,
+  readFileDisplayBase,
+  readFileVerbKey,
+  storedReadFileHeadlineUsesSkillVerb,
+} from '@/lib/read-file-skill-display';
 import { phaseToVerbContext } from '@/lib/tool-verb-context';
 import type { ToolBlockSnapshot } from '@/types';
 
@@ -27,8 +36,6 @@ const RESPONSES_BUILT_IN_TOOL_NAMES = new Set([
   'code_interpreter',
 ]);
 
-const LEGACY_READ_FILE_HEADLINE = /^(?:查看|View(?:ing|ed)?)\u002e?\s+(.+)$/u;
-
 /**
  * Direct mapping from toolName to i18n verb key.
  * Used by the renderer to re-translate headlines at render time so that
@@ -38,7 +45,6 @@ const TOOL_VERB_KEY_MAP: Record<string, string> = {
   create_file: 'tool.create',
   edit_file: 'tool.edit',
   delete_file: 'tool.delete',
-  read_file: 'tool.view',
   grep: 'tool.search',
   glob: 'tool.match',
   web_fetch: 'tool.fetch',
@@ -125,16 +131,51 @@ function countDiagnosticsIssues(outputExcerpt: string | undefined): number {
     .length;
 }
 
+function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts {
+  const ctx = phaseToVerbContext(tool.phase);
+  const tOpts = ctx ? { context: ctx } : {};
+  const snapshotDetail = tool.headlineDetail?.trim();
+  const rawPath = parseReadFilePathFromToolSnapshot(tool);
+
+  if (rawPath) {
+    const argsRecord = parseReadFileRequestRecordFromArgsExcerpt(tool.argsExcerpt);
+    const base = readFileDisplayBase(rawPath, i18n.t('tool.file'));
+    const lineRange = argsRecord
+      ? lineRangeForReadFile(argsRecord.start_line, argsRecord.end_line)
+      : '';
+    const computedDetail = `${base}${lineRange}`.trim();
+    return {
+      headline: i18n.t(readFileVerbKey(rawPath), tOpts),
+      ...((computedDetail || snapshotDetail) ? { detail: computedDetail || snapshotDetail } : {}),
+    };
+  }
+
+  if (!snapshotDetail) {
+    const legacy = LEGACY_READ_FILE_HEADLINE.exec(tool.headline.trim());
+    if (legacy) {
+      const legacyPath = legacy[1].trim();
+      return {
+        headline: i18n.t(readFileVerbKey(legacyPath), tOpts),
+        detail: legacyPath,
+      };
+    }
+  }
+
+  const verbKey = storedReadFileHeadlineUsesSkillVerb(tool.headline)
+    ? 'tool.use'
+    : 'tool.view';
+  return {
+    headline: i18n.t(verbKey, tOpts),
+    ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+  };
+}
+
 export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts {
   const headline = tool.headline.trim();
   const snapshotDetail = tool.headlineDetail?.trim();
 
-  if (tool.toolName === 'read_file' && !snapshotDetail) {
-    const legacy = LEGACY_READ_FILE_HEADLINE.exec(headline);
-    if (legacy) {
-      const ctx = phaseToVerbContext(tool.phase);
-      return { headline: i18n.t('tool.view', ctx ? { context: ctx } : {}), detail: legacy[1] };
-    }
+  if (tool.toolName === 'read_file') {
+    return readFileToolSummaryParts(tool);
   }
 
   if (tool.toolName === 'run_shell_command') {

@@ -76,3 +76,67 @@ export function parseReadFilePathFromToolSnapshot(
 export function readFileVerbKey(path: string): 'tool.use' | 'tool.view' {
   return isSkillMarkdownPath(path) ? 'tool.use' : 'tool.view';
 }
+
+export function readFileDisplayBase(path: string, emptyLabel: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return emptyLabel;
+  }
+  if (isSkillMarkdownPath(trimmed)) {
+    return skillFolderBasename(trimmed);
+  }
+
+  const normalized = normalizePath(trimmed);
+  const absolute = normalized.startsWith('/') || /^[A-Za-z]:\//u.test(normalized);
+  if (!absolute) {
+    return normalized;
+  }
+  return pathBasename(normalized);
+}
+
+function positiveLineNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
+export function lineRangeForReadFile(startLine: unknown, endLine: unknown): string {
+  const start = positiveLineNumber(startLine);
+  const end = positiveLineNumber(endLine);
+  if (start !== undefined && end !== undefined) {
+    return ` ${start} - ${end}`;
+  }
+  if (start !== undefined) {
+    return ` ${start} -`;
+  }
+  if (end !== undefined) {
+    return ` 1 - ${end}`;
+  }
+  return '';
+}
+
+export function parseReadFileRequestRecordFromArgsExcerpt(
+  argsExcerpt: string | undefined,
+): Record<string, unknown> | undefined {
+  const excerpt = argsExcerpt?.trim();
+  if (!excerpt) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(excerpt) as Record<string, unknown>;
+    return typeof parsed === 'object' && parsed !== null ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const STORED_READ_FILE_USE_HEADLINES = new Set([
+  '使用',
+  'Use',
+  'Using',
+  'Used',
+]);
+
+export function storedReadFileHeadlineUsesSkillVerb(headline: string): boolean {
+  return STORED_READ_FILE_USE_HEADLINES.has(headline.trim());
+}
