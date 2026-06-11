@@ -13,6 +13,12 @@ import {
 } from '@spirit-agent/core';
 
 import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js';
+import {
+  isSkillMarkdownPath,
+  parseReadFilePathFromRequest,
+  readFileVerbKey,
+  skillFolderBasename,
+} from '../lib/read-file-skill-display.js';
 import { phaseToVerbContext } from '../lib/tool-verb-context.js';
 import {
   hasActiveRunSubagentToolInMessages,
@@ -1025,17 +1031,15 @@ function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase'
   }
 
   const record = request as Record<string, unknown>;
-  const rawPath = typeof record.path === 'string'
-    ? record.path
-    : typeof record.filePath === 'string'
-      ? record.filePath
-      : '';
-  const displayPath = displayPathForReadFile(rawPath);
+  const rawPath = parseReadFilePathFromRequest(request);
+  const displayPath = isSkillMarkdownPath(rawPath)
+    ? skillFolderBasename(rawPath)
+    : displayPathForReadFile(rawPath);
   const lineRange = lineRangeForReadFile(record.start_line, record.end_line);
   const detail = `${displayPath}${lineRange}`.trim();
 
   return {
-    headline: i18n.t('tool.view', tOpts),
+    headline: i18n.t(readFileVerbKey(rawPath), tOpts),
     ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
   };
 }

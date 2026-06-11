@@ -293,6 +293,33 @@ test('toolCallSummaryForPhase: get_diagnostics failed uses checking headline and
   );
 });
 
+test('toolCallSummaryForPhase: read_file SKILL.md uses skill folder name and use verb', async () => {
+  assert.deepEqual(
+    toolCallSummaryForPhase('succeeded', 'read_file', {
+      path: 'skills/git-commit/SKILL.md',
+    }),
+    { headline: '使用', headlineDetail: 'git-commit' },
+  );
+
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      toolCallSummaryForPhase('running', 'read_file', {
+        path: 'skills/git-commit/SKILL.md',
+      }),
+      { headline: 'Using', headlineDetail: 'git-commit' },
+    );
+    assert.deepEqual(
+      toolCallSummaryForPhase('succeeded', 'read_file', {
+        path: 'skills/git-commit/SKILL.md',
+      }),
+      { headline: 'Used', headlineDetail: 'git-commit' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
 test('toolCallSummaryForPhase: English read_file uses Viewed in succeeded phase', async () => {
   await i18n.changeLanguage('en');
   try {
