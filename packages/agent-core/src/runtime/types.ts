@@ -166,6 +166,13 @@ export type RuntimeEvent<ToolRequest> =
       execution: RuntimeToolExecution<ToolRequest>;
     }
   | {
+      kind: 'tool-execution-output-chunk';
+      toolCallId: string;
+      toolName: string;
+      request: ToolRequest;
+      chunk: string;
+    }
+  | {
       kind: 'context-usage-updated';
       usage: LlmTokenUsage;
     };

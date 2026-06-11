@@ -122,6 +122,9 @@ export function mapRuntimeEventToUpdate(
       // represent a full-text replacement. Skip to avoid duplicate content.
       return undefined;
 
+    case 'tool-execution-output-chunk':
+      return undefined;
+
     case 'background-tool-status':
       return {
         sessionId,

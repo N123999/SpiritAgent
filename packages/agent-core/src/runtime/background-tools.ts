@@ -107,8 +107,22 @@ export function startBackgroundToolExecutionAsync<
   };
   runtime.pendingBackgroundToolExecution = pending;
 
+  const requestForExecution = runtime.options.toolExecutor.attachRequestMetadata?.(request, {
+    toolCallId,
+    toolName,
+    onOutputChunk: (chunk) => {
+      runtime.emitEvent({
+        kind: 'tool-execution-output-chunk',
+        toolCallId,
+        toolName,
+        request,
+        chunk,
+      });
+    },
+  }) ?? request;
+
   void runtime.options.toolExecutor
-    .execute(request)
+    .execute(requestForExecution)
     .then((output) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
         pending.output = output;
@@ -153,8 +167,21 @@ export function startManualBackgroundToolExecution<
   };
   runtime.pendingBackgroundToolExecution = pending;
 
+  const requestForExecution = runtime.options.toolExecutor.attachRequestMetadata?.(request, {
+    toolName,
+    onOutputChunk: (chunk) => {
+      runtime.emitEvent({
+        kind: 'tool-execution-output-chunk',
+        toolCallId: `manual:${toolName}`,
+        toolName,
+        request,
+        chunk,
+      });
+    },
+  }) ?? request;
+
   void runtime.options.toolExecutor
-    .execute(request)
+    .execute(requestForExecution)
     .then((output) => {
       if (runtime.pendingBackgroundToolExecution === pending) {
         pending.output = output;

@@ -565,6 +565,8 @@ export interface ToolRequestExecutionMetadata {
   subagentSessionId?: string;
   subagentTitle?: string;
   userInitiated?: boolean;
+  /** In-process only; not serialized across host bridge IPC. */
+  onOutputChunk?: (chunk: string) => void;
 }
 
 export interface ToolExecutor<

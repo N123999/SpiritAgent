@@ -1170,10 +1170,16 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   }
 
   shouldExecuteInBackground(request: HostToolRequest<QuestionSpec>): boolean {
+    if (request.name === 'run_shell_command') {
+      return true;
+    }
     return request.name === 'extension_tool' && request.execution_mode === 'background';
   }
 
   backgroundStatusText(request: HostToolRequest<QuestionSpec>): string | undefined {
+    if (request.name === 'run_shell_command') {
+      return `Shell: ${request.command}`;
+    }
     if (request.name !== 'extension_tool' || request.execution_mode !== 'background') {
       return undefined;
     }
