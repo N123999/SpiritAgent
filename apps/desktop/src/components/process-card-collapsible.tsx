@@ -45,7 +45,7 @@ export function ProcessCardCollapsible({
 }) {
   const { t } = useTranslation();
   const summary = formatProcessSummary(t, toolCounts);
-  const autoExpanded = !sealed;
+  const [autoExpanded, setAutoExpanded] = useState(!sealed);
   const [localManualOpen, setLocalManualOpen] = useState(false);
   const manualOpenControlled = manualOpen !== undefined;
   const manualOpenValue = manualOpenControlled ? manualOpen : localManualOpen;
@@ -59,6 +59,18 @@ export function ProcessCardCollapsible({
   const prevAutoExpandedRef = useRef(autoExpanded);
   const expanded = autoExpanded || manualOpenValue;
   const interactive = !autoExpanded;
+
+  useEffect(() => {
+    if (!sealed) {
+      setAutoExpanded(true);
+      return;
+    }
+    setAutoExpanded(true);
+    const frame = requestAnimationFrame(() => {
+      setAutoExpanded(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [groupId, sealed]);
 
   useEffect(() => {
     if (prevAutoExpandedRef.current && !autoExpanded) {

@@ -1,7 +1,12 @@
 import { useEffect, type RefObject } from "react";
 
 /** 与 `styles.css` keyframes 名称一致 */
-const COLLAPSIBLE_ANIMATION_NAMES = new Set(["collapsible-down", "collapsible-up"]);
+const COLLAPSIBLE_ANIMATION_NAMES = new Set([
+  "collapsible-down",
+  "collapsible-up",
+  "spirit-collapsible-down",
+  "spirit-collapsible-up",
+]);
 
 type ScrollEdge = "top" | "bottom" | "middle";
 
@@ -85,7 +90,7 @@ function effectiveContentSize(
   for (const session of sessions) {
     const animHeight = session.target.getBoundingClientRect().height;
     const projected = session.startScrollHeight + (animHeight - session.startAnimHeight);
-    if (session.animationName === "collapsible-up") {
+    if (session.animationName === "collapsible-up" || session.animationName === "spirit-collapsible-up") {
       effective = Math.min(effective, projected);
     } else {
       effective = Math.max(effective, projected);
