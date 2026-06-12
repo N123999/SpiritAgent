@@ -66,7 +66,7 @@ test('getToolCallSummaryParts: legacy English "Viewing" headline parsed correctl
         headline: 'Viewing src/App.tsx',
         detailLines: [],
       }),
-      { headline: 'Viewed', detail: 'src/App.tsx' },
+      { headline: 'Read', detail: 'src/App.tsx' },
     );
     assert.deepEqual(
       getToolCallSummaryParts({
@@ -75,7 +75,7 @@ test('getToolCallSummaryParts: legacy English "Viewing" headline parsed correctl
         headline: 'View src/App.tsx',
         detailLines: [],
       }),
-      { headline: 'Viewing', detail: 'src/App.tsx' },
+      { headline: 'Reading', detail: 'src/App.tsx' },
     );
   } finally {
     await i18n.changeLanguage('zh-CN');

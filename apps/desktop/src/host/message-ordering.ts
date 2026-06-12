@@ -1047,7 +1047,7 @@ function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase'
   const ctx = phase ? phaseToVerbContext(phase) : undefined;
   const tOpts = ctx ? { context: ctx } : {};
   if (!request || typeof request !== 'object') {
-    return { headline: i18n.t('tool.view', tOpts), headlineDetail: i18n.t('tool.file') };
+    return { headline: i18n.t('tool.read', tOpts), headlineDetail: i18n.t('tool.file') };
   }
 
   const record = request as Record<string, unknown>;

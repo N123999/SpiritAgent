@@ -375,16 +375,16 @@ test('toolCallSummaryForPhase: read_file SKILL.md uses skill folder name and use
   }
 });
 
-test('toolCallSummaryForPhase: English read_file uses Viewed in succeeded phase', async () => {
+test('toolCallSummaryForPhase: English read_file uses Read in succeeded phase', async () => {
   await i18n.changeLanguage('en');
   try {
     assert.deepEqual(
       toolCallSummaryForPhase('succeeded', 'read_file', { path: '/proj/src/App.tsx' }),
-      { headline: 'Viewed', headlineDetail: 'App.tsx' },
+      { headline: 'Read', headlineDetail: 'App.tsx' },
     );
     assert.deepEqual(
       toolCallSummaryForPhase('running', 'read_file', { path: '/proj/src/App.tsx' }),
-      { headline: 'Viewing', headlineDetail: 'App.tsx' },
+      { headline: 'Reading', headlineDetail: 'App.tsx' },
     );
   } finally {
     await i18n.changeLanguage('zh-CN');
