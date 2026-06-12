@@ -41,7 +41,10 @@ function parseHookStdout(stdout: string): HookCommandOutput | null {
 
 async function isExecutable(filePath: string): Promise<boolean> {
   try {
-    await access(filePath);
+    await access(filePath, constants.F_OK | constants.R_OK);
+    if (process.platform !== 'win32') {
+      await access(filePath, constants.X_OK);
+    }
     return true;
   } catch {
     return false;
