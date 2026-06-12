@@ -64,6 +64,9 @@ export type CommandPayloads = {
   refreshGitSnapshot: undefined;
   readGitWorkingTree: undefined;
   readGitHistory: { request?: ReadGitHistoryRequest };
+  getGitHubAuthStatus: undefined;
+  startGitHubOAuth: undefined;
+  disconnectGitHub: undefined;
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   addProviderModels: { request: AddProviderModelsRequest };

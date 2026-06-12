@@ -74,6 +74,9 @@ export interface HostCommandDelegate {
   listWorkspaceExplorerChildren(relativePath: string): Promise<unknown>;
   readGitWorkingTree(): Promise<unknown>;
   readGitHistory(request: NonNullable<CommandPayloads['readGitHistory']['request']>): Promise<unknown>;
+  getGitHubAuthStatus(): Promise<unknown>;
+  startGitHubOAuth(): Promise<unknown>;
+  disconnectGitHub(): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   readHostTextFile(absolutePath: string): Promise<unknown>;
@@ -162,6 +165,9 @@ const hostCommandDispatch = {
   listWorkspaceExplorerChildren: (host, payload) => host.listWorkspaceExplorerChildren(payload.relativePath),
   readGitWorkingTree: (host) => host.readGitWorkingTree(),
   readGitHistory: (host, payload) => host.readGitHistory(payload.request ?? {}),
+  getGitHubAuthStatus: (host) => host.getGitHubAuthStatus(),
+  startGitHubOAuth: (host) => host.startGitHubOAuth(),
+  disconnectGitHub: (host) => host.disconnectGitHub(),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   readHostTextFile: (host, payload) => host.readHostTextFile(payload.absolutePath),

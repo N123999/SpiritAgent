@@ -182,6 +182,11 @@ import {
   type HostWorkspaceGitCommandContext,
 } from './host-workspace-git-commands.js';
 import {
+  disconnectGitHubCommand,
+  getGitHubAuthStatusCommand,
+  startGitHubOAuthCommand,
+} from './host-github-commands.js';
+import {
   abortConversationCommand,
   abortConversationInContext,
   applyDrainedRuntimeHostEvents,
@@ -1653,6 +1658,18 @@ class DesktopHostService {
 
   async readGitHistory(request: ReadGitHistoryRequest = {}): Promise<GitHistorySnapshot> {
     return readGitHistoryCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async getGitHubAuthStatus() {
+    return getGitHubAuthStatusCommand();
+  }
+
+  async startGitHubOAuth() {
+    return startGitHubOAuthCommand();
+  }
+
+  async disconnectGitHub() {
+    return disconnectGitHubCommand();
   }
 
   async listWorkspaceFileReferenceSuggestions(
