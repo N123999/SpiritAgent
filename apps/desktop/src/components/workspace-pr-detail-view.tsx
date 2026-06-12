@@ -74,16 +74,6 @@ export function WorkspacePrDetailView({
             </span>
           </div>
         </div>
-
-        {detail.labels.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {detail.labels.map((label) => (
-              <Badge key={label} variant="outline">
-                {label}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
       </header>
 
       <section>
