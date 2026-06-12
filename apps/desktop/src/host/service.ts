@@ -71,6 +71,7 @@ import type {
   DeleteExtensionRequest,
   DeleteRuleRequest,
   DeleteMcpServerRequest,
+  DeleteHookEntryRequest,
   DesktopAutomationDetail,
   DesktopAutomationListItem,
   DesktopCreateAutomationRequest,
@@ -94,6 +95,7 @@ import type {
   DesktopSnapshot,
   FileRewindWarning,
   RunExtensionRequest,
+  SaveHookEntryRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
   PendingAssistantAux,
@@ -137,6 +139,7 @@ import {
   deleteExtensionCommand,
   deleteRuleCommand,
   deleteMcpServerCommand,
+  deleteHookEntryCommand,
   deleteSkillCommand,
   getMarketplaceExtensionDetailCommand,
   getMarketplaceExtensionReadmeCommand,
@@ -146,6 +149,7 @@ import {
   listMarketplaceExtensionsCommand,
   prepareMarketplaceExtensionInstallCommand,
   runExtensionCommand,
+  saveHookEntryCommand,
   submitSkillSlashCommand,
   updateExtensionSecretCommand,
   updateExtensionSettingsCommand,
@@ -345,6 +349,7 @@ import {
   emptyMcpStatusSnapshot,
   listDesktopMcpServersFromDisk,
 } from './mcp-config.js';
+import { listDesktopHookListItems } from './hooks.js';
 import {
   sharedMcpServiceForWorkspace,
 } from './service-mcp.js';
@@ -1009,6 +1014,14 @@ class DesktopHostService {
 
   async deleteMcpServer(request: DeleteMcpServerRequest): Promise<DesktopSnapshot> {
     return deleteMcpServerCommand(this.extensionCommandContext(), request);
+  }
+
+  async saveHookEntry(request: SaveHookEntryRequest): Promise<DesktopSnapshot> {
+    return saveHookEntryCommand(this.extensionCommandContext(), request);
+  }
+
+  async deleteHookEntry(request: DeleteHookEntryRequest): Promise<DesktopSnapshot> {
+    return deleteHookEntryCommand(this.extensionCommandContext(), request);
   }
 
   async inspectMcpServer(name: string): Promise<DesktopMcpServerInspection> {
@@ -2409,6 +2422,7 @@ class DesktopHostService {
         ?? this.toolExecutor?.mcpStatusSnapshot()
         ?? emptyMcpStatusSnapshot(),
       mcpServers: listDesktopMcpServersFromDisk(state.workspaceRoot, state.workspaceBinding),
+      hooksList: listDesktopHookListItems(state.workspaceRoot, state.workspaceBinding),
       lsp: this.lspSnapshot,
       conversation: {
         revision: activeBundle.conversationRevision,

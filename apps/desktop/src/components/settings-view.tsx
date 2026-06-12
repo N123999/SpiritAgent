@@ -5,6 +5,7 @@ import i18n from "@/lib/i18n";
 import { ChevronsUpDown, LoaderCircle, RefreshCw, Sparkles, X } from "lucide-react";
 
 import { DreamGraphCard } from "@/components/dream-graph-card";
+import { HooksSettingsPanel } from "@/components/hooks-settings-panel";
 import { FontSelect } from "@/components/font-select";
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +67,7 @@ import type {
   CreateRuleRequest,
   CreateSkillRequest,
   DeleteExtensionRequest,
+  DeleteHookEntryRequest,
   DeleteMcpServerRequest,
   DeleteRuleRequest,
   DeleteSkillRequest,
@@ -89,6 +91,7 @@ import type {
   PreviewModelCatalogEntry,
   PreviewModelsRequest,
   PreviewModelsResponse,
+  SaveHookEntryRequest,
 } from "@/types";
 import {
   PROVIDER_PICKER_ROWS,
@@ -134,6 +137,7 @@ type SettingsViewProps = {
   modelsBusy: boolean;
   modelsPreviewBusy: boolean;
   mcpsBusy: boolean;
+  hooksBusy: boolean;
   skillsBusy: boolean;
   rulesBusy: boolean;
   extensionsBusy: boolean;
@@ -153,6 +157,8 @@ type SettingsViewProps = {
   onUpdateExtensionSettings: (request: UpdateExtensionSettingsRequest) => Promise<void>;
   onUpdateExtensionSecret: (request: UpdateExtensionSecretRequest) => Promise<void>;
   onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
+  onSaveHookEntry: (request: SaveHookEntryRequest) => Promise<void>;
+  onDeleteHookEntry: (request: DeleteHookEntryRequest) => Promise<void>;
   onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
   onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
   onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
@@ -180,6 +186,7 @@ const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   agents: "settings.agents",
   extensions: "settings.extensions",
   mcps: "settings.mcps",
+  hooks: "settings.hooks",
   skills: "settings.skills",
   rules: "settings.rules",
   dreams: "settings.dreams",
@@ -4028,6 +4035,7 @@ export function SettingsView({
   modelsBusy,
   modelsPreviewBusy,
   mcpsBusy,
+  hooksBusy,
   skillsBusy,
   rulesBusy,
   extensionsBusy,
@@ -4045,6 +4053,8 @@ export function SettingsView({
   onUpdateExtensionSettings,
   onUpdateExtensionSecret,
   onDeleteMcpServer,
+  onSaveHookEntry,
+  onDeleteHookEntry,
   onInspectMcpServer,
   onCreateSkill,
   onDeleteSkill,
@@ -4068,7 +4078,7 @@ export function SettingsView({
       <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "extensions" && tab !== "agents" ? (
+            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "hooks" && tab !== "extensions" && tab !== "agents" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {t(settingsPageTitleKey[tab])}
               </h1>
@@ -4150,6 +4160,14 @@ export function SettingsView({
                 onAddMcpServer={onAddMcpServer}
                 onDeleteMcpServer={onDeleteMcpServer}
                 onInspectMcpServer={onInspectMcpServer}
+              />
+            ) : tab === "hooks" ? (
+              <HooksSettingsPanel
+                snapshot={snapshot}
+                hooksBusy={hooksBusy}
+                workspaceBinding={snapshot?.workspaceBinding ?? "none"}
+                onSaveHookEntry={onSaveHookEntry}
+                onDeleteHookEntry={onDeleteHookEntry}
               />
             ) : tab === "appearance" ? (
               <AppearanceSettingsPanel

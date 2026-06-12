@@ -15,6 +15,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteHookEntryRequest,
   DeleteRuleRequest,
   DeleteSkillRequest,
   DesktopApprovalDecision,
@@ -34,6 +35,7 @@ import type {
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   RunExtensionRequest,
+  SaveHookEntryRequest,
   SubmitGitChipRequest,
   SubmitSkillSlashRequest,
   SubmitUserTurnRequest,
@@ -69,6 +71,8 @@ export type CommandPayloads = {
   removeProviderModels: { request: RemoveProviderModelsRequest };
   addMcpServer: { request: AddMcpServerRequest };
   deleteMcpServer: { request: DeleteMcpServerRequest };
+  saveHookEntry: { request: SaveHookEntryRequest };
+  deleteHookEntry: { request: DeleteHookEntryRequest };
   inspectMcpServer: { name: string };
   importExtension: { request: ImportExtensionRequest };
   listMarketplaceExtensions: undefined;

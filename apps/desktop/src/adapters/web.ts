@@ -13,6 +13,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteHookEntryRequest,
   DeleteRuleRequest,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
@@ -26,6 +27,7 @@ import type {
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
+  SaveHookEntryRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
@@ -90,6 +92,12 @@ export function createWebHostApi(): HostApi {
     },
     deleteMcpServer(request: DeleteMcpServerRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/mcps/remove', request);
+    },
+    saveHookEntry(request: SaveHookEntryRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/hooks', request);
+    },
+    deleteHookEntry(request: DeleteHookEntryRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/hooks/remove', request);
     },
     inspectMcpServer(name: string) {
       return post<DesktopMcpServerInspection>(baseUrl, '/api/mcps/inspect', { name });

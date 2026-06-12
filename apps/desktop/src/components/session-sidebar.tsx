@@ -117,6 +117,7 @@ export type SettingsSidebarTab =
   | "models"
   | "agents"
   | "mcps"
+  | "hooks"
   | "skills"
   | "rules"
   | "extensions"
@@ -638,6 +639,11 @@ const settingsTabs: Array<{
     id: "mcps",
     labelKey: "settings.mcps",
     icon: Plug,
+  },
+  {
+    id: "hooks",
+    labelKey: "settings.hooks",
+    icon: Code2,
   },
   {
     id: "appearance",

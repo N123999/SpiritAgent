@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   deleteMcpServer(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'deleteMcpServer', { request });
   },
+  saveHookEntry(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'saveHookEntry', { request });
+  },
+  deleteHookEntry(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'deleteHookEntry', { request });
+  },
   inspectMcpServer(name: string) {
     return ipcRenderer.invoke('desktop:invoke', 'inspectMcpServer', { name });
   },

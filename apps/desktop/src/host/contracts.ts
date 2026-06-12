@@ -25,6 +25,8 @@ export type HostCommandName =
   | 'removeProviderModels'
   | 'addMcpServer'
   | 'deleteMcpServer'
+  | 'saveHookEntry'
+  | 'deleteHookEntry'
   | 'inspectMcpServer'
   | 'importExtension'
   | 'listMarketplaceExtensions'

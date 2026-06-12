@@ -15,6 +15,10 @@ import {
   inspectDesktopMcpServer,
 } from './service-mcp.js';
 import {
+  deleteDesktopHookEntry,
+  saveDesktopHookEntry,
+} from './hooks.js';
+import {
   toDesktopMarketplaceCatalogItem,
   toDesktopMarketplaceDetail,
   toDesktopMarketplacePreparedInstall,
@@ -27,6 +31,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteHookEntryRequest,
   DeleteRuleRequest,
   DeleteSkillRequest,
   DesktopMarketplaceCatalogItem,
@@ -38,6 +43,7 @@ import type {
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
+  SaveHookEntryRequest,
   SubmitSkillSlashRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
@@ -506,6 +512,38 @@ export async function submitSkillSlashCommand(
         turnSkills: [payload],
       },
     );
+  });
+}
+
+export async function saveHookEntryCommand(
+  ctx: HostExtensionCommandContext,
+  request: SaveHookEntryRequest,
+): Promise<DesktopSnapshot> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    await saveDesktopHookEntry({
+      request,
+      workspaceRoot: state.workspaceRoot,
+      workspaceBinding: state.workspaceBinding,
+    });
+    return ctx.buildSnapshot();
+  });
+}
+
+export async function deleteHookEntryCommand(
+  ctx: HostExtensionCommandContext,
+  request: DeleteHookEntryRequest,
+): Promise<DesktopSnapshot> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    await deleteDesktopHookEntry({
+      request,
+      workspaceRoot: state.workspaceRoot,
+      workspaceBinding: state.workspaceBinding,
+    });
+    return ctx.buildSnapshot();
   });
 }
 

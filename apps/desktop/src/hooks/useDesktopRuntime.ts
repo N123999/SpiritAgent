@@ -37,6 +37,7 @@ import type {
   DeleteRuleRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteHookEntryRequest,
   DeleteSkillRequest,
   DesktopApprovalDecision,
   DesktopModelReasoningEffort,
@@ -54,6 +55,7 @@ import type {
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
+  SaveHookEntryRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
@@ -89,6 +91,7 @@ type BusyAction =
   | "models"
   | "modelsPreview"
   | "mcps"
+  | "hooks"
   | "skills"
   | "rules"
   | "extensions"
@@ -1443,6 +1446,50 @@ export function useDesktopRuntime() {
     [api, applySnapshot],
   );
 
+  const saveHookEntry = useCallback(
+    async (request: SaveHookEntryRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("hooks");
+      try {
+        const next = await api.saveHookEntry(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
+  const deleteHookEntry = useCallback(
+    async (request: DeleteHookEntryRequest) => {
+      if (!api) {
+        return;
+      }
+
+      setBusyAction("hooks");
+      try {
+        const next = await api.deleteHookEntry(request);
+        applySnapshot(next);
+        setRuntimeError("");
+      } catch (error) {
+        const message = describeError(error);
+        setRuntimeError(message);
+        throw new Error(message);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot],
+  );
+
   const inspectMcpServer = useCallback(
     async (name: string): Promise<DesktopMcpServerInspection> => {
       if (!api) {
@@ -2682,6 +2729,8 @@ export function useDesktopRuntime() {
     updateExtensionSettings,
     updateExtensionSecret,
     deleteMcpServer,
+    saveHookEntry,
+    deleteHookEntry,
     deleteSkill,
     deleteRule,
     inspectMcpServer,

@@ -10,6 +10,7 @@ import type {
   CreateSkillRequest,
   DeleteExtensionRequest,
   DeleteMcpServerRequest,
+  DeleteHookEntryRequest,
   DesktopApprovalDecision,
   DesktopDreamOverviewItem,
   DesktopMarketplaceCatalogItem,
@@ -23,6 +24,7 @@ import type {
   InstallMarketplaceExtensionRequest,
   PrepareMarketplaceExtensionInstallRequest,
   RunExtensionRequest,
+  SaveHookEntryRequest,
   UpdateExtensionSecretRequest,
   UpdateExtensionSettingsRequest,
   PreviewModelsRequest,
@@ -63,6 +65,8 @@ declare global {
     removeProviderModels(provider: DesktopModelProvider): Promise<DesktopSnapshot>;
     addMcpServer(request: AddMcpServerRequest): Promise<DesktopSnapshot>;
     deleteMcpServer(request: DeleteMcpServerRequest): Promise<DesktopSnapshot>;
+    saveHookEntry(request: SaveHookEntryRequest): Promise<DesktopSnapshot>;
+    deleteHookEntry(request: DeleteHookEntryRequest): Promise<DesktopSnapshot>;
     inspectMcpServer(name: string): Promise<DesktopMcpServerInspection>;
     importExtension(request: ImportExtensionRequest): Promise<DesktopSnapshot>;
     listMarketplaceExtensions(): Promise<DesktopMarketplaceCatalogItem[]>;
