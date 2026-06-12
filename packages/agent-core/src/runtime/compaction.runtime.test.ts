@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { COMPACT_SUMMARY_PREFIX } from '../tool-agent.js';
-import { createLlmMessageContentFromText, type LlmMessage, type LlmTransport } from '../ports.js';
+import { truncateLlmHistoryForCompaction } from '../llm-tool-agent.js';
+import {
+  createLlmMessageContentFromText,
+  llmMessageTextContent,
+  type LlmMessage,
+  type LlmTransport,
+} from '../ports.js';
 import { compactHistoryImmediate, type CompactionRuntime } from './compaction.js';
 import type { AgentRuntimeOptions } from './types.js';
 
@@ -164,4 +170,82 @@ test('compactHistoryImmediate emits event when pre-compaction archive persist fa
   assert.equal(events.length, 1);
   assert.equal(events[0]?.kind, 'pre-compaction-archive-persist-failed');
   assert.match(events[0]?.error ?? '', /disk full/);
+});
+
+test('compactHistoryImmediate archives pre-truncation history and compacts post-truncation history', async () => {
+  const longToolOutput = 'x'.repeat(20_000);
+  const history: LlmMessage[] = [
+    { role: 'user', content: createLlmMessageContentFromText('investigate') },
+    {
+      role: 'assistant',
+      content: [],
+      toolCalls: [{ id: 'call-1', name: 'read_file', argumentsJson: '{}' }],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-1',
+      content: createLlmMessageContentFromText(longToolOutput),
+    },
+  ];
+
+  let compactionToolText = '';
+
+  const llmTransport: LlmTransport<undefined, TestState> = {
+    startToolAgentRound: async () => {
+      throw new Error('not used');
+    },
+    async compactHistoryManual(_config, targetHistory) {
+      const toolMessage = targetHistory.find((entry) => entry.role === 'tool');
+      compactionToolText = llmMessageTextContent(toolMessage?.content ?? []);
+      targetHistory.splice(0, targetHistory.length, {
+        role: 'system',
+        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\nsummary`),
+      });
+      return { droppedMessages: 2, beforeLength: 3, afterLength: 1 };
+    },
+    compactSummaryText: () => 'summary',
+    isContextOverflowError: () => false,
+    llmHistoryAsApiMessages: () => [],
+    llmSystemPromptsForExport: () => ({}),
+  };
+
+  const options: AgentRuntimeOptions<undefined, TestState, never> = {
+    config: undefined,
+    llmTransport,
+    truncateHistoryForCompaction: truncateLlmHistoryForCompaction,
+    toolExecutor: {
+      execute: async () => {
+        throw new Error('not used');
+      },
+    } as unknown as AgentRuntimeOptions<undefined, TestState, never>['toolExecutor'],
+    createToolAgentState: () => ({ messages: [] }),
+    appendToolResultMessage: (state) => state,
+    extractAssistantText: () => undefined,
+    persistPreCompactionHistory: async ({ archive }) => {
+      assert.equal(archive.message_count, 2);
+      assert.equal(archive.messages[0]?.role, 'user');
+      assert.equal(archive.messages[1]?.toolCalls?.[0]?.name, 'read_file');
+      return '/tmp/archive.json';
+    },
+  };
+
+  const runtime: CompactionRuntime<undefined, TestState, never> = {
+    options,
+    historyStore: history,
+    compactionTextStore: '',
+    pendingHistoryCompaction: undefined,
+    completedManualHistoryCompactionResultStore: undefined,
+    emitEvent: () => {},
+    completeTurn: () => {},
+    startToolAgentRoundAsync: () => {},
+    startStreamingRound: async () => {},
+    takeCompletedManualHistoryCompactionResult: () => undefined,
+    isBusy: () => false,
+    poll: async () => {},
+  };
+
+  await compactHistoryImmediate(runtime);
+
+  assert.match(compactionToolText, /\[tool output truncated for context retry\]/);
+  assert.ok(compactionToolText.length < longToolOutput.length);
 });
