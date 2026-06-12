@@ -7,6 +7,7 @@ import { createTurnContext, repairMissingToolResultsInHistory } from './helpers.
 import type { HookRunner } from '../hooks/types.js';
 import type { RuntimeEvent } from './types.js';
 import {
+  executeAuthorizedToolCall,
   processToolCalls,
   resolveEarlyToolCallArguments,
   resumePendingApproval,
@@ -99,6 +100,110 @@ test('resumePendingApproval deny persists tool result into historyStore', async 
     toolMessage?.content[0]?.type === 'text' ? toolMessage.content[0].text : '',
     '[denied by user] tool call rejected by user approval policy',
   );
+});
+
+test('executeAuthorizedToolCall forwards toolArgumentsJson to postToolUse hook', async () => {
+  const state = { messages: [] as Array<{ role: string; content: string }>, steps: 0 };
+  let capturedToolInput: unknown;
+  const hookRunner = createStubHookRunner(async () => ({
+    records: [],
+    denied: false,
+    permission: undefined,
+    userMessage: undefined,
+    agentMessage: undefined,
+    updatedInput: undefined,
+    additionalContexts: [],
+    followupMessage: undefined,
+  }));
+  hookRunner.runPostToolUse = async (input) => {
+    capturedToolInput = input.toolInput;
+    return {
+      records: [],
+      denied: false,
+      permission: undefined,
+      userMessage: undefined,
+      agentMessage: undefined,
+      updatedInput: undefined,
+      additionalContexts: [],
+      followupMessage: undefined,
+    };
+  };
+
+  const runtime = {
+    options: {
+      config: {},
+      hookRunner,
+      hookSessionContext: {
+        sessionId: 's1',
+        conversationPath: null,
+        workspaceRoot: '/w',
+        model: 'm',
+      },
+      llmTransport: {
+        startToolAgentRound: async () => ({
+          kind: 'success',
+          result: {
+            state,
+            step: { kind: 'final-response-ready' },
+            requestTrace: [],
+          },
+        }),
+      },
+      toolExecutor: {
+        toolDefinitionsJson: () => [],
+        requestFromFunctionCall: async (name: string, argumentsJson: string) => ({
+          name,
+          ...(JSON.parse(argumentsJson) as Record<string, unknown>),
+        }),
+        authorize: async () => ({ kind: 'allowed' as const }),
+        execute: async () => ({
+          output: { content: [], summaryText: 'ok' },
+          failed: false,
+          backgroundExecution: false,
+        }),
+      },
+      appendToolResultMessage: (currentState: typeof state) => currentState,
+      createContinuationState: (messages: unknown[]) => ({ messages, steps: 0 }),
+      extractAssistantText: () => 'done',
+    },
+    historyStore: [],
+    requestTraceStore: [],
+    pendingUserTurnStore: undefined,
+    pendingApproval: undefined,
+    pendingQuestions: undefined,
+    pendingToolAgentRound: undefined,
+    appendTrace: () => {},
+    clearStreamingUiState: () => {},
+    completeTurn: () => {},
+    emitEvent: () => {},
+    performToolExecution: async () => ({
+      output: { content: [], summaryText: 'ok' },
+      failed: false,
+      backgroundExecution: false,
+    }),
+    startBackgroundToolExecutionAsync: () => {},
+    startHistoryCompactionAsync: () => {},
+    loopEnabled: () => false,
+    queuePendingToolCallContinuation: () => {},
+    takeCompletedTurnResult: () => undefined,
+    compactHistoryImmediate: async () => ({ droppedMessages: 0, beforeLength: 0, afterLength: 0 }),
+    isBusy: () => false,
+    poll: async () => {},
+  } as unknown as TurnMachineRuntime<{}, typeof state, { name: string; path?: string }>;
+
+  await executeAuthorizedToolCall(
+    runtime,
+    'read file',
+    state,
+    { name: 'read_file', path: 'README.md' },
+    'call_read',
+    'read_file',
+    [],
+    createTurnContext(),
+    '{"path":"README.md"}',
+  );
+
+  assert.deepEqual(capturedToolInput, { path: 'README.md' });
 });
 
 test('repairMissingToolResultsInHistory inserts placeholders for orphaned tool calls', () => {
