@@ -69,6 +69,7 @@ export type ConversationListProps = {
   onRewindPickLocalFile: () => void;
   onRewindPaste: (event: import("react").ClipboardEvent<HTMLTextAreaElement>) => void;
   onComposerAgentModeChange: (mode: DesktopAgentMode) => void;
+  onForkMessage: (message: ConversationMessageSnapshot) => void;
 };
 
 export function ConversationList({
@@ -104,6 +105,7 @@ export function ConversationList({
   onRewindPickLocalFile,
   onRewindPaste,
   onComposerAgentModeChange,
+  onForkMessage,
 }: ConversationListProps) {
   const { t } = useTranslation();
 
@@ -314,6 +316,10 @@ export function ConversationList({
                 onQueueDelete={(queueId) => {
                   void runtime.removeQueuedUserTurn(queueId);
                 }}
+                conversationIsBusy={conversationIsBusy}
+                activeSessionReadOnly={activeSessionReadOnly}
+                forkBusy={runtime.busyAction === "fork"}
+                onForkMessage={onForkMessage}
               />
             );
           })}

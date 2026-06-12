@@ -492,6 +492,8 @@
     "abort": "中止",
     "send": "发送",
     "continue": "继续",
+    "forkChat": "分叉会话",
+    "messageActions": "消息操作",
     "required": "必答",
     "firstTimePairing": "首次配对",
     "pairingDescription": "输入 Desktop 设置页显示的配对码。",

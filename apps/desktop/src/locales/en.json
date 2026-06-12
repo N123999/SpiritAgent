@@ -494,6 +494,8 @@
     "abort": "Abort",
     "send": "Send",
     "continue": "Continue",
+    "forkChat": "Fork Chat",
+    "messageActions": "Message actions",
     "required": "Required",
     "firstTimePairing": "First-Time Pairing",
     "pairingDescription": "Enter the pairing code shown on the Desktop settings page.",

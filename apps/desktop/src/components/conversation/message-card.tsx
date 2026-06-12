@@ -11,6 +11,7 @@ import {
 } from "@/components/conversation/conversation-thinking-collapsibles";
 import { QueuedUserMessageHoverActions } from "@/components/queued-user-message-hover-actions";
 import { ToolCallCollapsible } from "@/components/tool-call/tool-call-collapsible";
+import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type {
   ReadLocalImagePreview,
   ReadLocalVideoPreview,
@@ -18,9 +19,8 @@ import type {
   ReadManagedVideoPreview,
   SaveLocalImageAs,
 } from "@/components/tool-call/tool-call-types";
+import { MessageTurnActions } from "@/components/conversation/message-turn-actions";
 import { UserMessageBubble } from "@/components/user-message-bubble";
-import { Button } from "@/components/ui/button";
-import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import { messageContentToRichSegments } from "@/lib/composer-segment-model";
 import {
@@ -33,6 +33,7 @@ import {
 import { conversationMessageStableId } from "@/lib/conversation-list-scope";
 import { isSubagentStatusSurfaceMessage } from "@/lib/subagent-display";
 import { cn } from "@/lib/utils";
+import { canForkMessage } from "@/lib/fork-eligibility";
 import type {
   ConversationMessageSnapshot,
   DesktopModelReasoningEffort,
@@ -87,6 +88,10 @@ export function MessageCard({
   onQueueMoveUp,
   onQueueSendNow,
   onQueueDelete,
+  conversationIsBusy = false,
+  activeSessionReadOnly = false,
+  forkBusy = false,
+  onForkMessage,
   hiddenByProcessGroup = false,
 }: {
   composerSessionKey: string;
@@ -136,6 +141,10 @@ export function MessageCard({
   onQueueMoveUp?(queueId: string): void;
   onQueueSendNow?(queueId: string): void;
   onQueueDelete?(queueId: string): void;
+  conversationIsBusy?: boolean;
+  activeSessionReadOnly?: boolean;
+  forkBusy?: boolean;
+  onForkMessage?: (message: ConversationMessageSnapshot) => void;
 }) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
@@ -163,6 +172,19 @@ export function MessageCard({
         : null,
     [rewindSelected, message.content, message.id],
   );
+  const showTurnActions =
+    !isUser
+    && Boolean(message.content.trim())
+    && !message.pending
+    && !subagentStatusSurface;
+  const canFork =
+    showTurnActions
+    && canForkMessage({
+      message,
+      conversationBusy: conversationIsBusy,
+      activeSessionReadOnly,
+      forkBusy,
+    });
   return (
     <div
       id={conversationMessageStableId(message, composerSessionKey, conversationListScopeKey)}
@@ -282,6 +304,17 @@ export function MessageCard({
           </div>
           )
         ) : null}
+        {showTurnActions ? (
+          <MessageTurnActions
+            showContinueButton={showContinueButton}
+            continueTarget={continueTarget}
+            continueBusy={continueBusy}
+            onContinue={onContinue}
+            canFork={canFork && Boolean(onForkMessage)}
+            forkBusy={forkBusy}
+            onFork={() => onForkMessage?.(message)}
+          />
+        ) : null}
         {!isUser && message.aux?.finishTaskNotice ? (
           <p className="text-xs leading-relaxed text-muted-foreground">
             {message.aux.finishTaskNotice}
@@ -297,20 +330,6 @@ export function MessageCard({
             onOpenSubagentViewer={onOpenSubagentViewer}
             onAbortShell={onAbortShell}
           />
-        ) : null}
-        {!isUser && showContinueButton && continueTarget ? (
-          <div className="ml-auto flex max-w-[min(72%,22rem)] justify-end pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 px-4"
-              onClick={() => onContinue(continueTarget)}
-              disabled={continueBusy}
-            >
-              {t('app.continue')}
-            </Button>
-          </div>
         ) : null}
       </div>
     </div>

@@ -459,6 +459,9 @@ export default function App() {
               models: conversation.models,
               onOpenSubagentViewer: subagentViewActive ? undefined : conversation.handleOpenSubagentViewer,
               onStartMessageRewind: messageRewind.startMessageRewind,
+              onForkMessage: (message) => {
+                void runtime.forkSession({ messageId: message.id });
+              },
               onSubmitMessageRewind: messageRewind.submitMessageRewind,
               onRewindRemoveLocalFileAttachment: messageRewind.removeRewindLocalFileAttachment,
               onRewindPickLocalFile: messageRewind.pickRewindLocalFileFromPalette,
