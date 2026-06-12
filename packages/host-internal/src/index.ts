@@ -7,6 +7,7 @@ export * from './dreams.js';
 export * from './automations.js';
 export * from './automation-host-tool.js';
 export * from './builtin-skills.js';
+export * from './compaction-archive.js';
 export * from './todos.js';
 export * from './extensions.js';
 export * from './file-rewind.js';
