@@ -15,6 +15,7 @@ import {
   normalizeSlashPath as normalizeAttachmentPath,
   snapshotsToComposerAttachmentViews,
 } from "@/lib/local-file-attachments";
+import { canStartMessageRewind } from "@/lib/message-rewind-eligibility";
 import type { ConversationMessageSnapshot, MessageRewindDraftState } from "@/types";
 
 type DesktopRuntime = ReturnType<typeof useDesktopRuntime>;
@@ -73,7 +74,7 @@ export function useMessageRewind({
 
   const startMessageRewind = useCallback(
     (message: ConversationMessageSnapshot, listIndex: number) => {
-      if (!messageRewindComposerEnabled || message.canRewind !== true) {
+      if (!canStartMessageRewind({ messageRewindComposerEnabled, message })) {
         return;
       }
       const segments = messageContentToRichSegments(message.content, String(message.id));

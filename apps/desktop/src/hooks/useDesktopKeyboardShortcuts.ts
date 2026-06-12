@@ -8,6 +8,10 @@ import {
   isModAltShortcutPressed,
   isModShortcutPressed,
 } from "@/lib/desktop-shell";
+import {
+  resolveModPShortcutAction,
+  shouldTriggerConversationAbortShortcut,
+} from "@/lib/desktop-keyboard-shortcut-eligibility";
 import type { AppSurface } from "@/hooks/useAppSurfaceNavigation";
 
 type DesktopRuntime = ReturnType<typeof useDesktopRuntime>;
@@ -94,37 +98,12 @@ export function useDesktopKeyboardShortcuts({
   // Physical Ctrl+C — abort the in-flight turn; composer may still have draft text.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
-        return;
-      }
-      if (event.code !== "KeyC") {
-        return;
-      }
-      if (activeSurfaceRef.current !== "conversation") {
-        return;
-      }
-      if (!conversationAbortShortcutEligibleRef.current) {
-        return;
-      }
-      const target = event.target as HTMLElement | null;
-      if (target?.closest(".workspace-shell-xterm, .xterm, .monaco-editor")) {
-        return;
-      }
       if (
-        target &&
-        (target.tagName === "TEXTAREA" ||
-          target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          (target.isContentEditable &&
-            !target.closest("[data-spirit-surface='composer-surface']")))
+        !shouldTriggerConversationAbortShortcut(event, {
+          activeSurface: activeSurfaceRef.current,
+          conversationAbortShortcutEligible: conversationAbortShortcutEligibleRef.current,
+        })
       ) {
-        return;
-      }
-      const selection = window.getSelection();
-      if (selection && !selection.isCollapsed) {
         return;
       }
       event.preventDefault();
@@ -170,14 +149,17 @@ export function useDesktopKeyboardShortcuts({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      if (!isModShortcutPressed(event) || event.key.toLowerCase() !== "p") {
+      const action = resolveModPShortcutAction({
+        defaultPrevented: event.defaultPrevented,
+        key: event.key,
+        shiftKey: event.shiftKey,
+        modPressed: isModShortcutPressed(event),
+      });
+      if (!action) {
         return;
       }
       event.preventDefault();
-      if (event.shiftKey) {
+      if (action === "action-picker") {
         setActionPickerOpen(true);
         return;
       }

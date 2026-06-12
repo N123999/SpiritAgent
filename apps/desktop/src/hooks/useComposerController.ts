@@ -39,6 +39,7 @@ import {
   skillSlashQueryKey,
   type SkillSlashSuggestion,
 } from "@/lib/skill-slash";
+import { shouldPromptGitBranchCheckoutBeforeSend } from "@/lib/composer-branch-checkout-gate";
 import type {
   DesktopSnapshot,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -560,13 +561,9 @@ export function useComposerController({
         : {}),
     };
 
-    if (
-      isEmptySession &&
-      snapshot?.git.isRepository &&
-      snapshot.git.workLocation === "local"
-    ) {
-      const selectedBranch = snapshot.git.selectedBranch ?? snapshot.git.branch;
-      if (selectedBranch && snapshot.git.branch && selectedBranch !== snapshot.git.branch) {
+    if (shouldPromptGitBranchCheckoutBeforeSend({ isEmptySession, git: snapshot?.git })) {
+      const selectedBranch = snapshot?.git.selectedBranch ?? snapshot?.git.branch;
+      if (selectedBranch) {
         pendingComposerSendRef.current = payload;
         setBranchCheckoutDialogOpen(true);
         return;
