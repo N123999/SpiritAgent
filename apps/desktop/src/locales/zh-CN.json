@@ -928,6 +928,7 @@
     "logSession": "导出当前会话 llm_history 与完整 API 请求轨迹并自动打开",
     "startImplementing": "读取当前 Spirit 计划并开始实现",
     "compact": "主动压缩当前会话上下文历史",
+    "fork": "从最新助手消息处分叉为新会话",
     "loop": "开启自主循环，直至 finish_task 或手动退格关闭",
     "plan": "只谈方案不写代码：起草实现计划，就绪后引导开始实现",
     "ask": "只读协助：查阅、解释与搜索代码库",

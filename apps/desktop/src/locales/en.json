@@ -982,6 +982,7 @@
     "logSession": "Export current session llm_history and full API request traces and open automatically",
     "startImplementing": "Read the active Spirit plan and start implementing",
     "compact": "Proactively compress current session context history",
+    "fork": "Fork the session at the latest assistant message into a new chat",
     "loop": "Enable autonomous loop until finish_task or remove the chip with Backspace",
     "plan": "Plan without editing code: draft implementation plans and guide you to start implementing when ready",
     "ask": "Read-only help: explain, browse, and search the codebase",
