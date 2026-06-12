@@ -12,6 +12,6 @@ export const GITHUB_PR_DETAIL_DEMO: GitHubPullRequestDetail = {
   draft: false,
   merged: true,
   mergeable: null,
-  labels: ["bug", "desktop"],
+  labels: [],
   body: "Reproduces when the session cookie expires during OAuth redirect.\n\n- Clear stale tokens on 401\n- Retry device flow once",
 };
