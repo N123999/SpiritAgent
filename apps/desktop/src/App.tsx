@@ -58,7 +58,6 @@ import {
   X,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   AnimatedCollapse,
@@ -72,7 +71,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,9 +94,7 @@ import {
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
 import { AutomationsView } from "@/components/automations-view";
@@ -131,6 +127,7 @@ import { SettingsView } from "@/components/settings-view";
 import { ComposerTodoCard } from "@/components/composer-todo-card";
 import { MinimalToolCallCard } from "@/components/minimal-tool-call-card";
 import { PendingApprovalCard } from "@/components/pending-approval-card";
+import { PendingQuestionsCard } from "@/components/pending-questions-card";
 import { ProcessCardCollapsible } from "@/components/process-card-collapsible";
 import { SessionChromeBreadcrumb } from "@/components/session-chrome-breadcrumb";
 import { ToolCallDiffHostProvider } from "@/components/tool-call-diff-host-context";
@@ -262,7 +259,6 @@ import {
 } from "@/lib/workspace-editor-navigation";
 import { isMarkdownPath } from "@/lib/file-picker-path";
 import type {
-  AskQuestionsQuestionSpec,
   DesktopModelReasoningEffort,
   ConversationMessageSnapshot,
   DesktopSnapshot,
@@ -1567,132 +1563,6 @@ function isGrayMetaLineMessage(message: ConversationMessageSnapshot | undefined)
   return isGrayMetaLeadingMessage(message) && isGrayMetaTrailingMessage(message);
 }
 
-function AskQuestionField({
-  draft,
-  question,
-  onCustomInputChange,
-  onMultiSelectToggle,
-  onRadioSelect,
-  onTextChange,
-}: {
-  draft: {
-    selectedOptionIndexes: number[];
-    customInput: string;
-    text: string;
-  };
-  question: AskQuestionsQuestionSpec;
-  onCustomInputChange(value: string): void;
-  onMultiSelectToggle(index: number, checked: boolean): void;
-  onRadioSelect(index: number): void;
-  onTextChange(value: string): void;
-}) {
-  const { t } = useTranslation();
-  const selectedValue =
-    question.kind === "single_select" && draft.selectedOptionIndexes.length > 0
-      ? String(draft.selectedOptionIndexes[0])
-      : undefined;
-
-  return (
-    <Card className="border-border/60 bg-background/90" size="sm">
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>{question.title}</CardTitle>
-          {question.required ? <Badge variant="secondary">{t('app.required')}</Badge> : null}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {question.kind === "single_select" ? (
-          <RadioGroup
-            value={selectedValue}
-            onValueChange={(value) => onRadioSelect(Number(value))}
-            className="gap-3"
-          >
-            {question.options.map((option, index) => {
-              const optionId = `${question.id}-single-${index}`;
-              return (
-                <Label
-                  key={optionId}
-                  htmlFor={optionId}
-                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card/70 p-4"
-                >
-                  <RadioGroupItem id={optionId} value={String(index)} />
-                  <div className="space-y-1">
-                    <span className="font-medium">{option.label}</span>
-                    {option.summary ? (
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        {option.summary}
-                      </p>
-                    ) : null}
-                  </div>
-                </Label>
-              );
-            })}
-          </RadioGroup>
-        ) : null}
-
-        {question.kind === "multi_select" ? (
-          <div className="grid gap-3">
-            {question.options.map((option, index) => {
-              const optionId = `${question.id}-multi-${index}`;
-              const checked = draft.selectedOptionIndexes.includes(index);
-              return (
-                <Label
-                  key={optionId}
-                  htmlFor={optionId}
-                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card/70 p-4"
-                >
-                  <Checkbox
-                    id={optionId}
-                    checked={checked}
-                    onCheckedChange={(next) => onMultiSelectToggle(index, next === true)}
-                  />
-                  <div className="space-y-1">
-                    <span className="font-medium">{option.label}</span>
-                    {option.summary ? (
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        {option.summary}
-                      </p>
-                    ) : null}
-                  </div>
-                </Label>
-              );
-            })}
-          </div>
-        ) : null}
-
-        {question.kind === "text" ? (
-          <div className="space-y-2">
-            <Label htmlFor={`${question.id}-text`}>
-              {question.customInputLabel ?? t('app.answer')}
-            </Label>
-            <Textarea
-              id={`${question.id}-text`}
-              value={draft.text}
-              onChange={(event) => onTextChange(event.target.value)}
-              placeholder={question.customInputPlaceholder ?? t('app.enterAnswer')}
-              className="min-h-28"
-            />
-          </div>
-        ) : null}
-
-        {question.allowCustomInput ? (
-          <div className="space-y-2">
-            <Label htmlFor={`${question.id}-custom`}>
-              {question.customInputLabel ?? t('app.customInput')}
-            </Label>
-            <Input
-              id={`${question.id}-custom`}
-              value={draft.customInput}
-              onChange={(event) => onCustomInputChange(event.target.value)}
-              placeholder={question.customInputPlaceholder ?? t('app.supplementOption')}
-            />
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
 /** Windows Electron：使用 `titleBarOverlay` + 自绘顶栏；macOS 仍走系统菜单栏 */
 function isWin32ElectronShell(): boolean {
   if (!isElectronChrome() || typeof navigator === "undefined") {
@@ -2211,6 +2081,7 @@ export default function App() {
         )
       : CONVERSATION_COMPOSER_SCROLL_BED_FALLBACK_PX;
   const pendingQuestions = runtime.pendingQuestions;
+  const showPendingQuestionsInComposer = Boolean(pendingQuestions);
   useLocalFileAttachmentPreviews(
     runtime.composerLocalFileAttachments,
     runtime.setComposerLocalFileAttachments,
@@ -4176,6 +4047,18 @@ export default function App() {
                   />
                 ) : null}
 
+                {showPendingQuestionsInComposer && pendingQuestions ? (
+                  <PendingQuestionsCard
+                    pendingQuestions={pendingQuestions}
+                    questionDrafts={runtime.questionDrafts}
+                    questionError={runtime.questionError}
+                    questionsBusy={runtime.busyAction === "questions"}
+                    onUpdateDraft={runtime.updateQuestionDraft}
+                    onSubmitQuestions={() => void runtime.submitQuestions()}
+                    onSkipQuestions={() => void runtime.skipQuestions()}
+                  />
+                ) : null}
+
                 <div className="relative">
                 <div className="relative z-10 flex flex-col">
                   {snapshot?.conversation.todos ? (
@@ -4274,11 +4157,6 @@ export default function App() {
                           usage={snapshot?.conversation.contextUsage}
                         />
                       </div>
-                      {snapshot?.conversation.pendingQuestions ? (
-                        <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
-                          {t('app.completeQuestionsAbove')}
-                        </p>
-                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -4364,94 +4242,6 @@ export default function App() {
         indexReady={workspaceFileIndex.ready}
         searchWorkspaceFiles={workspaceFileIndex.search}
       />
-
-      <Dialog open={Boolean(pendingQuestions)}>
-        <DialogContent className="max-w-4xl p-0" showCloseButton={false}>
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle>
-              {pendingQuestions?.request.title ?? t('app.needMoreQuestions')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('app.questionnaireDescription')}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="spirit-scroll max-h-[70vh] space-y-4 overflow-y-auto px-6 py-2">
-            {pendingQuestions?.request.questions.map((question) => {
-              const draft =
-                runtime.questionDrafts[question.id] ?? {
-                  selectedOptionIndexes: [],
-                  customInput: "",
-                  text: "",
-                };
-
-              return (
-                <AskQuestionField
-                  key={question.id}
-                  draft={draft}
-                  question={question}
-                  onCustomInputChange={(value) =>
-                    runtime.updateQuestionDraft(question.id, (current) => ({
-                      ...current,
-                      customInput: value,
-                    }))
-                  }
-                  onMultiSelectToggle={(index, checked) =>
-                    runtime.updateQuestionDraft(question.id, (current) => {
-                      const next = checked
-                        ? [...current.selectedOptionIndexes, index]
-                        : current.selectedOptionIndexes.filter((item) => item !== index);
-                      return {
-                        ...current,
-                        selectedOptionIndexes: Array.from(new Set(next)).sort(
-                          (left, right) => left - right,
-                        ),
-                      };
-                    })
-                  }
-                  onRadioSelect={(index) =>
-                    runtime.updateQuestionDraft(question.id, (current) => ({
-                      ...current,
-                      selectedOptionIndexes: [index],
-                    }))
-                  }
-                  onTextChange={(value) =>
-                    runtime.updateQuestionDraft(question.id, (current) => ({
-                      ...current,
-                      text: value,
-                    }))
-                  }
-                />
-              );
-            })}
-
-            {runtime.questionError ? (
-              <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-                {runtime.questionError}
-              </div>
-            ) : null}
-          </div>
-
-          <DialogFooter className="mt-0" showCloseButton={false}>
-            <Button
-              variant="outline"
-              onClick={() => void runtime.skipQuestions()}
-              disabled={runtime.busyAction === "questions"}
-            >
-              {t('app.skip')}
-            </Button>
-            <Button
-              onClick={() => void runtime.submitQuestions()}
-              disabled={runtime.busyAction === "questions"}
-            >
-              {runtime.busyAction === "questions" ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : null}
-              {t('app.submitAnswers')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={branchCheckoutDialogOpen}
