@@ -116,6 +116,8 @@ pub struct TuiShell {
     marketplace: MarketplaceState,
     cli_ui_hooks: Vec<CliUiHookView>,
     ui_runtime_state: UiRuntimeState,
+    /// Mirrors Desktop `workspaceBinding`; CLI defaults to project.
+    workspace_binding: String,
 }
 
 impl TuiShell {
@@ -206,6 +208,7 @@ impl TuiShell {
             marketplace: MarketplaceState::default(),
             cli_ui_hooks,
             ui_runtime_state: UiRuntimeState::from_terminal_query(),
+            workspace_binding: "project".to_string(),
         };
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);

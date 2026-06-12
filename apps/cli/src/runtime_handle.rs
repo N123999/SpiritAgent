@@ -312,9 +312,10 @@ impl RuntimeHandle {
 
     pub fn save_hook_entry(
         &mut self,
+        workspace_binding: Option<&str>,
         request: &crate::hooks_types::SaveHookEntryRequest,
     ) -> Result<()> {
-        self.runtime.save_hook_entry(None, request)
+        self.runtime.save_hook_entry(workspace_binding, request)
     }
 
     pub fn inspect_mcp_server(&mut self, name: &str) -> Result<McpServerInspection> {

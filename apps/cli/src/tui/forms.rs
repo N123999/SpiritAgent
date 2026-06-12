@@ -1,5 +1,13 @@
 use super::*;
 use crate::view::BottomFormView;
+use std::path::Path;
+
+fn workspace_hooks_scope_available(workspace_root: &Path, workspace_binding: &str) -> bool {
+    if workspace_binding == "none" {
+        return false;
+    }
+    workspace_root.join(".spirit").is_dir() || workspace_root.join(".git").exists()
+}
 
 #[derive(Default)]
 pub(crate) struct BottomFormUiState {
@@ -264,7 +272,10 @@ impl TuiShell {
 
         if matches!(form.kind, BottomFormKind::HookAdd) {
             match bottom_form::to_hook_save_request(form) {
-                Ok(request) => match self.runtime.save_hook_entry(&request) {
+                Ok(request) => match self
+                    .runtime
+                    .save_hook_entry(Some(self.workspace_binding.as_str()), &request)
+                {
                     Ok(()) => {
                         self.messages.push(ChatMessage {
                             role: MessageRole::Agent,
@@ -553,8 +564,10 @@ impl TuiShell {
 
     pub(super) fn open_hook_add_form(&mut self) {
         let workspace_root = self.app_paths.workspace_root();
-        let workspace_scope_available = workspace_root.join(".spirit").is_dir()
-            || workspace_root.join(".git").exists();
+        let workspace_scope_available = workspace_hooks_scope_available(
+            &workspace_root,
+            self.workspace_binding.as_str(),
+        );
         self.forms.active = Some(bottom_form::new_hook_add_form(workspace_scope_available));
         self.model_picker_active = false;
         self.language_picker_active = false;
@@ -744,5 +757,30 @@ impl TuiShell {
                 });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod hook_scope_tests {
+    use super::workspace_hooks_scope_available;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn workspace_hooks_scope_respects_none_binding() {
+        let root = std::env::temp_dir().join(format!(
+            "spirit-hook-scope-none-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".git")).expect("create .git");
+        assert!(!workspace_hooks_scope_available(&root, "none"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_hooks_scope_allows_project_with_git() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        assert!(workspace_hooks_scope_available(&root, "project"));
     }
 }
