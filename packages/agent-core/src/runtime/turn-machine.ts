@@ -705,6 +705,42 @@ export async function processToolCalls<
   return runTurnLoop(runtime, currentState, pendingUserInput, turn);
 }
 
+async function runPostToolUseForTurnExecution<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: TurnMachineRuntime<Config, State, ToolRequest, TrustTarget>,
+  turn: RuntimeTurnContext<ToolRequest>,
+  toolCallId: string,
+  toolName: string,
+  argumentsJson: string,
+  startedAt: number,
+  postHookToolInput?: JsonObject,
+): Promise<void> {
+  const execution = [...turn.toolExecutions].reverse().find(
+    (entry) => entry.toolCallId === toolCallId,
+  );
+  if (!execution) {
+    return;
+  }
+  const summaryText = typeof execution.output === 'string'
+    ? execution.output
+    : JSON.stringify(execution.output);
+  await runPostToolUseSideEffects(
+    runtime,
+    { id: toolCallId, name: toolName, argumentsJson },
+    postHookToolInput ?? toolInputFromArgumentsJson(argumentsJson),
+    {
+      summaryText,
+      content: createLlmMessageContentFromText(summaryText),
+    },
+    Math.max(0, Date.now() - startedAt),
+    execution.failed ?? false,
+  );
+}
+
 export async function executeAuthorizedToolCall<
   Config,
   State,
@@ -720,7 +756,9 @@ export async function executeAuthorizedToolCall<
   remainingCalls: ToolCallRequest[],
   turn: RuntimeTurnContext<ToolRequest>,
   toolArgumentsJson = '{}',
+  postHookToolInput?: JsonObject,
 ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
+  const startedAt = Date.now();
   const internal = await runtime.maybeExecuteInternalToolCall?.(
     pendingUserInput,
     state,
@@ -731,10 +769,18 @@ export async function executeAuthorizedToolCall<
     turn,
   );
   if (internal) {
+    await runPostToolUseForTurnExecution(
+      runtime,
+      turn,
+      toolCallId,
+      toolName,
+      toolArgumentsJson,
+      startedAt,
+      postHookToolInput,
+    );
     return internal;
   }
 
-  const startedAt = Date.now();
   const execution = await runtime.performToolExecution(request, toolName, toolCallId);
   commitToolExecutionOutput(runtime, turn, {
     toolCallId,
@@ -746,7 +792,7 @@ export async function executeAuthorizedToolCall<
   await runPostToolUseSideEffects(
     runtime,
     { id: toolCallId, name: toolName, argumentsJson: toolArgumentsJson },
-    toolInputFromArgumentsJson(toolArgumentsJson),
+    postHookToolInput ?? toolInputFromArgumentsJson(toolArgumentsJson),
     execution.output,
     Date.now() - startedAt,
     execution.failed,
