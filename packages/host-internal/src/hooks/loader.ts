@@ -30,8 +30,14 @@ export function loadHooksConfigFileAt(configPath: string): HooksConfigFile {
   if (!existsSync(configPath)) {
     return emptyHooksConfigFile();
   }
-  const content = readFileSync(configPath, 'utf8');
-  return parseHooksConfigFile(JSON.parse(content) as unknown);
+  try {
+    const content = readFileSync(configPath, 'utf8');
+    return parseHooksConfigFile(JSON.parse(content) as unknown);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Ignoring invalid hooks config at ${configPath}: ${detail}`);
+    return emptyHooksConfigFile();
+  }
 }
 
 export function loadHooksConfig(options: LoadHooksConfigOptions): LoadedHooksConfig {
