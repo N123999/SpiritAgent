@@ -3,7 +3,6 @@ import {
   type LlmMessage,
   type LlmMessageContent,
   type LlmToolCall,
-  type StoredLlmMessageArchiveEntry,
 } from './ports.js';
 
 export const PRE_COMPACTION_HISTORY_EXPORT_VERSION = 1;
@@ -54,14 +53,4 @@ export function buildPreCompactionHistoryArchive(
     message_count: messages.length,
     messages,
   };
-}
-
-export function toStoredPreCompactionHistoryMessages(
-  archive: PreCompactionHistoryArchive,
-): StoredLlmMessageArchiveEntry[] {
-  return archive.messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-    ...(message.toolCalls !== undefined ? { toolCalls: message.toolCalls } : {}),
-  }));
 }
