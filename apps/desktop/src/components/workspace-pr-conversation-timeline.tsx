@@ -1,14 +1,20 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { Check, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
+import { Check, ChevronDown, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
 
+import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { resolveGitHubAvatarUrl } from "@/lib/github-avatar-url";
 import { cn } from "@/lib/utils";
 import type {
   GitHubPullRequestConversationItem,
+  GitHubPullRequestConversationReviewThread,
+  GitHubPullRequestReviewComment,
   GitHubPullRequestReviewState,
 } from "@/types";
 
@@ -124,6 +130,94 @@ function reviewHeadlineKey(state: GitHubPullRequestReviewState): string {
   }
 }
 
+function ReviewThreadComment({
+  comment,
+}: {
+  comment: GitHubPullRequestReviewComment;
+}) {
+  const { i18n } = useTranslation();
+
+  return (
+    <div className="flex gap-2 border-t border-border/20 pt-2 first:border-t-0 first:pt-0">
+      <PrConversationTimelineAvatar login={comment.authorLogin} avatarUrl={comment.avatarUrl} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-xs font-medium text-foreground/80">@{comment.authorLogin}</span>
+          <time
+            className="text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65"
+            dateTime={comment.createdAt}
+          >
+            {formatRelativeTime(comment.createdAt, i18n.language)}
+          </time>
+        </div>
+        {comment.body ? (
+          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/75 dark:text-muted-foreground/65">
+            {comment.body}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ReviewThreadTimelineRow({ item }: { item: GitHubPullRequestConversationReviewThread }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const mounted = useCollapsibleChildMount(open);
+
+  const rootComment = item.comments[0];
+  const preview = firstLine(rootComment?.body ?? "");
+  const headline = item.path
+    ? t("workspace.prReviewThreadOnFile", { path: item.path })
+    : preview || t("workspace.prReviewThreadFallback");
+
+  return (
+    <PrConversationTimelineRow
+      node={<PrConversationTimelineNode icon={MessageSquare} />}
+      login={item.authorLogin}
+      avatarUrl={item.avatarUrl}
+      headline={headline}
+      createdAt={item.createdAt}
+    >
+      <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
+        <button
+          type="button"
+          className="group flex w-full items-center gap-1 text-left text-xs text-muted-foreground/75 hover:text-muted-foreground dark:text-muted-foreground/65"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <ChevronDown
+            className={cn(
+              "size-3 shrink-0 transition-transform duration-150",
+              open ? "rotate-180" : "rotate-0",
+            )}
+            aria-hidden
+          />
+          {open ? t("workspace.prReviewThreadCollapse") : t("workspace.prReviewThreadExpand")}
+        </button>
+        <CollapsibleContent className="mt-2 space-y-2">
+          {mounted ? (
+            <>
+              {item.path ? (
+                <p className="truncate font-mono text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
+                  {item.path}
+                  {item.line != null ? `:${item.line}` : ""}
+                </p>
+              ) : null}
+              <ReviewCommentHunkView path={item.path || "file"} diffHunk={item.diffHunk} />
+              <div className="space-y-2">
+                {item.comments.map((comment) => (
+                  <ReviewThreadComment key={comment.id} comment={comment} />
+                ))}
+              </div>
+            </>
+          ) : null}
+        </CollapsibleContent>
+      </Collapsible>
+    </PrConversationTimelineRow>
+  );
+}
+
 function ConversationTimelineItemRow({ item }: { item: GitHubPullRequestConversationItem }) {
   const { t } = useTranslation();
 
@@ -178,27 +272,11 @@ function ConversationTimelineItemRow({ item }: { item: GitHubPullRequestConversa
     );
   }
 
-  const rootComment = item.comments[0];
-  const preview = firstLine(rootComment?.body ?? "");
-  return (
-    <PrConversationTimelineRow
-      node={<PrConversationTimelineNode icon={MessageSquare} />}
-      login={item.authorLogin}
-      avatarUrl={item.avatarUrl}
-      headline={
-        item.path
-          ? t("workspace.prReviewThreadOnFile", { path: item.path })
-          : preview || t("workspace.prReviewThreadFallback")
-      }
-      createdAt={item.createdAt}
-    >
-      {preview ? (
-        <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/75 dark:text-muted-foreground/65">
-          {rootComment?.body}
-        </p>
-      ) : null}
-    </PrConversationTimelineRow>
-  );
+  if (item.kind === "reviewThread") {
+    return <ReviewThreadTimelineRow item={item} />;
+  }
+
+  return null;
 }
 
 export function PrConversationTimeline({

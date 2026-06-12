@@ -613,6 +613,8 @@
     "prReviewDismissed": "@{{login}} 驳回了 review",
     "prReviewThreadOnFile": "评论于 {{path}}",
     "prReviewThreadFallback": "留下了 review 评论",
+    "prReviewThreadExpand": "展开讨论",
+    "prReviewThreadCollapse": "收起讨论",
     "prDescriptionHeading": "描述",
     "prDraft": "草稿",
     "prOpen": "进行中",

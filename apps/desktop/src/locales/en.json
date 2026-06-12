@@ -615,6 +615,8 @@
     "prReviewDismissed": "@{{login}} dismissed a review",
     "prReviewThreadOnFile": "Comment on {{path}}",
     "prReviewThreadFallback": "Left a review comment",
+    "prReviewThreadExpand": "Show thread",
+    "prReviewThreadCollapse": "Hide thread",
     "prDescriptionHeading": "Description",
     "prDraft": "Draft",
     "prOpen": "Open",
