@@ -41,6 +41,19 @@ export function loadHooksConfigFileAt(configPath: string): HooksConfigFile {
   }
 }
 
+export function loadHooksConfigFileForMutation(configPath: string): HooksConfigFile {
+  if (!existsSync(configPath)) {
+    return emptyHooksConfigFile();
+  }
+  try {
+    const content = readFileSync(configPath, 'utf8');
+    return parseHooksConfigFile(JSON.parse(content) as unknown);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Cannot modify hooks config at ${configPath}: ${detail}`);
+  }
+}
+
 export function loadHooksConfig(options: LoadHooksConfigOptions): LoadedHooksConfig {
   const userConfigPath = hooksUserConfigPath(options.spiritDataDir);
   const user = loadHooksConfigFileAt(userConfigPath);

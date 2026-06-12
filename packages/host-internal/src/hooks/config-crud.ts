@@ -10,7 +10,7 @@ import {
   type HooksConfigFile,
 } from '@spirit-agent/core';
 
-import { loadHooksConfigFileAt } from './loader.js';
+import { loadHooksConfigFileAt, loadHooksConfigFileForMutation } from './loader.js';
 
 export type HookConfigScope = 'user' | 'workspace';
 export type HookWorkspaceBinding = 'project' | 'none';
@@ -151,7 +151,7 @@ export async function saveHookEntry(
     context.workspaceRoot,
     request.scope,
   );
-  const config = loadHooksConfigFileAt(configPath);
+  const config = loadHooksConfigFileForMutation(configPath);
   const event = request.event;
   const entries = [...(config.hooks[event] ?? [])];
   entries.push(normalizeHookDefinition(request));
@@ -170,7 +170,7 @@ export async function deleteHookEntry(
     context.workspaceRoot,
     request.scope,
   );
-  const config = loadHooksConfigFileAt(configPath);
+  const config = loadHooksConfigFileForMutation(configPath);
   const event = request.event;
   const entries = [...(config.hooks[event] ?? [])];
   if (request.index < 0 || request.index >= entries.length) {
