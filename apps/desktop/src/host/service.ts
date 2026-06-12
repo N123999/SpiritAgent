@@ -848,6 +848,7 @@ class DesktopHostService {
       messageTimeline: () => bundle.messageTimeline,
       takeNextAssistantSegmentKind: () => this.takeNextTimelineAssistantSegmentKind(bundle),
       conversationSnapshotView,
+      currentWorkspaceRoot: () => bundle.workspaceRoot,
       clearCurrentTurnSkills: () => {
         bundle.currentTurnSkills = [];
       },

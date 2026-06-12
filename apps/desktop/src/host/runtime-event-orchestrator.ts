@@ -98,6 +98,7 @@ export interface DesktopRuntimeEventOrchestratorOptions {
     usage: { inputTokens: number };
     activeModel: ContextUsageModelProfile;
   }) => void;
+  currentWorkspaceRoot?: () => string;
 }
 
 function isMcpLikeToolName(toolName: string): boolean {
@@ -117,6 +118,11 @@ export class DesktopRuntimeEventOrchestrator {
   private shellOutputSnapshotTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly options: DesktopRuntimeEventOrchestratorOptions) {}
+
+  private toolSummaryOptions() {
+    const workspaceRoot = this.options.currentWorkspaceRoot?.().trim();
+    return workspaceRoot ? { workspaceRoot } : undefined;
+  }
 
   private shouldSuppressMainTimelineChildToolSurface(toolName: string): boolean {
     if (toolName === 'run_subagent') {
@@ -449,7 +455,7 @@ export class DesktopRuntimeEventOrchestrator {
               ? { headline: i18n.t('tool.generateVideo', { context: 'running' }) }
               : event.toolName === 'get_diagnostics'
                 ? diagnosticsCheckingSummary(event.request)
-                : toolCallSummaryForPhase('running', event.toolName, event.request);
+                : toolCallSummaryForPhase('running', event.toolName, event.request, this.toolSummaryOptions());
         const runningTool: ToolBlockSnapshot = this.attachLineDelta(
           applyToolCallSummaryCopy(
             {
@@ -574,6 +580,7 @@ export class DesktopRuntimeEventOrchestrator {
         event.toolCallId,
         event.toolName,
         previewRequest,
+        this.toolSummaryOptions(),
       );
       const responsesBuiltInPhase = isResponsesBuiltIn
         ? resolveResponsesBuiltInToolStreamPhaseFromArgumentsJson(event.argumentsJson)
@@ -769,6 +776,7 @@ export class DesktopRuntimeEventOrchestrator {
         'pending-approval',
         approval.toolName,
         approval.request,
+        this.toolSummaryOptions(),
       );
       const pendingTool: ToolBlockSnapshot = this.attachLineDelta(
         applyToolCallSummaryCopy(
@@ -871,6 +879,7 @@ export class DesktopRuntimeEventOrchestrator {
               execution.failed ? 'failed' : 'succeeded',
               execution.toolName,
               execution.request,
+              this.toolSummaryOptions(),
             );
       const argsExcerpt = truncateJson(execution.request);
       const fileToolDiffArgumentsJson = FILE_DIFF_TOOL_NAMES.has(execution.toolName)
@@ -972,7 +981,7 @@ export class DesktopRuntimeEventOrchestrator {
       return;
     }
 
-    const runningSummary = toolCallSummaryForPhase('running', event.toolName, event.request);
+    const runningSummary = toolCallSummaryForPhase('running', event.toolName, event.request, this.toolSummaryOptions());
     const runningTool: ToolBlockSnapshot = this.attachLineDelta(
       applyToolCallSummaryCopy(
         {

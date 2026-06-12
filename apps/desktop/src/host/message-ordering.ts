@@ -13,6 +13,8 @@ import {
 } from '@spirit-agent/core';
 
 import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js';
+import { listDirectoryToolDisplayPath } from '@spirit-agent/host-internal/skill-paths';
+
 import {
   isSkillMarkdownPath,
   parseReadFilePathFromRequest,
@@ -182,6 +184,10 @@ export interface ToolCallSummaryCopy {
   headlineDetail?: string;
 }
 
+export type ToolCallSummaryOptions = {
+  workspaceRoot?: string;
+};
+
 const SUMMARY_DETAIL_MAX = 80;
 const SUBAGENT_TASK_PREVIEW_MAX = 48;
 
@@ -199,6 +205,7 @@ export function toolCallSummaryCopyForRequest(
   toolName: string,
   request: unknown,
   phase?: ToolBlockSnapshot['phase'],
+  options?: ToolCallSummaryOptions,
 ): ToolCallSummaryCopy | undefined {
   if (!request || typeof request !== 'object') {
     return undefined;
@@ -316,7 +323,13 @@ export function toolCallSummaryCopyForRequest(
       const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
       return {
         headline: i18n.t('tool.listDirectory', tOpts),
-        ...(rawPath ? { headlineDetail: truncateSummaryDetail(displayPathForListDirectory(rawPath)) } : {}),
+        ...(rawPath
+          ? {
+              headlineDetail: truncateSummaryDetail(
+                displayPathForListDirectory(rawPath, options?.workspaceRoot),
+              ),
+            }
+          : {}),
       };
     }
     case 'get_diagnostics': {
@@ -423,12 +436,13 @@ export function toolCallSummaryForPhase(
   phase: ToolBlockSnapshot['phase'],
   toolName: string,
   request: unknown,
+  options?: ToolCallSummaryOptions,
 ): ToolCallSummaryCopy {
   if (toolName === 'read_file') {
     return readFileSummaryCopy(request, phase);
   }
 
-  const custom = toolCallSummaryCopyForRequest(toolName, request, phase);
+  const custom = toolCallSummaryCopyForRequest(toolName, request, phase, options);
   if (custom) {
     return custom;
   }
@@ -440,8 +454,9 @@ export function headlineForToolPhase(
   phase: ToolBlockSnapshot['phase'],
   toolName: string,
   request: unknown,
+  options?: ToolCallSummaryOptions,
 ): string {
-  return toolCallSummaryForPhase(phase, toolName, request).headline;
+  return toolCallSummaryForPhase(phase, toolName, request, options).headline;
 }
 
 export function applyToolCallSummaryCopy(
@@ -987,12 +1002,16 @@ export function toolCallSummaryForStreamingPreview(
   toolCallId: string,
   toolName: string,
   request?: unknown,
+  options?: ToolCallSummaryOptions,
 ): ToolCallSummaryCopy {
   if (toolName === 'read_file') {
     return readFileSummaryCopy(request, 'running');
   }
 
-  const custom = request !== undefined ? toolCallSummaryCopyForRequest(toolName, request, 'running') : undefined;
+  const custom =
+    request !== undefined
+      ? toolCallSummaryCopyForRequest(toolName, request, 'running', options)
+      : undefined;
   if (custom) {
     return custom;
   }
@@ -1019,8 +1038,9 @@ export function headlineForStreamingToolPreview(
   toolCallId: string,
   toolName: string,
   request?: unknown,
+  options?: ToolCallSummaryOptions,
 ): string {
-  return toolCallSummaryForStreamingPreview(messages, toolCallId, toolName, request).headline;
+  return toolCallSummaryForStreamingPreview(messages, toolCallId, toolName, request, options).headline;
 }
 
 function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase']): ToolCallSummaryCopy {
@@ -1077,15 +1097,12 @@ function displayBasename(path: string): string {
   return segments[segments.length - 1] || normalized;
 }
 
-function displayPathForListDirectory(path: string): string {
-  const trimmed = path.trim();
-  if (!trimmed) {
-    return i18n.t('tool.directory');
+function displayPathForListDirectory(path: string, workspaceRoot?: string): string {
+  const displayed = listDirectoryToolDisplayPath(path, workspaceRoot, i18n.t('tool.directory'));
+  if (displayed.length <= SUMMARY_DETAIL_MAX) {
+    return displayed;
   }
-  if (trimmed.length <= SUMMARY_DETAIL_MAX) {
-    return trimmed.replace(/\\/g, '/');
-  }
-  return displayPathForReadFile(trimmed);
+  return displayPathForReadFile(displayed);
 }
 
 function displayPathForReadFile(path: string): string {
