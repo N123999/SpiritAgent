@@ -83,3 +83,13 @@ test('validateHooksConfig uses per-scope hook indexes', async () => {
   assert.equal(userEntry?.index, 0);
   assert.equal(workspaceEntry?.index, 0);
 });
+
+test('loadHooksConfigFileAt returns empty config for invalid json', async () => {
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-invalid-json-'));
+  const userConfigPath = hooksUserConfigPath(spiritDataDir);
+  await writeFile(userConfigPath, '{not-json', 'utf8');
+
+  const report = validateHooksConfig({ spiritDataDir, workspaceRoot: undefined });
+  assert.equal(report.entries.length, 0);
+  assert.equal(report.summary.sessionStart, 0);
+});

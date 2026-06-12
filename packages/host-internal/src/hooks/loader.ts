@@ -8,6 +8,7 @@ import {
   hooksWorkspaceConfigPath,
   parseHooksConfigFile,
   resolveHookCommandPath,
+  resolveMergedHookDefinitions,
   type HookEventName,
   type HookInput,
   type HooksConfigFile,
@@ -129,7 +130,7 @@ export function validateHooksConfig(options: LoadHooksConfigOptions): {
             ...entry,
             scope,
             configDir,
-            timeout: entry.timeout,
+            ...(entry.timeout !== undefined ? { timeout: entry.timeout } : {}),
           });
         } catch {
           resolvedPath = entry.command;
