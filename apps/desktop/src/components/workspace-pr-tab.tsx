@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, GitPullRequest } from "lucide-react";
 
@@ -20,11 +20,18 @@ const MOCK_PULL_REQUEST = {
   authorLogin: "octocat",
 };
 
+/** Unified refresh cadence while the PR tab stays active. */
+const GITHUB_PR_REFRESH_INTERVAL_MS = 30_000;
+
 function describeError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
   return String(error);
+}
+
+function resolveGitBranch(gitSnapshot?: DesktopGitSnapshot): string {
+  return gitSnapshot?.selectedBranch?.trim() || gitSnapshot?.branch?.trim() || "";
 }
 
 export type WorkspacePrTabProps = {
@@ -66,6 +73,9 @@ export function WorkspacePrTab({
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
+  const prevBranchRef = useRef<string | undefined>(undefined);
+
   const refreshAuthStatus = useCallback(async () => {
     if (!prTabEnabled) {
       setAuthStatus({ connected: false });
@@ -98,25 +108,97 @@ export function WorkspacePrTab({
     } finally {
       setLoadingBranch(false);
     }
-  }, [authStatus.connected, getGitHubPullRequestForCurrentBranch, prTabEnabled]);
+  }, [authStatus.connected, getGitHubPullRequestForCurrentBranch, prTabEnabled, refreshAuthStatus]);
+
+  const refreshGitHubPanel = useCallback(async () => {
+    if (!prTabEnabled) {
+      setAuthStatus({ connected: false });
+      setBranchResult(null);
+      setDetail(null);
+      return;
+    }
+
+    let status: GitHubAuthStatus;
+    try {
+      status = await getGitHubAuthStatus();
+      setAuthStatus(status);
+    } catch (loadError) {
+      setError(describeError(loadError));
+      return;
+    }
+
+    if (!status.connected) {
+      setBranchResult(null);
+      setDetail(null);
+      return;
+    }
+
+    setLoadingBranch(true);
+    setError(null);
+    try {
+      const result = await getGitHubPullRequestForCurrentBranch();
+      setBranchResult(result);
+      setDetail(null);
+    } catch (loadError) {
+      setBranchResult(null);
+      setDetail(null);
+      setError(describeError(loadError));
+      try {
+        setAuthStatus(await getGitHubAuthStatus());
+      } catch (authError) {
+        setError(describeError(authError));
+      }
+    } finally {
+      setLoadingBranch(false);
+    }
+  }, [getGitHubAuthStatus, getGitHubPullRequestForCurrentBranch, prTabEnabled]);
+
+  refreshGitHubPanelRef.current = refreshGitHubPanel;
 
   useEffect(() => {
     if (!isActive || !prTabEnabled) {
       return;
     }
-    void refreshAuthStatus();
-  }, [isActive, prTabEnabled, refreshAuthStatus]);
+
+    const tick = () => {
+      void refreshGitHubPanelRef.current();
+    };
+
+    tick();
+
+    const intervalId = window.setInterval(tick, GITHUB_PR_REFRESH_INTERVAL_MS);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isActive, prTabEnabled]);
 
   useEffect(() => {
-    if (!isActive || !prTabEnabled || !authStatus.connected) {
+    if (!isActive || !prTabEnabled) {
+      prevBranchRef.current = undefined;
       return;
     }
+
+    if (!authStatus.connected) {
+      prevBranchRef.current = undefined;
+      return;
+    }
+
+    const branch = resolveGitBranch(gitSnapshot);
+    if (prevBranchRef.current === undefined) {
+      prevBranchRef.current = branch;
+      return;
+    }
+
+    if (prevBranchRef.current === branch) {
+      return;
+    }
+
+    prevBranchRef.current = branch;
     void refreshBranchPullRequest();
   }, [
     authStatus.connected,
     gitSnapshot?.branch,
     gitSnapshot?.selectedBranch,
-    gitSnapshot?.revision,
     isActive,
     prTabEnabled,
     refreshBranchPullRequest,
@@ -132,6 +214,9 @@ export function WorkspacePrTab({
       const next = await completeGitHubDeviceLogin();
       setAuthStatus(next);
       setDeviceChallenge(null);
+      if (isActive) {
+        await refreshGitHubPanel();
+      }
     } catch (connectError) {
       setError(describeError(connectError));
       setDeviceChallenge(null);
