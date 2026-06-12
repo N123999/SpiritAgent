@@ -163,7 +163,7 @@ function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts
 
   const verbKey = storedReadFileHeadlineUsesSkillVerb(tool.headline)
     ? 'tool.use'
-    : 'tool.view';
+    : 'tool.read';
   return {
     headline: i18n.t(verbKey, tOpts),
     ...(snapshotDetail ? { detail: snapshotDetail } : {}),

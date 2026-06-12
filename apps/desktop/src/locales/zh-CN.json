@@ -859,7 +859,7 @@
     "failed": "工具执行失败: {{toolName}}",
     "succeeded": "工具执行完成: {{toolName}}",
     "queued": "排队中: {{toolName}}",
-    "view": "查看",
+    "read": "查看",
     "use": "使用",
     "file": "文件",
     "directory": "目录",

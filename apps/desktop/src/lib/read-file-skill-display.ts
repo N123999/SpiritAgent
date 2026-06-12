@@ -9,7 +9,7 @@ import type { ToolBlockSnapshot } from '../types.js';
 export { isSkillMarkdownPath, skillFolderBasename } from '@spirit-agent/host-internal/skill-paths';
 
 export const LEGACY_READ_FILE_HEADLINE =
-  /^(?:查看|使用|View(?:ing|ed)?|Us(?:ing|ed)?)\u002e?\s+(.+)$/u;
+  /^(?:查看|使用|View(?:ing|ed)?|Read(?:ing|ed)?|Us(?:ing|ed)?)\u002e?\s+(.+)$/u;
 
 export function parseReadFilePathFromRequest(request: unknown): string {
   if (!request || typeof request !== 'object') {
@@ -51,8 +51,8 @@ export function parseReadFilePathFromToolSnapshot(
   return '';
 }
 
-export function readFileVerbKey(path: string): 'tool.use' | 'tool.view' {
-  return isSkillMarkdownPath(path) ? 'tool.use' : 'tool.view';
+export function readFileVerbKey(path: string): 'tool.use' | 'tool.read' {
+  return isSkillMarkdownPath(path) ? 'tool.use' : 'tool.read';
 }
 
 export function readFileDisplayBase(path: string, emptyLabel: string): string {
