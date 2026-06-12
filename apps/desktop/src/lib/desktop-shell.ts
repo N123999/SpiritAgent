@@ -72,6 +72,12 @@ export function shortcutLabel(key: string): string {
   return isMacDesktopPlatform() ? `⌘${letter}` : `Ctrl+${letter}`;
 }
 
+/** Cmd/Ctrl + letter shortcut keys for tooltip Kbd chips. */
+export function modLetterShortcutKbdKeys(key: string): readonly string[] {
+  const letter = key.toUpperCase();
+  return isMacDesktopPlatform() ? ["⌘", letter] : ["Ctrl", letter];
+}
+
 /** Cmd/Ctrl + / shortcut keys for tooltip Kbd chips. */
 export function modSlashShortcutKbdKeys(): readonly string[] {
   return isMacDesktopPlatform() ? ["⌘", "/"] : ["Ctrl", "/"];

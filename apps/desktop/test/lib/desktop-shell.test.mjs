@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  modLetterShortcutKbdKeys,
   modSlashShortcutKbdKeys,
   modSlashShortcutLabel,
   shortcutLabel,
@@ -25,6 +26,18 @@ test("shortcutLabel formats letter shortcuts per platform", () => {
   });
   withDesktopPlatform("win32", () => {
     assert.equal(shortcutLabel("n"), "Ctrl+N");
+  });
+});
+
+test("modLetterShortcutKbdKeys returns letter shortcut chips per platform", () => {
+  withDesktopPlatform("darwin", () => {
+    assert.deepEqual(modLetterShortcutKbdKeys("b"), ["⌘", "B"]);
+  });
+  withDesktopPlatform("win32", () => {
+    assert.deepEqual(modLetterShortcutKbdKeys("b"), ["Ctrl", "B"]);
+  });
+  withDesktopPlatform("linux", () => {
+    assert.deepEqual(modLetterShortcutKbdKeys("b"), ["Ctrl", "B"]);
   });
 });
 

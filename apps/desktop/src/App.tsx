@@ -93,11 +93,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
 import { AutomationsView } from "@/components/automations-view";
 import { AutomationDetailView } from "@/components/automation-detail-view";
@@ -230,7 +232,14 @@ import {
 import { cn } from "@/lib/utils";
 import { DesktopTitleBar } from "@/components/desktop-title-bar";
 import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
-import { desktopShellPlatform, isElectronChrome, isNativeBackdropBlurSupported, resolveUseMicaBackdrop } from "@/lib/desktop-shell";
+import {
+  desktopShellPlatform,
+  isElectronChrome,
+  isMacDesktopPlatform,
+  isNativeBackdropBlurSupported,
+  modLetterShortcutKbdKeys,
+  resolveUseMicaBackdrop,
+} from "@/lib/desktop-shell";
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
@@ -1739,6 +1748,24 @@ function WebHostPairingGate({
   );
 }
 
+function SessionSidebarShortcutKbd() {
+  const keys = modLetterShortcutKbdKeys("B");
+
+  return (
+    <KbdGroup>
+      {isMacDesktopPlatform() ? (
+        keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+      ) : (
+        <>
+          <Kbd>Ctrl</Kbd>
+          <span>+</span>
+          <Kbd>B</Kbd>
+        </>
+      )}
+    </KbdGroup>
+  );
+}
+
 function DesktopLayoutChromeBar({
   useMicaBackdrop,
   showWorkspaceToggle,
@@ -1777,18 +1804,26 @@ function DesktopLayoutChromeBar({
       )}
     >
       <div className="flex min-w-0 items-center">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(DESKTOP_CHROME_TOGGLE_ICON_BTN, "mr-1")}
-          onClick={onToggleSessionSidebar}
-          aria-label={sessionSidebarOpen ? t('app.hideSidebar') : t('app.showSidebar')}
-          aria-expanded={sessionSidebarOpen}
-          {...(sessionSidebarOpen ? { "aria-controls": "session-sidebar-panel" } : {})}
-        >
-          {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
-        </Button>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(DESKTOP_CHROME_TOGGLE_ICON_BTN, "mr-1")}
+              onClick={onToggleSessionSidebar}
+              aria-label={sessionSidebarOpen ? t('app.hideSidebar') : t('app.showSidebar')}
+              aria-expanded={sessionSidebarOpen}
+              {...(sessionSidebarOpen ? { "aria-controls": "session-sidebar-panel" } : {})}
+            >
+              {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            {sessionSidebarOpen ? t("app.hideSidebar") : t("app.showSidebar")}{" "}
+            <SessionSidebarShortcutKbd />
+          </TooltipContent>
+        </Tooltip>
         {onNewSession ? (
           <div
             className={cn(
@@ -2346,6 +2381,21 @@ export default function App() {
       }
       event.preventDefault();
       picker.open();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "b") {
+        return;
+      }
+      event.preventDefault();
+      sessionSidebarChromeApiRef.current?.toggle();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
