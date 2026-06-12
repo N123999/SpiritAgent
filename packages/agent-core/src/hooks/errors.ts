@@ -23,3 +23,15 @@ export class HookDeniedError extends Error {
     this.agentMessage = options.agentMessage;
   }
 }
+
+export class SubmitPromptHookDeniedError extends Error {
+  readonly denialMessage: string;
+  readonly followupMessage: string | undefined;
+
+  constructor(denialMessage: string, followupMessage: string | undefined) {
+    super(denialMessage);
+    this.name = 'SubmitPromptHookDeniedError';
+    this.denialMessage = denialMessage;
+    this.followupMessage = followupMessage;
+  }
+}

@@ -3,6 +3,7 @@ import {
   appendHookAdditionalContexts,
   runSubmitPromptHook,
 } from '../hooks/integration.js';
+import { SubmitPromptHookDeniedError } from '../hooks/errors.js';
 
 import {
   formatPendingMcpResourceContext,
@@ -79,6 +80,14 @@ export async function prepareSubmittedUserTurn<
     (role, content) => runtime.recordContextMessage(role, content),
     submitHookResult.additionalContexts,
   );
+  if (submitHookResult.denied) {
+    throw new SubmitPromptHookDeniedError(
+      submitHookResult.userMessage
+        ?? submitHookResult.agentMessage
+        ?? 'Prompt denied by hook.',
+      submitHookResult.followupMessage?.trim() || undefined,
+    );
+  }
 
   runtime.historyStore = repairMissingToolResultsInHistory(runtime.historyStore);
   const contentForLlm = formatUserMessageContentForLlm(userInput);

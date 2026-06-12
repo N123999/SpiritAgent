@@ -54,6 +54,7 @@ import {
   HookDeniedError,
   resolveHookRunner,
   resolveHookSessionContext,
+  SubmitPromptHookDeniedError,
 } from './hooks/index.js';
 import {
   continuePendingManualToolApproval as continuePendingManualToolApprovalInternal,
@@ -884,8 +885,16 @@ export class AgentRuntime<
     }
 
     this.completedTurnResultStore = undefined;
-    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
-    this.startToolAgentRoundAsync(state, userInput, createTurnContext<ToolRequest>());
+    try {
+      const state = await this.prepareSubmittedUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
+      this.startToolAgentRoundAsync(state, userInput, createTurnContext<ToolRequest>());
+    } catch (error) {
+      if (error instanceof SubmitPromptHookDeniedError) {
+        this.completeSubmitPromptDenied(error);
+        return;
+      }
+      throw error;
+    }
   }
 
   async startUserTurnStreaming(
@@ -898,13 +907,21 @@ export class AgentRuntime<
     }
 
     this.completedTurnResultStore = undefined;
-    const state = await this.prepareSubmittedUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
-    await this.startStreamingRound(
-      state,
-      userInput,
-      createTurnContext<ToolRequest>(),
-      true,
-    );
+    try {
+      const state = await this.prepareSubmittedUserTurn(userInput, explicitImages, explicitWorkspaceFiles);
+      await this.startStreamingRound(
+        state,
+        userInput,
+        createTurnContext<ToolRequest>(),
+        true,
+      );
+    } catch (error) {
+      if (error instanceof SubmitPromptHookDeniedError) {
+        this.completeSubmitPromptDenied(error);
+        return;
+      }
+      throw error;
+    }
   }
 
   async continueAssistantCompletionStreaming(): Promise<void> {
@@ -2115,6 +2132,25 @@ export class AgentRuntime<
     );
   }
 
+  private completeSubmitPromptDenied(error: SubmitPromptHookDeniedError): void {
+    if (error.followupMessage) {
+      this.recordContextMessage('system', error.followupMessage);
+    }
+    this.historyStore.push({
+      role: 'assistant',
+      content: createLlmMessageContentFromText(error.denialMessage),
+    });
+    const state = this.options.createToolAgentState(this.historyStore, '');
+    this.completedTurnResultStore = {
+      kind: 'completed',
+      assistantText: error.denialMessage,
+      state,
+      requestTrace: [],
+      toolExecutions: [],
+      compactions: [],
+    };
+  }
+
   private async prepareMcpPromptTurn(
     server: string,
     prompt: string,
@@ -3146,7 +3182,7 @@ export class AgentRuntime<
       workspaceRoot: context.workspaceRoot,
       model: context.model,
       subagentSessionId: pending.childRecord.summary.sessionId,
-      subagentType: request.subagentType ?? 'generalPurpose',
+      subagentType: subagentRequest?.subagentType ?? 'generalPurpose',
       status: output.failed ? 'error' : 'completed',
       task: subagentRequest?.task ?? pending.childRecord.summary.title,
       summary: output.text,

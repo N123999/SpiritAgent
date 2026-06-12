@@ -212,7 +212,6 @@ export async function runSubmitPromptHook<
     prompt,
     messageId,
   });
-  throwIfHookDenied('submitPrompt', result);
   return result;
 }
 
