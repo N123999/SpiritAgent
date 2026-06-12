@@ -727,24 +727,6 @@ pub(in crate::ui) fn maybe_picker_deemphasize_lines(
     patch_lines_style(lines, |style| style.add_modifier(Modifier::DIM))
 }
 
-pub(in crate::ui) fn should_rewind_deemphasize_message(
-    app: &TuiViewModel,
-    message_id: usize,
-) -> bool {
-    should_picker_deemphasize_message(app, message_id)
-}
-
-pub(in crate::ui) fn maybe_rewind_deemphasize_lines(
-    lines: Vec<Line<'static>>,
-    enabled: bool,
-) -> Vec<Line<'static>> {
-    if !enabled {
-        return lines;
-    }
-
-    patch_lines_style(lines, |style| style.add_modifier(Modifier::DIM))
-}
-
 pub(in crate::ui) fn parse_pending_subagent_status_text(text: &str) -> Option<String> {
     parse_subagent_status_text(text)
 }
