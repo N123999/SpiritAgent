@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { GitPullRequest } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
+import { GITHUB_PR_DETAIL_DEMO } from "@/lib/github-pr-ui-demo";
 import { cn } from "@/lib/utils";
 import type {
   DesktopGitSnapshot,
@@ -71,6 +73,7 @@ export function WorkspacePrTab({
   const [loadingBranch, setLoadingBranch] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
+  const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
@@ -262,6 +265,7 @@ export function WorkspacePrTab({
       setDeviceChallenge(challenge);
       const next = await completeGitHubDeviceLogin();
       setAuthStatus(next);
+      setDetailDemoActive(false);
       setDeviceChallenge(null);
       if (isActive) {
         await refreshGitHubPanel();
@@ -386,22 +390,57 @@ export function WorkspacePrTab({
         </section>
       ) : null}
 
-      {!authStatus.connected && !deviceChallenge ? (
-        <section>
-          <p className="mb-2 text-[11px] font-medium text-muted-foreground">
+      {!authStatus.connected && !deviceChallenge && detailDemoActive ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              {t("workspace.prDetailDemoLabel")}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDetailDemoActive(false);
+              }}
+            >
+              {t("workspace.prClearDetailDemo")}
+            </Button>
+          </div>
+          <WorkspacePrDetailView detail={GITHUB_PR_DETAIL_DEMO} onOpenExternal={openExternalUrl} />
+        </section>
+      ) : null}
+
+      {!authStatus.connected && !deviceChallenge && !detailDemoActive ? (
+        <section className="rounded-md border border-dashed border-border/80 bg-muted/20 p-3">
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t("workspace.prSampleDataLabel")}
           </p>
-          <div className="min-w-0 text-sm">
-            <p className="text-sm font-medium text-foreground">
-              {MOCK_PULL_REQUEST.title}{" "}
-              <span className="text-[13px] font-normal text-muted-foreground">
-                #{MOCK_PULL_REQUEST.number}
-              </span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t("workspace.prOpen")} @{MOCK_PULL_REQUEST.authorLogin}
-            </p>
-            <p className="mt-2 text-muted-foreground">{t("workspace.prConnectToLoadDetail")}</p>
+          <div className="flex items-start gap-2 text-sm">
+            <GitPullRequest className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">
+                {MOCK_PULL_REQUEST.title}{" "}
+                <span className="text-[13px] font-normal text-muted-foreground">
+                  #{MOCK_PULL_REQUEST.number}
+                </span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("workspace.prOpen")} @{MOCK_PULL_REQUEST.authorLogin}
+              </p>
+              <p className="mt-2 text-muted-foreground">{t("workspace.prConnectToLoadDetail")}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  setDetailDemoActive(true);
+                }}
+              >
+                {t("workspace.prShowDetailDemo")}
+              </Button>
+            </div>
           </div>
         </section>
       ) : null}
