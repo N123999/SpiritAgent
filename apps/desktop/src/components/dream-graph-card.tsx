@@ -327,7 +327,7 @@ function buildGraph(
       position: slots[index] ?? slots[slots.length - 1],
       draggable: true,
       data: {
-        label: item.summary,
+        label: item.title,
         subtitle: buildDreamSubtitle(item.workspaceRoot, item.gitBranch),
         dream: item,
         interactive: true,
