@@ -1510,6 +1510,21 @@ impl TsBridgeRuntime {
         Ok(serde_json::from_value(value)?)
     }
 
+    pub fn save_hook_entry(
+        &mut self,
+        workspace_root: Option<&str>,
+        request: &crate::hooks_types::SaveHookEntryRequest,
+    ) -> Result<()> {
+        let mut params = json!({ "request": request });
+        if let Some(root) = workspace_root {
+            if let Some(obj) = params.as_object_mut() {
+                obj.insert("workspaceRoot".to_string(), json!(root));
+            }
+        }
+        self.call_bridge("hostInternal.saveHookEntry", Some(params))?;
+        Ok(())
+    }
+
     pub fn inspect_mcp_server(&mut self, name: &str) -> Result<McpServerInspection> {
         let value = self.call_bridge("runtime.inspectMcpServer", Some(json!({ "name": name })))?;
         Ok(serde_json::from_value(value)?)

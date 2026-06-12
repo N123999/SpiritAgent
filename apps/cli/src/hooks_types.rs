@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Map;
 
 #[derive(Debug, Deserialize)]
@@ -13,6 +14,19 @@ pub struct HookListItem {
     pub timeout: Option<u64>,
     #[serde(rename = "failClosed")]
     pub fail_closed: Option<bool>,
+    pub matcher: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SaveHookEntryRequest {
+    pub scope: String,
+    pub event: String,
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    #[serde(rename = "failClosed", skip_serializing_if = "Option::is_none")]
+    pub fail_closed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub matcher: Option<String>,
 }
 

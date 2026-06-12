@@ -73,6 +73,7 @@ impl TuiShell {
             }
             BottomFormKind::McpAdd
             | BottomFormKind::ModelAdd
+            | BottomFormKind::HookAdd
             | BottomFormKind::McpPrompt { .. }
             | BottomFormKind::Extensions => self.cancel_bottom_form(),
             BottomFormKind::Rules => self.save_rules_bottom_form(),
@@ -222,7 +223,9 @@ impl TuiShell {
                     }
                 }
             }
-            BottomFormKind::McpAdd | BottomFormKind::ModelAdd => self.save_bottom_form(),
+            BottomFormKind::McpAdd | BottomFormKind::ModelAdd | BottomFormKind::HookAdd => {
+                self.save_bottom_form()
+            }
             BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {
                 if let Some(form) = self.forms.active.as_mut() {
@@ -246,6 +249,36 @@ impl TuiShell {
         let Some(form) = self.forms.active.as_ref() else {
             return;
         };
+
+        if matches!(form.kind, BottomFormKind::HookAdd) {
+            match bottom_form::to_hook_save_request(form) {
+                Ok(request) => match self.runtime.save_hook_entry(&request) {
+                    Ok(()) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: t!("tui.hooks.add_saved").into_owned(),
+                            tool_block: None,
+                        });
+                        self.forms.active = None;
+                    }
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::Agent,
+                            content: t!("tui.hooks.add_failed", err = err).into_owned(),
+                            tool_block: None,
+                        });
+                    }
+                },
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::Agent,
+                        content: t!("tui.hooks.add_failed", err = err).into_owned(),
+                        tool_block: None,
+                    });
+                }
+            }
+            return;
+        }
 
         if matches!(form.kind, BottomFormKind::ModelAdd) {
             let parsed = match bottom_form::parse_model_add_connection(form) {
@@ -504,6 +537,23 @@ impl TuiShell {
             name = active.as_str()
         )
         .into_owned())
+    }
+
+    pub(super) fn open_hook_add_form(&mut self) {
+        self.forms.active = Some(bottom_form::new_hook_add_form(true));
+        self.model_picker_active = false;
+        self.language_picker_active = false;
+        self.approval_picker_active = false;
+        self.network_picker_active = false;
+        self.chat_picker_active = false;
+        self.image_picker_active = false;
+        self.set_input(String::new());
+        self.refresh_suggestions();
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: t!("tui.hooks.add_opened").into_owned(),
+            tool_block: None,
+        });
     }
 
     pub(super) fn open_mcp_add_form(&mut self) {

@@ -27,6 +27,27 @@ const MCP_ADD_FIELD_TRANSPORT: usize = 2;
 const MCP_ADD_FIELD_ENDPOINT: usize = 3;
 const MCP_ADD_FIELD_METADATA: usize = 4;
 
+const HOOK_ADD_FIELD_SCOPE: usize = 0;
+const HOOK_ADD_FIELD_EVENT: usize = 1;
+const HOOK_ADD_FIELD_COMMAND: usize = 2;
+const HOOK_ADD_FIELD_TIMEOUT: usize = 3;
+const HOOK_ADD_FIELD_MATCHER: usize = 4;
+const HOOK_ADD_FIELD_FAIL_CLOSED: usize = 5;
+
+const HOOK_EVENTS: &[&str] = &[
+    "sessionStart",
+    "sessionEnd",
+    "submitPrompt",
+    "preToolUse",
+    "postToolUse",
+    "subagentStart",
+    "subagentEnd",
+];
+
+const DEFAULT_HOOK_COMMAND: &str = "hooks/log-hook.sh";
+const DEFAULT_HOOK_TIMEOUT: &str = "30";
+const HOOK_EVENT_PRE_TOOL_USE_INDEX: usize = 3;
+
 const MODEL_ADD_FIELD_PROVIDER: usize = 0;
 const MODEL_ADD_VOLCENGINE_PROVIDER_INDEX: usize = 9;
 
@@ -99,6 +120,89 @@ pub(crate) fn new_mcp_add_form() -> BottomFormView {
     };
     sync_mcp_add_form_fields(&mut form);
     form
+}
+
+pub(crate) fn new_hook_add_form(workspace_scope_available: bool) -> BottomFormView {
+    let scope_options = if workspace_scope_available {
+        vec![
+            t!("form.hooks.field.scope.workspace").into_owned(),
+            t!("form.hooks.field.scope.user").into_owned(),
+        ]
+    } else {
+        vec![t!("form.hooks.field.scope.user").into_owned()]
+    };
+
+    BottomFormView {
+        kind: BottomFormKind::HookAdd,
+        title: t!("form.hooks.title").into_owned(),
+        fields: vec![
+            BottomFormFieldView {
+                label: t!("form.hooks.field.scope.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Choice {
+                    options: scope_options,
+                    selected: 0,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.hooks.field.event.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Choice {
+                    options: HOOK_EVENTS
+                        .iter()
+                        .map(|event| (*event).to_string())
+                        .collect(),
+                    selected: HOOK_EVENT_PRE_TOOL_USE_INDEX,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.hooks.field.command.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: DEFAULT_HOOK_COMMAND.to_string(),
+                    placeholder: t!("form.hooks.field.command.placeholder").into_owned(),
+                    cursor: DEFAULT_HOOK_COMMAND.chars().count(),
+                    mask: false,
+                    disabled: false,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.hooks.field.timeout.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: DEFAULT_HOOK_TIMEOUT.to_string(),
+                    placeholder: t!("form.hooks.field.timeout.placeholder").into_owned(),
+                    cursor: DEFAULT_HOOK_TIMEOUT.chars().count(),
+                    mask: false,
+                    disabled: false,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.hooks.field.matcher.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Text {
+                    value: String::new(),
+                    placeholder: t!("form.hooks.field.matcher.placeholder").into_owned(),
+                    cursor: 0,
+                    mask: false,
+                    disabled: false,
+                },
+            },
+            BottomFormFieldView {
+                label: t!("form.hooks.field.fail_closed.label").into_owned(),
+                help: String::new(),
+                editor: BottomFormFieldEditorView::Checkbox {
+                    id: "failClosed".to_string(),
+                    checked: false,
+                    disabled: false,
+                    path: None,
+                },
+            },
+        ],
+        selected_field: HOOK_ADD_FIELD_COMMAND,
+        scroll_offset: 0,
+        footer_hint: t!("form.hooks.footer_hint").into_owned(),
+    }
 }
 
 fn model_add_provider_choice_labels() -> Vec<String> {
@@ -669,7 +773,11 @@ pub(crate) fn move_left(form: &mut BottomFormView) {
             sync_mcp_add_form_fields(form);
             sync_model_add_form_fields(form);
         }
-        BottomFormFieldEditorView::Checkbox { .. } => {}
+        BottomFormFieldEditorView::Checkbox { checked, disabled, .. } => {
+            if !*disabled && matches!(form.kind, BottomFormKind::HookAdd) {
+                *checked = !*checked;
+            }
+        }
         BottomFormFieldEditorView::AskQuestion { .. } => {}
     }
 }
@@ -701,7 +809,11 @@ pub(crate) fn move_right(form: &mut BottomFormView) {
             sync_mcp_add_form_fields(form);
             sync_model_add_form_fields(form);
         }
-        BottomFormFieldEditorView::Checkbox { .. } => {}
+        BottomFormFieldEditorView::Checkbox { checked, disabled, .. } => {
+            if !*disabled && matches!(form.kind, BottomFormKind::HookAdd) {
+                *checked = !*checked;
+            }
+        }
         BottomFormFieldEditorView::AskQuestion { .. } => {}
     }
 }
@@ -898,6 +1010,97 @@ pub(crate) fn to_config(
             transport,
         },
     ))
+}
+
+fn selected_hook_scope(form: &BottomFormView) -> Option<&'static str> {
+    match form
+        .fields
+        .get(HOOK_ADD_FIELD_SCOPE)
+        .map(|field| &field.editor)
+    {
+        Some(BottomFormFieldEditorView::Choice { options, selected }) => {
+            let option = options.get((*selected).min(options.len().saturating_sub(1)))?;
+            if option.contains("用户") || option.eq_ignore_ascii_case("user") {
+                Some("user")
+            } else {
+                Some("workspace")
+            }
+        }
+        _ => None,
+    }
+}
+
+fn selected_hook_event(form: &BottomFormView) -> Option<String> {
+    match form
+        .fields
+        .get(HOOK_ADD_FIELD_EVENT)
+        .map(|field| &field.editor)
+    {
+        Some(BottomFormFieldEditorView::Choice { options, selected }) => options
+            .get((*selected).min(options.len().saturating_sub(1)))
+            .cloned(),
+        _ => None,
+    }
+}
+
+fn hook_fail_closed_checked(form: &BottomFormView) -> bool {
+    match form
+        .fields
+        .get(HOOK_ADD_FIELD_FAIL_CLOSED)
+        .map(|field| &field.editor)
+    {
+        Some(BottomFormFieldEditorView::Checkbox { checked, .. }) => *checked,
+        _ => false,
+    }
+}
+
+fn parse_hook_timeout_field(raw: &str) -> std::result::Result<Option<u64>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    raw.parse::<u64>()
+        .map(Some)
+        .map_err(|_| t!("form.hooks.validation.timeout_invalid").into_owned())
+}
+
+pub(crate) fn to_hook_save_request(
+    form: &BottomFormView,
+) -> std::result::Result<crate::hooks_types::SaveHookEntryRequest, String> {
+    if !matches!(form.kind, BottomFormKind::HookAdd) {
+        return Err(t!("form.hooks.validation.invalid_form_kind").into_owned());
+    }
+
+    let scope = selected_hook_scope(form)
+        .ok_or_else(|| t!("form.hooks.validation.scope_required").into_owned())?
+        .to_string();
+    let event = selected_hook_event(form)
+        .ok_or_else(|| t!("form.hooks.validation.event_required").into_owned())?;
+
+    let command = bottom_form_text_value(form, HOOK_ADD_FIELD_COMMAND)
+        .trim()
+        .to_string();
+    if command.is_empty() {
+        return Err(t!("form.hooks.validation.command_required").into_owned());
+    }
+
+    let timeout = parse_hook_timeout_field(bottom_form_text_value(form, HOOK_ADD_FIELD_TIMEOUT))?;
+    let matcher_raw = bottom_form_text_value(form, HOOK_ADD_FIELD_MATCHER).trim();
+    let matcher = if matcher_raw.is_empty() {
+        None
+    } else {
+        Some(matcher_raw.to_string())
+    };
+    let fail_closed = hook_fail_closed_checked(form);
+
+    Ok(crate::hooks_types::SaveHookEntryRequest {
+        scope,
+        event,
+        command,
+        timeout,
+        fail_closed: if fail_closed { Some(true) } else { None },
+        matcher,
+    })
 }
 
 fn parse_model_context_length_field(raw: &str) -> std::result::Result<Option<u64>, String> {
@@ -1277,6 +1480,7 @@ fn normalize_inserted_text(form: &BottomFormView, text: &str) -> String {
     match form.kind {
         BottomFormKind::McpPrompt { .. } => text.replace("\r\n", "\n").replace('\r', "\n"),
         BottomFormKind::McpAdd
+        | BottomFormKind::HookAdd
         | BottomFormKind::AskQuestions { .. }
         | BottomFormKind::ModelAdd
         | BottomFormKind::Rules
@@ -1436,9 +1640,11 @@ enum McpAddTransportKind {
 mod tests {
     use super::{
         MetadataFieldKind, activate, insert_text, move_right, new_extensions_form,
-        new_mcp_add_form, new_mcp_prompt_form, new_model_add_form, new_rules_form, new_skills_form,
-        parse_metadata_map, parse_model_add_connection, prompt_user_message, rules_form_overrides,
-        select_next_field, skills_form_overrides, sync_model_add_form_fields, to_prompt_args_json,
+        new_hook_add_form, new_mcp_add_form, new_mcp_prompt_form, new_model_add_form,
+        new_rules_form, new_skills_form, parse_metadata_map, parse_model_add_connection,
+        prompt_user_message, rules_form_overrides, select_next_field, skills_form_overrides,
+        sync_model_add_form_fields, to_hook_save_request, to_prompt_args_json,
+        HOOK_ADD_FIELD_COMMAND, HOOK_ADD_FIELD_FAIL_CLOSED, HOOK_ADD_FIELD_TIMEOUT,
     };
     use crate::model_registry::{ModelProvider, ModelTransportKind};
     use rust_i18n::t;
@@ -1986,5 +2192,78 @@ mod tests {
             archive_file_name: Some("basic-metadata-demo.zip".to_string()),
             installed_at_unix_ms: 0,
         }
+    }
+
+    #[test]
+    fn hook_add_form_defaults_match_desktop() {
+        let form = new_hook_add_form(true);
+
+        assert!(matches!(form.kind, crate::view::BottomFormKind::HookAdd));
+        assert_eq!(
+            match &form.fields[HOOK_ADD_FIELD_COMMAND].editor {
+                BottomFormFieldEditorView::Text { value, .. } => value.as_str(),
+                _ => panic!("expected command text field"),
+            },
+            "hooks/log-hook.sh"
+        );
+        assert_eq!(
+            match &form.fields[HOOK_ADD_FIELD_TIMEOUT].editor {
+                BottomFormFieldEditorView::Text { value, .. } => value.as_str(),
+                _ => panic!("expected timeout text field"),
+            },
+            "30"
+        );
+    }
+
+    #[test]
+    fn hook_add_form_rejects_empty_command() {
+        let mut form = new_hook_add_form(true);
+        form.selected_field = HOOK_ADD_FIELD_COMMAND;
+        if let BottomFormFieldEditorView::Text { value, cursor, .. } =
+            &mut form.fields[HOOK_ADD_FIELD_COMMAND].editor
+        {
+            value.clear();
+            *cursor = 0;
+        }
+
+        let err = to_hook_save_request(&form).expect_err("empty command");
+        assert_eq!(err, t!("form.hooks.validation.command_required"));
+    }
+
+    #[test]
+    fn hook_add_form_rejects_invalid_timeout() {
+        let mut form = new_hook_add_form(true);
+        form.selected_field = HOOK_ADD_FIELD_TIMEOUT;
+        if let BottomFormFieldEditorView::Text { value, cursor, .. } =
+            &mut form.fields[HOOK_ADD_FIELD_TIMEOUT].editor
+        {
+            *value = "not-a-number".to_string();
+            *cursor = value.chars().count();
+        }
+
+        let err = to_hook_save_request(&form).expect_err("invalid timeout");
+        assert_eq!(err, t!("form.hooks.validation.timeout_invalid"));
+    }
+
+    #[test]
+    fn hook_add_form_parses_request_with_optional_fields() {
+        let mut form = new_hook_add_form(true);
+        form.selected_field = HOOK_ADD_FIELD_FAIL_CLOSED;
+        move_right(&mut form);
+
+        let request = to_hook_save_request(&form).expect("parse hook request");
+        assert_eq!(request.scope, "workspace");
+        assert_eq!(request.event, "preToolUse");
+        assert_eq!(request.command, "hooks/log-hook.sh");
+        assert_eq!(request.timeout, Some(30));
+        assert_eq!(request.fail_closed, Some(true));
+        assert!(request.matcher.is_none());
+    }
+
+    #[test]
+    fn hook_add_form_without_workspace_scope_forces_user() {
+        let form = new_hook_add_form(false);
+        let request = to_hook_save_request(&form).expect("parse hook request");
+        assert_eq!(request.scope, "user");
     }
 }

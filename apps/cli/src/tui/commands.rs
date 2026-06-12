@@ -1222,7 +1222,7 @@ impl TuiShell {
         }
 
         if tail == "add" {
-            self.push_hooks_usage();
+            self.open_hook_add_form();
             return;
         }
 
