@@ -34,7 +34,10 @@ import { conversationMessageStableId } from "@/lib/conversation-list-scope";
 import { isSubagentStatusSurfaceMessage } from "@/lib/subagent-display";
 import { cn } from "@/lib/utils";
 import { canForkMessage, canShowForkMessage } from "@/lib/fork-eligibility";
-import { messageShowsAssistantTurnActions } from "@/lib/message-turn-actions-ui";
+import {
+  isMessageInActiveStreamingTurn,
+  messageShowsAssistantTurnActions,
+} from "@/lib/message-turn-actions-ui";
 import type {
   ConversationMessageSnapshot,
   DesktopModelReasoningEffort,
@@ -175,7 +178,16 @@ export function MessageCard({
         : null,
     [rewindSelected, message.content, message.id],
   );
-  const showTurnActions = !hiddenByProcessGroup && messageShowsAssistantTurnActions(message);
+  const turnActionsEligible = messageShowsAssistantTurnActions(message, messages, listIndex);
+  const inActiveStreamingTurn = isMessageInActiveStreamingTurn(
+    messages,
+    listIndex,
+    conversationIsBusy === true,
+  );
+  const showTurnActions =
+    !hiddenByProcessGroup
+    && turnActionsEligible
+    && !inActiveStreamingTurn;
   const showForkMenu =
     showTurnActions
     && canShowForkMessage({
