@@ -10,6 +10,7 @@ import type { ConversationMessageSnapshot } from '@/types';
 export const PROCESS_SUMMARY_MAX_VISIBLE_CATEGORIES = 3;
 
 const CATEGORY_I18N_KEY: Record<ProcessToolCategory, string> = {
+  read: 'process.read',
   view: 'process.viewed',
   create: 'process.created',
   edit: 'process.edited',

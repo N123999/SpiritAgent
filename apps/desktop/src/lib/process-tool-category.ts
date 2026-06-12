@@ -1,6 +1,7 @@
 import type { ToolBlockSnapshot } from '@/types';
 
 export type ProcessToolCategory =
+  | 'read'
   | 'view'
   | 'create'
   | 'edit'
@@ -14,6 +15,7 @@ export type ProcessToolCategory =
 export type ProcessToolCounts = Record<ProcessToolCategory, number>;
 
 export const PROCESS_TOOL_CATEGORY_ORDER: readonly ProcessToolCategory[] = [
+  'read',
   'view',
   'create',
   'edit',
@@ -26,7 +28,6 @@ export const PROCESS_TOOL_CATEGORY_ORDER: readonly ProcessToolCategory[] = [
 ];
 
 const VIEW_TOOLS = new Set([
-  'read_file',
   'list_directory_files',
   'grep',
   'glob',
@@ -54,6 +55,7 @@ const APPLY_PATCH_DELETE = new Set(['删除', 'Delete', 'Deleting', 'Deleted']);
 
 export function emptyProcessToolCounts(): ProcessToolCounts {
   return {
+    read: 0,
     view: 0,
     create: 0,
     edit: 0,
@@ -98,6 +100,9 @@ export function classifyProcessToolCategory(
   }
   if (toolName === 'run_shell_command') {
     return 'run';
+  }
+  if (toolName === 'read_file') {
+    return 'read';
   }
   if (toolName === 'apply_patch') {
     return classifyApplyPatch(headline);
