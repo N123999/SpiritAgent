@@ -617,6 +617,36 @@ interface CliHostInternalModule {
       exists: boolean;
     }>;
   };
+  listHookListItems?: (context: {
+    spiritDataDir: string;
+    workspaceRoot: string;
+    workspaceBinding: 'project' | 'none';
+  }) => Array<{
+    id: string;
+    scope: 'user' | 'workspace';
+    event: string;
+    index: number;
+    command: string;
+    configPath: string;
+    timeout?: number;
+    failClosed?: boolean;
+    matcher?: string;
+  }>;
+  saveHookEntry?: (
+    context: {
+      spiritDataDir: string;
+      workspaceRoot: string;
+      workspaceBinding: 'project' | 'none';
+    },
+    request: {
+      scope: 'user' | 'workspace';
+      event: string;
+      command: string;
+      timeout?: number;
+      failClosed?: boolean;
+      matcher?: string;
+    },
+  ) => Promise<void>;
 }
 
 type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
@@ -1858,6 +1888,61 @@ peer.on('hostInternal.validateHooks', async (rawParams) => {
     spiritDataDir: hostInternal.spiritDataDir,
     workspaceRoot,
   });
+});
+
+function resolveHookCrudContext(
+  hostInternal: CliHostInternalState,
+  rawParams: { workspaceRoot?: string; workspaceBinding?: 'project' | 'none' },
+): {
+  spiritDataDir: string;
+  workspaceRoot: string;
+  workspaceBinding: 'project' | 'none';
+} {
+  const workspaceRoot = rawParams.workspaceRoot?.trim() || hostInternal.workspaceRoot;
+  const workspaceBinding: 'project' | 'none' = rawParams.workspaceBinding === 'none' ? 'none' : 'project';
+  return {
+    spiritDataDir: hostInternal.spiritDataDir,
+    workspaceRoot,
+    workspaceBinding,
+  };
+}
+
+peer.on('hostInternal.listHookEntries', async (rawParams) => {
+  const params = (rawParams ?? {}) as {
+    workspaceRoot?: string;
+    workspaceBinding?: 'project' | 'none';
+  };
+  const hostInternal = await requireCliHostInternal();
+  const listHookListItems = hostInternal.module.listHookListItems;
+  if (!listHookListItems) {
+    throw new Error('当前 host-internal 未导出 listHookListItems');
+  }
+  return listHookListItems(resolveHookCrudContext(hostInternal, params));
+});
+
+peer.on('hostInternal.saveHookEntry', async (rawParams) => {
+  const params = (rawParams ?? {}) as {
+    workspaceRoot?: string;
+    workspaceBinding?: 'project' | 'none';
+    request?: {
+      scope: 'user' | 'workspace';
+      event: string;
+      command: string;
+      timeout?: number;
+      failClosed?: boolean;
+      matcher?: string;
+    };
+  };
+  const hostInternal = await requireCliHostInternal();
+  const saveHookEntry = hostInternal.module.saveHookEntry;
+  if (!saveHookEntry) {
+    throw new Error('当前 host-internal 未导出 saveHookEntry');
+  }
+  if (!params.request) {
+    throw new Error('saveHookEntry 缺少 request 参数');
+  }
+  await saveHookEntry(resolveHookCrudContext(hostInternal, params), params.request);
+  return { ok: true };
 });
 
 peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
