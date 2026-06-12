@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -88,5 +91,23 @@ test('resolveHookCommandPath rejects commands that escape config directory', () 
         configDir: '/data/spirit',
       }),
     HookConfigError,
+  );
+});
+
+test('resolveHookCommandPath rejects symlink escape', () => {
+  const configDir = mkdtempSync(join(tmpdir(), 'spirit-hook-symlink-config-'));
+  const outsideDir = mkdtempSync(join(tmpdir(), 'spirit-hook-symlink-outside-'));
+  const outsideScript = join(outsideDir, 'evil.sh');
+  writeFileSync(outsideScript, '#!/bin/sh\necho evil\n');
+  symlinkSync(outsideScript, join(configDir, 'evil.sh'));
+
+  assert.throws(
+    () =>
+      resolveHookCommandPath({
+        command: 'evil.sh',
+        scope: 'user',
+        configDir,
+      }),
+    /symlink/i,
   );
 });

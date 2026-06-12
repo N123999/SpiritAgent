@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  postHookToolInputFromPreGate,
   resolveApprovalGateAfterAuthorize,
   runPreToolUseGate,
 } from './tool-hooks.js';
@@ -165,4 +166,65 @@ test('runPreToolUseGate maps hook deny to denied', async () => {
   if (gate.kind === 'denied') {
     assert.ok(gate.error instanceof HookDeniedError);
   }
+});
+
+test('runPreToolUseGate preserves effectiveToolInput from hook updatedInput', async () => {
+  const runner: HookRunner = {
+    runSessionStart: async () => { throw new Error('unused'); },
+    runSessionEnd: async () => { throw new Error('unused'); },
+    runSubmitPrompt: async () => { throw new Error('unused'); },
+    runPreToolUse: async () => ({
+      records: [],
+      denied: false,
+      permission: undefined,
+      userMessage: undefined,
+      agentMessage: undefined,
+      updatedInput: { path: 'rewritten.md' },
+      additionalContexts: [],
+      followupMessage: undefined,
+    }),
+    runPostToolUse: async () => { throw new Error('unused'); },
+    runSubagentStart: async () => { throw new Error('unused'); },
+    runSubagentEnd: async () => { throw new Error('unused'); },
+  };
+
+  const gate = await runPreToolUseGate(
+    {
+      options: {
+        hookRunner: runner,
+        hookSessionContext: {
+          sessionId: 's1',
+          conversationPath: null,
+          workspaceRoot: '/w',
+          model: 'm',
+        },
+        toolExecutor: {
+          requestFromFunctionCall: async (_name: string, argumentsJson: string) => ({
+            name: 'read_file',
+            ...(JSON.parse(argumentsJson) as Record<string, unknown>),
+          }),
+        },
+      },
+    } as never,
+    { id: 'tc1', name: 'read_file', argumentsJson: '{"path":"original.md"}' },
+    { name: 'read_file', path: 'original.md' },
+  );
+
+  assert.equal(gate.kind, 'ready');
+  if (gate.kind === 'ready') {
+    assert.deepEqual(gate.effectiveToolInput, { path: 'rewritten.md' });
+    assert.equal((gate.request as { path?: string }).path, 'rewritten.md');
+  }
+});
+
+test('postHookToolInputFromPreGate prefers effectiveToolInput', () => {
+  const toolInput = postHookToolInputFromPreGate(
+    {
+      kind: 'ready',
+      request: { name: 'grep' },
+      effectiveToolInput: { pattern: 'hooked' },
+    },
+    '{"pattern":"original"}',
+  );
+  assert.deepEqual(toolInput, { pattern: 'hooked' });
 });
