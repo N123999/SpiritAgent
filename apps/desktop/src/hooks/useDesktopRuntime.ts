@@ -2596,6 +2596,16 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const getGitHubPullRequestConversation = useCallback(
+    async (request: GetGitHubPullRequestDetailRequest) => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.getGitHubPullRequestConversation(request);
+    },
+    [api],
+  );
+
   const readWorkspaceTextFile = useCallback(
     async (relativePath: string): Promise<WorkspaceReadTextFileResult> => {
       if (!api) {
@@ -2841,6 +2851,7 @@ export function useDesktopRuntime() {
     disconnectGitHub,
     getGitHubPullRequestForCurrentBranch,
     getGitHubPullRequestDetail,
+    getGitHubPullRequestConversation,
     readWorkspaceTextFile,
     writeWorkspaceTextFile,
     readHostTextFile,

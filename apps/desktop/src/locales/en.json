@@ -617,6 +617,7 @@
     "prReviewThreadFallback": "Left a review comment",
     "prReviewThreadExpand": "Show thread",
     "prReviewThreadCollapse": "Hide thread",
+    "prConversationHasMore": "More activity is available on GitHub.",
     "prDescriptionHeading": "Description",
     "prDraft": "Draft",
     "prOpen": "Open",

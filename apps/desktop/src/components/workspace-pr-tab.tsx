@@ -4,7 +4,7 @@ import { GitPullRequest } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
-import { GITHUB_PR_DETAIL_DEMO } from "@/lib/github-pr-ui-demo";
+import { GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO } from "@/lib/github-pr-ui-demo";
 import { cn } from "@/lib/utils";
 import type {
   DesktopGitSnapshot,
@@ -12,6 +12,7 @@ import type {
   GitHubAuthStatus,
   GitHubDeviceAuthChallenge,
   GitHubPullRequestDetail,
+  GitHubPullRequestConversationSnapshot,
   GitHubPullRequestForBranchResult,
 } from "@/types";
 
@@ -49,6 +50,9 @@ export type WorkspacePrTabProps = {
   getGitHubPullRequestDetail: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestDetail>;
+  getGitHubPullRequestConversation: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<GitHubPullRequestConversationSnapshot>;
   className?: string;
 };
 
@@ -63,15 +67,20 @@ export function WorkspacePrTab({
   disconnectGitHub,
   getGitHubPullRequestForCurrentBranch,
   getGitHubPullRequestDetail,
+  getGitHubPullRequestConversation,
   className,
 }: WorkspacePrTabProps) {
   const { t } = useTranslation();
   const [authStatus, setAuthStatus] = useState<GitHubAuthStatus>({ connected: false });
   const [branchResult, setBranchResult] = useState<GitHubPullRequestForBranchResult | null>(null);
   const [detail, setDetail] = useState<GitHubPullRequestDetail | null>(null);
+  const [conversation, setConversation] = useState<GitHubPullRequestConversationSnapshot | null>(
+    null,
+  );
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [loadingBranch, setLoadingBranch] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingConversation, setLoadingConversation] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,39 +100,50 @@ export function WorkspacePrTab({
     }
   }, [getGitHubAuthStatus, prTabEnabled]);
 
-  const loadPullRequestDetail = useCallback(
+  const loadPullRequestData = useCallback(
     async (result: GitHubPullRequestForBranchResult) => {
       const pullRequest = result.pullRequest;
       const repository = result.repository;
       if (!pullRequest || !repository) {
         setDetail(null);
+        setConversation(null);
         return;
       }
 
+      const request = {
+        owner: repository.owner,
+        repo: repository.repo,
+        number: pullRequest.number,
+      };
+
       setLoadingDetail(true);
+      setLoadingConversation(true);
       setError(null);
       try {
-        const next = await getGitHubPullRequestDetail({
-          owner: repository.owner,
-          repo: repository.repo,
-          number: pullRequest.number,
-        });
-        setDetail(next);
+        const [nextDetail, nextConversation] = await Promise.all([
+          getGitHubPullRequestDetail(request),
+          getGitHubPullRequestConversation(request),
+        ]);
+        setDetail(nextDetail);
+        setConversation(nextConversation);
       } catch (loadError) {
         setDetail(null);
+        setConversation(null);
         setError(describeError(loadError));
         await refreshAuthStatus();
       } finally {
         setLoadingDetail(false);
+        setLoadingConversation(false);
       }
     },
-    [getGitHubPullRequestDetail, refreshAuthStatus],
+    [getGitHubPullRequestConversation, getGitHubPullRequestDetail, refreshAuthStatus],
   );
 
   const refreshBranchPullRequest = useCallback(async () => {
     if (!prTabEnabled || !authStatus.connected) {
       setBranchResult(null);
       setDetail(null);
+      setConversation(null);
       return;
     }
 
@@ -133,13 +153,15 @@ export function WorkspacePrTab({
       const result = await getGitHubPullRequestForCurrentBranch();
       setBranchResult(result);
       if (result.pullRequest && result.repository) {
-        await loadPullRequestDetail(result);
+        await loadPullRequestData(result);
       } else {
         setDetail(null);
+        setConversation(null);
       }
     } catch (loadError) {
       setBranchResult(null);
       setDetail(null);
+      setConversation(null);
       setError(describeError(loadError));
       await refreshAuthStatus();
     } finally {
@@ -148,7 +170,7 @@ export function WorkspacePrTab({
   }, [
     authStatus.connected,
     getGitHubPullRequestForCurrentBranch,
-    loadPullRequestDetail,
+    loadPullRequestData,
     prTabEnabled,
     refreshAuthStatus,
   ]);
@@ -158,6 +180,7 @@ export function WorkspacePrTab({
       setAuthStatus({ connected: false });
       setBranchResult(null);
       setDetail(null);
+      setConversation(null);
       return;
     }
 
@@ -173,6 +196,7 @@ export function WorkspacePrTab({
     if (!status.connected) {
       setBranchResult(null);
       setDetail(null);
+      setConversation(null);
       return;
     }
 
@@ -182,13 +206,15 @@ export function WorkspacePrTab({
       const result = await getGitHubPullRequestForCurrentBranch();
       setBranchResult(result);
       if (result.pullRequest && result.repository) {
-        await loadPullRequestDetail(result);
+        await loadPullRequestData(result);
       } else {
         setDetail(null);
+        setConversation(null);
       }
     } catch (loadError) {
       setBranchResult(null);
       setDetail(null);
+      setConversation(null);
       setError(describeError(loadError));
       try {
         setAuthStatus(await getGitHubAuthStatus());
@@ -201,7 +227,7 @@ export function WorkspacePrTab({
   }, [
     getGitHubAuthStatus,
     getGitHubPullRequestForCurrentBranch,
-    loadPullRequestDetail,
+    loadPullRequestData,
     prTabEnabled,
   ]);
 
@@ -298,6 +324,7 @@ export function WorkspacePrTab({
       setAuthStatus(next);
       setBranchResult(null);
       setDetail(null);
+      setConversation(null);
     } catch (disconnectError) {
       setError(describeError(disconnectError));
     } finally {
@@ -407,7 +434,11 @@ export function WorkspacePrTab({
               {t("workspace.prClearDetailDemo")}
             </Button>
           </div>
-          <WorkspacePrDetailView detail={GITHUB_PR_DETAIL_DEMO} onOpenExternal={openExternalUrl} />
+          <WorkspacePrDetailView
+            detail={GITHUB_PR_DETAIL_DEMO}
+            conversationItems={GITHUB_PR_CONVERSATION_DEMO}
+            onOpenExternal={openExternalUrl}
+          />
         </section>
       ) : null}
 
@@ -462,7 +493,13 @@ export function WorkspacePrTab({
           ) : loadingDetail && !detail ? (
             <p className="text-muted-foreground">{t("workspace.prLoadingDetail")}</p>
           ) : detail ? (
-            <WorkspacePrDetailView detail={detail} onOpenExternal={openExternalUrl} />
+            <WorkspacePrDetailView
+              detail={detail}
+              conversationItems={conversation?.items ?? []}
+              loadingConversation={loadingConversation}
+              conversationHasMore={conversation?.hasMore ?? false}
+              onOpenExternal={openExternalUrl}
+            />
           ) : (
             <p className="text-muted-foreground">{t("workspace.prDetailUnavailable")}</p>
           )}
