@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SessionSidebarChromeProvider } from "@/contexts/session-sidebar-chrome-context";
@@ -121,10 +121,12 @@ export default function App() {
     setLastNonSettingsSurface: surfaceNav.setLastNonSettingsSurface,
   });
 
-  composerAutomationApiRef.current = {
-    setSlashSelectedIndex: composer.setSlashSelectedIndex,
-    focusComposer: composer.focusComposer,
-  };
+  useEffect(() => {
+    composerAutomationApiRef.current = {
+      setSlashSelectedIndex: composer.setSlashSelectedIndex,
+      focusComposer: composer.focusComposer,
+    };
+  }, [composer.focusComposer, composer.setSlashSelectedIndex]);
 
   const messageRewind = useMessageRewind({
     runtime,
