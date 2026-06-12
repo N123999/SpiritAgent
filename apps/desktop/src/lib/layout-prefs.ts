@@ -243,3 +243,53 @@ export function writeWorkspaceSidebarExpandedById(
     // ignore
   }
 }
+
+const SIDEBAR_WORKSPACE_SECTION_EXPANDED_KEY =
+  "spirit-desktop-sidebar-workspace-section-expanded";
+const SIDEBAR_NO_WORKSPACE_SECTION_EXPANDED_KEY =
+  "spirit-desktop-sidebar-no-workspace-section-expanded";
+
+function readStoredBoolean(key: string, fallback: boolean): boolean {
+  try {
+    if (typeof localStorage === "undefined") {
+      return fallback;
+    }
+    const raw = localStorage.getItem(key);
+    if (raw === "false") {
+      return false;
+    }
+    if (raw === "true") {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return fallback;
+}
+
+function writeStoredBoolean(key: string, value: boolean): void {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    localStorage.setItem(key, value ? "true" : "false");
+  } catch {
+    // ignore
+  }
+}
+
+export function readSidebarWorkspaceSectionExpanded(): boolean {
+  return readStoredBoolean(SIDEBAR_WORKSPACE_SECTION_EXPANDED_KEY, true);
+}
+
+export function writeSidebarWorkspaceSectionExpanded(expanded: boolean): void {
+  writeStoredBoolean(SIDEBAR_WORKSPACE_SECTION_EXPANDED_KEY, expanded);
+}
+
+export function readSidebarNoWorkspaceSectionExpanded(): boolean {
+  return readStoredBoolean(SIDEBAR_NO_WORKSPACE_SECTION_EXPANDED_KEY, true);
+}
+
+export function writeSidebarNoWorkspaceSectionExpanded(expanded: boolean): void {
+  writeStoredBoolean(SIDEBAR_NO_WORKSPACE_SECTION_EXPANDED_KEY, expanded);
+}
