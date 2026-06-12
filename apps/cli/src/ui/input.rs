@@ -92,6 +92,12 @@ pub(in crate::ui) fn build_footer_line(app: &TuiViewModel, width: usize) -> Line
             Some(Span::styled(format!("  |  {}", hint), footer_style)),
             format!("  |  {}", hint),
         )
+    } else if app.fork_picker.is_some() {
+        let hint = t!("ui.footer.fork_hint");
+        (
+            Some(Span::styled(format!("  |  {}", hint), footer_style)),
+            format!("  |  {}", hint),
+        )
     } else if app.pending_response_active && app.pending_aux_state().is_some() {
         let hint = t!("ui.footer.interrupt_reply_hint");
         (

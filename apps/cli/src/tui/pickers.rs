@@ -321,6 +321,7 @@ impl TuiShell {
 
     pub(super) fn reset_primary_picker_overlay(&mut self) {
         self.exit_rewind_picker_mode();
+        self.exit_fork_picker_mode();
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.approval_picker_active = false;

@@ -132,6 +132,7 @@ impl ChatRepository for JsonChatRepository {
             &archive.subagent_sessions,
             archive.rewind.as_ref(),
             archive.desktop_messages.as_deref(),
+            archive.session_display_name.as_deref(),
         )
     }
 
@@ -146,6 +147,7 @@ impl ChatRepository for JsonChatRepository {
             subagent_sessions: loaded.subagent_sessions,
             desktop_messages: loaded.desktop_messages,
             rewind: loaded.rewind,
+            session_display_name: loaded.session_display_name,
         })
     }
 }

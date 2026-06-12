@@ -228,6 +228,8 @@ pub struct ChatArchive {
     pub desktop_messages: Option<Vec<crate::rewind::ConversationMessageSnapshot>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rewind: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_display_name: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -390,6 +390,14 @@ impl RuntimeHandle {
         self.runtime.replace_session_from_archive(archive)
     }
 
+    pub fn activate_forked_session(
+        &mut self,
+        archive: &crate::ports::ChatArchive,
+        todos: Vec<crate::rewind::HostTodoRecord>,
+    ) -> Result<()> {
+        self.runtime.activate_forked_session(archive, todos)
+    }
+
     pub fn add_pending_image(&mut self, path: String) {
         self.runtime.add_pending_image(path)
     }

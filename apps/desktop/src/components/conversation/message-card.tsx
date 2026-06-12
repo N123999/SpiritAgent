@@ -1,4 +1,4 @@
-import { useMemo, type ClipboardEvent as ReactClipboardEvent, type RefObject } from "react";
+import { useMemo, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
@@ -11,6 +11,7 @@ import {
 } from "@/components/conversation/conversation-thinking-collapsibles";
 import { QueuedUserMessageHoverActions } from "@/components/queued-user-message-hover-actions";
 import { ToolCallCollapsible } from "@/components/tool-call/tool-call-collapsible";
+import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type {
   ReadLocalImagePreview,
   ReadLocalVideoPreview,
@@ -18,9 +19,8 @@ import type {
   ReadManagedVideoPreview,
   SaveLocalImageAs,
 } from "@/components/tool-call/tool-call-types";
+import { MessageTurnActions } from "@/components/conversation/message-turn-actions";
 import { UserMessageBubble } from "@/components/user-message-bubble";
-import { Button } from "@/components/ui/button";
-import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import { messageContentToRichSegments } from "@/lib/composer-segment-model";
 import {
@@ -33,6 +33,11 @@ import {
 import { conversationMessageStableId } from "@/lib/conversation-list-scope";
 import { isSubagentStatusSurfaceMessage } from "@/lib/subagent-display";
 import { cn } from "@/lib/utils";
+import { canForkMessage, canShowForkMessage } from "@/lib/fork-eligibility";
+import {
+  isMessageInActiveStreamingTurn,
+  messageShowsAssistantTurnActions,
+} from "@/lib/message-turn-actions-ui";
 import type {
   ConversationMessageSnapshot,
   DesktopModelReasoningEffort,
@@ -87,6 +92,15 @@ export function MessageCard({
   onQueueMoveUp,
   onQueueSendNow,
   onQueueDelete,
+  conversationIsBusy = false,
+  activeSessionReadOnly = false,
+  forkBusy = false,
+  onForkMessage,
+  forkMenuAlwaysVisible = false,
+  forkMenuHoverRevealed = false,
+  assistantTurnStartIndex = null,
+  onAssistantTurnPointerEnter,
+  onAssistantTurnPointerLeave,
   hiddenByProcessGroup = false,
 }: {
   composerSessionKey: string;
@@ -136,6 +150,15 @@ export function MessageCard({
   onQueueMoveUp?(queueId: string): void;
   onQueueSendNow?(queueId: string): void;
   onQueueDelete?(queueId: string): void;
+  conversationIsBusy?: boolean;
+  activeSessionReadOnly?: boolean;
+  forkBusy?: boolean;
+  onForkMessage?: (message: ConversationMessageSnapshot, listIndex: number) => void;
+  forkMenuAlwaysVisible?: boolean;
+  forkMenuHoverRevealed?: boolean;
+  assistantTurnStartIndex?: number | null;
+  onAssistantTurnPointerEnter?: (turnStart: number) => void;
+  onAssistantTurnPointerLeave?: (event: ReactPointerEvent, turnStart: number) => void;
 }) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
@@ -163,12 +186,49 @@ export function MessageCard({
         : null,
     [rewindSelected, message.content, message.id],
   );
+  const turnActionsEligible = messageShowsAssistantTurnActions(message, messages, listIndex);
+  const inActiveStreamingTurn = isMessageInActiveStreamingTurn(
+    messages,
+    listIndex,
+    conversationIsBusy === true,
+  );
+  const showTurnActions =
+    !hiddenByProcessGroup
+    && turnActionsEligible
+    && !inActiveStreamingTurn;
+  const showForkMenu =
+    showTurnActions
+    && canShowForkMessage({
+      message,
+      activeSessionReadOnly,
+    });
+  const canFork =
+    showForkMenu
+    && canForkMessage({
+      message,
+      conversationBusy: conversationIsBusy,
+      activeSessionReadOnly,
+      forkBusy,
+    });
   return (
     <div
       id={conversationMessageStableId(message, composerSessionKey, conversationListScopeKey)}
       data-spirit-surface="message-row"
       data-spirit-message-role={message.role}
       data-spirit-message-pending={message.pending ? "true" : "false"}
+      data-spirit-fork-turn-start={
+        assistantTurnStartIndex === null ? undefined : assistantTurnStartIndex
+      }
+      onPointerEnter={
+        assistantTurnStartIndex === null || !onAssistantTurnPointerEnter
+          ? undefined
+          : () => onAssistantTurnPointerEnter(assistantTurnStartIndex)
+      }
+      onPointerLeave={
+        assistantTurnStartIndex === null || !onAssistantTurnPointerLeave
+          ? undefined
+          : (event) => onAssistantTurnPointerLeave(event, assistantTurnStartIndex)
+      }
       className={cn(
         "scroll-mt-4 flex w-full pb-3 last:pb-0",
         compactAfterPrevious && "-mt-4",
@@ -282,6 +342,20 @@ export function MessageCard({
           </div>
           )
         ) : null}
+        {showTurnActions ? (
+          <MessageTurnActions
+            showContinueButton={showContinueButton}
+            continueTarget={continueTarget}
+            continueBusy={continueBusy}
+            onContinue={onContinue}
+            canFork={showForkMenu && Boolean(onForkMessage)}
+            forkEnabled={canFork}
+            forkMenuAlwaysVisible={forkMenuAlwaysVisible}
+            forkMenuHoverRevealed={forkMenuHoverRevealed}
+            forkBusy={forkBusy}
+            onFork={() => onForkMessage?.(message, listIndex)}
+          />
+        ) : null}
         {!isUser && message.aux?.finishTaskNotice ? (
           <p className="text-xs leading-relaxed text-muted-foreground">
             {message.aux.finishTaskNotice}
@@ -297,20 +371,6 @@ export function MessageCard({
             onOpenSubagentViewer={onOpenSubagentViewer}
             onAbortShell={onAbortShell}
           />
-        ) : null}
-        {!isUser && showContinueButton && continueTarget ? (
-          <div className="ml-auto flex max-w-[min(72%,22rem)] justify-end pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 px-4"
-              onClick={() => onContinue(continueTarget)}
-              disabled={continueBusy}
-            >
-              {t('app.continue')}
-            </Button>
-          </div>
         ) : null}
       </div>
     </div>

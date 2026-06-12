@@ -834,6 +834,25 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/fork-session') {
+    const listIndex =
+      typeof jsonBody?.listIndex === 'number' && Number.isFinite(jsonBody.listIndex)
+        ? jsonBody.listIndex
+        : undefined;
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('forkSession', {
+        request: {
+          messageId: typeof jsonBody?.messageId === 'number' ? jsonBody.messageId : NaN,
+          ...(listIndex !== undefined ? { listIndex } : {}),
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/queue/reorder') {
     writeJson(
       request,

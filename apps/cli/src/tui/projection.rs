@@ -1,9 +1,9 @@
 use super::*;
-use crate::view::{RewindPickerView, TodoStripItemView, TodoStripView};
+use crate::view::{ForkPickerView, RewindPickerView, TodoStripItemView, TodoStripView};
 
 impl TuiShell {
     pub fn view_model(&self) -> TuiViewModel {
-        let history_truncated_before = if self.rewind_picker_active {
+        let history_truncated_before = if self.rewind_picker_active || self.fork_picker_active {
             0
         } else {
             self.messages.len().saturating_sub(VIEW_MODEL_MESSAGE_LIMIT)
@@ -23,6 +23,7 @@ impl TuiShell {
             .collect();
         let marketplace_view = self.build_marketplace_view_model();
         let rewind_picker = self.rewind_picker_view();
+        let fork_picker = self.fork_picker_view();
         let todo_strip = if self.todo_items.is_empty() {
             None
         } else {
@@ -65,6 +66,7 @@ impl TuiShell {
             slash_suggestions: self.slash.suggestions.clone(),
             selected_suggestion: self.slash.selected_suggestion,
             rewind_picker,
+            fork_picker,
             model_picker_active: self.model_picker_active,
             model_picker_index: self.model_picker_index,
             model_display_titles: self.model_display_titles.clone(),
@@ -119,6 +121,28 @@ impl TuiShell {
         Some(RewindPickerView {
             selected_message_id: selectable_message_ids[self
                 .rewind_picker_index
+                .min(selectable_message_ids.len().saturating_sub(1))],
+            selectable_message_ids,
+        })
+    }
+
+    fn fork_picker_view(&self) -> Option<ForkPickerView> {
+        if !self.fork_picker_active {
+            return None;
+        }
+
+        let selectable_message_ids = self
+            .fork_targets()
+            .into_iter()
+            .map(|(_, message_id, _)| message_id)
+            .collect::<Vec<_>>();
+        if selectable_message_ids.is_empty() {
+            return None;
+        }
+
+        Some(ForkPickerView {
+            selected_message_id: selectable_message_ids[self
+                .fork_picker_index
                 .min(selectable_message_ids.len().saturating_sub(1))],
             selectable_message_ids,
         })

@@ -1093,6 +1093,7 @@ impl TsBridgeRuntime {
                 .collect(),
             desktop_messages: None,
             rewind: Some(self.rewind.as_json()),
+            session_display_name: None,
         })
     }
 
@@ -1783,6 +1784,25 @@ impl TsBridgeRuntime {
             self.plan_metadata.spirit_agent_mode(),
             self.active_plan_path.as_deref(),
         );
+    }
+
+    pub fn activate_forked_session(
+        &mut self,
+        archive: &crate::ports::ChatArchive,
+        todos: Vec<rewind::HostTodoRecord>,
+    ) -> Result<()> {
+        self.replace_runtime_archive(archive)?;
+        self.rewind = rewind::normalize_desktop_rewind_metadata(archive.rewind.as_ref());
+        self.active_plan_path =
+            plan::extract_active_plan_path_from_archived_llm_history(&archive.llm_history);
+        self.plan_metadata = plan::plan_metadata_snapshot(
+            self.plan_metadata.spirit_agent_mode(),
+            self.active_plan_path.as_deref(),
+        );
+        let session_key = self.rewind.session_id.clone();
+        self.set_todo_session_key(&session_key)?;
+        self.replace_session_todos(todos)?;
+        Ok(())
     }
 
     pub fn add_pending_image(&mut self, path: String) {

@@ -46,6 +46,7 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/compact",
     "/sessions",
     "/rewind",
+    "/fork",
     "/subagents",
     "/image",
     "/mcp",
@@ -71,6 +72,7 @@ const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/compact",
     "/sessions",
     "/rewind",
+    "/fork",
     "/subagents",
     "/image",
     "/mcp",
@@ -139,7 +141,7 @@ fn command_suggestion(command: &str) -> InputSuggestion {
 
 fn command_replacement(command: &str) -> String {
     match command {
-        "/model" | "/sessions" | "/rewind" | "/subagents" | "/image" | "/mcp" | "/hooks" | "/log"
+        "/model" | "/sessions" | "/rewind" | "/fork" | "/subagents" | "/image" | "/mcp" | "/hooks" | "/log"
         | "/language" | "/approval" | "/networks" | "/extensions" => {
             format!("{} ", command)
         }
@@ -186,6 +188,9 @@ fn contextual_suggestions(shell: &mut TuiShell, query: &str) -> Vec<InputSuggest
 
     if query == "/rewind" || query.starts_with("/rewind ") {
         return vec![primary_help_suggestion("/rewind", query)];
+    }
+    if query == "/fork" || query.starts_with("/fork ") {
+        return vec![primary_help_suggestion("/fork", query)];
     }
 
     if query == "/subagents" || query.starts_with("/subagents ") {
@@ -381,6 +386,7 @@ pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> 
         "- /sessions load <file>".to_string(),
         "- /rewind".to_string(),
         "- /rewind <index> [new_message]".to_string(),
+        "- /fork".to_string(),
         "- /subagents [list|open <session_id>|close]".to_string(),
         "- /image <path> [prompt]".to_string(),
         "- /image pick".to_string(),
@@ -405,6 +411,7 @@ pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> 
     lines.extend([
         t!("tui.session.help.open_selector").into_owned(),
         t!("tui.session.help.rewind").into_owned(),
+        t!("tui.session.help.fork").into_owned(),
         t!("tui.loop.help").into_owned(),
         "- /subagents 打开当前会话里的 SubAgent 列表；回车可进入只读子会话视图，Esc 返回主会话。".to_string(),
         "- /image pick 打开当前目录图片选择器。".to_string(),
@@ -460,6 +467,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
         "/compact" => shell.compact_history_for_slash(),
         "/sessions" => shell.handle_sessions_slash(message),
         "/rewind" => shell.handle_rewind_slash(message),
+        "/fork" => shell.handle_fork_slash(message),
         "/subagents" => shell.handle_subagents_slash(message),
         "/image" => shell.handle_image_slash(message),
         "/mcp" => shell.handle_mcp_slash(message),

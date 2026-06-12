@@ -80,6 +80,7 @@ export interface HostCommandDelegate {
   writeHostTextFile(request: CommandPayloads['writeHostTextFile']['request']): Promise<unknown>;
   statHostTextFile(absolutePath: string): Promise<unknown>;
   rewindAndSubmitMessage(request: CommandPayloads['rewindAndSubmitMessage']['request']): Promise<unknown>;
+  forkSession(request: CommandPayloads['forkSession']['request']): Promise<unknown>;
   reorderQueuedUserTurn(request: CommandPayloads['reorderQueuedUserTurn']['request']): Promise<unknown>;
   sendQueuedUserTurnNow(request: CommandPayloads['sendQueuedUserTurnNow']['request']): Promise<unknown>;
   removeQueuedUserTurn(request: CommandPayloads['removeQueuedUserTurn']['request']): Promise<unknown>;
@@ -167,6 +168,7 @@ const hostCommandDispatch = {
   writeHostTextFile: (host, payload) => host.writeHostTextFile(payload.request),
   statHostTextFile: (host, payload) => host.statHostTextFile(payload.absolutePath),
   rewindAndSubmitMessage: (host, payload) => host.rewindAndSubmitMessage(payload.request),
+  forkSession: (host, payload) => host.forkSession(payload.request),
   reorderQueuedUserTurn: (host, payload) => host.reorderQueuedUserTurn(payload.request),
   sendQueuedUserTurnNow: (host, payload) => host.sendQueuedUserTurnNow(payload.request),
   removeQueuedUserTurn: (host, payload) => host.removeQueuedUserTurn(payload.request),

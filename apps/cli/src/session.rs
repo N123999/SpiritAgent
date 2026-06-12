@@ -303,6 +303,7 @@ impl SessionModel {
             subagent_sessions: Vec::new(),
             desktop_messages: None,
             rewind: None,
+            session_display_name: None,
         }
     }
 }

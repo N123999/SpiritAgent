@@ -524,7 +524,9 @@ pub(in crate::ui) fn render_message_lines(
     let message_id = message_index + 1;
     let selected_rewind_user_message =
         msg.role == MessageRole::User && app.is_rewind_selected_message(message_id);
-    let rewind_deemphasized_message = should_rewind_deemphasize_message(app, message_id);
+    let selected_fork_assistant_message =
+        msg.role == MessageRole::Agent && app.is_fork_selected_message(message_id);
+    let picker_deemphasized_message = should_picker_deemphasize_message(app, message_id);
     let message_slot = match msg.role {
         MessageRole::User => CliUiHookSlot::MessageUser,
         MessageRole::Agent => CliUiHookSlot::MessageAssistant,
@@ -535,13 +537,14 @@ pub(in crate::ui) fn render_message_lines(
             conversation_body_text_style(),
             cli_ui_accent_color(CliUiHookSlot::MessageUser),
         ),
+        MessageRole::Agent if selected_fork_assistant_message => Style::default().fg(Color::White),
         MessageRole::Agent => assistant_message_prefix_style(),
     };
 
     if let Some(ref tool) = msg.tool_block {
-        return maybe_rewind_deemphasize_lines(
+        return maybe_picker_deemphasize_lines(
             render_tool_card_lines(prefix_style, tool, app.show_aux_details),
-            rewind_deemphasized_message,
+            picker_deemphasized_message,
         );
     }
 
@@ -583,6 +586,10 @@ pub(in crate::ui) fn render_message_lines(
             MessageRole::User => patch_lines_foreground(
                 plain_text_lines(&effective_message_body),
                 cli_ui_foreground_color(CliUiHookSlot::MessageUser),
+            ),
+            MessageRole::Agent if selected_fork_assistant_message => patch_lines_foreground(
+                markdown_lines(&effective_message_body),
+                Some(Color::White),
             ),
             MessageRole::Agent => patch_lines_foreground(
                 markdown_lines(&effective_message_body),
@@ -691,19 +698,25 @@ pub(in crate::ui) fn render_message_lines(
         push_message_line(line);
     }
 
-    maybe_rewind_deemphasize_lines(out, rewind_deemphasized_message)
+    maybe_picker_deemphasize_lines(out, picker_deemphasized_message)
 }
 
-pub(in crate::ui) fn should_rewind_deemphasize_message(
+pub(in crate::ui) fn should_picker_deemphasize_message(
     app: &TuiViewModel,
     message_id: usize,
 ) -> bool {
-    app.rewind_picker.is_some()
-        && !app.is_rewind_selected_message(message_id)
-        && !app.is_rewind_selectable_message(message_id)
+    if app.rewind_picker.is_some() {
+        return !app.is_rewind_selected_message(message_id)
+            && !app.is_rewind_selectable_message(message_id);
+    }
+    if app.fork_picker.is_some() {
+        return !app.is_fork_selected_message(message_id)
+            && !app.is_fork_selectable_message(message_id);
+    }
+    false
 }
 
-pub(in crate::ui) fn maybe_rewind_deemphasize_lines(
+pub(in crate::ui) fn maybe_picker_deemphasize_lines(
     lines: Vec<Line<'static>>,
     enabled: bool,
 ) -> Vec<Line<'static>> {

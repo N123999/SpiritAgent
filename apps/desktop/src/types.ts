@@ -549,6 +549,12 @@ export interface RewindAndSubmitMessageRequest {
   localFilePaths?: string[];
 }
 
+export interface ForkSessionRequest {
+  messageId: number;
+  /** Visible list index; disambiguates duplicate `messageId`s in the timeline. */
+  listIndex?: number;
+}
+
 export interface SubmitUserTurnRequest {
   text: string;
   localFilePaths?: string[];

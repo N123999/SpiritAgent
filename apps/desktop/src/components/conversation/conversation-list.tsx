@@ -6,7 +6,6 @@ import { ToolCallCollapsible } from "@/components/tool-call/tool-call-collapsibl
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { MessageCard } from "@/components/conversation/message-card";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
-import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import { conversationMessageStableId } from "@/lib/conversation-list-scope";
 import type { TurnContinuePresentation } from "@/lib/conversation-continue-ui";
 import {
@@ -17,6 +16,11 @@ import {
   shouldCompactAfterPreviousRenderItem,
   shouldTightenAfterPreviousRenderItem,
 } from "@/lib/message-card-spacing";
+import {
+  assistantTurnStartIndexForRenderItem,
+  findLastAssistantTurnActionsListIndex,
+  shouldClearAssistantTurnHover,
+} from "@/lib/message-turn-actions-ui";
 import { cn } from "@/lib/utils";
 import type {
   ConversationMessageSnapshot,
@@ -24,7 +28,8 @@ import type {
   MessageRewindDraftState,
   PendingAssistantAux,
 } from "@/types";
-import type { RefObject } from "react";
+import type { PointerEvent, RefObject } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   CONVERSATION_GUTTER_X,
@@ -69,6 +74,7 @@ export type ConversationListProps = {
   onRewindPickLocalFile: () => void;
   onRewindPaste: (event: import("react").ClipboardEvent<HTMLTextAreaElement>) => void;
   onComposerAgentModeChange: (mode: DesktopAgentMode) => void;
+  onForkMessage: (message: ConversationMessageSnapshot, listIndex: number) => void;
 };
 
 export function ConversationList({
@@ -104,8 +110,32 @@ export function ConversationList({
   onRewindPickLocalFile,
   onRewindPaste,
   onComposerAgentModeChange,
+  onForkMessage,
 }: ConversationListProps) {
   const { t } = useTranslation();
+  const [hoveredAssistantTurnStart, setHoveredAssistantTurnStart] = useState<number | null>(
+    null,
+  );
+  const lastAssistantTurnActionsIndex = useMemo(
+    () => findLastAssistantTurnActionsListIndex(messages),
+    [messages],
+  );
+
+  const handleAssistantTurnPointerEnter = useCallback((turnStart: number) => {
+    setHoveredAssistantTurnStart(turnStart);
+  }, []);
+
+  const handleAssistantTurnPointerLeave = useCallback(
+    (event: PointerEvent, turnStart: number) => {
+      if (!shouldClearAssistantTurnHover(event, turnStart)) {
+        return;
+      }
+      setHoveredAssistantTurnStart((current) =>
+        current === turnStart ? null : current,
+      );
+    },
+    [],
+  );
 
   return (
     <div
@@ -134,6 +164,10 @@ export function ConversationList({
           ) : null}
           {conversationRenderItems.map((renderItem, renderIndex) => {
             const previousRenderItem = conversationRenderItems[renderIndex - 1];
+            const assistantTurnStart = assistantTurnStartIndexForRenderItem(renderItem, messages);
+            const forkMenuHoverRevealed =
+              assistantTurnStart !== null
+              && hoveredAssistantTurnStart === assistantTurnStart;
 
             if (renderItem.kind === "process-group") {
               const anchorMessage = messages[renderItem.messageIndices[0]];
@@ -157,6 +191,17 @@ export function ConversationList({
                   data-spirit-surface="message-row"
                   data-spirit-message-role="assistant"
                   data-spirit-message-pending="false"
+                  data-spirit-fork-turn-start={assistantTurnStart ?? undefined}
+                  onPointerEnter={
+                    assistantTurnStart === null
+                      ? undefined
+                      : () => handleAssistantTurnPointerEnter(assistantTurnStart)
+                  }
+                  onPointerLeave={
+                    assistantTurnStart === null
+                      ? undefined
+                      : (event) => handleAssistantTurnPointerLeave(event, assistantTurnStart)
+                  }
                   className={cn(
                     "scroll-mt-4 flex w-full justify-start pb-3 last:pb-0",
                     compactAfterPrevious && "-mt-4",
@@ -314,6 +359,15 @@ export function ConversationList({
                 onQueueDelete={(queueId) => {
                   void runtime.removeQueuedUserTurn(queueId);
                 }}
+                conversationIsBusy={conversationIsBusy}
+                activeSessionReadOnly={activeSessionReadOnly}
+                forkBusy={runtime.busyAction === "fork"}
+                forkMenuAlwaysVisible={lastAssistantTurnActionsIndex === index}
+                forkMenuHoverRevealed={forkMenuHoverRevealed}
+                assistantTurnStartIndex={assistantTurnStart}
+                onAssistantTurnPointerEnter={handleAssistantTurnPointerEnter}
+                onAssistantTurnPointerLeave={handleAssistantTurnPointerLeave}
+                onForkMessage={onForkMessage}
               />
             );
           })}

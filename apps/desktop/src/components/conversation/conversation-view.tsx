@@ -66,6 +66,7 @@ export type ConversationListSectionProps = {
   models: DesktopSnapshot["config"]["models"];
   onOpenSubagentViewer: ((toolCallId: string) => void) | undefined;
   onStartMessageRewind: (message: ConversationMessageSnapshot, listIndex: number) => void;
+  onForkMessage: (message: ConversationMessageSnapshot, listIndex: number) => void;
   onSubmitMessageRewind: () => void;
   onRewindRemoveLocalFileAttachment: (path: string) => void;
   onRewindPickLocalFile: () => void;
@@ -277,6 +278,7 @@ export function ConversationView({
                   agentMode={list.runtime.settings.agentMode}
                   onOpenSubagentViewer={list.onOpenSubagentViewer}
                   onStartMessageRewind={list.onStartMessageRewind}
+                  onForkMessage={list.onForkMessage}
                   onSubmitMessageRewind={list.onSubmitMessageRewind}
                   onRewindRemoveLocalFileAttachment={list.onRewindRemoveLocalFileAttachment}
                   onRewindPickLocalFile={list.onRewindPickLocalFile}

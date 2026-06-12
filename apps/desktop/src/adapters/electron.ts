@@ -153,6 +153,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     rewindAndSubmitMessage(request) {
       return bridge.rewindAndSubmitMessage(request);
     },
+    forkSession(request) {
+      return bridge.forkSession(request);
+    },
     reorderQueuedUserTurn(request) {
       return bridge.reorderQueuedUserTurn(request);
     },

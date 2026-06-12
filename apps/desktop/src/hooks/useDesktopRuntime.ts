@@ -62,6 +62,7 @@ import type {
   PreviewModelsResponse,
   QueryWorkspaceFileReferenceSuggestionsRequest,
   RewindAndSubmitMessageRequest,
+  ForkSessionRequest,
   SessionListItem,
   SubmitGitChipRequest,
   SubmitUserTurnRequest,
@@ -84,6 +85,7 @@ type BusyAction =
   | "send"
   | "continue"
   | "rewind"
+  | "fork"
   | "approve"
   | "questions"
   | "reset"
@@ -2297,6 +2299,31 @@ export function useDesktopRuntime() {
     [api, applySnapshot, clearActiveComposerDraft, refreshSessions],
   );
 
+  const forkSession = useCallback(
+    async (request: ForkSessionRequest): Promise<boolean> => {
+      if (!api) {
+        return false;
+      }
+
+      setBusyAction("fork");
+      try {
+        const next = await api.forkSession(request);
+        applySnapshot(next);
+        clearActiveComposerDraft();
+        setQuestionError("");
+        setRuntimeError("");
+        void refreshSessions();
+        return true;
+      } catch (error) {
+        setRuntimeError(describeError(error));
+        return false;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [api, applySnapshot, clearActiveComposerDraft, refreshSessions],
+  );
+
   const submitApproval = useCallback(async (decision: DesktopApprovalDecision) => {
     if (!api) {
       return;
@@ -2762,6 +2789,7 @@ export function useDesktopRuntime() {
     pairWebHost,
     resetSession,
     rewindAndSubmitMessage,
+    forkSession,
     reorderQueuedUserTurn,
     sendQueuedUserTurnNow,
     removeQueuedUserTurn,

@@ -12,6 +12,7 @@ const EN_LABELS = {
   'slash.loop': 'Run autonomously until finish_task',
   'slash.plan': 'Plan without editing code',
   'slash.ask': 'Read-only help',
+  'slash.fork': 'Fork the session at the latest assistant message into a new chat',
 }
 
 const ZH_LABELS = {
@@ -46,6 +47,6 @@ test('buildActionPaletteItems matches localized new session label', () => {
 })
 
 test('buildActionPaletteItems matches slash description text', () => {
-  const items = buildActionPaletteItems('plan mode', tEn)
+  const items = buildActionPaletteItems('plan without', tEn)
   assert.ok(items.some((item) => item.kind === 'plan'))
 })

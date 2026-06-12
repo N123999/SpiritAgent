@@ -338,6 +338,110 @@ impl TuiShell {
         targets
     }
 
+    pub(crate) fn handle_fork_slash(&mut self, message: &str) {
+        self.discard_last_matching_user_command(message);
+        let tail = message.strip_prefix("/fork").map(str::trim).unwrap_or("");
+        if !tail.is_empty() {
+            self.push_agent_message(t!("tui.session.fork.usage").into_owned());
+            return;
+        }
+        self.open_fork_picker();
+    }
+
+    pub fn open_fork_picker(&mut self) {
+        if self.runtime.is_busy() {
+            self.push_agent_message(t!("tui.busy.pending_reply").into_owned());
+            return;
+        }
+        let targets = self.fork_targets();
+        if targets.is_empty() {
+            self.push_agent_message(t!("tui.session.fork.empty").into_owned());
+            return;
+        }
+        self.reset_primary_picker_overlay();
+        self.clear_conversation_selection();
+        self.fork_picker_index = targets.len().saturating_sub(1);
+        self.enter_fork_picker_mode();
+        self.scroll_history_to_bottom();
+    }
+
+    pub fn cancel_fork_picker(&mut self) {
+        self.exit_fork_picker_mode();
+        self.scroll_history_to_bottom();
+    }
+
+    pub fn select_next_fork_target(&mut self) {
+        let targets = self.fork_targets();
+        let total = targets.len();
+        if total == 0 {
+            return;
+        }
+        let current_message_id = targets[self.fork_picker_index.min(total.saturating_sub(1))].1;
+        self.fork_picker_index = (self.fork_picker_index + 1) % total;
+        let next_message_id = targets[self.fork_picker_index].1;
+        self.conversation
+            .anchor_rewind_message_to_current_row(current_message_id, next_message_id);
+    }
+
+    pub fn select_prev_fork_target(&mut self) {
+        let targets = self.fork_targets();
+        let total = targets.len();
+        if total == 0 {
+            return;
+        }
+        let current_message_id = targets[self.fork_picker_index.min(total.saturating_sub(1))].1;
+        if self.fork_picker_index == 0 {
+            self.fork_picker_index = total - 1;
+        } else {
+            self.fork_picker_index -= 1;
+        }
+        let next_message_id = targets[self.fork_picker_index].1;
+        self.conversation
+            .anchor_rewind_message_to_current_row(current_message_id, next_message_id);
+    }
+
+    pub fn confirm_fork_picker(&mut self) {
+        let Some((message_id, _preview)) = self
+            .fork_targets()
+            .get(self.fork_picker_index)
+            .map(|(_, message_id, preview)| (*message_id, preview.clone()))
+        else {
+            self.cancel_fork_picker();
+            return;
+        };
+
+        self.cancel_fork_picker();
+        if let Err(err) = self.fork_to_message(message_id) {
+            self.push_agent_message(t!("tui.session.fork.failed", err = err).into_owned());
+        }
+    }
+
+    pub fn is_fork_picker_active(&self) -> bool {
+        self.fork_picker_active
+    }
+
+    pub(super) fn fork_targets(&self) -> Vec<(usize, usize, String)> {
+        let mut targets = Vec::new();
+        for (index, message) in self.messages.iter().enumerate() {
+            let message_id = index + 1;
+            if message.role != MessageRole::Agent {
+                continue;
+            }
+            if self.pending_assistant_msg_index == Some(index) {
+                continue;
+            }
+            let preview = if !message.content.trim().is_empty() {
+                truncate_rewind_preview(&message.content)
+            } else if let Some(tool) = message.tool_block.as_ref() {
+                truncate_rewind_preview(&tool.headline)
+            } else {
+                t!("ui.fork.empty_message").into_owned()
+            };
+            targets.push((targets.len() + 1, message_id, preview));
+        }
+        targets
+    }
+
     fn discard_last_matching_user_command(&mut self, command: &str) {
         let should_pop = self.messages.last().is_some_and(|message| {
             message.role == MessageRole::User

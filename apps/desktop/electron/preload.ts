@@ -149,6 +149,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   rewindAndSubmitMessage(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'rewindAndSubmitMessage', { request });
   },
+  forkSession(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'forkSession', { request });
+  },
   reorderQueuedUserTurn(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'reorderQueuedUserTurn', { request });
   },

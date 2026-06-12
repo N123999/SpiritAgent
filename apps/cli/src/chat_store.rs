@@ -101,6 +101,7 @@ pub struct LoadedChat {
     pub subagent_sessions: Vec<crate::ports::SubagentSessionArchiveEntry>,
     pub desktop_messages: Option<Vec<ConversationMessageSnapshot>>,
     pub rewind: Option<Value>,
+    pub session_display_name: Option<String>,
 }
 
 pub fn chat_dir_path() -> PathBuf {
@@ -135,6 +136,7 @@ pub fn save_chat(
     subagent_sessions: &[crate::ports::SubagentSessionArchiveEntry],
     rewind: Option<&Value>,
     desktop_messages: Option<&[ConversationMessageSnapshot]>,
+    session_display_name_override: Option<&str>,
 ) -> Result<PathBuf> {
     let path = resolve_save_path(path_arg)?;
     if let Some(parent) = path.parent() {
@@ -171,7 +173,9 @@ pub fn save_chat(
             })
             .collect(),
         rewind: rewind.cloned(),
-        session_display_name: derive_session_display_name(&sanitized.desktop_messages),
+        session_display_name: session_display_name_override
+            .map(str::to_string)
+            .or_else(|| derive_session_display_name(&sanitized.desktop_messages)),
         workspace_root: workspace_root
             .as_ref()
             .map(|path| path.to_string_lossy().to_string()),
@@ -203,6 +207,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
         subagent_sessions,
         rewind,
         desktop_messages,
+        session_display_name,
         ..
     } = parsed;
 
@@ -277,6 +282,7 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
         desktop_messages: (!sanitized.desktop_messages.is_empty())
             .then_some(sanitized.desktop_messages),
         rewind,
+        session_display_name,
     })
 }
 
@@ -450,6 +456,10 @@ fn derive_session_display_name(messages: &[ConversationMessageSnapshot]) -> Opti
     })
 }
 
+pub fn fallback_session_display_name(messages: &[ConversationMessageSnapshot]) -> String {
+    derive_session_display_name(messages).unwrap_or_else(|| "Chat".to_string())
+}
+
 fn current_workspace_root() -> Option<PathBuf> {
     env::current_dir().ok()
 }
@@ -576,6 +586,7 @@ mod tests {
             true,
             "default",
             &[],
+            None,
             None,
             None,
         )

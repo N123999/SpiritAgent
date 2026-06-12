@@ -13,6 +13,7 @@ use std::{
 use crate::{
     adapters::{DefaultAppPaths, JsonChatRepository, JsonConfigStore, KeyringSecretStore},
     ask_questions::AskQuestionsResult,
+    chat_store,
     host_runtime::{RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message},
     locale, logging,
     mcp_types::{ManagedMcpServer, McpDiscoveredPrompt},
@@ -81,6 +82,9 @@ pub struct TuiShell {
     rewind_picker_active: bool,
     rewind_picker_index: usize,
     rewind_aux_details_before_picker: Option<bool>,
+    fork_picker_active: bool,
+    fork_picker_index: usize,
+    session_display_name: Option<String>,
     model_picker_active: bool,
     model_picker_index: usize,
     model_display_titles: HashMap<String, String>,
@@ -173,6 +177,9 @@ impl TuiShell {
             rewind_picker_active: false,
             rewind_picker_index: 0,
             rewind_aux_details_before_picker: None,
+            fork_picker_active: false,
+            fork_picker_index: 0,
+            session_display_name: None,
             model_picker_active: false,
             model_picker_index: 0,
             model_display_titles: HashMap::new(),
@@ -418,6 +425,19 @@ impl TuiShell {
         }
     }
 
+    pub(super) fn enter_fork_picker_mode(&mut self) {
+        if self.fork_picker_active {
+            return;
+        }
+        self.exit_rewind_picker_mode();
+        self.fork_picker_active = true;
+    }
+
+    pub(super) fn exit_fork_picker_mode(&mut self) {
+        self.fork_picker_active = false;
+        self.fork_picker_index = 0;
+    }
+
     pub fn is_model_picker_active(&self) -> bool {
         self.model_picker_active
     }
@@ -658,6 +678,7 @@ impl TuiShell {
                     });
                 }
                 self.runtime.replace_session_from_archive(&archive);
+                self.session_display_name = archive.session_display_name.clone();
                 self.scroll_history_to_bottom();
                 self.messages.push(ChatMessage {
                     role: MessageRole::Agent,
@@ -800,6 +821,7 @@ impl TuiShell {
         self.last_turn_can_continue = false;
         self.clear_input_history();
         self.exit_rewind_picker_mode();
+        self.exit_fork_picker_mode();
         self.subagent.picker_active = false;
         self.close_subagent_view();
     }
@@ -836,6 +858,47 @@ impl TuiShell {
         });
         self.input.push_history_entry(trimmed.to_string());
         self.submit_runtime_user_turn(runtime_turn, None)
+    }
+
+    fn fork_to_message(&mut self, message_id: usize) -> Result<()> {
+        if self.runtime.is_busy() {
+            return Err(anyhow!(t!("tui.busy.pending_reply").into_owned()));
+        }
+
+        let snapshots = self.conversation_snapshots_for_message_count(self.messages.len());
+        let Some(anchor_index) = crate::fork::resolve_fork_anchor_index(&snapshots, message_id)
+        else {
+            return Err(anyhow!(t!("tui.session.fork.invalid_anchor").into_owned()));
+        };
+        let truncated = crate::fork::truncate_messages_through_index(&snapshots, anchor_index);
+        if truncated.is_empty() {
+            return Err(anyhow!(t!("tui.session.fork.invalid_anchor").into_owned()));
+        }
+
+        let source_display_name = self
+            .session_display_name
+            .clone()
+            .unwrap_or_else(|| chat_store::fallback_session_display_name(&snapshots));
+        let fork_display_name =
+            crate::fork::derive_forked_session_display_name(&source_display_name);
+
+        let full_archive = self.export_chat_archive_for_message_count(self.messages.len())?;
+        let mut fork_archive =
+            crate::fork::build_truncated_chat_archive_for_fork(&full_archive, &snapshots, anchor_index);
+        fork_archive.session_display_name = Some(fork_display_name.clone());
+
+        let todos = self.runtime.list_session_todos()?;
+        let saved_path = self.chat_repository.save(None, &fork_archive)?;
+        self.runtime.activate_forked_session(&fork_archive, todos)?;
+        self.session_display_name = Some(fork_display_name);
+        self.restore_conversation_from_snapshots(&truncated);
+        self.scroll_history_to_bottom();
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: t!("tui.session.fork.created", path = saved_path.display()).into_owned(),
+            tool_block: None,
+        });
+        Ok(())
     }
 
     fn apply_rewind_restore_outcome(&mut self, outcome: rewind::RewindRestoreOutcome) {

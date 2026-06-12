@@ -35,10 +35,13 @@ import {
 import {
   buildSkillSlashSuggestions,
   currentSkillSlashQueryAtCursor,
+  FORK_SLASH_ALIAS,
   skillSlashAlias,
   skillSlashQueryKey,
   type SkillSlashSuggestion,
 } from "@/lib/skill-slash";
+import { canForkSession } from "@/lib/fork-eligibility";
+import { findLastForkableAssistantMessageId } from "@/lib/fork-session-utils";
 import { shouldPromptGitBranchCheckoutBeforeSend } from "@/lib/composer-branch-checkout-gate";
 import type {
   DesktopSnapshot,
@@ -325,6 +328,29 @@ export function useComposerController({
     }
   }, [runtime, slashQuery]);
 
+  const applyForkSlash = useCallback(() => {
+    const messages = snapshot?.conversation.messages ?? [];
+    const messageId = findLastForkableAssistantMessageId(messages);
+    const conversationBusy = snapshot?.conversation.isBusy === true;
+    const forkBusy = runtime.busyAction === "fork";
+    if (
+      !messageId
+      || !canForkSession({
+        conversationBusy,
+        activeSessionReadOnly,
+        forkBusy,
+        hasForkableAssistantMessage: true,
+      })
+    ) {
+      return;
+    }
+    setSlashSelectedIndex(-1);
+    setDismissedSlashQueryKey(null);
+    runtime.setComposer("");
+    composerRichInputRef.current?.resetAfterSend(runtime.settings.agentMode);
+    void runtime.forkSession({ messageId });
+  }, [activeSessionReadOnly, runtime, snapshot?.conversation.isBusy, snapshot?.conversation.messages]);
+
   const applySlashSuggestionItem = useCallback(
     (suggestion: SkillSlashSuggestion) => {
       if (suggestion.kind === "loop") {
@@ -343,6 +369,10 @@ export function useComposerController({
         applyDebugSlash();
         return;
       }
+      if (suggestion.kind === "fork") {
+        applyForkSlash();
+        return;
+      }
       if (suggestion.kind === "skill") {
         setSlashSelectedIndex(-1);
         setDismissedSlashQueryKey(null);
@@ -356,7 +386,7 @@ export function useComposerController({
       }
       applySlashSuggestion(`${suggestion.alias} `);
     },
-    [applyAskSlash, applyDebugSlash, applyLoopSlash, applyPlanSlash, applySlashSuggestion, slashQuery],
+    [applyAskSlash, applyDebugSlash, applyForkSlash, applyLoopSlash, applyPlanSlash, applySlashSuggestion, slashQuery],
   );
 
   const ensureConversationSurface = useCallback(() => {
@@ -391,7 +421,7 @@ export function useComposerController({
       if (isNewSessionAction(item)) {
         return true;
       }
-      return item.kind === "log-session" || item.kind === "compact";
+      return item.kind === "log-session" || item.kind === "compact" || item.kind === "fork";
     },
     [runtime.busyAction],
   );
@@ -419,6 +449,10 @@ export function useComposerController({
         applyDebugSlash();
         return;
       }
+      if (item.kind === "fork") {
+        applyForkSlash();
+        return;
+      }
       if (item.kind === "log-session" || item.kind === "compact") {
         void runtime.sendMessage({ text: item.alias });
         return;
@@ -428,6 +462,7 @@ export function useComposerController({
     [
       applyAskSlash,
       applyDebugSlash,
+      applyForkSlash,
       applyLoopSlash,
       applyPlanSlash,
       applySlashSuggestion,
@@ -552,6 +587,11 @@ export function useComposerController({
   const submitComposerMessage = useCallback(() => {
     const segs = composerRichInputRef.current?.getSegments() ?? [];
     const fullText = segmentsToMessageText(segs) || runtime.composer;
+    const trimmed = fullText.trim();
+    if (trimmed === FORK_SLASH_ALIAS) {
+      applyForkSlash();
+      return;
+    }
     const payload = {
       text: fullText,
       ...(runtime.composerLocalFileAttachments.length > 0
@@ -576,7 +616,7 @@ export function useComposerController({
         composerRichInputRef.current?.resetAfterSend(runtime.settings.agentMode);
       }
     });
-  }, [isEmptySession, runtime, snapshot?.git]);
+  }, [applyForkSlash, isEmptySession, runtime, snapshot?.git]);
 
   const confirmBranchCheckoutAndSend = useCallback(() => {
     void (async () => {

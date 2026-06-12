@@ -19,6 +19,7 @@ pub mod model_registry;
 pub mod openai_models_list;
 pub mod plan;
 pub mod ports;
+pub mod fork;
 pub mod rewind;
 pub mod rules;
 pub mod runtime_handle;

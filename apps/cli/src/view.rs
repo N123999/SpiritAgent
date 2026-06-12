@@ -288,6 +288,12 @@ pub struct RewindPickerView {
     pub selectable_message_ids: Vec<usize>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ForkPickerView {
+    pub selected_message_id: usize,
+    pub selectable_message_ids: Vec<usize>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageRole {
     User,
@@ -380,6 +386,7 @@ pub struct TuiViewModel {
     pub slash_suggestions: Vec<InputSuggestion>,
     pub selected_suggestion: usize,
     pub rewind_picker: Option<RewindPickerView>,
+    pub fork_picker: Option<ForkPickerView>,
     pub model_picker_active: bool,
     pub model_picker_index: usize,
     pub model_display_titles: std::collections::HashMap<String, String>,
@@ -432,6 +439,18 @@ impl TuiViewModel {
         self.rewind_picker
             .as_ref()
             .is_some_and(|rewind_picker| rewind_picker.selected_message_id == message_id)
+    }
+
+    pub fn is_fork_selectable_message(&self, message_id: usize) -> bool {
+        self.fork_picker
+            .as_ref()
+            .is_some_and(|fork_picker| fork_picker.selectable_message_ids.contains(&message_id))
+    }
+
+    pub fn is_fork_selected_message(&self, message_id: usize) -> bool {
+        self.fork_picker
+            .as_ref()
+            .is_some_and(|fork_picker| fork_picker.selected_message_id == message_id)
     }
 
     pub fn is_pending_assistant_message(&self, message_index: usize) -> bool {
