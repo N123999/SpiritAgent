@@ -1767,6 +1767,24 @@ function SessionSidebarShortcutKbd() {
   );
 }
 
+function NewSessionShortcutKbd() {
+  const keys = modLetterShortcutKbdKeys("N");
+
+  return (
+    <KbdGroup>
+      {isMacDesktopPlatform() ? (
+        keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+      ) : (
+        <>
+          <Kbd>Ctrl</Kbd>
+          <span>+</span>
+          <Kbd>N</Kbd>
+        </>
+      )}
+    </KbdGroup>
+  );
+}
+
 function WorkspaceToolsShortcutKbd() {
   const keys = modAltLetterShortcutKbdKeys("B");
 
@@ -1856,18 +1874,26 @@ function DesktopLayoutChromeBar({
             )}
             aria-hidden={sessionSidebarOpen}
           >
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
-              onClick={onNewSession}
-              disabled={newSessionBusy}
-              tabIndex={sessionSidebarOpen ? -1 : undefined}
-              aria-label={t("sidebar.newSession")}
-            >
-              <Plus className="size-3.5" aria-hidden />
-            </Button>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={DESKTOP_CHROME_TOGGLE_ICON_BTN}
+                  onClick={onNewSession}
+                  disabled={newSessionBusy}
+                  tabIndex={sessionSidebarOpen ? -1 : undefined}
+                  aria-label={t("sidebar.newSession")}
+                >
+                  <Plus className="size-3.5" aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={4}>
+                {t("sidebar.newSession")}{" "}
+                <NewSessionShortcutKbd />
+              </TooltipContent>
+            </Tooltip>
           </div>
         ) : null}
         {trimmedSessionTitle ? (
