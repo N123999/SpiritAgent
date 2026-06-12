@@ -20,6 +20,7 @@ const t = (key) =>
     "workspace.files": "文件",
     "workspace.shell": "Shell",
     "workspace.browser": "浏览器",
+    "workspace.prTab": "Pull Request",
   })[key] ?? key;
 
 test("createDefaultWorkspaceToolTabs has files, shell, and git", () => {
@@ -120,6 +121,26 @@ test("normalizeWorkspaceToolTabsForHost adds browser on electron host", () => {
   const normalized = normalizeWorkspaceToolTabsForHost(tabs, tabs[0].id, true);
   assert.equal(normalized.tabs.length, 4);
   assert.equal(normalized.tabs.some((t) => t.kind === "browser"), true);
+});
+
+test("addWorkspaceToolTab can append pr tab", () => {
+  const tabs = createDefaultWorkspaceToolTabs();
+  const { tabs: next, activeId } = addWorkspaceToolTab(tabs, "pr");
+  assert.equal(next.at(-1)?.kind, "pr");
+  assert.equal(activeId, next.at(-1)?.id);
+});
+
+test("normalizeWorkspaceToolTabsForHost strips pr on web host", () => {
+  const tabs = [...createDefaultWorkspaceToolTabs(), createWorkspaceToolTab("pr")];
+  const prTab = tabs.find((tab) => tab.kind === "pr");
+  assert.ok(prTab);
+  const normalized = normalizeWorkspaceToolTabsForHost(tabs, prTab.id, false, false);
+  assert.equal(normalized.tabs.some((tab) => tab.kind === "pr"), false);
+});
+
+test("workspaceToolTabLabel supports pr tab", () => {
+  const tab = createWorkspaceToolTab("pr");
+  assert.equal(workspaceToolTabLabel("pr", [tab], tab.id, t), "Pull Request");
 });
 
 test("createInitialWorkspaceToolsState uses same tabs for active id", () => {

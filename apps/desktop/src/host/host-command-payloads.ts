@@ -35,6 +35,7 @@ import type {
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   ForkSessionRequest,
+  GetGitHubPullRequestDetailRequest,
   RunExtensionRequest,
   SaveHookEntryRequest,
   SubmitGitChipRequest,
@@ -64,6 +65,13 @@ export type CommandPayloads = {
   refreshGitSnapshot: undefined;
   readGitWorkingTree: undefined;
   readGitHistory: { request?: ReadGitHistoryRequest };
+  getGitHubAuthStatus: undefined;
+  beginGitHubDeviceLogin: undefined;
+  completeGitHubDeviceLogin: undefined;
+  cancelGitHubDeviceLogin: undefined;
+  disconnectGitHub: undefined;
+  getGitHubPullRequestForCurrentBranch: undefined;
+  getGitHubPullRequestDetail: { request: GetGitHubPullRequestDetailRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   addProviderModels: { request: AddProviderModelsRequest };

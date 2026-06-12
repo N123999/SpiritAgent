@@ -1,4 +1,4 @@
-export type WorkspaceToolTabKind = "files" | "shell" | "git" | "browser";
+export type WorkspaceToolTabKind = "files" | "shell" | "git" | "browser" | "pr";
 
 export const BROWSER_NEW_TAB_SENTINEL = "__spirit_browser_new_tab__";
 
@@ -16,6 +16,7 @@ const KIND_BASE_LABEL_KEY: Record<WorkspaceToolTabKind, string> = {
   shell: 'workspace.shell',
   git: 'workspace.gitTab',
   browser: 'workspace.browser',
+  pr: 'workspace.prTab',
 };
 
 function newTabId(): string {
@@ -123,25 +124,27 @@ export function normalizeWorkspaceToolTabsForHost(
   tabs: readonly WorkspaceToolTab[],
   activeId: string,
   includeBrowser: boolean,
+  includePr = false,
 ): { tabs: WorkspaceToolTab[]; activeId: string } {
+  let nextTabs = [...tabs];
+
+  if (!includePr) {
+    nextTabs = nextTabs.filter((tab) => tab.kind !== "pr");
+  }
+
   if (includeBrowser) {
-    if (tabs.some((t) => t.kind === "browser")) {
-      return { tabs: [...tabs], activeId };
+    if (!nextTabs.some((tab) => tab.kind === "browser")) {
+      nextTabs = [...nextTabs, createWorkspaceToolTab("browser")];
     }
-    return { tabs: [...tabs, createWorkspaceToolTab("browser")], activeId };
+  } else {
+    const withoutBrowser = nextTabs.filter((tab) => tab.kind !== "browser");
+    nextTabs =
+      withoutBrowser.length > 0
+        ? withoutBrowser
+        : createDefaultWorkspaceToolTabs({ includeBrowser: false });
   }
 
-  const withoutBrowser = tabs.filter((t) => t.kind !== "browser");
-  if (withoutBrowser.length === tabs.length) {
-    return { tabs: [...tabs], activeId };
-  }
-
-  const nextTabs =
-    withoutBrowser.length > 0
-      ? withoutBrowser
-      : createDefaultWorkspaceToolTabs({ includeBrowser: false });
-
-  const activeStillValid = nextTabs.some((t) => t.id === activeId);
+  const activeStillValid = nextTabs.some((tab) => tab.id === activeId);
   return {
     tabs: nextTabs,
     activeId: activeStillValid ? activeId : defaultActiveWorkspaceToolTabId(nextTabs),

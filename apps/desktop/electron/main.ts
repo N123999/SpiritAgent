@@ -1,3 +1,5 @@
+import './load-env.js';
+
 import { existsSync, readFileSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -133,7 +135,13 @@ import {
   resolveDesktopWebHostFromEnv,
   type DesktopHttpHost,
 } from './http-host.js';
+import {
+  beginGitHubDeviceLoginInElectron,
+  clearPendingGitHubDeviceAuth,
+  completeGitHubDeviceLoginInElectron,
+} from './github-oauth-flow.js';
 import { resolveRendererDistPath } from './renderer-dist.js';
+import { registerGitHubDeviceLoginRunners } from '../src/host/github-oauth-bridge.js';
 import { listSystemFonts } from './system-fonts.js';
 import { syncWindowsImmersiveDarkMode } from './win-dwm.js';
 import i18nHost from '../src/lib/i18n-host.js';
@@ -650,6 +658,12 @@ if (gotSpiritSingleInstanceLock) {
   } else if (process.platform === 'darwin') {
     setMacOSApplicationMenu();
   }
+
+  registerGitHubDeviceLoginRunners({
+    begin: () => beginGitHubDeviceLoginInElectron(),
+    complete: () => completeGitHubDeviceLoginInElectron(),
+    cancel: () => clearPendingGitHubDeviceAuth(),
+  });
 
   setDesktopMarketplaceFetchImplementation((input, init) =>
     net.fetch(input instanceof URL ? input.toString() : input, init),

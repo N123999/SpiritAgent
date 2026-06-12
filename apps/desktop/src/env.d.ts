@@ -136,6 +136,15 @@ declare global {
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
     readGitWorkingTree(): Promise<import('./types').GitWorkingTreeSnapshot>;
     readGitHistory(request?: import('./types').ReadGitHistoryRequest): Promise<import('./types').GitHistorySnapshot>;
+    getGitHubAuthStatus(): Promise<import('./types').GitHubAuthStatus>;
+    beginGitHubDeviceLogin(): Promise<import('./types').GitHubDeviceAuthChallenge>;
+    completeGitHubDeviceLogin(): Promise<import('./types').GitHubAuthStatus>;
+    cancelGitHubDeviceLogin(): Promise<void>;
+    disconnectGitHub(): Promise<import('./types').GitHubAuthStatus>;
+    getGitHubPullRequestForCurrentBranch(): Promise<import('./types').GitHubPullRequestForBranchResult>;
+    getGitHubPullRequestDetail(
+      request: import('./types').GetGitHubPullRequestDetailRequest,
+    ): Promise<import('./types').GitHubPullRequestDetail>;
     readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     readHostTextFile(absolutePath: string): Promise<WorkspaceReadTextFileResult>;

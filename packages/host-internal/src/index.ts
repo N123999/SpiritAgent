@@ -3,6 +3,7 @@ export * from './apply-diff.js';
 export * from './discovery.js';
 export * from './git-workspace.js';
 export * from './git-log-graph.js';
+export * from './github/index.js';
 export * from './dreams.js';
 export * from './automations.js';
 export * from './automation-host-tool.js';

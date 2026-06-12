@@ -85,6 +85,7 @@ import type {
   DesktopMarketplaceDetail,
   DesktopMarketplacePreparedInstall,
   DesktopGitSnapshot,
+  GetGitHubPullRequestDetailRequest,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
   HostTextFileStatResult,
@@ -181,6 +182,15 @@ import {
   writeWorkspaceTextFileCommand,
   type HostWorkspaceGitCommandContext,
 } from './host-workspace-git-commands.js';
+import {
+  beginGitHubDeviceLoginCommand,
+  cancelGitHubDeviceLoginCommand,
+  completeGitHubDeviceLoginCommand,
+  disconnectGitHubCommand,
+  getGitHubAuthStatusCommand,
+  getGitHubPullRequestDetailCommand,
+  getGitHubPullRequestForCurrentBranchCommand,
+} from './host-github-commands.js';
 import {
   abortConversationCommand,
   abortConversationInContext,
@@ -1653,6 +1663,39 @@ class DesktopHostService {
 
   async readGitHistory(request: ReadGitHistoryRequest = {}): Promise<GitHistorySnapshot> {
     return readGitHistoryCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async getGitHubAuthStatus() {
+    return getGitHubAuthStatusCommand();
+  }
+
+  async beginGitHubDeviceLogin() {
+    return beginGitHubDeviceLoginCommand();
+  }
+
+  async completeGitHubDeviceLogin() {
+    return completeGitHubDeviceLoginCommand();
+  }
+
+  cancelGitHubDeviceLogin() {
+    cancelGitHubDeviceLoginCommand();
+  }
+
+  async disconnectGitHub() {
+    return disconnectGitHubCommand();
+  }
+
+  async getGitHubPullRequestForCurrentBranch() {
+    await this.ensureInitialized();
+    const state = this.requireState();
+    return getGitHubPullRequestForCurrentBranchCommand({
+      workspaceRoot: state.workspaceRoot,
+      git: state.git,
+    });
+  }
+
+  async getGitHubPullRequestDetail(request: GetGitHubPullRequestDetailRequest) {
+    return getGitHubPullRequestDetailCommand(request);
   }
 
   async listWorkspaceFileReferenceSuggestions(

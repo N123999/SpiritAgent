@@ -523,6 +523,7 @@ export default function App() {
               onBrowserElementPicked: composer.handleBrowserElementPicked,
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
+              prTabEnabled: workspaceTools.prTabEnabled,
               workspaceToolsWidthPx: workspaceTools.workspaceToolsWidthPx,
               onWorkspaceToolsWidthPxChange: workspaceTools.setWorkspaceToolsWidthPx,
               gitChipBusy: composer.gitChipBusy,

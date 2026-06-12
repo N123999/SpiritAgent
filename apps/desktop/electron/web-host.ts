@@ -1,3 +1,5 @@
+import './load-env.js';
+
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

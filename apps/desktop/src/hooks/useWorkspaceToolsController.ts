@@ -49,6 +49,7 @@ export function useWorkspaceToolsController({
   workspaceToolTabsRef.current = workspaceToolTabs;
   const workspaceToolsHostSyncedRef = useRef<typeof runtime.hostKind | null>(null);
   const browserTabEnabled = runtime.hostKind === "electron";
+  const prTabEnabled = runtime.hostKind === "electron";
   const [workspaceFilesPlanRevealNonce, setWorkspaceFilesPlanRevealNonce] = useState(0);
   const [workspaceFilesPlanRevealTargetId, setWorkspaceFilesPlanRevealTargetId] = useState<
     string | null
@@ -226,6 +227,7 @@ export function useWorkspaceToolsController({
     workspaceToolsWidthPx,
     setWorkspaceToolsWidthPx,
     browserTabEnabled,
+    prTabEnabled,
     workspaceFilesPlanRevealNonce,
     workspaceFilesPlanRevealTargetId,
     workspaceFileRevealNonce,

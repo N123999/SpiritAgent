@@ -237,6 +237,27 @@ export async function createElectronHostApi(): Promise<HostApi> {
     readGitHistory(request) {
       return bridge.readGitHistory(request);
     },
+    getGitHubAuthStatus() {
+      return bridge.getGitHubAuthStatus();
+    },
+    beginGitHubDeviceLogin() {
+      return bridge.beginGitHubDeviceLogin();
+    },
+    completeGitHubDeviceLogin() {
+      return bridge.completeGitHubDeviceLogin();
+    },
+    cancelGitHubDeviceLogin() {
+      return bridge.cancelGitHubDeviceLogin();
+    },
+    disconnectGitHub() {
+      return bridge.disconnectGitHub();
+    },
+    getGitHubPullRequestForCurrentBranch() {
+      return bridge.getGitHubPullRequestForCurrentBranch();
+    },
+    getGitHubPullRequestDetail(request) {
+      return bridge.getGitHubPullRequestDetail(request);
+    },
     readWorkspaceTextFile(relativePath) {
       return bridge.readWorkspaceTextFile(relativePath);
     },

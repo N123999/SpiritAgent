@@ -44,6 +44,11 @@ import type {
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
   ForkSessionRequest,
+  GetGitHubPullRequestDetailRequest,
+  GitHubAuthStatus,
+  GitHubDeviceAuthChallenge,
+  GitHubPullRequestDetail,
+  GitHubPullRequestForBranchResult,
   SubmitUserTurnRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -110,6 +115,15 @@ export interface HostApi {
   refreshGitSnapshot(): Promise<DesktopSnapshot>;
   readGitWorkingTree(): Promise<GitWorkingTreeSnapshot>;
   readGitHistory(request?: ReadGitHistoryRequest): Promise<GitHistorySnapshot>;
+  getGitHubAuthStatus(): Promise<GitHubAuthStatus>;
+  beginGitHubDeviceLogin(): Promise<GitHubDeviceAuthChallenge>;
+  completeGitHubDeviceLogin(): Promise<GitHubAuthStatus>;
+  cancelGitHubDeviceLogin(): Promise<void>;
+  disconnectGitHub(): Promise<GitHubAuthStatus>;
+  getGitHubPullRequestForCurrentBranch(): Promise<GitHubPullRequestForBranchResult>;
+  getGitHubPullRequestDetail(
+    request: GetGitHubPullRequestDetailRequest,
+  ): Promise<GitHubPullRequestDetail>;
   abortConversation(): Promise<DesktopSnapshot>;
   abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;

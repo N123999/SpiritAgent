@@ -920,6 +920,21 @@ export interface ReadGitHistoryRequest {
   existingLogCommits?: GitCommitRecord[];
 }
 
+export type {
+  GitHubAuthStatus,
+  GitHubDeviceAuthChallenge,
+  GitHubPullRequestDetail,
+  GitHubPullRequestForBranchResult,
+  GitHubPullRequestSummary,
+  GitHubRepositoryRef,
+} from '@spirit-agent/host-internal';
+
+export interface GetGitHubPullRequestDetailRequest {
+  owner: string;
+  repo: string;
+  number: number;
+}
+
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;

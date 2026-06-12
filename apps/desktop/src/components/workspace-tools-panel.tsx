@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { FileText, GitBranch, Globe, Plus, Terminal, X } from "lucide-react";
+import { FileText, GitBranch, GitPullRequest, Globe, Plus, Terminal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkspaceBrowserTab, type WorkspaceBrowserTabProps } from "@/components/workspace-browser-tab";
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceGitTab } from "@/components/workspace-git-tab";
+import { WorkspacePrTab } from "@/components/workspace-pr-tab";
 import { WorkspaceShellTab } from "@/components/workspace-shell-tab";
 import {
   DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
@@ -54,6 +55,11 @@ import {
 } from "@/lib/workspace-tool-tabs";
 import type {
   DesktopGitSnapshot,
+  GetGitHubPullRequestDetailRequest,
+  GitHubAuthStatus,
+  GitHubDeviceAuthChallenge,
+  GitHubPullRequestDetail,
+  GitHubPullRequestForBranchResult,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
   SubmitGitChipRequest,
@@ -78,6 +84,7 @@ const TAB_KIND_META: Record<
   shell: { labelKey: 'workspace.shell', icon: Terminal },
   git: { labelKey: 'workspace.gitTab', icon: GitBranch },
   browser: { labelKey: 'workspace.browser', icon: Globe },
+  pr: { labelKey: 'workspace.prTab', icon: GitPullRequest },
 };
 
 export type WorkspaceToolsDockProps = {
@@ -110,6 +117,17 @@ export type WorkspaceToolsDockProps = {
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
   browserTabEnabled?: boolean;
+  /** Electron 桌面版可新建 PR 选项卡；Web 宿主菜单项可见但禁用。 */
+  prTabEnabled?: boolean;
+  getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
+  beginGitHubDeviceLogin: () => Promise<GitHubDeviceAuthChallenge>;
+  completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>;
+  cancelGitHubDeviceLogin: () => Promise<void>;
+  disconnectGitHub: () => Promise<GitHubAuthStatus>;
+  getGitHubPullRequestForCurrentBranch: () => Promise<GitHubPullRequestForBranchResult>;
+  getGitHubPullRequestDetail: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<GitHubPullRequestDetail>;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -153,6 +171,14 @@ function WorkspaceToolsDockInner({
   onBrowserElementPicked,
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
+  prTabEnabled = false,
+  getGitHubAuthStatus,
+  beginGitHubDeviceLogin,
+  completeGitHubDeviceLogin,
+  cancelGitHubDeviceLogin,
+  disconnectGitHub,
+  getGitHubPullRequestForCurrentBranch,
+  getGitHubPullRequestDetail,
   widthPx,
   minWidthPx = WORKSPACE_TOOLS_MIN_WIDTH_PX,
   maxWidthPx: maxWidthPxProp,
@@ -268,6 +294,9 @@ function WorkspaceToolsDockInner({
       if (kind === "browser" && !browserTabEnabled) {
         return;
       }
+      if (kind === "pr" && !prTabEnabled) {
+        return;
+      }
       const vacant = tabs.find((tab) => tab.kind === kind && !tab.tabTitle);
       if (vacant) {
         onActiveTabIdChange(vacant.id);
@@ -279,7 +308,7 @@ function WorkspaceToolsDockInner({
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [browserTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
+    [browserTabEnabled, prTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
   );
 
   const handleCloseTab = useCallback(
@@ -474,15 +503,23 @@ function WorkspaceToolsDockInner({
                   DESKTOP_OVERLAY_LIST_LIST_GAP,
                 )}
               >
-                {(["files", "shell", "git", "browser"] as const).map((kind) => {
+                {(["files", "shell", "git", "browser", "pr"] as const).map((kind) => {
                   const meta = TAB_KIND_META[kind];
                   const Icon = meta.icon;
                   const browserDisabled = kind === "browser" && !browserTabEnabled;
+                  const prDisabled = kind === "pr" && !prTabEnabled;
+                  const disabled = browserDisabled || prDisabled;
                   return (
                     <DropdownMenuItem
                       key={kind}
-                      disabled={browserDisabled}
-                      title={browserDisabled ? t("workspace.browserElectronOnly") : undefined}
+                      disabled={disabled}
+                      title={
+                        browserDisabled
+                          ? t("workspace.browserElectronOnly")
+                          : prDisabled
+                            ? t("workspace.prElectronOnly")
+                            : undefined
+                      }
                       className={cn(
                         'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
                         DESKTOP_OVERLAY_LIST_ITEM,
@@ -577,6 +614,21 @@ function WorkspaceToolsDockInner({
                         onOpenUrlInNewTab={onBrowserOpenInNewTab}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                         onElementPicked={onBrowserElementPicked}
+                      />
+                    </div>
+                  ) : item.kind === "pr" ? (
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                      <WorkspacePrTab
+                        gitSnapshot={gitSnapshot}
+                        isActive={selected}
+                        prTabEnabled={prTabEnabled}
+                        getGitHubAuthStatus={getGitHubAuthStatus}
+                        beginGitHubDeviceLogin={beginGitHubDeviceLogin}
+                        completeGitHubDeviceLogin={completeGitHubDeviceLogin}
+                        cancelGitHubDeviceLogin={cancelGitHubDeviceLogin}
+                        disconnectGitHub={disconnectGitHub}
+                        getGitHubPullRequestForCurrentBranch={getGitHubPullRequestForCurrentBranch}
+                        getGitHubPullRequestDetail={getGitHubPullRequestDetail}
                       />
                     </div>
                   ) : (

@@ -74,6 +74,13 @@ export interface HostCommandDelegate {
   listWorkspaceExplorerChildren(relativePath: string): Promise<unknown>;
   readGitWorkingTree(): Promise<unknown>;
   readGitHistory(request: NonNullable<CommandPayloads['readGitHistory']['request']>): Promise<unknown>;
+  getGitHubAuthStatus(): Promise<unknown>;
+  beginGitHubDeviceLogin(): Promise<unknown>;
+  completeGitHubDeviceLogin(): Promise<unknown>;
+  cancelGitHubDeviceLogin(): Promise<unknown>;
+  disconnectGitHub(): Promise<unknown>;
+  getGitHubPullRequestForCurrentBranch(): Promise<unknown>;
+  getGitHubPullRequestDetail(request: CommandPayloads['getGitHubPullRequestDetail']['request']): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   readHostTextFile(absolutePath: string): Promise<unknown>;
@@ -162,6 +169,13 @@ const hostCommandDispatch = {
   listWorkspaceExplorerChildren: (host, payload) => host.listWorkspaceExplorerChildren(payload.relativePath),
   readGitWorkingTree: (host) => host.readGitWorkingTree(),
   readGitHistory: (host, payload) => host.readGitHistory(payload.request ?? {}),
+  getGitHubAuthStatus: (host) => host.getGitHubAuthStatus(),
+  beginGitHubDeviceLogin: (host) => host.beginGitHubDeviceLogin(),
+  completeGitHubDeviceLogin: (host) => host.completeGitHubDeviceLogin(),
+  cancelGitHubDeviceLogin: (host) => host.cancelGitHubDeviceLogin(),
+  disconnectGitHub: (host) => host.disconnectGitHub(),
+  getGitHubPullRequestForCurrentBranch: (host) => host.getGitHubPullRequestForCurrentBranch(),
+  getGitHubPullRequestDetail: (host, payload) => host.getGitHubPullRequestDetail(payload.request),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   readHostTextFile: (host, payload) => host.readHostTextFile(payload.absolutePath),
