@@ -9,6 +9,7 @@ import {
   stripRedundantThinkingFromMessageAux,
   toolCallSummaryCopyForRequest,
   toolCallSummaryForPhase,
+  toolCallSummaryForStreamingPreview,
 } from '../../dist-electron/src/host/message-ordering.js';
 import i18n from '../../dist-electron/src/lib/i18n-host.js';
 
@@ -323,6 +324,20 @@ test('toolCallSummaryCopyForRequest: list_directory_files uses relative path wit
       { workspaceRoot },
     ),
     { headline: '列出', headlineDetail: 'apps/' },
+  );
+});
+
+test('toolCallSummaryForStreamingPreview: list_directory_files uses relative path within workspace', () => {
+  const workspaceRoot = '/Users/yu/proj';
+  assert.deepEqual(
+    toolCallSummaryForStreamingPreview(
+      [],
+      'tool-1',
+      'list_directory_files',
+      { path: '/Users/yu/proj/apps' },
+      { workspaceRoot },
+    ),
+    { headline: '列出', headlineDetail: 'apps' },
   );
 });
 
