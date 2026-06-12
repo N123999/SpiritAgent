@@ -17,6 +17,7 @@ import {
   shouldCompactAfterPreviousRenderItem,
   shouldTightenAfterPreviousRenderItem,
 } from "@/lib/message-card-spacing";
+import { findLastAssistantTurnActionsListIndex } from "@/lib/message-turn-actions-ui";
 import { cn } from "@/lib/utils";
 import type {
   ConversationMessageSnapshot,
@@ -25,6 +26,7 @@ import type {
   PendingAssistantAux,
 } from "@/types";
 import type { RefObject } from "react";
+import { useMemo } from "react";
 
 import {
   CONVERSATION_GUTTER_X,
@@ -108,6 +110,10 @@ export function ConversationList({
   onForkMessage,
 }: ConversationListProps) {
   const { t } = useTranslation();
+  const lastAssistantTurnActionsIndex = useMemo(
+    () => findLastAssistantTurnActionsListIndex(messages),
+    [messages],
+  );
 
   return (
     <div
@@ -319,6 +325,7 @@ export function ConversationList({
                 conversationIsBusy={conversationIsBusy}
                 activeSessionReadOnly={activeSessionReadOnly}
                 forkBusy={runtime.busyAction === "fork"}
+                forkMenuAlwaysVisible={lastAssistantTurnActionsIndex === index}
                 onForkMessage={onForkMessage}
               />
             );
