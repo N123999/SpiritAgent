@@ -30,7 +30,7 @@ const tabButtonClassBySize = {
 
 const containerClassBySize = {
   default: "space-y-4",
-  compact: "space-y-2",
+  compact: "space-y-4",
 } as const;
 
 export function DetailPageTabs<T extends string>({
