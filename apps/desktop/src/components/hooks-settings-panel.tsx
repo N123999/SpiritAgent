@@ -84,6 +84,7 @@ export function HooksSettingsPanel({
   const [matcher, setMatcher] = useState("");
   const [failClosed, setFailClosed] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const items = useMemo(
     () =>
@@ -209,6 +210,7 @@ export function HooksSettingsPanel({
         onOpenChange={(open) => {
           if (!open) {
             setDeleteTarget(null);
+            setDeleteError(null);
           }
         }}
       >
@@ -222,6 +224,9 @@ export function HooksSettingsPanel({
               })}
             </DialogDescription>
           </DialogHeader>
+          {deleteError ? (
+            <p className="text-xs text-destructive">{deleteError}</p>
+          ) : null}
           <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
             <Button
               type="button"
@@ -244,14 +249,17 @@ export function HooksSettingsPanel({
                 }
                 void (async () => {
                   try {
+                    setDeleteError(null);
                     await onDeleteHookEntry({
                       scope: target.scope,
                       event: target.event,
                       index: target.index,
                     });
                     setDeleteTarget(null);
-                  } catch {
-                    /* runtimeError */
+                  } catch (error) {
+                    setDeleteError(
+                      error instanceof Error ? error.message : t("settings.hooksDeleteFailed"),
+                    );
                   }
                 })();
               }}
