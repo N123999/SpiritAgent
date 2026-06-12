@@ -3016,32 +3016,16 @@ class DesktopHostService {
       return;
     }
 
-    const state = this.requireState();
-    const nextMessage: ConversationMessageSnapshot = {
-      id: this.allocateMessageId(),
-      role: 'user',
-      content: trimmed,
-      pending: false,
-    };
-
-    if (!pendingToolCallId) {
-      this.activeBundle().messages.push(nextMessage);
-      this.rebuildMessageTimelineFromMessages();
-      return;
-    }
-
-    const toolIndex = this.activeBundle().messages.findIndex(
-      (message) => message.role === 'assistant' && message.tool?.toolCallId === pendingToolCallId,
+    const bundle = this.activeBundle();
+    const inserted = bundle.messageTimeline.insertApprovalGuidanceUserReply(
+      trimmed,
+      pendingToolCallId,
+      this.allocateMessageId(),
     );
-    if (toolIndex < 0) {
-      this.activeBundle().messages.push(nextMessage);
-      this.rebuildMessageTimelineFromMessages();
+    if (!inserted) {
       return;
     }
-
-    const insertAt = toolIndex + 1;
-    this.activeBundle().messages.splice(insertAt, 0, nextMessage);
-    this.rebuildMessageTimelineFromMessages();
+    bundle.messages = this.desktopMessages();
   }
 
   /**

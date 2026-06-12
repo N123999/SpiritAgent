@@ -570,6 +570,82 @@ export class DesktopMessageTimeline {
     return false;
   }
 
+  /** Inline user reply during an in-flight turn (approval guidance). Keeps the active turn unchanged. */
+  insertApprovalGuidanceUserReply(
+    content: string,
+    afterToolCallId?: string,
+    messageId?: number,
+  ): ConversationMessageSnapshot | undefined {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    let targetSegment: DesktopTimelineSegment | undefined;
+    let insertAfterToolIndex = -1;
+
+    if (afterToolCallId) {
+      for (const turn of this.orderedTurns()) {
+        for (const segment of this.orderedSegments(turn)) {
+          const toolIndex = segment.rows.findIndex(
+            (row) => row.kind === 'tool' && row.tool?.toolCallId === afterToolCallId,
+          );
+          if (toolIndex >= 0) {
+            targetSegment = segment;
+            insertAfterToolIndex = toolIndex;
+            break;
+          }
+        }
+        if (targetSegment) {
+          break;
+        }
+      }
+    }
+
+    if (!targetSegment) {
+      const turn = this.activeTurn() ?? this.turns[this.turns.length - 1];
+      if (!turn) {
+        return undefined;
+      }
+      targetSegment = this.activeSegment() ?? turn.segments[turn.segments.length - 1];
+      if (!targetSegment) {
+        targetSegment = this.createSegment(turn, 'hydrated');
+      }
+      for (let index = targetSegment.rows.length - 1; index >= 0; index -= 1) {
+        if (targetSegment.rows[index]?.kind === 'tool') {
+          insertAfterToolIndex = index;
+          break;
+        }
+      }
+    }
+
+    if (!targetSegment) {
+      return undefined;
+    }
+
+    const anchorToolIndex =
+      insertAfterToolIndex >= 0
+        ? insertAfterToolIndex
+        : targetSegment.rows.findIndex((row) => row.kind === 'tool');
+    const anchorRow =
+      anchorToolIndex >= 0 ? targetSegment.rows[anchorToolIndex] : undefined;
+    const insertOrder = anchorRow ? anchorRow.createdOrder + 1 : this.nextCreatedOrder;
+    const row = this.createRow({
+      messageId,
+      turnId: targetSegment.turnId,
+      segmentId: targetSegment.segmentId,
+      kind: 'user',
+      section: anchorRow?.section ?? 'after-tools',
+      content: trimmed,
+      pending: false,
+      createdOrder: insertOrder,
+    });
+    const physicalInsertAt =
+      anchorToolIndex >= 0 ? anchorToolIndex + 1 : targetSegment.rows.length;
+    targetSegment.rows.splice(physicalInsertAt, 0, row);
+    return rowToMessage(row);
+  }
+
   insertAssistantPrefix(content: string): ConversationMessageSnapshot | undefined {
     if (!content.trim()) {
       return undefined;
@@ -803,6 +879,11 @@ export class DesktopMessageTimeline {
 
   private hydrateMessage(message: ConversationMessageSnapshot): void {
     if (message.role === 'user') {
+      const activeTurn = this.activeTurn();
+      if (activeTurn?.userRow && this.turnHasInlineUserReplyEligibleContent(activeTurn)) {
+        this.insertHydratedInlineUserReply(message);
+        return;
+      }
       this.beginUserTurn(message.content, {
         messageId: message.id,
         pending: message.pending,
@@ -881,6 +962,50 @@ export class DesktopMessageTimeline {
     if (message.pending) {
       segment.activeAssistantTextRowId = row.rowId;
     }
+  }
+
+  private turnHasInlineUserReplyEligibleContent(turn: DesktopTimelineTurn): boolean {
+    return turn.segments.some((segment) =>
+      segment.rows.some(
+        (row) => row.kind === 'tool' || isRenderableAssistantRow(row) || row.kind === 'user',
+      ),
+    );
+  }
+
+  private insertHydratedInlineUserReply(message: ConversationMessageSnapshot): void {
+    const turn = this.ensureActiveTurn();
+    let targetSegment = this.activeSegment() ?? turn.segments[turn.segments.length - 1];
+    if (!targetSegment) {
+      targetSegment = this.createSegment(turn, 'hydrated');
+    }
+
+    let insertAfterToolIndex = -1;
+    for (let index = targetSegment.rows.length - 1; index >= 0; index -= 1) {
+      if (targetSegment.rows[index]?.kind === 'tool') {
+        insertAfterToolIndex = index;
+        break;
+      }
+    }
+
+    const anchorRow =
+      insertAfterToolIndex >= 0 ? targetSegment.rows[insertAfterToolIndex] : undefined;
+    const insertOrder = anchorRow ? anchorRow.createdOrder + 1 : this.nextCreatedOrder;
+    const row = this.createRow({
+      messageId: message.id,
+      turnId: targetSegment.turnId,
+      segmentId: targetSegment.segmentId,
+      kind: 'user',
+      section: anchorRow?.section ?? 'after-tools',
+      content: message.content,
+      pending: message.pending,
+      createdOrder: insertOrder,
+      ...(message.localFileAttachments?.length
+        ? { localFileAttachments: message.localFileAttachments }
+        : {}),
+    });
+    const physicalInsertAt =
+      insertAfterToolIndex >= 0 ? insertAfterToolIndex + 1 : targetSegment.rows.length;
+    targetSegment.rows.splice(physicalInsertAt, 0, row);
   }
 
   private hydrateSnapshot(snapshot: DesktopTimelineTurnSnapshot[]): void {
@@ -1264,10 +1389,21 @@ export class DesktopMessageTimeline {
     localFileAttachments?: ConversationLocalFileAttachmentSnapshot[];
     tool?: ToolBlockSnapshot;
     aux?: MessageAuxSnapshot;
+    createdOrder?: number;
   }): DesktopTimelineRow {
     const messageId = input.messageId ?? this.options.allocateMessageId();
     if (input.messageId !== undefined) {
       this.options.reserveMessageId?.(input.messageId);
+    }
+    let createdOrder: number;
+    if (input.createdOrder !== undefined) {
+      createdOrder = input.createdOrder;
+      this.reserveCreatedOrderInsert(createdOrder);
+      if (this.nextCreatedOrder <= createdOrder) {
+        this.nextCreatedOrder = createdOrder + 1;
+      }
+    } else {
+      createdOrder = this.nextCreatedOrder++;
     }
     return {
       rowId: `row-${this.nextRowId++}`,
@@ -1276,7 +1412,7 @@ export class DesktopMessageTimeline {
       ...(input.segmentId !== undefined ? { segmentId: input.segmentId } : {}),
       kind: input.kind,
       ...(input.section ? { section: input.section } : {}),
-      createdOrder: this.nextCreatedOrder++,
+      createdOrder,
       content: input.content,
       pending: input.pending,
       ...(input.canContinue ? { canContinue: true } : {}),
@@ -1286,6 +1422,14 @@ export class DesktopMessageTimeline {
       ...(input.tool ? { tool: cloneTool(input.tool) } : {}),
       ...(input.aux ? { aux: cloneAux(input.aux) } : {}),
     };
+  }
+
+  private reserveCreatedOrderInsert(insertOrder: number): void {
+    for (const row of this.allRows()) {
+      if (row.createdOrder >= insertOrder) {
+        row.createdOrder += 1;
+      }
+    }
   }
 
   private findToolRow(toolCallId: string): DesktopTimelineRow | undefined {

@@ -976,8 +976,9 @@ export class DesktopRuntimeEventOrchestrator {
     if (denied) {
       this.activeGenerateImageTools.delete(event.toolCallId);
       this.activeGenerateVideoTools.delete(event.toolCallId);
-      this.options.assistantMessages.removeToolMessage(event.toolCallId);
-      this.options.messageTimeline?.()?.removeToolMessage(event.toolCallId);
+      // Keep the pending tool row in place; the following tool-execution-finished event
+      // updates it to failed. Removing here races with inline approval guidance and
+      // re-inserts the tool card after the user's reply.
       return;
     }
 

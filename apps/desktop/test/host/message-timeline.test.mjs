@@ -691,3 +691,91 @@ test('user local file attachments survive timeline snapshot restore', () => {
   assert.equal(messages[0].localFileAttachments?.length, 1);
   assert.equal(messages[0].localFileAttachments?.[0]?.name, 'ReadmeHero_en.png');
 });
+
+test('approval guidance user reply stays after pending tool within the same turn', () => {
+  const timeline = createTimeline();
+  timeline.beginUserTurn('run a command');
+  timeline.beginAssistantSegment('initial');
+  timeline.finalizeThinkingSegment('Need to ask which command.');
+  timeline.upsertToolMessage('ask-1', {
+    toolCallId: 'ask-1',
+    toolName: 'ask_questions',
+    phase: 'succeeded',
+    headline: 'Asked 1 question',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  timeline.finalizeThinkingSegment('Running echo nb.');
+  timeline.upsertToolMessage('shell-1', {
+    toolCallId: 'shell-1',
+    toolName: 'run_shell_command',
+    phase: 'pending-approval',
+    headline: 'Execute command',
+    detailLines: ['echo nb'],
+    argsExcerpt: '{}',
+  });
+
+  timeline.insertApprovalGuidanceUserReply('换成 echo nihao', 'shell-1');
+  timeline.upsertToolMessage('shell-1', {
+    toolCallId: 'shell-1',
+    toolName: 'run_shell_command',
+    phase: 'failed',
+    headline: 'Execute command',
+    detailLines: ['echo nb'],
+    argsExcerpt: '{}',
+  });
+  timeline.finalizeThinkingSegment('Retry with echo nihao.');
+  timeline.upsertToolMessage('shell-2', {
+    toolCallId: 'shell-2',
+    toolName: 'run_shell_command',
+    phase: 'succeeded',
+    headline: 'Execute command',
+    detailLines: ['echo nihao'],
+    argsExcerpt: '{}',
+  });
+  timeline.appendAssistantTextChunk('done');
+  timeline.completeActiveAssistantSegment();
+
+  const tokens = visibleRowTokens(timeline.toMessages());
+  assert.equal(timeline.snapshot().length, 1);
+  assert.equal(tokens.filter((token) => token.startsWith('tool:ask-1')).length, 1);
+  assert.equal(tokens.filter((token) => token.startsWith('tool:shell-1')).length, 1);
+  assert.ok(tokens.indexOf('user:换成 echo nihao') > tokens.indexOf('tool:shell-1:failed'));
+  assert.ok(tokens.indexOf('tool:shell-2:succeeded') > tokens.indexOf('user:换成 echo nihao'));
+  assert.equal(tokens.at(-1), 'assistant:done');
+});
+
+test('fromMessages hydrates mid-turn approval guidance without starting a new turn', () => {
+  const source = createTimeline();
+  source.beginUserTurn('run a command');
+  source.beginAssistantSegment('initial');
+  source.finalizeThinkingSegment('Need to ask which command.');
+  source.upsertToolMessage('ask-1', {
+    toolCallId: 'ask-1',
+    toolName: 'ask_questions',
+    phase: 'succeeded',
+    headline: 'Asked 1 question',
+    detailLines: [],
+    argsExcerpt: '{}',
+  });
+  source.upsertToolMessage('shell-1', {
+    toolCallId: 'shell-1',
+    toolName: 'run_shell_command',
+    phase: 'pending-approval',
+    headline: 'Execute command',
+    detailLines: ['echo nb'],
+    argsExcerpt: '{}',
+  });
+  source.insertApprovalGuidanceUserReply('换成 echo nihao', 'shell-1');
+
+  let restoredCounter = 0;
+  const restored = DesktopMessageTimeline.fromMessages(source.toMessages(), {
+    allocateMessageId: () => 100 + restoredCounter++,
+  });
+
+  assert.equal(restored.snapshot().length, 1);
+  assert.deepEqual(
+    visibleRowTokens(restored.toMessages()),
+    visibleRowTokens(source.toMessages()),
+  );
+});
