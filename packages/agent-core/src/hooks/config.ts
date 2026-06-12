@@ -146,6 +146,9 @@ export function resolveMergedHookDefinitions(
             continue;
           }
         } catch {
+          console.warn(
+            `Ignoring invalid hook matcher for ${event} in ${scope} config: ${entry.matcher}`,
+          );
           continue;
         }
       }
