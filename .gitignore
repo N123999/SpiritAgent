@@ -6,3 +6,5 @@
 **/*.tsbuildinfo
 /apps/desktop/release/
 **/.spirit-agent/
+**/.env
+!**/.env.example

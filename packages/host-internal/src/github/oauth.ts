@@ -2,9 +2,9 @@ import {
   GITHUB_API_BASE_URL,
   GITHUB_OAUTH_ACCESS_TOKEN_URL,
   GITHUB_OAUTH_AUTHORIZE_URL,
-  GITHUB_OAUTH_CLIENT_ID,
   GITHUB_OAUTH_REDIRECT_URI,
   GITHUB_OAUTH_SCOPES,
+  resolveGitHubOAuthClientId,
 } from './oauth-config.js';
 import type { GitHubOAuthTokenResponse } from './types.js';
 
@@ -33,9 +33,19 @@ export class GitHubOAuthError extends Error {
   }
 }
 
+export function requireGitHubOAuthClientId(): string {
+  const clientId = resolveGitHubOAuthClientId();
+  if (!clientId) {
+    throw new GitHubOAuthError(
+      'GitHub OAuth Client ID is not configured. Set SPIRIT_GITHUB_OAUTH_CLIENT_ID in apps/desktop/.env (see .env.example).',
+    );
+  }
+  return clientId;
+}
+
 export function buildGitHubAuthorizeUrl(input: BuildGitHubAuthorizeUrlInput): string {
   const params = new URLSearchParams({
-    client_id: input.clientId ?? GITHUB_OAUTH_CLIENT_ID,
+    client_id: input.clientId ?? requireGitHubOAuthClientId(),
     redirect_uri: input.redirectUri ?? GITHUB_OAUTH_REDIRECT_URI,
     scope: (input.scopes ?? GITHUB_OAUTH_SCOPES).join(' '),
     state: input.state,
@@ -49,7 +59,7 @@ export async function exchangeGitHubCodeForToken(
   input: ExchangeGitHubCodeInput,
 ): Promise<GitHubOAuthTokenResponse> {
   const body = new URLSearchParams({
-    client_id: input.clientId ?? GITHUB_OAUTH_CLIENT_ID,
+    client_id: input.clientId ?? requireGitHubOAuthClientId(),
     redirect_uri: input.redirectUri ?? GITHUB_OAUTH_REDIRECT_URI,
     code: input.code,
     code_verifier: input.codeVerifier,

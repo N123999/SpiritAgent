@@ -1,5 +1,6 @@
-/** Replace with the Client ID from your GitHub OAuth App before testing login. */
-export const GITHUB_OAUTH_CLIENT_ID = 'Ov23liPLACEHOLDER0000000';
+export function resolveGitHubOAuthClientId(): string {
+  return process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID?.trim() ?? '';
+}
 
 export const GITHUB_OAUTH_LOOPBACK_PORT = 53_682;
 

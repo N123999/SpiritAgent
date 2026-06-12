@@ -1,3 +1,5 @@
+import './load-env.js';
+
 import { existsSync, readFileSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
