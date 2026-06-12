@@ -8,6 +8,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { MESSAGE_TURN_HOVER_REVEAL_CLASSES } from "@/lib/message-turn-actions-ui";
 import type { ConversationMessageSnapshot } from "@/types";
 
 export function MessageTurnActions({
@@ -18,6 +20,7 @@ export function MessageTurnActions({
   canFork,
   forkBusy,
   forkEnabled,
+  forkMenuAlwaysVisible,
   onFork,
 }: {
   showContinueButton: boolean;
@@ -27,6 +30,7 @@ export function MessageTurnActions({
   canFork: boolean;
   forkBusy: boolean;
   forkEnabled: boolean;
+  forkMenuAlwaysVisible: boolean;
   onFork: () => void;
 }) {
   const { t } = useTranslation();
@@ -56,7 +60,10 @@ export function MessageTurnActions({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7 shrink-0 text-muted-foreground"
+              className={cn(
+                "size-7 shrink-0 text-muted-foreground",
+                !forkMenuAlwaysVisible && MESSAGE_TURN_HOVER_REVEAL_CLASSES,
+              )}
               aria-label={t("app.messageActions")}
               disabled={forkBusy || !forkEnabled}
             >

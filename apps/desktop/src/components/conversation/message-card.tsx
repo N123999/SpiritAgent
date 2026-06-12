@@ -34,6 +34,7 @@ import { conversationMessageStableId } from "@/lib/conversation-list-scope";
 import { isSubagentStatusSurfaceMessage } from "@/lib/subagent-display";
 import { cn } from "@/lib/utils";
 import { canForkMessage, canShowForkMessage } from "@/lib/fork-eligibility";
+import { messageShowsAssistantTurnActions } from "@/lib/message-turn-actions-ui";
 import type {
   ConversationMessageSnapshot,
   DesktopModelReasoningEffort,
@@ -92,6 +93,7 @@ export function MessageCard({
   activeSessionReadOnly = false,
   forkBusy = false,
   onForkMessage,
+  forkMenuAlwaysVisible = false,
   hiddenByProcessGroup = false,
 }: {
   composerSessionKey: string;
@@ -145,6 +147,7 @@ export function MessageCard({
   activeSessionReadOnly?: boolean;
   forkBusy?: boolean;
   onForkMessage?: (message: ConversationMessageSnapshot, listIndex: number) => void;
+  forkMenuAlwaysVisible?: boolean;
 }) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
@@ -172,11 +175,7 @@ export function MessageCard({
         : null,
     [rewindSelected, message.content, message.id],
   );
-  const showTurnActions =
-    !isUser
-    && Boolean(message.content.trim())
-    && !message.pending
-    && !subagentStatusSurface;
+  const showTurnActions = !hiddenByProcessGroup && messageShowsAssistantTurnActions(message);
   const showForkMenu =
     showTurnActions
     && canShowForkMessage({
@@ -214,6 +213,7 @@ export function MessageCard({
               ? "ml-auto w-full max-w-[min(100%,36rem)]"
               : "max-w-[min(72%,22rem)]"
             : "w-full",
+          showTurnActions && "group",
         )}
       >
         {rewindSelected && isUser ? (
@@ -318,6 +318,7 @@ export function MessageCard({
             onContinue={onContinue}
             canFork={showForkMenu && Boolean(onForkMessage)}
             forkEnabled={canFork}
+            forkMenuAlwaysVisible={forkMenuAlwaysVisible}
             forkBusy={forkBusy}
             onFork={() => onForkMessage?.(message, listIndex)}
           />
