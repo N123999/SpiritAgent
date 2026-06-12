@@ -77,13 +77,6 @@ export function findLastAssistantBodyTextIndexInTurn(
   return lastIndex;
 }
 
-export function findTurnForkBodyListIndex(
-  messages: readonly ConversationMessageSnapshot[],
-  fromIndex: number,
-): number | null {
-  return findLastAssistantBodyTextIndexInTurn(messages, fromIndex);
-}
-
 /** Only the final assistant body in a turn may show Continue / Fork actions. */
 export function messageShowsAssistantTurnActions(
   message: ConversationMessageSnapshot,
