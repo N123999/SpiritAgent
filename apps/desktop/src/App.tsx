@@ -31,11 +31,7 @@ import {
   resolveEmptySessionGreeting,
   type EmptySessionGreetingVariantId,
 } from "@/lib/empty-session-greeting";
-import {
-  resolveWorkspaceDisplayLabel,
-  resolveWorkspaceSelectorLabel,
-  sameWorkspacePath,
-} from "@/lib/workspace-display-label";
+import { resolveWorkspaceDisplayLabel } from "@/lib/workspace-display-label";
 
 import {
   ArrowUp,
@@ -94,7 +90,6 @@ import {
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
 import { AutomationsView } from "@/components/automations-view";
@@ -118,19 +113,9 @@ import {
   segmentsToPlainText,
 } from "@/lib/composer-segment-model";
 import { ComposerInsertMenu } from "@/components/composer-insert-menu";
-import { ApprovalLevelMenu } from "@/components/approval-level-menu";
-import { ComposerContextUsageRing } from "@/components/composer-context-usage-ring";
-import { BranchSelectMenu } from "@/components/branch-select-menu";
-import { WorkLocationMenu } from "@/components/work-location-menu";
-import { SkillSlashMenu } from "@/components/skill-slash-menu";
 import { SettingsView } from "@/components/settings-view";
-import { ComposerTodoCard } from "@/components/composer-todo-card";
 import { MinimalToolCallCard } from "@/components/minimal-tool-call-card";
-import { PendingApprovalCard } from "@/components/pending-approval-card";
-import { PendingQuestionsCard } from "@/components/pending-questions-card";
-import { ProcessCardCollapsible } from "@/components/process-card-collapsible";
 import { SessionChromeBreadcrumb } from "@/components/session-chrome-breadcrumb";
-import { ToolCallDiffHostProvider } from "@/components/tool-call-diff-host-context";
 import { isMinimalToolCallMessage, toolHasExpandableContent } from "@/lib/tool-call-display";
 import {
   isGenericPendingThinkingStatusText,
@@ -143,7 +128,6 @@ import {
 import { resolveTurnContinuePresentation } from "@/lib/conversation-continue-ui";
 import {
   buildConversationRenderItems,
-  isMessageHiddenByProcessGroup,
 } from "@/lib/conversation-process-groups";
 import {
   hasAssistantBodyTextLaterInTurn,
@@ -156,10 +140,7 @@ import {
   isGrayMetaLeadingMessage,
   isGrayMetaTrailingMessage,
   isStandaloneAssistantAuxMessage,
-  shouldCompactAfterPreviousRenderItem,
-  shouldTightenAfterPreviousRenderItem,
 } from "@/lib/message-card-spacing";
-import { WorkspaceFileReferenceMenu } from "@/components/workspace-file-reference-menu";
 import { ActionPickerDialog } from "@/components/action-picker-dialog";
 import { WorkspaceFilePickerDialog } from "@/components/workspace-file-picker-dialog";
 import { QueuedUserMessageHoverActions } from "@/components/queued-user-message-hover-actions";
@@ -246,7 +227,6 @@ import {
 import { LaunchSplash } from "@/components/launch-splash";
 import { SessionSidebar, type SettingsSidebarTab } from "@/components/session-sidebar";
 import { SessionSidebarShell } from "@/components/session-sidebar-shell";
-import { WorkspaceToolsDock } from "@/components/workspace-tools-panel";
 import {
   addWorkspaceBrowserTabWithUrl,
   addWorkspaceToolTab,
@@ -272,24 +252,15 @@ import type {
   WorkspaceFileReferenceSuggestionsResponse,
 } from "@/types";
 
-import {
-  conversationMessageStableId,
-  resolveConversationListScopeKey,
-} from "@/lib/conversation-list-scope";
+import { resolveConversationListScopeKey } from "@/lib/conversation-list-scope";
 
 /** 主会话列最大宽度（居中） */
 
 import {
   CONVERSATION_COMPOSER_SCROLL_BED_FALLBACK_PX,
-  CONVERSATION_GUTTER_NEG_X,
-  CONVERSATION_GUTTER_X,
-  CONVERSATION_MAX_W,
   CONVERSATION_SCROLL_BED_EXTRA_PX,
 } from "@/lib/conversation-layout-constants";
-import { ComposerSurface } from "@/components/composer/composer-surface";
-import { MessageCard } from "@/components/conversation/message-card";
-import { ToolCallCollapsible } from "@/components/tool-call/tool-call-collapsible";
-import { EmptyStateWorkspaceSelector } from "@/components/empty-state-workspace-selector";
+import { ConversationView } from "@/components/conversation/conversation-view";
 import { WebHostPairingGate } from "@/components/web-host-pairing-gate";
 import { DesktopLayoutChromeBar } from "@/components/layout/desktop-layout-chrome-bar";
 
@@ -2034,611 +2005,110 @@ export default function App() {
             />
           </div>
         ) : (
-          <div data-spirit-surface="conversation-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
-            <div data-spirit-surface="conversation-shell" className={cn("flex min-h-0 min-w-0 flex-1 flex-col min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
-              <DesktopLayoutChromeBar
-                useMicaBackdrop={useMicaBackdrop}
-                showWorkspaceToggle
-                workspaceToolsOpen={workspaceToolsOpen}
-                onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
-                sessionTitle={
-                  isEmptySession || hideStaleConversationMessages
-                    ? null
-                    : snapshot?.activeSession?.displayName
-                }
-                subagentPromptText={
-                  subagentViewActive ? snapshot?.subagentViewer?.promptText : null
-                }
-                onExitSubagentViewer={
-                  subagentViewActive
-                    ? () => {
-                        void subagentViewer.close();
-                      }
-                    : undefined
-                }
-                onNewSession={isEmptySession ? undefined : handleNewSession}
-                newSessionBusy={newSessionBusy}
-              />
-            <div data-spirit-surface="conversation-stage" className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col text-sm", desktopMicaTintClass(useMicaBackdrop))}>
-              {compactionDemo.active ? (
-                <div
-                  data-spirit-surface="compaction-ui-demo-banner"
-                  className={cn("shrink-0", desktopMicaTintInnerClass(useMicaBackdrop))}
-                >
-                  <div
-                    className={cn(
-                      "mx-auto flex w-full flex-wrap items-center justify-between gap-2 py-2",
-                      CONVERSATION_GUTTER_X,
-                      CONVERSATION_MAX_W,
-                    )}
-                  >
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">{t('app.compactionDemo')}</span>
-                      <span className="hidden sm:inline">
-                        {" "}
-                        · {t('app.compactionDemoDescription')}
-                      </span>
-                    </p>
-                    <Button type="button" variant="outline" size="sm" onClick={compactionDemo.stop}>
-                      {t('app.exitDemo')}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-              {rewindDraft ? (
-                <button
-                  type="button"
-                  aria-label={t('app.cancelRewind')}
-                  className="fixed inset-0 z-30 cursor-default bg-background/35 backdrop-blur-sm"
-                  onClick={() => setRewindDraft(null)}
-                />
-              ) : null}
-              <ScrollArea
-                data-spirit-surface="conversation-scroll"
-                className={cn("min-h-0 flex-1", desktopMicaTintInnerClass(useMicaBackdrop))}
-                type="hover"
-                scrollHideDelay={450}
-              >
-                {/* min-h-full：短内容仍铺满视口；pb ≥ dock 实测高度 + 留白，审批卡弹出时同步增高 */}
-                <div
-                  data-spirit-surface="conversation-scroll-body"
-                  className={cn("min-h-full w-full", desktopMicaTintInnerClass(useMicaBackdrop))}
-                  style={
-                    (!isEmptySession || subagentViewActive) && !hideStaleConversationMessages
-                      ? { paddingBottom: conversationScrollBedPaddingPx }
-                      : undefined
+          <ConversationView
+            useMicaBackdrop={useMicaBackdrop}
+            workspaceToolsOpen={workspaceToolsOpen}
+            onToggleWorkspaceTools={() => setWorkspaceToolsOpen((c) => !c)}
+            isEmptySession={isEmptySession}
+            hideStaleConversationMessages={hideStaleConversationMessages}
+            snapshot={snapshot}
+            subagentViewActive={subagentViewActive}
+            onExitSubagentViewer={
+              subagentViewActive
+                ? () => {
+                    void subagentViewer.close();
                   }
-                >
-                  {(!isEmptySession || subagentViewActive) && !hideStaleConversationMessages ? (
-                    <div
-                      data-spirit-surface="conversation-list-shell"
-                      className={cn(
-                        "mx-auto w-full overflow-x-hidden pt-6 sm:pt-7",
-                        CONVERSATION_GUTTER_X,
-                        CONVERSATION_MAX_W,
-                      )}
-                    >
-                      <ToolCallDiffHostProvider
-                        value={{
-                          workspaceRoot: snapshot?.workspaceRoot ?? "",
-                          readWorkspaceTextFile: runtime.readWorkspaceTextFile,
-                        }}
-                      >
-                      <div
-                        key={`${composerSessionKey || "__no-session__"}:${conversationListScopeKey}:e${conversationListRemountEpoch}`}
-                        data-spirit-surface="conversation-list"
-                        className="space-y-3"
-                      >
-                        {subagentViewActive && messages.length === 0 ? (
-                          <p className="text-sm leading-relaxed text-muted-foreground">
-                            {t("app.subagentViewerEmpty")}
-                          </p>
-                        ) : null}
-                        {conversationRenderItems.map((renderItem, renderIndex) => {
-                          const previousRenderItem = conversationRenderItems[renderIndex - 1];
-
-                          if (renderItem.kind === "process-group") {
-                            const anchorMessage = messages[renderItem.messageIndices[0]];
-                            if (!anchorMessage) {
-                              return null;
-                            }
-                            const compactAfterPrevious = shouldCompactAfterPreviousRenderItem(
-                              previousRenderItem,
-                              anchorMessage,
-                              messages,
-                            );
-                            const tightenAfterPreviousMeta = shouldTightenAfterPreviousRenderItem(
-                              previousRenderItem,
-                              anchorMessage,
-                              messages,
-                            );
-                            return (
-                              <div
-                                key={renderItem.groupId}
-                                id={renderItem.groupId}
-                                data-spirit-surface="message-row"
-                                data-spirit-message-role="assistant"
-                                data-spirit-message-pending="false"
-                                className={cn(
-                                  "scroll-mt-4 flex w-full justify-start pb-3 last:pb-0",
-                                  compactAfterPrevious && "-mt-4",
-                                  tightenAfterPreviousMeta && "-mt-3",
-                                )}
-                              >
-                                <div
-                                  data-spirit-surface="message-assistant"
-                                  className="min-w-0 w-full space-y-2"
-                                >
-                                  <ProcessCardCollapsible
-                                    groupId={renderItem.groupId}
-                                    messageIndices={renderItem.messageIndices}
-                                    messages={messages}
-                                    toolCounts={renderItem.toolCounts}
-                                    pendingAuxState={conversationPendingAuxState}
-                                    playSealAnimation={shouldPlayProcessSealAnimation(renderItem.groupId)}
-                                    manualOpen={processGroupManualOpen[processGroupManualOpenKey(renderItem.groupId)]}
-                                    onManualOpenChange={(open) => {
-                                      setProcessGroupManualOpen((current) => ({
-                                        ...current,
-                                        [processGroupManualOpenKey(renderItem.groupId)]: open,
-                                      }));
-                                    }}
-                                    renderToolBlock={(message) => (
-                                      <ToolCallCollapsible
-                                        tool={message.tool!}
-                                        variant="process-nested"
-                                        readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
-                                        readLocalVideoPreviewUrl={runtime.readLocalVideoPreviewUrl}
-                                        readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}
-                                        saveLocalImageAs={runtime.saveLocalImageAs}
-                                        onOpenSubagentViewer={
-                                          subagentViewActive ? undefined : handleOpenSubagentViewer
-                                        }
-                                        onAbortShell={(toolCallId) => {
-                                          void runtime.abortShellCommand(toolCallId);
-                                        }}
-                                      />
-                                    )}
-                                    readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
-                                    readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          const index = renderItem.messageIndex;
-                          const message = messages[index];
-                          if (!message) {
-                            return null;
-                          }
-                          const compactAfterPrevious = shouldCompactAfterPreviousRenderItem(
-                            previousRenderItem,
-                            message,
-                            messages,
-                          );
-                          const tightenAfterPreviousMeta = shouldTightenAfterPreviousRenderItem(
-                            previousRenderItem,
-                            message,
-                            messages,
-                          );
-                          const queuedBeforeCount = messages
-                            .slice(0, index)
-                            .filter((item) => item.queued === true).length;
-                          const queuedCanMoveUp =
-                            message.queued === true && queuedBeforeCount > 0;
-                          const hiddenByProcessGroup = isMessageHiddenByProcessGroup(
-                            conversationRenderItems,
-                            index,
-                          );
-                          return (
-                            <MessageCard
-                              key={`${conversationMessageStableId(message, composerSessionKey, conversationListScopeKey)}@${index}`}
-                              composerSessionKey={composerSessionKey}
-                              conversationListScopeKey={conversationListScopeKey}
-                              messages={messages}
-                              pendingAuxState={conversationPendingAuxState}
-                              listIndex={index}
-                              message={message}
-                              hiddenByProcessGroup={hiddenByProcessGroup}
-                              compactAfterPrevious={compactAfterPrevious}
-                              tightenAfterPreviousMeta={tightenAfterPreviousMeta}
-                              showContinueButton={
-                                turnContinue?.showContinueAtIndex === index &&
-                                !activeSessionReadOnly &&
-                                snapshot?.conversation.isBusy !== true
-                              }
-                              continueTarget={turnContinue?.continuableMessage}
-                              continueBusy={continueBusy}
-                              rewindSelected={rewindDraft?.listIndex === index}
-                              rewindText={
-                                rewindDraft?.listIndex === index ? rewindDraft.text : ""
-                              }
-                              rewindLocalFileAttachments={
-                                rewindDraft?.listIndex === index
-                                  ? rewindDraft.localFileAttachments
-                                  : []
-                              }
-                              rewindBrowserElementAttachments={
-                                rewindDraft?.listIndex === index
-                                  ? rewindDraft.browserElementAttachments
-                                  : []
-                              }
-                              rewindRichInputRef={rewindRichInputRef}
-                              onRewindElementAttachmentsChange={(attachments) => {
-                                setRewindDraft((current) =>
-                                  current && current.listIndex === index
-                                    ? { ...current, browserElementAttachments: attachments }
-                                    : current,
-                                );
-                              }}
-                              rewindCanSubmit={
-                                messageRewindComposerEnabled &&
-                                rewindDraft?.listIndex === index &&
-                                (Boolean(rewindDraft.text.trim()) ||
-                                  rewindDraft.browserElementAttachments.length > 0 ||
-                                  rewindDraft.localFileAttachments.length > 0)
-                              }
-                              canPickLocalFile={runtime.hostKind === "electron"}
-                              rewindBusy={runtime.busyAction === "rewind"}
-                              models={models}
-                              catalogHints={snapshot?.config.modelCatalogHints}
-                              activeModel={runtime.settings.activeModel}
-                              agentMode={runtime.settings.agentMode}
-                              onContinue={(targetMessage) => {
-                                void runtime.continueAssistantCompletion(targetMessage.id);
-                              }}
-                              onRewindStart={startMessageRewind}
-                              onRewindChange={(value) => {
-                                setRewindDraft((current) =>
-                                  current ? { ...current, text: value } : current,
-                                );
-                              }}
-                              onRewindSubmit={submitMessageRewind}
-                              onRewindRemoveLocalFileAttachment={removeRewindLocalFileAttachment}
-                              onRewindPickLocalFile={pickRewindLocalFileFromPalette}
-                              onRewindPaste={handleRewindComposerPaste}
-                              onModelSelect={runtime.setActiveModel}
-                              onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
-                              onAgentModeChange={handleComposerAgentModeChange}
-                              readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
-                              readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}
-                              readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
-                              readLocalVideoPreviewUrl={runtime.readLocalVideoPreviewUrl}
-                              saveLocalImageAs={runtime.saveLocalImageAs}
-                              onOpenSubagentViewer={
-                                subagentViewActive ? undefined : handleOpenSubagentViewer
-                              }
-                              onAbortShell={(toolCallId) => {
-                                void runtime.abortShellCommand(toolCallId);
-                              }}
-                              queuedCanMoveUp={queuedCanMoveUp}
-                              queueActionBusy={runtime.busyAction === "send"}
-                              onQueueMoveUp={(queueId) => {
-                                void runtime.reorderQueuedUserTurn(queueId);
-                              }}
-                              onQueueSendNow={(queueId) => {
-                                void runtime.sendQueuedUserTurnNow(queueId);
-                              }}
-                              onQueueDelete={(queueId) => {
-                                void runtime.removeQueuedUserTurn(queueId);
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                      </ToolCallDiffHostProvider>
-                    </div>
-                  ) : null}
-                </div>
-              </ScrollArea>
-
-              <div
-                ref={composerDockRef}
-                data-spirit-surface="composer-dock"
-                className={cn(
-                  "pointer-events-none absolute inset-x-0 z-10 bg-transparent",
-                  isEmptySession
-                    ? cn(
-                        "inset-y-0 flex items-center justify-center pb-[env(safe-area-inset-bottom,0px)]",
-                        CONVERSATION_GUTTER_X,
-                      )
-                    : "bottom-0 pt-2 pb-0",
-                )}
-              >
-                <div
-                  className={cn(
-                    "pointer-events-auto mx-auto w-full",
-                    CONVERSATION_GUTTER_X,
-                    CONVERSATION_MAX_W,
-                  )}
-                >
-                {isEmptySession ? (
-                  <div data-spirit-surface="conversation-empty">
-                    <p
-                      className="mb-6 text-center text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
-                      data-testid="empty-session-greeting"
-                    >
-                      {emptySessionGreeting}
-                    </p>
-                  </div>
-                ) : null}
-                <div className="space-y-2">
-                {showWorkspaceBindingControls ? (
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-0.5">
-                    <EmptyStateWorkspaceSelector
-                      currentWorkspaceRoot={snapshot?.workspaceRoot ?? ""}
-                      workspaceBinding={snapshot?.workspaceBinding ?? "project"}
-                      availableWorkspaces={snapshot?.availableWorkspaces ?? []}
-                      disabled={runtime.busyAction === "bootstrap" || runtime.busyAction === "session"}
-                      onSelectWorkspace={(workspaceRoot) => {
-                        if (
-                          snapshot?.workspaceBinding === "project"
-                          && snapshot.workspaceRoot
-                          && sameWorkspacePath(snapshot.workspaceRoot, workspaceRoot)
-                        ) {
-                          return;
-                        }
-                        void runtime.switchWorkspaceRoot(workspaceRoot);
-                      }}
-                      onSelectNoWorkspace={() => {
-                        if (snapshot?.workspaceBinding === "none") {
-                          return;
-                        }
-                        void runtime.switchToNoWorkspaceBinding();
-                      }}
-                      onAddWorkspace={() => {
-                        void (async () => {
-                          const workspaceRoot = await runtime.pickWorkspaceDirectory();
-                          if (!workspaceRoot) {
-                            return;
-                          }
-                          await runtime.rememberWorkspaceRoot(workspaceRoot);
-                        })();
-                      }}
-                    />
-                    {isEmptySession ? (
-                    <>
-                    <BranchSelectMenu
-                      branches={snapshot?.git.branches ?? []}
-                      selectedBranch={snapshot?.git.selectedBranch}
-                      currentBranch={snapshot?.git.branch}
-                      disabled={
-                        runtime.busyAction === "bootstrap"
-                        || runtime.busyAction === "session"
-                        || commitBusy
-                      }
-                      onBranchChange={(branch) => {
-                        void runtime.setPendingGitBranch(branch);
-                      }}
-                    />
-                    <WorkLocationMenu
-                      workLocation={snapshot?.git.workLocation ?? "local"}
-                      disabled={
-                        runtime.busyAction === "bootstrap"
-                        || runtime.busyAction === "session"
-                        || commitBusy
-                        || snapshot?.git.isRepository !== true
-                      }
-                      onWorkLocationChange={(workLocation) => {
-                        void runtime.setWorkLocation(workLocation);
-                      }}
-                    />
-                    <ApprovalLevelMenu
-                      approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
-                      disabled={activeSessionReadOnly}
-                      onApprovalLevelChange={(level) => {
-                        void runtime.setApprovalLevel(level);
-                      }}
-                    />
-                    </>
-                    ) : null}
-                  </div>
-                ) : null}
-                {runtime.runtimeError ? (
-                  <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
-                    {runtime.runtimeError}
-                  </div>
-                ) : null}
-
-                {rewindWarnings.length > 0 ? (
-                  <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
-                    <p>{t('app.rewindComplete', { count: rewindWarnings.length })}</p>
-                    <p className="mt-1 truncate" title={rewindWarnings[0]?.message}>
-                      {rewindWarnings[0]?.path}: {rewindWarnings[0]?.message}
-                    </p>
-                  </div>
-                ) : null}
-
-                {showPendingApprovalInComposer && pendingApproval ? (
-                  <PendingApprovalCard
-                    pendingApproval={pendingApproval}
-                    approvalGuidance={runtime.approvalGuidance}
-                    approveBusy={runtime.busyAction === "approve"}
-                    onApprovalGuidanceChange={runtime.setApprovalGuidance}
-                    onSubmitApproval={(decision) => {
-                      if (decision.kind === "allow") {
-                        void runtime.submitApproval({
-                          kind: "allow",
-                          ...(decision.persistTrust ? { persistTrust: true } : {}),
-                        });
-                        return;
-                      }
-                      if (decision.kind === "deny") {
-                        void runtime.submitApproval({ kind: "deny" });
-                        return;
-                      }
-                      void runtime.submitApproval({
-                        kind: "guidance",
-                        userMessage: decision.userMessage ?? "",
-                      });
-                    }}
-                  />
-                ) : null}
-
-                {showPendingQuestionsInComposer && pendingQuestions ? (
-                  <PendingQuestionsCard
-                    pendingQuestions={pendingQuestions}
-                    questionDrafts={runtime.questionDrafts}
-                    questionError={runtime.questionError}
-                    questionsBusy={runtime.busyAction === "questions"}
-                    onUpdateDraft={runtime.updateQuestionDraft}
-                    onSubmitQuestions={() => void runtime.submitQuestions()}
-                    onSkipQuestions={() => void runtime.skipQuestions()}
-                  />
-                ) : null}
-
-                <div className="relative">
-                <div className="relative z-10 flex flex-col">
-                  {snapshot?.conversation.todos ? (
-                    <div className="relative z-20 mx-4 -mb-px shrink-0">
-                      <ComposerTodoCard
-                        todos={snapshot.conversation.todos}
-                        sessionKey={snapshot.composerSessionKey}
-                      />
-                    </div>
-                  ) : null}
-                  {fileReferenceSuggestions ? (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 pb-2">
-                      <div className="pointer-events-auto">
-                        <WorkspaceFileReferenceMenu
-                          suggestions={fileReferenceSuggestions.suggestions}
-                          selectedIndex={fileReferenceSelectedIndex}
-                          onSelectIndex={setFileReferenceSelectedIndex}
-                          onApplySuggestion={applyFileReferenceSuggestion}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  {slashQuery ? (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 pb-2">
-                      <div className="pointer-events-auto">
-                        <SkillSlashMenu
-                          suggestions={slashSuggestions}
-                          selectedIndex={slashSelectedIndex}
-                          onSelectIndex={setSlashSelectedIndex}
-                          onApplySuggestion={applySlashSuggestionItem}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  <ComposerSurface
-                    value={runtime.composer}
-                    onChange={runtime.setComposer}
-                    onSubmit={submitComposerMessage}
-                    browserElementAttachments={composerBrowserElementAttachments}
-                    onElementAttachmentsChange={setComposerBrowserElementAttachments}
-                    onAbort={() => void runtime.abortConversation()}
-                    placeholder={composerPlaceholder}
-                    localFileAttachments={runtime.composerLocalFileAttachments}
-                    models={models}
-                    catalogHints={snapshot?.config.modelCatalogHints}
-                    activeModel={runtime.settings.activeModel}
-                    agentMode={runtime.settings.agentMode}
-                    loopEnabled={snapshot?.conversation.loopEnabled === true}
-                    onModelSelect={runtime.setActiveModel}
-                    onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
-                    onAgentModeChange={handleComposerAgentModeChange}
-                    onLoopEnabledChange={(enabled) => {
-                      void runtime.setLoopEnabled(enabled);
-                    }}
-                    richInputRef={composerRichInputRef}
-                    onKeyDown={handleComposerKeyDown}
-                    onSelectionChange={(selectionStart) => {
-                      if (selectionStart !== null) {
-                        setComposerCursorCodeUnits(selectionStart);
-                      }
-                    }}
-                    canSend={composerCanSend}
-                    canAbort={conversationInterruptible}
-                    busy={runtime.busyAction === "send" && !conversationInterruptible}
-                    conversationBusy={continueBusy}
-                    agentModeChipDismissed={runtime.agentModeChipDismissed}
-                    onAgentModeChipDismissChange={runtime.setAgentModeChipDismissed}
-                    readOnly={activeSessionReadOnly}
-                    showInsertButton
-                    canPickLocalFile={runtime.hostKind === "electron"}
-                    onInsertWorkspaceFileReferenceTrigger={insertFileReferenceTrigger}
-                    onPickLocalFile={pickLocalFileFromPalette}
-                    onInsertSkillTrigger={insertSkillTriggerFromPalette}
-                    onRemoveLocalFileAttachment={removeLocalFileAttachment}
-                    onPaste={handleComposerPaste}
-                  />
-                </div>
-                  {!isEmptySession ? (
-                    <div
-                      className={cn(
-                        "pointer-events-none relative z-0 -mt-4 pt-[calc(1rem+0.375rem)] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]",
-                        desktopMicaTintInnerClass(useMicaBackdrop),
-                        CONVERSATION_GUTTER_NEG_X,
-                        CONVERSATION_GUTTER_X,
-                      )}
-                    >
-                      <div className="pointer-events-auto relative z-[11] flex items-center justify-between gap-3 px-3">
-                        <ApprovalLevelMenu
-                          approvalLevel={snapshot?.conversation.approvalLevel ?? "default"}
-                          disabled={activeSessionReadOnly}
-                          onApprovalLevelChange={(level) => {
-                            void runtime.setApprovalLevel(level);
-                          }}
-                        />
-                        <ComposerContextUsageRing
-                          usage={snapshot?.conversation.contextUsage}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                </div>
-                </div>
-              </div>
-            </div>
-            </div>
-            <div data-spirit-surface="workspace-dock">
-            <WorkspaceToolsDock
-              useMicaBackdrop={useMicaBackdrop}
-              workspaceRoot={snapshot?.workspaceRoot ?? ""}
-              listExplorerChildren={runtime.listWorkspaceExplorerChildren}
-              readWorkspaceTextFile={runtime.readWorkspaceTextFile}
-              writeWorkspaceTextFile={runtime.writeWorkspaceTextFile}
-              readHostTextFile={runtime.readHostTextFile}
-              writeHostTextFile={runtime.writeHostTextFile}
-              readManagedImagePreviewDataUrl={runtime.readManagedImagePreviewDataUrl}
-              plan={snapshot?.plan ?? { path: "", exists: false }}
-              onStartImplementing={() => {
-                handleComposerAgentModeChange("agent");
-                void runtime.submitStartImplementing();
-              }}
-              startImplementingDisabled={
-                startImplementingDisabled || !snapshot?.plan?.exists
-              }
-              autoRevealPlanNonce={workspaceFilesPlanRevealNonce}
-              planRevealTabId={workspaceFilesPlanRevealTargetId}
-              autoRevealFileNonce={workspaceFileRevealNonce}
-              fileRevealTabId={workspaceFileRevealTargetId}
-              fileRevealPath={workspaceFileRevealPath}
-              fileRevealAbsolutePath={workspaceFileRevealAbsolutePath}
-              fileRevealScope={workspaceFileRevealScope}
-              fileRevealViewMode={workspaceFileRevealViewMode}
-              onOpenWorkspaceFile={openWorkspaceFile}
-              tabs={workspaceToolTabs}
-              activeTabId={activeWorkspaceToolTabId}
-              onTabsChange={setWorkspaceToolTabs}
-              onActiveTabIdChange={setActiveWorkspaceToolTabId}
-              onBrowserElementPicked={handleBrowserElementPicked}
-              onBrowserOpenInNewTab={openBrowserUrlInNewTab}
-              browserTabEnabled={browserTabEnabled}
-              open={workspaceToolsOpen}
-              widthPx={workspaceToolsWidthPx}
-              onWidthPxChange={setWorkspaceToolsWidthPx}
-              gitSnapshot={snapshot?.git}
-              gitChipBusy={gitChipBusy}
-              readGitWorkingTree={runtime.readGitWorkingTree}
-              readGitHistory={runtime.readGitHistory}
-              submitGitChip={runtime.submitGitChip}
-            />
-            </div>
-          </div>
+                : undefined
+            }
+            onNewSession={handleNewSession}
+            newSessionBusy={newSessionBusy}
+            compactionDemoActive={compactionDemo.active}
+            onCompactionDemoStop={compactionDemo.stop}
+            rewindDraft={rewindDraft}
+            onRewindDraftClear={() => setRewindDraft(null)}
+            conversationScrollBedPaddingPx={conversationScrollBedPaddingPx}
+            composerDockRef={composerDockRef}
+            messages={messages}
+            conversationRenderItems={conversationRenderItems}
+            composerSessionKey={composerSessionKey}
+            conversationListScopeKey={conversationListScopeKey}
+            conversationListRemountEpoch={conversationListRemountEpoch}
+            conversationPendingAuxState={conversationPendingAuxState}
+            processGroupManualOpen={processGroupManualOpen}
+            processGroupManualOpenKey={processGroupManualOpenKey}
+            onProcessGroupManualOpenChange={(groupId, open) => {
+              setProcessGroupManualOpen((current) => ({
+                ...current,
+                [processGroupManualOpenKey(groupId)]: open,
+              }));
+            }}
+            shouldPlayProcessSealAnimation={shouldPlayProcessSealAnimation}
+            runtime={runtime}
+            turnContinue={turnContinue}
+            activeSessionReadOnly={activeSessionReadOnly}
+            continueBusy={continueBusy}
+            onRewindDraftChange={setRewindDraft}
+            messageRewindComposerEnabled={messageRewindComposerEnabled}
+            rewindRichInputRef={rewindRichInputRef}
+            models={models}
+            onOpenSubagentViewer={subagentViewActive ? undefined : handleOpenSubagentViewer}
+            onStartMessageRewind={startMessageRewind}
+            onSubmitMessageRewind={submitMessageRewind}
+            onRewindRemoveLocalFileAttachment={removeRewindLocalFileAttachment}
+            onRewindPickLocalFile={pickRewindLocalFileFromPalette}
+            onRewindPaste={handleRewindComposerPaste}
+            onComposerAgentModeChange={handleComposerAgentModeChange}
+            emptySessionGreeting={emptySessionGreeting}
+            showWorkspaceBindingControls={showWorkspaceBindingControls}
+            commitBusy={commitBusy}
+            rewindWarnings={rewindWarnings}
+            showPendingApprovalInComposer={showPendingApprovalInComposer}
+            pendingApproval={pendingApproval}
+            showPendingQuestionsInComposer={showPendingQuestionsInComposer}
+            fileReferenceSuggestions={fileReferenceSuggestions}
+            fileReferenceSelectedIndex={fileReferenceSelectedIndex}
+            onFileReferenceSelectedIndexChange={setFileReferenceSelectedIndex}
+            onApplyFileReferenceSuggestion={applyFileReferenceSuggestion}
+            slashQuery={slashQuery}
+            slashSuggestions={slashSuggestions}
+            slashSelectedIndex={slashSelectedIndex}
+            onSlashSelectedIndexChange={setSlashSelectedIndex}
+            onApplySlashSuggestionItem={applySlashSuggestionItem}
+            composerPlaceholder={composerPlaceholder}
+            composerCanSend={composerCanSend}
+            conversationInterruptible={conversationInterruptible}
+            composerBrowserElementAttachments={composerBrowserElementAttachments}
+            onComposerBrowserElementAttachmentsChange={setComposerBrowserElementAttachments}
+            onSubmitComposerMessage={submitComposerMessage}
+            composerRichInputRef={composerRichInputRef}
+            onComposerKeyDown={handleComposerKeyDown}
+            onComposerCursorCodeUnitsChange={setComposerCursorCodeUnits}
+            onInsertFileReferenceTrigger={insertFileReferenceTrigger}
+            onPickLocalFileFromPalette={pickLocalFileFromPalette}
+            onInsertSkillTriggerFromPalette={insertSkillTriggerFromPalette}
+            onRemoveLocalFileAttachment={removeLocalFileAttachment}
+            onComposerPaste={handleComposerPaste}
+            startImplementingDisabled={startImplementingDisabled}
+            workspaceFilesPlanRevealNonce={workspaceFilesPlanRevealNonce}
+            workspaceFilesPlanRevealTargetId={workspaceFilesPlanRevealTargetId}
+            workspaceFileRevealNonce={workspaceFileRevealNonce}
+            workspaceFileRevealTargetId={workspaceFileRevealTargetId}
+            workspaceFileRevealPath={workspaceFileRevealPath}
+            workspaceFileRevealAbsolutePath={workspaceFileRevealAbsolutePath}
+            workspaceFileRevealScope={workspaceFileRevealScope}
+            workspaceFileRevealViewMode={workspaceFileRevealViewMode}
+            onOpenWorkspaceFile={openWorkspaceFile}
+            workspaceToolTabs={workspaceToolTabs}
+            activeWorkspaceToolTabId={activeWorkspaceToolTabId}
+            onWorkspaceToolTabsChange={setWorkspaceToolTabs}
+            onActiveWorkspaceToolTabIdChange={setActiveWorkspaceToolTabId}
+            onBrowserElementPicked={handleBrowserElementPicked}
+            onBrowserOpenInNewTab={openBrowserUrlInNewTab}
+            browserTabEnabled={browserTabEnabled}
+            workspaceToolsWidthPx={workspaceToolsWidthPx}
+            onWorkspaceToolsWidthPxChange={setWorkspaceToolsWidthPx}
+            gitChipBusy={gitChipBusy}
+          />
         )}
         </div>
       </div>
