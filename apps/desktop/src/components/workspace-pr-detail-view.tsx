@@ -4,13 +4,17 @@ import { ArrowRight, GitPullRequest } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { DetailPageTabs } from "@/components/detail-page-tabs";
+import { PrConversationTimeline } from "@/components/workspace-pr-conversation-timeline";
 import { GITHUB_PR_MERGED_BADGE_CLASS } from "@/lib/github-pr-merged-badge-styles";
 import { toolCardSecondaryTextClass } from "@/lib/file-tool-lsp-diagnostics-display";
 import { cn } from "@/lib/utils";
-import type { GitHubPullRequestDetail } from "@/types";
+import type { GitHubPullRequestConversationItem, GitHubPullRequestDetail } from "@/types";
 
 export type WorkspacePrDetailViewProps = {
   detail: GitHubPullRequestDetail;
+  conversationItems?: GitHubPullRequestConversationItem[];
+  loadingConversation?: boolean;
+  conversationHasMore?: boolean;
   onOpenExternal: (url: string) => void;
   className?: string;
 };
@@ -40,6 +44,9 @@ function pullRequestStatusLabel(
 
 export function WorkspacePrDetailView({
   detail,
+  conversationItems = [],
+  loadingConversation = false,
+  conversationHasMore = false,
   onOpenExternal,
   className,
 }: WorkspacePrDetailViewProps) {
@@ -106,7 +113,16 @@ export function WorkspacePrDetailView({
         onTabChange={setActiveTab}
         ariaLabel={t("workspace.prDetailTabsAria")}
       >
-        {null}
+        {activeTab === "conversations" ? (
+          <div className="space-y-2">
+            <PrConversationTimeline items={conversationItems} loading={loadingConversation} />
+            {conversationHasMore ? (
+              <p className="text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
+                {t("workspace.prConversationHasMore")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </DetailPageTabs>
     </article>
   );

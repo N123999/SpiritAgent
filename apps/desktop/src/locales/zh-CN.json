@@ -615,6 +615,7 @@
     "prReviewThreadFallback": "留下了 review 评论",
     "prReviewThreadExpand": "展开讨论",
     "prReviewThreadCollapse": "收起讨论",
+    "prConversationHasMore": "更多活动请在 GitHub 查看。",
     "prDescriptionHeading": "描述",
     "prDraft": "草稿",
     "prOpen": "进行中",
