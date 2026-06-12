@@ -75,6 +75,14 @@ export default function App() {
     focusComposer: () => void;
   } | null>(null);
 
+  // Hook order is intentional — do not reorder without checking cross-hook deps:
+  // 1. surfaceNav — session surface routing; handleGenerateAutomation reads composerAutomationApiRef
+  // 2. conversation — message list / pending approval state consumed by composer + rewind
+  // 3. workspaceTools — independent of composer; safe after conversation
+  // 4. composer — needs surfaceNav.isEmptySession + conversation pending flags
+  // 5. composerAutomationApiRef effect — bridges composer into surfaceNav (after composer exists)
+  // 6. messageRewind — needs composer.messageRewindComposerEnabled
+  // 7. keyboard shortcuts — reads refs from surfaceNav / conversation / composer
   const surfaceNav = useAppSurfaceNavigation({
     runtime,
     snapshot,
