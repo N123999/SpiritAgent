@@ -1810,6 +1810,7 @@ peer.on('runtime.init', async (rawParams) => {
 peer.on('runtime.replaceConfig', async (rawParams) => {
   const params = rawParams as RuntimeReplaceConfigParams;
   logBridge('runtime.replaceConfig', { model: params.transportConfig.model });
+  await runCliSessionEnd('switch');
   transportConfig = params.transportConfig;
   await reloadHostMetadataFromInternal(normalizeSpiritAgentMode(planMetadata));
   await refreshExtensionToolDefinitions();
@@ -1819,6 +1820,7 @@ peer.on('runtime.replaceConfig', async (rawParams) => {
   runtime = await createRuntime(params.transportConfig, [...target.history()]);
   runtime.setLoopEnabled(bridgeLoopEnabled);
   toolExecutor.setAgentModeToolExposure(normalizeSpiritAgentMode(planMetadata));
+  await runCliSessionStart('resume');
   return buildSnapshot(runtime);
 });
 
