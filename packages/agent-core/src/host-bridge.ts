@@ -647,6 +647,18 @@ interface CliHostInternalModule {
       matcher?: string;
     },
   ) => Promise<void>;
+  deleteHookEntry?: (
+    context: {
+      spiritDataDir: string;
+      workspaceRoot: string;
+      workspaceBinding: 'project' | 'none';
+    },
+    request: {
+      scope: 'user' | 'workspace';
+      event: string;
+      index: number;
+    },
+  ) => Promise<void>;
 }
 
 type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
@@ -1944,6 +1956,28 @@ peer.on('hostInternal.saveHookEntry', async (rawParams) => {
     throw new Error('saveHookEntry 缺少 request 参数');
   }
   await saveHookEntry(resolveHookCrudContext(hostInternal, params), params.request);
+  return { ok: true };
+});
+
+peer.on('hostInternal.deleteHookEntry', async (rawParams) => {
+  const params = (rawParams ?? {}) as {
+    workspaceRoot?: string;
+    workspaceBinding?: 'project' | 'none';
+    request?: {
+      scope: 'user' | 'workspace';
+      event: string;
+      index: number;
+    };
+  };
+  const hostInternal = await requireCliHostInternal();
+  const deleteHookEntry = hostInternal.module.deleteHookEntry;
+  if (!deleteHookEntry) {
+    throw new Error('当前 host-internal 未导出 deleteHookEntry');
+  }
+  if (!params.request) {
+    throw new Error('deleteHookEntry 缺少 request 参数');
+  }
+  await deleteHookEntry(resolveHookCrudContext(hostInternal, params), params.request);
   return { ok: true };
 });
 
