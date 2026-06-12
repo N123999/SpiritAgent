@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  assistantTurnStartIndexForRenderItem,
   findLastAssistantBodyTextIndexInTurn,
   findLastAssistantTurnActionsListIndex,
   isMessageInActiveStreamingTurn,
@@ -80,4 +81,21 @@ test('messageShowsAssistantTurnActions ignores thinking-only rows', () => {
 
   assert.equal(messageShowsAssistantTurnActions(messages[1], messages, 1), false);
   assert.equal(messageShowsAssistantTurnActions(messages[2], messages, 2), true);
+});
+
+test('assistantTurnStartIndexForRenderItem resolves turn anchor for assistant rows', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'first', pending: false },
+    { id: 2, role: 'assistant', content: '', pending: false, aux: { thinking: 'plan' } },
+    { id: 3, role: 'assistant', content: 'Answer one.', pending: false },
+    { id: 4, role: 'user', content: 'second', pending: false },
+    { id: 5, role: 'assistant', content: 'Answer two.', pending: false },
+  ];
+  const thoughtItem = { kind: 'message', messageIndex: 1 };
+  const bodyItem = { kind: 'message', messageIndex: 2 };
+  const userItem = { kind: 'message', messageIndex: 3 };
+
+  assert.equal(assistantTurnStartIndexForRenderItem(thoughtItem, messages), 0);
+  assert.equal(assistantTurnStartIndexForRenderItem(bodyItem, messages), 0);
+  assert.equal(assistantTurnStartIndexForRenderItem(userItem, messages), null);
 });

@@ -1,4 +1,7 @@
+import type { PointerEvent as ReactPointerEvent } from 'react';
+
 import { isAssistantBodyTextMessage } from '@/lib/conversation-process-groups';
+import type { ConversationRenderItem } from '@/lib/conversation-process-groups';
 import { isSubagentStatusSurfaceMessage } from '@/lib/subagent-display';
 import type { ConversationMessageSnapshot } from '@/types';
 
@@ -107,6 +110,33 @@ export function findLastAssistantTurnActionsListIndex(
   return null;
 }
 
-/** Matches Thought / Compaction chevron hover reveal. */
-export const MESSAGE_TURN_HOVER_REVEAL_CLASSES =
-  'opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100';
+export function assistantTurnStartIndexForRenderItem(
+  renderItem: ConversationRenderItem,
+  messages: readonly ConversationMessageSnapshot[],
+): number | null {
+  if (renderItem.kind === 'message') {
+    const message = messages[renderItem.messageIndex];
+    if (!message || message.role === 'user') {
+      return null;
+    }
+    return lastUserMessageIndexBefore(messages, renderItem.messageIndex);
+  }
+  const anchorIndex = renderItem.messageIndices[0] ?? 0;
+  return lastUserMessageIndexBefore(messages, anchorIndex);
+}
+
+export function shouldClearAssistantTurnHover(
+  event: ReactPointerEvent,
+  turnStart: number,
+): boolean {
+  const next = event.relatedTarget;
+  if (!(next instanceof Element)) {
+    return true;
+  }
+  const nextTurn = next.closest('[data-spirit-fork-turn-start]');
+  return nextTurn?.getAttribute('data-spirit-fork-turn-start') !== String(turnStart);
+}
+
+/** Hidden by default; revealed via forkMenuHoverRevealed or forkMenuAlwaysVisible. */
+export const MESSAGE_TURN_FORK_MENU_HIDDEN_CLASSES =
+  'opacity-0 transition-all duration-150 focus-visible:opacity-100 data-[state=open]:opacity-100';

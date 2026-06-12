@@ -1,4 +1,4 @@
-import { useMemo, type ClipboardEvent as ReactClipboardEvent, type RefObject } from "react";
+import { useMemo, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
@@ -97,6 +97,10 @@ export function MessageCard({
   forkBusy = false,
   onForkMessage,
   forkMenuAlwaysVisible = false,
+  forkMenuHoverRevealed = false,
+  assistantTurnStartIndex = null,
+  onAssistantTurnPointerEnter,
+  onAssistantTurnPointerLeave,
   hiddenByProcessGroup = false,
 }: {
   composerSessionKey: string;
@@ -151,6 +155,10 @@ export function MessageCard({
   forkBusy?: boolean;
   onForkMessage?: (message: ConversationMessageSnapshot, listIndex: number) => void;
   forkMenuAlwaysVisible?: boolean;
+  forkMenuHoverRevealed?: boolean;
+  assistantTurnStartIndex?: number | null;
+  onAssistantTurnPointerEnter?: (turnStart: number) => void;
+  onAssistantTurnPointerLeave?: (event: ReactPointerEvent, turnStart: number) => void;
 }) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
@@ -208,6 +216,19 @@ export function MessageCard({
       data-spirit-surface="message-row"
       data-spirit-message-role={message.role}
       data-spirit-message-pending={message.pending ? "true" : "false"}
+      data-spirit-fork-turn-start={
+        assistantTurnStartIndex === null ? undefined : assistantTurnStartIndex
+      }
+      onPointerEnter={
+        assistantTurnStartIndex === null || !onAssistantTurnPointerEnter
+          ? undefined
+          : () => onAssistantTurnPointerEnter(assistantTurnStartIndex)
+      }
+      onPointerLeave={
+        assistantTurnStartIndex === null || !onAssistantTurnPointerLeave
+          ? undefined
+          : (event) => onAssistantTurnPointerLeave(event, assistantTurnStartIndex)
+      }
       className={cn(
         "scroll-mt-4 flex w-full pb-3 last:pb-0",
         compactAfterPrevious && "-mt-4",
@@ -225,7 +246,6 @@ export function MessageCard({
               ? "ml-auto w-full max-w-[min(100%,36rem)]"
               : "max-w-[min(72%,22rem)]"
             : "w-full",
-          showTurnActions && "group",
         )}
       >
         {rewindSelected && isUser ? (
@@ -331,6 +351,7 @@ export function MessageCard({
             canFork={showForkMenu && Boolean(onForkMessage)}
             forkEnabled={canFork}
             forkMenuAlwaysVisible={forkMenuAlwaysVisible}
+            forkMenuHoverRevealed={forkMenuHoverRevealed}
             forkBusy={forkBusy}
             onFork={() => onForkMessage?.(message, listIndex)}
           />
