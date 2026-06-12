@@ -607,6 +607,7 @@
     "prTabConversations": "Conversations",
     "prTabCommits": "Commits",
     "prTabChanges": "Changes",
+    "prConversationEmpty": "No conversation activity yet.",
     "prDescriptionHeading": "Description",
     "prDraft": "Draft",
     "prOpen": "Open",
