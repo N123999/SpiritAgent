@@ -71,12 +71,13 @@ function resolveCurrentBranch(git: DesktopGitSnapshot): string | null {
   return branch || null;
 }
 
-function mapGitHubApiError(error: unknown): Error {
+async function handleGitHubApiError(error: unknown): Promise<Error> {
   if (!(error instanceof GitHubOAuthError)) {
     return error instanceof Error ? error : new Error(String(error));
   }
 
   if (error.status === 401) {
+    await clearGitHubOAuthCredentials();
     return new Error('GitHub authentication expired or is invalid. Connect GitHub again.');
   }
   if (error.status === 403) {
@@ -126,7 +127,7 @@ export async function getGitHubPullRequestForCurrentBranchCommand(
       pullRequest,
     };
   } catch (error) {
-    throw mapGitHubApiError(error);
+    throw await handleGitHubApiError(error);
   }
 }
 
@@ -144,6 +145,6 @@ export async function getGitHubPullRequestDetailCommand(
     const accessToken = await requireGitHubAccessToken();
     return await getPullRequestDetail(accessToken, { owner, repo }, number);
   } catch (error) {
-    throw mapGitHubApiError(error);
+    throw await handleGitHubApiError(error);
   }
 }

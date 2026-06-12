@@ -92,6 +92,7 @@ export function WorkspacePrTab({
       setBranchResult(null);
       setDetail(null);
       setError(describeError(loadError));
+      await refreshAuthStatus();
     } finally {
       setLoadingBranch(false);
     }
@@ -169,6 +170,7 @@ export function WorkspacePrTab({
       setDetail(next);
     } catch (loadError) {
       setError(describeError(loadError));
+      await refreshAuthStatus();
     } finally {
       setLoadingDetail(false);
     }
