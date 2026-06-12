@@ -1,3 +1,7 @@
+import { PRE_COMPACTION_ARCHIVE_SECTION_HEADER } from '../../../../compaction-archive.js';
+import { llmMessageTextContent } from '../../../../ports.js';
+import { COMPACT_SUMMARY_PREFIX } from '../../../../tool-agent.js';
+
 import {
   AgentRuntime,
   CompactExecutor,
@@ -134,5 +138,81 @@ export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
     throw new Error('polling compact smoke 缺少 compaction update 事件。');
   }
 
-  return { compactResult, pollingCompactResult };
+  const archivePath = '/tmp/spirit-smoke-pre-compact.json';
+  let persistedMessageCount = 0;
+  const archiveRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new CompactTransport(),
+    toolExecutor: new CompactExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    truncateStateForContextRetry: truncateScriptedStateForContextRetry,
+    truncateHistoryForCompaction: truncateScriptedHistoryForCompaction,
+    rebuildRetryStateAfterCompaction: rebuildScriptedStateAfterCompaction,
+    hookSessionContext: {
+      sessionId: 'smoke-compact-archive',
+      conversationPath: null,
+      workspaceRoot: '/tmp',
+      model: 'test-model',
+    },
+    persistPreCompactionHistory: async ({ archive }) => {
+      persistedMessageCount = archive.message_count;
+      if (archive.messages.length === 0) {
+        throw new Error('pre-compaction archive smoke 未写入任何消息。');
+      }
+      return archivePath;
+    },
+  }, [
+    {
+      role: 'user',
+      content: createLlmMessageContentFromText('first user turn'),
+    },
+    {
+      role: 'assistant',
+      content: [],
+      toolCalls: [{ id: 'call-archive', name: 'read_file', argumentsJson: '{"path":"a.ts"}' }],
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-archive',
+      content: createLlmMessageContentFromText('tool output should be omitted from archive'),
+    },
+    {
+      role: 'assistant',
+      content: createLlmMessageContentFromText('assistant follow-up'),
+    },
+  ]);
+
+  const archiveRecord = await archiveRuntime.compactHistory();
+  if (archiveRecord.preCompactionArchivePath !== archivePath) {
+    throw new Error('pre-compaction archive smoke 未记录归档路径。');
+  }
+  if (persistedMessageCount !== 3) {
+    throw new Error(`pre-compaction archive smoke 归档消息数异常: ${persistedMessageCount}`);
+  }
+
+  const compactSummary = archiveRuntime
+    .history()
+    .find(
+      (message) =>
+        message.role === 'system' &&
+        llmMessageTextContent(message.content).startsWith(COMPACT_SUMMARY_PREFIX),
+    );
+  const compactSummaryText = compactSummary
+    ? llmMessageTextContent(compactSummary.content)
+    : '';
+  if (
+    !compactSummaryText.includes(PRE_COMPACTION_ARCHIVE_SECTION_HEADER) ||
+    !compactSummaryText.includes(archivePath)
+  ) {
+    throw new Error('pre-compaction archive smoke 摘要未包含归档路径段落。');
+  }
+
+  return {
+    compactResult,
+    pollingCompactResult,
+    archiveCompactionResult: archiveRecord,
+  };
 }

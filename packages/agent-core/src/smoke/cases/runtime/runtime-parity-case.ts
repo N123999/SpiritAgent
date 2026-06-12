@@ -27,6 +27,7 @@ export async function runRuntimeParitySmoke(): Promise<void> {
   printSmokeSection('background execution smoke', background.backgroundResult);
   printSmokeSection('polling background smoke', background.pollingBackgroundResult);
   printSmokeSection('polling compact smoke', compaction.pollingCompactResult);
+  printSmokeSection('pre-compaction archive smoke', compaction.archiveCompactionResult);
   printSmokeSection('manual command smoke', manualTools.manualGuidance);
   printSmokeSection('generate image terminal smoke', generateImage.generateImageNonStreamingResult);
   printSmokeSection('generate image streaming terminal smoke events', generateImage.generateImageStreamingEvents);
