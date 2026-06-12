@@ -14,6 +14,8 @@ import {
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
+  DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
   DESKTOP_OVERLAY_LIST_GROUP_LABEL,
   DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
@@ -284,7 +286,9 @@ export function ModelPickerMenu({
               sideOffset={8}
               collisionPadding={16}
               className={cn(
-                "z-[200] w-80 max-w-[min(20rem,calc(100vw-2rem))] p-3",
+                "z-[200]",
+                DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
+                DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
                 menuContentClassName,
               )}
             >
@@ -305,6 +309,7 @@ export function ModelPickerMenu({
                     model={model}
                     catalogEntry={catalogDetailByModelName.get(model.name)}
                     providerLabel={providerLabel}
+                    density="list"
                     onReasoningEffortChange={(modelName, effort) => {
                       onModelReasoningEffortSelect?.(modelName, effort);
                       onModelSelect(modelName);

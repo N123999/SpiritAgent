@@ -126,6 +126,10 @@ export const DESKTOP_OVERLAY_LIST_LIST_GAP = "gap-0.5";
 export const DESKTOP_OVERLAY_LIST_GROUP_LABEL =
   "px-2 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground";
 
+/** 详情 Popover 内嵌标签（无额外 padding，配合 DESKTOP_OVERLAY_LIST_DETAIL_* 使用） */
+export const DESKTOP_OVERLAY_LIST_DETAIL_LABEL =
+  "text-[11px] font-medium tracking-wide text-muted-foreground";
+
 export const DESKTOP_OVERLAY_LIST_ITEM = "px-2 py-1.5";
 
 /** 长列表底部单行操作（添加工作区等），密度对齐 LIST 而非 Dropdown 默认 SHORT */
@@ -140,6 +144,15 @@ export const DESKTOP_OVERLAY_LIST_ITEM_SECONDARY =
 
 export const DESKTOP_OVERLAY_LIST_SUB_TRIGGER =
   "items-center gap-1.5 px-2.5 py-1.5 pr-2 text-xs";
+
+/** 长列表配套详情 Popover：密度与 DESKTOP_OVERLAY_LIST_* 对齐 */
+export const DESKTOP_OVERLAY_LIST_DETAIL_SURFACE = cn(
+  DESKTOP_OVERLAY_LIST_SHELL,
+  "border border-border/80 bg-popover p-0 text-xs text-popover-foreground shadow-md backdrop-blur-sm",
+);
+
+export const DESKTOP_OVERLAY_LIST_DETAIL_WIDTH =
+  "w-max min-w-[11rem] max-w-[min(19rem,calc(100vw-1.25rem))]";
 
 /** 工作区选择器全高面板 */
 export const DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL =
