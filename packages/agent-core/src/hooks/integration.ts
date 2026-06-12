@@ -234,7 +234,10 @@ export async function applyUpdatedToolRequest<
       toolCallId: call.id,
       toolName: call.name,
     }) ?? next;
-  } catch {
-    return existingRequest;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to apply hook updatedInput for tool "${call.name}": ${detail}`,
+    );
   }
 }
