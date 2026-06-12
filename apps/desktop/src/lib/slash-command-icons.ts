@@ -4,6 +4,7 @@ import {
   CircleHelp,
   ClipboardList,
   FoldVertical,
+  GitFork,
   Repeat,
   ScrollText,
   Sparkles,
@@ -14,6 +15,7 @@ import type { SkillSlashSuggestionKind } from '@/lib/skill-slash'
 export const SLASH_SUGGESTION_ICONS: Record<SkillSlashSuggestionKind, LucideIcon> = {
   'log-session': ScrollText,
   compact: FoldVertical,
+  fork: GitFork,
   loop: Repeat,
   plan: ClipboardList,
   ask: CircleHelp,
