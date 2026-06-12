@@ -35,6 +35,7 @@ import {
   type LlmToolAgentState,
 } from './llm-tool-agent.js';
 import { buildContributedHostToolDefinitions, buildTodoHostToolDefinitions } from './host-tools.js';
+import type { PreCompactionHistoryArchive } from './compaction-archive.js';
 import { buildTodosSystemMessage } from './tool-agent.js';
 import {
   buildApplyPatchFileToolsPromptSection,
@@ -154,6 +155,11 @@ interface CliHostInternalModule {
     purge(): Promise<void>;
   };
   buildTodoContextText?: (records: unknown[]) => string | undefined;
+  persistPreCompactionHistoryArchive?: (
+    spiritDataDir: string,
+    archive: PreCompactionHistoryArchive,
+    options?: { sessionId?: string },
+  ) => Promise<string>;
   loadHostInstructionMetadata: (
     context: { workspaceRoot: string; spiritDataDir: string },
     options?: { planMode?: boolean; agentMode?: SpiritAgentMode; activePlanPath?: string },
@@ -1674,6 +1680,21 @@ async function createRuntime(
     },
     ...(hookRunner ? { hookRunner } : {}),
     hookSessionContext: buildCliHookSessionContext(config),
+    persistPreCompactionHistory: async ({ archive, sessionId }) => {
+      const hostInternal = await ensureCliHostInternal(workspaceRoot);
+      const persist = hostInternal?.module.persistPreCompactionHistoryArchive;
+      if (!hostInternal || typeof persist !== 'function') {
+        return undefined;
+      }
+
+      try {
+        return await persist(hostInternal.spiritDataDir, archive, {
+          ...(sessionId !== undefined ? { sessionId } : {}),
+        });
+      } catch {
+        return undefined;
+      }
+    },
   }, history);
 }
 
