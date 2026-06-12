@@ -235,6 +235,8 @@ import {
   isMacDesktopPlatform,
   isNativeBackdropBlurSupported,
   ctrlLetterShortcutKbdKeys,
+  isModAltShortcutPressed,
+  isModShortcutPressed,
   modAltLetterShortcutKbdKeys,
   modLetterShortcutKbdKeys,
   resolveUseMicaBackdrop,
@@ -2338,7 +2340,7 @@ export default function App() {
       if (event.defaultPrevented) {
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'p') {
+      if (!isModShortcutPressed(event) || event.key.toLowerCase() !== 'p') {
         return;
       }
       event.preventDefault();
@@ -2357,7 +2359,7 @@ export default function App() {
       if (event.defaultPrevented) {
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || event.key !== "/") {
+      if (!isModShortcutPressed(event) || event.key !== "/") {
         return;
       }
       const picker = resolveModelPickerToOpen();
@@ -2379,7 +2381,7 @@ export default function App() {
       if (event.altKey) {
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "b") {
+      if (!isModShortcutPressed(event) || event.key.toLowerCase() !== "b") {
         return;
       }
       event.preventDefault();
@@ -2394,10 +2396,7 @@ export default function App() {
       if (event.defaultPrevented) {
         return;
       }
-      if (!event.altKey) {
-        return;
-      }
-      if (!(event.ctrlKey || event.metaKey)) {
+      if (!isModAltShortcutPressed(event)) {
         return;
       }
       if (event.code !== "KeyB") {
@@ -2511,7 +2510,7 @@ export default function App() {
       if (event.defaultPrevented) {
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'n') {
+      if (!isModShortcutPressed(event) || event.key.toLowerCase() !== 'n') {
         return;
       }
       // 用户在 composer / 富文本编辑区内按键时不触发

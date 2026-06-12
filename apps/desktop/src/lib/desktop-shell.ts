@@ -100,3 +100,18 @@ export function modSlashShortcutLabel(): string {
   const keys = modSlashShortcutKbdKeys();
   return isMacDesktopPlatform() ? keys.join("") : keys.join("+");
 }
+
+type KeyboardModifierState = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey">;
+
+/** Whether the platform primary shortcut modifier (⌘ on macOS, Ctrl elsewhere) is held. */
+export function isModShortcutPressed(event: KeyboardModifierState): boolean {
+  return isMacDesktopPlatform() ? event.metaKey : event.ctrlKey;
+}
+
+/** Whether Alt + primary shortcut modifier is held (⌥⌘ on macOS, Ctrl+Alt elsewhere). */
+export function isModAltShortcutPressed(event: KeyboardModifierState): boolean {
+  if (!event.altKey) {
+    return false;
+  }
+  return isModShortcutPressed(event);
+}

@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   ctrlLetterShortcutKbdKeys,
+  isModAltShortcutPressed,
+  isModShortcutPressed,
   modAltLetterShortcutKbdKeys,
   modLetterShortcutKbdKeys,
   modSlashShortcutKbdKeys,
@@ -88,5 +90,39 @@ test("modSlashShortcutLabel formats slash shortcut per platform", () => {
   });
   withDesktopPlatform("linux", () => {
     assert.equal(modSlashShortcutLabel(), "Ctrl+/");
+  });
+});
+
+test("isModShortcutPressed uses Command on macOS and Ctrl elsewhere", () => {
+  withDesktopPlatform("darwin", () => {
+    assert.equal(isModShortcutPressed({ altKey: false, ctrlKey: true, metaKey: false }), false);
+    assert.equal(isModShortcutPressed({ altKey: false, ctrlKey: false, metaKey: true }), true);
+  });
+  withDesktopPlatform("win32", () => {
+    assert.equal(isModShortcutPressed({ altKey: false, ctrlKey: true, metaKey: false }), true);
+    assert.equal(isModShortcutPressed({ altKey: false, ctrlKey: false, metaKey: true }), false);
+  });
+});
+
+test("isModAltShortcutPressed requires Alt plus the platform primary modifier", () => {
+  withDesktopPlatform("darwin", () => {
+    assert.equal(
+      isModAltShortcutPressed({ altKey: true, ctrlKey: true, metaKey: false }),
+      false,
+    );
+    assert.equal(
+      isModAltShortcutPressed({ altKey: true, ctrlKey: false, metaKey: true }),
+      true,
+    );
+  });
+  withDesktopPlatform("win32", () => {
+    assert.equal(
+      isModAltShortcutPressed({ altKey: true, ctrlKey: true, metaKey: false }),
+      true,
+    );
+    assert.equal(
+      isModAltShortcutPressed({ altKey: true, ctrlKey: false, metaKey: true }),
+      false,
+    );
   });
 });
