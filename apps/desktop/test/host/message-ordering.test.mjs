@@ -9,6 +9,7 @@ import {
   stripRedundantThinkingFromMessageAux,
   toolCallSummaryCopyForRequest,
   toolCallSummaryForPhase,
+  toolCallSummaryForStreamingPreview,
 } from '../../dist-electron/src/host/message-ordering.js';
 import i18n from '../../dist-electron/src/lib/i18n-host.js';
 
@@ -284,6 +285,60 @@ test('toolCallSummaryCopyForRequest: English verbs use past tense in succeeded p
   } finally {
     await i18n.changeLanguage('zh-CN');
   }
+});
+
+test('toolCallSummaryCopyForRequest: list_directory_files uses relative path within workspace', () => {
+  const workspaceRoot = '/Users/yu/proj';
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest(
+      'list_directory_files',
+      { path: '/Users/yu/proj/apps/cli' },
+      'succeeded',
+      { workspaceRoot },
+    ),
+    { headline: '列出', headlineDetail: 'apps/cli' },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest(
+      'list_directory_files',
+      { path: '/Users/yu/proj' },
+      'running',
+      { workspaceRoot },
+    ),
+    { headline: '列出', headlineDetail: '.' },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest(
+      'list_directory_files',
+      { path: '/tmp/foo' },
+      'succeeded',
+      { workspaceRoot },
+    ),
+    { headline: '列出', headlineDetail: '/tmp/foo' },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest(
+      'list_directory_files',
+      { path: '/Users/yu/proj/apps/' },
+      'succeeded',
+      { workspaceRoot },
+    ),
+    { headline: '列出', headlineDetail: 'apps/' },
+  );
+});
+
+test('toolCallSummaryForStreamingPreview: list_directory_files uses relative path within workspace', () => {
+  const workspaceRoot = '/Users/yu/proj';
+  assert.deepEqual(
+    toolCallSummaryForStreamingPreview(
+      [],
+      'tool-1',
+      'list_directory_files',
+      { path: '/Users/yu/proj/apps' },
+      { workspaceRoot },
+    ),
+    { headline: '列出', headlineDetail: 'apps' },
+  );
 });
 
 test('toolCallSummaryForPhase: get_diagnostics failed uses checking headline and basename', () => {
