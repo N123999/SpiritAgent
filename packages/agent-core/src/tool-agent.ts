@@ -29,6 +29,12 @@ const BASIC_INFO_SECTION_PREFIX = '[SPIRIT_BASIC_INFO]';
 
 export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
 
+export const PRE_COMPACTION_ARCHIVE_READ_FILE_GUIDANCE =
+  'Important details may be recovered by reading this file with read_file.';
+
+const PRE_COMPACTION_ARCHIVE_EXAMPLE_PATH =
+  '/path/to/compaction-archives/pre-compact-session-1234567890.json';
+
 const COMPACT_HISTORY_OUTPUT_TEMPLATE = `[Session Overview]
 <Summarize the current task and overall progress in 1–2 sentences>
 
@@ -54,7 +60,7 @@ const COMPACT_HISTORY_OUTPUT_TEMPLATE = `[Session Overview]
 - <Remaining work, questions awaiting user confirmation, blockers>
 
 [Pre-compaction Archive]
-<Absolute path to the saved pre-compaction history file>
+<the archive absolute path on this line>
 Important details may be recovered by reading this file with read_file.`;
 
 const COMPACT_HISTORY_SYSTEM_PROMPT_BASE = [
@@ -66,6 +72,7 @@ const COMPACT_HISTORY_SYSTEM_PROMPT_BASE = [
   '3. For sections other than [User Messages], summarize in concise bullet points, preserving decision rationale and verifiable details; avoid vague repetition.',
   '4. Omit small talk, thanks, repeated explanations, and low-information back-and-forth confirmations.',
   '5. Output only the summary body; do not wrap it in markdown code fences; do not add explanations, preambles, or closings.',
+  `6. The [Pre-compaction Archive] section must contain exactly three lines: the section title, then the archive absolute path alone on the next line, then this exact guidance sentence on the following line: ${PRE_COMPACTION_ARCHIVE_READ_FILE_GUIDANCE} Do not output only the path.`,
   '',
   'When summarizing, preserve: user goals, key constraints, verified conclusions, failed attempts, and open items.',
   '',
@@ -83,7 +90,13 @@ export function buildCompactHistorySystemPrompt(preCompactionArchivePath?: strin
   return [
     COMPACT_HISTORY_SYSTEM_PROMPT_BASE,
     '',
-    `Pre-compaction history archive path (use this exact path in [Pre-compaction Archive]): ${normalizedPath}`,
+    'Example [Pre-compaction Archive] section shape (use the real archive path from below, not this placeholder path):',
+    '',
+    '[Pre-compaction Archive]',
+    PRE_COMPACTION_ARCHIVE_EXAMPLE_PATH,
+    PRE_COMPACTION_ARCHIVE_READ_FILE_GUIDANCE,
+    '',
+    `Archive path for this compression (use this exact path on the archive line): ${normalizedPath}`,
   ].join('\n');
 }
 

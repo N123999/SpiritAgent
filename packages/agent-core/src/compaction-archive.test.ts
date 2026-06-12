@@ -52,11 +52,19 @@ test('buildPreCompactionHistoryArchive keeps user and assistant messages with to
   assert.equal(archive.messages[2]?.toolCalls, undefined);
 });
 
-test('buildCompactHistorySystemPrompt includes archive path when provided', () => {
+test('buildCompactHistorySystemPrompt includes filled archive section example when provided', () => {
   const path = '/data/compaction-archives/pre-compact-s1.json';
   const prompt = buildCompactHistorySystemPrompt(path);
-  assert.match(prompt, /Pre-compaction history archive path \(use this exact path in \[Pre-compaction Archive\]\): \/data\/compaction-archives\/pre-compact-s1\.json/);
-  assert.match(prompt, /\[Pre-compaction Archive\]/);
+  assert.match(prompt, /Example \[Pre-compaction Archive\] section shape/);
+  assert.ok(
+    prompt.includes(
+      '[Pre-compaction Archive]\n/path/to/compaction-archives/pre-compact-session-1234567890.json\nImportant details may be recovered by reading this file with read_file.',
+    ),
+  );
+  assert.ok(prompt.includes(`Archive path for this compression (use this exact path on the archive line): ${path}`));
+  const exampleBlock = prompt.split('Archive path for this compression')[0] ?? '';
+  assert.doesNotMatch(exampleBlock, /\/Users\//);
+  assert.match(prompt, /Do not output only the path/);
 });
 
 test('buildCompactHistoryPromptMessages forwards archive path into system prompt', () => {
