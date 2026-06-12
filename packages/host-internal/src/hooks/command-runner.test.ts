@@ -105,3 +105,76 @@ test('runCommandHook failClosed blocks on crash', async () => {
   assert.equal(result.denied, true);
   assert.equal(result.record.failed, true);
 });
+
+test('runCommandHook treats zero timeout as default duration', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'spirit-hook-timeout-zero-'));
+  const scriptPath = join(dir, 'slow.sh');
+  await writeFile(
+    scriptPath,
+    `#!/bin/bash
+cat > /dev/null
+sleep 0.05
+echo '{}'
+`,
+    'utf8',
+  );
+  await chmod(scriptPath, 0o755);
+
+  const result = await runCommandHook({
+    definition: {
+      command: 'slow.sh',
+      configDir: dir,
+      scope: 'user',
+      timeout: 0,
+    },
+    inputJson: '{}',
+  });
+
+  assert.equal(result.record.timedOut, false);
+  assert.equal(result.record.failed, false);
+});
+
+test('runCommandHook rejects escaped relative command paths when failClosed', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'spirit-hook-escape-'));
+  const result = await runCommandHook({
+    definition: {
+      command: '../outside.sh',
+      configDir: dir,
+      scope: 'user',
+      timeout: 5,
+      failClosed: true,
+    },
+    inputJson: '{}',
+  });
+
+  assert.equal(result.denied, true);
+  assert.match(result.record.stderr ?? '', /config directory/i);
+});
+
+test('runCommandHook failClosed blocks on invalid stdout json', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'spirit-hook-invalid-json-'));
+  const scriptPath = join(dir, 'bad-json.sh');
+  await writeFile(
+    scriptPath,
+    `#!/bin/bash
+cat > /dev/null
+echo 'not-json'
+`,
+    'utf8',
+  );
+  await chmod(scriptPath, 0o755);
+
+  const result = await runCommandHook({
+    definition: {
+      command: 'bad-json.sh',
+      configDir: dir,
+      scope: 'user',
+      timeout: 5,
+      failClosed: true,
+    },
+    inputJson: '{}',
+  });
+
+  assert.equal(result.denied, true);
+  assert.equal(result.effectiveOutput?.permission, 'deny');
+});
