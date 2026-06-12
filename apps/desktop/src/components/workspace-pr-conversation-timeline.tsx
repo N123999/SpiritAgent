@@ -25,7 +25,7 @@ const ROW_AVATAR_SIZE_PX = 20;
 /** Avatar + gap-2: entire card shifts right to username start. */
 const COMMENT_CARD_INDENT_CLASS = "ml-7";
 const COMMENT_CARD_CLASS =
-  "mt-1.5 rounded-lg border border-border/50 bg-muted px-3 py-2 shadow-sm";
+  "mt-1.5 w-fit max-w-[min(100%,32rem)] rounded-lg border border-border/50 bg-muted px-3 py-2 shadow-sm";
 const COMMENT_BODY_CLASS = "whitespace-pre-wrap text-xs leading-relaxed text-foreground/80";
 
 export type PrConversationTimelineProps = {
