@@ -549,6 +549,10 @@ export interface RewindAndSubmitMessageRequest {
   localFilePaths?: string[];
 }
 
+export interface ForkSessionRequest {
+  messageId: number;
+}
+
 export interface SubmitUserTurnRequest {
   text: string;
   localFilePaths?: string[];

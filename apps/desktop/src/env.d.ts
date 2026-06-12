@@ -33,6 +33,7 @@ import type {
   RememberWorkspaceRequest,
   ForgetWorkspaceRequest,
   RewindAndSubmitMessageRequest,
+  ForkSessionRequest,
   SubmitUserTurnRequest,
   SessionListItem,
   SubmitGitChipRequest,
@@ -102,6 +103,7 @@ declare global {
     abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
+    forkSession(request: ForkSessionRequest): Promise<DesktopSnapshot>;
     reorderQueuedUserTurn(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;
     sendQueuedUserTurnNow(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;
     removeQueuedUserTurn(request: import('./types.js').QueuedUserTurnRequest): Promise<DesktopSnapshot>;

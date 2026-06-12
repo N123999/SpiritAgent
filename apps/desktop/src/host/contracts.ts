@@ -85,6 +85,7 @@ export type HostCommandName =
   | 'writeHostTextFile'
   | 'statHostTextFile'
   | 'rewindAndSubmitMessage'
+  | 'forkSession'
   | 'reorderQueuedUserTurn'
   | 'sendQueuedUserTurnNow'
   | 'removeQueuedUserTurn'

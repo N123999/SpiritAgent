@@ -101,6 +101,7 @@ import type {
   PendingAssistantAux,
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
+  ForkSessionRequest,
   RememberWorkspaceRequest,
   ForgetWorkspaceRequest,
   RemoveModelRequest,
@@ -207,6 +208,7 @@ import {
   resetSessionCommand,
   type SessionActivationContext,
 } from './session-activation.js';
+import { forkSessionCommand, type ForkSessionHostContext } from './fork-session-host.js';
 import { deleteSessionCommand, type SessionDeleteContext } from './session-delete.js';
 import {
   finishSessionActivationCommand,
@@ -752,6 +754,30 @@ class DesktopHostService {
       clearSubagentViewerTarget: () => this.clearSubagentViewerTarget(),
       runSessionEndForBundle: (bundle, reason) => this.runSessionEndForBundle(bundle, reason),
       runSessionStartForBundle: (bundle, source) => this.runSessionStartForBundle(bundle, source),
+    };
+  }
+
+  private forkSessionContext(): ForkSessionHostContext {
+    const activation = this.sessionActivationContext();
+    return {
+      ...activation,
+      requireRuntime: () => this.requireRuntime(),
+      isConversationBusy: () => {
+        const runtime = this.runtime;
+        const bundle = this.sessionRegistry.getActive();
+        if (!runtime || !bundle) {
+          return false;
+        }
+        if (runtime.isBusy()) {
+          return true;
+        }
+        const snapshot = this.buildSnapshot();
+        return (
+          snapshot.conversation.pendingToolApproval !== undefined
+          || snapshot.conversation.pendingQuestions !== undefined
+        );
+      },
+      isActiveSessionReadOnly: () => this.activeBundle().activeSession?.readOnly === true,
     };
   }
 
@@ -1389,6 +1415,10 @@ class DesktopHostService {
 
   async continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot> {
     return continueAssistantCompletionCommand(this.sessionTurnContext(), messageId);
+  }
+
+  async forkSession(request: ForkSessionRequest): Promise<DesktopSnapshot> {
+    return forkSessionCommand(this.forkSessionContext(), request);
   }
 
   async rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot> {

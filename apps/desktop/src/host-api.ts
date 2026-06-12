@@ -43,6 +43,7 @@ import type {
   ForgetWorkspaceRequest,
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
+  ForkSessionRequest,
   SubmitUserTurnRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -113,6 +114,7 @@ export interface HostApi {
   abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
   rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
+  forkSession(request: ForkSessionRequest): Promise<DesktopSnapshot>;
   reorderQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;
   sendQueuedUserTurnNow(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;
   removeQueuedUserTurn(request: QueuedUserTurnRequest): Promise<DesktopSnapshot>;
