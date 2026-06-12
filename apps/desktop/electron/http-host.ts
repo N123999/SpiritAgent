@@ -420,6 +420,30 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/hooks') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('saveHookEntry', {
+        request: jsonBody ?? {},
+      }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/hooks/remove') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('deleteHookEntry', {
+        request: jsonBody ?? {},
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/mcps/inspect') {
     writeJson(
       request,

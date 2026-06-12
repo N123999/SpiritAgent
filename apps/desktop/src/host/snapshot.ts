@@ -5,6 +5,7 @@ import type {
   DesktopDreamCollectorSnapshot,
   DesktopExtensionCssLayer,
   DesktopExtensionListItem,
+  DesktopHookListItem,
   DesktopGitSnapshot,
   DesktopMcpServerListItem,
   DesktopModelCatalogHint,
@@ -41,6 +42,7 @@ export interface BuildDesktopSnapshotInput {
   activeApiKeyConfigured: boolean;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];
+  hooksList: DesktopHookListItem[];
   lsp: DesktopLspSnapshot;
   conversation: ConversationSnapshot;
   activeSession?: ActiveSessionSnapshot;
@@ -134,6 +136,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     plan: { ...input.plan },
     mcpStatus: input.mcpStatus,
     mcpServers: input.mcpServers,
+    hooksList: input.hooksList,
     lsp: input.lsp,
     conversation: input.conversation,
     ...(input.activeSession ? { activeSession: { ...input.activeSession } } : {}),

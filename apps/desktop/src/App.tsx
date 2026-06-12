@@ -3610,6 +3610,7 @@ export default function App() {
               modelsBusy={runtime.busyAction === "models"}
               modelsPreviewBusy={runtime.busyAction === "modelsPreview"}
               mcpsBusy={runtime.busyAction === "mcps"}
+              hooksBusy={runtime.busyAction === "hooks"}
               skillsBusy={runtime.busyAction === "skills"}
               rulesBusy={runtime.busyAction === "rules"}
               extensionsBusy={runtime.busyAction === "extensions"}
@@ -3629,6 +3630,8 @@ export default function App() {
               onUpdateExtensionSettings={runtime.updateExtensionSettings}
               onUpdateExtensionSecret={runtime.updateExtensionSecret}
               onDeleteMcpServer={runtime.deleteMcpServer}
+              onSaveHookEntry={runtime.saveHookEntry}
+              onDeleteHookEntry={runtime.deleteHookEntry}
               onInspectMcpServer={runtime.inspectMcpServer}
               onCreateSkill={runtime.createSkill}
               onCreateRule={runtime.createRule}

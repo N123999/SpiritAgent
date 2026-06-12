@@ -48,6 +48,12 @@ export async function createElectronHostApi(): Promise<HostApi> {
     deleteMcpServer(request) {
       return bridge.deleteMcpServer(request);
     },
+    saveHookEntry(request) {
+      return bridge.saveHookEntry(request);
+    },
+    deleteHookEntry(request) {
+      return bridge.deleteHookEntry(request);
+    },
     inspectMcpServer(name) {
       return bridge.inspectMcpServer(name);
     },

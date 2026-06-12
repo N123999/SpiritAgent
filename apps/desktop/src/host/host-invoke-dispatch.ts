@@ -16,6 +16,8 @@ export interface HostCommandDelegate {
   removeProviderModels(request: CommandPayloads['removeProviderModels']['request']): Promise<unknown>;
   addMcpServer(request: CommandPayloads['addMcpServer']['request']): Promise<unknown>;
   deleteMcpServer(request: CommandPayloads['deleteMcpServer']['request']): Promise<unknown>;
+  saveHookEntry(request: CommandPayloads['saveHookEntry']['request']): Promise<unknown>;
+  deleteHookEntry(request: CommandPayloads['deleteHookEntry']['request']): Promise<unknown>;
   inspectMcpServer(name: string): Promise<unknown>;
   importExtension(request: CommandPayloads['importExtension']['request']): Promise<unknown>;
   listMarketplaceExtensions(): Promise<unknown>;
@@ -104,6 +106,8 @@ const hostCommandDispatch = {
   removeProviderModels: (host, payload) => host.removeProviderModels(payload.request),
   addMcpServer: (host, payload) => host.addMcpServer(payload.request),
   deleteMcpServer: (host, payload) => host.deleteMcpServer(payload.request),
+  saveHookEntry: (host, payload) => host.saveHookEntry(payload.request),
+  deleteHookEntry: (host, payload) => host.deleteHookEntry(payload.request),
   inspectMcpServer: (host, payload) => host.inspectMcpServer(payload.name),
   importExtension: (host, payload) => host.importExtension(payload.request),
   listMarketplaceExtensions: (host) => host.listMarketplaceExtensions(),

@@ -215,6 +215,44 @@ export interface DeleteMcpServerRequest {
   scope: DesktopMcpScope;
 }
 
+export type DesktopHookScope = 'user' | 'workspace';
+
+export type DesktopHookEventName =
+  | 'sessionStart'
+  | 'sessionEnd'
+  | 'submitPrompt'
+  | 'preToolUse'
+  | 'postToolUse'
+  | 'subagentStart'
+  | 'subagentEnd';
+
+export interface SaveHookEntryRequest {
+  scope: DesktopHookScope;
+  event: DesktopHookEventName;
+  command: string;
+  timeout?: number;
+  failClosed?: boolean;
+  matcher?: string;
+}
+
+export interface DeleteHookEntryRequest {
+  scope: DesktopHookScope;
+  event: DesktopHookEventName;
+  index: number;
+}
+
+export interface DesktopHookListItem {
+  id: string;
+  scope: DesktopHookScope;
+  event: DesktopHookEventName;
+  index: number;
+  command: string;
+  configPath: string;
+  timeout?: number;
+  failClosed?: boolean;
+  matcher?: string;
+}
+
 export interface ImportExtensionRequest {
   archiveBase64: string;
   fileName?: string;
@@ -642,6 +680,7 @@ export interface DesktopSnapshot {
   plan: PlanSnapshot;
   mcpStatus: McpStatusSnapshot;
   mcpServers: DesktopMcpServerListItem[];
+  hooksList: DesktopHookListItem[];
   lsp: DesktopLspSnapshot;
   conversation: ConversationSnapshot;
   /** 从磁盘打开的会话；未从文件打开时为 `undefined`（新会话/未保存）。 */
