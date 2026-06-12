@@ -1,6 +1,7 @@
 import { shell } from 'electron';
 import {
   fetchGitHubUserLogin,
+  GitHubOAuthError,
   pollGitHubDeviceToken,
   requestGitHubDeviceCode,
   type GitHubDeviceAuthChallenge,
@@ -13,22 +14,26 @@ interface PendingDeviceAuth {
   intervalSeconds: number;
   expiresIn: number;
   expiresAtMs: number;
+  abortController: AbortController;
 }
 
 let pendingDeviceAuth: PendingDeviceAuth | null = null;
 
 export function clearPendingGitHubDeviceAuth(): void {
+  pendingDeviceAuth?.abortController.abort();
   pendingDeviceAuth = null;
 }
 
 export async function beginGitHubDeviceLoginInElectron(): Promise<GitHubDeviceAuthChallenge> {
   clearPendingGitHubDeviceAuth();
+  const abortController = new AbortController();
   const challenge = await requestGitHubDeviceCode();
   pendingDeviceAuth = {
     deviceCode: challenge.deviceCode,
     intervalSeconds: challenge.intervalSeconds,
     expiresIn: challenge.expiresIn,
     expiresAtMs: Date.now() + challenge.expiresIn * 1000,
+    abortController,
   };
   await shell.openExternal(challenge.verificationUri);
   return {
@@ -51,6 +56,7 @@ export async function completeGitHubDeviceLoginInElectron(): Promise<{ login: st
       deviceCode: pending.deviceCode,
       intervalSeconds: pending.intervalSeconds,
       expiresIn: remainingSeconds,
+      signal: pending.abortController.signal,
     });
     const login = await fetchGitHubUserLogin(token.access_token);
     await saveGitHubOAuthCredentials({
@@ -58,6 +64,11 @@ export async function completeGitHubDeviceLoginInElectron(): Promise<{ login: st
       login,
     });
     return { login };
+  } catch (error) {
+    if (pending.abortController.signal.aborted) {
+      throw new GitHubOAuthError('GitHub device authorization was cancelled.');
+    }
+    throw error;
   } finally {
     clearPendingGitHubDeviceAuth();
   }
