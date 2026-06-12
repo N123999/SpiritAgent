@@ -17,6 +17,7 @@ const CATEGORY_I18N_KEY: Record<ProcessToolCategory, string> = {
   ask: 'process.asked',
   diagnose: 'process.diagnosed',
   generate: 'process.generated',
+  run: 'process.ran',
   other: 'process.other',
 };
 

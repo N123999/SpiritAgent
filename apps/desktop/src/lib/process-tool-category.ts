@@ -8,6 +8,7 @@ export type ProcessToolCategory =
   | 'ask'
   | 'diagnose'
   | 'generate'
+  | 'run'
   | 'other';
 
 export type ProcessToolCounts = Record<ProcessToolCategory, number>;
@@ -20,6 +21,7 @@ export const PROCESS_TOOL_CATEGORY_ORDER: readonly ProcessToolCategory[] = [
   'ask',
   'diagnose',
   'generate',
+  'run',
   'other',
 ];
 
@@ -59,6 +61,7 @@ export function emptyProcessToolCounts(): ProcessToolCounts {
     ask: 0,
     diagnose: 0,
     generate: 0,
+    run: 0,
     other: 0,
   };
 }
@@ -92,6 +95,9 @@ export function classifyProcessToolCategory(
   }
   if (toolName === 'get_diagnostics') {
     return 'diagnose';
+  }
+  if (toolName === 'run_shell_command') {
+    return 'run';
   }
   if (toolName === 'apply_patch') {
     return classifyApplyPatch(headline);

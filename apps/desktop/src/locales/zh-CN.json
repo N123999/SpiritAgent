@@ -901,6 +901,8 @@
     "diagnosed_other": "{{count}} 次诊断",
     "generated_one": "1 次生成",
     "generated_other": "{{count}} 次生成",
+    "ran_one": "1 次运行",
+    "ran_other": "{{count}} 次运行",
     "other_one": "1 次其它",
     "other_other": "{{count}} 次其它",
     "thought_one": "1 次思考",

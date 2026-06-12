@@ -27,6 +27,7 @@ test('shouldTightenAfterPreviousRenderItem tightens body text after process grou
       ask: 0,
       diagnose: 0,
       generate: 0,
+      run: 0,
       other: 0,
     },
   };

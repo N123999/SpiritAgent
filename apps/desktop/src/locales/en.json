@@ -955,6 +955,8 @@
     "diagnosed_other": "{{count}} Diagnosed",
     "generated_one": "1 Generated",
     "generated_other": "{{count}} Generated",
+    "ran_one": "1 Ran",
+    "ran_other": "{{count}} Ran",
     "other_one": "1 Other",
     "other_other": "{{count}} Other",
     "thought_one": "1 Thought",
