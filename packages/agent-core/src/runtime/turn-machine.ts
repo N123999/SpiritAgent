@@ -1147,7 +1147,60 @@ export async function processToolCallsAsync<
     let preGate: PreToolUseGateResult<ToolRequest>;
     try {
       const earlyPreGate = await resolveEarlyPreGateForFormalCall(call, earlyToolExecutions);
-      if (earlyPreGate && earlyPreGate.kind !== 'denied') {
+      if (earlyPreGate?.kind === 'denied') {
+        let requestForFailure: ToolRequest;
+        try {
+          requestForFailure = await runtime.options.toolExecutor.requestFromFunctionCall(
+            call.name,
+            call.argumentsJson,
+          );
+          requestForFailure = runtime.options.toolExecutor.attachRequestMetadata?.(requestForFailure, {
+            toolCallId: call.id,
+            toolName: call.name,
+          }) ?? requestForFailure;
+        } catch (error) {
+          commitToolCallSchemaError(runtime, turn, call, error);
+          currentState = runtime.options.appendToolResultMessage(
+            currentState,
+            call.id,
+            `[tool schema error] ${renderError(error)}`,
+          );
+          if (queueRemainingToolCallsAsync(
+            runtime,
+            currentState,
+            pendingUserInput,
+            remaining,
+            turn,
+            resumeAsStreaming,
+            streamingEmitBeginResponse,
+            earlyToolExecutions,
+          )) {
+            return;
+          }
+          continue;
+        }
+        const output = `[hook denied] ${hookDeniedToolOutput(earlyPreGate.error)}`;
+        commitSyntheticToolExecutionFailure(runtime, turn, requestForFailure, call.id, call.name, output);
+        currentState = runtime.options.appendToolResultMessage(
+          currentState,
+          call.id,
+          output,
+        );
+        if (queueRemainingToolCallsAsync(
+          runtime,
+          currentState,
+          pendingUserInput,
+          remaining,
+          turn,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+          earlyToolExecutions,
+        )) {
+          return;
+        }
+        continue;
+      }
+      if (earlyPreGate) {
         preGate = earlyPreGate;
         request = earlyPreGate.request;
       } else {
@@ -1700,7 +1753,7 @@ async function runEarlyToolExecution<
 
   const preGate = await runPreToolUseGate(runtime, call, request);
   if (preGate.kind === 'denied') {
-    return { kind: 'deferred', reason: 'authorization-error' };
+    return { kind: 'deferred', reason: 'authorization-error', preGate };
   }
   request = preGate.request;
 
