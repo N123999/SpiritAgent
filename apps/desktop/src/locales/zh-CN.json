@@ -469,7 +469,7 @@
     "modelPickerReasoningEffort": "推理强度",
     "noModelsAvailable": "无可用模型",
     "abort": "中止",
-    "send": "发送（Enter）",
+    "send": "发送",
     "continue": "继续",
     "required": "必答",
     "firstTimePairing": "首次配对",
@@ -625,7 +625,8 @@
     "contextUsageAria": "上下文已用 {{percent}}%，{{inputTokens}} / {{contextLength}} tokens",
     "contextUsageHoverPercent": "{{percent}}% 上下文已用",
     "contextUsageHoverTokens": "{{input}} / {{total}} tokens",
-    "enqueueWhileBusy": "加入消息队列"
+    "enqueueWhileBusy": "加入消息队列",
+    "sendEnterKey": "回车"
   },
   "queue": {
     "moveUp": "上移",

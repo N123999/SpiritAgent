@@ -1018,31 +1018,53 @@ function ComposerSurface({
             const hasComposerPayload =
               value.trim().length > 0 || localFileAttachments.length > 0;
             const showAbortButton = canAbort && Boolean(onAbort) && !hasComposerPayload;
-            return (
-          <Button
-            type="button"
-            className={cn(
-              "size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5",
-              instantHoverMotionClass,
-            )}
-            onClick={showAbortButton ? onAbort : onSubmit}
-            disabled={showAbortButton ? false : !canSend || (busy && !canAbort)}
-            title={
-              showAbortButton
-                ? t('app.abort')
-                : canAbort && hasComposerPayload
-                  ? t('composer.enqueueWhileBusy')
-                  : t('app.send')
+            const showEnqueueWhileBusy = canAbort && hasComposerPayload;
+            const sendDisabled = showAbortButton ? false : !canSend || (busy && !canAbort);
+            const actionAriaLabel = showAbortButton
+              ? t("app.abort")
+              : showEnqueueWhileBusy
+                ? t("composer.enqueueWhileBusy")
+                : t("app.send");
+            const actionButton = (
+              <Button
+                type="button"
+                className={cn(
+                  "size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5",
+                  instantHoverMotionClass,
+                )}
+                onClick={showAbortButton ? onAbort : onSubmit}
+                disabled={sendDisabled}
+                aria-label={actionAriaLabel}
+              >
+                {showAbortButton ? (
+                  <Square className="size-3.5" strokeWidth={2.4} aria-hidden />
+                ) : busy ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : (
+                  <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
+                )}
+              </Button>
+            );
+
+            if (sendDisabled) {
+              return actionButton;
             }
-          >
-            {showAbortButton ? (
-              <Square className="size-3.5" strokeWidth={2.4} aria-hidden />
-            ) : busy ? (
-              <LoaderCircle className="size-3.5 animate-spin" />
-            ) : (
-              <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
-            )}
-          </Button>
+
+            return (
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>{actionButton}</TooltipTrigger>
+                <TooltipContent side="top" sideOffset={4}>
+                  {showAbortButton ? (
+                    t("app.abort")
+                  ) : showEnqueueWhileBusy ? (
+                    t("composer.enqueueWhileBusy")
+                  ) : (
+                    <>
+                      {t("app.send")} <ComposerSendEnterKbd />
+                    </>
+                  )}
+                </TooltipContent>
+              </Tooltip>
             );
           })()}
         </div>
@@ -1782,6 +1804,16 @@ function NewSessionShortcutKbd() {
         </>
       )}
     </KbdGroup>
+  );
+}
+
+function ComposerSendEnterKbd() {
+  const { t } = useTranslation();
+
+  return (
+    <Kbd aria-label={t("composer.sendEnterKey")}>
+      <CornerDownLeft className="size-3" aria-hidden />
+    </Kbd>
   );
 }
 
