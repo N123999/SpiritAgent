@@ -237,6 +237,7 @@ import {
   isElectronChrome,
   isMacDesktopPlatform,
   isNativeBackdropBlurSupported,
+  ctrlLetterShortcutKbdKeys,
   modAltLetterShortcutKbdKeys,
   modLetterShortcutKbdKeys,
   resolveUseMicaBackdrop,
@@ -1055,7 +1056,9 @@ function ComposerSurface({
                 <TooltipTrigger asChild>{actionButton}</TooltipTrigger>
                 <TooltipContent side="top" sideOffset={4}>
                   {showAbortButton ? (
-                    t("app.abort")
+                    <>
+                      {t("app.abort")} <ComposerAbortShortcutKbd />
+                    </>
                   ) : showEnqueueWhileBusy ? (
                     t("composer.enqueueWhileBusy")
                   ) : (
@@ -1817,6 +1820,24 @@ function ComposerSendEnterKbd() {
   );
 }
 
+function ComposerAbortShortcutKbd() {
+  const keys = ctrlLetterShortcutKbdKeys("C");
+
+  return (
+    <KbdGroup>
+      {isMacDesktopPlatform() ? (
+        keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+      ) : (
+        <>
+          <Kbd>Ctrl</Kbd>
+          <span>+</span>
+          <Kbd>C</Kbd>
+        </>
+      )}
+    </KbdGroup>
+  );
+}
+
 function WorkspaceToolsShortcutKbd() {
   const keys = modAltLetterShortcutKbdKeys("B");
 
@@ -2224,6 +2245,10 @@ export default function App() {
   const continueBusy = Boolean(runtime.busyAction) || snapshot?.conversation.isBusy === true;
   const composerHasPayload =
     Boolean(runtime.composer.trim()) || runtime.composerLocalFileAttachments.length > 0;
+  const conversationAbortShortcutEligible =
+    conversationInterruptible && !activeSessionReadOnly;
+  const conversationAbortShortcutEligibleRef = useRef(false);
+  conversationAbortShortcutEligibleRef.current = conversationAbortShortcutEligible;
   const composerCanSend =
     !compactionDemo.active &&
     !subagentViewActive &&
@@ -2516,6 +2541,49 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Physical Ctrl+C — abort the in-flight turn; composer may still have draft text.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        return;
+      }
+      if (event.code !== "KeyC") {
+        return;
+      }
+      if (activeSurfaceRef.current !== "conversation") {
+        return;
+      }
+      if (!conversationAbortShortcutEligibleRef.current) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".workspace-shell-xterm, .xterm, .monaco-editor")) {
+        return;
+      }
+      if (
+        target &&
+        (target.tagName === "TEXTAREA" ||
+          target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          (target.isContentEditable &&
+            !target.closest("[data-spirit-surface='composer-surface']")))
+      ) {
+        return;
+      }
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+        return;
+      }
+      event.preventDefault();
+      void runtime.abortConversation();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [runtime.abortConversation]);
 
   const [composerCursorCodeUnits, setComposerCursorCodeUnits] = useState(0);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
