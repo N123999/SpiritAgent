@@ -12,8 +12,8 @@ export class HookDeniedError extends Error {
 
   constructor(options: {
     hookEventName: string;
-    userMessage?: string;
-    agentMessage?: string;
+    userMessage: string | undefined;
+    agentMessage: string | undefined;
     message?: string;
   }) {
     super(options.message ?? options.userMessage ?? 'Hook denied this action.');

@@ -22,6 +22,12 @@ import {
   registerPendingApplyPatchCallIds,
 } from '../open-responses/apply-patch-bridge.js';
 import { APPLY_PATCH_HOST_TOOL_NAME } from '../open-responses/apply-patch-eligibility.js';
+import {
+  hookDeniedToolOutput,
+  runPostToolUseSideEffects,
+  runPreToolUseGate,
+} from '../hooks/tool-hooks.js';
+import { toolInputFromArgumentsJson } from '../hooks/integration.js';
 import { appendToolResultMessages, isJsonObject } from '../tool-agent.js';
 import { buildEarlyExecutableArgumentsJson } from '../tool-streaming-preview-gate.js';
 import {
@@ -113,6 +119,7 @@ export interface TurnMachineRuntime<
   clearStreamingUiState(): void;
   completeTurn(result: RuntimeTurnResult<State, ToolRequest, TrustTarget>): void;
   emitEvent(event: RuntimeEvent<ToolRequest>): void;
+  recordContextMessage?(role: 'system' | 'user' | 'assistant', content: string): void;
   performToolExecution(
     request: ToolRequest,
     toolName: string,
@@ -563,6 +570,20 @@ export async function processToolCalls<
         toolCallId: call.id,
         toolName: call.name,
       }) ?? request;
+
+      const preGate = await runPreToolUseGate(runtime, call, request);
+      if (preGate.kind === 'denied') {
+        const output = `[hook denied] ${hookDeniedToolOutput(preGate.error)}`;
+        commitSyntheticToolExecutionFailure(runtime, turn, request, call.id, call.name, output);
+        currentState = runtime.options.appendToolResultMessage(
+          currentState,
+          call.id,
+          output,
+        );
+        continue;
+      }
+      request = preGate.request;
+
       runtime.emitEvent({
         kind: 'tool-call-started',
         toolCallId: call.id,
@@ -667,6 +688,7 @@ export async function processToolCalls<
       call.name,
       remaining,
       turn,
+      call.argumentsJson,
     );
   }
 
@@ -687,6 +709,7 @@ export async function executeAuthorizedToolCall<
   toolName: string,
   remainingCalls: ToolCallRequest[],
   turn: RuntimeTurnContext<ToolRequest>,
+  toolArgumentsJson = '{}',
 ): Promise<RuntimeTurnResult<State, ToolRequest, TrustTarget>> {
   const internal = await runtime.maybeExecuteInternalToolCall?.(
     pendingUserInput,
@@ -701,6 +724,7 @@ export async function executeAuthorizedToolCall<
     return internal;
   }
 
+  const startedAt = Date.now();
   const execution = await runtime.performToolExecution(request, toolName, toolCallId);
   commitToolExecutionOutput(runtime, turn, {
     toolCallId,
@@ -709,6 +733,14 @@ export async function executeAuthorizedToolCall<
     output: execution.output,
     failed: execution.failed,
   });
+  await runPostToolUseSideEffects(
+    runtime,
+    { id: toolCallId, name: toolName, argumentsJson: toolArgumentsJson },
+    toolInputFromArgumentsJson(toolArgumentsJson),
+    execution.output,
+    Date.now() - startedAt,
+    execution.failed,
+  );
   const resumedState = appendToolResultForRound(
     runtime,
     state,
@@ -1054,6 +1086,32 @@ export async function processToolCallsAsync<
         toolCallId: call.id,
         toolName: call.name,
       }) ?? request;
+
+      const preGate = await runPreToolUseGate(runtime, call, request);
+      if (preGate.kind === 'denied') {
+        const output = `[hook denied] ${hookDeniedToolOutput(preGate.error)}`;
+        commitSyntheticToolExecutionFailure(runtime, turn, request, call.id, call.name, output);
+        currentState = runtime.options.appendToolResultMessage(
+          currentState,
+          call.id,
+          output,
+        );
+        if (queueRemainingToolCallsAsync(
+          runtime,
+          currentState,
+          pendingUserInput,
+          remaining,
+          turn,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+          earlyToolExecutions,
+        )) {
+          return;
+        }
+        continue;
+      }
+      request = preGate.request;
+
       runtime.emitEvent({
         kind: 'tool-call-started',
         toolCallId: call.id,
@@ -1214,6 +1272,7 @@ export async function processToolCallsAsync<
       return;
     }
 
+    const startedAt = Date.now();
     const execution = await runtime.performToolExecution(request, call.name, call.id);
     commitToolExecutionOutput(runtime, turn, {
       toolCallId: call.id,
@@ -1222,6 +1281,14 @@ export async function processToolCallsAsync<
       output: execution.output,
       failed: execution.failed,
     });
+    await runPostToolUseSideEffects(
+      runtime,
+      call,
+      toolInputFromArgumentsJson(call.argumentsJson),
+      execution.output,
+      Date.now() - startedAt,
+      execution.failed,
+    );
     currentState = runtime.options.appendToolResultMessage(
       currentState,
       call.id,
@@ -1552,6 +1619,12 @@ async function runEarlyToolExecution<
     return { kind: 'deferred', reason: 'schema-error' };
   }
 
+  const preGate = await runPreToolUseGate(runtime, call, request);
+  if (preGate.kind === 'denied') {
+    return { kind: 'deferred', reason: 'authorization-error' };
+  }
+  request = preGate.request;
+
   let authorization: AuthorizationDecision<TrustTarget>;
   try {
     authorization = await runtime.options.toolExecutor.authorize(request);
@@ -1611,6 +1684,14 @@ async function runEarlyToolExecution<
     failed,
   });
   runtime.emitEvent({ kind: 'tool-execution-finished', execution });
+  await runPostToolUseSideEffects(
+    runtime,
+    call,
+    toolInputFromArgumentsJson(call.argumentsJson),
+    output,
+    0,
+    failed,
+  );
   return {
     kind: 'completed',
     request,

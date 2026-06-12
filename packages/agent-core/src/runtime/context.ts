@@ -1,4 +1,8 @@
 import { createLlmMessageContentFromTextAndImages, type LlmMessage } from '../ports.js';
+import {
+  appendHookAdditionalContexts,
+  runSubmitPromptHook,
+} from '../hooks/integration.js';
 
 import {
   formatPendingMcpResourceContext,
@@ -66,6 +70,15 @@ export async function prepareSubmittedUserTurn<
   for (const resource of resources) {
     runtime.recordContextMessage('system', formatPendingMcpResourceContext(resource));
   }
+
+  const submitHookResult = await runSubmitPromptHook(
+    runtime.options,
+    userInput,
+  );
+  appendHookAdditionalContexts(
+    (role, content) => runtime.recordContextMessage(role, content),
+    submitHookResult.additionalContexts,
+  );
 
   runtime.historyStore = repairMissingToolResultsInHistory(runtime.historyStore);
   const contentForLlm = formatUserMessageContentForLlm(userInput);
