@@ -2,13 +2,7 @@ export function resolveGitHubOAuthClientId(): string {
   return process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID?.trim() ?? '';
 }
 
-export const GITHUB_OAUTH_LOOPBACK_PORT = 53_682;
-
-export const GITHUB_OAUTH_REDIRECT_URI = `http://127.0.0.1:${GITHUB_OAUTH_LOOPBACK_PORT}/callback`;
-
 export const GITHUB_OAUTH_SCOPES = ['repo', 'read:user'] as const;
-
-export const GITHUB_OAUTH_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 
 export const GITHUB_OAUTH_DEVICE_CODE_URL = 'https://github.com/login/device/code';
 
