@@ -15,7 +15,15 @@ export type WorkspacePrDetailViewProps = {
   className?: string;
 };
 
-type WorkspacePrDetailTab = "description";
+type WorkspacePrDetailTab = "conversations" | "commits" | "changes";
+
+const PR_DETAIL_TABS: readonly WorkspacePrDetailTab[] = ["conversations", "commits", "changes"];
+
+const PR_DETAIL_TAB_LABEL_KEYS = {
+  conversations: "workspace.prTabConversations",
+  commits: "workspace.prTabCommits",
+  changes: "workspace.prTabChanges",
+} as const satisfies Record<WorkspacePrDetailTab, string>;
 
 function pullRequestStatusLabel(
   detail: GitHubPullRequestDetail,
@@ -36,7 +44,7 @@ export function WorkspacePrDetailView({
   className,
 }: WorkspacePrDetailViewProps) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<WorkspacePrDetailTab>("description");
+  const [activeTab, setActiveTab] = useState<WorkspacePrDetailTab>("conversations");
 
   return (
     <article className={cn("space-y-3", className)}>
@@ -78,25 +86,27 @@ export function WorkspacePrDetailView({
               <span>{detail.baseRef}</span>
             </span>
           </div>
+          {detail.body ? (
+            <div className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
+              {detail.body}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">{t("workspace.prNoDescription")}</p>
+          )}
         </div>
       </header>
 
       <DetailPageTabs
         size="compact"
-        tabs={[{ id: "description", label: t("workspace.prDescriptionHeading") }]}
+        tabs={PR_DETAIL_TABS.map((id) => ({
+          id,
+          label: t(PR_DETAIL_TAB_LABEL_KEYS[id]),
+        }))}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         ariaLabel={t("workspace.prDetailTabsAria")}
       >
-        {activeTab === "description" ? (
-          detail.body ? (
-            <div className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
-              {detail.body}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">{t("workspace.prNoDescription")}</p>
-          )
-        ) : null}
+        {null}
       </DetailPageTabs>
     </article>
   );
