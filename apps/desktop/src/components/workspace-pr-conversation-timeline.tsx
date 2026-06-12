@@ -1,11 +1,16 @@
 import { useTranslation } from "react-i18next";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Check, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { resolveGitHubAvatarUrl } from "@/lib/github-avatar-url";
 import { cn } from "@/lib/utils";
-import type { GitHubPullRequestConversationItem } from "@/types";
+import type {
+  GitHubPullRequestConversationItem,
+  GitHubPullRequestReviewState,
+} from "@/types";
 
 const NODE_COLUMN_PX = 20;
 const AVATAR_SIZE_PX = 20;
@@ -16,7 +21,18 @@ export type PrConversationTimelineProps = {
   className?: string;
 };
 
-function PrConversationTimelineNode({ className }: { className?: string }) {
+function firstLine(text: string): string {
+  const line = text.split("\n")[0]?.trim();
+  return line || "";
+}
+
+function PrConversationTimelineNode({
+  icon: Icon,
+  className,
+}: {
+  icon: LucideIcon;
+  className?: string;
+}) {
   return (
     <div
       className={cn(
@@ -24,7 +40,9 @@ function PrConversationTimelineNode({ className }: { className?: string }) {
         className,
       )}
       aria-hidden
-    />
+    >
+      <Icon className="size-2.5 text-muted-foreground" strokeWidth={2} />
+    </div>
   );
 }
 
@@ -82,15 +100,104 @@ function PrConversationTimelineRow({
   );
 }
 
-function PrConversationTimelinePlaceholderRow({ label }: { label: string }) {
+function reviewStateIcon(state: GitHubPullRequestReviewState): LucideIcon {
+  switch (state) {
+    case "APPROVED":
+      return Check;
+    case "CHANGES_REQUESTED":
+      return CircleX;
+    default:
+      return Eye;
+  }
+}
+
+function reviewHeadlineKey(state: GitHubPullRequestReviewState): string {
+  switch (state) {
+    case "APPROVED":
+      return "workspace.prReviewApproved";
+    case "CHANGES_REQUESTED":
+      return "workspace.prReviewChangesRequested";
+    case "DISMISSED":
+      return "workspace.prReviewDismissed";
+    default:
+      return "workspace.prReviewCommented";
+  }
+}
+
+function ConversationTimelineItemRow({ item }: { item: GitHubPullRequestConversationItem }) {
+  const { t } = useTranslation();
+
+  if (item.kind === "commit") {
+    return (
+      <PrConversationTimelineRow
+        node={<PrConversationTimelineNode icon={GitCommit} />}
+        login={item.authorLogin}
+        avatarUrl={item.avatarUrl}
+        headline={item.subject}
+        createdAt={item.createdAt}
+      />
+    );
+  }
+
+  if (item.kind === "issueComment") {
+    const preview = firstLine(item.body);
+    return (
+      <PrConversationTimelineRow
+        node={<PrConversationTimelineNode icon={MessageSquare} />}
+        login={item.authorLogin}
+        avatarUrl={item.avatarUrl}
+        headline={preview || t("workspace.prIssueCommentFallback")}
+        createdAt={item.createdAt}
+      >
+        {item.body ? (
+          <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/75 dark:text-muted-foreground/65">
+            {item.body}
+          </p>
+        ) : null}
+      </PrConversationTimelineRow>
+    );
+  }
+
+  if (item.kind === "review") {
+    const Icon = reviewStateIcon(item.state);
+    const headline = t(reviewHeadlineKey(item.state), { login: item.authorLogin });
+    return (
+      <PrConversationTimelineRow
+        node={<PrConversationTimelineNode icon={Icon} />}
+        login={item.authorLogin}
+        avatarUrl={item.avatarUrl}
+        headline={headline}
+        createdAt={item.createdAt}
+      >
+        {item.body ? (
+          <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/75 dark:text-muted-foreground/65">
+            {item.body}
+          </p>
+        ) : null}
+      </PrConversationTimelineRow>
+    );
+  }
+
+  const rootComment = item.comments[0];
+  const preview = firstLine(rootComment?.body ?? "");
   return (
     <PrConversationTimelineRow
-      node={<PrConversationTimelineNode />}
-      login="octocat"
-      avatarUrl=""
-      headline={label}
-      createdAt={new Date().toISOString()}
-    />
+      node={<PrConversationTimelineNode icon={MessageSquare} />}
+      login={item.authorLogin}
+      avatarUrl={item.avatarUrl}
+      headline={
+        item.path
+          ? t("workspace.prReviewThreadOnFile", { path: item.path })
+          : preview || t("workspace.prReviewThreadFallback")
+      }
+      createdAt={item.createdAt}
+    >
+      {preview ? (
+        <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground/75 dark:text-muted-foreground/65">
+          {rootComment?.body}
+        </p>
+      ) : null}
+    </PrConversationTimelineRow>
   );
 }
 
@@ -123,7 +230,7 @@ export function PrConversationTimeline({
         />
         <div className="space-y-0">
           {items.map((item) => (
-            <PrConversationTimelinePlaceholderRow key={item.id} label={item.kind} />
+            <ConversationTimelineItemRow key={item.id} item={item} />
           ))}
         </div>
       </div>
