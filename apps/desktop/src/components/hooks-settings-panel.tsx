@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -20,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type {
   DeleteHookEntryRequest,
   DesktopHookEventName,
@@ -40,6 +43,15 @@ const HOOK_EVENTS: DesktopHookEventName[] = [
   "subagentEnd",
 ];
 
+const hookCreateScopeOptions: Array<{
+  scope: DesktopHookScope;
+  labelKey: string;
+  hintKey: string;
+}> = [
+  { scope: "user", labelKey: "settings.skillUserDirShort", hintKey: "settings.hooksUserDirHint" },
+  { scope: "workspace", labelKey: "settings.mcpScopeWorkspace", hintKey: "settings.hooksWorkspaceDirHint" },
+];
+
 type HooksSettingsPanelProps = {
   snapshot: DesktopSnapshot | null;
   hooksBusy?: boolean;
@@ -47,6 +59,10 @@ type HooksSettingsPanelProps = {
   onSaveHookEntry(request: SaveHookEntryRequest): void | Promise<void>;
   onDeleteHookEntry(request: DeleteHookEntryRequest): void | Promise<void>;
 };
+
+function hookScopeLabel(scope: DesktopHookScope, t: (key: string) => string): string {
+  return scope === "user" ? t("settings.skillUserDirShort") : t("settings.mcpScopeWorkspace");
+}
 
 export function HooksSettingsPanel({
   snapshot,
@@ -56,26 +72,43 @@ export function HooksSettingsPanel({
   onDeleteHookEntry,
 }: HooksSettingsPanelProps) {
   const { t } = useTranslation();
-  const [scope, setScope] = useState<DesktopHookScope>("user");
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const workspaceBindingDisabled = workspaceBinding === "none";
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DesktopHookListItem | null>(null);
+  const [createScope, setCreateScope] = useState<DesktopHookScope>(
+    workspaceBindingDisabled ? "user" : "workspace",
+  );
   const [event, setEvent] = useState<DesktopHookEventName>("preToolUse");
   const [command, setCommand] = useState("hooks/log-hook.sh");
   const [timeout, setTimeoutValue] = useState("30");
   const [matcher, setMatcher] = useState("");
   const [failClosed, setFailClosed] = useState(false);
 
-  const hooksList = snapshot?.hooksList ?? [];
-  const filtered = useMemo(
-    () => hooksList.filter((item) => item.scope === scope),
-    [hooksList, scope],
+  const items = useMemo(
+    () =>
+      (snapshot?.hooksList ?? []).filter(
+        (item) => !workspaceBindingDisabled || item.scope === "user",
+      ),
+    [snapshot?.hooksList, workspaceBindingDisabled],
   );
 
-  const configPath =
-    scope === "user"
-      ? hooksList.find((item) => item.scope === "user")?.configPath
-      : hooksList.find((item) => item.scope === "workspace")?.configPath;
+  const availableHookCreateScopeOptions = workspaceBindingDisabled
+    ? hookCreateScopeOptions.filter((option) => option.scope === "user")
+    : hookCreateScopeOptions;
+  const localizedHookCreateScopeOptions = availableHookCreateScopeOptions.map((option) => ({
+    ...option,
+    label: t(option.labelKey),
+    hint: t(option.hintKey),
+  }));
 
-  const workspaceScopeDisabled = workspaceBinding === "none";
+  const resetForm = () => {
+    setCreateScope(workspaceBindingDisabled ? "user" : "workspace");
+    setEvent("preToolUse");
+    setCommand("hooks/log-hook.sh");
+    setTimeoutValue("30");
+    setMatcher("");
+    setFailClosed(false);
+  };
 
   async function handleCreate() {
     const trimmedCommand = command.trim();
@@ -84,7 +117,7 @@ export function HooksSettingsPanel({
     }
     const parsedTimeout = timeout.trim() ? Number(timeout) : undefined;
     await onSaveHookEntry({
-      scope,
+      scope: createScope,
       event,
       command: trimmedCommand,
       ...(parsedTimeout !== undefined && Number.isFinite(parsedTimeout)
@@ -93,103 +126,184 @@ export function HooksSettingsPanel({
       ...(matcher.trim() ? { matcher: matcher.trim() } : {}),
       ...(failClosed ? { failClosed: true } : {}),
     });
-    setDialogOpen(false);
+    setAddDialogOpen(false);
+    resetForm();
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="hooks-scope">{t("settings.hooksScope")}</Label>
-          <Select
-            value={scope}
-            onValueChange={(value) => setScope(value as DesktopHookScope)}
-          >
-            <SelectTrigger id="hooks-scope" className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="user">{t("settings.hooksScopeUser")}</SelectItem>
-              <SelectItem value="workspace" disabled={workspaceScopeDisabled}>
-                {t("settings.hooksScopeWorkspace")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            {t("settings.hooks")}
+          </h1>
+          {workspaceBindingDisabled ? (
+            <p className="text-xs text-muted-foreground">{t("app.noWorkspaceBindingHint")}</p>
+          ) : null}
         </div>
         <Button
           type="button"
           size="sm"
-          disabled={hooksBusy || (scope === "workspace" && workspaceScopeDisabled)}
-          onClick={() => setDialogOpen(true)}
+          className="shrink-0"
+          disabled={hooksBusy}
+          onClick={() => {
+            resetForm();
+            setAddDialogOpen(true);
+          }}
         >
-          {hooksBusy ? (
-            <LoaderCircle className="mr-1.5 size-4 animate-spin" />
-          ) : (
-            <Plus className="mr-1.5 size-4" />
-          )}
           {t("settings.hooksAdd")}
         </Button>
       </div>
 
-      {configPath ? (
-        <p className="text-xs text-muted-foreground break-all">
-          {t("settings.hooksConfigPath")}: {configPath}
-        </p>
-      ) : null}
-
-      <p className="text-sm text-muted-foreground">{t("settings.hooksDescription")}</p>
-
-      <div className="flex flex-col gap-2">
-        {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("settings.hooksEmpty")}</p>
+      <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
+        {items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            {t("settings.hooksEmpty")}
+          </p>
         ) : (
-          filtered.map((item: DesktopHookListItem) => (
-            <div
-              key={item.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-border/40 bg-background/60 p-3"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{item.event}</div>
-                <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                  {item.command}
-                </div>
-                {(item.matcher || item.timeout || item.failClosed) && (
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {item.timeout !== undefined ? `timeout=${item.timeout}s ` : ""}
-                    {item.matcher ? `matcher=${item.matcher} ` : ""}
-                    {item.failClosed ? "failClosed" : ""}
-                  </div>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={hooksBusy}
-                onClick={() =>
-                  onDeleteHookEntry({
-                    scope: item.scope,
-                    event: item.event,
-                    index: item.index,
-                  })
-                }
+          items.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
               >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{item.event}</span>
+                    <Badge variant="outline" className="text-muted-foreground">
+                      {hookScopeLabel(item.scope, t)}
+                    </Badge>
+                  </div>
+                  <p
+                    className="break-all font-mono text-[0.65rem] text-muted-foreground/90"
+                    title={item.command}
+                  >
+                    {item.command}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="shrink-0 self-start sm:self-center"
+                  disabled={hooksBusy}
+                  onClick={() => setDeleteTarget(item)}
+                >
+                  {t("common.delete")}
+                </Button>
+              </div>
+            ))
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>{t("settings.deleteHook")}</DialogTitle>
+            <DialogDescription>
+              {t("settings.deleteHookConfirm", {
+                event: deleteTarget?.event ?? "",
+                command: deleteTarget?.command ?? "",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={hooksBusy}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={hooksBusy || !deleteTarget}
+              onClick={() => {
+                const target = deleteTarget;
+                if (!target) {
+                  return;
+                }
+                void (async () => {
+                  try {
+                    await onDeleteHookEntry({
+                      scope: target.scope,
+                      event: target.event,
+                      index: target.index,
+                    });
+                    setDeleteTarget(null);
+                  } catch {
+                    /* runtimeError */
+                  }
+                })();
+              }}
+            >
+              {hooksBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              {t("common.delete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
             <DialogTitle>{t("settings.hooksAdd")}</DialogTitle>
+            <DialogDescription>{t("settings.addHookDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
+          <div className="grid gap-3 py-1">
+            <div className="grid gap-2">
+              <Label>{t("settings.saveLocation")}</Label>
+              <div
+                role="tablist"
+                aria-label={t("settings.saveLocation")}
+                className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+              >
+                {localizedHookCreateScopeOptions.map((opt) => (
+                  <button
+                    key={opt.scope}
+                    type="button"
+                    role="tab"
+                    aria-selected={createScope === opt.scope}
+                    className={cn(
+                      "rounded-md px-2.5 text-xs font-medium transition-colors",
+                      createScope === opt.scope
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    disabled={hooksBusy}
+                    title={opt.hint}
+                    onClick={() => setCreateScope(opt.scope)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {localizedHookCreateScopeOptions.find((option) => option.scope === createScope)?.hint}
+              </p>
+            </div>
+
+            <div className="grid gap-2">
               <Label htmlFor="hook-event">{t("settings.hooksEvent")}</Label>
-              <Select value={event} onValueChange={(v) => setEvent(v as DesktopHookEventName)}>
+              <Select value={event} onValueChange={(value) => setEvent(value as DesktopHookEventName)}>
                 <SelectTrigger id="hook-event">
                   <SelectValue />
                 </SelectTrigger>
@@ -202,46 +316,57 @@ export function HooksSettingsPanel({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label htmlFor="hook-command">{t("settings.hooksCommand")}</Label>
               <Input
                 id="hook-command"
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
                 placeholder="hooks/my-hook.sh"
+                autoComplete="off"
               />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label htmlFor="hook-timeout">{t("settings.hooksTimeout")}</Label>
               <Input
                 id="hook-timeout"
                 value={timeout}
                 onChange={(e) => setTimeoutValue(e.target.value)}
+                autoComplete="off"
               />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label htmlFor="hook-matcher">{t("settings.hooksMatcher")}</Label>
               <Input
                 id="hook-matcher"
                 value={matcher}
                 onChange={(e) => setMatcher(e.target.value)}
                 placeholder="run_shell_command"
+                autoComplete="off"
               />
             </div>
-            <div className="flex items-center gap-2">
+            <label htmlFor="hook-fail-closed" className="flex items-center gap-2 text-sm text-foreground">
               <Checkbox
                 id="hook-fail-closed"
                 checked={failClosed}
                 onCheckedChange={(checked) => setFailClosed(checked === true)}
+                disabled={hooksBusy}
+                className="size-5"
               />
-              <Label htmlFor="hook-fail-closed">{t("settings.hooksFailClosed")}</Label>
-            </div>
+              {t("settings.hooksFailClosed")}
+            </label>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" size="sm" onClick={() => setAddDialogOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button type="button" disabled={hooksBusy} onClick={() => void handleCreate()}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={hooksBusy || !command.trim()}
+              onClick={() => void handleCreate()}
+            >
+              {hooksBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t("common.save")}
             </Button>
           </DialogFooter>
