@@ -552,7 +552,10 @@ impl TuiShell {
     }
 
     pub(super) fn open_hook_add_form(&mut self) {
-        self.forms.active = Some(bottom_form::new_hook_add_form(true));
+        let workspace_root = self.app_paths.workspace_root();
+        let workspace_scope_available = workspace_root.join(".spirit").is_dir()
+            || workspace_root.join(".git").exists();
+        self.forms.active = Some(bottom_form::new_hook_add_form(workspace_scope_available));
         self.model_picker_active = false;
         self.language_picker_active = false;
         self.approval_picker_active = false;
