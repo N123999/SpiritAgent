@@ -203,3 +203,49 @@ test('deleteHookEntry removes hook entry', async () => {
   assert.equal(items[0]?.command, 'hooks/b.sh');
   assert.equal(items[0]?.index, 0);
 });
+
+test('saveHookEntry refuses to overwrite corrupt hooks.json', async () => {
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-corrupt-save-'));
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-corrupt-save-ws-'));
+  const userConfigPath = join(spiritDataDir, 'hooks.json');
+  await writeFile(userConfigPath, '{broken', 'utf8');
+
+  await assert.rejects(
+    () =>
+      saveHookEntry(
+        {
+          spiritDataDir,
+          workspaceRoot,
+          workspaceBinding: 'none',
+        },
+        {
+          scope: 'user',
+          event: 'preToolUse',
+          command: 'hooks/new.sh',
+        },
+      ),
+    /Cannot modify hooks config/,
+  );
+});
+
+test('deleteHookEntry rejects unknown hook event', async () => {
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-delete-event-'));
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-delete-event-ws-'));
+
+  await assert.rejects(
+    () =>
+      deleteHookEntry(
+        {
+          spiritDataDir,
+          workspaceRoot,
+          workspaceBinding: 'none',
+        },
+        {
+          scope: 'user',
+          event: 'unknownEvent' as never,
+          index: 0,
+        },
+      ),
+    /Unknown hook event/,
+  );
+});

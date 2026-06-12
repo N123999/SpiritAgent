@@ -764,7 +764,6 @@ impl TuiShell {
 mod hook_scope_tests {
     use super::workspace_hooks_scope_available;
     use std::fs;
-    use std::path::PathBuf;
 
     #[test]
     fn workspace_hooks_scope_respects_none_binding() {
@@ -779,8 +778,14 @@ mod hook_scope_tests {
     }
 
     #[test]
-    fn workspace_hooks_scope_allows_project_with_git() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fn workspace_hooks_scope_allows_project_with_markers() {
+        let root = std::env::temp_dir().join(format!(
+            "spirit-hook-scope-project-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".spirit")).expect("create .spirit");
         assert!(workspace_hooks_scope_available(&root, "project"));
+        let _ = fs::remove_dir_all(&root);
     }
 }

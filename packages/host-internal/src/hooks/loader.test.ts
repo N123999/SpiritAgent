@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { hooksUserConfigPath } from '@spirit-agent/core';
 
-import { validateHooksConfig } from './loader.js';
+import { loadHooksConfigFileAt, loadHooksConfigFileForMutation, validateHooksConfig } from './loader.js';
 
 test('validateHooksConfig reports missing script paths', async () => {
   const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-validate-'));
@@ -92,4 +92,16 @@ test('loadHooksConfigFileAt returns empty config for invalid json', async () => 
   const report = validateHooksConfig({ spiritDataDir, workspaceRoot: undefined });
   assert.equal(report.entries.length, 0);
   assert.equal(report.summary.sessionStart, 0);
+});
+
+test('loadHooksConfigFileForMutation throws on corrupt hooks.json', async () => {
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-mutation-corrupt-'));
+  const userConfigPath = hooksUserConfigPath(spiritDataDir);
+  await writeFile(userConfigPath, '{not-json', 'utf8');
+
+  assert.throws(
+    () => loadHooksConfigFileForMutation(userConfigPath),
+    /Cannot modify hooks config/,
+  );
+  assert.deepEqual(loadHooksConfigFileAt(userConfigPath).hooks, {});
 });
