@@ -1096,39 +1096,45 @@ export async function processToolCallsAsync<
     let request: ToolRequest;
     let preGate: PreToolUseGateResult<ToolRequest>;
     try {
-      request = await runtime.options.toolExecutor.requestFromFunctionCall(
-        call.name,
-        call.argumentsJson,
-      );
-      request = runtime.options.toolExecutor.attachRequestMetadata?.(request, {
-        toolCallId: call.id,
-        toolName: call.name,
-      }) ?? request;
-
-      preGate = await runPreToolUseGate(runtime, call, request);
-      if (preGate.kind === 'denied') {
-        const output = `[hook denied] ${hookDeniedToolOutput(preGate.error)}`;
-        commitSyntheticToolExecutionFailure(runtime, turn, request, call.id, call.name, output);
-        currentState = runtime.options.appendToolResultMessage(
-          currentState,
-          call.id,
-          output,
+      const earlyPreGate = await resolveEarlyPreGateForFormalCall(call, earlyToolExecutions);
+      if (earlyPreGate && earlyPreGate.kind !== 'denied') {
+        preGate = earlyPreGate;
+        request = earlyPreGate.request;
+      } else {
+        request = await runtime.options.toolExecutor.requestFromFunctionCall(
+          call.name,
+          call.argumentsJson,
         );
-        if (queueRemainingToolCallsAsync(
-          runtime,
-          currentState,
-          pendingUserInput,
-          remaining,
-          turn,
-          resumeAsStreaming,
-          streamingEmitBeginResponse,
-          earlyToolExecutions,
-        )) {
-          return;
+        request = runtime.options.toolExecutor.attachRequestMetadata?.(request, {
+          toolCallId: call.id,
+          toolName: call.name,
+        }) ?? request;
+
+        preGate = await runPreToolUseGate(runtime, call, request);
+        if (preGate.kind === 'denied') {
+          const output = `[hook denied] ${hookDeniedToolOutput(preGate.error)}`;
+          commitSyntheticToolExecutionFailure(runtime, turn, request, call.id, call.name, output);
+          currentState = runtime.options.appendToolResultMessage(
+            currentState,
+            call.id,
+            output,
+          );
+          if (queueRemainingToolCallsAsync(
+            runtime,
+            currentState,
+            pendingUserInput,
+            remaining,
+            turn,
+            resumeAsStreaming,
+            streamingEmitBeginResponse,
+            earlyToolExecutions,
+          )) {
+            return;
+          }
+          continue;
         }
-        continue;
+        request = preGate.request;
       }
-      request = preGate.request;
 
       runtime.emitEvent({
         kind: 'tool-call-started',
@@ -1651,20 +1657,20 @@ async function runEarlyToolExecution<
   try {
     authorization = await runtime.options.toolExecutor.authorize(request);
   } catch {
-    return { kind: 'deferred', reason: 'authorization-error' };
+    return { kind: 'deferred', reason: 'authorization-error', preGate };
   }
 
   const approvalGate = resolveApprovalGateAfterAuthorize(preGate, authorization);
   if (approvalGate) {
     // TODO: preview 已拿到稳定 toolCallId 和参数时，应直接暴露待审批状态，避免正式 tool-calls 阶段前审批表单仍未打开。
-    return { kind: 'deferred', reason: 'approval-required' };
+    return { kind: 'deferred', reason: 'approval-required', preGate };
   }
   if (authorization.kind === 'need-questions') {
-    return { kind: 'deferred', reason: 'questions-required' };
+    return { kind: 'deferred', reason: 'questions-required', preGate };
   }
 
   if (runtime.options.toolExecutor.shouldExecuteInBackground?.(request) ?? false) {
-    return { kind: 'deferred', reason: 'background-required' };
+    return { kind: 'deferred', reason: 'background-required', preGate };
   }
 
   const internal = await runtime.tryPerformEarlyInternalToolCall?.(
@@ -1673,7 +1679,7 @@ async function runEarlyToolExecution<
     call.name,
   );
   if (internal?.kind === 'defer-to-formal') {
-    return { kind: 'deferred', reason: 'internal-deferred' };
+    return { kind: 'deferred', reason: 'internal-deferred', preGate };
   }
 
   runtime.emitEvent({
@@ -1693,7 +1699,7 @@ async function runEarlyToolExecution<
     ? internal.failed
     : external?.failed;
   if (!output || failed === undefined) {
-    return { kind: 'deferred', reason: 'internal-deferred' };
+    return { kind: 'deferred', reason: 'internal-deferred', preGate };
   }
   const fatalError = internal?.kind === 'completed' ? internal.fatalError : undefined;
   const enqueueDeferredGuidance = internal?.kind === 'completed'
@@ -1764,6 +1770,33 @@ function persistCompletedEarlyToolResult<
     toolCallId,
     content: cloneLlmMessageContent(output.content),
   });
+}
+
+async function resolveEarlyPreGateForFormalCall<ToolRequest>(
+  call: ToolCallRequest,
+  earlyToolExecutions: Map<string, PendingEarlyToolExecution<ToolRequest>> | undefined,
+): Promise<PreToolUseGateResult<ToolRequest> | undefined> {
+  const early = earlyToolExecutions?.get(call.id);
+  if (!early || early.toolName !== call.name) {
+    return undefined;
+  }
+
+  const canonicalArgumentsJson = canonicalizeToolArguments(call.argumentsJson);
+  if (canonicalArgumentsJson === undefined) {
+    return undefined;
+  }
+  if (
+    canonicalArgumentsJson !== early.canonicalArgumentsJson &&
+    !earlyToolArgumentsMatchFormal(call.name, early.canonicalArgumentsJson, call.argumentsJson)
+  ) {
+    return undefined;
+  }
+
+  const outcome = await early.outcome;
+  if (outcome.kind === 'deferred' && outcome.preGate) {
+    return outcome.preGate;
+  }
+  return undefined;
 }
 
 async function matchingEarlyToolExecutionOutcome<ToolRequest>(

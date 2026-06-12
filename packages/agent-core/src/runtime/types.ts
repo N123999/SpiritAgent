@@ -32,6 +32,8 @@ export interface RuntimeToolExecution<ToolRequest> {
   hostUi?: import('../ports.js').ToolExecutionHostUi;
 }
 
+import type { PreToolUseGateResult } from '../hooks/tool-hooks.js';
+
 /** Where the host should anchor a finalized thinking segment in the timeline. */
 export type AssistantThinkingSegmentPlacement = 'before-next-tool' | 'after-stream';
 
@@ -53,6 +55,7 @@ export type PendingEarlyToolExecutionOutcome<ToolRequest> =
         | 'approval-required'
         | 'questions-required'
         | 'internal-deferred';
+      preGate?: PreToolUseGateResult<ToolRequest>;
     };
 
 export interface PendingEarlyToolExecution<ToolRequest> {
