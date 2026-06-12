@@ -923,6 +923,10 @@ export interface ReadGitHistoryRequest {
 export type {
   GitHubAuthStatus,
   GitHubDeviceAuthChallenge,
+  GitHubPullRequestConversationSnapshot,
+  GitHubPullRequestConversationItem,
+  GitHubPullRequestReviewComment,
+  GitHubPullRequestReviewState,
   GitHubPullRequestDetail,
   GitHubPullRequestForBranchResult,
   GitHubPullRequestSummary,

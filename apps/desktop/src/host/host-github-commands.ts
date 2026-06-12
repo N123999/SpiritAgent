@@ -3,11 +3,13 @@ import { promisify } from 'node:util';
 
 import {
   findOpenPullRequestForHead,
+  getPullRequestConversation,
   getPullRequestDetail,
   GitHubOAuthError,
   parseGitHubRemoteUrl,
   type GitHubAuthStatus,
   type GitHubDeviceAuthChallenge,
+  type GitHubPullRequestConversationSnapshot,
   type GitHubPullRequestDetail,
   type GitHubPullRequestForBranchResult,
 } from '@spirit-agent/host-internal';
@@ -149,6 +151,24 @@ export async function getGitHubPullRequestDetailCommand(
   try {
     const accessToken = await requireGitHubAccessToken();
     return await getPullRequestDetail(accessToken, { owner, repo }, number);
+  } catch (error) {
+    throw await handleGitHubApiError(error);
+  }
+}
+
+export async function getGitHubPullRequestConversationCommand(
+  request: GetGitHubPullRequestDetailRequest,
+): Promise<GitHubPullRequestConversationSnapshot> {
+  const owner = request.owner.trim();
+  const repo = request.repo.trim();
+  const number = request.number;
+  if (!owner || !repo || !Number.isFinite(number) || number <= 0) {
+    throw new Error('Pull request owner, repository, and number are required.');
+  }
+
+  try {
+    const accessToken = await requireGitHubAccessToken();
+    return await getPullRequestConversation(accessToken, { owner, repo }, number);
   } catch (error) {
     throw await handleGitHubApiError(error);
   }

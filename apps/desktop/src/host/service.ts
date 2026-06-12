@@ -189,6 +189,7 @@ import {
   disconnectGitHubCommand,
   getGitHubAuthStatusCommand,
   getGitHubPullRequestDetailCommand,
+  getGitHubPullRequestConversationCommand,
   getGitHubPullRequestForCurrentBranchCommand,
 } from './host-github-commands.js';
 import {
@@ -1696,6 +1697,10 @@ class DesktopHostService {
 
   async getGitHubPullRequestDetail(request: GetGitHubPullRequestDetailRequest) {
     return getGitHubPullRequestDetailCommand(request);
+  }
+
+  async getGitHubPullRequestConversation(request: GetGitHubPullRequestDetailRequest) {
+    return getGitHubPullRequestConversationCommand(request);
   }
 
   async listWorkspaceFileReferenceSuggestions(

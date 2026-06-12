@@ -72,6 +72,7 @@ export type CommandPayloads = {
   disconnectGitHub: undefined;
   getGitHubPullRequestForCurrentBranch: undefined;
   getGitHubPullRequestDetail: { request: GetGitHubPullRequestDetailRequest };
+  getGitHubPullRequestConversation: { request: GetGitHubPullRequestDetailRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   addProviderModels: { request: AddProviderModelsRequest };
