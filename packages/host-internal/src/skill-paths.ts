@@ -33,6 +33,51 @@ export function skillFolderBasename(path: string): string {
   return segments[segments.length - 2] ?? pathBasename(path);
 }
 
+function workspaceRelativeDirectoryPath(path: string, workspaceRoot: string): string | undefined {
+  const pathSegs = pathSegments(path);
+  const rootSegs = pathSegments(workspaceRoot);
+  if (pathSegs.length < rootSegs.length) {
+    return undefined;
+  }
+  for (let i = 0; i < rootSegs.length; i += 1) {
+    if (pathSegs[i]!.toLowerCase() !== rootSegs[i]!.toLowerCase()) {
+      return undefined;
+    }
+  }
+  const relativeSegs = pathSegs.slice(rootSegs.length);
+  if (relativeSegs.length === 0) {
+    return '.';
+  }
+  let relative = relativeSegs.join('/');
+  if (normalizePath(path).endsWith('/') && relative) {
+    relative += '/';
+  }
+  return relative;
+}
+
+/** list_directory_files 工具卡路径：工作区内显示相对路径，区外显示绝对路径。 */
+export function listDirectoryToolDisplayPath(
+  path: string,
+  workspaceRoot: string | undefined,
+  emptyLabel: string,
+): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return emptyLabel;
+  }
+
+  const normalized = normalizePath(trimmed);
+  const root = workspaceRoot?.trim();
+  if (root) {
+    const relative = workspaceRelativeDirectoryPath(normalized, root);
+    if (relative !== undefined) {
+      return relative;
+    }
+  }
+
+  return normalized;
+}
+
 /** read_file 工具卡右侧详情：SKILL.md 显示上级 Skill 目录名，其它路径与 Desktop 既有规则一致。 */
 export function readFileToolDisplayBase(path: string, emptyLabel: string): string {
   const trimmed = path.trim();
