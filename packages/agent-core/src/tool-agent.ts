@@ -29,11 +29,45 @@ const BASIC_INFO_SECTION_PREFIX = '[SPIRIT_BASIC_INFO]';
 
 export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
 
+const COMPACT_HISTORY_OUTPUT_TEMPLATE = `[Session Overview]
+<Summarize the current task and overall progress in 1–2 sentences>
+
+[User Messages]
+<Full verbatim text of user message 1, one message per line>
+<Full verbatim text of user message 2, one message per line>
+<Full verbatim text of user message 3, one message per line>
+(List every user message from the input conversation, one per line, in chronological order)
+
+[Goals and Constraints]
+- <User goals or priorities>
+- <Hard constraints: tech stack, paths, style, etc.>
+- <Explicit prohibitions or must-follow rules>
+
+[Confirmed Facts]
+- <Conclusions verified by tools or mutually confirmed>
+- <Key files, configs, command output highlights>
+
+[Failed Attempts]
+- <Approaches tried but proven infeasible or incorrect, and why>
+
+[Open Items]
+- <Remaining work, questions awaiting user confirmation, blockers>`;
+
 export const COMPACT_HISTORY_SYSTEM_PROMPT = [
-  '请将以下对话压缩为后续推理可复用的系统摘要。',
-  '保留：用户目标、关键约束、已验证结论、失败尝试、未完成事项。',
-  '不要保留寒暄。',
-  '输出纯文本摘要。',
+  'Compress the following conversation into a reusable system summary for later turns.',
+  '',
+  'Hard requirements:',
+  '1. Output must strictly follow the section titles, order, and hierarchy in the output template; do not add, remove, or rename sections.',
+  '2. The [User Messages] section must include every user message from the input conversation: one message per line, in order of appearance, preserving original wording; do not omit, merge, paraphrase, or rewrite. You may append [images attached] / [videos attached] annotations only when a message is extremely long.',
+  '3. For sections other than [User Messages], summarize in concise bullet points, preserving decision rationale and verifiable details; avoid vague repetition.',
+  '4. Omit small talk, thanks, repeated explanations, and low-information back-and-forth confirmations.',
+  '5. Output only the summary body; do not wrap it in markdown code fences; do not add explanations, preambles, or closings.',
+  '',
+  'When summarizing, preserve: user goals, key constraints, verified conclusions, failed attempts, and open items.',
+  '',
+  'Output template:',
+  '',
+  COMPACT_HISTORY_OUTPUT_TEMPLATE,
 ].join('\n');
 
 export function buildCompactHistoryUserPrompt(history: LlmMessage[]): string {
