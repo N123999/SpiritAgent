@@ -605,6 +605,7 @@
     "prTabConversations": "讨论",
     "prTabCommits": "提交",
     "prTabChanges": "变更",
+    "prConversationEmpty": "暂无对话记录。",
     "prDescriptionHeading": "描述",
     "prDraft": "草稿",
     "prOpen": "进行中",
