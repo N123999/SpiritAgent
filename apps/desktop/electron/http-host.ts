@@ -835,6 +835,10 @@ async function handleApiRequest({
   }
 
   if (request.method === 'POST' && pathname === '/api/fork-session') {
+    const listIndex =
+      typeof jsonBody?.listIndex === 'number' && Number.isFinite(jsonBody.listIndex)
+        ? jsonBody.listIndex
+        : undefined;
     writeJson(
       request,
       response,
@@ -842,6 +846,7 @@ async function handleApiRequest({
       await runHostCommand('forkSession', {
         request: {
           messageId: typeof jsonBody?.messageId === 'number' ? jsonBody.messageId : NaN,
+          ...(listIndex !== undefined ? { listIndex } : {}),
         },
       }),
     );
