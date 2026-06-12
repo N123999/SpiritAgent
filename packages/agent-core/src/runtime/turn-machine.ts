@@ -372,6 +372,7 @@ export async function resumePendingQuestions<
       pending.toolName,
       pending.remainingCalls,
       pending.turn,
+      pending.argumentsJson,
     );
   }
 
