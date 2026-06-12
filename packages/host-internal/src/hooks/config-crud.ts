@@ -142,6 +142,10 @@ export async function saveHookEntry(
 ): Promise<void> {
   assertWorkspaceScopeAllowed(request.scope, context.workspaceBinding);
 
+  if (!HOOK_EVENT_NAMES.includes(request.event)) {
+    throw new Error(`Unknown hook event: ${request.event}`);
+  }
+
   const configPath = hooksConfigPathForScope(
     context.spiritDataDir,
     context.workspaceRoot,

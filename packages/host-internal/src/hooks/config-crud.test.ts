@@ -130,6 +130,28 @@ test('saveHookEntry rejects non-positive timeout', async () => {
   );
 });
 
+test('saveHookEntry rejects unknown hook event', async () => {
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-event-'));
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-event-ws-'));
+
+  await assert.rejects(
+    () =>
+      saveHookEntry(
+        {
+          spiritDataDir,
+          workspaceRoot,
+          workspaceBinding: 'none',
+        },
+        {
+          scope: 'user',
+          event: 'unknownEvent' as 'preToolUse',
+          command: 'hooks/a.sh',
+        },
+      ),
+    /Unknown hook event/i,
+  );
+});
+
 test('deleteHookEntry removes hook entry', async () => {
   const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-delete-'));
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-delete-ws-'));
