@@ -603,6 +603,7 @@
     "prClearDetailDemo": "Clear preview",
     "prDetailDemoLabel": "Detail UI preview",
     "prDetailUnavailable": "Pull request details could not be loaded.",
+    "prDetailTabsAria": "Pull request detail",
     "prDescriptionHeading": "Description",
     "prDraft": "Draft",
     "prOpen": "Open",

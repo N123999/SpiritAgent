@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, GitPullRequest } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { DetailPageTabs } from "@/components/detail-page-tabs";
 import { GITHUB_PR_MERGED_BADGE_CLASS } from "@/lib/github-pr-merged-badge-styles";
 import { toolCardSecondaryTextClass } from "@/lib/file-tool-lsp-diagnostics-display";
 import { cn } from "@/lib/utils";
@@ -12,6 +14,8 @@ export type WorkspacePrDetailViewProps = {
   onOpenExternal: (url: string) => void;
   className?: string;
 };
+
+type WorkspacePrDetailTab = "description";
 
 function pullRequestStatusLabel(
   detail: GitHubPullRequestDetail,
@@ -32,9 +36,10 @@ export function WorkspacePrDetailView({
   className,
 }: WorkspacePrDetailViewProps) {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<WorkspacePrDetailTab>("description");
 
   return (
-    <article className={cn("space-y-4", className)}>
+    <article className={cn("space-y-3", className)}>
       <header className="space-y-2">
         <div className="min-w-0">
           <h2 className="m-0 flex flex-wrap items-center gap-2">
@@ -76,16 +81,23 @@ export function WorkspacePrDetailView({
         </div>
       </header>
 
-      <section>
-        <h3 className="mb-2 text-xs font-medium text-muted-foreground">
-          {t("workspace.prDescriptionHeading")}
-        </h3>
-        {detail.body ? (
-          <div className="whitespace-pre-wrap text-sm text-foreground/90">{detail.body}</div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("workspace.prNoDescription")}</p>
-        )}
-      </section>
+      <DetailPageTabs
+        size="compact"
+        tabs={[{ id: "description", label: t("workspace.prDescriptionHeading") }]}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        ariaLabel={t("workspace.prDetailTabsAria")}
+      >
+        {activeTab === "description" ? (
+          detail.body ? (
+            <div className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
+              {detail.body}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("workspace.prNoDescription")}</p>
+          )
+        ) : null}
+      </DetailPageTabs>
     </article>
   );
 }
