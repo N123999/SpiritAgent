@@ -11,6 +11,7 @@ import {
   processToolCalls,
   resolveEarlyToolCallArguments,
   resumePendingApproval,
+  resumePendingQuestions,
   runTurnLoop,
   shouldSkipPersistAssistantToolCalls,
   startEarlyToolExecution,
@@ -204,6 +205,335 @@ test('executeAuthorizedToolCall forwards toolArgumentsJson to postToolUse hook',
   );
 
   assert.deepEqual(capturedToolInput, { path: 'README.md' });
+});
+
+test('resumePendingQuestions forwards argumentsJson to postToolUse hook', async () => {
+  const state = { messages: [] as Array<{ role: string; content: string }>, steps: 0 };
+  let capturedToolInput: unknown;
+  const hookRunner = createStubHookRunner(async () => ({
+    records: [],
+    denied: false,
+    permission: undefined,
+    userMessage: undefined,
+    agentMessage: undefined,
+    updatedInput: undefined,
+    additionalContexts: [],
+    followupMessage: undefined,
+  }));
+  hookRunner.runPostToolUse = async (input) => {
+    capturedToolInput = input.toolInput;
+    return {
+      records: [],
+      denied: false,
+      permission: undefined,
+      userMessage: undefined,
+      agentMessage: undefined,
+      updatedInput: undefined,
+      additionalContexts: [],
+      followupMessage: undefined,
+    };
+  };
+  const turn = createTurnContext<{ name: string; command?: string }>();
+  const request = { name: 'run_shell_command', command: 'echo hi' };
+  const runtime = {
+    options: {
+      config: {},
+      hookRunner,
+      hookSessionContext: {
+        sessionId: 's1',
+        conversationPath: null,
+        workspaceRoot: '/w',
+        model: 'm',
+      },
+      llmTransport: {
+        startToolAgentRound: async () => ({
+          kind: 'success',
+          result: {
+            state,
+            step: { kind: 'final-response-ready' },
+            requestTrace: [],
+          },
+        }),
+      },
+      toolExecutor: {
+        toolDefinitionsJson: () => [],
+        continueAfterQuestions: async () => request,
+        requestFromFunctionCall: async (name: string, argumentsJson: string) => ({
+          name,
+          ...(JSON.parse(argumentsJson) as Record<string, unknown>),
+        }),
+        authorize: async () => ({ kind: 'allowed' as const }),
+        execute: async () => ({
+          output: { content: [], summaryText: 'ok' },
+          failed: false,
+          backgroundExecution: false,
+        }),
+      },
+      appendToolResultMessage: (currentState: typeof state) => currentState,
+      createContinuationState: (messages: unknown[]) => ({ messages, steps: 0 }),
+      extractAssistantText: () => 'done',
+    },
+    historyStore: [],
+    requestTraceStore: [],
+    pendingUserTurnStore: undefined,
+    pendingApproval: undefined,
+    pendingQuestions: {
+      pendingUserInput: 'run shell',
+      state,
+      request,
+      questions: [],
+      toolCallId: 'call_shell',
+      toolName: 'run_shell_command',
+      argumentsJson: '{"command":"echo hi"}',
+      remainingCalls: [],
+      turn,
+    },
+    pendingToolAgentRound: undefined,
+    appendTrace: () => {},
+    clearStreamingUiState: () => {},
+    completeTurn: () => {},
+    emitEvent: () => {},
+    performToolExecution: async () => ({
+      output: { content: [], summaryText: 'ok' },
+      failed: false,
+      backgroundExecution: false,
+    }),
+    startBackgroundToolExecutionAsync: () => {},
+    startHistoryCompactionAsync: () => {},
+    loopEnabled: () => false,
+    queuePendingToolCallContinuation: () => {},
+    takeCompletedTurnResult: () => undefined,
+    compactHistoryImmediate: async () => ({ droppedMessages: 0, beforeLength: 0, afterLength: 0 }),
+    isBusy: () => false,
+    poll: async () => {},
+  } as unknown as TurnMachineRuntime<{}, typeof state, typeof request>;
+
+  await resumePendingQuestions(runtime, { status: 'answered', answers: [] });
+
+  assert.deepEqual(capturedToolInput, { command: 'echo hi' });
+});
+
+test('executeAuthorizedToolCall runs postToolUse after internal tool completion', async () => {
+  const state = { messages: [] as Array<{ role: string; content: string }>, steps: 0 };
+  let postToolUseCount = 0;
+  const hookRunner = createStubHookRunner(async () => ({
+    records: [],
+    denied: false,
+    permission: undefined,
+    userMessage: undefined,
+    agentMessage: undefined,
+    updatedInput: undefined,
+    additionalContexts: [],
+    followupMessage: undefined,
+  }));
+  hookRunner.runPostToolUse = async () => {
+    postToolUseCount += 1;
+    return {
+      records: [],
+      denied: false,
+      permission: undefined,
+      userMessage: undefined,
+      agentMessage: undefined,
+      updatedInput: undefined,
+      additionalContexts: [],
+      followupMessage: undefined,
+    };
+  };
+  const turn = createTurnContext<{ name: string }>();
+  const runtime = {
+    options: {
+      config: {},
+      hookRunner,
+      hookSessionContext: {
+        sessionId: 's1',
+        conversationPath: null,
+        workspaceRoot: '/w',
+        model: 'm',
+      },
+      llmTransport: {
+        startToolAgentRound: async () => ({
+          kind: 'success',
+          result: {
+            state,
+            step: { kind: 'final-response-ready' },
+            requestTrace: [],
+          },
+        }),
+      },
+      toolExecutor: {
+        toolDefinitionsJson: () => [],
+        requestFromFunctionCall: async (name: string) => ({ name }),
+        authorize: async () => ({ kind: 'allowed' as const }),
+        execute: async () => ({
+          output: { content: [], summaryText: 'ok' },
+          failed: false,
+          backgroundExecution: false,
+        }),
+      },
+      appendToolResultMessage: (currentState: typeof state) => currentState,
+      createContinuationState: (messages: unknown[]) => ({ messages, steps: 0 }),
+      extractAssistantText: () => 'done',
+    },
+    historyStore: [],
+    requestTraceStore: [],
+    pendingUserTurnStore: undefined,
+    pendingApproval: undefined,
+    pendingQuestions: undefined,
+    pendingToolAgentRound: undefined,
+    appendTrace: () => {},
+    clearStreamingUiState: () => {},
+    completeTurn: () => {},
+    emitEvent: () => {},
+    performToolExecution: async () => {
+      throw new Error('external execution should not run');
+    },
+    maybeExecuteInternalToolCall: async (
+      _pendingUserInput: string,
+      currentState: typeof state,
+      toolRequest: { name: string },
+      toolCallId: string,
+    ) => {
+      turn.toolExecutions.push({
+        toolCallId,
+        toolName: toolRequest.name,
+        request: toolRequest,
+        output: 'internal done',
+        failed: false,
+      });
+      return {
+        kind: 'completed',
+        assistantText: 'internal done',
+        state: currentState,
+        requestTrace: [],
+        toolExecutions: [...turn.toolExecutions],
+        compactions: [],
+      };
+    },
+    startBackgroundToolExecutionAsync: () => {},
+    startHistoryCompactionAsync: () => {},
+    loopEnabled: () => false,
+    queuePendingToolCallContinuation: () => {},
+    takeCompletedTurnResult: () => undefined,
+    compactHistoryImmediate: async () => ({ droppedMessages: 0, beforeLength: 0, afterLength: 0 }),
+    isBusy: () => false,
+    poll: async () => {},
+  } as unknown as TurnMachineRuntime<{}, typeof state, { name: string }>;
+
+  await executeAuthorizedToolCall(
+    runtime,
+    'finish',
+    state,
+    { name: 'finish_task' },
+    'call_finish',
+    'finish_task',
+    [],
+    turn,
+    '{"summary":"done"}',
+  );
+
+  assert.equal(postToolUseCount, 1);
+});
+
+test('processToolCalls passes hook updatedInput to postToolUse', async () => {
+  const state = { messages: [] as Array<{ role: string; content: string }>, steps: 0 };
+  let capturedToolInput: unknown;
+  const hookRunner = createStubHookRunner(async () => ({
+    records: [],
+    denied: false,
+    permission: undefined,
+    userMessage: undefined,
+    agentMessage: undefined,
+    updatedInput: { path: 'hooked.md' },
+    additionalContexts: [],
+    followupMessage: undefined,
+  }));
+  hookRunner.runPostToolUse = async (input) => {
+    capturedToolInput = input.toolInput;
+    return {
+      records: [],
+      denied: false,
+      permission: undefined,
+      userMessage: undefined,
+      agentMessage: undefined,
+      updatedInput: undefined,
+      additionalContexts: [],
+      followupMessage: undefined,
+    };
+  };
+  const runtime = {
+    options: {
+      config: {},
+      hookRunner,
+      hookSessionContext: {
+        sessionId: 's1',
+        conversationPath: null,
+        workspaceRoot: '/w',
+        model: 'm',
+      },
+      llmTransport: {
+        startToolAgentRound: async () => ({
+          kind: 'success',
+          result: {
+            state,
+            step: { kind: 'final-response-ready' },
+            requestTrace: [],
+          },
+        }),
+      },
+      toolExecutor: {
+        toolDefinitionsJson: () => [],
+        requestFromFunctionCall: async (name: string, argumentsJson: string) => ({
+          name,
+          ...(JSON.parse(argumentsJson) as Record<string, unknown>),
+        }),
+        authorize: async () => ({ kind: 'allowed' as const }),
+        execute: async () => ({
+          output: { content: [], summaryText: 'ok' },
+          failed: false,
+          backgroundExecution: false,
+        }),
+      },
+      appendToolResultMessage: (currentState: typeof state, _toolCallId: string, content: string) => ({
+        ...currentState,
+        messages: [...currentState.messages, { role: 'tool', content }],
+      }),
+      createContinuationState: (messages: unknown[]) => ({ messages, steps: 0 }),
+      extractAssistantText: () => 'done',
+    },
+    historyStore: [],
+    requestTraceStore: [],
+    pendingUserTurnStore: undefined,
+    pendingApproval: undefined,
+    pendingQuestions: undefined,
+    pendingToolAgentRound: undefined,
+    appendTrace: () => {},
+    clearStreamingUiState: () => {},
+    completeTurn: () => {},
+    emitEvent: () => {},
+    performToolExecution: async () => ({
+      output: { content: [], summaryText: 'ok' },
+      failed: false,
+      backgroundExecution: false,
+    }),
+    startBackgroundToolExecutionAsync: () => {},
+    startHistoryCompactionAsync: () => {},
+    loopEnabled: () => false,
+    queuePendingToolCallContinuation: () => {},
+    takeCompletedTurnResult: () => undefined,
+    compactHistoryImmediate: async () => ({ droppedMessages: 0, beforeLength: 0, afterLength: 0 }),
+    isBusy: () => false,
+    poll: async () => {},
+  } as unknown as TurnMachineRuntime<{}, typeof state, { name: string; path?: string }>;
+
+  await processToolCalls(
+    runtime,
+    state,
+    'read',
+    [{ id: 'call_read', name: 'read_file', argumentsJson: '{"path":"original.md"}' }],
+    createTurnContext(),
+  );
+
+  assert.deepEqual(capturedToolInput, { path: 'hooked.md' });
 });
 
 test('repairMissingToolResultsInHistory inserts placeholders for orphaned tool calls', () => {
