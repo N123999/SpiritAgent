@@ -21,6 +21,7 @@
     "src/lib/conversation-compaction-ui.ts",
     "src/lib/subagent-display.ts",
     "src/lib/git-changes-menu-items.ts",
+    "src/lib/fork-session-utils.ts",
     "src/lib/tool-call-shimmer.ts",
     "src/lib/tool-verb-context.ts",
     "src/types.ts"

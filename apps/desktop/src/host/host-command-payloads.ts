@@ -34,6 +34,7 @@ import type {
   RemoveProviderModelsRequest,
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
+  ForkSessionRequest,
   RunExtensionRequest,
   SaveHookEntryRequest,
   SubmitGitChipRequest,
@@ -121,6 +122,7 @@ export type CommandPayloads = {
   writeHostTextFile: { request: WriteHostTextFileRequest };
   statHostTextFile: { absolutePath: string };
   rewindAndSubmitMessage: { request: RewindAndSubmitMessageRequest };
+  forkSession: { request: ForkSessionRequest };
   reorderQueuedUserTurn: { request: QueuedUserTurnRequest };
   sendQueuedUserTurnNow: { request: QueuedUserTurnRequest };
   removeQueuedUserTurn: { request: QueuedUserTurnRequest };

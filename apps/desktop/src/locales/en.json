@@ -698,6 +698,8 @@
     "invalidMessageId": "Invalid message id.",
     "messageNotContinuable": "The current message can no longer be continued.",
     "noCheckpoint": "No available rewind checkpoint for this message.",
+    "forkInvalidAnchor": "Cannot fork from this message. Choose a completed assistant message.",
+    "forkReadOnlySession": "This session is read-only and cannot be forked.",
     "checkpointFileMissing": "Rewind checkpoint file does not exist; cannot rewind.",
     "workspacePathRequired": "Workspace path cannot be empty.",
     "notGitRepo": "The current workspace is not a Git repository.",

@@ -35,6 +35,7 @@ import type {
   QueryWorkspaceFileReferenceSuggestionsRequest,
   QueuedUserTurnRequest,
   RewindAndSubmitMessageRequest,
+  ForkSessionRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -202,6 +203,9 @@ export function createWebHostApi(): HostApi {
     },
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/rewind-submit', request);
+    },
+    forkSession(request: ForkSessionRequest) {
+      return post<DesktopSnapshot>(baseUrl, '/api/fork-session', request);
     },
     reorderQueuedUserTurn(request: QueuedUserTurnRequest) {
       return post<DesktopSnapshot>(baseUrl, '/api/queue/reorder', request);

@@ -696,6 +696,8 @@
     "invalidMessageId": "消息 id 无效。",
     "messageNotContinuable": "当前消息已不可继续补全。",
     "noCheckpoint": "该消息没有可用的回溯检查点。",
+    "forkInvalidAnchor": "无法从此消息分叉，请选择已完成的助手消息。",
+    "forkReadOnlySession": "当前会话为只读，无法分叉。",
     "checkpointFileMissing": "回溯检查点文件不存在，无法回溯。",
     "workspacePathRequired": "工作区路径不能为空。",
     "notGitRepo": "当前工作区不是 Git 仓库。",

@@ -834,6 +834,20 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/fork-session') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('forkSession', {
+        request: {
+          messageId: typeof jsonBody?.messageId === 'number' ? jsonBody.messageId : NaN,
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/queue/reorder') {
     writeJson(
       request,
