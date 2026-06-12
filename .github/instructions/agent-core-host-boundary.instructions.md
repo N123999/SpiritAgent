@@ -91,6 +91,7 @@ applyTo: "**/*"
 - 工具请求类型、参数解析、参数校验
 - 授权、审批、追问、宿主错误文案
 - 搜索、文件读写、网页抓取、shell 执行等宿主能力实现
+- Agent Hooks（`hooks.json`）配置加载、command 脚本 spawn 与超时/failClosed 执行
 - 梦境工具的宿主执行、文件存储、过期清理与日志落盘
 - 与平台、路径、权限、配置、用户目录相关的细节
 
@@ -138,7 +139,9 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | LSP 工具契约、`get_diagnostics` Schema（按后缀路由至多语言 server）与诊断格式化 | `agent-core` |
 | MCP 协议、MCP tool / resource / prompt 运行时 | `agent-core` |
 | Host 接口定义 | `agent-core` |
+| Agent Hooks schema、runtime 挂点与 `HookRunner` 端口 | `agent-core` |
 | Rules / Skills / Plan 的发现与管理 | 宿主内部库 |
+| Agent Hooks 配置 merge、command 执行与 `createHookRunner` | 宿主内部库 |
 | 宿主工具请求类型、解析、校验、审批、执行 | 宿主内部库 |
 | 梦境文件存储、过期清理与运行日志 | 宿主内部库 |
 | 会话 TODO 存储、`replaceAll` 与工具执行 | 宿主内部库 |
