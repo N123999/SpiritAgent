@@ -76,6 +76,7 @@
     "hooksEvent": "Event",
     "hooksCommand": "Command",
     "hooksTimeout": "Timeout (seconds)",
+    "hooksTimeoutInvalid": "Timeout must be a positive number.",
     "hooksMatcher": "Matcher (optional)",
     "hooksFailClosed": "Fail closed on errors",
     "skills": "Skills",

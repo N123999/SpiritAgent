@@ -153,7 +153,9 @@ export function resolveMergedHookDefinitions(
         ...entry,
         scope,
         configDir,
-        timeout: entry.timeout ?? DEFAULT_HOOK_TIMEOUT_SECONDS,
+        timeout: entry.timeout !== undefined && entry.timeout > 0
+          ? entry.timeout
+          : DEFAULT_HOOK_TIMEOUT_SECONDS,
       });
     }
   };

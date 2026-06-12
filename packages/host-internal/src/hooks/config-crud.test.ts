@@ -107,6 +107,29 @@ test('saveHookEntry rejects workspace scope without binding', async () => {
   );
 });
 
+test('saveHookEntry rejects non-positive timeout', async () => {
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-timeout-'));
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-timeout-ws-'));
+
+  await assert.rejects(
+    () =>
+      saveHookEntry(
+        {
+          spiritDataDir,
+          workspaceRoot,
+          workspaceBinding: 'none',
+        },
+        {
+          scope: 'user',
+          event: 'preToolUse',
+          command: 'hooks/a.sh',
+          timeout: 0,
+        },
+      ),
+    /positive number/i,
+  );
+});
+
 test('deleteHookEntry removes hook entry', async () => {
   const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-delete-'));
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-hooks-crud-delete-ws-'));

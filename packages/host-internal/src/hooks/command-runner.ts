@@ -2,10 +2,11 @@ import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 
-import type {
-  HookCommandOutput,
-  HookExecutionRecord,
-  ResolvedHookDefinition,
+import {
+  DEFAULT_HOOK_TIMEOUT_SECONDS,
+  type HookCommandOutput,
+  type HookExecutionRecord,
+  type ResolvedHookDefinition,
 } from '@spirit-agent/core';
 
 export interface RunCommandHookOptions {
@@ -54,7 +55,10 @@ export async function runCommandHook(
   const commandPath = path.isAbsolute(definition.command)
     ? definition.command
     : path.join(definition.configDir, definition.command);
-  const timeoutMs = (definition.timeout ?? 30) * 1000;
+  const timeoutSeconds = definition.timeout !== undefined && definition.timeout > 0
+    ? definition.timeout
+    : DEFAULT_HOOK_TIMEOUT_SECONDS;
+  const timeoutMs = timeoutSeconds * 1000;
 
   const baseRecord: HookExecutionRecord = {
     definition,
