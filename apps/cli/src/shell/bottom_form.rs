@@ -1071,9 +1071,13 @@ fn parse_hook_timeout_field(raw: &str) -> std::result::Result<Option<u64>, Strin
     if raw.is_empty() {
         return Ok(None);
     }
-    raw.parse::<u64>()
-        .map(Some)
-        .map_err(|_| t!("form.hooks.validation.timeout_invalid").into_owned())
+    let parsed = raw
+        .parse::<u64>()
+        .map_err(|_| t!("form.hooks.validation.timeout_invalid").into_owned())?;
+    if parsed == 0 {
+        return Err(t!("form.hooks.validation.timeout_invalid").into_owned());
+    }
+    Ok(Some(parsed))
 }
 
 pub(crate) fn to_hook_save_request(

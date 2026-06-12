@@ -83,6 +83,7 @@ export function HooksSettingsPanel({
   const [timeout, setTimeoutValue] = useState("30");
   const [matcher, setMatcher] = useState("");
   const [failClosed, setFailClosed] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const items = useMemo(
     () =>
@@ -116,6 +117,14 @@ export function HooksSettingsPanel({
       return;
     }
     const parsedTimeout = timeout.trim() ? Number(timeout) : undefined;
+    if (
+      parsedTimeout !== undefined
+      && (!Number.isFinite(parsedTimeout) || parsedTimeout <= 0)
+    ) {
+      setCreateError(t("settings.hooksTimeoutInvalid"));
+      return;
+    }
+    setCreateError(null);
     await onSaveHookEntry({
       scope: createScope,
       event,
@@ -331,10 +340,16 @@ export function HooksSettingsPanel({
               <Input
                 id="hook-timeout"
                 value={timeout}
-                onChange={(e) => setTimeoutValue(e.target.value)}
+                onChange={(e) => {
+                  setTimeoutValue(e.target.value);
+                  setCreateError(null);
+                }}
                 autoComplete="off"
               />
             </div>
+            {createError ? (
+              <p className="text-xs text-destructive">{createError}</p>
+            ) : null}
             <div className="grid gap-2">
               <Label htmlFor="hook-matcher">{t("settings.hooksMatcher")}</Label>
               <Input

@@ -134,7 +134,7 @@ form.hooks.validation.invalid_form_kind: "The current form is not a hook add for
 form.hooks.validation.scope_required: "Save location is required"
 form.hooks.validation.event_required: "Event is required"
 form.hooks.validation.command_required: "Command cannot be empty"
-form.hooks.validation.timeout_invalid: "Timeout must be a non-negative integer"
+form.hooks.validation.timeout_invalid: "Timeout must be a positive integer"
 form.prompt.title: "Apply MCP Prompt"
 form.prompt.footer_hint: "↑/↓ Next field  Mouse wheel changes field  ←/→ Move cursor  Shift+Enter New line  Enter Apply  Esc Cancel"
 form.prompt.field.required_suffix: " (required)"

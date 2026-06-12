@@ -113,6 +113,9 @@ function normalizeHookDefinition(request: SaveHookEntryRequest): HookDefinition 
 
   const definition: HookDefinition = { command };
   if (request.timeout !== undefined) {
+    if (!Number.isFinite(request.timeout) || request.timeout <= 0) {
+      throw new Error('Hook timeout must be a positive number.');
+    }
     definition.timeout = request.timeout;
   }
   if (request.failClosed !== undefined) {

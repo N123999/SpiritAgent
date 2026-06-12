@@ -76,6 +76,7 @@
     "hooksEvent": "事件",
     "hooksCommand": "命令",
     "hooksTimeout": "超时（秒）",
+    "hooksTimeoutInvalid": "超时必须是正数。",
     "hooksMatcher": "Matcher（可选）",
     "hooksFailClosed": "失败时阻断（failClosed）",
     "skills": "Skills",
