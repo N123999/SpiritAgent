@@ -1713,8 +1713,13 @@ class DesktopHostService {
   }
 
   private async refreshRuntime(): Promise<void> {
-    await this.refreshRuntimeForBundle(this.activeBundle());
+    const bundle = this.activeBundle();
+    const hadRuntime = bundle.runtime !== undefined;
+    await this.refreshRuntimeForBundle(bundle);
     this.syncActiveRuntimePointer();
+    if (hadRuntime && bundle.runtime) {
+      await this.runSessionStartForBundle(bundle, 'resume');
+    }
   }
 
   private resolveBundleActivePlanPath(bundle: SessionBundle): string | undefined {
@@ -1745,6 +1750,10 @@ class DesktopHostService {
 
   private async refreshRuntimeForBundle(bundle: SessionBundle): Promise<void> {
     const state = this.requireState();
+    const hadRuntime = bundle.runtime !== undefined;
+    if (hadRuntime) {
+      await this.runSessionEndForBundle(bundle, 'switch');
+    }
     await this.syncPlanStateForBundle(bundle);
     await this.ensureToolExecutor(bundle);
     // 保留 bundle.currentTurnSkills：斜杠激活的 turn skill 须在 promote/refresh 后仍进入 createRuntime。
