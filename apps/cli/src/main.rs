@@ -196,6 +196,10 @@ enum McpAction {
 
 #[derive(Subcommand)]
 enum HookAction {
+    List {
+        #[arg(long, value_name = "PATH")]
+        workspace: Option<std::path::PathBuf>,
+    },
     Validate {
         #[arg(long, value_name = "PATH")]
         workspace: Option<std::path::PathBuf>,
@@ -392,6 +396,7 @@ fn into_mcp_command(action: McpAction) -> McpCommand {
 
 fn into_hook_command(action: HookAction) -> HookCommand {
     match action {
+        HookAction::List { workspace } => HookCommand::List { workspace },
         HookAction::Validate { workspace } => HookCommand::Validate { workspace },
     }
 }
