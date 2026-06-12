@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  PRE_COMPACTION_ARCHIVE_SECTION_HEADER,
-  appendPreCompactionArchiveToCompactSummary,
-  applyPreCompactionArchivePathToCompactHistory,
-  buildPreCompactionHistoryArchive,
-} from './compaction-archive.js';
+import { buildPreCompactionHistoryArchive } from './compaction-archive.js';
 import { COMPACT_SUMMARY_PREFIX } from './tool-agent.js';
 import {
   buildCompactHistorySystemPrompt,
@@ -57,38 +52,11 @@ test('buildPreCompactionHistoryArchive keeps user and assistant messages with to
   assert.equal(archive.messages[2]?.toolCalls, undefined);
 });
 
-test('appendPreCompactionArchiveToCompactSummary appends archive section once', () => {
-  const path = '/tmp/spirit/compaction-archives/pre-compact-session-1.json';
-  const first = appendPreCompactionArchiveToCompactSummary('summary body', path);
-  assert.match(first, /summary body/);
-  assert.ok(first.includes(`${PRE_COMPACTION_ARCHIVE_SECTION_HEADER}\n${path}`));
-  assert.match(first, /read_file/);
-
-  const second = appendPreCompactionArchiveToCompactSummary(first, path);
-  assert.equal(second, first);
-});
-
-test('buildCompactHistorySystemPrompt includes archive path guidance when provided', () => {
+test('buildCompactHistorySystemPrompt includes archive path when provided', () => {
   const path = '/data/compaction-archives/pre-compact-s1.json';
   const prompt = buildCompactHistorySystemPrompt(path);
-  assert.match(prompt, /pre-compaction history archive has been saved to: \/data\/compaction-archives\/pre-compact-s1\.json/);
+  assert.match(prompt, /Pre-compaction history archive path \(use this exact path in \[Pre-compaction Archive\]\): \/data\/compaction-archives\/pre-compact-s1\.json/);
   assert.match(prompt, /\[Pre-compaction Archive\]/);
-});
-
-test('applyPreCompactionArchivePathToCompactHistory updates compact summary message', () => {
-  const history = [
-    {
-      role: 'system' as const,
-      content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\ncompact summary`),
-    },
-  ];
-  applyPreCompactionArchivePathToCompactHistory(history, '/tmp/archive.json');
-  const text = history[0]?.content
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
-    .join('');
-  assert.ok(text?.includes('/tmp/archive.json'));
-  assert.ok(text?.includes(PRE_COMPACTION_ARCHIVE_SECTION_HEADER));
 });
 
 test('buildCompactHistoryPromptMessages forwards archive path into system prompt', () => {

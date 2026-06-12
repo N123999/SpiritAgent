@@ -1,9 +1,6 @@
 import { setImmediate as waitForImmediate } from 'node:timers/promises';
 
-import {
-  applyPreCompactionArchivePathToCompactHistory,
-  buildPreCompactionHistoryArchive,
-} from '../compaction-archive.js';
+import { buildPreCompactionHistoryArchive } from '../compaction-archive.js';
 import type { CompactHistoryManualContext, LlmMessage } from '../ports.js';
 import { resolveHookSessionContext } from '../hooks/integration.js';
 
@@ -139,10 +136,6 @@ export async function compactHistoryImmediate<
     undefined,
     compactionContext,
   );
-  if (preCompactionArchivePath !== undefined) {
-    applyPreCompactionArchivePathToCompactHistory(runtime.historyStore, preCompactionArchivePath);
-  }
-
   const summary = runtime.options.llmTransport.compactSummaryText(runtime.historyStore);
   return buildCompactionRecord(result, summary, preCompactionArchivePath);
 }
@@ -248,10 +241,6 @@ export function launchHistoryCompaction<
 
       if (runtime.pendingHistoryCompaction !== pending) {
         return;
-      }
-
-      if (preCompactionArchivePath !== undefined) {
-        applyPreCompactionArchivePathToCompactHistory(history, preCompactionArchivePath);
       }
 
       const summary = runtime.options.llmTransport.compactSummaryText(history);

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { PRE_COMPACTION_ARCHIVE_SECTION_HEADER } from '../compaction-archive.js';
 import { COMPACT_SUMMARY_PREFIX } from '../tool-agent.js';
 import { createLlmMessageContentFromText, type LlmMessage, type LlmTransport } from '../ports.js';
 import { compactHistoryImmediate, type CompactionRuntime } from './compaction.js';
@@ -9,7 +8,7 @@ import type { AgentRuntimeOptions } from './types.js';
 
 type TestState = { messages: LlmMessage[] };
 
-test('compactHistoryImmediate persists archive and appends path to compact summary', async () => {
+test('compactHistoryImmediate persists archive without post-processing compact summary', async () => {
   const archivePath = '/tmp/spirit/compaction-archives/pre-compact-s1.json';
   const history: LlmMessage[] = [
     { role: 'user', content: createLlmMessageContentFromText('hello') },
@@ -100,6 +99,5 @@ test('compactHistoryImmediate persists archive and appends path to compact summa
     .filter((part) => part.type === 'text')
     .map((part) => part.text)
     .join('');
-  assert.ok(compactText?.includes(PRE_COMPACTION_ARCHIVE_SECTION_HEADER));
-  assert.ok(compactText?.includes(archivePath));
+  assert.equal(compactText, `${COMPACT_SUMMARY_PREFIX}\ncompact summary`);
 });

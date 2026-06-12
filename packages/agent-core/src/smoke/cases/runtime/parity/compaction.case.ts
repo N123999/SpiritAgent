@@ -1,7 +1,3 @@
-import { PRE_COMPACTION_ARCHIVE_SECTION_HEADER } from '../../../../compaction-archive.js';
-import { llmMessageTextContent } from '../../../../ports.js';
-import { COMPACT_SUMMARY_PREFIX } from '../../../../tool-agent.js';
-
 import {
   AgentRuntime,
   CompactExecutor,
@@ -191,23 +187,6 @@ export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
   }
   if (persistedMessageCount !== 3) {
     throw new Error(`pre-compaction archive smoke 归档消息数异常: ${persistedMessageCount}`);
-  }
-
-  const compactSummary = archiveRuntime
-    .history()
-    .find(
-      (message) =>
-        message.role === 'system' &&
-        llmMessageTextContent(message.content).startsWith(COMPACT_SUMMARY_PREFIX),
-    );
-  const compactSummaryText = compactSummary
-    ? llmMessageTextContent(compactSummary.content)
-    : '';
-  if (
-    !compactSummaryText.includes(PRE_COMPACTION_ARCHIVE_SECTION_HEADER) ||
-    !compactSummaryText.includes(archivePath)
-  ) {
-    throw new Error('pre-compaction archive smoke 摘要未包含归档路径段落。');
   }
 
   return {

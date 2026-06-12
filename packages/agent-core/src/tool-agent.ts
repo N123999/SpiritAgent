@@ -83,9 +83,7 @@ export function buildCompactHistorySystemPrompt(preCompactionArchivePath?: strin
   return [
     COMPACT_HISTORY_SYSTEM_PROMPT_BASE,
     '',
-    `A pre-compaction history archive has been saved to: ${normalizedPath}`,
-    'Important details omitted from this summary may be recovered by reading that file with read_file.',
-    'Include that absolute path in the [Pre-compaction Archive] section of your output.',
+    `Pre-compaction history archive path (use this exact path in [Pre-compaction Archive]): ${normalizedPath}`,
   ].join('\n');
 }
 

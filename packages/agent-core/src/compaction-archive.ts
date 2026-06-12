@@ -1,16 +1,12 @@
 import {
   cloneLlmMessageContent,
-  llmMessageTextContent,
   type LlmMessage,
   type LlmMessageContent,
   type LlmToolCall,
   type StoredLlmMessageArchiveEntry,
 } from './ports.js';
-import { COMPACT_SUMMARY_PREFIX } from './tool-agent.js';
 
 export const PRE_COMPACTION_HISTORY_EXPORT_VERSION = 1;
-
-export const PRE_COMPACTION_ARCHIVE_SECTION_HEADER = '[Pre-compaction Archive]';
 
 export interface PreCompactionHistoryArchiveMessage {
   role: 'user' | 'assistant';
@@ -68,56 +64,4 @@ export function toStoredPreCompactionHistoryMessages(
     content: message.content,
     ...(message.toolCalls !== undefined ? { toolCalls: message.toolCalls } : {}),
   }));
-}
-
-export function appendPreCompactionArchiveToCompactSummary(
-  summary: string,
-  archivePath: string,
-): string {
-  const trimmedSummary = summary.trim();
-  const normalizedPath = archivePath.trim();
-  if (!normalizedPath) {
-    return trimmedSummary;
-  }
-
-  const archiveSection = [
-    PRE_COMPACTION_ARCHIVE_SECTION_HEADER,
-    normalizedPath,
-    'Important details may be recovered by reading this file with read_file.',
-  ].join('\n');
-
-  if (trimmedSummary.includes(PRE_COMPACTION_ARCHIVE_SECTION_HEADER)) {
-    return trimmedSummary;
-  }
-
-  return trimmedSummary.length > 0 ? `${trimmedSummary}\n\n${archiveSection}` : archiveSection;
-}
-
-export function applyPreCompactionArchivePathToCompactHistory(
-  history: LlmMessage[],
-  archivePath: string,
-): void {
-  const normalizedPath = archivePath.trim();
-  if (!normalizedPath) {
-    return;
-  }
-
-  const compactMessage = history.find(
-    (message) =>
-      message.role === 'system' &&
-      llmMessageTextContent(message.content).startsWith(COMPACT_SUMMARY_PREFIX),
-  );
-  if (!compactMessage) {
-    return;
-  }
-
-  const existingText = llmMessageTextContent(compactMessage.content);
-  const summaryBody = existingText.slice(COMPACT_SUMMARY_PREFIX.length).trimStart();
-  const nextSummaryBody = appendPreCompactionArchiveToCompactSummary(summaryBody, normalizedPath);
-  compactMessage.content = [
-    {
-      type: 'text',
-      text: `${COMPACT_SUMMARY_PREFIX}\n${nextSummaryBody}`,
-    },
-  ];
 }
