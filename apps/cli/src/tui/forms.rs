@@ -223,8 +223,20 @@ impl TuiShell {
                     }
                 }
             }
-            BottomFormKind::McpAdd | BottomFormKind::ModelAdd | BottomFormKind::HookAdd => {
-                self.save_bottom_form()
+            BottomFormKind::McpAdd | BottomFormKind::ModelAdd => self.save_bottom_form(),
+            BottomFormKind::HookAdd => {
+                let should_toggle = self
+                    .forms
+                    .active
+                    .as_ref()
+                    .is_some_and(bottom_form::hook_add_form_enter_toggles_checkbox);
+                if should_toggle {
+                    if let Some(form) = self.forms.active.as_mut() {
+                        bottom_form::activate(form);
+                    }
+                } else {
+                    self.save_bottom_form();
+                }
             }
             BottomFormKind::McpPrompt { .. } => self.apply_prompt_bottom_form(),
             BottomFormKind::Rules => {

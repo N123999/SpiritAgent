@@ -838,6 +838,18 @@ pub(crate) fn activate(form: &mut BottomFormView) {
     }
 }
 
+pub(crate) fn hook_add_form_enter_toggles_checkbox(form: &BottomFormView) -> bool {
+    if !matches!(form.kind, BottomFormKind::HookAdd) {
+        return false;
+    }
+
+    let selected = form.selected_field.min(form.fields.len().saturating_sub(1));
+    matches!(
+        form.fields.get(selected).map(|field| &field.editor),
+        Some(BottomFormFieldEditorView::Checkbox { disabled, .. }) if !*disabled
+    )
+}
+
 pub(crate) fn move_home(form: &mut BottomFormView) {
     let Some(BottomFormFieldEditorView::Text {
         cursor, disabled, ..
@@ -1644,6 +1656,7 @@ mod tests {
         new_rules_form, new_skills_form, parse_metadata_map, parse_model_add_connection,
         prompt_user_message, rules_form_overrides, select_next_field, skills_form_overrides,
         sync_model_add_form_fields, to_hook_save_request, to_prompt_args_json,
+        hook_add_form_enter_toggles_checkbox,
         HOOK_ADD_FIELD_COMMAND, HOOK_ADD_FIELD_FAIL_CLOSED, HOOK_ADD_FIELD_TIMEOUT,
     };
     use crate::model_registry::{ModelProvider, ModelTransportKind};
@@ -2265,5 +2278,19 @@ mod tests {
         let form = new_hook_add_form(false);
         let request = to_hook_save_request(&form).expect("parse hook request");
         assert_eq!(request.scope, "user");
+    }
+
+    #[test]
+    fn hook_add_enter_on_fail_closed_checkbox_toggles_instead_of_submit() {
+        let mut form = new_hook_add_form(true);
+        form.selected_field = HOOK_ADD_FIELD_FAIL_CLOSED;
+
+        assert!(hook_add_form_enter_toggles_checkbox(&form));
+        activate(&mut form);
+
+        match &form.fields[HOOK_ADD_FIELD_FAIL_CLOSED].editor {
+            BottomFormFieldEditorView::Checkbox { checked, .. } => assert!(*checked),
+            _ => panic!("expected fail closed checkbox"),
+        }
     }
 }
