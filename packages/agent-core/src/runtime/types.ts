@@ -14,6 +14,7 @@ import type {
   ToolExecutionOutput,
   ToolExecutor,
 } from '../ports.js';
+import type { HookRunner, HookSessionContext } from '../hooks/types.js';
 
 export interface RuntimeToolArtifact {
   kind: 'image' | 'video';
@@ -394,6 +395,8 @@ export interface AgentRuntimeOptions<
   ) => State;
   maxAutoCompactRetries?: number;
   onEvent?: (event: RuntimeEvent<ToolRequest>) => void;
+  hookRunner?: HookRunner;
+  hookSessionContext?: HookSessionContext;
   resolveWorkspaceFilesFromInput?: (
     userInput: string,
   ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];

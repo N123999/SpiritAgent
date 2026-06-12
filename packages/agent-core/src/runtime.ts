@@ -50,6 +50,12 @@ import {
 import { formatUserMessageContentForLlm } from './runtime/user-turn-timestamp.js';
 import { prepareSubmittedUserTurn as prepareSubmittedUserTurnInternal } from './runtime/context.js';
 import {
+  appendHookAdditionalContexts,
+  HookDeniedError,
+  resolveHookRunner,
+  resolveHookSessionContext,
+} from './hooks/index.js';
+import {
   continuePendingManualToolApproval as continuePendingManualToolApprovalInternal,
   startManualToolCommand as startManualToolCommandInternal,
   startManualToolRequest as startManualToolRequestInternal,
@@ -2744,6 +2750,16 @@ export class AgentRuntime<
     );
     this.childSessionsStore.push(record);
 
+    const subagentStartDenied = await this.runSubagentStartHook(sessionId, request);
+    if (subagentStartDenied) {
+      record.summary.status = 'failed';
+      record.summary.updatedAtUnixMs = Date.now();
+      record.summary.completedAtUnixMs = record.summary.updatedAtUnixMs;
+      record.summary.latestMessage = truncateTextForSubagentSummary(subagentStartDenied, 180);
+      record.summary.error = subagentStartDenied;
+      return { kind: 'completed', text: subagentStartDenied, failed: true };
+    }
+
     const childUserTurn = buildRunSubagentUserTurn(request);
     record.llmHistory = [{
       role: 'user',
@@ -2987,6 +3003,8 @@ export class AgentRuntime<
       delete pending.childRecord.summary.error;
     }
 
+    await this.runSubagentEndHook(pending, output);
+
     const finishedExecution = {
       toolCallId: pending.parentToolCallId,
       toolName: 'run_subagent',
@@ -3071,6 +3089,73 @@ export class AgentRuntime<
   private nextChildSessionId(): string {
     this.childSessionCounterStore += 1;
     return `subagent-${Date.now()}-${this.childSessionCounterStore}`;
+  }
+
+  private async runSubagentStartHook(
+    subagentSessionId: string,
+    request: RunSubagentRequest,
+  ): Promise<string | undefined> {
+    const hookRunner = resolveHookRunner(this.options);
+    if (!hookRunner) {
+      return undefined;
+    }
+
+    const context = resolveHookSessionContext(this.options);
+    const result = await hookRunner.runSubagentStart({
+      sessionId: context.sessionId,
+      conversationPath: context.conversationPath,
+      workspaceRoot: context.workspaceRoot,
+      model: context.model,
+      subagentSessionId,
+      subagentType: 'generalPurpose',
+      task: request.task,
+    });
+
+    appendHookAdditionalContexts(
+      (role, content) => this.recordContextMessage(role, content),
+      result.additionalContexts,
+    );
+
+    if (!result.denied) {
+      return undefined;
+    }
+    return result.userMessage ?? result.agentMessage ?? 'Subagent start denied by hook.';
+  }
+
+  private async runSubagentEndHook<
+    Pending extends PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>,
+  >(
+    pending: Pending,
+    output: { text: string; failed: boolean },
+  ): Promise<void> {
+    const hookRunner = resolveHookRunner(this.options);
+    if (!hookRunner) {
+      return;
+    }
+
+    const subagentRequest = extractRunSubagentRequest(pending.parentRequest);
+    const context = resolveHookSessionContext(this.options);
+    const result = await hookRunner.runSubagentEnd({
+      sessionId: context.sessionId,
+      conversationPath: context.conversationPath,
+      workspaceRoot: context.workspaceRoot,
+      model: context.model,
+      subagentSessionId: pending.childRecord.summary.sessionId,
+      subagentType: 'generalPurpose',
+      status: output.failed ? 'error' : 'completed',
+      task: subagentRequest?.task ?? pending.childRecord.summary.title,
+      summary: output.text,
+      modifiedFiles: undefined,
+    });
+
+    appendHookAdditionalContexts(
+      (role, content) => this.recordContextMessage(role, content),
+      result.additionalContexts,
+    );
+
+    if (!output.failed && result.followupMessage?.trim()) {
+      enqueueDeferredUserGuidance(pending.parentTurn, result.followupMessage.trim());
+    }
   }
 }
 

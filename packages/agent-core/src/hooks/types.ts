@@ -37,10 +37,10 @@ export interface ResolvedHookDefinition extends HookDefinition {
 
 export interface HookCommonInput {
   hookEventName: HookEventName;
-  sessionId?: string;
-  conversationPath?: string | null;
-  workspaceRoot?: string;
-  model?: string;
+  sessionId: string | undefined;
+  conversationPath: string | null | undefined;
+  workspaceRoot: string | undefined;
+  model: string | undefined;
   timestamp: string;
 }
 
@@ -57,7 +57,7 @@ export interface SessionEndHookInput extends HookCommonInput {
 export interface SubmitPromptHookInput extends HookCommonInput {
   hookEventName: 'submitPrompt';
   prompt: string;
-  messageId?: string;
+  messageId: string | undefined;
 }
 
 export interface PreToolUseHookInput extends HookCommonInput {
@@ -74,7 +74,7 @@ export interface PostToolUseHookInput extends HookCommonInput {
   toolInput: JsonObject;
   toolOutput: string;
   durationMs: number;
-  failed?: boolean;
+  failed: boolean | undefined;
 }
 
 export interface SubagentStartHookInput extends HookCommonInput {
@@ -90,8 +90,8 @@ export interface SubagentEndHookInput extends HookCommonInput {
   subagentType: string;
   status: 'completed' | 'error' | 'aborted';
   task: string;
-  summary?: string;
-  modifiedFiles?: string[];
+  summary: string | undefined;
+  modifiedFiles: string[] | undefined;
 }
 
 export type HookInput =
@@ -134,6 +134,13 @@ export interface HookRunResult {
 export interface HookRunnerContext {
   spiritDataDir: string;
   workspaceRoot: string | undefined;
+}
+
+export interface HookSessionContext {
+  sessionId: string | undefined;
+  conversationPath: string | null | undefined;
+  workspaceRoot: string | undefined;
+  model: string | undefined;
 }
 
 export interface HookRunner {
