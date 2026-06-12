@@ -114,6 +114,7 @@ export interface SessionTurnOrchestratorContext {
   latestContinuableAssistantMessage(): ConversationMessageSnapshot | undefined;
   insertUserApprovalReplyMessage(content: string, pendingToolCallId?: string): void;
   normalizeApprovalDecision(decision: DesktopApprovalDecision | undefined): RuntimeApprovalDecision;
+  runSessionEndForActive?(reason: import('@spirit-agent/core').SessionEndHookInput['reason']): Promise<void>;
 }
 
 export async function submitUserTurnAfterInitializedCommand(
@@ -394,7 +395,10 @@ export async function abortConversationInContext(
 export async function abortConversationCommand(ctx: SessionTurnOrchestratorContext): Promise<DesktopSnapshot> {
   return ctx.runSerialized(async () => {
     await ctx.ensureInitialized(undefined, { fastPath: true });
-    await abortConversationInContext(ctx);
+    const aborted = await abortConversationInContext(ctx);
+    if (aborted) {
+      await ctx.runSessionEndForActive?.('abort');
+    }
     await drainQueuedUserTurnIfIdle(ctx, ctx.activeBundle());
     return ctx.buildSnapshot();
   });

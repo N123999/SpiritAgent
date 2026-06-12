@@ -69,6 +69,16 @@ import {
   type RuntimeEvent,
   type RuntimePendingApproval,
 } from './runtime.js';
+import {
+  runSessionEndHook,
+  runSessionStartHookAndApply,
+} from './hooks/integration.js';
+import type {
+  HookRunner,
+  HookSessionContext,
+  SessionEndHookInput,
+  SessionStartHookInput,
+} from './hooks/types.js';
 import { JsonRpcPeer } from './host-bridge/framing.js';
 import {
   HostToolExecutorProxy,
@@ -586,6 +596,27 @@ interface CliHostInternalModule {
   saveToggleState?: (filePath: string, state: { enabledOverrides?: Record<string, boolean> }) => Promise<void>;
   LspService?: LspHostBindings['LspService'];
   appendLspDiagnosticsAfterWriteIfNeeded?: LspHostBindings['appendLspDiagnosticsAfterWriteIfNeeded'];
+  createHookRunner?: (options: {
+    spiritDataDir: string;
+    workspaceRoot: string | undefined;
+    logger?: (message: string) => void;
+  }) => HookRunner;
+  validateHooksConfig?: (options: {
+    spiritDataDir: string;
+    workspaceRoot: string | undefined;
+  }) => {
+    userConfigPath: string;
+    workspaceConfigPath: string | undefined;
+    summary: Record<string, number>;
+    entries: Array<{
+      scope: 'user' | 'workspace';
+      event: string;
+      index: number;
+      command: string;
+      resolvedPath: string;
+      exists: boolean;
+    }>;
+  };
 }
 
 type CliHostExtensionManager = ReturnType<NonNullable<CliHostInternalModule['createHostExtensionManager']>>;
@@ -1436,6 +1467,51 @@ async function forwardRuntimeEventsToExtensions(events: RuntimeEvent<JsonValue>[
   }
 }
 
+function resolveCliHookRunner(): HookRunner | undefined {
+  const createHookRunner = cliHostInternal?.module.createHookRunner;
+  if (!createHookRunner || !cliHostInternal) {
+    return undefined;
+  }
+  return createHookRunner({
+    spiritDataDir: cliHostInternal.spiritDataDir,
+    workspaceRoot: cliHostInternal.workspaceRoot,
+    logger: (message) => logBridge(message),
+  });
+}
+
+function buildCliHookSessionContext(config: LlmTransportConfig): HookSessionContext {
+  return {
+    sessionId: currentTodoSessionKey,
+    conversationPath: null,
+    workspaceRoot: config.workspaceRoot ?? currentWorkspaceRoot(),
+    model: config.model,
+  };
+}
+
+async function runCliSessionStart(source: SessionStartHookInput['source']): Promise<void> {
+  const target = runtime;
+  if (!target || !transportConfig) {
+    return;
+  }
+  await runSessionStartHookAndApply(
+    resolveCliHookRunner(),
+    (role, content) => target.recordContextMessage(role, content),
+    buildCliHookSessionContext(transportConfig),
+    source,
+  );
+}
+
+async function runCliSessionEnd(reason: SessionEndHookInput['reason']): Promise<void> {
+  if (!transportConfig) {
+    return;
+  }
+  await runSessionEndHook(
+    resolveCliHookRunner(),
+    buildCliHookSessionContext(transportConfig),
+    reason,
+  );
+}
+
 async function createRuntime(
   config: LlmTransportConfig,
   history: LlmMessage[] = [],
@@ -1479,6 +1555,7 @@ async function createRuntime(
       bridgeLoopEnabled,
     );
   const llmTransport = createLlmTransport(config);
+  const hookRunner = resolveCliHookRunner();
 
   return new AgentRuntime({
     config,
@@ -1553,6 +1630,8 @@ async function createRuntime(
       }
       return pendingWorkspaceFilesFromInput(workspaceRoot, text);
     },
+    ...(hookRunner ? { hookRunner } : {}),
+    hookSessionContext: buildCliHookSessionContext(config),
   }, history);
 }
 
@@ -1686,6 +1765,9 @@ peer.on('runtime.init', async (rawParams) => {
   toolExecutor.setLoopToolExposure(bridgeLoopEnabled);
   toolExecutor.setAgentModeToolExposure(initAgentMode);
   runtime.setLoopEnabled(bridgeLoopEnabled);
+  const sessionStartSource: SessionStartHookInput['source'] =
+    (params.history?.length ?? 0) > 0 ? 'resume' : 'startup';
+  await runCliSessionStart(sessionStartSource);
   const workspaceRoot =
     params.transportConfig.workspaceRoot?.trim() || currentWorkspaceRoot();
   await dispatchCliExtensionEvent({
@@ -1739,6 +1821,10 @@ peer.on('runtime.reloadHostMetadata', async (rawParams) => {
 peer.on('hostInternal.loadCliMetadata', async (rawParams) => {
   const params = (rawParams ?? {}) as { planMode?: boolean; activePlanPath?: string };
   const hostInternal = await requireCliHostInternal();
+  const hooksSummary = hostInternal.module.validateHooksConfig?.({
+    spiritDataDir: hostInternal.spiritDataDir,
+    workspaceRoot: hostInternal.workspaceRoot,
+  });
   return {
     ruleEntries: await hostInternal.module.discoverRuleEntries({
       workspaceRoot: hostInternal.workspaceRoot,
@@ -1756,7 +1842,22 @@ peer.on('hostInternal.loadCliMetadata', async (rawParams) => {
       normalizeSpiritAgentMode(params),
       planMetadataSnapshotOptions(params.activePlanPath ?? activePlanPath),
     ),
+    ...(hooksSummary ? { hooksSummary } : {}),
   };
+});
+
+peer.on('hostInternal.validateHooks', async (rawParams) => {
+  const params = (rawParams ?? {}) as { workspaceRoot?: string };
+  const hostInternal = await requireCliHostInternal();
+  const validateHooksConfig = hostInternal.module.validateHooksConfig;
+  if (!validateHooksConfig) {
+    throw new Error('当前 host-internal 未导出 validateHooksConfig');
+  }
+  const workspaceRoot = params.workspaceRoot?.trim() || hostInternal.workspaceRoot;
+  return validateHooksConfig({
+    spiritDataDir: hostInternal.spiritDataDir,
+    workspaceRoot,
+  });
 });
 
 peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
@@ -2284,6 +2385,7 @@ peer.on('runtime.exportArchive', async (rawParams) => {
 });
 
 process.on('beforeExit', () => {
+  void runCliSessionEnd('close');
   void toolExecutor.disposeLsp();
 });
 

@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import type { SessionEndHookInput, SessionStartHookInput } from '@spirit-agent/core';
+
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
 import i18n from '../lib/i18n-host.js';
 import type {
@@ -67,6 +69,14 @@ export interface SessionActivationContext {
   scheduleSessionExtensionWarmup(event: HostExtensionEvent): void;
   buildSnapshot(): DesktopSnapshot;
   clearSubagentViewerTarget(): void;
+  runSessionEndForBundle?(
+    bundle: SessionBundle,
+    reason: SessionEndHookInput['reason'],
+  ): Promise<void>;
+  runSessionStartForBundle?(
+    bundle: SessionBundle,
+    source: SessionStartHookInput['source'],
+  ): Promise<void>;
 }
 
 export async function resetSessionCommand(ctx: SessionActivationContext): Promise<DesktopSnapshot> {
@@ -78,6 +88,7 @@ export async function resetSessionCommand(ctx: SessionActivationContext): Promis
     const leaving = ctx.sessionRegistry().getActive();
     const leavingMessageCount = leaving?.messageTimeline.toMessages().length ?? 0;
     if (leaving?.activeSession && leavingMessageCount > 0) {
+      await ctx.runSessionEndForBundle?.(leaving, 'switch');
       await ctx.persistSessionBundle(leaving, {
         fromRuntime: ctx.sessionRegistry().activeSessionId() === leaving.id ? ctx.currentRuntime() : undefined,
         bumpListSortAt: false,
@@ -86,7 +97,7 @@ export async function resetSessionCommand(ctx: SessionActivationContext): Promis
     const bundle = ctx.sessionRegistry().beginNewActive(state.workspaceRoot);
     await ctx.finalizeTodoScopeForNewActiveBundle(bundle, state.workspaceRoot);
     ctx.resetStreamingPlacementState(true, bundle);
-    await finishSessionActivationCommand(ctx, bundle);
+    await finishSessionActivationCommand(ctx, bundle, { sessionStartSource: 'startup' });
     ctx.setLastRuntimeError('');
     ctx.scheduleSessionExtensionWarmup({
       type: 'onSessionReset',
@@ -112,6 +123,7 @@ export async function openSessionCommand(
       && leaving.activeSession.kind !== 'ephemeral'
       && leavingMessageCount > 0
     ) {
+      await ctx.runSessionEndForBundle?.(leaving, 'switch');
       await ctx.persistSessionBundle(leaving, {
         fromRuntime:
           leaving.runtime?.isBusy() && ctx.sessionRegistry().activeSessionId() === leaving.id
@@ -141,7 +153,7 @@ export async function openSessionCommand(
         restored,
         (messages, timelineSnapshot) => ctx.createMessageTimelineFromMessages(messages, timelineSnapshot),
       );
-      await finishSessionActivationCommand(ctx, bundle);
+      await finishSessionActivationCommand(ctx, bundle, { sessionStartSource: 'open' });
       ctx.setLastRuntimeError('');
       return ctx.buildSnapshot();
     }
@@ -152,7 +164,7 @@ export async function openSessionCommand(
     if (warmBundle?.activeSession && warmMessageCount > 0) {
       await ctx.ensureInitialized(warmBundle.workspaceRoot, { fastPath: true });
       ctx.sessionRegistry().activateExisting(warmBundle);
-      await finishSessionActivationCommand(ctx, warmBundle);
+      await finishSessionActivationCommand(ctx, warmBundle, { sessionStartSource: 'resume' });
       ctx.setLastRuntimeError('');
       ctx.scheduleSessionExtensionWarmup({
         type: 'onSessionOpened',
@@ -185,7 +197,9 @@ export async function openSessionCommand(
       (messages, timelineSnapshot) => ctx.createMessageTimelineFromMessages(messages, timelineSnapshot),
     );
     bundle.listSortSavedAtUnixMs = loaded.savedAtUnixMs;
-    await finishSessionActivationCommand(ctx, bundle);
+    const sessionStartSource: SessionStartHookInput['source'] =
+      restored.messages.length > 0 || restored.archiveHistory.length > 0 ? 'resume' : 'open';
+    await finishSessionActivationCommand(ctx, bundle, { sessionStartSource });
     ctx.setLastRuntimeError('');
     ctx.scheduleSessionExtensionWarmup({
       type: 'onSessionOpened',
@@ -232,6 +246,7 @@ export function isBundleRuntimeFresh(
 export async function finishSessionActivationCommand(
   ctx: SessionActivationContext,
   bundle: SessionBundle,
+  options?: { sessionStartSource?: SessionStartHookInput['source'] },
 ): Promise<void> {
   await ctx.syncPlanStateForBundle(bundle);
   if (bundle.runtime?.isBusy()) {
@@ -244,6 +259,9 @@ export async function finishSessionActivationCommand(
     await ctx.refreshTodoSnapshotForBundle(bundle);
     await ctx.flushDeferredRuntimeRefreshIfIdle(bundle);
     ctx.syncActiveRuntimePointer();
+    if (options?.sessionStartSource) {
+      await ctx.runSessionStartForBundle?.(bundle, options.sessionStartSource);
+    }
     return;
   }
   await ctx.ensureToolExecutor(bundle);
@@ -251,4 +269,7 @@ export async function finishSessionActivationCommand(
   await ctx.refreshRuntimeForBundle(bundle);
   await ctx.flushDeferredRuntimeRefreshIfIdle(bundle);
   ctx.syncActiveRuntimePointer();
+  if (options?.sessionStartSource) {
+    await ctx.runSessionStartForBundle?.(bundle, options.sessionStartSource);
+  }
 }

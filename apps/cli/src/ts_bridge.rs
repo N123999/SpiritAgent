@@ -23,6 +23,7 @@ use crate::{
     },
     llm_types::LlmMessage,
     logging,
+    hooks_types::HooksValidationReport,
     mcp::{McpServerConfig, McpScope, add_mcp_server, spirit_agent_data_dir},
     mcp_types::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
@@ -1494,6 +1495,12 @@ impl TsBridgeRuntime {
 
     pub fn list_mcp_servers(&mut self) -> Result<Vec<ManagedMcpServer>> {
         let value = self.call_bridge("runtime.listMcpServers", None)?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    pub fn validate_hooks(&mut self, workspace_root: Option<&str>) -> Result<HooksValidationReport> {
+        let params = workspace_root.map(|root| json!({ "workspaceRoot": root }));
+        let value = self.call_bridge("hostInternal.validateHooks", params)?;
         Ok(serde_json::from_value(value)?)
     }
 

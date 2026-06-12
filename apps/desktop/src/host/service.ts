@@ -351,6 +351,13 @@ import {
 } from './mcp-config.js';
 import { listDesktopHookListItems } from './hooks.js';
 import {
+  buildDesktopHookSessionContext,
+  createDesktopHookRunner,
+  runDesktopSessionEndHook,
+  runDesktopSessionStartHook,
+} from './hook-runtime.js';
+import type { HookRunner, SessionEndHookInput, SessionStartHookInput } from '@spirit-agent/core';
+import {
   sharedMcpServiceForWorkspace,
 } from './service-mcp.js';
 import {
@@ -682,7 +689,34 @@ class DesktopHostService {
       insertUserApprovalReplyMessage: (content, pendingToolCallId) =>
         this.insertUserApprovalReplyMessage(content, pendingToolCallId),
       normalizeApprovalDecision,
+      runSessionEndForActive: (reason) => this.runSessionEndForBundle(this.activeBundle(), reason),
     };
+  }
+
+  private getHookRunner(workspaceRoot: string): HookRunner {
+    return createDesktopHookRunner(workspaceRoot);
+  }
+
+  private async runSessionEndForBundle(
+    bundle: SessionBundle,
+    reason: SessionEndHookInput['reason'],
+  ): Promise<void> {
+    const state = this.state;
+    const workspaceRoot = bundle.workspaceRoot || state?.workspaceRoot || '';
+    const hookRunner = this.getHookRunner(workspaceRoot);
+    const context = buildDesktopHookSessionContext(bundle, state?.config.activeModel);
+    await runDesktopSessionEndHook(hookRunner, context, reason);
+  }
+
+  private async runSessionStartForBundle(
+    bundle: SessionBundle,
+    source: SessionStartHookInput['source'],
+  ): Promise<void> {
+    const state = this.state;
+    const workspaceRoot = bundle.workspaceRoot || state?.workspaceRoot || '';
+    const hookRunner = this.getHookRunner(workspaceRoot);
+    const context = buildDesktopHookSessionContext(bundle, state?.config.activeModel);
+    await runDesktopSessionStartHook(bundle.runtime, hookRunner, context, source);
   }
 
   private sessionActivationContext(): SessionActivationContext {
@@ -716,6 +750,8 @@ class DesktopHostService {
         this.scheduleExtensionWarmup({ type: 'session', event }),
       buildSnapshot: () => this.buildSnapshot(),
       clearSubagentViewerTarget: () => this.clearSubagentViewerTarget(),
+      runSessionEndForBundle: (bundle, reason) => this.runSessionEndForBundle(bundle, reason),
+      runSessionStartForBundle: (bundle, source) => this.runSessionStartForBundle(bundle, source),
     };
   }
 
@@ -2303,6 +2339,8 @@ class DesktopHostService {
   ): DesktopRuntime {
     const workspaceRoot = transportConfig.workspaceRoot ?? this.requireState().workspaceRoot;
     toolExecutor.setActiveTransportConfig(transportConfig);
+    const hookRunner = this.getHookRunner(workspaceRoot);
+    const hookSessionContext = buildDesktopHookSessionContext(bundle, transportConfig.model);
     return createDesktopRuntime({
       transportConfig,
       history,
@@ -2318,6 +2356,8 @@ class DesktopHostService {
       workspaceRoot,
       basicInfo: buildDesktopRuntimeBasicInfo(workspaceRoot, toolExecutor),
       getLoopEnabled: () => bundle.loopEnabled,
+      hookRunner,
+      hookSessionContext,
     });
   }
 

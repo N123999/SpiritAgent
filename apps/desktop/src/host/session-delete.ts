@@ -42,6 +42,11 @@ export async function deleteSessionCommand(
     const registry = ctx.sessionRegistry();
     const activeId = registry.activeSessionId();
     const wasActive = activeId !== undefined && sameSessionPath(activeId, resolvedPath);
+    const closingBundle = wasActive ? registry.getActive() : undefined;
+
+    if (closingBundle) {
+      await ctx.runSessionEndForBundle?.(closingBundle, 'close');
+    }
 
     registry.removeBySessionPath(resolvedPath);
 

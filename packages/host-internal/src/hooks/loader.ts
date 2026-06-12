@@ -3,9 +3,11 @@ import path from 'node:path';
 
 import {
   emptyHooksConfigFile,
+  HOOK_EVENT_NAMES,
   hooksUserConfigPath,
   hooksWorkspaceConfigPath,
   parseHooksConfigFile,
+  resolveHookCommandPath,
   resolveMergedHookDefinitions,
   type HookEventName,
   type HookInput,
@@ -85,4 +87,55 @@ export function summarizeHooksConfig(loaded: LoadedHooksConfig): Record<HookEven
     summary[event] = userCount + workspaceCount;
   }
   return summary;
+}
+
+export interface HookValidationEntry {
+  scope: 'user' | 'workspace';
+  event: HookEventName;
+  index: number;
+  command: string;
+  resolvedPath: string;
+  exists: boolean;
+}
+
+export function validateHooksConfig(options: LoadHooksConfigOptions): {
+  userConfigPath: string;
+  workspaceConfigPath: string | undefined;
+  summary: Record<HookEventName, number>;
+  entries: HookValidationEntry[];
+} {
+  const loaded = loadHooksConfig(options);
+  const userConfigPath = hooksUserConfigPath(options.spiritDataDir);
+  const workspaceConfigPath = options.workspaceRoot?.trim()
+    ? hooksWorkspaceConfigPath(options.workspaceRoot.trim())
+    : undefined;
+  const entries: HookValidationEntry[] = [];
+
+  for (const event of HOOK_EVENT_NAMES) {
+    const definitions = resolveMergedHookDefinitions(
+      loaded.user,
+      loaded.workspace,
+      event,
+      loaded.userConfigDir,
+      loaded.workspaceConfigDir,
+    );
+    definitions.forEach((definition, index) => {
+      const resolvedPath = resolveHookCommandPath(definition);
+      entries.push({
+        scope: definition.scope,
+        event,
+        index,
+        command: definition.command,
+        resolvedPath,
+        exists: existsSync(resolvedPath),
+      });
+    });
+  }
+
+  return {
+    userConfigPath,
+    workspaceConfigPath,
+    summary: summarizeHooksConfig(loaded),
+    entries,
+  };
 }

@@ -95,6 +95,12 @@ pub enum McpCommand {
     },
 }
 
+pub use crate::hooks::HookCommand;
+
+pub fn handle_hooks_cli(action: HookCommand) -> Result<()> {
+    crate::hooks::handle_hooks_cli(action)
+}
+
 pub enum ExtensionCommand {
     List,
     Import { archive: String },

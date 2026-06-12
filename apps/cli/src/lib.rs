@@ -4,6 +4,8 @@ pub mod chat_store;
 pub mod cli;
 #[cfg(feature = "tui")]
 pub mod conversation_select;
+pub mod hooks;
+pub mod hooks_types;
 pub mod host_runtime;
 pub mod llm_types;
 #[cfg(feature = "tui")]
@@ -40,8 +42,9 @@ mod word_wrap;
 rust_i18n::i18n!("locales", fallback = "en");
 
 pub use cli::{
-    ConfigCommand, ExtensionCommand, KeyCommand, MarketplaceCommand, McpCommand, ModelCommand,
-    handle_config_cli, handle_extension_cli, handle_mcp_cli, handle_model_cli,
+    ConfigCommand, ExtensionCommand, HookCommand, KeyCommand, MarketplaceCommand, McpCommand,
+    ModelCommand, handle_config_cli, handle_extension_cli, handle_hooks_cli, handle_mcp_cli,
+    handle_model_cli,
 };
 #[cfg(feature = "tui")]
 pub use tui::TuiShell;

@@ -3,6 +3,8 @@ import {
   assistantToolCallMessageFromLlmState,
   appendLlmUserLlmMessage,
   normalizeStoredLlmMessage,
+  type HookRunner,
+  type HookSessionContext,
   type SpiritLlmTransport,
   appendLlmToolResultMessage,
   appendLlmUserMessage,
@@ -52,6 +54,8 @@ export function createDesktopRuntime(input: {
   workspaceRoot: string;
   basicInfo: LlmToolAgentBasicInfo;
   getLoopEnabled?: () => boolean;
+  hookRunner?: HookRunner;
+  hookSessionContext?: HookSessionContext;
 }): DesktopRuntime {
   const resolveLoopEnabled = () => input.getLoopEnabled?.() === true;
   const applyPatchFileToolsPromptSection = resolveApplyPatchFileToolsPromptSection(
@@ -141,6 +145,8 @@ export function createDesktopRuntime(input: {
         request,
         (saveRequest) => input.toolExecutor.saveGeneratedVideo(saveRequest),
       ),
+    ...(input.hookRunner ? { hookRunner: input.hookRunner } : {}),
+    ...(input.hookSessionContext ? { hookSessionContext: input.hookSessionContext } : {}),
   }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 

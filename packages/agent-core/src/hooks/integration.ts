@@ -8,6 +8,8 @@ import type {
   HookSessionContext,
   PostToolUseHookInput,
   PreToolUseHookInput,
+  SessionEndHookInput,
+  SessionStartHookInput,
 } from './types.js';
 
 export const DEFAULT_HOOK_SESSION_CONTEXT: HookSessionContext = {
@@ -84,6 +86,36 @@ function baseHookFields(context: HookSessionContext) {
     workspaceRoot: context.workspaceRoot,
     model: context.model,
   };
+}
+
+export async function runSessionStartHookAndApply(
+  hookRunner: HookRunner | undefined,
+  recordContextMessage: ((role: 'system', content: string) => void) | undefined,
+  context: HookSessionContext,
+  source: SessionStartHookInput['source'],
+): Promise<void> {
+  if (!hookRunner) {
+    return;
+  }
+  const result = await hookRunner.runSessionStart({
+    ...baseHookFields(context),
+    source,
+  });
+  appendHookAdditionalContexts(recordContextMessage, result.additionalContexts);
+}
+
+export async function runSessionEndHook(
+  hookRunner: HookRunner | undefined,
+  context: HookSessionContext,
+  reason: SessionEndHookInput['reason'],
+): Promise<void> {
+  if (!hookRunner) {
+    return;
+  }
+  await hookRunner.runSessionEnd({
+    ...baseHookFields(context),
+    reason,
+  });
 }
 
 export async function runPreToolUseHook<
