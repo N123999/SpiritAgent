@@ -5,6 +5,7 @@ import { buildPrDiffSnippetText } from "../../src/lib/pr-diff-text.ts";
 import {
   parsePrDiffWireMeta,
   prDiffContextText,
+  scanPrDiffWireBlocks,
 } from "../../src/lib/pr-diff-wire-text.ts";
 import {
   messageContentToRichSegments,
@@ -64,4 +65,19 @@ test("segmentsToMessageText and parseMessageContentParts round-trip PR diff chip
   const segments = messageContentToRichSegments(message, "rewind");
   assert.equal(segments.length, 1);
   assert.equal(segments[0]?.kind, "prDiff");
+});
+
+test("scanPrDiffWireBlocks parses diff body containing standalone fence lines", () => {
+  const diffBody = ["+before", "```", "+after"].join("\n");
+  const wire = prDiffContextText({
+    prUrl: "https://github.com/o/r/pull/9",
+    filename: "docs/readme.md",
+    lineStart: 1,
+    lineEnd: 3,
+    status: "open",
+    diffText: diffBody,
+  });
+  const blocks = scanPrDiffWireBlocks(wire);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]?.diffText, diffBody);
 });

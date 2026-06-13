@@ -1,7 +1,7 @@
 import type { BrowserElementAttachment } from "./browser-element-attachment";
 import { browserElementContextText } from "./browser-element-wire-text.js";
 import type { PrDiffAttachment } from "./pr-diff-attachment.js";
-import { PR_DIFF_BLOCK_RE, parsePrDiffWireMeta, prDiffContextText } from "./pr-diff-wire-text.js";
+import { parsePrDiffWireMeta, prDiffContextText, scanPrDiffWireBlocks } from "./pr-diff-wire-text.js";
 
 export { browserElementContextText };
 export { prDiffContextText };
@@ -599,27 +599,22 @@ function findWireBlocks(content: string): ParsedWireBlock[] {
     });
   }
 
-  const prDiffRe = new RegExp(PR_DIFF_BLOCK_RE.source, "g");
-  while ((match = prDiffRe.exec(content)) !== null) {
-    const prUrl = match[1]?.trim() ?? "";
-    const meta = match[2]?.trim() ?? "";
-    const diffMatch = /```diff\n([\s\S]*?)\n```/.exec(match[0]);
-    const diffText = diffMatch?.[1] ?? "";
-    const parsed = parsePrDiffWireMeta(meta);
+  for (const block of scanPrDiffWireBlocks(content)) {
+    const parsed = parsePrDiffWireMeta(block.meta);
     if (!parsed) {
       continue;
     }
     blocks.push({
-      index: match.index,
-      length: match[0].length,
+      index: block.index,
+      length: block.length,
       part: {
         kind: "prDiff",
-        prUrl,
+        prUrl: block.prUrl,
         filename: parsed.filename,
         lineStart: parsed.lineStart,
         lineEnd: parsed.lineEnd,
         status: parsed.status,
-        diffText,
+        diffText: block.diffText,
       },
     });
   }
