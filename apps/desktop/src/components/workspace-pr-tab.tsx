@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GitPullRequest } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skeleton";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
 import { GITHUB_PR_CHECKS_DEMO, GITHUB_PR_COMMITS_DEMO, GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO, GITHUB_PR_FILES_DEMO } from "@/lib/github-pr-ui-demo";
 import type { GitHubPullRequestRevealRequest } from "@/lib/workspace-pr-navigation";
@@ -376,7 +377,7 @@ export function WorkspacePrTab({
 
   refreshGitHubPanelRef.current = refreshGitHubPanel;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!prRevealEnabled || !prRevealRequest || prRevealNonce <= 0) {
       return;
     }
@@ -518,6 +519,8 @@ export function WorkspacePrTab({
   const openExternalUrl = (url: string) => {
     void window.spiritDesktop?.openExternalUrl(url);
   };
+
+  const isInitialPrLoad = (loadingBranch || loadingDetail) && !detail;
 
   if (!prTabEnabled) {
     return (
@@ -668,20 +671,21 @@ export function WorkspacePrTab({
 
       {authStatus.connected ? (
         <>
-          {!gitSnapshot?.isRepository ? (
+          {isInitialPrLoad ? (
+            <WorkspacePrDetailSkeleton
+              className="min-h-0 flex-1"
+              loadingLabel={t("workspace.prLoading")}
+            />
+          ) : !gitSnapshot?.isRepository ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoRepo")}</p>
-          ) : loadingBranch && !detail ? (
-            <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prLoading")}</p>
-          ) : branchResult?.repository == null && !detail ? (
+          ) : branchResult?.repository == null ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoGitHubOrigin")}</p>
-          ) : branchResult.pullRequest == null && !detail ? (
+          ) : branchResult.pullRequest == null ? (
             <p className="px-3 pt-3 text-muted-foreground">
               {t("workspace.prNoOpenPullRequest", {
                 branch: branchResult.branch ?? gitSnapshot?.branch ?? "",
               })}
             </p>
-          ) : loadingDetail && !detail ? (
-            <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prLoadingDetail")}</p>
           ) : detail ? (
             <WorkspacePrDetailView
               detail={detail}
