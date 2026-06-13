@@ -623,6 +623,7 @@
     "prChangesFileExpand": "Show file diff",
     "prChangesFileCollapse": "Hide file diff",
     "prChangesNoPatch": "Diff unavailable for this file (too large or binary).",
+    "prChangesFileTreeAria": "Changed files",
     "prFileStatusAdded": "Added",
     "prFileStatusRemoved": "Removed",
     "prFileStatusModified": "Modified",
