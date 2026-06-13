@@ -607,7 +607,7 @@
     "prOpenOnGitHub": "Open on GitHub",
     "prLabels": "Labels: {{labels}}",
     "prNoDescription": "No description.",
-    "prConnectToLoadDetail": "Connect GitHub to load this pull request.",
+    "prConnectToLoadDetail": "Go to Settings → Integrations to connect GitHub and load this pull request.",
     "prShowDetailDemo": "Preview detail UI",
     "prClearDetailDemo": "Clear preview",
     "prDetailDemoLabel": "Detail UI preview",

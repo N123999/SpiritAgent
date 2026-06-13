@@ -605,7 +605,7 @@
     "prOpenOnGitHub": "在 GitHub 打开",
     "prLabels": "标签：{{labels}}",
     "prNoDescription": "暂无描述。",
-    "prConnectToLoadDetail": "连接 GitHub 后加载该 PR 详情。",
+    "prConnectToLoadDetail": "请前往 设置 → 集成 连接 GitHub 后加载该 PR 详情。",
     "prShowDetailDemo": "预览详情 UI",
     "prClearDetailDemo": "清除预览",
     "prDetailDemoLabel": "详情 UI 预览",
