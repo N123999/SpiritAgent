@@ -25,6 +25,8 @@ export type ReviewCommentHunkViewProps = {
   surface?: "default" | "card";
   /** Highlight the review comment target line in the new file. */
   highlightLine?: number | null;
+  /** `scroll`: capped ScrollArea (review threads). `embedded`: no inner scroll (PR Changes). */
+  layout?: "scroll" | "embedded";
 };
 
 function reviewDiffSurfaceClass(surface: ReviewCommentHunkViewProps["surface"]): string {
@@ -99,6 +101,7 @@ export function ReviewCommentHunkView({
   className,
   surface = "default",
   highlightLine = null,
+  layout = "scroll",
 }: ReviewCommentHunkViewProps) {
   const generateLineClassName = useReviewDiffLineClassName(highlightLine);
   const hunks = useMemo((): HunkData[] => {
@@ -131,6 +134,37 @@ export function ReviewCommentHunkView({
     );
   }
 
+  const diffContent = (
+    <div className={reviewDiffInnerClass(surface)}>
+      <Diff
+        viewType="unified"
+        diffType="modify"
+        hunks={hunks}
+        gutterType="default"
+        renderGutter={renderUnifiedReviewGutter}
+        generateLineClassName={generateLineClassName}
+      >
+        {(renderedHunks) =>
+          renderedHunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)
+        }
+      </Diff>
+    </div>
+  );
+
+  if (layout === "embedded") {
+    return (
+      <div
+        className={cn(
+          "w-full border-t border-border/20",
+          reviewDiffSurfaceClass(surface),
+          className,
+        )}
+      >
+        {diffContent}
+      </div>
+    );
+  }
+
   return (
     <ScrollArea
       className={cn(
@@ -140,20 +174,7 @@ export function ReviewCommentHunkView({
       )}
       type="always"
     >
-      <div className={reviewDiffInnerClass(surface)}>
-        <Diff
-          viewType="unified"
-          diffType="modify"
-          hunks={hunks}
-          gutterType="default"
-          renderGutter={renderUnifiedReviewGutter}
-          generateLineClassName={generateLineClassName}
-        >
-          {(renderedHunks) =>
-            renderedHunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)
-          }
-        </Diff>
-      </div>
+      {diffContent}
     </ScrollArea>
   );
 }

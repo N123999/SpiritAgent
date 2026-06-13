@@ -13,6 +13,7 @@ import type {
   GitHubDeviceAuthChallenge,
   GitHubPullRequestDetail,
   GitHubPullRequestConversationSnapshot,
+  GitHubPullRequestFilesSnapshot,
   GitHubPullRequestForBranchResult,
 } from "@/types";
 
@@ -53,6 +54,9 @@ export type WorkspacePrTabProps = {
   getGitHubPullRequestConversation: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestConversationSnapshot>;
+  getGitHubPullRequestFiles: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<GitHubPullRequestFilesSnapshot>;
   className?: string;
 };
 
@@ -68,6 +72,7 @@ export function WorkspacePrTab({
   getGitHubPullRequestForCurrentBranch,
   getGitHubPullRequestDetail,
   getGitHubPullRequestConversation,
+  getGitHubPullRequestFiles,
   className,
 }: WorkspacePrTabProps) {
   const { t } = useTranslation();
@@ -77,10 +82,12 @@ export function WorkspacePrTab({
   const [conversation, setConversation] = useState<GitHubPullRequestConversationSnapshot | null>(
     null,
   );
+  const [filesSnapshot, setFilesSnapshot] = useState<GitHubPullRequestFilesSnapshot | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [loadingBranch, setLoadingBranch] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
+  const [loadingChanges, setLoadingChanges] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +114,7 @@ export function WorkspacePrTab({
       if (!pullRequest || !repository) {
         setDetail(null);
         setConversation(null);
+        setFilesSnapshot(null);
         return;
       }
 
@@ -118,25 +126,35 @@ export function WorkspacePrTab({
 
       setLoadingDetail(true);
       setLoadingConversation(true);
+      setLoadingChanges(true);
       setError(null);
       try {
-        const [nextDetail, nextConversation] = await Promise.all([
+        const [nextDetail, nextConversation, nextFiles] = await Promise.all([
           getGitHubPullRequestDetail(request),
           getGitHubPullRequestConversation(request),
+          getGitHubPullRequestFiles(request),
         ]);
         setDetail(nextDetail);
         setConversation(nextConversation);
+        setFilesSnapshot(nextFiles);
       } catch (loadError) {
         setDetail(null);
         setConversation(null);
+        setFilesSnapshot(null);
         setError(describeError(loadError));
         await refreshAuthStatus();
       } finally {
         setLoadingDetail(false);
         setLoadingConversation(false);
+        setLoadingChanges(false);
       }
     },
-    [getGitHubPullRequestConversation, getGitHubPullRequestDetail, refreshAuthStatus],
+    [
+      getGitHubPullRequestConversation,
+      getGitHubPullRequestDetail,
+      getGitHubPullRequestFiles,
+      refreshAuthStatus,
+    ],
   );
 
   const refreshBranchPullRequest = useCallback(async () => {
@@ -144,6 +162,7 @@ export function WorkspacePrTab({
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
+      setFilesSnapshot(null);
       return;
     }
 
@@ -157,11 +176,13 @@ export function WorkspacePrTab({
       } else {
         setDetail(null);
         setConversation(null);
+        setFilesSnapshot(null);
       }
     } catch (loadError) {
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
+      setFilesSnapshot(null);
       setError(describeError(loadError));
       await refreshAuthStatus();
     } finally {
@@ -181,6 +202,7 @@ export function WorkspacePrTab({
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
+      setFilesSnapshot(null);
       return;
     }
 
@@ -197,6 +219,7 @@ export function WorkspacePrTab({
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
+      setFilesSnapshot(null);
       return;
     }
 
@@ -210,11 +233,13 @@ export function WorkspacePrTab({
       } else {
         setDetail(null);
         setConversation(null);
+        setFilesSnapshot(null);
       }
     } catch (loadError) {
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
+      setFilesSnapshot(null);
       setError(describeError(loadError));
       try {
         setAuthStatus(await getGitHubAuthStatus());
@@ -325,6 +350,7 @@ export function WorkspacePrTab({
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
+      setFilesSnapshot(null);
     } catch (disconnectError) {
       setError(describeError(disconnectError));
     } finally {
@@ -498,6 +524,8 @@ export function WorkspacePrTab({
               conversationItems={conversation?.items ?? []}
               loadingConversation={loadingConversation}
               conversationHasMore={conversation?.hasMore ?? false}
+              changedFiles={filesSnapshot?.files ?? []}
+              loadingChanges={loadingChanges}
               onOpenExternal={openExternalUrl}
             />
           ) : (

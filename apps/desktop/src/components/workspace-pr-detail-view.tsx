@@ -5,16 +5,23 @@ import { ArrowRight, GitPullRequest } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DetailPageTabs } from "@/components/detail-page-tabs";
 import { PrConversationTimeline } from "@/components/workspace-pr-conversation-timeline";
+import { WorkspacePrChangesView } from "@/components/workspace-pr-changes-view";
 import { GITHUB_PR_MERGED_BADGE_CLASS } from "@/lib/github-pr-merged-badge-styles";
 import { toolCardSecondaryTextClass } from "@/lib/file-tool-lsp-diagnostics-display";
 import { cn } from "@/lib/utils";
-import type { GitHubPullRequestConversationItem, GitHubPullRequestDetail } from "@/types";
+import type {
+  GitHubPullRequestChangedFile,
+  GitHubPullRequestConversationItem,
+  GitHubPullRequestDetail,
+} from "@/types";
 
 export type WorkspacePrDetailViewProps = {
   detail: GitHubPullRequestDetail;
   conversationItems?: GitHubPullRequestConversationItem[];
   loadingConversation?: boolean;
   conversationHasMore?: boolean;
+  changedFiles?: GitHubPullRequestChangedFile[];
+  loadingChanges?: boolean;
   onOpenExternal: (url: string) => void;
   className?: string;
 };
@@ -47,6 +54,8 @@ export function WorkspacePrDetailView({
   conversationItems = [],
   loadingConversation = false,
   conversationHasMore = false,
+  changedFiles = [],
+  loadingChanges = false,
   onOpenExternal,
   className,
 }: WorkspacePrDetailViewProps) {
@@ -122,6 +131,13 @@ export function WorkspacePrDetailView({
               </p>
             ) : null}
           </div>
+        ) : null}
+        {activeTab === "changes" ? (
+          <WorkspacePrChangesView
+            files={changedFiles}
+            loading={loadingChanges}
+            className="min-h-[min(480px,60vh)]"
+          />
         ) : null}
       </DetailPageTabs>
     </article>
