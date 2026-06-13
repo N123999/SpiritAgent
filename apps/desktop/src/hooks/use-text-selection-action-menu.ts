@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 export type SelectionAnchorRect = {
   x: number;
@@ -9,7 +9,7 @@ export type SelectionAnchorRect = {
 
 type UseTextSelectionActionMenuOptions = {
   enabled?: boolean;
-  rootRef: React.RefObject<HTMLElement | null>;
+  rootRef: RefObject<HTMLElement | null>;
   isSelectionAllowed?: (selection: Selection, root: HTMLElement) => boolean;
 };
 
