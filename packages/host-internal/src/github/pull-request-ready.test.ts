@@ -36,6 +36,33 @@ test('markPullRequestReadyForReview sends GraphQL mutation with node id', async 
   }
 });
 
+test('markPullRequestReadyForReview rejects when pull request remains draft', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: {
+          markPullRequestReadyForReview: {
+            pullRequest: { id: 'PR_kwDOA', isDraft: true },
+          },
+        },
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => markPullRequestReadyForReview('token', 'PR_kwDOA'),
+      /still a draft/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('markPullRequestReadyForReview rejects empty node id', async () => {
   await assert.rejects(() => markPullRequestReadyForReview('token', ''), /node ID is required/);
 });
