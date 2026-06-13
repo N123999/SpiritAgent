@@ -16,6 +16,7 @@ import { useTextSelectionActionMenu } from "@/hooks/use-text-selection-action-me
 import { buildPrChangedFilesTree } from "@/lib/pr-changed-files-tree";
 import type { PrDiffAttachment, PullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { buildPrDiffSnippetFromPatch, buildPrDiffSnippetText } from "@/lib/pr-diff-text";
+import { inferLineRangeFromPatch } from "@/lib/pr-diff-patch-slice";
 import { readDiffSelectionText, resolveChangedFileFromSelection, resolveDiffSelectionLineRange } from "@/lib/pr-diff-selection";
 import {
   PR_CHANGES_TREE_MIN_WIDTH_PX,
@@ -109,8 +110,10 @@ function PrChangesSelectionMenu({
       return;
     }
 
-    const lineRange = diffRoot ? resolveDiffSelectionLineRange(diffRoot, selection) : null;
     const filePatch = files.find((file) => file.filename === filename)?.patch;
+    const lineRange =
+      (diffRoot ? resolveDiffSelectionLineRange(diffRoot, selection) : null)
+      ?? (filePatch ? inferLineRangeFromPatch(filename, filePatch, selectedText) : null);
     const diffText =
       filePatch && lineRange
         ? buildPrDiffSnippetFromPatch(

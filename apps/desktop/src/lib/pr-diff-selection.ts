@@ -45,12 +45,32 @@ function diffLineFromNode(node: Node | null): HTMLTableRowElement | null {
   return null;
 }
 
-function lineNumberFromDiffRow(row: HTMLTableRowElement): number | null {
-  const gutter = row.querySelector(".diff-gutter");
-  if (!gutter) {
-    return null;
+function collectDiffLinesForSelection(root: HTMLElement, selection: Selection): HTMLTableRowElement[] {
+  const range = selection.getRangeAt(0);
+  const rows = new Set<HTMLTableRowElement>();
+  for (const row of collectDiffLinesInRange(range, root)) {
+    rows.add(row);
   }
-  return parseGutterLineNumber(gutter);
+  const startRow = diffLineFromNode(range.startContainer);
+  const endRow = diffLineFromNode(range.endContainer);
+  if (startRow) {
+    rows.add(startRow);
+  }
+  if (endRow) {
+    rows.add(endRow);
+  }
+  return [...rows];
+}
+
+function lineNumberFromDiffRow(row: HTMLTableRowElement): number | null {
+  const gutters = row.querySelectorAll(".diff-gutter");
+  for (const gutter of gutters) {
+    const parsed = parseGutterLineNumber(gutter);
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+  return null;
 }
 
 function collectDiffLinesInRange(range: Range, root: HTMLElement): HTMLTableRowElement[] {
@@ -76,7 +96,7 @@ export function resolveDiffSelectionLineRange(root: HTMLElement, selection: Sele
     return null;
   }
 
-  const rows = collectDiffLinesInRange(range, root);
+  const rows = collectDiffLinesForSelection(root, selection);
   const lineNumbers = rows
     .map((row) => lineNumberFromDiffRow(row))
     .filter((value): value is number => value != null);
