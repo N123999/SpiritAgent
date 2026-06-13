@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
@@ -19,8 +19,8 @@ export function prChangedFileAnchorId(filename: string): string {
   return `pr-change-file-${encodeURIComponent(filename)}`;
 }
 
-function scrollContainer(root: HTMLDivElement | null): HTMLElement | null {
-  return root;
+function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLElement | null {
+  return root?.querySelector("[data-radix-scroll-area-viewport]") ?? null;
 }
 
 function fileStatusLabelKey(status: GitHubPullRequestFileStatus): string {
@@ -137,7 +137,7 @@ export function WorkspacePrChangesView({
   className,
 }: WorkspacePrChangesViewProps) {
   const { t } = useTranslation();
-  const cardsScrollRef = useRef<HTMLDivElement>(null);
+  const cardsScrollRef = useRef<ComponentRef<typeof ScrollArea>>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [expandedFilenames, setExpandedFilenames] = useState<Set<string>>(() => new Set());
 
@@ -152,7 +152,7 @@ export function WorkspacePrChangesView({
     });
 
     requestAnimationFrame(() => {
-      const viewport = scrollContainer(cardsScrollRef.current);
+      const viewport = scrollAreaViewport(cardsScrollRef.current);
       const section = viewport?.querySelector<HTMLElement>(
         `[data-pr-changed-file="${CSS.escape(filename)}"]`,
       );
@@ -161,7 +161,7 @@ export function WorkspacePrChangesView({
   }, []);
 
   useEffect(() => {
-    const viewport = scrollContainer(cardsScrollRef.current);
+    const viewport = scrollAreaViewport(cardsScrollRef.current);
     if (!viewport || files.length === 0) {
       return;
     }
@@ -220,9 +220,10 @@ export function WorkspacePrChangesView({
           />
         </ScrollArea>
       </aside>
-      <div
+      <ScrollArea
         ref={cardsScrollRef}
-        className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+        className="min-h-0 min-w-0 flex-1 pr-1"
+        type="always"
       >
         <div className="space-y-3 p-1">
           {files.map((file) => (
@@ -251,7 +252,7 @@ export function WorkspacePrChangesView({
             </p>
           ) : null}
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }
