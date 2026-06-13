@@ -371,8 +371,8 @@ export function WorkspacePrTab({
   }
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3", className)}>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3", className)}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         {authStatus.connected ? (
           <>
             <span className="text-foreground">
@@ -444,7 +444,7 @@ export function WorkspacePrTab({
       ) : null}
 
       {!authStatus.connected && !deviceChallenge && detailDemoActive ? (
-        <section className="space-y-3">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col space-y-3 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] font-medium text-muted-foreground">
               {t("workspace.prDetailDemoLabel")}
@@ -466,6 +466,7 @@ export function WorkspacePrTab({
             changedFiles={GITHUB_PR_FILES_DEMO.files}
             changesHasMore={GITHUB_PR_FILES_DEMO.hasMore}
             onOpenExternal={openExternalUrl}
+            className="min-h-0 flex-1"
           />
         </section>
       ) : null}
@@ -521,16 +522,19 @@ export function WorkspacePrTab({
           ) : loadingDetail && !detail ? (
             <p className="text-muted-foreground">{t("workspace.prLoadingDetail")}</p>
           ) : detail ? (
-            <WorkspacePrDetailView
-              detail={detail}
-              conversationItems={conversation?.items ?? []}
-              loadingConversation={loadingConversation}
-              conversationHasMore={conversation?.hasMore ?? false}
-              changedFiles={filesSnapshot?.files ?? []}
-              loadingChanges={loadingChanges}
-              changesHasMore={filesSnapshot?.hasMore ?? false}
-              onOpenExternal={openExternalUrl}
-            />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <WorkspacePrDetailView
+                detail={detail}
+                conversationItems={conversation?.items ?? []}
+                loadingConversation={loadingConversation}
+                conversationHasMore={conversation?.hasMore ?? false}
+                changedFiles={filesSnapshot?.files ?? []}
+                loadingChanges={loadingChanges}
+                changesHasMore={filesSnapshot?.hasMore ?? false}
+                onOpenExternal={openExternalUrl}
+                className="min-h-0 flex-1"
+              />
+            </div>
           ) : (
             <p className="text-muted-foreground">{t("workspace.prDetailUnavailable")}</p>
           )}

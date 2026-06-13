@@ -48,7 +48,7 @@ export function DetailPageTabs<T extends string>({
   return (
     <div className={cn(containerClassBySize[size], className)}>
       <div
-        className={cn("flex flex-wrap", tabListClassBySize[size])}
+        className={cn("flex shrink-0 flex-wrap", tabListClassBySize[size])}
         role="tablist"
         aria-label={ariaLabel}
       >

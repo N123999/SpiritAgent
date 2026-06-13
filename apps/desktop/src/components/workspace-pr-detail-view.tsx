@@ -4,6 +4,7 @@ import { ArrowRight, GitPullRequest } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { DetailPageTabs } from "@/components/detail-page-tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { PrConversationTimeline } from "@/components/workspace-pr-conversation-timeline";
 import { WorkspacePrChangesView } from "@/components/workspace-pr-changes-view";
 import { GITHUB_PR_MERGED_BADGE_CLASS } from "@/lib/github-pr-merged-badge-styles";
@@ -65,8 +66,8 @@ export function WorkspacePrDetailView({
   const [activeTab, setActiveTab] = useState<WorkspacePrDetailTab>("conversations");
 
   return (
-    <article className={cn("space-y-3", className)}>
-      <header className="space-y-2">
+    <article className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-hidden", className)}>
+      <header className="shrink-0 space-y-2">
         <div className="min-w-0">
           <h2 className="m-0 flex flex-wrap items-center gap-2">
             <a
@@ -123,16 +124,20 @@ export function WorkspacePrDetailView({
         activeTab={activeTab}
         onTabChange={setActiveTab}
         ariaLabel={t("workspace.prDetailTabsAria")}
+        className="flex min-h-0 flex-1 flex-col gap-3"
+        contentClassName="min-h-0 flex-1 overflow-hidden"
       >
         {activeTab === "conversations" ? (
-          <div className="space-y-2">
-            <PrConversationTimeline items={conversationItems} loading={loadingConversation} />
-            {conversationHasMore ? (
-              <p className="text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
-                {t("workspace.prConversationHasMore")}
-              </p>
-            ) : null}
-          </div>
+          <ScrollArea className="min-h-0 flex-1" type="auto">
+            <div className="space-y-2 pr-2">
+              <PrConversationTimeline items={conversationItems} loading={loadingConversation} />
+              {conversationHasMore ? (
+                <p className="text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
+                  {t("workspace.prConversationHasMore")}
+                </p>
+              ) : null}
+            </div>
+          </ScrollArea>
         ) : null}
         {activeTab === "changes" ? (
           <WorkspacePrChangesView
@@ -140,7 +145,7 @@ export function WorkspacePrDetailView({
             loading={loadingChanges}
             hasMore={changesHasMore}
             onOpenExternal={onOpenExternal}
-            className="min-h-[min(480px,60vh)]"
+            className="h-full min-h-0"
           />
         ) : null}
       </DetailPageTabs>
