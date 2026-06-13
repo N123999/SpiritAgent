@@ -377,6 +377,7 @@ export function ConversationView({
           getGitHubPullRequestDetail={list.runtime.getGitHubPullRequestDetail}
           getGitHubPullRequestConversation={list.runtime.getGitHubPullRequestConversation}
           getGitHubPullRequestFiles={list.runtime.getGitHubPullRequestFiles}
+          getGitHubPullRequestCommits={list.runtime.getGitHubPullRequestCommits}
           open={workspaceTools.open}
           widthPx={workspaceTools.workspaceToolsWidthPx}
           onWidthPxChange={workspaceTools.onWorkspaceToolsWidthPxChange}
