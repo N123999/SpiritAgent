@@ -186,6 +186,7 @@ export function WorkspacePrTab({
   const [repositoryLoadError, setRepositoryLoadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
   const [authCheckPending, setAuthCheckPending] = useState(true);
+  const [listInitialLoadPending, setListInitialLoadPending] = useState(false);
 
   const checksLoadMoreInFlightRef = useRef(false);
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
@@ -307,14 +308,19 @@ export function WorkspacePrTab({
     const background = branchResultRef.current != null;
     if (!background) {
       setLoadingBranch(true);
+      setListInitialLoadPending(true);
     }
     setError(null);
     setRepositoryLoadError(null);
     try {
       const result = await getGitHubPullRequestForCurrentBranch();
       setBranchResult(result);
+      if (!result.repository) {
+        setListInitialLoadPending(false);
+      }
     } catch (loadError) {
       setBranchResult(null);
+      setListInitialLoadPending(false);
       const message = describeError(loadError);
       setRepositoryLoadError(message);
       setError(message);
@@ -329,11 +335,16 @@ export function WorkspacePrTab({
   const refreshRepositoryInfo = useCallback(async () => {
     if (!prTabEnabled || !authStatus.connected) {
       setBranchResult(null);
+      setListInitialLoadPending(false);
       return;
     }
 
     await fetchRepositoryInfo();
   }, [authStatus.connected, fetchRepositoryInfo, prTabEnabled]);
+
+  const handleListInitialLoadSettled = useCallback(() => {
+    setListInitialLoadPending(false);
+  }, []);
 
   const refreshGitHubPanel = useCallback(async () => {
     if (!prTabEnabled) {
@@ -657,7 +668,11 @@ export function WorkspacePrTab({
 
   const isInitialPrLoad =
     viewMode === "detail" && (loadingBranch || loadingDetail) && !detail;
-  const isInitialListLoad = viewMode === "list" && loadingBranch && branchResult == null;
+  const isInitialListLoad =
+    viewMode === "list" &&
+    ((loadingBranch && branchResult == null) ||
+      (listInitialLoadPending && branchResult?.repository != null));
+  const showListSkeleton = isInitialPrLoad || isInitialListLoad;
 
   if (!prTabEnabled) {
     return (
@@ -745,7 +760,7 @@ export function WorkspacePrTab({
 
       {authStatus.connected ? (
         <>
-          {isInitialPrLoad || isInitialListLoad ? (
+          {showListSkeleton ? (
             <WorkspacePrDetailSkeleton
               className="min-h-0 flex-1"
               loadingLabel={t("workspace.prLoading")}
@@ -756,26 +771,7 @@ export function WorkspacePrTab({
             <p className="px-3 pt-3 text-destructive">{repositoryLoadError}</p>
           ) : branchResult?.repository == null ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoGitHubOrigin")}</p>
-          ) : (
-            <>
-              <div
-                className={cn(
-                  "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                  viewMode !== "list" && "hidden",
-                )}
-              >
-                <WorkspacePrListView
-                  ref={prListViewRef}
-                  repository={branchResult.repository}
-                  listGitHubPullRequests={listGitHubPullRequests}
-                  getGitHubPullRequestTabCounts={getGitHubPullRequestTabCounts}
-                  onSelectPullRequest={(item) => {
-                    void handleSelectPullRequest(item);
-                  }}
-                  className="min-h-0 flex-1"
-                />
-              </div>
-              {viewMode === "detail" && detail ? (
+          ) : viewMode === "detail" && detail ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="flex shrink-0 items-center px-3 pt-3">
                 <Button
@@ -813,11 +809,30 @@ export function WorkspacePrTab({
                 className="min-h-0 flex-1"
               />
             </div>
-              ) : viewMode === "detail" ? (
-                <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prDetailUnavailable")}</p>
-              ) : null}
-            </>
-          )}
+          ) : viewMode === "detail" ? (
+            <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prDetailUnavailable")}</p>
+          ) : null}
+
+          {branchResult?.repository && gitSnapshot?.isRepository && viewMode === "list" ? (
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                showListSkeleton && "hidden",
+              )}
+            >
+              <WorkspacePrListView
+                ref={prListViewRef}
+                repository={branchResult.repository}
+                listGitHubPullRequests={listGitHubPullRequests}
+                getGitHubPullRequestTabCounts={getGitHubPullRequestTabCounts}
+                onInitialLoadSettled={handleListInitialLoadSettled}
+                onSelectPullRequest={(item) => {
+                  void handleSelectPullRequest(item);
+                }}
+                className="min-h-0 flex-1"
+              />
+            </div>
+          ) : null}
         </>
       ) : null}
 

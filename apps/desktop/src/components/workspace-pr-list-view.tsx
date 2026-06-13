@@ -64,6 +64,7 @@ export type WorkspacePrListViewProps = {
     request: GetGitHubPullRequestTabCountsRequest,
   ) => Promise<GitHubPullRequestTabCounts>;
   onSelectPullRequest?: (item: GitHubPullRequestListItem) => void;
+  onInitialLoadSettled?: () => void;
   className?: string;
 };
 
@@ -74,6 +75,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
       listGitHubPullRequests,
       getGitHubPullRequestTabCounts,
       onSelectPullRequest,
+      onInitialLoadSettled,
       className,
     },
     ref,
@@ -98,6 +100,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
     const fetchGenerationRef = useRef(0);
     const listCacheRef = useRef(new Map<string, TabListCacheEntry>());
     const tabCountsCacheRef = useRef(new Map<string, GitHubPullRequestTabCounts>());
+    const initialLoadSettledRef = useRef(false);
     const activeTabRef = useRef(activeTab);
     const debouncedQueryRef = useRef(debouncedQuery);
     activeTabRef.current = activeTab;
@@ -123,7 +126,16 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
     useEffect(() => {
       listCacheRef.current.clear();
       tabCountsCacheRef.current.clear();
+      initialLoadSettledRef.current = false;
     }, [repository.owner, repository.repo]);
+
+    const notifyInitialLoadSettled = useCallback(() => {
+      if (initialLoadSettledRef.current) {
+        return;
+      }
+      initialLoadSettledRef.current = true;
+      onInitialLoadSettled?.();
+    }, [onInitialLoadSettled]);
 
     useEffect(() => {
       const timerId = window.setTimeout(() => {
@@ -231,10 +243,13 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
             setLoading(false);
             setLoadingMore(false);
             loadMoreInFlightRef.current = false;
+            if (page === 1 && !append) {
+              notifyInitialLoadSettled();
+            }
           }
         }
       },
-      [listGitHubPullRequests, repository.owner, repository.repo, writeListCache],
+      [listGitHubPullRequests, notifyInitialLoadSettled, repository.owner, repository.repo, writeListCache],
     );
 
     const refreshInBackground = useCallback(() => {
@@ -280,6 +295,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
         setLoading(false);
         setLoadingMore(false);
         setError(null);
+        notifyInitialLoadSettled();
         return;
       }
 
@@ -287,7 +303,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
       setHasMore(false);
       setNextPage(undefined);
       void fetchPage(activeTab, query, 1, false);
-    }, [activeTab, debouncedQuery, fetchPage, readTabCountsCache, repository]);
+    }, [activeTab, debouncedQuery, fetchPage, notifyInitialLoadSettled, readTabCountsCache, repository]);
 
     const handleLoadMore = useCallback(() => {
       if (!hasMore || loadingMore || loading || !nextPage || loadMoreInFlightRef.current) {
