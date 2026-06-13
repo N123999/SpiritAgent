@@ -1,91 +1,66 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
-import type { GitHubAuthStatus, GitHubDeviceAuthChallenge } from "@/types";
+import {
+  GitHubDeviceLoginModel,
+  type GitHubDeviceLoginRuntime,
+} from "./github-device-login-model";
 
-function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
+import type { GitHubAuthStatus } from "@/types";
+
+export type { GitHubDeviceLoginRuntime };
+
+function syncModelState(
+  model: GitHubDeviceLoginModel,
+  setState: (next: ReturnType<GitHubDeviceLoginModel["snapshot"]>) => void,
+) {
+  setState(model.snapshot());
 }
 
-export type GitHubDeviceLoginRuntime = {
-  getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
-  beginGitHubDeviceLogin: () => Promise<GitHubDeviceAuthChallenge>;
-  completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>;
-  cancelGitHubDeviceLogin: () => Promise<void>;
-  disconnectGitHub: () => Promise<GitHubAuthStatus>;
-};
-
 export function useGitHubDeviceLogin(runtime: GitHubDeviceLoginRuntime) {
-  const [authStatus, setAuthStatus] = useState<GitHubAuthStatus>({ connected: false });
-  const [loadingAuth, setLoadingAuth] = useState(false);
-  const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const model = useMemo(() => new GitHubDeviceLoginModel(runtime), [runtime]);
+  const [state, setState] = useState(() => model.snapshot());
 
   const refreshAuthStatus = useCallback(async () => {
-    try {
-      setAuthStatus(await runtime.getGitHubAuthStatus());
-    } catch (statusError) {
-      setError(describeError(statusError));
-      setAuthStatus({ connected: false });
-    }
-  }, [runtime]);
+    await model.refreshAuthStatus();
+    syncModelState(model, setState);
+  }, [model]);
 
-  const startConnect = useCallback(async (): Promise<GitHubAuthStatus | null> => {
-    setLoadingAuth(true);
-    setError(null);
-    setDeviceChallenge(null);
-    try {
-      const challenge = await runtime.beginGitHubDeviceLogin();
-      setDeviceChallenge(challenge);
-      const next = await runtime.completeGitHubDeviceLogin();
-      setAuthStatus(next);
-      setDeviceChallenge(null);
-      return next;
-    } catch (connectError) {
-      setError(describeError(connectError));
-      setDeviceChallenge(null);
-      return null;
-    } finally {
-      setLoadingAuth(false);
-    }
-  }, [runtime]);
+  const startConnect = useCallback(async () => {
+    const next = await model.startConnect();
+    syncModelState(model, setState);
+    return next;
+  }, [model]);
 
   const cancelConnect = useCallback(async () => {
-    setError(null);
-    try {
-      await runtime.cancelGitHubDeviceLogin();
-    } catch (cancelError) {
-      setError(describeError(cancelError));
-    } finally {
-      setLoadingAuth(false);
-      setDeviceChallenge(null);
-    }
-  }, [runtime]);
+    await model.cancelConnect();
+    syncModelState(model, setState);
+  }, [model]);
 
-  const disconnect = useCallback(async (): Promise<GitHubAuthStatus | null> => {
-    setLoadingAuth(true);
-    setError(null);
-    try {
-      const next = await runtime.disconnectGitHub();
-      setAuthStatus(next);
-      return next;
-    } catch (disconnectError) {
-      setError(describeError(disconnectError));
-      return null;
-    } finally {
-      setLoadingAuth(false);
-    }
-  }, [runtime]);
+  const disconnect = useCallback(async () => {
+    const next = await model.disconnect();
+    syncModelState(model, setState);
+    return next;
+  }, [model]);
 
   return {
-    authStatus,
-    setAuthStatus,
-    loadingAuth,
-    deviceChallenge,
-    error,
-    setError,
+    authStatus: state.authStatus,
+    setAuthStatus: useCallback(
+      (next: GitHubAuthStatus) => {
+        model.authStatus = next;
+        syncModelState(model, setState);
+      },
+      [model],
+    ),
+    loadingAuth: state.loadingAuth,
+    deviceChallenge: state.deviceChallenge,
+    error: state.error,
+    setError: useCallback(
+      (next: string | null) => {
+        model.error = next;
+        syncModelState(model, setState);
+      },
+      [model],
+    ),
     refreshAuthStatus,
     startConnect,
     cancelConnect,
