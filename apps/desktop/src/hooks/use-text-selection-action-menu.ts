@@ -53,7 +53,7 @@ export function useTextSelectionActionMenu({
       return;
     }
 
-    const text = selection.toString().trim();
+    const text = readDiffSelectionText(selection);
     if (!text) {
       setOpen(false);
       setAnchor(null);
@@ -147,7 +147,6 @@ export function useTextSelectionActionMenu({
     setOpen,
     anchor,
     selectionText,
-    selection: selectionRef.current,
     dismiss,
     syncFromSelection,
   };
