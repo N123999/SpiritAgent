@@ -67,6 +67,10 @@
       "types": "./dist/github/pull-request-url.d.ts",
       "default": "./dist/github/pull-request-url.js"
     },
+    "./github-pull-request-checks-pages": {
+      "types": "./dist/github/pull-request-checks-pages.d.ts",
+      "default": "./dist/github/pull-request-checks-pages.js"
+    },
     "./lsp": {
       "types": "./dist/lsp/index.d.ts",
       "default": "./dist/lsp/index.js"

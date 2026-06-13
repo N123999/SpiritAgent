@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GitPullRequest } from "lucide-react";
-import { appendPullRequestChecksPages } from "@spirit-agent/host-internal";
+import { appendPullRequestChecksPages } from "@spirit-agent/host-internal/github-pull-request-checks-pages";
 
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skeleton";

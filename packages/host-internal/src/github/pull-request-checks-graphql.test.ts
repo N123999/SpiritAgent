@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { appendPullRequestChecksPages } from './pull-request-checks-pages.js';
 import {
-  appendPullRequestChecksPages,
   createExpectedRequiredCheck,
   mapGraphQLCheckRunNode,
   mapGraphQLStatusContextNode,
