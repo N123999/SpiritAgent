@@ -450,7 +450,7 @@ export function WorkspacePrTab({
       setError(null);
       try {
         await mergeGitHubPullRequest({ ...request, mergeMethod });
-        await loadPullRequestBundle(request, { background: false });
+        await loadPullRequestBundle(request, { background: true });
       } catch (mergeError) {
         setError(describeError(mergeError));
         await refreshAuthStatus();
@@ -515,7 +515,7 @@ export function WorkspacePrTab({
     setError(null);
     try {
       await markGitHubPullRequestReady(request);
-      await loadPullRequestBundle(request, { background: false });
+      await loadPullRequestBundle(request, { background: true });
     } catch (readyError) {
       setError(describeError(readyError));
       await refreshAuthStatus();
