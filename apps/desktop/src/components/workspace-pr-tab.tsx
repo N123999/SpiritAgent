@@ -298,12 +298,7 @@ export function WorkspacePrTab({
     [loadPullRequestBundle],
   );
 
-  const refreshRepositoryInfo = useCallback(async () => {
-    if (!prTabEnabled || !authStatus.connected) {
-      setBranchResult(null);
-      return;
-    }
-
+  const fetchRepositoryInfo = useCallback(async () => {
     const background = branchResultRef.current != null;
     if (!background) {
       setLoadingBranch(true);
@@ -321,12 +316,16 @@ export function WorkspacePrTab({
         setLoadingBranch(false);
       }
     }
-  }, [
-    authStatus.connected,
-    getGitHubPullRequestForCurrentBranch,
-    prTabEnabled,
-    refreshAuthStatus,
-  ]);
+  }, [getGitHubPullRequestForCurrentBranch, refreshAuthStatus]);
+
+  const refreshRepositoryInfo = useCallback(async () => {
+    if (!prTabEnabled || !authStatus.connected) {
+      setBranchResult(null);
+      return;
+    }
+
+    await fetchRepositoryInfo();
+  }, [authStatus.connected, fetchRepositoryInfo, prTabEnabled]);
 
   const refreshBranchPullRequest = useCallback(async () => {
     if (!prTabEnabled || !authStatus.connected) {
@@ -426,7 +425,7 @@ export function WorkspacePrTab({
 
     if (viewMode === "list") {
       setError(null);
-      await refreshRepositoryInfo();
+      await fetchRepositoryInfo();
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
@@ -478,7 +477,7 @@ export function WorkspacePrTab({
     loadPullRequestBundle,
     loadPullRequestData,
     prTabEnabled,
-    refreshRepositoryInfo,
+    fetchRepositoryInfo,
     viewMode,
   ]);
 
