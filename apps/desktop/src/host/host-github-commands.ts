@@ -102,7 +102,6 @@ async function handleGitHubApiError(error: unknown): Promise<Error> {
     return new Error('GitHub authentication expired or is invalid. Connect GitHub again.');
   }
   if (error.status === 403) {
-    await clearGitHubOAuthCredentials();
     return new Error(
       'GitHub denied access. If this repository belongs to an organization with SSO, authorize the token for that organization on GitHub.',
     );
