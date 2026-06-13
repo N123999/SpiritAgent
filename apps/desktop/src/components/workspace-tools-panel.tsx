@@ -117,6 +117,7 @@ export type WorkspaceToolsDockProps = {
   onTabsChange: Dispatch<SetStateAction<WorkspaceToolTab[]>>;
   onActiveTabIdChange(id: string): void;
   onBrowserElementPicked?: WorkspaceBrowserTabProps['onElementPicked'];
+  onPrDiffAddToSession?: (attachment: import("@/lib/pr-diff-attachment").PrDiffAttachment) => void;
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
   browserTabEnabled?: boolean;
@@ -193,6 +194,7 @@ function WorkspaceToolsDockInner({
   onTabsChange,
   onActiveTabIdChange,
   onBrowserElementPicked,
+  onPrDiffAddToSession,
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   prTabEnabled = false,
@@ -671,6 +673,7 @@ function WorkspaceToolsDockInner({
                         prRevealEnabled={prRevealEnabled}
                         prRevealNonce={prRevealEnabled ? prRevealNonce : 0}
                         prRevealRequest={prRevealEnabled ? prRevealRequest : null}
+                        onPrDiffAddToSession={onPrDiffAddToSession}
                       />
                     </div>
                   ) : (
