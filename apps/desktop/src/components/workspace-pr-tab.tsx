@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GitPullRequest, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { appendPullRequestChecksPages } from "@spirit-agent/host-internal/github-pull-request-checks-pages";
 
 import { Button } from "@/components/ui/button";
+import { GitHubSignInPrompt } from "@/components/github-sign-in-prompt";
 import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skeleton";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
 import { WorkspacePrListView, type WorkspacePrListViewHandle } from "@/components/workspace-pr-list-view";
-import { GITHUB_PR_CHECKS_DEMO, GITHUB_PR_COMMITS_DEMO, GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO, GITHUB_PR_FILES_DEMO } from "@/lib/github-pr-ui-demo";
 import type { GitHubPullRequestRevealRequest } from "@/lib/workspace-pr-navigation";
 import { cn } from "@/lib/utils";
 import type {
@@ -28,13 +28,6 @@ import type {
   GitHubPullRequestTabCounts,
   GitHubPullRequestListItem,
 } from "@/types";
-
-const MOCK_PULL_REQUEST = {
-  number: 42,
-  title: "Fix login bug",
-  state: "open" as const,
-  authorLogin: "octocat",
-};
 
 /** Unified refresh cadence while the PR tab stays active. */
 const GITHUB_PR_REFRESH_INTERVAL_MS = 30_000;
@@ -102,6 +95,7 @@ export type WorkspacePrTabProps = {
   gitSnapshot?: DesktopGitSnapshot;
   isActive: boolean;
   prTabEnabled: boolean;
+  onOpenIntegrationsSettings?: () => void;
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
   getGitHubPullRequestForCurrentBranch: () => Promise<GitHubPullRequestForBranchResult>;
   listGitHubPullRequests: (
@@ -142,6 +136,7 @@ export function WorkspacePrTab({
   gitSnapshot,
   isActive,
   prTabEnabled,
+  onOpenIntegrationsSettings,
   getGitHubAuthStatus,
   getGitHubPullRequestForCurrentBranch,
   listGitHubPullRequests,
@@ -180,7 +175,6 @@ export function WorkspacePrTab({
   const [loadingCommits, setLoadingCommits] = useState(false);
   const [loadingChecks, setLoadingChecks] = useState(false);
   const [loadingMoreChecks, setLoadingMoreChecks] = useState(false);
-  const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [prActionBusy, setPrActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [repositoryLoadError, setRepositoryLoadError] = useState<string | null>(null);
@@ -588,7 +582,6 @@ export function WorkspacePrTab({
       repo: prRevealRequest.repo,
       number: prRevealRequest.number,
     };
-    setDetailDemoActive(false);
     setViewMode("detail");
 
     if (!authStatus.connected) {
@@ -684,78 +677,17 @@ export function WorkspacePrTab({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}>
-      {!authStatus.connected && detailDemoActive ? (
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 pt-3">
-            <p className="text-[11px] font-medium text-muted-foreground">
-              {t("workspace.prDetailDemoLabel")}
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setDetailDemoActive(false);
-              }}
-            >
-              {t("workspace.prClearDetailDemo")}
-            </Button>
-          </div>
-          <WorkspacePrDetailView
-            detail={GITHUB_PR_DETAIL_DEMO}
-            conversationItems={GITHUB_PR_CONVERSATION_DEMO}
-            changedFiles={GITHUB_PR_FILES_DEMO.files}
-            changesHasMore={GITHUB_PR_FILES_DEMO.hasMore}
-            commits={GITHUB_PR_COMMITS_DEMO.commits}
-            commitsHasMore={GITHUB_PR_COMMITS_DEMO.hasMore}
-            checks={GITHUB_PR_CHECKS_DEMO.checks}
-            checksHasMore={GITHUB_PR_CHECKS_DEMO.hasMore}
-            onOpenExternal={openExternalUrl}
-            onPrDiffAddToSession={onPrDiffAddToSession}
-            className="min-h-0 flex-1"
-          />
-        </section>
-      ) : null}
-
-      {!authStatus.connected && !detailDemoActive && authCheckPending ? (
+      {!authStatus.connected && authCheckPending ? (
         <WorkspacePrDetailSkeleton
           className="min-h-0 flex-1"
           loadingLabel={t("workspace.prLoading")}
         />
       ) : null}
 
-      {!authStatus.connected && !detailDemoActive && !authCheckPending ? (
-        <section className="mx-3 mt-3 rounded-md border border-dashed border-border/80 bg-muted/20 p-3">
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {t("workspace.prSampleDataLabel")}
-          </p>
-          <div className="flex items-start gap-2 text-sm">
-            <GitPullRequest className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">
-                {MOCK_PULL_REQUEST.title}{" "}
-                <span className="text-[13px] font-normal text-muted-foreground">
-                  #{MOCK_PULL_REQUEST.number}
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("workspace.prOpen")} @{MOCK_PULL_REQUEST.authorLogin}
-              </p>
-              <p className="mt-2 text-muted-foreground">{t("workspace.prConnectToLoadDetail")}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={() => {
-                  setDetailDemoActive(true);
-                }}
-              >
-                {t("workspace.prShowDetailDemo")}
-              </Button>
-            </div>
-          </div>
-        </section>
+      {!authStatus.connected && !authCheckPending ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8">
+          <GitHubSignInPrompt onSignIn={() => onOpenIntegrationsSettings?.()} />
+        </div>
       ) : null}
 
       {authStatus.connected ? (

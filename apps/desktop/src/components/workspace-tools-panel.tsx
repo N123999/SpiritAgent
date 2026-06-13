@@ -19,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { GitHubSignInTooltipContent } from "@/components/github-sign-in-prompt";
 import { WorkspaceBrowserTab, type WorkspaceBrowserTabProps } from "@/components/workspace-browser-tab";
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceGitTab } from "@/components/workspace-git-tab";
@@ -42,6 +44,7 @@ import {
   writeWorkspaceToolsWidthPx,
 } from "@/lib/layout-prefs";
 import { cn } from "@/lib/utils";
+import { useGitHubAuthConnected } from "@/hooks/use-github-auth-connected";
 import type {
   EditorFileTarget,
   WorkspaceEditorViewMode,
@@ -122,6 +125,7 @@ export type WorkspaceToolsDockProps = {
   browserTabEnabled?: boolean;
   /** Electron 桌面版可新建 PR 选项卡；Web 宿主菜单项可见但禁用。 */
   prTabEnabled?: boolean;
+  onOpenIntegrationsSettings?: () => void;
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
   getGitHubPullRequestForCurrentBranch: () => Promise<GitHubPullRequestForBranchResult>;
   listGitHubPullRequests: (
@@ -199,6 +203,7 @@ function WorkspaceToolsDockInner({
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   prTabEnabled = false,
+  onOpenIntegrationsSettings,
   getGitHubAuthStatus,
   getGitHubPullRequestForCurrentBranch,
   listGitHubPullRequests,
@@ -224,6 +229,9 @@ function WorkspaceToolsDockInner({
   useMicaBackdrop = false,
 }: WorkspaceToolsDockProps) {
   const { t } = useTranslation();
+  const gitHubAuthConnected = useGitHubAuthConnected(getGitHubAuthStatus, prTabEnabled);
+  const prMenuBlocked =
+    prTabEnabled && (gitHubAuthConnected === null || gitHubAuthConnected === false);
   const [isResizing, setIsResizing] = useState(false);
   /** 仅用户首次切到 Shell 选项卡后才挂载终端（避免默认标签即触发 node-pty）；切走后保持挂载。 */
   const [mountedShellTabIds, setMountedShellTabIds] = useState<ReadonlySet<string>>(
@@ -325,7 +333,7 @@ function WorkspaceToolsDockInner({
       if (kind === "browser" && !browserTabEnabled) {
         return;
       }
-      if (kind === "pr" && !prTabEnabled) {
+      if (kind === "pr" && (!prTabEnabled || gitHubAuthConnected !== true)) {
         return;
       }
       const vacant = tabs.find((tab) => tab.kind === kind && !tab.tabTitle);
@@ -339,7 +347,7 @@ function WorkspaceToolsDockInner({
       onTabsChange(next.tabs);
       onActiveTabIdChange(next.activeId);
     },
-    [browserTabEnabled, prTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
+    [browserTabEnabled, gitHubAuthConnected, prTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
   );
 
   const handleCloseTab = useCallback(
@@ -539,23 +547,23 @@ function WorkspaceToolsDockInner({
                   const meta = TAB_KIND_META[kind];
                   const Icon = meta.icon;
                   const browserDisabled = kind === "browser" && !browserTabEnabled;
-                  const prDisabled = kind === "pr" && !prTabEnabled;
-                  const disabled = browserDisabled || prDisabled;
-                  return (
+                  const prHostDisabled = kind === "pr" && !prTabEnabled;
+                  const prAuthBlocked = kind === "pr" && prMenuBlocked;
+                  const disabled = browserDisabled || prHostDisabled || prAuthBlocked;
+                  const menuItem = (
                     <DropdownMenuItem
-                      key={kind}
                       disabled={disabled}
                       title={
                         browserDisabled
                           ? t("workspace.browserElectronOnly")
-                          : prDisabled
+                          : prHostDisabled
                             ? t("workspace.prElectronOnly")
                             : undefined
                       }
                       className={cn(
-                        'flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none',
+                        "flex w-full cursor-pointer select-none items-center gap-2 rounded-sm text-left outline-none",
                         DESKTOP_OVERLAY_LIST_ITEM,
-                        'text-popover-foreground',
+                        "text-popover-foreground",
                       )}
                       onSelect={() => {
                         handleAddTab(kind);
@@ -564,6 +572,29 @@ function WorkspaceToolsDockInner({
                       <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{t(meta.labelKey)}</span>
                     </DropdownMenuItem>
+                  );
+
+                  if (kind !== "pr" || !prAuthBlocked || prHostDisabled) {
+                    return <span key={kind} className="flex w-full min-w-0">{menuItem}</span>;
+                  }
+
+                  return (
+                    <Tooltip key={kind} delayDuration={300}>
+                      <TooltipTrigger asChild>
+                        <span className="flex w-full min-w-0">{menuItem}</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={8}>
+                        {gitHubAuthConnected === null ? (
+                          t("workspace.prGitHubAuthChecking")
+                        ) : (
+                          <GitHubSignInTooltipContent
+                            onSignIn={() => {
+                              onOpenIntegrationsSettings?.();
+                            }}
+                          />
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
                   );
                 })}
               </DropdownMenuContent>
@@ -656,6 +687,7 @@ function WorkspaceToolsDockInner({
                         gitSnapshot={gitSnapshot}
                         isActive={selected}
                         prTabEnabled={prTabEnabled}
+                        onOpenIntegrationsSettings={onOpenIntegrationsSettings}
                         getGitHubAuthStatus={getGitHubAuthStatus}
                         getGitHubPullRequestForCurrentBranch={getGitHubPullRequestForCurrentBranch}
                         listGitHubPullRequests={listGitHubPullRequests}

@@ -541,6 +541,22 @@ export default function App() {
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
               prTabEnabled: workspaceTools.prTabEnabled,
+              onOpenIntegrationsSettings: () => {
+                surfaceNav.sessionSidebarChromeApiRef.current?.openSidebar();
+                if (surfaceNav.activeSurface !== "settings") {
+                  surfaceNav.setLastNonSettingsSurface(
+                    surfaceNav.activeSurface === "marketplace"
+                      ? "marketplace"
+                      : surfaceNav.activeSurface === "automations" ||
+                          surfaceNav.activeSurface === "automation-detail"
+                        ? "automations"
+                        : "conversation",
+                  );
+                }
+                surfaceNav.setExtensionSettingsId(null);
+                surfaceNav.setSettingsTab("integrations");
+                surfaceNav.setActiveSurface("settings");
+              },
               workspaceToolsWidthPx: workspaceTools.workspaceToolsWidthPx,
               onWorkspaceToolsWidthPxChange: workspaceTools.setWorkspaceToolsWidthPx,
               gitChipBusy: composer.gitChipBusy,

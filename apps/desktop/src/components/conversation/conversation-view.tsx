@@ -142,6 +142,7 @@ export type WorkspaceToolsSectionProps = {
   onBrowserOpenInNewTab: (rawUrl: string) => void;
   browserTabEnabled: boolean;
   prTabEnabled: boolean;
+  onOpenIntegrationsSettings?: () => void;
   workspaceToolsWidthPx: number;
   onWorkspaceToolsWidthPxChange: (next: number) => void;
   gitChipBusy: boolean;
@@ -378,6 +379,7 @@ export function ConversationView({
           onBrowserOpenInNewTab={workspaceTools.onBrowserOpenInNewTab}
           browserTabEnabled={workspaceTools.browserTabEnabled}
           prTabEnabled={workspaceTools.prTabEnabled}
+          onOpenIntegrationsSettings={workspaceTools.onOpenIntegrationsSettings}
           getGitHubAuthStatus={list.runtime.getGitHubAuthStatus}
           getGitHubPullRequestForCurrentBranch={list.runtime.getGitHubPullRequestForCurrentBranch}
           listGitHubPullRequests={list.runtime.listGitHubPullRequests}
