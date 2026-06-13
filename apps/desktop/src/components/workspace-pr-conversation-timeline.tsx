@@ -22,10 +22,12 @@ import type {
 
 const NODE_COLUMN_PX = 20;
 const ROW_AVATAR_SIZE_PX = 20;
-/** Avatar + gap-2: entire card shifts right to username start. */
+/** Matches avatar (size-5) + gap-2 — aligns card with username start without ml + w-full overflow. */
+const COMMENT_CARD_INDENT_SPACER_CLASS = "w-7 shrink-0";
+const COMMENT_CARD_SURFACE_CLASS =
+  "rounded-lg border border-border/50 bg-muted px-3 py-2 shadow-sm";
+/** Nested reply text indent (same offset as card spacer). */
 const COMMENT_CARD_INDENT_CLASS = "ml-7";
-const COMMENT_CARD_CLASS =
-  "mt-1.5 w-fit max-w-[min(100%,32rem)] rounded-lg border border-border/50 bg-muted px-3 py-2 shadow-sm";
 const COMMENT_BODY_CLASS = "whitespace-pre-wrap text-xs leading-relaxed text-foreground/80";
 
 export type PrConversationTimelineProps = {
@@ -84,7 +86,10 @@ function PrConversationCommentCard({
   className?: string;
 }) {
   return (
-    <div className={cn(COMMENT_CARD_CLASS, COMMENT_CARD_INDENT_CLASS, className)}>{children}</div>
+    <div className="mt-1.5 flex min-w-0">
+      <div className={COMMENT_CARD_INDENT_SPACER_CLASS} aria-hidden />
+      <div className={cn(COMMENT_CARD_SURFACE_CLASS, "min-w-0 flex-1", className)}>{children}</div>
+    </div>
   );
 }
 
