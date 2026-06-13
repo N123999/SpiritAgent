@@ -5,7 +5,12 @@ import {
   groupReviewCommentsIntoThreads,
   mapTimelineEventToConversationItem,
   mergePullRequestConversationItems,
+  nestReviewThreadsUnderReviews,
 } from './conversation.js';
+import type {
+  GitHubPullRequestConversationReview,
+  GitHubPullRequestConversationReviewThread,
+} from './types.js';
 
 test('mapTimelineEventToConversationItem maps committed event', () => {
   const item = mapTimelineEventToConversationItem({
@@ -64,6 +69,7 @@ test('mapTimelineEventToConversationItem maps review event', () => {
   }
   assert.equal(item.state, 'APPROVED');
   assert.equal(item.body, 'Ship it.');
+  assert.deepEqual(item.threads, []);
 });
 
 test('groupReviewCommentsIntoThreads groups replies under root comment', () => {
@@ -122,4 +128,78 @@ test('mergePullRequestConversationItems sorts ascending and dedupes', () => {
   assert.equal(items.length, 2);
   assert.equal(items[0]?.kind, 'commit');
   assert.equal(items[1]?.kind, 'issueComment');
+});
+
+test('nestReviewThreadsUnderReviews nests file threads under matching review', () => {
+  const thread: GitHubPullRequestConversationReviewThread = {
+    kind: 'reviewThread',
+    id: 'review-thread-100',
+    reviewId: 'review-7',
+    createdAt: '2024-01-05T10:00:00Z',
+    authorLogin: 'octocat',
+    avatarUrl: 'https://github.com/octocat.png',
+    path: 'src/app.ts',
+    diffHunk: '@@ -1 +1 @@',
+    line: 12,
+    url: 'https://example.com/#discussion_r100',
+    comments: [],
+  };
+  const review: GitHubPullRequestConversationReview = {
+    kind: 'review',
+    id: 'review-7',
+    createdAt: '2024-01-05T09:00:00Z',
+    authorLogin: 'octocat',
+    avatarUrl: 'https://github.com/octocat.png',
+    state: 'COMMENTED',
+    body: 'Summary note.',
+    url: 'https://example.com/#pullrequestreview-7',
+    threads: [],
+  };
+
+  const nested = nestReviewThreadsUnderReviews([review, thread]);
+
+  assert.equal(nested.length, 1);
+  assert.equal(nested[0]?.kind, 'review');
+  if (nested[0]?.kind !== 'review') {
+    return;
+  }
+  assert.equal(nested[0].threads.length, 1);
+  assert.equal(nested[0].threads[0]?.id, 'review-thread-100');
+});
+
+test('mergePullRequestConversationItems attaches review threads to review event', () => {
+  const items = mergePullRequestConversationItems(
+    [
+      {
+        id: 7,
+        event: 'reviewed',
+        state: 'commented',
+        created_at: '2024-01-05T09:00:00Z',
+        user: { login: 'octocat', avatar_url: 'https://github.com/octocat.png' },
+        body: 'Summary note.',
+      },
+    ],
+    [
+      {
+        id: 100,
+        pull_request_review_id: 7,
+        body: 'Why this change?',
+        path: 'src/app.ts',
+        diff_hunk: '@@ -1 +1 @@',
+        line: 12,
+        created_at: '2024-01-05T10:00:00Z',
+        html_url: 'https://example.com/#discussion_r100',
+        user: { login: 'octocat', avatar_url: 'https://github.com/octocat.png' },
+      },
+    ],
+  );
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.kind, 'review');
+  if (items[0]?.kind !== 'review') {
+    return;
+  }
+  assert.equal(items[0].body, 'Summary note.');
+  assert.equal(items[0].threads.length, 1);
+  assert.equal(items[0].threads[0]?.comments[0]?.body, 'Why this change?');
 });
