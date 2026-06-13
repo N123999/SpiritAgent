@@ -320,35 +320,11 @@ html.spirit-desktop-native.spirit-desktop-mica.spirit-launch-splash-exiting
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  /* Collapsible：覆盖 tw-animate-css 默认 ease-out-only，展开/收起使用不同曲线 */
+  /* AnimatedCollapse：覆盖 tw-animate-css 默认 ease-out-only，展开/收起使用不同曲线 */
   --ease-collapsible-expand: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-collapsible-collapse: cubic-bezier(0.4, 0, 0.2, 1);
-  --animate-collapsible-down: collapsible-down 280ms var(--ease-collapsible-expand);
-  --animate-collapsible-up: collapsible-up 220ms var(--ease-collapsible-collapse);
   --animate-spirit-collapsible-down: spirit-collapsible-down 280ms var(--ease-collapsible-expand);
   --animate-spirit-collapsible-up: spirit-collapsible-up 220ms var(--ease-collapsible-collapse);
-}
-
-@keyframes collapsible-down {
-  from {
-    height: 0;
-    opacity: 0;
-  }
-  to {
-    height: var(--radix-collapsible-content-height);
-    opacity: 1;
-  }
-}
-
-@keyframes collapsible-up {
-  from {
-    height: var(--radix-collapsible-content-height);
-    opacity: 1;
-  }
-  to {
-    height: 0;
-    opacity: 0;
-  }
 }
 
 @keyframes spirit-collapsible-down {
@@ -371,10 +347,6 @@ html.spirit-desktop-native.spirit-desktop-mica.spirit-launch-splash-exiting
     height: 0;
     opacity: 0;
   }
-}
-
-[data-slot="collapsible-content"][data-state="closed"] {
-  --radix-collapsible-content-height: 0px;
 }
 
 [data-slot="animated-collapse-content"][data-state="closed"] {
