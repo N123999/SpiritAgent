@@ -188,7 +188,7 @@ export interface GitHubPullRequestCommitsSnapshot {
   hasMore: boolean;
 }
 
-export type GitHubPullRequestCheckState = 'success' | 'failure' | 'in_progress';
+export type GitHubPullRequestCheckState = 'success' | 'failure' | 'in_progress' | 'pending';
 
 export interface GitHubPullRequestCheck {
   id: string;
@@ -197,6 +197,7 @@ export interface GitHubPullRequestCheck {
   startedAt: string;
   completedAt?: string;
   url?: string;
+  required?: boolean;
 }
 
 export interface GitHubPullRequestChecksSnapshot {

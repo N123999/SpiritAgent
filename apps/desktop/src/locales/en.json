@@ -637,6 +637,7 @@
     "prCheckStateSuccess": "Passed",
     "prCheckStateFailure": "Failed",
     "prCheckStateInProgress": "In progress",
+    "prCheckStatePending": "Not started",
     "prChangesViewOnGitHub": "View on GitHub",
     "prFileStatusAdded": "Added",
     "prFileStatusRemoved": "Removed",
