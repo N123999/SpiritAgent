@@ -117,3 +117,29 @@ export interface GitHubPullRequestConversationSnapshot {
   items: GitHubPullRequestConversationItem[];
   hasMore: boolean;
 }
+
+export type GitHubPullRequestFileStatus =
+  | 'added'
+  | 'removed'
+  | 'modified'
+  | 'renamed'
+  | 'copied'
+  | 'changed'
+  | 'unchanged';
+
+export interface GitHubPullRequestChangedFile {
+  filename: string;
+  status: GitHubPullRequestFileStatus;
+  previousFilename?: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+  blobUrl?: string;
+  rawUrl?: string;
+}
+
+export interface GitHubPullRequestFilesSnapshot {
+  files: GitHubPullRequestChangedFile[];
+  hasMore: boolean;
+}
