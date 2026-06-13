@@ -70,6 +70,7 @@ export function makePrDiffChipNode(attachment: PrDiffAttachment, doc: Document):
   span.dataset.prDiffLineEnd = String(attachment.lineEnd);
   span.dataset.prDiffText = attachment.diffText;
   span.dataset.prDiffStatus = attachment.status;
+  span.dataset.prDiffChip = "true";
   span.setAttribute("data-pr-diff-chip", "true");
   span.className = prDiffChipClassForStatus(attachment.status);
   span.title = formatPrDiffChipTitle(attachment);
