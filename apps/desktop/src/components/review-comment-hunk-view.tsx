@@ -13,6 +13,8 @@ import {
 import "react-diff-view/style/index.css";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { tokenizeDiffHunks } from "@/lib/diff-view-tokens";
+import { monacoLanguageId } from "@/lib/monaco-language";
 import { cn } from "@/lib/utils";
 
 import "@/styles/tool-call-diff-view.css";
@@ -104,6 +106,7 @@ export function ReviewCommentHunkView({
   layout = "scroll",
 }: ReviewCommentHunkViewProps) {
   const generateLineClassName = useReviewDiffLineClassName(highlightLine);
+  const languageId = useMemo(() => monacoLanguageId(path), [path]);
   const hunks = useMemo((): HunkData[] => {
     const diffText = buildReviewCommentDiffText(path, diffHunk);
     if (!diffText) {
@@ -116,6 +119,11 @@ export function ReviewCommentHunkView({
       return [];
     }
   }, [diffHunk, path]);
+
+  const tokens = useMemo(
+    () => tokenizeDiffHunks(hunks, languageId),
+    [hunks, languageId],
+  );
 
   if (hunks.length === 0) {
     if (!diffHunk.trim()) {
@@ -140,6 +148,7 @@ export function ReviewCommentHunkView({
         viewType="unified"
         diffType="modify"
         hunks={hunks}
+        tokens={tokens}
         gutterType="default"
         renderGutter={renderUnifiedReviewGutter}
         generateLineClassName={generateLineClassName}
