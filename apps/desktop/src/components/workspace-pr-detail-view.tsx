@@ -26,6 +26,8 @@ import {
 } from "@/lib/layout-prefs";
 import { PR_OVERVIEW_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
+import { resolvePullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { cn } from "@/lib/utils";
 import type {
   GitHubPullRequestCheck,
@@ -56,6 +58,7 @@ export type WorkspacePrDetailViewProps = {
   onOpenExternal: (url: string) => void;
   onMerge?: (method: GitHubPullRequestMergeMethod) => void;
   onMarkReady?: () => void;
+  onPrDiffAddToSession?: (attachment: PrDiffAttachment) => void;
   className?: string;
 };
 
@@ -128,6 +131,7 @@ export function WorkspacePrDetailView({
   onOpenExternal,
   onMerge,
   onMarkReady,
+  onPrDiffAddToSession,
   className,
 }: WorkspacePrDetailViewProps) {
   const { t } = useTranslation();
@@ -401,6 +405,9 @@ export function WorkspacePrDetailView({
             files={changedFiles}
             loading={loadingChanges}
             hasMore={changesHasMore}
+            prUrl={detail.url}
+            prStatus={resolvePullRequestChipStatus(detail)}
+            onPrDiffAddToSession={onPrDiffAddToSession}
             onOpenExternal={onOpenExternal}
             className="h-full min-h-0"
           />
