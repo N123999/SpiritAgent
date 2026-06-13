@@ -20,6 +20,9 @@ export const GITHUB_PR_DETAIL_DEMO: GitHubPullRequestDetail = {
   draft: false,
   merged: true,
   mergeable: null,
+  mergeableState: null,
+  nodeId: "PR_kwDOA_demo42",
+  viewerCanMerge: false,
   labels: [],
   body: "Reproduces when the session cookie expires during OAuth redirect.\n\n- Clear stale tokens on 401\n- Retry device flow once",
 };
