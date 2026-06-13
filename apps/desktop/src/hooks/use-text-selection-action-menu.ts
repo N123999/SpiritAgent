@@ -97,23 +97,41 @@ export function useTextSelectionActionMenu({
       return;
     }
 
+    let raf = 0;
+    const scheduleSync = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(syncFromSelection);
+    };
+
     const onMouseUp = () => {
-      window.requestAnimationFrame(syncFromSelection);
+      scheduleSync();
     };
     const onSelectionChange = () => {
-      if (!open) {
-        return;
+      scheduleSync();
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (
+        event.key === "Shift"
+        || event.key.startsWith("Arrow")
+        || event.key === "Home"
+        || event.key === "End"
+        || event.key === "PageUp"
+        || event.key === "PageDown"
+      ) {
+        scheduleSync();
       }
-      syncFromSelection();
     };
 
     document.addEventListener("mouseup", onMouseUp);
     document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("keyup", onKeyUp);
     return () => {
+      cancelAnimationFrame(raf);
       document.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("keyup", onKeyUp);
     };
-  }, [enabled, open, syncFromSelection]);
+  }, [enabled, syncFromSelection]);
 
   const dismiss = useCallback(() => {
     setOpen(false);
