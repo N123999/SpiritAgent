@@ -1,8 +1,10 @@
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { resolveGitHubAvatarUrl } from "@/lib/github-avatar-url";
+import { useWorkspaceToolsShellRowDividers } from "@/lib/use-workspace-tools-shell-row-dividers";
 import { cn } from "@/lib/utils";
 import type { GitHubPullRequestCommit } from "@/types";
 
@@ -69,6 +71,12 @@ export function WorkspacePrCommitsView({
   className,
 }: WorkspacePrCommitsViewProps) {
   const { t } = useTranslation();
+  const listRef = useRef<HTMLDivElement>(null);
+  const showList = commits.length > 0;
+
+  useWorkspaceToolsShellRowDividers(listRef, [commits.length, hasMore], {
+    enabled: showList,
+  });
 
   if (loading && commits.length === 0) {
     return (
@@ -88,7 +96,7 @@ export function WorkspacePrCommitsView({
 
   return (
     <ScrollArea className={cn("min-h-0 flex-1", className)} type="auto">
-      <div className="divide-y divide-border/35">
+      <div ref={listRef}>
         {commits.map((commit) => (
           <PrCommitRow key={commit.sha} commit={commit} onOpenExternal={onOpenExternal} />
         ))}

@@ -1,5 +1,10 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
+import {
+  getWorkspaceToolsShellDividerLeftPx,
+  getWorkspaceToolsShellSplit,
+  PR_SUBTAB_SHELL_DIVIDER_ATTR,
+} from "@/lib/workspace-tools-panel-edge";
 import { cn } from "@/lib/utils";
 
 export type DetailPageTabItem<T extends string> = {
@@ -19,11 +24,6 @@ export type DetailPageTabsProps<T extends string> = {
   /** Draw tab divider on workspace tools shell (spans resize column + panel). */
   edgeToPanelDivider?: boolean;
 };
-
-const WORKSPACE_TOOLS_SPLIT_SELECTOR = "[data-workspace-tools-split]";
-const PR_SUBTAB_SHELL_DIVIDER_ATTR = "data-spirit-pr-subtab-shell-divider";
-const WORKSPACE_TOOLS_RESIZE_LINE_SELECTOR =
-  "#workspace-tools-panel-shell [role='separator'][aria-orientation='vertical'] div[aria-hidden='true']";
 
 const tabListClassBySize = {
   default: "gap-1 pt-0.5",
@@ -59,7 +59,7 @@ export function DetailPageTabs<T extends string>({
       return;
     }
     const tabBar = tabBarRef.current;
-    const shellSplit = document.querySelector<HTMLElement>(WORKSPACE_TOOLS_SPLIT_SELECTOR);
+    const shellSplit = getWorkspaceToolsShellSplit();
     if (!tabBar || !shellSplit) {
       return;
     }
@@ -75,11 +75,7 @@ export function DetailPageTabs<T extends string>({
     const syncShellDivider = () => {
       const shellRect = shellSplit.getBoundingClientRect();
       const tabBarRect = tabBar.getBoundingClientRect();
-      const resizeLine = document.querySelector<HTMLElement>(WORKSPACE_TOOLS_RESIZE_LINE_SELECTOR);
-      const resizeLineRect = resizeLine?.getBoundingClientRect();
-      const leftPx = resizeLineRect
-        ? Math.max(0, resizeLineRect.right - shellRect.left)
-        : 1;
+      const leftPx = getWorkspaceToolsShellDividerLeftPx(shellSplit);
 
       shellDivider!.style.display = "block";
       shellDivider!.style.left = `${leftPx}px`;
