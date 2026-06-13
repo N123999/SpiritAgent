@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import { ExternalLink, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -48,9 +48,6 @@ export function GitHubDeviceLoginDialog({
         <div className="flex min-h-[10rem] flex-col items-center justify-center py-2 text-center">
           {challenge ? (
             <div className="space-y-4">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground">
-                {t("settings.integrationsDeviceIntro")}
-              </p>
               <p className="text-3xl font-semibold tracking-widest text-foreground">
                 {challenge.userCode}
               </p>
@@ -59,10 +56,12 @@ export function GitHubDeviceLoginDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
+                  size="icon-sm"
+                  className="size-8"
+                  aria-label={t("settings.integrationsOpenDevicePage")}
                   onClick={() => onOpenDevicePage(challenge.verificationUri)}
                 >
-                  {t("settings.integrationsOpenDevicePage")}
+                  <ExternalLink className="size-4" aria-hidden />
                 </Button>
               ) : null}
             </div>
