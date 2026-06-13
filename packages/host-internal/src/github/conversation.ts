@@ -1,3 +1,4 @@
+import { commitSubject } from './commit-subject.js';
 import { GITHUB_API_BASE_URL } from './oauth-config.js';
 import {
   githubApiHeaders,
@@ -70,15 +71,6 @@ function resolveAvatarUrl(user: GitHubUserRef | null | undefined): string {
   }
   const login = resolveLogin(user);
   return `https://github.com/${login}.png?size=40`;
-}
-
-function commitSubject(message: string | null | undefined): string {
-  const trimmed = message?.trim() || '';
-  if (!trimmed) {
-    return '(no message)';
-  }
-  const firstLine = trimmed.split('\n')[0]?.trim();
-  return firstLine || '(no message)';
 }
 
 function normalizeReviewState(state: string | null | undefined): GitHubPullRequestReviewState {

@@ -143,3 +143,17 @@ export interface GitHubPullRequestFilesSnapshot {
   files: GitHubPullRequestChangedFile[];
   hasMore: boolean;
 }
+
+export interface GitHubPullRequestCommit {
+  sha: string;
+  subject: string;
+  authorLogin: string;
+  avatarUrl: string;
+  createdAt: string;
+  url?: string;
+}
+
+export interface GitHubPullRequestCommitsSnapshot {
+  commits: GitHubPullRequestCommit[];
+  hasMore: boolean;
+}
