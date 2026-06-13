@@ -7,8 +7,8 @@ export * from './pull-request.js';
 export * from './pull-request-files.js';
 export * from './pull-request-commits.js';
 export * from './pull-request-checks.js';
+export * from './pull-request-checks-pages.js';
 export {
-  appendPullRequestChecksPages,
   createExpectedRequiredCheck,
   mapGraphQLCheckRunNode,
   mapGraphQLStatusContextNode,
