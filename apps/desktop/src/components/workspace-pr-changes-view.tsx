@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
@@ -15,11 +15,9 @@ import {
   readPrChangesTreeWidthPx,
   writePrChangesTreeWidthPx,
 } from "@/lib/layout-prefs";
+import { useWorkspaceToolsShellRowDividers } from "@/lib/use-workspace-tools-shell-row-dividers";
 import { cn } from "@/lib/utils";
 import type { GitHubPullRequestChangedFile } from "@/types";
-
-const CHANGED_FILE_CARD_CLASS =
-  "rounded-lg border border-border/60 bg-background";
 
 export function prChangedFileAnchorId(filename: string): string {
   return `pr-change-file-${encodeURIComponent(filename)}`;
@@ -29,20 +27,105 @@ function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLE
   return root?.querySelector("[data-radix-scroll-area-viewport]") ?? null;
 }
 
+/** Matches composer-surface backdrop (without border/radius). */
+const PR_STICKY_PINNED_BACKDROP_CLASS =
+  "bg-background/55 backdrop-blur-xl dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+
+function useStickyHeaderPinned(
+  sentinelRef: RefObject<HTMLElement | null>,
+  getScrollViewport: () => HTMLElement | null,
+  enabled: boolean,
+) {
+  const [pinned, setPinned] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setPinned(false);
+      return;
+    }
+
+    const sentinel = sentinelRef.current;
+    const root = getScrollViewport();
+    if (!sentinel || !root) {
+      setPinned(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setPinned(!entry.isIntersecting);
+      },
+      { root, threshold: [0] },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [enabled, getScrollViewport, sentinelRef]);
+
+  return pinned;
+}
+
+function PrChangedFileHeaderButton({
+  displayPath,
+  open,
+  additions,
+  deletions,
+  onToggle,
+}: {
+  displayPath: string;
+  open: boolean;
+  additions: number;
+  deletions: number;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex w-full min-w-0 items-center gap-2 px-3 py-3 text-left outline-none cursor-pointer",
+        "focus-visible:ring-2 focus-visible:ring-ring/60",
+      )}
+      aria-expanded={open}
+      aria-label={open ? t("workspace.prChangesFileCollapse") : t("workspace.prChangesFileExpand")}
+      onClick={onToggle}
+    >
+      <ChevronRight
+        className={cn(
+          "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+          open && "rotate-90",
+        )}
+        aria-hidden
+      />
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+        <span className="min-w-0 truncate text-xs leading-relaxed text-foreground">{displayPath}</span>
+        <EditFileLineDeltaBadge
+          delta={{ added: additions, removed: deletions }}
+          className="font-normal"
+        />
+      </div>
+    </button>
+  );
+}
+
 function PrChangedFileCard({
   file,
   open,
   onOpenChange,
   onOpenExternal,
+  getScrollViewport,
 }: {
   file: GitHubPullRequestChangedFile;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenExternal?: (url: string) => void;
+  getScrollViewport: () => HTMLElement | null;
 }) {
   const { t } = useTranslation();
   const mounted = useCollapsibleChildMount(open);
+  const stickySentinelRef = useRef<HTMLDivElement>(null);
   const showExpandedChrome = open || mounted;
+  const pinned = useStickyHeaderPinned(stickySentinelRef, getScrollViewport, showExpandedChrome);
   const displayPath =
     file.status === "renamed" && file.previousFilename
       ? `${file.previousFilename} → ${file.filename}`
@@ -51,47 +134,35 @@ function PrChangedFileCard({
   return (
     <section
       id={prChangedFileAnchorId(file.filename)}
-      className={cn(CHANGED_FILE_CARD_CLASS, "min-w-0 scroll-mt-0")}
+      className="min-w-0 scroll-mt-0"
       data-pr-changed-file={file.filename}
     >
       <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0">
+        {showExpandedChrome ? (
+          <div
+            ref={stickySentinelRef}
+            className="pointer-events-none h-px w-full shrink-0 -mb-px"
+            aria-hidden
+          />
+        ) : null}
         <div
           className={cn(
-            "sticky top-0 z-10 bg-background",
-            showExpandedChrome
-              ? "rounded-t-lg border-b border-border/40"
-              : "overflow-hidden rounded-lg",
+            "relative",
+            showExpandedChrome && "sticky top-0 z-10",
+            showExpandedChrome &&
+              "shadow-[inset_0_-1px_0_0_color-mix(in_oklab,var(--border)_40%,transparent)]",
+            showExpandedChrome && pinned ? PR_STICKY_PINNED_BACKDROP_CLASS : "bg-transparent",
           )}
         >
-          <button
-            type="button"
-            className={cn(
-              "flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left outline-none cursor-pointer",
-              "hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring/60",
-            )}
-            aria-expanded={open}
-            aria-label={
-              open ? t("workspace.prChangesFileCollapse") : t("workspace.prChangesFileExpand")
-            }
-            onClick={() => onOpenChange(!open)}
-          >
-            <ChevronRight
-              className={cn(
-                "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
-                open && "rotate-90",
-              )}
-              aria-hidden
-            />
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-              <span className="min-w-0 truncate text-xs text-foreground">{displayPath}</span>
-              <EditFileLineDeltaBadge
-                delta={{ added: file.additions, removed: file.deletions }}
-                className="font-normal"
-              />
-            </div>
-          </button>
+          <PrChangedFileHeaderButton
+            displayPath={displayPath}
+            open={open}
+            additions={file.additions}
+            deletions={file.deletions}
+            onToggle={() => onOpenChange(!open)}
+          />
         </div>
-        <CollapsibleContent className={cn(showExpandedChrome && "rounded-b-lg")}>
+        <CollapsibleContent>
           {mounted ? (
             file.patch ? (
               <ReviewCommentHunkView
@@ -100,7 +171,7 @@ function PrChangedFileCard({
                 layout="embedded"
               />
             ) : (
-              <div className="space-y-2 border-t border-border/20 px-3 py-2 text-xs text-muted-foreground">
+              <div className="space-y-2 px-3 pb-3 text-xs text-muted-foreground">
                 <p>{t("workspace.prChangesNoPatch")}</p>
                 {file.blobUrl && onOpenExternal ? (
                   <button
@@ -138,6 +209,8 @@ export function WorkspacePrChangesView({
   const { t } = useTranslation();
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const cardsScrollRef = useRef<ComponentRef<typeof ScrollArea>>(null);
+  const cardsListRef = useRef<HTMLDivElement>(null);
+  const treeAsideRef = useRef<HTMLElement>(null);
   const treeDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const latestTreeWidthPxRef = useRef(readPrChangesTreeWidthPx());
   const [treeWidthPx, setTreeWidthPx] = useState(() => readPrChangesTreeWidthPx());
@@ -146,6 +219,20 @@ export function WorkspacePrChangesView({
   const [expandedFilenames, setExpandedFilenames] = useState<Set<string>>(() => new Set());
 
   const treeNodes = useMemo(() => buildPrChangedFilesTree(files), [files]);
+  const showFileList = files.length > 0;
+
+  const getCardsScrollViewport = useCallback(
+    () => scrollAreaViewport(cardsScrollRef.current),
+    [],
+  );
+
+  useWorkspaceToolsShellRowDividers(cardsListRef, [files.length, hasMore, expandedFilenames.size], {
+    enabled: showFileList,
+    trailingDivider: !hasMore,
+    dividerAnchorRef: treeAsideRef,
+    dividerAnchorEdge: "right",
+    layoutWatchRef: treeAsideRef,
+  });
 
   latestTreeWidthPxRef.current = treeWidthPx;
 
@@ -266,6 +353,7 @@ export function WorkspacePrChangesView({
       )}
     >
       <aside
+        ref={treeAsideRef}
         className="flex min-h-0 shrink-0 flex-col border-r border-border/40"
         style={{ width: treeWidthPx }}
       >
@@ -296,16 +384,17 @@ export function WorkspacePrChangesView({
       </div>
       <ScrollArea
         ref={cardsScrollRef}
-        className="min-h-0 min-w-0 flex-1 pr-1"
-        type="always"
+        className="min-h-0 min-w-0 flex-1"
+        type="auto"
       >
-        <div className="space-y-3 p-1">
+        <div ref={cardsListRef}>
           {files.map((file) => (
             <PrChangedFileCard
               key={file.filename}
               file={file}
               open={expandedFilenames.has(file.filename)}
               onOpenExternal={onOpenExternal}
+              getScrollViewport={getCardsScrollViewport}
               onOpenChange={(nextOpen) => {
                 setExpandedFilenames((previous) => {
                   const next = new Set(previous);
@@ -320,7 +409,7 @@ export function WorkspacePrChangesView({
             />
           ))}
           {hasMore ? (
-            <p className="px-1 text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
+            <p className="px-3 py-2 text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
               {t("workspace.prChangesHasMore")}
             </p>
           ) : null}
