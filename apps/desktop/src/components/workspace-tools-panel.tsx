@@ -124,6 +124,12 @@ export type WorkspaceToolsDockProps = {
   prTabEnabled?: boolean;
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
   getGitHubPullRequestForCurrentBranch: () => Promise<GitHubPullRequestForBranchResult>;
+  listGitHubPullRequests: (
+    request: import("@/types").ListGitHubPullRequestsRequest,
+  ) => Promise<import("@/types").GitHubPullRequestListSnapshot>;
+  getGitHubPullRequestTabCounts: (
+    request: import("@/types").GetGitHubPullRequestTabCountsRequest,
+  ) => Promise<import("@/types").GitHubPullRequestTabCounts>;
   getGitHubPullRequestDetail: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestDetail>;
@@ -195,6 +201,8 @@ function WorkspaceToolsDockInner({
   prTabEnabled = false,
   getGitHubAuthStatus,
   getGitHubPullRequestForCurrentBranch,
+  listGitHubPullRequests,
+  getGitHubPullRequestTabCounts,
   getGitHubPullRequestDetail,
   getGitHubPullRequestConversation,
   getGitHubPullRequestFiles,
@@ -650,6 +658,8 @@ function WorkspaceToolsDockInner({
                         prTabEnabled={prTabEnabled}
                         getGitHubAuthStatus={getGitHubAuthStatus}
                         getGitHubPullRequestForCurrentBranch={getGitHubPullRequestForCurrentBranch}
+                        listGitHubPullRequests={listGitHubPullRequests}
+                        getGitHubPullRequestTabCounts={getGitHubPullRequestTabCounts}
                         getGitHubPullRequestDetail={getGitHubPullRequestDetail}
                         getGitHubPullRequestConversation={getGitHubPullRequestConversation}
                         getGitHubPullRequestFiles={getGitHubPullRequestFiles}

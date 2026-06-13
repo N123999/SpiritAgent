@@ -6,6 +6,7 @@ import { appendPullRequestChecksPages } from "@spirit-agent/host-internal/github
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skeleton";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
+import { WorkspacePrListView } from "@/components/workspace-pr-list-view";
 import { GITHUB_PR_CHECKS_DEMO, GITHUB_PR_COMMITS_DEMO, GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO, GITHUB_PR_FILES_DEMO } from "@/lib/github-pr-ui-demo";
 import type { GitHubPullRequestRevealRequest } from "@/lib/workspace-pr-navigation";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,10 @@ import type {
   GitHubPullRequestCommitsSnapshot,
   GitHubPullRequestChecksSnapshot,
   GitHubPullRequestForBranchResult,
+  ListGitHubPullRequestsRequest,
+  GitHubPullRequestListSnapshot,
+  GetGitHubPullRequestTabCountsRequest,
+  GitHubPullRequestTabCounts,
 } from "@/types";
 
 const MOCK_PULL_REQUEST = {
@@ -98,6 +103,12 @@ export type WorkspacePrTabProps = {
   prTabEnabled: boolean;
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
   getGitHubPullRequestForCurrentBranch: () => Promise<GitHubPullRequestForBranchResult>;
+  listGitHubPullRequests: (
+    request: ListGitHubPullRequestsRequest,
+  ) => Promise<GitHubPullRequestListSnapshot>;
+  getGitHubPullRequestTabCounts: (
+    request: GetGitHubPullRequestTabCountsRequest,
+  ) => Promise<GitHubPullRequestTabCounts>;
   getGitHubPullRequestDetail: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestDetail>;
@@ -132,6 +143,8 @@ export function WorkspacePrTab({
   prTabEnabled,
   getGitHubAuthStatus,
   getGitHubPullRequestForCurrentBranch,
+  listGitHubPullRequests,
+  getGitHubPullRequestTabCounts,
   getGitHubPullRequestDetail,
   getGitHubPullRequestConversation,
   getGitHubPullRequestFiles,
@@ -169,6 +182,7 @@ export function WorkspacePrTab({
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [prActionBusy, setPrActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "detail">("list");
 
   const checksLoadMoreInFlightRef = useRef(false);
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
@@ -283,6 +297,36 @@ export function WorkspacePrTab({
     [loadPullRequestBundle],
   );
 
+  const refreshRepositoryInfo = useCallback(async () => {
+    if (!prTabEnabled || !authStatus.connected) {
+      setBranchResult(null);
+      return;
+    }
+
+    const background = branchResultRef.current != null;
+    if (!background) {
+      setLoadingBranch(true);
+    }
+    setError(null);
+    try {
+      const result = await getGitHubPullRequestForCurrentBranch();
+      setBranchResult(result);
+    } catch (loadError) {
+      setBranchResult(null);
+      setError(describeError(loadError));
+      await refreshAuthStatus();
+    } finally {
+      if (!background) {
+        setLoadingBranch(false);
+      }
+    }
+  }, [
+    authStatus.connected,
+    getGitHubPullRequestForCurrentBranch,
+    prTabEnabled,
+    refreshAuthStatus,
+  ]);
+
   const refreshBranchPullRequest = useCallback(async () => {
     if (!prTabEnabled || !authStatus.connected) {
       setBranchResult(null);
@@ -379,6 +423,17 @@ export function WorkspacePrTab({
       return;
     }
 
+    if (viewMode === "list") {
+      setError(null);
+      await refreshRepositoryInfo();
+      setDetail(null);
+      setConversation(null);
+      setFilesSnapshot(null);
+      setCommitsSnapshot(null);
+      setChecksSnapshot(null);
+      return;
+    }
+
     const background = detailRef.current != null;
     if (!background) {
       setLoadingBranch(true);
@@ -422,6 +477,8 @@ export function WorkspacePrTab({
     loadPullRequestBundle,
     loadPullRequestData,
     prTabEnabled,
+    refreshRepositoryInfo,
+    viewMode,
   ]);
 
   refreshGitHubPanelRef.current = refreshGitHubPanel;
@@ -529,6 +586,7 @@ export function WorkspacePrTab({
       number: prRevealRequest.number,
     };
     setDetailDemoActive(false);
+    setViewMode("detail");
 
     if (!authStatus.connected) {
       return;
@@ -590,21 +648,24 @@ export function WorkspacePrTab({
 
     prevBranchRef.current = branch;
     pinnedPullRequestRequestRef.current = null;
-    void refreshBranchPullRequest();
+    setViewMode("list");
+    void refreshRepositoryInfo();
   }, [
     authStatus.connected,
     gitSnapshot?.branch,
     gitSnapshot?.selectedBranch,
     isActive,
     prTabEnabled,
-    refreshBranchPullRequest,
+    refreshRepositoryInfo,
   ]);
 
   const openExternalUrl = (url: string) => {
     void window.spiritDesktop?.openExternalUrl(url);
   };
 
-  const isInitialPrLoad = (loadingBranch || loadingDetail) && !detail;
+  const isInitialPrLoad =
+    viewMode === "detail" && (loadingBranch || loadingDetail) && !detail;
+  const isInitialListLoad = viewMode === "list" && loadingBranch && branchResult == null;
 
   if (!prTabEnabled) {
     return (
@@ -685,7 +746,7 @@ export function WorkspacePrTab({
 
       {authStatus.connected ? (
         <>
-          {isInitialPrLoad ? (
+          {isInitialPrLoad || isInitialListLoad ? (
             <WorkspacePrDetailSkeleton
               className="min-h-0 flex-1"
               loadingLabel={t("workspace.prLoading")}
@@ -694,12 +755,13 @@ export function WorkspacePrTab({
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoRepo")}</p>
           ) : branchResult?.repository == null ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoGitHubOrigin")}</p>
-          ) : branchResult.pullRequest == null ? (
-            <p className="px-3 pt-3 text-muted-foreground">
-              {t("workspace.prNoOpenPullRequest", {
-                branch: branchResult.branch ?? gitSnapshot?.branch ?? "",
-              })}
-            </p>
+          ) : viewMode === "list" ? (
+            <WorkspacePrListView
+              repository={branchResult.repository}
+              listGitHubPullRequests={listGitHubPullRequests}
+              getGitHubPullRequestTabCounts={getGitHubPullRequestTabCounts}
+              className="min-h-0 flex-1"
+            />
           ) : detail ? (
             <WorkspacePrDetailView
               detail={detail}
