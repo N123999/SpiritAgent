@@ -288,7 +288,7 @@ const WORKSPACE_SIDEBAR_EXPANDED_STORAGE_KEY =
 
 const WORKSPACE_SIDEBAR_EXPANDED_MAX_ENTRIES = 200;
 
-/** `false` = 收起；缺省或 `true` = 展开（与 SessionSidebar Collapsible 一致）。 */
+/** `false` = 收起；缺省或 `true` = 展开（与 SessionSidebar AnimatedCollapse 一致）。 */
 export type WorkspaceSidebarExpandedById = Record<string, boolean>;
 
 function sanitizeWorkspaceSidebarExpandedById(
