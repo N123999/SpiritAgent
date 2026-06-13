@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  enrichConversationCommitAuthors,
   groupReviewCommentsIntoThreads,
   mapTimelineEventToConversationItem,
   mergePullRequestConversationItems,
@@ -178,6 +179,40 @@ test('groupReviewCommentsIntoThreads groups replies under root comment', () => {
   assert.equal(threads[0]?.comments.length, 2);
   assert.equal(threads[0]?.comments[0]?.body, 'Why this change?');
   assert.equal(threads[0]?.comments[1]?.body, 'Because auth broke.');
+});
+
+test('enrichConversationCommitAuthors replaces timeline fallback with pull commits author', () => {
+  const timelineItem = mapTimelineEventToConversationItem({
+    sha: 'b40b5d065d1dafe791397c7ed4538a1eb7527a34',
+    html_url: 'https://github.com/N123999/SpiritAgent/commit/b40b5d065d1dafe791397c7ed4538a1eb7527a34',
+    author: { name: 'Cursor Agent', email: 'cursoragent@cursor.com', date: '2026-06-13T10:17:52Z' },
+    message: 'fix(desktop): 修正接近 100 万 token 的紧凑计数显示',
+    event: 'committed',
+  });
+
+  assert.equal(timelineItem?.kind, 'commit');
+  if (timelineItem?.kind !== 'commit') {
+    return;
+  }
+  assert.equal(timelineItem.authorLogin, 'Cursor Agent');
+  assert.equal(timelineItem.avatarUrl, '');
+
+  const enriched = enrichConversationCommitAuthors([timelineItem], [
+    {
+      sha: 'b40b5d065d1dafe791397c7ed4538a1eb7527a34',
+      subject: 'fix(desktop): 修正接近 100 万 token 的紧凑计数显示',
+      authorLogin: 'cursoragent',
+      avatarUrl: 'https://avatars.githubusercontent.com/u/199161495?v=4',
+      createdAt: '2026-06-13T10:17:52Z',
+    },
+  ]);
+
+  assert.equal(enriched[0]?.kind, 'commit');
+  if (enriched[0]?.kind !== 'commit') {
+    return;
+  }
+  assert.equal(enriched[0].authorLogin, 'cursoragent');
+  assert.equal(enriched[0].avatarUrl, 'https://avatars.githubusercontent.com/u/199161495?v=4');
 });
 
 test('mergePullRequestConversationItems sorts ascending and dedupes', () => {

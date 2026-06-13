@@ -38,6 +38,6 @@ export function resolveGitCommitAuthorIdentity(options: {
   const name = options.authorName?.trim() || 'unknown';
   return {
     login: name,
-    avatarUrl: `https://github.com/${name}.png?size=40`,
+    avatarUrl: '',
   };
 }

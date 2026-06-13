@@ -1,5 +1,6 @@
 import { commitSubject } from './commit-subject.js';
 import { resolveGitCommitAuthorIdentity } from './git-author-github.js';
+import { getPullRequestCommits } from './pull-request-commits.js';
 import { GITHUB_API_BASE_URL } from './oauth-config.js';
 import {
   githubApiHeaders,
@@ -14,6 +15,7 @@ import type {
   GitHubPullRequestConversationReview,
   GitHubPullRequestConversationReviewThread,
   GitHubPullRequestConversationSnapshot,
+  GitHubPullRequestCommit,
   GitHubPullRequestReviewComment,
   GitHubPullRequestReviewState,
   GitHubRepositoryRef,
@@ -376,6 +378,37 @@ export function mergePullRequestConversationItems(
   return nestReviewThreadsUnderReviews(deduped);
 }
 
+/** Align timeline commit rows with `/pulls/{n}/commits` author identity when timeline lacks actor. */
+export function enrichConversationCommitAuthors(
+  items: GitHubPullRequestConversationItem[],
+  commits: GitHubPullRequestCommit[],
+): GitHubPullRequestConversationItem[] {
+  if (commits.length === 0) {
+    return items;
+  }
+
+  const authorsBySha = new Map(
+    commits.map((commit) => [commit.sha, { authorLogin: commit.authorLogin, avatarUrl: commit.avatarUrl }]),
+  );
+
+  return items.map((item) => {
+    if (item.kind !== 'commit') {
+      return item;
+    }
+
+    const author = authorsBySha.get(item.sha);
+    if (!author) {
+      return item;
+    }
+
+    return {
+      ...item,
+      authorLogin: author.authorLogin,
+      avatarUrl: author.avatarUrl,
+    };
+  });
+}
+
 async function fetchIssueTimeline(
   accessToken: string,
   repository: GitHubRepositoryRef,
@@ -411,14 +444,20 @@ export async function getPullRequestConversation(
   repository: GitHubRepositoryRef,
   pullNumber: number,
 ): Promise<GitHubPullRequestConversationSnapshot> {
-  const [timeline, reviewComments] = await Promise.all([
+  const [timeline, reviewComments, commitsSnapshot] = await Promise.all([
     fetchIssueTimeline(accessToken, repository, pullNumber),
     fetchPullRequestReviewComments(accessToken, repository, pullNumber),
+    getPullRequestCommits(accessToken, repository, pullNumber),
   ]);
 
+  const items = enrichConversationCommitAuthors(
+    mergePullRequestConversationItems(timeline.events, reviewComments.comments),
+    commitsSnapshot.commits,
+  );
+
   return {
-    items: mergePullRequestConversationItems(timeline.events, reviewComments.comments),
-    hasMore: timeline.hasMore || reviewComments.hasMore,
+    items,
+    hasMore: timeline.hasMore || reviewComments.hasMore || commitsSnapshot.hasMore,
   };
 }
 
