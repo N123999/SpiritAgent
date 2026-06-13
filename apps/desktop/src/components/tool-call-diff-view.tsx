@@ -3,17 +3,15 @@ import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import {
   Diff,
   Hunk,
-  markEdits,
   parseDiff,
-  tokenize,
   type HunkTokens,
 } from 'react-diff-view';
 import type { HunkData } from 'react-diff-view';
 import 'react-diff-view/style/index.css';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { tokenizeDiffHunks } from '@/lib/diff-view-tokens';
 import { buildToolCallUnifiedDiff } from '@/lib/tool-call-unified-diff';
-import { refractorLanguageForPath, toolDiffRefractor } from '@/lib/refractor-tool-diff';
 
 import '@/styles/tool-call-diff-view.css';
 
@@ -37,27 +35,7 @@ function tokenizeHunks(
   original: string,
   languageId: string,
 ): HunkTokens | null {
-  if (hunks.length === 0) {
-    return null;
-  }
-
-  const enhancers = [markEdits(hunks, { type: 'block' })];
-  const language = refractorLanguageForPath(languageId);
-
-  if (language) {
-    return tokenize(hunks, {
-      highlight: true,
-      refractor: toolDiffRefractor,
-      language,
-      oldSource: original,
-      enhancers,
-    });
-  }
-
-  return tokenize(hunks, {
-    highlight: false,
-    enhancers,
-  });
+  return tokenizeDiffHunks(hunks, languageId, original);
 }
 
 export function ToolCallDiffView({
