@@ -11,7 +11,6 @@ import type { ToolBlockSnapshot } from "@/types";
 
 export function ToolCallCollapsible({
   tool,
-  variant = "standalone",
   readLocalImagePreviewDataUrl,
   readLocalVideoPreviewUrl,
   readManagedVideoPreviewUrl,
@@ -20,7 +19,6 @@ export function ToolCallCollapsible({
   onAbortShell,
 }: {
   tool: ToolBlockSnapshot;
-  variant?: "standalone" | "process-nested";
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
   readLocalVideoPreviewUrl: ReadLocalVideoPreview;
   readManagedVideoPreviewUrl: ReadManagedVideoPreview;
@@ -55,7 +53,6 @@ export function ToolCallCollapsible({
   return (
     <MinimalToolCallCard
       tool={tool}
-      variant={variant}
       onOpenSubagentViewer={onOpenSubagentViewer}
       onAbortShell={onAbortShell}
     />

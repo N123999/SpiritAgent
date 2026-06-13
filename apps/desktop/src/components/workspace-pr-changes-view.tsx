@@ -9,7 +9,7 @@ import {
 } from "@/components/text-selection-action-menu";
 import { EditFileLineDeltaBadge } from "@/components/edit-file-line-delta-badge";
 import { WorkspacePrChangesFileTree } from "@/components/workspace-pr-changes-file-tree";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { AnimatedCollapse, AnimatedCollapseContent } from "@/components/ui/animated-collapse";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { useTextSelectionActionMenu } from "@/hooks/use-text-selection-action-menu";
@@ -270,7 +270,7 @@ function PrChangedFileCard({
       className="min-w-0 scroll-mt-0"
       data-pr-changed-file={file.filename}
     >
-      <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0">
+      <AnimatedCollapse open={open} onOpenChange={onOpenChange} className="min-w-0">
         {showExpandedChrome ? (
           <div
             ref={stickySentinelRef}
@@ -295,7 +295,7 @@ function PrChangedFileCard({
             onToggle={() => onOpenChange(!open)}
           />
         </div>
-        <CollapsibleContent>
+        <AnimatedCollapseContent>
           {mounted ? (
             file.patch ? (
               <ReviewCommentHunkView
@@ -318,8 +318,8 @@ function PrChangedFileCard({
               </div>
             )
           ) : null}
-        </CollapsibleContent>
-      </Collapsible>
+        </AnimatedCollapseContent>
+      </AnimatedCollapse>
     </section>
   );
 }

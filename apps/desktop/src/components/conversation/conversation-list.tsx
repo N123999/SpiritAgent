@@ -226,7 +226,6 @@ export function ConversationList({
                       renderToolBlock={(message) => (
                         <ToolCallCollapsible
                           tool={message.tool!}
-                          variant="process-nested"
                           readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
                           readLocalVideoPreviewUrl={runtime.readLocalVideoPreviewUrl}
                           readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}

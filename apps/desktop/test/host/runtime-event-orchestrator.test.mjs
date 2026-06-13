@@ -263,7 +263,7 @@ test('after-stream thinking stays on the body row until completion (same-instanc
 
   // Real streaming order: thinking deltas, then after-stream finalize emitted right before
   // the first body chunk. The thinking must NOT split yet — it stays on the streaming body
-  // row so the Collapsible can collapse on the same instance once the body arrives.
+  // row so AnimatedCollapse can collapse on the same instance once the body arrives.
   harness.orchestrator.applyRuntimeHostEvents([
     { kind: 'begin-assistant-response' },
     { kind: 'update-pending-assistant-thinking', text: 'Planning the greeting.' },

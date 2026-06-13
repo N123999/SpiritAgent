@@ -112,7 +112,7 @@ export class DesktopRuntimeEventOrchestrator {
   private activeGenerateVideoTools = new Map<string, ToolBlockSnapshot>();
   /**
    * 无工具回合里 after-stream 思考暂不拆行：先留在当前 assistant 行的 aux 上，等正文到来在
-   * 同一个 Collapsible 实例上收起；本段 completed 时再拆成独立思考行。
+   * 同一个 AnimatedCollapse 实例上收起；本段 completed 时再拆成独立思考行。
    */
   private deferredAfterStreamThinking: string | undefined;
   private shellOutputSnapshotTimer: ReturnType<typeof setTimeout> | undefined;
@@ -432,7 +432,7 @@ export class DesktopRuntimeEventOrchestrator {
           }
           if (deferAfterStream && timeline) {
             // 无工具：暂不拆行。把思考挂在当前 assistant 行 aux 上，正文到来后在同一个
-            // Collapsible 实例上由展开过渡到收起（Radix collapsible-up）；本段 completed 再拆行。
+            // AnimatedCollapse 实例上由展开过渡到收起；本段 completed 再拆行。
             timeline.updatePendingAssistantAux('thinking', event.text);
             this.deferredAfterStreamThinking = event.text;
           } else {

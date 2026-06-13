@@ -260,7 +260,7 @@ export class DesktopMessageTimeline {
       }
     }
     // 无工具时不把 after-stream 思考拆成独立行：让 thinking aux 与正文留在同一条
-    // assistant 行上，UI 才能在同一个 Collapsible 实例上由展开过渡到收起（Radix collapsible-up）。
+    // assistant 行上，UI 才能在同一个 AnimatedCollapse 实例上由展开过渡到收起。
     const row = hasTools
       ? this.ensureStreamingAssistantTextRowAfterTools(segment)
       : this.ensureActiveAssistantTextRow('text');
