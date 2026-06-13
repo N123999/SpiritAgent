@@ -185,6 +185,7 @@ export function WorkspacePrTab({
   const [error, setError] = useState<string | null>(null);
   const [repositoryLoadError, setRepositoryLoadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
+  const [authCheckPending, setAuthCheckPending] = useState(true);
 
   const checksLoadMoreInFlightRef = useRef(false);
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
@@ -203,7 +204,9 @@ export function WorkspacePrTab({
     }
     try {
       setAuthStatus(await getGitHubAuthStatus());
+      setAuthCheckPending(false);
     } catch (loadError) {
+      setAuthCheckPending(false);
       setError(describeError(loadError));
     }
   }, [getGitHubAuthStatus, prTabEnabled]);
@@ -335,6 +338,7 @@ export function WorkspacePrTab({
   const refreshGitHubPanel = useCallback(async () => {
     if (!prTabEnabled) {
       setAuthStatus({ connected: false });
+      setAuthCheckPending(false);
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
@@ -348,7 +352,9 @@ export function WorkspacePrTab({
     try {
       status = await getGitHubAuthStatus();
       setAuthStatus(status);
+      setAuthCheckPending(false);
     } catch (loadError) {
+      setAuthCheckPending(false);
       setError(describeError(loadError));
       return;
     }
@@ -696,7 +702,14 @@ export function WorkspacePrTab({
         </section>
       ) : null}
 
-      {!authStatus.connected && !detailDemoActive ? (
+      {!authStatus.connected && !detailDemoActive && authCheckPending ? (
+        <WorkspacePrDetailSkeleton
+          className="min-h-0 flex-1"
+          loadingLabel={t("workspace.prLoading")}
+        />
+      ) : null}
+
+      {!authStatus.connected && !detailDemoActive && !authCheckPending ? (
         <section className="mx-3 mt-3 rounded-md border border-dashed border-border/80 bg-muted/20 p-3">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t("workspace.prSampleDataLabel")}
