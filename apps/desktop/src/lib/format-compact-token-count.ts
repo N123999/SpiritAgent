@@ -6,7 +6,8 @@ export function formatCompactTokenCount(value: number): string {
     return `${formatScaledCount(count / 1_000_000)}M`;
   }
   if (count >= 1_000) {
-    return `${formatScaledCount(count / 1_000)}K`;
+    const scaledK = Math.min(Math.round((count / 1_000) * 10) / 10, 999.9);
+    return `${formatScaledCount(scaledK)}K`;
   }
   return String(count);
 }

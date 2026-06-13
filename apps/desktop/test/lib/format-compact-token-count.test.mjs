@@ -8,6 +8,8 @@ test('formatCompactTokenCount abbreviates thousands and millions', () => {
   assert.equal(formatCompactTokenCount(4803), '4.8K');
   assert.equal(formatCompactTokenCount(50_000), '50K');
   assert.equal(formatCompactTokenCount(128_000), '128K');
+  assert.equal(formatCompactTokenCount(999_999), '999.9K');
+  assert.equal(formatCompactTokenCount(999_950), '999.9K');
   assert.equal(formatCompactTokenCount(1_000_000), '1M');
   assert.equal(formatCompactTokenCount(1_050_000), '1.1M');
 });
