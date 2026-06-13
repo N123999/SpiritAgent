@@ -78,6 +78,7 @@ import type {
   GitWorkingTreeSnapshot,
   ReadGitHistoryRequest,
   GetGitHubPullRequestDetailRequest,
+  MergeGitHubPullRequestRequest,
 } from "@/types";
 
 type BusyAction =
@@ -2636,6 +2637,26 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const mergeGitHubPullRequest = useCallback(
+    async (request: MergeGitHubPullRequestRequest) => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.mergeGitHubPullRequest(request);
+    },
+    [api],
+  );
+
+  const markGitHubPullRequestReady = useCallback(
+    async (request: GetGitHubPullRequestDetailRequest) => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.markGitHubPullRequestReady(request);
+    },
+    [api],
+  );
+
   const readWorkspaceTextFile = useCallback(
     async (relativePath: string): Promise<WorkspaceReadTextFileResult> => {
       if (!api) {
@@ -2885,6 +2906,8 @@ export function useDesktopRuntime() {
     getGitHubPullRequestFiles,
     getGitHubPullRequestCommits,
     getGitHubPullRequestChecks,
+    mergeGitHubPullRequest,
+    markGitHubPullRequestReady,
     readWorkspaceTextFile,
     writeWorkspaceTextFile,
     readHostTextFile,

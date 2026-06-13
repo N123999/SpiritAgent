@@ -85,6 +85,8 @@ export interface HostCommandDelegate {
   getGitHubPullRequestFiles(request: CommandPayloads['getGitHubPullRequestFiles']['request']): Promise<unknown>;
   getGitHubPullRequestCommits(request: CommandPayloads['getGitHubPullRequestCommits']['request']): Promise<unknown>;
   getGitHubPullRequestChecks(request: CommandPayloads['getGitHubPullRequestChecks']['request']): Promise<unknown>;
+  mergeGitHubPullRequest(request: CommandPayloads['mergeGitHubPullRequest']['request']): Promise<unknown>;
+  markGitHubPullRequestReady(request: CommandPayloads['markGitHubPullRequestReady']['request']): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   readHostTextFile(absolutePath: string): Promise<unknown>;
@@ -185,6 +187,8 @@ const hostCommandDispatch = {
   getGitHubPullRequestFiles: (host, payload) => host.getGitHubPullRequestFiles(payload.request),
   getGitHubPullRequestCommits: (host, payload) => host.getGitHubPullRequestCommits(payload.request),
   getGitHubPullRequestChecks: (host, payload) => host.getGitHubPullRequestChecks(payload.request),
+  mergeGitHubPullRequest: (host, payload) => host.mergeGitHubPullRequest(payload.request),
+  markGitHubPullRequestReady: (host, payload) => host.markGitHubPullRequestReady(payload.request),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   readHostTextFile: (host, payload) => host.readHostTextFile(payload.absolutePath),
