@@ -22,6 +22,20 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 type PrListTab = "open" | "closed";
 
+type TabListCacheEntry = {
+  items: GitHubPullRequestListItem[];
+  hasMore: boolean;
+  nextPage?: number;
+};
+
+function buildListCacheKey(
+  repository: GitHubRepositoryRef,
+  tab: PrListTab,
+  query: string,
+): string {
+  return `${repository.owner}/${repository.repo}\0${tab}\0${query}`;
+}
+
 export type WorkspacePrListViewProps = {
   repository: GitHubRepositoryRef;
   listGitHubPullRequests: (
@@ -58,6 +72,7 @@ export function WorkspacePrListView({
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const loadMoreInFlightRef = useRef(false);
   const fetchGenerationRef = useRef(0);
+  const listCacheRef = useRef(new Map<string, TabListCacheEntry>());
 
   const showList = items.length > 0;
 
@@ -65,6 +80,10 @@ export function WorkspacePrListView({
     enabled: showList,
     trailingDivider: !hasMore && !loadingMore,
   });
+
+  useEffect(() => {
+    listCacheRef.current.clear();
+  }, [repository.owner, repository.repo]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -96,8 +115,15 @@ export function WorkspacePrListView({
     };
   }, [getGitHubPullRequestTabCounts, repository.owner, repository.repo]);
 
+  const writeListCache = useCallback(
+    (tab: PrListTab, query: string, entry: TabListCacheEntry) => {
+      listCacheRef.current.set(buildListCacheKey(repository, tab, query), entry);
+    },
+    [repository],
+  );
+
   const fetchPage = useCallback(
-    async (page: number, append: boolean) => {
+    async (tab: PrListTab, query: string, page: number, append: boolean) => {
       const generation = ++fetchGenerationRef.current;
       if (append) {
         setLoadingMore(true);
@@ -110,23 +136,31 @@ export function WorkspacePrListView({
         const snapshot = await listGitHubPullRequests({
           owner: repository.owner,
           repo: repository.repo,
-          state: activeTab,
+          state: tab,
           page,
-          ...(debouncedQuery ? { query: debouncedQuery } : {}),
+          ...(query ? { query } : {}),
         });
 
         if (generation !== fetchGenerationRef.current) {
           return;
         }
 
-        setItems((current) => (append ? [...current, ...snapshot.items] : snapshot.items));
+        setItems((current) => {
+          const nextItems = append ? [...current, ...snapshot.items] : snapshot.items;
+          writeListCache(tab, query, {
+            items: nextItems,
+            hasMore: snapshot.hasMore,
+            ...(snapshot.nextPage != null ? { nextPage: snapshot.nextPage } : {}),
+          });
+          return nextItems;
+        });
         setHasMore(snapshot.hasMore);
         setNextPage(snapshot.nextPage);
 
-        if (!debouncedQuery && page === 1) {
+        if (!query && page === 1) {
           setTabCounts((current) => ({
             ...current,
-            [activeTab]: snapshot.totalCount,
+            [tab]: snapshot.totalCount,
           }));
         }
       } catch (loadError) {
@@ -147,29 +181,35 @@ export function WorkspacePrListView({
         }
       }
     },
-    [
-      activeTab,
-      debouncedQuery,
-      listGitHubPullRequests,
-      repository.owner,
-      repository.repo,
-    ],
+    [listGitHubPullRequests, repository.owner, repository.repo, writeListCache],
   );
 
   useEffect(() => {
+    const cacheKey = buildListCacheKey(repository, activeTab, debouncedQuery);
+    const cached = listCacheRef.current.get(cacheKey);
+    if (cached) {
+      setItems(cached.items);
+      setHasMore(cached.hasMore);
+      setNextPage(cached.nextPage);
+      setLoading(false);
+      setLoadingMore(false);
+      setError(null);
+      return;
+    }
+
     setItems([]);
     setHasMore(false);
     setNextPage(undefined);
-    void fetchPage(1, false);
-  }, [activeTab, debouncedQuery, fetchPage]);
+    void fetchPage(activeTab, debouncedQuery, 1, false);
+  }, [activeTab, debouncedQuery, fetchPage, repository]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loadingMore || loading || !nextPage || loadMoreInFlightRef.current) {
       return;
     }
     loadMoreInFlightRef.current = true;
-    void fetchPage(nextPage, true);
-  }, [fetchPage, hasMore, loading, loadingMore, nextPage]);
+    void fetchPage(activeTab, debouncedQuery, nextPage, true);
+  }, [activeTab, debouncedQuery, fetchPage, hasMore, loading, loadingMore, nextPage]);
 
   useEffect(() => {
     if (!hasMore || loadingMore) {
