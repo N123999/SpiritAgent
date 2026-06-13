@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
@@ -13,14 +13,14 @@ import { cn } from "@/lib/utils";
 import type { GitHubPullRequestChangedFile, GitHubPullRequestFileStatus } from "@/types";
 
 const CHANGED_FILE_CARD_CLASS =
-  "overflow-hidden rounded-lg border border-border/50 bg-muted shadow-sm";
+  "rounded-lg border border-border/50 bg-muted shadow-sm";
 
 export function prChangedFileAnchorId(filename: string): string {
   return `pr-change-file-${encodeURIComponent(filename)}`;
 }
 
-function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLElement | null {
-  return root?.querySelector("[data-radix-scroll-area-viewport]") ?? null;
+function scrollContainer(root: HTMLDivElement | null): HTMLElement | null {
+  return root;
 }
 
 function fileStatusLabelKey(status: GitHubPullRequestFileStatus): string {
@@ -63,7 +63,7 @@ function PrChangedFileCard({
       data-pr-changed-file={file.filename}
     >
       <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0">
-        <div className="sticky top-0 z-10 border-b border-border/40 bg-muted">
+        <div className="sticky top-0 z-10 border-b border-border/40 bg-muted shadow-[0_1px_0_0_color-mix(in_oklab,var(--border)_40%,transparent)]">
           <button
             type="button"
             className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -137,7 +137,7 @@ export function WorkspacePrChangesView({
   className,
 }: WorkspacePrChangesViewProps) {
   const { t } = useTranslation();
-  const cardsScrollRef = useRef<ComponentRef<typeof ScrollArea>>(null);
+  const cardsScrollRef = useRef<HTMLDivElement>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [expandedFilenames, setExpandedFilenames] = useState<Set<string>>(() => new Set());
 
@@ -152,7 +152,7 @@ export function WorkspacePrChangesView({
     });
 
     requestAnimationFrame(() => {
-      const viewport = scrollAreaViewport(cardsScrollRef.current);
+      const viewport = scrollContainer(cardsScrollRef.current);
       const section = viewport?.querySelector<HTMLElement>(
         `[data-pr-changed-file="${CSS.escape(filename)}"]`,
       );
@@ -161,7 +161,7 @@ export function WorkspacePrChangesView({
   }, []);
 
   useEffect(() => {
-    const viewport = scrollAreaViewport(cardsScrollRef.current);
+    const viewport = scrollContainer(cardsScrollRef.current);
     if (!viewport || files.length === 0) {
       return;
     }
@@ -210,8 +210,8 @@ export function WorkspacePrChangesView({
   }
 
   return (
-    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-row gap-0", className)}>
-      <aside className="flex w-[min(40%,13rem)] shrink-0 flex-col border-r border-border/40">
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-row gap-0 overflow-hidden", className)}>
+      <aside className="flex h-full w-[min(40%,13rem)] shrink-0 flex-col border-r border-border/40">
         <ScrollArea className="h-full min-h-0 flex-1" type="auto">
           <WorkspacePrChangesFileTree
             nodes={treeNodes}
@@ -220,7 +220,10 @@ export function WorkspacePrChangesView({
           />
         </ScrollArea>
       </aside>
-      <ScrollArea ref={cardsScrollRef} className="min-h-0 min-w-0 flex-1" type="always">
+      <div
+        ref={cardsScrollRef}
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+      >
         <div className="space-y-3 p-1">
           {files.map((file) => (
             <PrChangedFileCard
@@ -248,7 +251,7 @@ export function WorkspacePrChangesView({
             </p>
           ) : null}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

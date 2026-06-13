@@ -148,15 +148,108 @@ export const GITHUB_PR_CONVERSATION_DEMO: GitHubPullRequestConversationItem[] = 
   },
 ];
 
-const SESSION_TS_PATCH = `@@ -10,7 +10,9 @@ export async function refreshSession() {
+const SESSION_TS_PATCH = `@@ -1,18 +1,22 @@
++import { clearStaleToken } from "./token-store";
++import { retryDeviceFlow } from "./device-flow";
++
+ export interface SessionState {
+   userId: string;
+   expiresAt: number;
+ }
+ 
+ export async function readSession(): Promise<SessionState | null> {
    const token = readToken();
    if (!token) {
 -    return null;
 +    await clearStaleToken();
 +    return retryDeviceFlow();
    }
+   return parseSession(token);
+ }
+ 
+ export function readToken(): string | null {
+   return localStorage.getItem("session_token");
+ }
+@@ -24,12 +28,18 @@ export async function refreshSession(): Promise<string | null> {
+   const token = readToken();
+   if (!token) {
+-    return null;
++    await clearStaleToken();
++    return retryDeviceFlow();
+   }
+   if (isExpired(token)) {
+-    return renewToken(token);
++    const renewed = await renewToken(token);
++    if (!renewed) {
++      await clearStaleToken();
++      return retryDeviceFlow();
++    }
++    return renewed;
+   }
    return token;
- }`;
+ }
+ 
+ export async function clearSession(): Promise<void> {
+@@ -40,6 +50,14 @@ export async function clearSession(): Promise<void> {
+   localStorage.removeItem("session_token");
+ }
+ 
++export async function ensureActiveSession(): Promise<string> {
++  const token = await refreshSession();
++  if (!token) {
++    throw new Error("Unable to establish session");
++  }
++  return token;
++}
++
+ function isExpired(token: string): boolean {
+   const payload = decodeToken(token);
+   return payload.exp * 1000 <= Date.now();
+@@ -58,10 +76,18 @@ async function renewToken(token: string): Promise<string | null> {
+   if (!response.ok) {
+     return null;
+   }
+   const next = await response.json();
+   persistToken(next.accessToken);
+   return next.accessToken;
+ }
++
++export function sessionDebugLabel(token: string | null): string {
++  if (!token) {
++    return "missing";
++  }
++  return isExpired(token) ? "expired" : "active";
++}
+ 
+ function persistToken(token: string): void {
+   localStorage.setItem("session_token", token);
+ }
+@@ -72,18 +98,36 @@ function parseSession(token: string): SessionState | null {
+   }
+   return { userId: payload.sub, expiresAt: payload.exp * 1000 };
+ }
+ 
+ function decodeToken(token: string): { sub: string; exp: number } {
+   const [, payload] = token.split(".");
+   return JSON.parse(atob(payload));
+ }
++
++export async function rotateSessionIfNeeded(force = false): Promise<string | null> {
++  const token = readToken();
++  if (!token) {
++    return retryDeviceFlow();
++  }
++  if (!force && !isExpired(token)) {
++    return token;
++  }
++  return refreshSession();
++}
++
++export async function invalidateSession(): Promise<void> {
++  await clearSession();
++  await clearStaleToken();
++}
+`;
 
 /** Static changed-files fixture for unauthenticated UI preview only. */
 export const GITHUB_PR_FILES_DEMO: GitHubPullRequestFilesSnapshot = {
@@ -165,26 +258,59 @@ export const GITHUB_PR_FILES_DEMO: GitHubPullRequestFilesSnapshot = {
     {
       filename: "src/auth/session.ts",
       status: "modified",
-      additions: 2,
-      deletions: 1,
-      changes: 3,
+      additions: 42,
+      deletions: 6,
+      changes: 48,
       patch: SESSION_TS_PATCH,
       blobUrl: "https://github.com/octocat/Hello-World/blob/fix-login/src/auth/session.ts",
     },
     {
       filename: "src/auth/device-flow.ts",
       status: "modified",
-      additions: 14,
-      deletions: 3,
-      changes: 17,
-      patch: `@@ -1,4 +1,6 @@
+      additions: 28,
+      deletions: 2,
+      changes: 30,
+      patch: `@@ -1,18 +1,34 @@
  export const MAX_DEVICE_FLOW_RETRIES = 1;
 +export const DEVICE_FLOW_TIMEOUT_MS = 60_000;
++export const DEVICE_FLOW_POLL_INTERVAL_MS = 1_500;
  
  export async function retryDeviceFlow() {
 -  return startDeviceFlow();
 +  return startDeviceFlow({ timeoutMs: DEVICE_FLOW_TIMEOUT_MS });
- }`,
+ }
+ 
+ export async function startDeviceFlow(options?: { timeoutMs?: number }) {
+   const timeoutMs = options?.timeoutMs ?? DEVICE_FLOW_TIMEOUT_MS;
+   const controller = new AbortController();
+   const timer = setTimeout(() => controller.abort(), timeoutMs);
+   try {
+     return await pollDeviceFlow(controller.signal);
+   } finally {
+     clearTimeout(timer);
+   }
+ }
++
++async function pollDeviceFlow(signal: AbortSignal): Promise<string> {
++  for (let attempt = 0; attempt < MAX_DEVICE_FLOW_RETRIES; attempt += 1) {
++    const token = await requestDeviceToken(signal);
++    if (token) {
++      return token;
++    }
++    await delay(DEVICE_FLOW_POLL_INTERVAL_MS, signal);
++  }
++  throw new Error("Device flow timed out");
++}
++
++function delay(ms: number, signal: AbortSignal): Promise<void> {
++  return new Promise((resolve, reject) => {
++    const timer = setTimeout(resolve, ms);
++    signal.addEventListener("abort", () => {
++      clearTimeout(timer);
++      reject(signal.reason);
++    });
++  });
++}`,
       blobUrl: "https://github.com/octocat/Hello-World/blob/fix-login/src/auth/device-flow.ts",
     },
     {
