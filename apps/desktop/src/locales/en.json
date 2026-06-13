@@ -647,6 +647,7 @@
     "prOpen": "Open",
     "prClosed": "Closed",
     "prMerged": "Merged",
+    "prMergedThisPullRequest": "merged this pull request",
     "prMergeable": "Mergeable",
     "prConflicts": "Has conflicts",
     "prMergeStatusUnknown": "Merge status unknown",

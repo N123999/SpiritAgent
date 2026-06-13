@@ -149,6 +149,14 @@ export const GITHUB_PR_CONVERSATION_DEMO: GitHubPullRequestConversationItem[] = 
       },
     ],
   },
+  {
+    kind: "merged",
+    id: "merged-demo-1",
+    createdAt: "2024-01-06T16:00:00Z",
+    authorLogin: "octocat",
+    avatarUrl: "https://github.com/octocat.png?size=40",
+    url: "https://github.com/octocat/Hello-World/pull/42#event-1",
+  },
 ];
 
 const SESSION_TS_PATCH = `@@ -1,18 +1,22 @@

@@ -934,6 +934,7 @@ export type {
   GitHubPullRequestCheckState,
   GitHubPullRequestChecksSnapshot,
   GitHubPullRequestConversationCommit,
+  GitHubPullRequestConversationMerged,
   GitHubPullRequestConversationIssueComment,
   GitHubPullRequestConversationReview,
   GitHubPullRequestConversationReviewThread,

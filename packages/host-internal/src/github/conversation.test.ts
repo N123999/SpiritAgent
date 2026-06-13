@@ -55,6 +55,23 @@ test('mapTimelineEventToConversationItem maps committed event from issue timelin
   assert.equal(item.avatarUrl, 'https://github.com/N123999.png?size=40');
 });
 
+test('mapTimelineEventToConversationItem maps merged event', () => {
+  const item = mapTimelineEventToConversationItem({
+    id: 99,
+    event: 'merged',
+    created_at: '2024-01-06T16:00:00Z',
+    actor: { login: 'octocat', avatar_url: 'https://github.com/octocat.png' },
+    html_url: 'https://github.com/octocat/Hello-World/pull/42#event-99',
+  });
+
+  assert.equal(item?.kind, 'merged');
+  if (item?.kind !== 'merged') {
+    return;
+  }
+  assert.equal(item.authorLogin, 'octocat');
+  assert.equal(item.createdAt, '2024-01-06T16:00:00Z');
+});
+
 test('mapTimelineEventToConversationItem maps issue comment', () => {
   const item = mapTimelineEventToConversationItem({
     id: 42,

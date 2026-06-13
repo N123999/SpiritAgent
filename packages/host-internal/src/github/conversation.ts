@@ -8,6 +8,7 @@ import {
 } from './github-api.js';
 import type {
   GitHubPullRequestConversationCommit,
+  GitHubPullRequestConversationMerged,
   GitHubPullRequestConversationIssueComment,
   GitHubPullRequestConversationItem,
   GitHubPullRequestConversationReview,
@@ -277,6 +278,18 @@ export function mapTimelineEventToConversationItem(
       url: event.html_url?.trim() || '',
       threads: [],
       ...(body ? { body } : {}),
+    };
+    return item;
+  }
+
+  if (eventType === 'merged') {
+    const item: GitHubPullRequestConversationMerged = {
+      kind: 'merged',
+      id: `merged-${eventId}`,
+      createdAt,
+      authorLogin,
+      avatarUrl,
+      url: event.html_url?.trim() || '',
     };
     return item;
   }

@@ -72,6 +72,15 @@ export interface GitHubPullRequestConversationCommit {
   url: string;
 }
 
+export interface GitHubPullRequestConversationMerged {
+  kind: 'merged';
+  id: string;
+  createdAt: string;
+  authorLogin: string;
+  avatarUrl: string;
+  url: string;
+}
+
 export interface GitHubPullRequestConversationIssueComment {
   kind: 'issueComment';
   id: string;
@@ -110,6 +119,7 @@ export interface GitHubPullRequestConversationReviewThread {
 
 export type GitHubPullRequestConversationItem =
   | GitHubPullRequestConversationCommit
+  | GitHubPullRequestConversationMerged
   | GitHubPullRequestConversationIssueComment
   | GitHubPullRequestConversationReview
   | GitHubPullRequestConversationReviewThread;

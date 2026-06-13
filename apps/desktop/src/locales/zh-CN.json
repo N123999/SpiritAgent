@@ -645,6 +645,7 @@
     "prOpen": "进行中",
     "prClosed": "已关闭",
     "prMerged": "已合并",
+    "prMergedThisPullRequest": "合并了此 Pull Request",
     "prMergeable": "可合并",
     "prConflicts": "存在冲突",
     "prMergeStatusUnknown": "合并状态未知",

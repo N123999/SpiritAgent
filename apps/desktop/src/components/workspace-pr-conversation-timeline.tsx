@@ -2,18 +2,20 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { Check, ChevronRight, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
+import { Check, ChevronRight, CircleX, Eye, GitCommit, GitPullRequest, MessageSquare } from "lucide-react";
 
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
 import { WorkspacePrMarkdown } from "@/components/workspace-pr-markdown";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { formatRelativeTime } from "@/lib/format-relative-time";
+import { GITHUB_PR_MERGED_ICON_CLASS } from "@/lib/github-pr-merged-badge-styles";
 import { resolveGitHubAvatarUrl } from "@/lib/github-avatar-url";
 import { cn } from "@/lib/utils";
 import type {
   GitHubPullRequestConversationIssueComment,
   GitHubPullRequestConversationItem,
+  GitHubPullRequestConversationMerged,
   GitHubPullRequestConversationReview,
   GitHubPullRequestConversationReviewThread,
   GitHubPullRequestReviewComment,
@@ -102,9 +104,11 @@ function PrConversationCommentCard({
 function PrConversationTimelineNode({
   icon: Icon,
   className,
+  iconClassName,
 }: {
   icon: LucideIcon;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <div
@@ -114,7 +118,7 @@ function PrConversationTimelineNode({
       )}
       aria-hidden
     >
-      <Icon className="size-2.5 text-muted-foreground" strokeWidth={2} />
+      <Icon className={cn("size-2.5", iconClassName ?? "text-muted-foreground")} strokeWidth={2} />
     </div>
   );
 }
@@ -346,6 +350,32 @@ function ReviewThreadTimelineRow({ item }: { item: GitHubPullRequestConversation
   );
 }
 
+function MergeTimelineRow({ item }: { item: GitHubPullRequestConversationMerged }) {
+  const { t, i18n } = useTranslation();
+
+  return (
+    <PrConversationTimelineShell
+      node={
+        <PrConversationTimelineNode icon={GitPullRequest} iconClassName={GITHUB_PR_MERGED_ICON_CLASS} />
+      }
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <PrConversationTimelineAvatar login={item.authorLogin} avatarUrl={item.avatarUrl} />
+        <span className="truncate text-xs font-medium text-foreground/80">{item.authorLogin}</span>
+        <span className="truncate text-xs leading-relaxed text-muted-foreground">
+          {t("workspace.prMergedThisPullRequest")}
+        </span>
+        <time
+          className="shrink-0 text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65"
+          dateTime={item.createdAt}
+        >
+          {formatRelativeTime(item.createdAt, i18n.language)}
+        </time>
+      </div>
+    </PrConversationTimelineShell>
+  );
+}
+
 function ConversationTimelineItemRow({ item }: { item: GitHubPullRequestConversationItem }) {
   if (item.kind === "commit") {
     return (
@@ -357,6 +387,10 @@ function ConversationTimelineItemRow({ item }: { item: GitHubPullRequestConversa
         createdAt={item.createdAt}
       />
     );
+  }
+
+  if (item.kind === "merged") {
+    return <MergeTimelineRow item={item} />;
   }
 
   if (item.kind === "issueComment") {
