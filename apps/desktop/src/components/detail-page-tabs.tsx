@@ -1,10 +1,9 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 
 import {
-  getWorkspaceToolsShellDividerLeftPx,
-  getWorkspaceToolsShellSplit,
   PR_SUBTAB_SHELL_DIVIDER_ATTR,
 } from "@/lib/workspace-tools-panel-edge";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
 import { cn } from "@/lib/utils";
 
 export type DetailPageTabItem<T extends string> = {
@@ -23,6 +22,9 @@ export type DetailPageTabsProps<T extends string> = {
   contentClassName?: string;
   /** Draw tab divider on workspace tools shell (spans resize column + panel). */
   edgeToPanelDivider?: boolean;
+  /** Re-sync shell divider when sibling layout changes (e.g. resizable overview pane). */
+  shellDividerWatchRefs?: RefObject<HTMLElement | null>[];
+  shellDividerLayoutDeps?: readonly unknown[];
 };
 
 const tabListClassBySize = {
@@ -50,51 +52,22 @@ export function DetailPageTabs<T extends string>({
   className,
   contentClassName,
   edgeToPanelDivider = false,
+  shellDividerWatchRefs,
+  shellDividerLayoutDeps = [],
 }: DetailPageTabsProps<T>) {
   const tabPanelId = `detail-page-tabpanel-${activeTab}`;
   const tabBarRef = useRef<HTMLDivElement>(null);
 
-  useLayoutEffect(() => {
-    if (!edgeToPanelDivider) {
-      return;
-    }
-    const tabBar = tabBarRef.current;
-    const shellSplit = getWorkspaceToolsShellSplit();
-    if (!tabBar || !shellSplit) {
-      return;
-    }
-
-    let shellDivider = shellSplit.querySelector<HTMLElement>(`[${PR_SUBTAB_SHELL_DIVIDER_ATTR}]`);
-    if (!shellDivider) {
-      shellDivider = document.createElement("div");
-      shellDivider.setAttribute(PR_SUBTAB_SHELL_DIVIDER_ATTR, "");
-      shellDivider.className = "pointer-events-none absolute right-0 z-20 h-px bg-border/40";
-      shellSplit.appendChild(shellDivider);
-    }
-
-    const syncShellDivider = () => {
-      const shellRect = shellSplit.getBoundingClientRect();
-      const tabBarRect = tabBar.getBoundingClientRect();
-      const leftPx = getWorkspaceToolsShellDividerLeftPx(shellSplit);
-
-      shellDivider!.style.display = "block";
-      shellDivider!.style.left = `${leftPx}px`;
-      shellDivider!.style.right = "0px";
-      shellDivider!.style.top = `${tabBarRect.bottom - shellRect.top - 1}px`;
-    };
-
-    syncShellDivider();
-    const resizeObserver = new ResizeObserver(syncShellDivider);
-    resizeObserver.observe(tabBar);
-    resizeObserver.observe(shellSplit);
-    window.addEventListener("resize", syncShellDivider);
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", syncShellDivider);
-      shellDivider!.style.display = "none";
-    };
-  }, [edgeToPanelDivider, activeTab]);
+  useWorkspaceToolsShellHorizontalDivider(
+    tabBarRef,
+    {
+      enabled: edgeToPanelDivider,
+      edge: "bottom",
+      dividerAttr: PR_SUBTAB_SHELL_DIVIDER_ATTR,
+      watchRefs: shellDividerWatchRefs,
+    },
+    [activeTab, ...shellDividerLayoutDeps],
+  );
 
   return (
     <div className={cn(containerClassBySize[size], className)}>
