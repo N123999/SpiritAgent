@@ -4,6 +4,7 @@ import type {
   GitHubPullRequestDetail,
   GitHubPullRequestFilesSnapshot,
   GitHubPullRequestCommitsSnapshot,
+  GitHubPullRequestChecksSnapshot,
 } from "@/types";
 
 /** Static PR detail fixture for unauthenticated UI preview only. */
@@ -383,6 +384,39 @@ export const GITHUB_PR_COMMITS_DEMO: GitHubPullRequestCommitsSnapshot = {
       avatarUrl: "https://github.com/octocat.png?size=40",
       createdAt: "2024-01-02T10:00:00Z",
       url: "https://github.com/octocat/Hello-World/commit/mno345",
+    },
+  ],
+};
+
+const GITHUB_PR_CHECKS_DEMO_IN_PROGRESS_STARTED_AT = new Date(Date.now() - 45_000).toISOString();
+
+/** Static checks list for unauthenticated UI preview only. */
+export const GITHUB_PR_CHECKS_DEMO: GitHubPullRequestChecksSnapshot = {
+  hasMore: false,
+  headSha: "abc123def4567890",
+  checks: [
+    {
+      id: "run:501",
+      name: "build",
+      state: "in_progress",
+      startedAt: GITHUB_PR_CHECKS_DEMO_IN_PROGRESS_STARTED_AT,
+      url: "https://github.com/octocat/Hello-World/actions/runs/501",
+    },
+    {
+      id: "run:502",
+      name: "lint",
+      state: "failure",
+      startedAt: "2024-01-02T20:50:00Z",
+      completedAt: "2024-01-02T20:52:10Z",
+      url: "https://github.com/octocat/Hello-World/actions/runs/502",
+    },
+    {
+      id: "run:503",
+      name: "test",
+      state: "success",
+      startedAt: "2024-01-02T20:45:00Z",
+      completedAt: "2024-01-02T20:47:35Z",
+      url: "https://github.com/octocat/Hello-World/actions/runs/503",
     },
   ],
 };
