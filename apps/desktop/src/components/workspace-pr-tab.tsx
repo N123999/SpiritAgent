@@ -6,7 +6,7 @@ import { appendPullRequestChecksPages } from "@spirit-agent/host-internal/github
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skeleton";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
-import { WorkspacePrListView } from "@/components/workspace-pr-list-view";
+import { WorkspacePrListView, type WorkspacePrListViewHandle } from "@/components/workspace-pr-list-view";
 import { GITHUB_PR_CHECKS_DEMO, GITHUB_PR_COMMITS_DEMO, GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO, GITHUB_PR_FILES_DEMO } from "@/lib/github-pr-ui-demo";
 import type { GitHubPullRequestRevealRequest } from "@/lib/workspace-pr-navigation";
 import { cn } from "@/lib/utils";
@@ -190,6 +190,7 @@ export function WorkspacePrTab({
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
   const prevBranchRef = useRef<string | undefined>(undefined);
   const pinnedPullRequestRequestRef = useRef<GetGitHubPullRequestDetailRequest | null>(null);
+  const prListViewRef = useRef<WorkspacePrListViewHandle | null>(null);
   const detailRef = useRef<GitHubPullRequestDetail | null>(null);
   const branchResultRef = useRef<GitHubPullRequestForBranchResult | null>(null);
   detailRef.current = detail;
@@ -503,6 +504,7 @@ export function WorkspacePrTab({
       try {
         await mergeGitHubPullRequest({ ...request, mergeMethod });
         await loadPullRequestBundle(request, { background: true });
+        prListViewRef.current?.invalidateCacheAndRefreshInBackground();
       } catch (mergeError) {
         setError(describeError(mergeError));
         await refreshAuthStatus();
@@ -580,6 +582,7 @@ export function WorkspacePrTab({
     setFilesSnapshot(null);
     setCommitsSnapshot(null);
     setChecksSnapshot(null);
+    prListViewRef.current?.invalidateCacheAndRefreshInBackground();
   }, []);
 
   const handleMarkPullRequestReady = useCallback(async () => {
@@ -600,6 +603,7 @@ export function WorkspacePrTab({
         nodeId: detailRef.current?.nodeId,
       });
       await loadPullRequestBundle(request, { background: true });
+      prListViewRef.current?.invalidateCacheAndRefreshInBackground();
     } catch (readyError) {
       setError(describeError(readyError));
       await refreshAuthStatus();
@@ -790,17 +794,26 @@ export function WorkspacePrTab({
             <p className="px-3 pt-3 text-destructive">{repositoryLoadError}</p>
           ) : branchResult?.repository == null ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoGitHubOrigin")}</p>
-          ) : viewMode === "list" ? (
-            <WorkspacePrListView
-              repository={branchResult.repository}
-              listGitHubPullRequests={listGitHubPullRequests}
-              getGitHubPullRequestTabCounts={getGitHubPullRequestTabCounts}
-              onSelectPullRequest={(item) => {
-                void handleSelectPullRequest(item);
-              }}
-              className="min-h-0 flex-1"
-            />
-          ) : detail ? (
+          ) : (
+            <>
+              <div
+                className={cn(
+                  "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                  viewMode !== "list" && "hidden",
+                )}
+              >
+                <WorkspacePrListView
+                  ref={prListViewRef}
+                  repository={branchResult.repository}
+                  listGitHubPullRequests={listGitHubPullRequests}
+                  getGitHubPullRequestTabCounts={getGitHubPullRequestTabCounts}
+                  onSelectPullRequest={(item) => {
+                    void handleSelectPullRequest(item);
+                  }}
+                  className="min-h-0 flex-1"
+                />
+              </div>
+              {viewMode === "detail" && detail ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="flex shrink-0 items-center px-3 pt-3">
                 <Button
@@ -838,8 +851,10 @@ export function WorkspacePrTab({
                 className="min-h-0 flex-1"
               />
             </div>
-          ) : (
-            <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prDetailUnavailable")}</p>
+              ) : viewMode === "detail" ? (
+                <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prDetailUnavailable")}</p>
+              ) : null}
+            </>
           )}
         </>
       ) : null}
