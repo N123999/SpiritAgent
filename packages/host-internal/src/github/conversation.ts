@@ -34,8 +34,11 @@ interface GitHubTimelineEvent {
   body?: string | null;
   state?: string | null;
   html_url?: string | null;
+  sha?: string | null;
+  message?: string | null;
   actor?: GitHubUserRef | null;
   user?: GitHubUserRef | null;
+  author?: { name?: string | null; date?: string | null } | null;
   commit?: {
     sha?: string | null;
     html_url?: string | null;
@@ -88,6 +91,31 @@ function normalizeReviewState(state: string | null | undefined): GitHubPullReque
   }
 }
 
+function resolveCommittedTimelineFields(
+  event: GitHubTimelineEvent,
+): {
+  sha: string;
+  message: string;
+  url: string;
+  authorName: string;
+  authorDate: string | null;
+} | null {
+  const nested = event.commit;
+  const sha = nested?.sha?.trim() || event.sha?.trim() || event.commit_id?.trim() || '';
+  if (!sha) {
+    return null;
+  }
+
+  const author = nested?.author ?? event.author;
+  return {
+    sha,
+    message: nested?.message ?? event.message ?? '',
+    url: nested?.html_url?.trim() || event.html_url?.trim() || '',
+    authorName: author?.name?.trim() || '',
+    authorDate: author?.date?.trim() || null,
+  };
+}
+
 function resolveTimelineEventCreatedAt(event: GitHubTimelineEvent): string | null {
   const direct = event.created_at?.trim() || event.submitted_at?.trim() || event.updated_at?.trim();
   if (direct) {
@@ -95,9 +123,9 @@ function resolveTimelineEventCreatedAt(event: GitHubTimelineEvent): string | nul
   }
 
   if (event.event?.trim() === 'committed') {
-    const commitDate = event.commit?.author?.date?.trim();
-    if (commitDate) {
-      return commitDate;
+    const committed = resolveCommittedTimelineFields(event);
+    if (committed?.authorDate) {
+      return committed.authorDate;
     }
   }
 
@@ -198,19 +226,19 @@ export function mapTimelineEventToConversationItem(
   const eventId = String(event.id ?? `${eventType}-${createdAt}`);
 
   if (eventType === 'committed') {
-    const commit = event.commit;
-    const sha = commit?.sha?.trim() || event.commit_id?.trim() || eventId;
-    const message = commit?.message ?? '';
-    const url = commit?.html_url?.trim() || '';
+    const committed = resolveCommittedTimelineFields(event);
+    if (!committed) {
+      return null;
+    }
     const item: GitHubPullRequestConversationCommit = {
       kind: 'commit',
-      id: `commit-${sha}`,
+      id: `commit-${committed.sha}`,
       createdAt,
-      authorLogin: commit?.author?.name?.trim() || authorLogin,
+      authorLogin: committed.authorName || authorLogin,
       avatarUrl,
-      subject: commitSubject(message),
-      sha,
-      url,
+      subject: commitSubject(committed.message),
+      sha: committed.sha,
+      url: committed.url,
     };
     return item;
   }

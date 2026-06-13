@@ -35,6 +35,25 @@ test('mapTimelineEventToConversationItem maps committed event', () => {
   assert.equal(item.authorLogin, 'Octocat');
 });
 
+test('mapTimelineEventToConversationItem maps committed event from issue timeline shape', () => {
+  const item = mapTimelineEventToConversationItem({
+    sha: '3fc54ae2102e42ec0adc877fac601e6a517b117f',
+    html_url: 'https://github.com/N123999/SpiritAgent/commit/3fc54ae2102e42ec0adc877fac601e6a517b117f',
+    author: { name: 'XianYu', date: '2026-06-10T03:40:34Z' },
+    message: 'feat(desktop): 支持光标处斜杠 token 唤起菜单\n\n基于 composer 光标检测',
+    event: 'committed',
+  });
+
+  assert.equal(item?.kind, 'commit');
+  if (item?.kind !== 'commit') {
+    return;
+  }
+  assert.equal(item.createdAt, '2026-06-10T03:40:34Z');
+  assert.equal(item.subject, 'feat(desktop): 支持光标处斜杠 token 唤起菜单');
+  assert.equal(item.sha, '3fc54ae2102e42ec0adc877fac601e6a517b117f');
+  assert.equal(item.authorLogin, 'XianYu');
+});
+
 test('mapTimelineEventToConversationItem maps issue comment', () => {
   const item = mapTimelineEventToConversationItem({
     id: 42,
