@@ -7,12 +7,102 @@ function formatPrDiffWireMeta(attachment: Pick<PrDiffAttachment, "filename" | "l
   return `${normalized}${linePart}, status:${attachment.status}`;
 }
 
+const PR_DIFF_HEADER_PREFIX = "Selected diff from ";
+const PR_DIFF_HEADER_RE = /^Selected diff from ([^\n]+?) \(([^)]*)\):$/u;
+
+function chooseDiffFence(diffText: string): { open: string; close: string } {
+  if (!/^\s*```/m.test(diffText)) {
+    return { open: "```diff\n", close: "\n```" };
+  }
+  return { open: "````diff\n", close: "\n````" };
+}
+
 /** Wire-format PR diff block (shared by attachment + composer segment model). */
 export function prDiffContextText(attachment: Pick<PrDiffAttachment, "prUrl" | "filename" | "lineStart" | "lineEnd" | "status" | "diffText">): string {
   const meta = formatPrDiffWireMeta(attachment);
-  return `Selected diff from ${attachment.prUrl} (${meta}):\n\`\`\`diff\n${attachment.diffText}\n\`\`\``;
+  const fence = chooseDiffFence(attachment.diffText);
+  return `Selected diff from ${attachment.prUrl} (${meta}):\n${fence.open}${attachment.diffText}${fence.close}`;
 }
 
+export type ParsedPrDiffWireBlock = {
+  index: number;
+  length: number;
+  prUrl: string;
+  meta: string;
+  diffText: string;
+};
+
+const PR_DIFF_OPEN_FENCE_RE = /^(`{3,})diff\n/;
+
+/** Scan wire text for PR diff blocks; closing fence must be a standalone line. */
+export function scanPrDiffWireBlocks(content: string): ParsedPrDiffWireBlock[] {
+  const blocks: ParsedPrDiffWireBlock[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom < content.length) {
+    const headerIndex = content.indexOf(PR_DIFF_HEADER_PREFIX, searchFrom);
+    if (headerIndex === -1) {
+      break;
+    }
+
+    const headerLineEnd = content.indexOf("\n", headerIndex);
+    if (headerLineEnd === -1) {
+      break;
+    }
+
+    const headerLine = content.slice(headerIndex, headerLineEnd);
+    const headerMatch = PR_DIFF_HEADER_RE.exec(headerLine);
+    if (!headerMatch) {
+      searchFrom = headerIndex + 1;
+      continue;
+    }
+
+    let cursor = headerLineEnd + 1;
+    const fenceTail = content.slice(cursor);
+    const openFenceMatch = PR_DIFF_OPEN_FENCE_RE.exec(fenceTail);
+    if (!openFenceMatch) {
+      searchFrom = headerIndex + 1;
+      continue;
+    }
+    const fenceMark = openFenceMatch[1] ?? "```";
+    const closeFence = fenceMark;
+    cursor += openFenceMatch[0].length;
+
+    const diffLines: string[] = [];
+    let closed = false;
+    while (cursor <= content.length) {
+      const nextLineEnd = content.indexOf("\n", cursor);
+      const lineEnd = nextLineEnd === -1 ? content.length : nextLineEnd;
+      const line = content.slice(cursor, lineEnd);
+      if (line === closeFence) {
+        const blockEnd = nextLineEnd === -1 ? content.length : nextLineEnd + 1;
+        blocks.push({
+          index: headerIndex,
+          length: blockEnd - headerIndex,
+          prUrl: headerMatch[1]?.trim() ?? "",
+          meta: headerMatch[2]?.trim() ?? "",
+          diffText: diffLines.join("\n"),
+        });
+        searchFrom = blockEnd;
+        closed = true;
+        break;
+      }
+      diffLines.push(line);
+      if (nextLineEnd === -1) {
+        break;
+      }
+      cursor = nextLineEnd + 1;
+    }
+
+    if (!closed) {
+      searchFrom = headerIndex + 1;
+    }
+  }
+
+  return blocks;
+}
+
+/** @deprecated Prefer scanPrDiffWireBlocks for parsing; kept for tests referencing the pattern. */
 export const PR_DIFF_BLOCK_RE =
   /Selected diff from ([^\n]+) \(([^)]*)\):\n```diff\n[\s\S]*?\n```/g;
 
