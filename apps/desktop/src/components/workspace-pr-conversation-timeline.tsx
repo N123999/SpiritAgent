@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { Check, ChevronDown, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
+import { Check, ChevronRight, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
 
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -231,17 +231,20 @@ function ReviewTimelineRow({ item }: { item: GitHubPullRequestConversationReview
       <PrConversationCommentCard>
         <p className={COMMENT_BODY_CLASS}>{cardText}</p>
       </PrConversationCommentCard>
+      {item.threads.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {item.threads.map((thread) => (
+            <ReviewFileThreadCard key={thread.id} thread={thread} />
+          ))}
+        </div>
+      ) : null}
     </PrConversationTimelineShell>
   );
 }
 
-function ReviewThreadComment({
-  comment,
-}: {
-  comment: GitHubPullRequestReviewComment;
-}) {
+function ReviewThreadReply({ comment }: { comment: GitHubPullRequestReviewComment }) {
   return (
-    <div className="border-t border-border/20 pt-2 first:border-t-0 first:pt-0">
+    <div className="border-t border-border/20 pt-2">
       <PrConversationCommentHeader
         login={comment.authorLogin}
         avatarUrl={comment.avatarUrl}
@@ -254,64 +257,48 @@ function ReviewThreadComment({
   );
 }
 
-function ReviewThreadTimelineRow({ item }: { item: GitHubPullRequestConversationReviewThread }) {
+function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversationReviewThread }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const mounted = useCollapsibleChildMount(open);
 
-  const rootComment = item.comments[0];
-  const replies = item.comments.slice(1);
+  const rootComment = thread.comments[0];
+  const replies = thread.comments.slice(1);
   const rootBody = rootComment?.body?.trim() ?? "";
-  const hasContext = Boolean(item.path || rootBody);
 
   return (
-    <PrConversationTimelineShell node={<PrConversationTimelineNode icon={MessageSquare} />}>
-      <PrConversationCommentHeader
-        login={item.authorLogin}
-        avatarUrl={item.avatarUrl}
-        createdAt={item.createdAt}
-      />
-      <PrConversationCommentCard>
-        {item.path ? (
-          <p className="truncate font-mono text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
-            {item.path}
-            {item.line != null ? `:${item.line}` : ""}
-          </p>
-        ) : null}
-        {rootBody ? (
-          <p className={cn(COMMENT_BODY_CLASS, item.path ? "mt-1.5" : undefined)}>{rootBody}</p>
-        ) : null}
-        {!hasContext ? (
-          <p className={COMMENT_BODY_CLASS}>{t("workspace.prReviewThreadFallback")}</p>
-        ) : null}
-        <Collapsible
-          open={open}
-          onOpenChange={setOpen}
-          className={cn("min-w-0", hasContext ? "mt-2" : undefined)}
-        >
+    <div className="flex min-w-0">
+      <div className={COMMENT_CARD_INDENT_SPACER_CLASS} aria-hidden />
+      <div className={cn(COMMENT_CARD_SURFACE_CLASS, "min-w-0 flex-1")}>
+        <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
           <button
             type="button"
-            className="group flex w-full items-center gap-1 text-left text-xs text-muted-foreground/75 hover:text-muted-foreground dark:text-muted-foreground/65"
+            className="flex w-full min-w-0 items-center gap-1 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-expanded={open}
+            aria-label={open ? t("workspace.prReviewThreadCollapse") : t("workspace.prReviewThreadExpand")}
             onClick={() => setOpen((value) => !value)}
           >
-            <ChevronDown
+            <ChevronRight
               className={cn(
-                "size-3 shrink-0 transition-transform duration-150",
-                open ? "rotate-180" : "rotate-0",
+                "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+                open && "rotate-90",
               )}
               aria-hidden
             />
-            {open ? t("workspace.prReviewThreadCollapse") : t("workspace.prReviewThreadExpand")}
+            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
+              {thread.path}
+              {thread.line != null ? `:${thread.line}` : ""}
+            </span>
           </button>
           <CollapsibleContent className="mt-2 space-y-2">
             {mounted ? (
               <>
-                <ReviewCommentHunkView path={item.path || "file"} diffHunk={item.diffHunk} />
+                <ReviewCommentHunkView path={thread.path || "file"} diffHunk={thread.diffHunk} />
+                {rootBody ? <p className={COMMENT_BODY_CLASS}>{rootBody}</p> : null}
                 {replies.length > 0 ? (
                   <div className="space-y-2">
                     {replies.map((comment) => (
-                      <ReviewThreadComment key={comment.id} comment={comment} />
+                      <ReviewThreadReply key={comment.id} comment={comment} />
                     ))}
                   </div>
                 ) : null}
@@ -319,7 +306,22 @@ function ReviewThreadTimelineRow({ item }: { item: GitHubPullRequestConversation
             ) : null}
           </CollapsibleContent>
         </Collapsible>
-      </PrConversationCommentCard>
+      </div>
+    </div>
+  );
+}
+
+function ReviewThreadTimelineRow({ item }: { item: GitHubPullRequestConversationReviewThread }) {
+  return (
+    <PrConversationTimelineShell node={<PrConversationTimelineNode icon={MessageSquare} />}>
+      <PrConversationCommentHeader
+        login={item.authorLogin}
+        avatarUrl={item.avatarUrl}
+        createdAt={item.createdAt}
+      />
+      <div className="mt-2">
+        <ReviewFileThreadCard thread={item} />
+      </div>
     </PrConversationTimelineShell>
   );
 }

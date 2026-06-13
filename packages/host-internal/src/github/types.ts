@@ -90,6 +90,7 @@ export interface GitHubPullRequestConversationReview {
   state: GitHubPullRequestReviewState;
   body?: string;
   url: string;
+  threads: GitHubPullRequestConversationReviewThread[];
 }
 
 export interface GitHubPullRequestConversationReviewThread {
@@ -103,6 +104,7 @@ export interface GitHubPullRequestConversationReviewThread {
   line: number | null;
   url: string;
   comments: GitHubPullRequestReviewComment[];
+  reviewId?: string;
 }
 
 export type GitHubPullRequestConversationItem =

@@ -45,6 +45,7 @@ interface GitHubTimelineEvent {
 interface GitHubReviewCommentApiItem {
   id: number;
   in_reply_to_id?: number | null;
+  pull_request_review_id?: number | null;
   body?: string | null;
   path?: string | null;
   diff_hunk?: string | null;
@@ -157,6 +158,9 @@ export function groupReviewCommentsIntoThreads(
       line: root.line ?? null,
       url: mappedRoot.url,
       comments: threadComments,
+      ...(root.pull_request_review_id != null
+        ? { reviewId: `review-${root.pull_request_review_id}` }
+        : {}),
     };
   });
 }
@@ -225,12 +229,57 @@ export function mapTimelineEventToConversationItem(
       avatarUrl,
       state: normalizeReviewState(event.state),
       url: event.html_url?.trim() || '',
+      threads: [],
       ...(body ? { body } : {}),
     };
     return item;
   }
 
   return null;
+}
+
+export function nestReviewThreadsUnderReviews(
+  items: GitHubPullRequestConversationItem[],
+): GitHubPullRequestConversationItem[] {
+  const reviewIds = new Set(
+    items
+      .filter((item): item is GitHubPullRequestConversationReview => item.kind === 'review')
+      .map((item) => item.id),
+  );
+  const threadsByReviewId = new Map<string, GitHubPullRequestConversationReviewThread[]>();
+
+  for (const item of items) {
+    if (item.kind !== 'reviewThread' || !item.reviewId || !reviewIds.has(item.reviewId)) {
+      continue;
+    }
+    const bucket = threadsByReviewId.get(item.reviewId) ?? [];
+    bucket.push(item);
+    threadsByReviewId.set(item.reviewId, bucket);
+  }
+
+  const output: GitHubPullRequestConversationItem[] = [];
+
+  for (const item of items) {
+    if (item.kind === 'reviewThread') {
+      if (item.reviewId && reviewIds.has(item.reviewId)) {
+        continue;
+      }
+      output.push(item);
+      continue;
+    }
+
+    if (item.kind === 'review') {
+      const threads = [...(threadsByReviewId.get(item.id) ?? [])].sort(
+        (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+      );
+      output.push({ ...item, threads });
+      continue;
+    }
+
+    output.push(item);
+  }
+
+  return output;
 }
 
 export function mergePullRequestConversationItems(
@@ -257,13 +306,15 @@ export function mergePullRequestConversationItems(
   );
 
   const seen = new Set<string>();
-  return merged.filter((item) => {
+  const deduped = merged.filter((item) => {
     if (seen.has(item.id)) {
       return false;
     }
     seen.add(item.id);
     return true;
   });
+
+  return nestReviewThreadsUnderReviews(deduped);
 }
 
 async function fetchIssueTimeline(
