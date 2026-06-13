@@ -3,8 +3,13 @@ import { emptySegments, mergeAdjacentTextSegments } from "./composer-segment-mod
 
 function isInlineAttachmentChip(
   seg: RichSegment | undefined,
-): seg is Extract<RichSegment, { kind: "element" | "workspaceFile" | "skill" }> {
-  return seg?.kind === "element" || seg?.kind === "workspaceFile" || seg?.kind === "skill";
+): seg is Extract<RichSegment, { kind: "element" | "prDiff" | "workspaceFile" | "skill" }> {
+  return (
+    seg?.kind === "element"
+    || seg?.kind === "prDiff"
+    || seg?.kind === "workspaceFile"
+    || seg?.kind === "skill"
+  );
 }
 
 function caretAfterInlineChip(segs: RichSegment[], chipIndex: number): SegmentCaret {

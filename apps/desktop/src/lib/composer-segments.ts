@@ -1,4 +1,5 @@
 import { makeChipNode } from "@/lib/browser-element-chip-styles";
+import { makePrDiffChipNode } from "@/lib/github-pr-diff-chip-styles";
 import { makeFileChipNode } from "@/lib/workspace-file-chip-styles";
 import type { RichSegment } from "@/lib/composer-segment-model";
 import {
@@ -48,6 +49,7 @@ export {
 export { normalizeCaretForComposer } from "@/lib/composer-caret-normalize";
 
 export { makeChipNode } from "@/lib/browser-element-chip-styles";
+export { makePrDiffChipNode } from "@/lib/github-pr-diff-chip-styles";
 export { makeFileChipNode } from "@/lib/workspace-file-chip-styles";
 export {
   caretAfterAgentModeChip,
@@ -141,6 +143,35 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
     }
     return;
   }
+  if (el.dataset.prDiffChip === "true" || el.getAttribute("data-pr-diff-chip") === "true") {
+    const id = el.dataset.prDiffId;
+    const prUrl = el.dataset.prDiffUrl;
+    const filename = el.dataset.prDiffFilename;
+    const lineStart = Number(el.dataset.prDiffLineStart ?? "0");
+    const lineEnd = Number(el.dataset.prDiffLineEnd ?? "0");
+    const diffText = el.dataset.prDiffText ?? "";
+    const status = el.dataset.prDiffStatus;
+    if (
+      id
+      && prUrl
+      && filename
+      && (status === "open" || status === "merged" || status === "closed" || status === "draft")
+    ) {
+      segs.push({
+        kind: "prDiff",
+        attachment: {
+          id,
+          prUrl,
+          filename,
+          lineStart,
+          lineEnd,
+          diffText,
+          status,
+        },
+      });
+    }
+    return;
+  }
   if (el.dataset.skillChip === "true" || el.getAttribute("data-skill-chip") === "true") {
     const alias = el.dataset.skillAlias ?? el.getAttribute("data-skill-alias");
     if (alias) {
@@ -182,6 +213,8 @@ export function segmentsToDom(
       frag.appendChild(makeDebugChipNode(doc, opts?.debugLabel ?? "Debug"));
     } else if (seg.kind === "workspaceFile") {
       frag.appendChild(makeFileChipNode(seg.path, doc));
+    } else if (seg.kind === "prDiff") {
+      frag.appendChild(makePrDiffChipNode(seg.attachment, doc));
     } else if (seg.kind === "skill") {
       frag.appendChild(makeSkillChipNode(seg.alias, doc));
     } else {

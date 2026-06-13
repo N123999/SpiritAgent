@@ -31,7 +31,9 @@ function lineNumberFromDiffRow(row: HTMLTableRowElement): number | null {
 }
 
 function collectDiffLinesInRange(range: Range, root: HTMLElement): HTMLTableRowElement[] {
-  const rows = Array.from(root.querySelectorAll("tr.diff-line"));
+  const rows = Array.from(root.querySelectorAll("tr.diff-line")).filter(
+    (row): row is HTMLTableRowElement => row instanceof HTMLTableRowElement,
+  );
   return rows.filter((row) => {
     try {
       return range.intersectsNode(row);

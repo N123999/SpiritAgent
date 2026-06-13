@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
+import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-selection";
 import {
@@ -119,6 +120,7 @@ export type InsertSkillChipOptions = {
 export type ComposerRichInputHandle = {
   focus(): void;
   insertAttachment(a: BrowserElementAttachment): void;
+  insertPrDiffAttachment(attachment: PrDiffAttachment): void;
   insertWorkspaceFileReference(
     path: string,
     query: ActiveWorkspaceFileReferenceQuery,
@@ -379,6 +381,26 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments],
     );
 
+    const insertPrDiffAttachment = useCallback(
+      (attachment: PrDiffAttachment) => {
+        const div = divRef.current;
+        if (!div) return;
+        div.focus();
+        const current = segmentsRef.current;
+        const caret =
+          selectionToCaret(div, current) ?? {
+            segmentIndex: current.length - 1,
+            offset: segmentsToPlainText(current).length,
+          };
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(current, caret, {
+          kind: "prDiff",
+          attachment,
+        });
+        commitSegments(next, nextCaret);
+      },
+      [commitSegments],
+    );
+
     const insertWorkspaceFileReference = useCallback(
       (path: string, query: ActiveWorkspaceFileReferenceQuery, finalize = true) => {
         const div = divRef.current;
@@ -605,6 +627,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       () => ({
         focus: () => divRef.current?.focus(),
         insertAttachment,
+        insertPrDiffAttachment,
         insertWorkspaceFileReference,
         insertLoopChip,
         removeLoopChip,
@@ -622,6 +645,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       }),
       [
         insertAttachment,
+        insertPrDiffAttachment,
         insertWorkspaceFileReference,
         replaceSkillSlashQuery,
         removeSkillSlashQuery,
