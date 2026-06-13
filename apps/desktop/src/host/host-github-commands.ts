@@ -276,11 +276,13 @@ export async function markGitHubPullRequestReadyCommand(
 
   try {
     const accessToken = await requireGitHubAccessToken();
-    const detail = await getPullRequestDetail(accessToken, { owner, repo }, number);
-    if (!detail.nodeId) {
+    const nodeId =
+      request.nodeId?.trim() ||
+      (await getPullRequestDetail(accessToken, { owner, repo }, number)).nodeId;
+    if (!nodeId) {
       throw new Error('Pull request node ID is unavailable.');
     }
-    await markPullRequestReadyForReview(accessToken, detail.nodeId);
+    await markPullRequestReadyForReview(accessToken, nodeId);
     return await getPullRequestDetail(accessToken, { owner, repo }, number);
   } catch (error) {
     throw await handleGitHubApiError(error);

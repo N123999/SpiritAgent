@@ -514,7 +514,10 @@ export function WorkspacePrTab({
     setPrActionBusy(true);
     setError(null);
     try {
-      await markGitHubPullRequestReady(request);
+      await markGitHubPullRequestReady({
+        ...request,
+        nodeId: detailRef.current?.nodeId,
+      });
       await loadPullRequestBundle(request, { background: true });
     } catch (readyError) {
       setError(describeError(readyError));

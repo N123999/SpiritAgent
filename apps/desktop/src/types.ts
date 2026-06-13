@@ -951,6 +951,7 @@ export interface GetGitHubPullRequestDetailRequest {
   repo: string;
   number: number;
   checksAfter?: string;
+  nodeId?: string;
 }
 
 export interface MergeGitHubPullRequestRequest extends GetGitHubPullRequestDetailRequest {
