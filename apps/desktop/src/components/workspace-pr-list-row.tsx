@@ -54,12 +54,14 @@ export function WorkspacePrListRow({ item, onSelect }: WorkspacePrListRowProps) 
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="truncate text-xs text-foreground">{item.title}</p>
         <div className="flex min-w-0 items-center gap-2">
-          <img
-            src={avatarUrl}
-            alt=""
-            className="size-3 shrink-0 rounded-full bg-muted object-cover"
-          />
-          <span className="truncate text-xs font-medium text-foreground/80">{item.authorLogin}</span>
+          <span className="inline-flex min-w-0 max-w-[45%] items-center gap-1">
+            <img
+              src={avatarUrl}
+              alt=""
+              className="size-3 shrink-0 rounded-full bg-muted object-cover"
+            />
+            <span className="truncate text-xs font-medium text-foreground/80">{item.authorLogin}</span>
+          </span>
           <span className="shrink-0 text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
             #{item.number}
           </span>
