@@ -431,6 +431,7 @@ export function WorkspacePrTab({
     if (viewMode === "list") {
       setError(null);
       await fetchRepositoryInfo();
+      prListViewRef.current?.refreshInBackground();
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
