@@ -217,6 +217,72 @@ export function writeGitChangesPaneRatio(
   writeStoredRatio(GIT_CHANGES_PANE_RATIO_STORAGE_KEY, ratio, containerHeightPx);
 }
 
+const PR_OVERVIEW_PANE_RATIO_STORAGE_KEY = "spirit-desktop-pr-overview-pane-ratio";
+
+export const PR_OVERVIEW_DEFAULT_RATIO = 0.38;
+const PR_OVERVIEW_RATIO_LOOSE_MIN = 0.15;
+const PR_OVERVIEW_RATIO_LOOSE_MAX = 0.75;
+
+export const PR_OVERVIEW_MIN_PX = 96;
+export const PR_TABS_SECTION_MIN_PX = 180;
+export const PR_OVERVIEW_SPLITTER_PX = 4;
+
+export function computePrOverviewPaneRatioBounds(containerHeightPx: number): {
+  min: number;
+  max: number;
+} {
+  const min = PR_OVERVIEW_MIN_PX / containerHeightPx;
+  const max =
+    (containerHeightPx - PR_TABS_SECTION_MIN_PX - PR_OVERVIEW_SPLITTER_PX) / containerHeightPx;
+  return { min, max };
+}
+
+export function clampPrOverviewPaneRatio(
+  ratio: number,
+  containerHeightPx?: number,
+): number {
+  if (containerHeightPx && containerHeightPx > 0) {
+    const { min, max } = computePrOverviewPaneRatioBounds(containerHeightPx);
+    if (min <= max) {
+      return clampRatio(ratio, min, max);
+    }
+  }
+  return clampRatio(ratio, PR_OVERVIEW_RATIO_LOOSE_MIN, PR_OVERVIEW_RATIO_LOOSE_MAX);
+}
+
+export function readPrOverviewPaneRatio(containerHeightPx?: number): number {
+  try {
+    if (typeof localStorage === "undefined") {
+      return clampPrOverviewPaneRatio(PR_OVERVIEW_DEFAULT_RATIO, containerHeightPx);
+    }
+    const raw = localStorage.getItem(PR_OVERVIEW_PANE_RATIO_STORAGE_KEY);
+    const parsed = raw ? Number.parseFloat(raw) : Number.NaN;
+    if (Number.isFinite(parsed)) {
+      return clampPrOverviewPaneRatio(parsed, containerHeightPx);
+    }
+  } catch {
+    // ignore
+  }
+  return clampPrOverviewPaneRatio(PR_OVERVIEW_DEFAULT_RATIO, containerHeightPx);
+}
+
+export function writePrOverviewPaneRatio(
+  ratio: number,
+  containerHeightPx?: number,
+): void {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    localStorage.setItem(
+      PR_OVERVIEW_PANE_RATIO_STORAGE_KEY,
+      String(clampPrOverviewPaneRatio(ratio, containerHeightPx)),
+    );
+  } catch {
+    // ignore
+  }
+}
+
 const WORKSPACE_SIDEBAR_EXPANDED_STORAGE_KEY =
   "spirit-desktop-workspace-sidebar-expanded-by-id";
 

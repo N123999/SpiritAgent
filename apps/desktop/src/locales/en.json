@@ -604,6 +604,7 @@
     "prDetailDemoLabel": "Detail UI preview",
     "prDetailUnavailable": "Pull request details could not be loaded.",
     "prDetailTabsAria": "Pull request detail",
+    "prResizeOverviewTabs": "Resize overview and tabs height",
     "prTabConversations": "Conversations",
     "prTabCommits": "Commits",
     "prTabChecks": "Checks",
