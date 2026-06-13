@@ -11,6 +11,12 @@ type UseWorkspaceToolsShellRowDividersOptions = {
   /** Draw a divider below the last row when there is no trailing sibling. */
   trailingDivider?: boolean;
   dividerClassName?: string;
+  /** When set, horizontal dividers start at this element's left edge instead of the shell resize line. */
+  dividerAnchorRef?: RefObject<HTMLElement | null>;
+  /** Which edge of `dividerAnchorRef` to align divider start. */
+  dividerAnchorEdge?: "left" | "right";
+  /** Observe layout changes on this element to re-sync divider left offset (e.g. sibling panel resize). */
+  layoutWatchRef?: RefObject<HTMLElement | null>;
 };
 
 export function useWorkspaceToolsShellRowDividers(
@@ -20,6 +26,9 @@ export function useWorkspaceToolsShellRowDividers(
     enabled = true,
     trailingDivider = false,
     dividerClassName = "pointer-events-none absolute h-px bg-border/35",
+    dividerAnchorRef,
+    dividerAnchorEdge = "left",
+    layoutWatchRef,
   }: UseWorkspaceToolsShellRowDividersOptions = {},
 ) {
   const hostIdRef = useRef(`shell-list-dividers-${Math.random().toString(36).slice(2)}`);
@@ -50,7 +59,24 @@ export function useWorkspaceToolsShellRowDividers(
 
     const sync = () => {
       const shellRect = shellSplit.getBoundingClientRect();
-      const leftPx = getWorkspaceToolsShellDividerLeftPx(shellSplit);
+      let leftPx: number;
+      if (dividerAnchorRef) {
+        const anchor = dividerAnchorRef.current;
+        if (!anchor) {
+          for (const divider of dividers) {
+            divider.style.display = "none";
+          }
+          return;
+        }
+        leftPx = Math.max(
+          0,
+          (dividerAnchorEdge === "right"
+            ? anchor.getBoundingClientRect().right
+            : anchor.getBoundingClientRect().left) - shellRect.left,
+        );
+      } else {
+        leftPx = getWorkspaceToolsShellDividerLeftPx(shellSplit);
+      }
       const viewport = root.closest<HTMLElement>("[data-radix-scroll-area-viewport]");
       const clipRect = viewport?.getBoundingClientRect() ?? root.getBoundingClientRect();
 
@@ -93,6 +119,14 @@ export function useWorkspaceToolsShellRowDividers(
     const resizeObserver = new ResizeObserver(sync);
     resizeObserver.observe(root);
     resizeObserver.observe(shellSplit);
+    const dividerAnchor = dividerAnchorRef?.current;
+    if (dividerAnchor) {
+      resizeObserver.observe(dividerAnchor);
+    }
+    const layoutWatch = layoutWatchRef?.current;
+    if (layoutWatch) {
+      resizeObserver.observe(layoutWatch);
+    }
 
     const viewport = root.closest<HTMLElement>("[data-radix-scroll-area-viewport]");
     viewport?.addEventListener("scroll", sync, { passive: true });
@@ -108,5 +142,5 @@ export function useWorkspaceToolsShellRowDividers(
       clipHost!.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- caller controls invalidation via deps
-  }, [dividerClassName, enabled, listRef, trailingDivider, ...deps]);
+  }, [dividerAnchorEdge, dividerAnchorRef, dividerClassName, enabled, layoutWatchRef, listRef, trailingDivider, ...deps]);
 }
