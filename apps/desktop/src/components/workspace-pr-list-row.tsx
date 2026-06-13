@@ -70,7 +70,7 @@ export function WorkspacePrListRow({ item, onSelect }: WorkspacePrListRowProps) 
             {formatRelativeTime(updatedAt, i18n.language)}
           </time>
           {item.taskListProgress ? (
-            <PrTestPlanProgress progress={item.taskListProgress} className="ml-auto" />
+            <PrTestPlanProgress progress={item.taskListProgress} />
           ) : null}
         </div>
       </div>
