@@ -192,8 +192,13 @@ export function WorkspacePrChangesView({
   }
 
   return (
-    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-row gap-0 overflow-hidden", className)}>
-      <aside className="flex h-full w-[min(40%,13rem)] shrink-0 flex-col border-r border-border/40">
+    <div
+      className={cn(
+        "flex h-full min-h-0 min-w-0 flex-1 flex-row items-stretch overflow-hidden",
+        className,
+      )}
+    >
+      <aside className="flex min-h-0 w-[min(40%,13rem)] shrink-0 flex-col">
         <ScrollArea className="h-full min-h-0 flex-1" type="auto">
           <WorkspacePrChangesFileTree
             nodes={treeNodes}
@@ -202,6 +207,7 @@ export function WorkspacePrChangesView({
           />
         </ScrollArea>
       </aside>
+      <div className="w-px shrink-0 self-stretch bg-border/40" aria-hidden />
       <ScrollArea
         ref={cardsScrollRef}
         className="min-h-0 min-w-0 flex-1 pr-1"
