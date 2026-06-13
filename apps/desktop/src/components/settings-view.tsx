@@ -6,6 +6,7 @@ import { ChevronsUpDown, LoaderCircle, RefreshCw, Sparkles, X } from "lucide-rea
 
 import { DreamGraphCard } from "@/components/dream-graph-card";
 import { HooksSettingsPanel } from "@/components/hooks-settings-panel";
+import { IntegrationsSettingsPanel } from "@/components/integrations-settings-panel";
 import { FontSelect } from "@/components/font-select";
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +93,8 @@ import type {
   PreviewModelsRequest,
   PreviewModelsResponse,
   SaveHookEntryRequest,
+  GitHubAuthStatus,
+  GitHubDeviceAuthChallenge,
 } from "@/types";
 import {
   PROVIDER_PICKER_ROWS,
@@ -173,6 +176,11 @@ type SettingsViewProps = {
   onStartCompactionUiDemo?: () => void;
   /** Windows 云母 / macOS Vibrancy：内层透明以避免与 settings-shell 双层 tint 叠深。 */
   useMicaBackdrop?: boolean;
+  getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
+  beginGitHubDeviceLogin: () => Promise<GitHubDeviceAuthChallenge>;
+  completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>;
+  cancelGitHubDeviceLogin: () => Promise<void>;
+  disconnectGitHub: () => Promise<GitHubAuthStatus>;
 };
 
 const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = [
@@ -192,6 +200,7 @@ const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   dreams: "settings.dreams",
   appearance: "settings.appearance",
   networks: "settings.networks",
+  integrations: "settings.integrations",
   developer: "settings.developer",
 };
 
@@ -4067,7 +4076,29 @@ export function SettingsView({
   onGenerateRuleNavigate,
   onStartCompactionUiDemo,
   useMicaBackdrop = false,
+  getGitHubAuthStatus,
+  beginGitHubDeviceLogin,
+  completeGitHubDeviceLogin,
+  cancelGitHubDeviceLogin,
+  disconnectGitHub,
 }: SettingsViewProps) {
+  const integrationsRuntime = useMemo(
+    () => ({
+      getGitHubAuthStatus,
+      beginGitHubDeviceLogin,
+      completeGitHubDeviceLogin,
+      cancelGitHubDeviceLogin,
+      disconnectGitHub,
+    }),
+    [
+      getGitHubAuthStatus,
+      beginGitHubDeviceLogin,
+      completeGitHubDeviceLogin,
+      cancelGitHubDeviceLogin,
+      disconnectGitHub,
+    ],
+  );
+
   const { t } = useTranslation();
   const extensionSettingsItem = extensionSettingsId
     ? snapshot?.extensionsList.find((item) => item.id === extensionSettingsId)
@@ -4078,7 +4109,7 @@ export function SettingsView({
       <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "hooks" && tab !== "extensions" && tab !== "agents" ? (
+            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "hooks" && tab !== "extensions" && tab !== "agents" && tab !== "integrations" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {t(settingsPageTitleKey[tab])}
               </h1>
@@ -4186,6 +4217,11 @@ export function SettingsView({
                 snapshot={snapshot}
                 onSavePatch={onSavePatch}
                 onResetWebHostPairing={onResetWebHostPairing}
+              />
+            ) : tab === "integrations" ? (
+              <IntegrationsSettingsPanel
+                isElectronShell={isElectronShell}
+                runtime={integrationsRuntime}
               />
             ) : null}
           </div>
