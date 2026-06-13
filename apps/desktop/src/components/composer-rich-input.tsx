@@ -12,6 +12,7 @@ import {
 
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
+import { hasInlineAttachmentChipSegments } from "@/lib/composer-inline-chip-dom";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-selection";
 import {
@@ -817,6 +818,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         // Skill chip 存在时，parent 侧 value 为空（segmentsToPlainText 对 skill 返回 ""），
         // 但 chip 本身应保留，勿清空。
         if (hasSkillSegment(current) && isComposerPlainEmpty(plain)) {
+          return;
+        }
+        // PR diff / 工作区文件 / 元素 chip 不贡献 parent plain；parent value 为空时保留内联 chip。
+        if (hasInlineAttachmentChipSegments(current) && isComposerPlainEmpty(plain)) {
           return;
         }
         commitSegments(emptySegments(), { segmentIndex: 0, offset: 0 });
