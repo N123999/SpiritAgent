@@ -57,36 +57,38 @@ function PrChangedFileCard({
   return (
     <section
       id={prChangedFileAnchorId(file.filename)}
-      className={cn(CHANGED_FILE_CARD_CLASS, "min-w-0 scroll-mt-2")}
+      className={cn(CHANGED_FILE_CARD_CLASS, "min-w-0 scroll-mt-0")}
       data-pr-changed-file={file.filename}
     >
       <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0">
-        <button
-          type="button"
-          className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
-          aria-expanded={open}
-          aria-label={
-            open ? t("workspace.prChangesFileCollapse") : t("workspace.prChangesFileExpand")
-          }
-          onClick={() => onOpenChange(!open)}
-        >
-          <ChevronRight
-            className={cn(
-              "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
-              open && "rotate-90",
-            )}
-            aria-hidden
-          />
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
-            {displayPath}
-          </span>
-          <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
-            {t(fileStatusLabelKey(file.status))}
-          </Badge>
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
-            +{file.additions} −{file.deletions}
-          </span>
-        </button>
+        <div className="sticky top-0 z-10 border-b border-border/40 bg-muted">
+          <button
+            type="button"
+            className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
+            aria-expanded={open}
+            aria-label={
+              open ? t("workspace.prChangesFileCollapse") : t("workspace.prChangesFileExpand")
+            }
+            onClick={() => onOpenChange(!open)}
+          >
+            <ChevronRight
+              className={cn(
+                "size-3 shrink-0 text-muted-foreground/55 transition-all duration-150",
+                open && "rotate-90",
+              )}
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
+              {displayPath}
+            </span>
+            <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
+              {t(fileStatusLabelKey(file.status))}
+            </Badge>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+              +{file.additions} −{file.deletions}
+            </span>
+          </button>
+        </div>
         <CollapsibleContent>
           {mounted ? (
             file.patch ? (
