@@ -29,6 +29,8 @@ const COMMENT_CARD_SURFACE_CLASS =
 /** Nested reply text indent (same offset as card spacer). */
 const COMMENT_CARD_INDENT_CLASS = "ml-7";
 const COMMENT_BODY_CLASS = "whitespace-pre-wrap text-xs leading-relaxed text-foreground/80";
+/** Vertical gap between timeline rows (commits, comments, reviews). */
+const TIMELINE_ITEMS_CLASS = "space-y-4";
 
 export type PrConversationTimelineProps = {
   items: GitHubPullRequestConversationItem[];
@@ -44,7 +46,7 @@ function PrConversationTimelineShell({
   children: ReactNode;
 }) {
   return (
-    <div className="relative flex gap-2 pb-3 last:pb-0">
+    <div className="relative flex gap-2">
       <div className="relative shrink-0" style={{ width: NODE_COLUMN_PX }}>
         <div className="absolute left-1/2 top-0 flex -translate-x-1/2 justify-center pt-0.5">{node}</div>
       </div>
@@ -86,7 +88,7 @@ function PrConversationCommentCard({
   className?: string;
 }) {
   return (
-    <div className="mt-1.5 flex min-w-0">
+    <div className="mt-2 flex min-w-0">
       <div className={COMMENT_CARD_INDENT_SPACER_CLASS} aria-hidden />
       <div className={cn(COMMENT_CARD_SURFACE_CLASS, "min-w-0 flex-1", className)}>{children}</div>
     </div>
@@ -152,7 +154,7 @@ function PrConversationTimelineRow({
   const { i18n } = useTranslation();
 
   return (
-    <div className="relative flex gap-2 pb-3 last:pb-0">
+    <div className="relative flex gap-2">
       <div className="relative shrink-0" style={{ width: NODE_COLUMN_PX }}>
         <div className="absolute left-1/2 top-0 flex -translate-x-1/2 justify-center pt-0.5">{node}</div>
       </div>
@@ -377,7 +379,7 @@ export function PrConversationTimeline({
           style={{ left: NODE_COLUMN_PX / 2 - 0.5 }}
           aria-hidden
         />
-        <div className="space-y-0">
+        <div className={TIMELINE_ITEMS_CLASS}>
           {items.map((item) => (
             <ConversationTimelineItemRow key={item.id} item={item} />
           ))}
