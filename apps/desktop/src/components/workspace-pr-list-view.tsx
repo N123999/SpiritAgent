@@ -136,11 +136,18 @@ export function WorkspacePrListView({
   );
 
   const fetchPage = useCallback(
-    async (tab: PrListTab, query: string, page: number, append: boolean) => {
-      const generation = ++fetchGenerationRef.current;
+    async (
+      tab: PrListTab,
+      query: string,
+      page: number,
+      append: boolean,
+      options?: { background?: boolean },
+    ) => {
+      const generation = fetchGenerationRef.current;
+      const background = options?.background ?? false;
       if (append) {
         setLoadingMore(true);
-      } else {
+      } else if (!background) {
         setLoading(true);
         setError(null);
       }
@@ -198,6 +205,8 @@ export function WorkspacePrListView({
   );
 
   useEffect(() => {
+    fetchGenerationRef.current += 1;
+
     const cacheKey = buildListCacheKey(repository, activeTab, debouncedQuery);
     const cached = listCacheRef.current.get(cacheKey);
     if (cached) {
