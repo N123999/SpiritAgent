@@ -49,12 +49,17 @@ const GIT_PULL_REQUEST_CLOSED_ICON_PATH =
 const GIT_PULL_REQUEST_DRAFT_ICON_PATH =
   '<circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M21 3v5a4 4 0 0 1-4 4H6"/><path d="M15 3h2v4"/><path d="M17 5h-4"/>';
 
+const GIT_PULL_REQUEST_MERGED_ICON_PATH =
+  '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>';
+
 function prDiffIconPaths(status: PullRequestChipStatus): string {
   switch (status) {
     case "closed":
       return GIT_PULL_REQUEST_CLOSED_ICON_PATH;
     case "draft":
       return GIT_PULL_REQUEST_DRAFT_ICON_PATH;
+    case "merged":
+      return GIT_PULL_REQUEST_MERGED_ICON_PATH;
     default:
       return GIT_PULL_REQUEST_ICON_PATH;
   }
