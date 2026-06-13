@@ -126,5 +126,9 @@ export function resolveDiffSelectionLineRange(root: HTMLElement, selection: Sele
 }
 
 export function readDiffSelectionText(selection: Selection | null): string {
-  return selection?.toString().trim() ?? "";
+  if (!selection) {
+    return "";
+  }
+  const text = selection.toString();
+  return /^\s*$/u.test(text) ? "" : text;
 }

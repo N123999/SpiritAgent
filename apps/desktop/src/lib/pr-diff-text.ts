@@ -15,7 +15,11 @@ export function buildPrDiffSnippetText(
   options?: BuildPrDiffSnippetOptions,
 ): string {
   const normalizedPath = normalizeDiffPath(filename);
-  const body = options?.fromPatchBody ? selectedText : selectedText.trim();
+  const body = options?.fromPatchBody
+    ? selectedText
+    : /^\s*$/u.test(selectedText)
+      ? ""
+      : selectedText;
   if (!body) {
     return "";
   }

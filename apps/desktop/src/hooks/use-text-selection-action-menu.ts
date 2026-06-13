@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { readDiffSelectionText } from "@/lib/pr-diff-selection";
+
 export type SelectionAnchorRect = {
   x: number;
   y: number;
