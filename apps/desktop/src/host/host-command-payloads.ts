@@ -36,6 +36,7 @@ import type {
   RewindAndSubmitMessageRequest,
   ForkSessionRequest,
   GetGitHubPullRequestDetailRequest,
+  MergeGitHubPullRequestRequest,
   RunExtensionRequest,
   SaveHookEntryRequest,
   SubmitGitChipRequest,
@@ -76,6 +77,8 @@ export type CommandPayloads = {
   getGitHubPullRequestFiles: { request: GetGitHubPullRequestDetailRequest };
   getGitHubPullRequestCommits: { request: GetGitHubPullRequestDetailRequest };
   getGitHubPullRequestChecks: { request: GetGitHubPullRequestDetailRequest };
+  mergeGitHubPullRequest: { request: MergeGitHubPullRequestRequest };
+  markGitHubPullRequestReady: { request: GetGitHubPullRequestDetailRequest };
   setWebHostAuthTokenHash: { authTokenHash: string };
   addModel: { request: AddModelRequest };
   addProviderModels: { request: AddProviderModelsRequest };

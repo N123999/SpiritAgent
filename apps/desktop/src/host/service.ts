@@ -86,6 +86,7 @@ import type {
   DesktopMarketplacePreparedInstall,
   DesktopGitSnapshot,
   GetGitHubPullRequestDetailRequest,
+  MergeGitHubPullRequestRequest,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
   HostTextFileStatResult,
@@ -194,6 +195,8 @@ import {
   getGitHubPullRequestCommitsCommand,
   getGitHubPullRequestChecksCommand,
   getGitHubPullRequestForCurrentBranchCommand,
+  markGitHubPullRequestReadyCommand,
+  mergeGitHubPullRequestCommand,
 } from './host-github-commands.js';
 import {
   abortConversationCommand,
@@ -1716,6 +1719,14 @@ class DesktopHostService {
 
   async getGitHubPullRequestChecks(request: GetGitHubPullRequestDetailRequest) {
     return getGitHubPullRequestChecksCommand(request);
+  }
+
+  async mergeGitHubPullRequest(request: MergeGitHubPullRequestRequest) {
+    return mergeGitHubPullRequestCommand(request);
+  }
+
+  async markGitHubPullRequestReady(request: GetGitHubPullRequestDetailRequest) {
+    return markGitHubPullRequestReadyCommand(request);
   }
 
   async listWorkspaceFileReferenceSuggestions(

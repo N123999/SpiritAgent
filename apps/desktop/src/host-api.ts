@@ -45,9 +45,11 @@ import type {
   RewindAndSubmitMessageRequest,
   ForkSessionRequest,
   GetGitHubPullRequestDetailRequest,
+  MergeGitHubPullRequestRequest,
   GitHubAuthStatus,
   GitHubDeviceAuthChallenge,
   GitHubPullRequestDetail,
+  GitHubPullRequestMergeResult,
   GitHubPullRequestConversationSnapshot,
   GitHubPullRequestFilesSnapshot,
   GitHubPullRequestCommitsSnapshot,
@@ -140,6 +142,12 @@ export interface HostApi {
   getGitHubPullRequestChecks(
     request: GetGitHubPullRequestDetailRequest,
   ): Promise<GitHubPullRequestChecksSnapshot>;
+  mergeGitHubPullRequest(
+    request: MergeGitHubPullRequestRequest,
+  ): Promise<GitHubPullRequestMergeResult>;
+  markGitHubPullRequestReady(
+    request: GetGitHubPullRequestDetailRequest,
+  ): Promise<GitHubPullRequestDetail>;
   abortConversation(): Promise<DesktopSnapshot>;
   abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
   continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;

@@ -952,6 +952,15 @@ export interface GetGitHubPullRequestDetailRequest {
   number: number;
 }
 
+export interface MergeGitHubPullRequestRequest extends GetGitHubPullRequestDetailRequest {
+  mergeMethod: import('@spirit-agent/host-internal').GitHubPullRequestMergeMethod;
+}
+
+export type {
+  GitHubPullRequestMergeMethod,
+  GitHubPullRequestMergeResult,
+} from '@spirit-agent/host-internal';
+
 export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;

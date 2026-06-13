@@ -157,6 +157,12 @@ declare global {
     getGitHubPullRequestChecks(
       request: import('./types').GetGitHubPullRequestDetailRequest,
     ): Promise<import('./types').GitHubPullRequestChecksSnapshot>;
+    mergeGitHubPullRequest(
+      request: import('./types').MergeGitHubPullRequestRequest,
+    ): Promise<import('./types').GitHubPullRequestMergeResult>;
+    markGitHubPullRequestReady(
+      request: import('./types').GetGitHubPullRequestDetailRequest,
+    ): Promise<import('./types').GitHubPullRequestDetail>;
     readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     readHostTextFile(absolutePath: string): Promise<WorkspaceReadTextFileResult>;
