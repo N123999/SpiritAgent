@@ -14,6 +14,7 @@ import type {
   GitHubAuthStatus,
   GitHubDeviceAuthChallenge,
   GitHubPullRequestDetail,
+  GitHubPullRequestMergeMethod,
   GitHubPullRequestSummary,
   GitHubPullRequestConversationSnapshot,
   GitHubPullRequestFilesSnapshot,
@@ -59,7 +60,7 @@ function pullRequestSummaryFromDetail(detail: GitHubPullRequestDetail): GitHubPu
 
 function isSamePullRequestRequest(
   detail: GitHubPullRequestDetail | null,
-  repository: GitHubPullRequestForBranchResult["repository"],
+  repository: GitHubPullRequestForBranchResult["repository"] | null | undefined,
   request: GetGitHubPullRequestDetailRequest,
 ): boolean {
   if (!detail || !repository) {
@@ -70,6 +71,25 @@ function isSamePullRequestRequest(
     repository.owner === request.owner &&
     repository.repo === request.repo
   );
+}
+
+function resolveActivePullRequestRequest(
+  branchResult: GitHubPullRequestForBranchResult | null,
+  pinnedRequest: GetGitHubPullRequestDetailRequest | null,
+  detail: GitHubPullRequestDetail | null,
+): GetGitHubPullRequestDetailRequest | null {
+  if (pinnedRequest) {
+    return pinnedRequest;
+  }
+  const repository = branchResult?.repository ?? null;
+  if (!repository || !detail) {
+    return null;
+  }
+  return {
+    owner: repository.owner,
+    repo: repository.repo,
+    number: detail.number,
+  };
 }
 
 export type WorkspacePrTabProps = {
@@ -97,6 +117,12 @@ export type WorkspacePrTabProps = {
   getGitHubPullRequestChecks: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestChecksSnapshot>;
+  mergeGitHubPullRequest: (
+    request: import("@/types").MergeGitHubPullRequestRequest,
+  ) => Promise<import("@/types").GitHubPullRequestMergeResult>;
+  markGitHubPullRequestReady: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<GitHubPullRequestDetail>;
   prRevealEnabled?: boolean;
   prRevealNonce?: number;
   prRevealRequest?: GitHubPullRequestRevealRequest | null;
@@ -118,6 +144,8 @@ export function WorkspacePrTab({
   getGitHubPullRequestFiles,
   getGitHubPullRequestCommits,
   getGitHubPullRequestChecks,
+  mergeGitHubPullRequest,
+  markGitHubPullRequestReady,
   prRevealEnabled = false,
   prRevealNonce = 0,
   prRevealRequest = null,
@@ -146,6 +174,7 @@ export function WorkspacePrTab({
   const [loadingChecks, setLoadingChecks] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [detailDemoActive, setDetailDemoActive] = useState(false);
+  const [prActionBusy, setPrActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
@@ -402,6 +431,55 @@ export function WorkspacePrTab({
   ]);
 
   refreshGitHubPanelRef.current = refreshGitHubPanel;
+
+  const handleMergePullRequest = useCallback(
+    async (mergeMethod: GitHubPullRequestMergeMethod) => {
+      const request = resolveActivePullRequestRequest(
+        branchResultRef.current,
+        pinnedPullRequestRequestRef.current,
+        detailRef.current,
+      );
+      if (!request) {
+        return;
+      }
+
+      setPrActionBusy(true);
+      setError(null);
+      try {
+        await mergeGitHubPullRequest({ ...request, mergeMethod });
+        await loadPullRequestBundle(request, { background: false });
+      } catch (mergeError) {
+        setError(describeError(mergeError));
+        await refreshAuthStatus();
+      } finally {
+        setPrActionBusy(false);
+      }
+    },
+    [loadPullRequestBundle, mergeGitHubPullRequest, refreshAuthStatus],
+  );
+
+  const handleMarkPullRequestReady = useCallback(async () => {
+    const request = resolveActivePullRequestRequest(
+      branchResultRef.current,
+      pinnedPullRequestRequestRef.current,
+      detailRef.current,
+    );
+    if (!request) {
+      return;
+    }
+
+    setPrActionBusy(true);
+    setError(null);
+    try {
+      await markGitHubPullRequestReady(request);
+      await loadPullRequestBundle(request, { background: false });
+    } catch (readyError) {
+      setError(describeError(readyError));
+      await refreshAuthStatus();
+    } finally {
+      setPrActionBusy(false);
+    }
+  }, [loadPullRequestBundle, markGitHubPullRequestReady, refreshAuthStatus]);
 
   useLayoutEffect(() => {
     if (!prRevealEnabled || !prRevealRequest || prRevealNonce <= 0) {
@@ -724,7 +802,10 @@ export function WorkspacePrTab({
               checks={checksSnapshot?.checks ?? []}
               loadingChecks={loadingChecks}
               checksHasMore={checksSnapshot?.hasMore ?? false}
+              actionBusy={prActionBusy}
               onOpenExternal={openExternalUrl}
+              onMerge={handleMergePullRequest}
+              onMarkReady={handleMarkPullRequestReady}
               className="min-h-0 flex-1"
             />
           ) : (

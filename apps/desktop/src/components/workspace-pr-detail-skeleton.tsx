@@ -69,6 +69,9 @@ export function WorkspacePrDetailSkeleton({
           <div className="min-w-0">
             <PrSkeletonBlock className="h-4 w-[min(100%,18rem)] max-w-full" />
           </div>
+          <div className="flex justify-end pt-1">
+            <PrSkeletonBlock className="h-6 w-20 rounded-md" />
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <PrSkeletonBlock className="h-5 w-16 rounded-full" />
             <PrSkeletonBlock className="h-3 w-28" />

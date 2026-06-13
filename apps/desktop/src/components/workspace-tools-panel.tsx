@@ -143,6 +143,12 @@ export type WorkspaceToolsDockProps = {
   getGitHubPullRequestChecks: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<import("@/types").GitHubPullRequestChecksSnapshot>;
+  mergeGitHubPullRequest: (
+    request: import("@/types").MergeGitHubPullRequestRequest,
+  ) => Promise<import("@/types").GitHubPullRequestMergeResult>;
+  markGitHubPullRequestReady: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<GitHubPullRequestDetail>;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -201,6 +207,8 @@ function WorkspaceToolsDockInner({
   getGitHubPullRequestFiles,
   getGitHubPullRequestCommits,
   getGitHubPullRequestChecks,
+  mergeGitHubPullRequest,
+  markGitHubPullRequestReady,
   widthPx,
   minWidthPx = WORKSPACE_TOOLS_MIN_WIDTH_PX,
   maxWidthPx: maxWidthPxProp,
@@ -658,6 +666,8 @@ function WorkspaceToolsDockInner({
                         getGitHubPullRequestFiles={getGitHubPullRequestFiles}
                         getGitHubPullRequestCommits={getGitHubPullRequestCommits}
                         getGitHubPullRequestChecks={getGitHubPullRequestChecks}
+                        mergeGitHubPullRequest={mergeGitHubPullRequest}
+                        markGitHubPullRequestReady={markGitHubPullRequestReady}
                         prRevealEnabled={prRevealEnabled}
                         prRevealNonce={prRevealEnabled ? prRevealNonce : 0}
                         prRevealRequest={prRevealEnabled ? prRevealRequest : null}

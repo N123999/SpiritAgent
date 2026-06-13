@@ -10,6 +10,7 @@ import { WorkspacePrChecksView } from "@/components/workspace-pr-checks-view";
 import { WorkspacePrChangesView } from "@/components/workspace-pr-changes-view";
 import { WorkspacePrMarkdown } from "@/components/workspace-pr-markdown";
 import { WorkspacePrCommitsView } from "@/components/workspace-pr-commits-view";
+import { resolvePrActionMode, WorkspacePrActions } from "@/components/workspace-pr-actions";
 import {
   GITHUB_PR_DRAFT_BADGE_CLASS,
   GITHUB_PR_MERGED_BADGE_CLASS,
@@ -32,6 +33,7 @@ import type {
   GitHubPullRequestCommit,
   GitHubPullRequestConversationItem,
   GitHubPullRequestDetail,
+  GitHubPullRequestMergeMethod,
 } from "@/types";
 
 export type WorkspacePrDetailViewProps = {
@@ -48,7 +50,10 @@ export type WorkspacePrDetailViewProps = {
   checks?: GitHubPullRequestCheck[];
   loadingChecks?: boolean;
   checksHasMore?: boolean;
+  actionBusy?: boolean;
   onOpenExternal: (url: string) => void;
+  onMerge?: (method: GitHubPullRequestMergeMethod) => void;
+  onMarkReady?: () => void;
   className?: string;
 };
 
@@ -115,11 +120,17 @@ export function WorkspacePrDetailView({
   checks = [],
   loadingChecks = false,
   checksHasMore = false,
+  actionBusy = false,
   onOpenExternal,
+  onMerge,
+  onMarkReady,
   className,
 }: WorkspacePrDetailViewProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<WorkspacePrDetailTab>("conversations");
+  const actionMode = resolvePrActionMode(detail);
+  const mergeDisabled = detail.mergeable === false;
+  const mergeDisabledTitle = mergeDisabled ? t("workspace.prMergeNotMergeable") : undefined;
 
   const splitContainerRef = useRef<HTMLElement>(null);
   const overviewPaneRef = useRef<HTMLDivElement>(null);
@@ -269,6 +280,18 @@ export function WorkspacePrDetailView({
                 <span className="text-[13px] font-normal text-muted-foreground">#{detail.number}</span>
               </a>
             </h2>
+            {actionMode && onMerge && onMarkReady ? (
+              <div className="flex justify-end pt-1">
+                <WorkspacePrActions
+                  mode={actionMode}
+                  busy={actionBusy}
+                  mergeDisabled={actionMode === "merge" ? mergeDisabled : false}
+                  mergeDisabledTitle={mergeDisabledTitle}
+                  onMerge={onMerge}
+                  onMarkReady={onMarkReady}
+                />
+              </div>
+            ) : null}
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {detail.merged ? (
                 <Badge className={GITHUB_PR_MERGED_BADGE_CLASS}>
