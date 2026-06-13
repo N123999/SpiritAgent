@@ -10,6 +10,7 @@ export * from './pull-request-checks.js';
 export * from './pull-request-url.js';
 export * from './pull-request-merge.js';
 export * from './pull-request-ready.js';
+export * from './pull-request-viewer-merge.js';
 export * from './repository-permissions.js';
 export * from './github-graphql.js';
 export * from './conversation.js';

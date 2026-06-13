@@ -1,7 +1,10 @@
 import { githubApiHeaders, readGitHubJson } from './github-api.js';
 import {
+  fetchViewerMergeHeadlineText,
+  resolveViewerCanMerge,
+} from './pull-request-viewer-merge.js';
+import {
   getRepositoryPermissions,
-  viewerCanMergeFromPermissions,
 } from './repository-permissions.js';
 import { GITHUB_API_BASE_URL } from './oauth-config.js';
 import type {
@@ -105,13 +108,14 @@ export async function getPullRequestDetail(
   number: number,
 ): Promise<GitHubPullRequestDetail> {
   const pullUrl = `${GITHUB_API_BASE_URL}/repos/${repository.owner}/${repository.repo}/pulls/${number}`;
-  const [pullResponse, permissions] = await Promise.all([
+  const [pullResponse, permissions, viewerMergeHeadlineText] = await Promise.all([
     fetch(pullUrl, { headers: githubApiHeaders(accessToken) }),
     getRepositoryPermissions(accessToken, repository).catch(() => null),
+    fetchViewerMergeHeadlineText(accessToken, repository, number),
   ]);
   const item = await readGitHubJson<GitHubPullRequestApiItem>(pullResponse);
   return mapPullRequestDetail(item, {
-    viewerCanMerge: viewerCanMergeFromPermissions(permissions),
+    viewerCanMerge: resolveViewerCanMerge(viewerMergeHeadlineText, permissions),
   });
 }
 
