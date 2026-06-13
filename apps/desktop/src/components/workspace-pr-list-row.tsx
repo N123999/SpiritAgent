@@ -49,7 +49,7 @@ export function WorkspacePrListRow({ item, onSelect }: WorkspacePrListRowProps) 
   const updatedAt = item.updatedAt || item.createdAt;
 
   const row = (
-    <div className="flex min-w-0 items-start gap-2 px-3 py-3">
+    <div className="flex min-w-0 items-center gap-2 px-3 py-3">
       <PullRequestListIcon item={item} />
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="truncate text-xs text-foreground">{item.title}</p>
