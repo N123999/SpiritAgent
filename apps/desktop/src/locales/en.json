@@ -624,6 +624,8 @@
     "prChangesFileCollapse": "Hide file diff",
     "prChangesNoPatch": "Diff unavailable for this file (too large or binary).",
     "prChangesFileTreeAria": "Changed files",
+    "prChangesHasMore": "More changed files are available on GitHub.",
+    "prChangesViewOnGitHub": "View on GitHub",
     "prFileStatusAdded": "Added",
     "prFileStatusRemoved": "Removed",
     "prFileStatusModified": "Modified",

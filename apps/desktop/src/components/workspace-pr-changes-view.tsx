@@ -42,10 +42,12 @@ function PrChangedFileCard({
   file,
   open,
   onOpenChange,
+  onOpenExternal,
 }: {
   file: GitHubPullRequestChangedFile;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenExternal?: (url: string) => void;
 }) {
   const { t } = useTranslation();
   const mounted = useCollapsibleChildMount(open);
@@ -99,9 +101,18 @@ function PrChangedFileCard({
                 layout="embedded"
               />
             ) : (
-              <p className="border-t border-border/20 px-3 py-2 text-xs text-muted-foreground">
-                {t("workspace.prChangesNoPatch")}
-              </p>
+              <div className="space-y-2 border-t border-border/20 px-3 py-2 text-xs text-muted-foreground">
+                <p>{t("workspace.prChangesNoPatch")}</p>
+                {file.blobUrl && onOpenExternal ? (
+                  <button
+                    type="button"
+                    className="text-foreground underline underline-offset-2 hover:text-foreground/80"
+                    onClick={() => onOpenExternal(file.blobUrl!)}
+                  >
+                    {t("workspace.prChangesViewOnGitHub")}
+                  </button>
+                ) : null}
+              </div>
             )
           ) : null}
         </CollapsibleContent>
@@ -113,12 +124,16 @@ function PrChangedFileCard({
 export type WorkspacePrChangesViewProps = {
   files: GitHubPullRequestChangedFile[];
   loading?: boolean;
+  hasMore?: boolean;
+  onOpenExternal?: (url: string) => void;
   className?: string;
 };
 
 export function WorkspacePrChangesView({
   files,
   loading = false,
+  hasMore = false,
+  onOpenExternal,
   className,
 }: WorkspacePrChangesViewProps) {
   const { t } = useTranslation();
@@ -212,6 +227,7 @@ export function WorkspacePrChangesView({
               key={file.filename}
               file={file}
               open={expandedFilenames.has(file.filename)}
+              onOpenExternal={onOpenExternal}
               onOpenChange={(nextOpen) => {
                 setExpandedFilenames((previous) => {
                   const next = new Set(previous);
@@ -226,6 +242,11 @@ export function WorkspacePrChangesView({
               }}
             />
           ))}
+          {hasMore ? (
+            <p className="px-1 text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
+              {t("workspace.prChangesHasMore")}
+            </p>
+          ) : null}
         </div>
       </ScrollArea>
     </div>

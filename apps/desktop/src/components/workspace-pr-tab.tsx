@@ -4,7 +4,7 @@ import { GitPullRequest } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
-import { GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO } from "@/lib/github-pr-ui-demo";
+import { GITHUB_PR_CONVERSATION_DEMO, GITHUB_PR_DETAIL_DEMO, GITHUB_PR_FILES_DEMO } from "@/lib/github-pr-ui-demo";
 import { cn } from "@/lib/utils";
 import type {
   DesktopGitSnapshot,
@@ -463,6 +463,8 @@ export function WorkspacePrTab({
           <WorkspacePrDetailView
             detail={GITHUB_PR_DETAIL_DEMO}
             conversationItems={GITHUB_PR_CONVERSATION_DEMO}
+            changedFiles={GITHUB_PR_FILES_DEMO.files}
+            changesHasMore={GITHUB_PR_FILES_DEMO.hasMore}
             onOpenExternal={openExternalUrl}
           />
         </section>
@@ -526,6 +528,7 @@ export function WorkspacePrTab({
               conversationHasMore={conversation?.hasMore ?? false}
               changedFiles={filesSnapshot?.files ?? []}
               loadingChanges={loadingChanges}
+              changesHasMore={filesSnapshot?.hasMore ?? false}
               onOpenExternal={openExternalUrl}
             />
           ) : (

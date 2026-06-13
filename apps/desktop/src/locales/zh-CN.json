@@ -622,6 +622,8 @@
     "prChangesFileCollapse": "收起文件 diff",
     "prChangesNoPatch": "无法显示此文件的 diff（过大或为二进制）。",
     "prChangesFileTreeAria": "变更文件",
+    "prChangesHasMore": "更多变更文件请在 GitHub 查看。",
+    "prChangesViewOnGitHub": "在 GitHub 查看",
     "prFileStatusAdded": "新增",
     "prFileStatusRemoved": "删除",
     "prFileStatusModified": "修改",

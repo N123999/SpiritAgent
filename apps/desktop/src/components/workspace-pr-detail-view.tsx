@@ -22,6 +22,7 @@ export type WorkspacePrDetailViewProps = {
   conversationHasMore?: boolean;
   changedFiles?: GitHubPullRequestChangedFile[];
   loadingChanges?: boolean;
+  changesHasMore?: boolean;
   onOpenExternal: (url: string) => void;
   className?: string;
 };
@@ -56,6 +57,7 @@ export function WorkspacePrDetailView({
   conversationHasMore = false,
   changedFiles = [],
   loadingChanges = false,
+  changesHasMore = false,
   onOpenExternal,
   className,
 }: WorkspacePrDetailViewProps) {
@@ -136,6 +138,8 @@ export function WorkspacePrDetailView({
           <WorkspacePrChangesView
             files={changedFiles}
             loading={loadingChanges}
+            hasMore={changesHasMore}
+            onOpenExternal={onOpenExternal}
             className="min-h-[min(480px,60vh)]"
           />
         ) : null}

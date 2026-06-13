@@ -1,6 +1,8 @@
 import type {
+  GitHubPullRequestChangedFile,
   GitHubPullRequestConversationItem,
   GitHubPullRequestDetail,
+  GitHubPullRequestFilesSnapshot,
 } from "@/types";
 
 /** Static PR detail fixture for unauthenticated UI preview only. */
@@ -145,3 +147,67 @@ export const GITHUB_PR_CONVERSATION_DEMO: GitHubPullRequestConversationItem[] = 
     ],
   },
 ];
+
+const SESSION_TS_PATCH = `@@ -10,7 +10,9 @@ export async function refreshSession() {
+   const token = readToken();
+   if (!token) {
+-    return null;
++    await clearStaleToken();
++    return retryDeviceFlow();
+   }
+   return token;
+ }`;
+
+/** Static changed-files fixture for unauthenticated UI preview only. */
+export const GITHUB_PR_FILES_DEMO: GitHubPullRequestFilesSnapshot = {
+  hasMore: false,
+  files: [
+    {
+      filename: "src/auth/session.ts",
+      status: "modified",
+      additions: 2,
+      deletions: 1,
+      changes: 3,
+      patch: SESSION_TS_PATCH,
+      blobUrl: "https://github.com/octocat/Hello-World/blob/fix-login/src/auth/session.ts",
+    },
+    {
+      filename: "src/auth/device-flow.ts",
+      status: "modified",
+      additions: 14,
+      deletions: 3,
+      changes: 17,
+      patch: `@@ -1,4 +1,6 @@
+ export const MAX_DEVICE_FLOW_RETRIES = 1;
++export const DEVICE_FLOW_TIMEOUT_MS = 60_000;
+ 
+ export async function retryDeviceFlow() {
+-  return startDeviceFlow();
++  return startDeviceFlow({ timeoutMs: DEVICE_FLOW_TIMEOUT_MS });
+ }`,
+      blobUrl: "https://github.com/octocat/Hello-World/blob/fix-login/src/auth/device-flow.ts",
+    },
+    {
+      filename: "tests/auth/session.test.ts",
+      status: "added",
+      additions: 48,
+      deletions: 0,
+      changes: 48,
+      patch: `@@ -0,0 +1,8 @@
++import { refreshSession } from "../../src/auth/session";
++
++test("retries device flow when token missing", async () => {
++  // ...
++});`,
+      blobUrl: "https://github.com/octocat/Hello-World/blob/fix-login/tests/auth/session.test.ts",
+    },
+    {
+      filename: "assets/logo.png",
+      status: "added",
+      additions: 0,
+      deletions: 0,
+      changes: 0,
+      blobUrl: "https://github.com/octocat/Hello-World/blob/fix-login/assets/logo.png",
+    },
+  ] satisfies GitHubPullRequestChangedFile[],
+};
