@@ -86,6 +86,7 @@
     "dreams": "Dreams",
     "appearance": "Appearance",
     "networks": "Networks",
+    "integrations": "Integrations",
     "developer": "Developer",
     "agents": "Agents",
     "lspEnabled": "Language Server (LSP)",

@@ -6,6 +6,7 @@ import { ChevronsUpDown, LoaderCircle, RefreshCw, Sparkles, X } from "lucide-rea
 
 import { DreamGraphCard } from "@/components/dream-graph-card";
 import { HooksSettingsPanel } from "@/components/hooks-settings-panel";
+import { IntegrationsSettingsPanel } from "@/components/integrations-settings-panel";
 import { FontSelect } from "@/components/font-select";
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -192,6 +193,7 @@ const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   dreams: "settings.dreams",
   appearance: "settings.appearance",
   networks: "settings.networks",
+  integrations: "settings.integrations",
   developer: "settings.developer",
 };
 
@@ -4078,7 +4080,7 @@ export function SettingsView({
       <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "hooks" && tab !== "extensions" && tab !== "agents" ? (
+            {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "hooks" && tab !== "extensions" && tab !== "agents" && tab !== "integrations" ? (
               <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
                 {t(settingsPageTitleKey[tab])}
               </h1>
@@ -4187,6 +4189,8 @@ export function SettingsView({
                 onSavePatch={onSavePatch}
                 onResetWebHostPairing={onResetWebHostPairing}
               />
+            ) : tab === "integrations" ? (
+              <IntegrationsSettingsPanel />
             ) : null}
           </div>
         </div>
