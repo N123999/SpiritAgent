@@ -36,6 +36,25 @@ test('parsePullRequestBodyTaskListProgress handles all unchecked', () => {
   });
 });
 
+test('parsePullRequestBodyTaskListProgress ignores checkboxes inside fenced code blocks', () => {
+  const body = [
+    '## Test plan',
+    '- [x] real task',
+    '',
+    '```markdown',
+    '- [ ] example in code block',
+    '- [x] also ignored',
+    '```',
+    '',
+    '- [ ] another real task',
+  ].join('\n');
+
+  assert.deepEqual(parsePullRequestBodyTaskListProgress(body), {
+    total: 2,
+    completed: 1,
+  });
+});
+
 test('parsePullRequestBodyTaskListProgress handles all completed', () => {
   const body = '- [x] one\n- [X] two';
   assert.deepEqual(parsePullRequestBodyTaskListProgress(body), {
