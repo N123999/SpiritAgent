@@ -14,6 +14,7 @@ import type {
   GitHubPullRequestDetail,
   GitHubPullRequestConversationSnapshot,
   GitHubPullRequestFilesSnapshot,
+  GitHubPullRequestCommitsSnapshot,
   GitHubPullRequestForBranchResult,
 } from "@/types";
 
@@ -57,6 +58,9 @@ export type WorkspacePrTabProps = {
   getGitHubPullRequestFiles: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestFilesSnapshot>;
+  getGitHubPullRequestCommits: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<GitHubPullRequestCommitsSnapshot>;
   className?: string;
 };
 
@@ -73,6 +77,7 @@ export function WorkspacePrTab({
   getGitHubPullRequestDetail,
   getGitHubPullRequestConversation,
   getGitHubPullRequestFiles,
+  getGitHubPullRequestCommits,
   className,
 }: WorkspacePrTabProps) {
   const { t } = useTranslation();
@@ -83,11 +88,15 @@ export function WorkspacePrTab({
     null,
   );
   const [filesSnapshot, setFilesSnapshot] = useState<GitHubPullRequestFilesSnapshot | null>(null);
+  const [commitsSnapshot, setCommitsSnapshot] = useState<GitHubPullRequestCommitsSnapshot | null>(
+    null,
+  );
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [loadingBranch, setLoadingBranch] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [loadingChanges, setLoadingChanges] = useState(false);
+  const [loadingCommits, setLoadingCommits] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +124,8 @@ export function WorkspacePrTab({
         setDetail(null);
         setConversation(null);
         setFilesSnapshot(null);
+        setCommitsSnapshot(null);
+        setCommitsSnapshot(null);
         return;
       }
 
@@ -127,29 +138,36 @@ export function WorkspacePrTab({
       setLoadingDetail(true);
       setLoadingConversation(true);
       setLoadingChanges(true);
+      setLoadingCommits(true);
       setError(null);
       try {
-        const [nextDetail, nextConversation, nextFiles] = await Promise.all([
+        const [nextDetail, nextConversation, nextFiles, nextCommits] = await Promise.all([
           getGitHubPullRequestDetail(request),
           getGitHubPullRequestConversation(request),
           getGitHubPullRequestFiles(request),
+          getGitHubPullRequestCommits(request),
         ]);
         setDetail(nextDetail);
         setConversation(nextConversation);
         setFilesSnapshot(nextFiles);
+        setCommitsSnapshot(nextCommits);
       } catch (loadError) {
         setDetail(null);
         setConversation(null);
         setFilesSnapshot(null);
+        setCommitsSnapshot(null);
+        setCommitsSnapshot(null);
         setError(describeError(loadError));
         await refreshAuthStatus();
       } finally {
         setLoadingDetail(false);
         setLoadingConversation(false);
         setLoadingChanges(false);
+        setLoadingCommits(false);
       }
     },
     [
+      getGitHubPullRequestCommits,
       getGitHubPullRequestConversation,
       getGitHubPullRequestDetail,
       getGitHubPullRequestFiles,
@@ -163,6 +181,7 @@ export function WorkspacePrTab({
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
+      setCommitsSnapshot(null);
       return;
     }
 
@@ -177,12 +196,14 @@ export function WorkspacePrTab({
         setDetail(null);
         setConversation(null);
         setFilesSnapshot(null);
+        setCommitsSnapshot(null);
       }
     } catch (loadError) {
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
+      setCommitsSnapshot(null);
       setError(describeError(loadError));
       await refreshAuthStatus();
     } finally {
@@ -203,6 +224,7 @@ export function WorkspacePrTab({
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
+      setCommitsSnapshot(null);
       return;
     }
 
@@ -220,6 +242,7 @@ export function WorkspacePrTab({
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
+      setCommitsSnapshot(null);
       return;
     }
 
@@ -234,12 +257,14 @@ export function WorkspacePrTab({
         setDetail(null);
         setConversation(null);
         setFilesSnapshot(null);
+        setCommitsSnapshot(null);
       }
     } catch (loadError) {
       setBranchResult(null);
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
+      setCommitsSnapshot(null);
       setError(describeError(loadError));
       try {
         setAuthStatus(await getGitHubAuthStatus());
@@ -351,6 +376,7 @@ export function WorkspacePrTab({
       setDetail(null);
       setConversation(null);
       setFilesSnapshot(null);
+      setCommitsSnapshot(null);
     } catch (disconnectError) {
       setError(describeError(disconnectError));
     } finally {
@@ -530,6 +556,9 @@ export function WorkspacePrTab({
               changedFiles={filesSnapshot?.files ?? []}
               loadingChanges={loadingChanges}
               changesHasMore={filesSnapshot?.hasMore ?? false}
+              commits={commitsSnapshot?.commits ?? []}
+              loadingCommits={loadingCommits}
+              commitsHasMore={commitsSnapshot?.hasMore ?? false}
               onOpenExternal={openExternalUrl}
               className="min-h-0 flex-1"
             />
