@@ -1,7 +1,12 @@
 import { githubApiHeaders, readGitHubJson } from './github-api.js';
+import {
+  getRepositoryPermissions,
+  viewerCanMergeFromPermissions,
+} from './repository-permissions.js';
 import { GITHUB_API_BASE_URL } from './oauth-config.js';
 import type {
   GitHubPullRequestDetail,
+  GitHubPullRequestMergeableState,
   GitHubPullRequestSummary,
   GitHubRepositoryRef,
 } from './types.js';
@@ -11,14 +16,36 @@ interface GitHubPullRequestApiItem {
   title: string;
   state: 'open' | 'closed';
   html_url: string;
+  node_id?: string | null;
   draft?: boolean;
   merged_at?: string | null;
   mergeable?: boolean | null;
+  mergeable_state?: string | null;
   body?: string | null;
   user?: { login?: string | null } | null;
   head?: { ref?: string | null; sha?: string | null } | null;
   base?: { ref?: string | null } | null;
   labels?: Array<{ name?: string | null }> | null;
+}
+
+export function normalizeMergeableState(
+  value: string | null | undefined,
+): GitHubPullRequestMergeableState | null {
+  const normalized = value?.trim().toLowerCase();
+  switch (normalized) {
+    case 'clean':
+    case 'dirty':
+    case 'blocked':
+    case 'behind':
+    case 'unstable':
+    case 'draft':
+      return normalized;
+    case 'has_hooks':
+    case 'unknown':
+      return 'unknown';
+    default:
+      return null;
+  }
 }
 
 function mapPullRequestSummary(item: GitHubPullRequestApiItem): GitHubPullRequestSummary {
@@ -35,7 +62,10 @@ function mapPullRequestSummary(item: GitHubPullRequestApiItem): GitHubPullReques
   };
 }
 
-function mapPullRequestDetail(item: GitHubPullRequestApiItem): GitHubPullRequestDetail {
+export function mapPullRequestDetail(
+  item: GitHubPullRequestApiItem,
+  options?: { viewerCanMerge?: boolean },
+): GitHubPullRequestDetail {
   const summary = mapPullRequestSummary(item);
   const body = item.body?.trim();
   return {
@@ -46,6 +76,9 @@ function mapPullRequestDetail(item: GitHubPullRequestApiItem): GitHubPullRequest
       .filter((label): label is string => Boolean(label)),
     mergeable: item.mergeable ?? null,
     merged: Boolean(item.merged_at),
+    nodeId: item.node_id?.trim() || '',
+    viewerCanMerge: options?.viewerCanMerge ?? false,
+    mergeableState: normalizeMergeableState(item.mergeable_state),
   };
 }
 
@@ -71,10 +104,15 @@ export async function getPullRequestDetail(
   repository: GitHubRepositoryRef,
   number: number,
 ): Promise<GitHubPullRequestDetail> {
-  const url = `${GITHUB_API_BASE_URL}/repos/${repository.owner}/${repository.repo}/pulls/${number}`;
-  const response = await fetch(url, { headers: githubApiHeaders(accessToken) });
-  const item = await readGitHubJson<GitHubPullRequestApiItem>(response);
-  return mapPullRequestDetail(item);
+  const pullUrl = `${GITHUB_API_BASE_URL}/repos/${repository.owner}/${repository.repo}/pulls/${number}`;
+  const [pullResponse, permissions] = await Promise.all([
+    fetch(pullUrl, { headers: githubApiHeaders(accessToken) }),
+    getRepositoryPermissions(accessToken, repository).catch(() => null),
+  ]);
+  const item = await readGitHubJson<GitHubPullRequestApiItem>(pullResponse);
+  return mapPullRequestDetail(item, {
+    viewerCanMerge: viewerCanMergeFromPermissions(permissions),
+  });
 }
 
-export { mapPullRequestDetail, mapPullRequestSummary };
+export { mapPullRequestSummary };
