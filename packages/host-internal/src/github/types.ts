@@ -38,6 +38,25 @@ export interface GitHubPullRequestDetail extends GitHubPullRequestSummary {
   labels: string[];
   mergeable: boolean | null;
   merged: boolean;
+  nodeId: string;
+  viewerCanMerge: boolean;
+  mergeableState: GitHubPullRequestMergeableState | null;
+}
+
+export type GitHubPullRequestMergeableState =
+  | 'clean'
+  | 'dirty'
+  | 'blocked'
+  | 'behind'
+  | 'unstable'
+  | 'draft'
+  | 'unknown';
+
+export type GitHubPullRequestMergeMethod = 'merge' | 'squash' | 'rebase';
+
+export interface GitHubPullRequestMergeResult {
+  sha: string;
+  merged: boolean;
 }
 
 export interface GitHubPullRequestForBranchResult {
