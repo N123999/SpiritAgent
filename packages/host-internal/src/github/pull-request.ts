@@ -16,7 +16,7 @@ interface GitHubPullRequestApiItem {
   mergeable?: boolean | null;
   body?: string | null;
   user?: { login?: string | null } | null;
-  head?: { ref?: string | null } | null;
+  head?: { ref?: string | null; sha?: string | null } | null;
   base?: { ref?: string | null } | null;
   labels?: Array<{ name?: string | null }> | null;
 }
@@ -29,6 +29,7 @@ function mapPullRequestSummary(item: GitHubPullRequestApiItem): GitHubPullReques
     url: item.html_url,
     authorLogin: item.user?.login?.trim() || 'unknown',
     headRef: item.head?.ref?.trim() || '',
+    headSha: item.head?.sha?.trim() || '',
     baseRef: item.base?.ref?.trim() || '',
     draft: Boolean(item.draft),
   };

@@ -11,7 +11,7 @@ test('mapPullRequestSummary maps GitHub API payload', () => {
     html_url: 'https://github.com/octocat/Hello-World/pull/42',
     draft: false,
     user: { login: 'octocat' },
-    head: { ref: 'feature/login' },
+    head: { ref: 'feature/login', sha: 'abc123def456' },
     base: { ref: 'main' },
   });
 
@@ -22,6 +22,7 @@ test('mapPullRequestSummary maps GitHub API payload', () => {
     url: 'https://github.com/octocat/Hello-World/pull/42',
     authorLogin: 'octocat',
     headRef: 'feature/login',
+    headSha: 'abc123def456',
     baseRef: 'main',
     draft: false,
   });

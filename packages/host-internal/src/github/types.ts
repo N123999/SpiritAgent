@@ -28,6 +28,7 @@ export interface GitHubPullRequestSummary {
   url: string;
   authorLogin: string;
   headRef: string;
+  headSha: string;
   baseRef: string;
   draft: boolean;
 }
@@ -156,4 +157,21 @@ export interface GitHubPullRequestCommit {
 export interface GitHubPullRequestCommitsSnapshot {
   commits: GitHubPullRequestCommit[];
   hasMore: boolean;
+}
+
+export type GitHubPullRequestCheckState = 'success' | 'failure' | 'in_progress';
+
+export interface GitHubPullRequestCheck {
+  id: string;
+  name: string;
+  state: GitHubPullRequestCheckState;
+  startedAt: string;
+  completedAt?: string;
+  url?: string;
+}
+
+export interface GitHubPullRequestChecksSnapshot {
+  checks: GitHubPullRequestCheck[];
+  hasMore: boolean;
+  headSha: string;
 }
