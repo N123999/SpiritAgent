@@ -46,6 +46,10 @@ function buildListCacheKey(
   return `${repository.owner}/${repository.repo}\0${tab}\0${query}`;
 }
 
+function buildTabCountsCacheKey(repository: GitHubRepositoryRef, query: string): string {
+  return `${repository.owner}/${repository.repo}\0counts\0${query}`;
+}
+
 export type WorkspacePrListViewHandle = {
   refreshInBackground(): void;
   invalidateCacheAndRefreshInBackground(): void;
@@ -93,6 +97,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
     const loadMoreInFlightRef = useRef(false);
     const fetchGenerationRef = useRef(0);
     const listCacheRef = useRef(new Map<string, TabListCacheEntry>());
+    const tabCountsCacheRef = useRef(new Map<string, GitHubPullRequestTabCounts>());
     const activeTabRef = useRef(activeTab);
     const debouncedQueryRef = useRef(debouncedQuery);
     activeTabRef.current = activeTab;
@@ -117,6 +122,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
 
     useEffect(() => {
       listCacheRef.current.clear();
+      tabCountsCacheRef.current.clear();
     }, [repository.owner, repository.repo]);
 
     useEffect(() => {
@@ -126,13 +132,22 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
       return () => window.clearTimeout(timerId);
     }, [searchInput]);
 
+    const readTabCountsCache = useCallback(
+      (query: string): GitHubPullRequestTabCounts | undefined =>
+        tabCountsCacheRef.current.get(buildTabCountsCacheKey(repository, query)),
+      [repository],
+    );
+
     const refreshTabCountsInBackground = useCallback(async () => {
       try {
         const counts = await getGitHubPullRequestTabCounts({
           owner: repository.owner,
           repo: repository.repo,
         });
-        setTabCounts(counts);
+        tabCountsCacheRef.current.set(buildTabCountsCacheKey(repository, ""), counts);
+        if (!debouncedQueryRef.current) {
+          setTabCounts(counts);
+        }
       } catch {
         // Keep stale counts on background refresh failure.
       }
@@ -192,10 +207,14 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
           setNextPage(snapshot.nextPage);
 
           if (query && page === 1) {
-            setTabCounts((current) => ({
-              ...current,
-              [tab]: snapshot.totalCount,
-            }));
+            setTabCounts((current) => {
+              const next = {
+                ...current,
+                [tab]: snapshot.totalCount,
+              };
+              tabCountsCacheRef.current.set(buildTabCountsCacheKey(repository, query), next);
+              return next;
+            });
           }
         } catch (loadError) {
           if (generation !== fetchGenerationRef.current) {
@@ -220,12 +239,16 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
 
     const refreshInBackground = useCallback(() => {
       fetchGenerationRef.current += 1;
-      void fetchPage(activeTabRef.current, debouncedQueryRef.current, 1, false, { background: true });
-      void refreshTabCountsInBackground();
+      const query = debouncedQueryRef.current;
+      void fetchPage(activeTabRef.current, query, 1, false, { background: true });
+      if (!query) {
+        void refreshTabCountsInBackground();
+      }
     }, [fetchPage, refreshTabCountsInBackground]);
 
     const invalidateCacheAndRefreshInBackground = useCallback(() => {
       listCacheRef.current.clear();
+      tabCountsCacheRef.current.clear();
       refreshInBackground();
     }, [refreshInBackground]);
 
@@ -241,7 +264,14 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
     useEffect(() => {
       fetchGenerationRef.current += 1;
 
-      const cacheKey = buildListCacheKey(repository, activeTab, debouncedQuery);
+      const query = debouncedQuery;
+
+      const cachedCounts = readTabCountsCache(query);
+      if (cachedCounts) {
+        setTabCounts(cachedCounts);
+      }
+
+      const cacheKey = buildListCacheKey(repository, activeTab, query);
       const cached = listCacheRef.current.get(cacheKey);
       if (cached) {
         setItems(cached.items);
@@ -256,8 +286,8 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
       setItems([]);
       setHasMore(false);
       setNextPage(undefined);
-      void fetchPage(activeTab, debouncedQuery, 1, false);
-    }, [activeTab, debouncedQuery, fetchPage, repository]);
+      void fetchPage(activeTab, query, 1, false);
+    }, [activeTab, debouncedQuery, fetchPage, readTabCountsCache, repository]);
 
     const handleLoadMore = useCallback(() => {
       if (!hasMore || loadingMore || loading || !nextPage || loadMoreInFlightRef.current) {
