@@ -6,7 +6,7 @@ import { Check, ChevronRight, CircleX, Eye, GitCommit, GitPullRequest, MessageSq
 
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
 import { WorkspacePrMarkdown } from "@/components/workspace-pr-markdown";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { AnimatedCollapse, AnimatedCollapseContent } from "@/components/ui/animated-collapse";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { GITHUB_PR_MERGED_ICON_CLASS } from "@/lib/github-pr-merged-badge-styles";
@@ -284,7 +284,7 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
     <div className="flex min-w-0">
       <div className={COMMENT_CARD_INDENT_SPACER_CLASS} aria-hidden />
       <div className={cn(FILE_THREAD_CARD_CLASS, "min-w-0 flex-1")}>
-        <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
+        <AnimatedCollapse open={open} onOpenChange={setOpen} className="min-w-0">
           <button
             type="button"
             className="flex w-full min-w-0 items-center gap-1 px-3 py-2 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -304,7 +304,7 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
               {thread.line != null ? `:${thread.line}` : ""}
             </span>
           </button>
-          <CollapsibleContent>
+          <AnimatedCollapseContent>
             {mounted ? (
               <>
                 <ReviewCommentHunkView
@@ -328,8 +328,8 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
                 ) : null}
               </>
             ) : null}
-          </CollapsibleContent>
-        </Collapsible>
+          </AnimatedCollapseContent>
+        </AnimatedCollapse>
       </div>
     </div>
   );
