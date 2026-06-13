@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import type { GitHubPullRequestChangedFile } from "@/types";
 
 const CHANGED_FILE_CARD_CLASS =
-  "rounded-lg border border-border/50 bg-muted shadow-sm";
+  "rounded-lg border border-border/60 bg-background";
 
 export function prChangedFileAnchorId(filename: string): string {
   return `pr-change-file-${encodeURIComponent(filename)}`;
@@ -42,6 +42,7 @@ function PrChangedFileCard({
 }) {
   const { t } = useTranslation();
   const mounted = useCollapsibleChildMount(open);
+  const showExpandedChrome = open || mounted;
   const displayPath =
     file.status === "renamed" && file.previousFilename
       ? `${file.previousFilename} → ${file.filename}`
@@ -54,10 +55,20 @@ function PrChangedFileCard({
       data-pr-changed-file={file.filename}
     >
       <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0">
-        <div className="sticky top-0 z-10 border-b border-border/40 bg-muted shadow-[0_1px_0_0_color-mix(in_oklab,var(--border)_40%,transparent)]">
+        <div
+          className={cn(
+            "sticky top-0 z-10 bg-background",
+            showExpandedChrome
+              ? "rounded-t-lg border-b border-border/40"
+              : "overflow-hidden rounded-lg",
+          )}
+        >
           <button
             type="button"
-            className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
+            className={cn(
+              "flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left outline-none cursor-pointer",
+              "hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring/60",
+            )}
             aria-expanded={open}
             aria-label={
               open ? t("workspace.prChangesFileCollapse") : t("workspace.prChangesFileExpand")
@@ -80,13 +91,12 @@ function PrChangedFileCard({
             </div>
           </button>
         </div>
-        <CollapsibleContent>
+        <CollapsibleContent className={cn(showExpandedChrome && "rounded-b-lg")}>
           {mounted ? (
             file.patch ? (
               <ReviewCommentHunkView
                 path={file.filename}
                 diffHunk={file.patch}
-                surface="card"
                 layout="embedded"
               />
             ) : (
