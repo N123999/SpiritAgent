@@ -32,7 +32,7 @@ function PrChangesTreeNodeRow({
         <button
           type="button"
           className={cn(
-            "flex w-full min-w-0 items-center gap-1 rounded-sm py-1 pr-2 text-left font-mono text-[11px] outline-none cursor-pointer hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/50",
+            "flex w-full min-w-0 items-center gap-1 rounded-sm py-1 pr-2 text-left text-xs outline-none cursor-pointer hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/50",
             selected && "bg-muted text-foreground",
             !selected && "text-muted-foreground",
           )}

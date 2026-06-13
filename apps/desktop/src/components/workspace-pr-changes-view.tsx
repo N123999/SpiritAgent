@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
+import { EditFileLineDeltaBadge } from "@/components/edit-file-line-delta-badge";
 import { WorkspacePrChangesFileTree } from "@/components/workspace-pr-changes-file-tree";
-import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { buildPrChangedFilesTree } from "@/lib/pr-changed-files-tree";
 import { cn } from "@/lib/utils";
-import type { GitHubPullRequestChangedFile, GitHubPullRequestFileStatus } from "@/types";
+import type { GitHubPullRequestChangedFile } from "@/types";
 
 const CHANGED_FILE_CARD_CLASS =
   "rounded-lg border border-border/50 bg-muted shadow-sm";
@@ -21,21 +21,6 @@ export function prChangedFileAnchorId(filename: string): string {
 
 function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLElement | null {
   return root?.querySelector("[data-radix-scroll-area-viewport]") ?? null;
-}
-
-function fileStatusLabelKey(status: GitHubPullRequestFileStatus): string {
-  switch (status) {
-    case "added":
-      return "workspace.prFileStatusAdded";
-    case "removed":
-      return "workspace.prFileStatusRemoved";
-    case "renamed":
-      return "workspace.prFileStatusRenamed";
-    case "copied":
-      return "workspace.prFileStatusCopied";
-    default:
-      return "workspace.prFileStatusModified";
-  }
 }
 
 function PrChangedFileCard({
@@ -80,15 +65,12 @@ function PrChangedFileCard({
               )}
               aria-hidden
             />
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/75 dark:text-muted-foreground/65">
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
               {displayPath}
             </span>
-            <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
-              {t(fileStatusLabelKey(file.status))}
-            </Badge>
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
-              +{file.additions} −{file.deletions}
-            </span>
+            <EditFileLineDeltaBadge
+              delta={{ added: file.additions, removed: file.deletions }}
+            />
           </button>
         </div>
         <CollapsibleContent>
