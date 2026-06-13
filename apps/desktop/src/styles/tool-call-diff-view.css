@@ -24,6 +24,16 @@
   background-color: var(--background);
 }
 
+/* PR review file thread: diff sits flush in a bg-muted card */
+.tool-call-diff--card-surface {
+  --diff-background-color: var(--muted);
+  background-color: var(--muted);
+}
+
+.tool-call-diff--card-surface .diff {
+  background-color: var(--muted);
+}
+
 .tool-call-diff .diff-line {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
