@@ -71,7 +71,7 @@ function PrChangedFileCard({
               )}
               aria-hidden
             />
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
+            <span className="min-w-0 flex-1 truncate text-xs text-foreground">
               {displayPath}
             </span>
             <EditFileLineDeltaBadge
