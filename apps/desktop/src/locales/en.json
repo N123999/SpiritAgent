@@ -658,6 +658,7 @@
     "prMerging": "Merging…",
     "prMergeFailed": "Failed to merge pull request",
     "prMergeNotMergeable": "This pull request cannot be merged yet",
+    "prMergeConflicts": "Merge conflicts",
     "prMergeMoreActions": "More merge options",
     "prMarkReadyForReview": "Ready for review",
     "prMarkingReady": "Marking ready…",

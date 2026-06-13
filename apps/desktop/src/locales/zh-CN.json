@@ -656,6 +656,7 @@
     "prMerging": "正在合并…",
     "prMergeFailed": "合并 Pull Request 失败",
     "prMergeNotMergeable": "此 Pull Request 暂不可合并",
+    "prMergeConflicts": "合并冲突",
     "prMergeMoreActions": "更多合并选项",
     "prMarkReadyForReview": "标记为可审查",
     "prMarkingReady": "正在标记…",
