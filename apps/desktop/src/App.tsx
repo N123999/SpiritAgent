@@ -30,6 +30,7 @@ import { useFont } from "@/hooks/useFont";
 import { useMessageRewind } from "@/hooks/useMessageRewind";
 import { useSubagentViewer } from "@/hooks/useSubagentViewer";
 import { useTheme } from "@/hooks/useTheme";
+import { useGitHubAuthConnected } from "@/hooks/use-github-auth-connected";
 import { useWorkspaceToolsController } from "@/hooks/useWorkspaceToolsController";
 import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import {
@@ -115,6 +116,11 @@ export default function App() {
     activeFilePath,
   });
 
+  const gitHubAuthConnected = useGitHubAuthConnected(
+    runtime.getGitHubAuthStatus,
+    workspaceTools.prTabEnabled,
+  );
+
   const composer = useComposerController({
     runtime,
     snapshot,
@@ -163,8 +169,11 @@ export default function App() {
     !runtime.runtimeError.trim();
 
   const handleWorkspaceMarkdownLinkClick = useCallback(
-    (href: string) => tryHandleGitHubPullRequestMarkdownLink(href, workspaceTools.openPullRequestInPrTab),
-    [workspaceTools.openPullRequestInPrTab],
+    (href: string) =>
+      tryHandleGitHubPullRequestMarkdownLink(href, workspaceTools.openPullRequestInPrTab, {
+        interceptInApp: workspaceTools.prTabEnabled && gitHubAuthConnected === true,
+      }),
+    [gitHubAuthConnected, workspaceTools.openPullRequestInPrTab, workspaceTools.prTabEnabled],
   );
 
   if (runtime.webHostPairingRequired && runtime.hostKind === "web" && !snapshot) {
