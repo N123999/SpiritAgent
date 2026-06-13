@@ -1,6 +1,21 @@
-export function buildPrDiffSnippetText(filename: string, selectedText: string): string {
-  const normalizedPath = filename.replace(/\\/gu, "/").trim() || "file";
-  const body = selectedText.trim();
+import { extractPatchBodyForLineRange } from "@/lib/pr-diff-patch-slice";
+
+function normalizeDiffPath(filename: string): string {
+  return filename.replace(/\\/gu, "/").trim() || "file";
+}
+
+type BuildPrDiffSnippetOptions = {
+  /** Body is already unified diff hunk lines (with +/- prefixes). */
+  fromPatchBody?: boolean;
+};
+
+export function buildPrDiffSnippetText(
+  filename: string,
+  selectedText: string,
+  options?: BuildPrDiffSnippetOptions,
+): string {
+  const normalizedPath = normalizeDiffPath(filename);
+  const body = options?.fromPatchBody ? selectedText : selectedText.trim();
   if (!body) {
     return "";
   }
@@ -10,4 +25,17 @@ export function buildPrDiffSnippetText(filename: string, selectedText: string): 
     `+++ b/${normalizedPath}`,
     body,
   ].join("\n");
+}
+
+export function buildPrDiffSnippetFromPatch(
+  filename: string,
+  patch: string,
+  lineStart: number,
+  lineEnd: number,
+): string {
+  const body = extractPatchBodyForLineRange(filename, patch, lineStart, lineEnd);
+  if (!body) {
+    return "";
+  }
+  return buildPrDiffSnippetText(filename, body, { fromPatchBody: true });
 }

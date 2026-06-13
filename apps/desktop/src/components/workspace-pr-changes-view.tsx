@@ -15,7 +15,7 @@ import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { useTextSelectionActionMenu } from "@/hooks/use-text-selection-action-menu";
 import { buildPrChangedFilesTree } from "@/lib/pr-changed-files-tree";
 import type { PrDiffAttachment, PullRequestChipStatus } from "@/lib/pr-diff-attachment";
-import { buildPrDiffSnippetText } from "@/lib/pr-diff-text";
+import { buildPrDiffSnippetFromPatch, buildPrDiffSnippetText } from "@/lib/pr-diff-text";
 import { readDiffSelectionText, resolveDiffSelectionLineRange } from "@/lib/pr-diff-selection";
 import {
   PR_CHANGES_TREE_MIN_WIDTH_PX,
@@ -82,11 +82,13 @@ function isDiffCodeSelection(selection: Selection, root: HTMLElement): boolean {
 
 function PrChangesSelectionMenu({
   rootRef,
+  files,
   prUrl,
   prStatus,
   onPrDiffAddToSession,
 }: {
   rootRef: RefObject<HTMLElement | null>;
+  files: GitHubPullRequestChangedFile[];
   prUrl: string;
   prStatus: PullRequestChipStatus;
   onPrDiffAddToSession?: (attachment: PrDiffAttachment) => void;
@@ -121,19 +123,34 @@ function PrChangesSelectionMenu({
     }
 
     const lineRange = diffRoot ? resolveDiffSelectionLineRange(diffRoot, selection) : null;
+    const filePatch = files.find((file) => file.filename === filename)?.patch;
+    const diffText =
+      filePatch && lineRange
+        ? buildPrDiffSnippetFromPatch(
+            filename,
+            filePatch,
+            lineRange.lineStart,
+            lineRange.lineEnd,
+          )
+        : buildPrDiffSnippetText(filename, selectedText);
+    if (!diffText) {
+      dismiss();
+      return;
+    }
+
     const attachment: PrDiffAttachment = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       prUrl,
       filename,
       lineStart: lineRange?.lineStart ?? 0,
       lineEnd: lineRange?.lineEnd ?? 0,
-      diffText: buildPrDiffSnippetText(filename, selectedText),
+      diffText,
       status: prStatus,
     };
     onPrDiffAddToSession(attachment);
     dismiss();
     selection.removeAllRanges();
-  }, [dismiss, onPrDiffAddToSession, prStatus, prUrl, rootRef]);
+  }, [dismiss, files, onPrDiffAddToSession, prStatus, prUrl, rootRef]);
 
   if (!enabled) {
     return null;
@@ -549,6 +566,7 @@ export function WorkspacePrChangesView({
       </ScrollArea>
       <PrChangesSelectionMenu
         rootRef={cardsListRef}
+        files={files}
         prUrl={prUrl}
         prStatus={prStatus}
         onPrDiffAddToSession={onPrDiffAddToSession}
