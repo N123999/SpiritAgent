@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, CircleX } from "lucide-react";
+import { Check, X } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
@@ -30,7 +30,7 @@ function CheckStateIcon({
   }
 
   if (state === "failure") {
-    return <CircleX className="size-4 shrink-0 text-destructive" aria-label={label} />;
+    return <X className="size-4 shrink-0 text-destructive" aria-label={label} />;
   }
 
   return <Spinner className="size-3 shrink-0 text-primary" aria-label={label} />;
