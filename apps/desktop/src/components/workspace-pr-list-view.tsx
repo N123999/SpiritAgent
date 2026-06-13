@@ -7,6 +7,8 @@ import { DetailPageTabs } from "@/components/detail-page-tabs";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkspacePrListRow } from "@/components/workspace-pr-list-row";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import { PR_LIST_SEARCH_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import { useWorkspaceToolsShellRowDividers } from "@/lib/use-workspace-tools-shell-row-dividers";
 import { cn } from "@/lib/utils";
 import type {
@@ -68,11 +70,22 @@ export function WorkspacePrListView({
   const [error, setError] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
+  const searchBarRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<ComponentRef<typeof ScrollArea>>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const loadMoreInFlightRef = useRef(false);
   const fetchGenerationRef = useRef(0);
   const listCacheRef = useRef(new Map<string, TabListCacheEntry>());
+
+  useWorkspaceToolsShellHorizontalDivider(
+    searchBarRef,
+    {
+      enabled: true,
+      edge: "bottom",
+      dividerAttr: PR_LIST_SEARCH_SHELL_DIVIDER_ATTR,
+    },
+    [],
+  );
 
   const showList = items.length > 0;
 
@@ -283,18 +296,21 @@ export function WorkspacePrListView({
 
   return (
     <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", className)}>
-      <div className="shrink-0 px-3 pt-3">
-        <div className="relative">
+      <div ref={searchBarRef} className="electron-no-drag shrink-0 px-1.5 py-1.5">
+        <div className="relative min-w-0">
           <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
             aria-hidden
           />
           <Input
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder={t("workspace.prListSearchPlaceholder")}
-            className="h-8 pl-8"
             aria-label={t("workspace.prListSearchPlaceholder")}
+            className={cn(
+              "h-7 min-w-0 w-full border-0 bg-transparent py-0 pl-7 pr-2 text-xs shadow-none",
+              "focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",
+            )}
           />
         </div>
       </div>
@@ -305,6 +321,7 @@ export function WorkspacePrListView({
         onTabChange={setActiveTab}
         ariaLabel={t("workspace.prListTabsAria")}
         size="compact"
+        tabListClassName="pt-3"
         className="min-h-0 flex-1"
         contentClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
       >

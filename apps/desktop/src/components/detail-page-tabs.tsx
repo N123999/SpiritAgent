@@ -20,6 +20,8 @@ export type DetailPageTabsProps<T extends string> = {
   children: ReactNode;
   className?: string;
   contentClassName?: string;
+  /** Extra classes on the tab list row (e.g. symmetric vertical padding). */
+  tabListClassName?: string;
   /** Draw tab divider on workspace tools shell (spans resize column + panel). */
   edgeToPanelDivider?: boolean;
   /** Re-sync shell divider when sibling layout changes (e.g. resizable overview pane). */
@@ -51,6 +53,7 @@ export function DetailPageTabs<T extends string>({
   children,
   className,
   contentClassName,
+  tabListClassName,
   edgeToPanelDivider = false,
   shellDividerWatchRefs,
   shellDividerLayoutDeps = [],
@@ -76,7 +79,7 @@ export function DetailPageTabs<T extends string>({
         className={cn("shrink-0 w-full", !edgeToPanelDivider && "border-b border-border/40")}
       >
         <div
-          className={cn("flex flex-wrap px-3 pb-3", tabListClassBySize[size])}
+          className={cn("flex flex-wrap px-3 pb-3", tabListClassBySize[size], tabListClassName)}
           role="tablist"
           aria-label={ariaLabel}
         >
