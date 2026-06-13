@@ -26,6 +26,11 @@ const ROW_AVATAR_SIZE_PX = 20;
 const COMMENT_CARD_INDENT_SPACER_CLASS = "w-7 shrink-0";
 const COMMENT_CARD_SURFACE_CLASS =
   "rounded-lg border border-border/50 bg-muted px-3 py-2 shadow-sm";
+const FILE_THREAD_CARD_CLASS =
+  "overflow-hidden rounded-lg border border-border/50 bg-muted shadow-sm";
+const FILE_THREAD_DIFF_CLASS =
+  "max-h-48 w-full rounded-none border-x-0 border-t border-b-0 border-border/20";
+const FILE_THREAD_BODY_CLASS = "space-y-2 px-3 py-2";
 /** Nested reply text indent (same offset as card spacer). */
 const COMMENT_CARD_INDENT_CLASS = "ml-7";
 const COMMENT_BODY_CLASS = "whitespace-pre-wrap text-xs leading-relaxed text-foreground/80";
@@ -269,11 +274,11 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
   return (
     <div className="flex min-w-0">
       <div className={COMMENT_CARD_INDENT_SPACER_CLASS} aria-hidden />
-      <div className={cn(COMMENT_CARD_SURFACE_CLASS, "min-w-0 flex-1")}>
+      <div className={cn(FILE_THREAD_CARD_CLASS, "min-w-0 flex-1")}>
         <Collapsible open={open} onOpenChange={setOpen} className="min-w-0">
           <button
             type="button"
-            className="flex w-full min-w-0 items-center gap-1 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="flex w-full min-w-0 items-center gap-1 px-3 py-2 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-expanded={open}
             aria-label={open ? t("workspace.prReviewThreadCollapse") : t("workspace.prReviewThreadExpand")}
             onClick={() => setOpen((value) => !value)}
@@ -290,16 +295,25 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
               {thread.line != null ? `:${thread.line}` : ""}
             </span>
           </button>
-          <CollapsibleContent className="mt-2 space-y-2">
+          <CollapsibleContent>
             {mounted ? (
               <>
-                <ReviewCommentHunkView path={thread.path || "file"} diffHunk={thread.diffHunk} />
-                {rootBody ? <p className={COMMENT_BODY_CLASS}>{rootBody}</p> : null}
-                {replies.length > 0 ? (
-                  <div className="space-y-2">
-                    {replies.map((comment) => (
-                      <ReviewThreadReply key={comment.id} comment={comment} />
-                    ))}
+                <ReviewCommentHunkView
+                  path={thread.path || "file"}
+                  diffHunk={thread.diffHunk}
+                  surface="card"
+                  className={FILE_THREAD_DIFF_CLASS}
+                />
+                {rootBody || replies.length > 0 ? (
+                  <div className={FILE_THREAD_BODY_CLASS}>
+                    {rootBody ? <p className={COMMENT_BODY_CLASS}>{rootBody}</p> : null}
+                    {replies.length > 0 ? (
+                      <div className="space-y-2">
+                        {replies.map((comment) => (
+                          <ReviewThreadReply key={comment.id} comment={comment} />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </>

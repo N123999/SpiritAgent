@@ -12,7 +12,20 @@ export type ReviewCommentHunkViewProps = {
   path: string;
   diffHunk: string;
   className?: string;
+  /** Match parent card (`bg-muted`) instead of page background. */
+  surface?: "default" | "card";
 };
+
+function reviewDiffSurfaceClass(surface: ReviewCommentHunkViewProps["surface"]): string {
+  return surface === "card" ? "bg-muted" : "bg-background";
+}
+
+function reviewDiffInnerClass(surface: ReviewCommentHunkViewProps["surface"]): string {
+  return cn(
+    "tool-call-diff min-w-0",
+    surface === "card" && "tool-call-diff--card-surface",
+  );
+}
 
 function buildReviewCommentDiffText(path: string, diffHunk: string): string {
   const normalizedPath = path.replace(/\\/gu, "/").trim() || "file";
@@ -28,7 +41,12 @@ function buildReviewCommentDiffText(path: string, diffHunk: string): string {
   ].join("\n");
 }
 
-export function ReviewCommentHunkView({ path, diffHunk, className }: ReviewCommentHunkViewProps) {
+export function ReviewCommentHunkView({
+  path,
+  diffHunk,
+  className,
+  surface = "default",
+}: ReviewCommentHunkViewProps) {
   const hunks = useMemo((): HunkData[] => {
     const diffText = buildReviewCommentDiffText(path, diffHunk);
     if (!diffText) {
@@ -49,7 +67,8 @@ export function ReviewCommentHunkView({ path, diffHunk, className }: ReviewComme
     return (
       <pre
         className={cn(
-          "overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-border/20 bg-background p-2 font-mono text-xs leading-relaxed text-muted-foreground",
+          "w-full overflow-x-auto whitespace-pre-wrap break-words border border-border/20 p-2 font-mono text-xs leading-relaxed text-muted-foreground",
+          reviewDiffSurfaceClass(surface),
           className,
         )}
       >
@@ -59,8 +78,15 @@ export function ReviewCommentHunkView({ path, diffHunk, className }: ReviewComme
   }
 
   return (
-    <ScrollArea className={cn("max-h-48 rounded-md border border-border/20", className)} type="always">
-      <div className="tool-call-diff min-w-0">
+    <ScrollArea
+      className={cn(
+        "max-h-48 rounded-md border border-border/20",
+        reviewDiffSurfaceClass(surface),
+        className,
+      )}
+      type="always"
+    >
+      <div className={reviewDiffInnerClass(surface)}>
         <Diff viewType="unified" diffType="modify" hunks={hunks} gutterType="none">
           {(renderedHunks) =>
             renderedHunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)
