@@ -772,6 +772,54 @@ test("composerShowsPlaceholder false when skill chip present", () => {
   );
 });
 
+test("composerShowsPlaceholder false when prDiff chip present", () => {
+  assert.equal(
+    composerShowsPlaceholder(
+      [
+        {
+          kind: "prDiff",
+          attachment: {
+            id: "pr-1",
+            prUrl: "https://github.com/o/r/pull/1",
+            filename: "src/foo.ts",
+            lineStart: 9,
+            lineEnd: 9,
+            diffText: "diff",
+            status: "merged",
+          },
+        },
+        { kind: "text", value: " " },
+      ],
+      { composing: false, attachmentCount: 0 },
+    ),
+    false,
+  );
+});
+
+test("normalizeCaretForInlineAttachmentChips snaps caret on prDiff chip", () => {
+  const segs = [
+    {
+      kind: "prDiff",
+      attachment: {
+        id: "pr-1",
+        prUrl: "https://github.com/o/r/pull/1",
+        filename: "src/foo.ts",
+        lineStart: 9,
+        lineEnd: 9,
+        diffText: "diff",
+        status: "open",
+      },
+    },
+    { kind: "text", value: " tail" },
+  ];
+  const snapped = normalizeCaretForInlineAttachmentChips(segs, {
+    segmentIndex: 0,
+    offset: 0,
+  });
+  assert.equal(snapped.segmentIndex, 1);
+  assert.equal(snapped.offset, 1);
+});
+
 test("normalizeCaretForInlineAttachmentChips snaps caret on skill chip", () => {
   const segs = [
     { kind: "skill", alias: "/git-commit" },

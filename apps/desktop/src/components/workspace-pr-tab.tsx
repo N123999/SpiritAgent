@@ -127,6 +127,7 @@ export type WorkspacePrTabProps = {
   prRevealEnabled?: boolean;
   prRevealNonce?: number;
   prRevealRequest?: GitHubPullRequestRevealRequest | null;
+  onPrDiffAddToSession?: (attachment: import("@/lib/pr-diff-attachment").PrDiffAttachment) => void;
   className?: string;
 };
 
@@ -150,6 +151,7 @@ export function WorkspacePrTab({
   prRevealEnabled = false,
   prRevealNonce = 0,
   prRevealRequest = null,
+  onPrDiffAddToSession,
   className,
 }: WorkspacePrTabProps) {
   const { t } = useTranslation();
@@ -777,6 +779,7 @@ export function WorkspacePrTab({
             checks={GITHUB_PR_CHECKS_DEMO.checks}
             checksHasMore={GITHUB_PR_CHECKS_DEMO.hasMore}
             onOpenExternal={openExternalUrl}
+            onPrDiffAddToSession={onPrDiffAddToSession}
             className="min-h-0 flex-1"
           />
         </section>
@@ -854,6 +857,7 @@ export function WorkspacePrTab({
               onOpenExternal={openExternalUrl}
               onMerge={handleMergePullRequest}
               onMarkReady={handleMarkPullRequestReady}
+              onPrDiffAddToSession={onPrDiffAddToSession}
               className="min-h-0 flex-1"
             />
           ) : (

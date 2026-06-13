@@ -21,6 +21,7 @@ import {
   resolveComposerDirectMediaTool,
 } from "@/lib/composer-direct-media";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
+import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import type { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
@@ -552,6 +553,11 @@ export function useComposerController({
     [attachLocalFilePath],
   );
 
+  const handlePrDiffAddToSession = useCallback((attachment: PrDiffAttachment) => {
+    composerRichInputRef.current?.insertPrDiffAttachment(attachment);
+    composerRichInputRef.current?.focus();
+  }, []);
+
   const pickLocalFileFromPalette = useCallback(() => {
     void runtime.pickLocalFile().then((filePath) => {
       if (!filePath) {
@@ -870,6 +876,7 @@ export function useComposerController({
     insertSkillTriggerFromPalette,
     removeLocalFileAttachment,
     handleBrowserElementPicked,
+    handlePrDiffAddToSession,
     pickLocalFileFromPalette,
     handleComposerPaste,
     submitComposerMessage,

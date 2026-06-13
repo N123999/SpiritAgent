@@ -12,3 +12,7 @@ export const GITHUB_PR_OPEN_BADGE_CLASS =
 /** GitHub draft pull request badge — neutral monochrome. */
 export const GITHUB_PR_DRAFT_BADGE_CLASS =
   "gap-1 border-border/50 bg-background text-foreground/75 dark:border-white/10 dark:bg-input/30 dark:text-foreground/70";
+
+/** Inline PR diff chip when PR is closed — aligned with secondary Badge. */
+export const GITHUB_PR_CLOSED_CHIP_CLASS =
+  "border-border/50 bg-muted text-muted-foreground dark:border-white/10 dark:bg-input/30 dark:text-foreground/70";

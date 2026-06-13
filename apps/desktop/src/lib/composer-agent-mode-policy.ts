@@ -1,6 +1,7 @@
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type { RichSegment } from "@/lib/composer-segment-model";
 import { emptySegments, hasSkillSegment, isComposerPlainEmpty, mergeAdjacentTextSegments, segmentsToPlainText } from "@/lib/composer-segment-model";
+import { hasInlineAttachmentChipSegments } from "@/lib/composer-inline-chip-dom";
 import { hasLoopSegment } from "@/lib/composer-loop-segments";
 import {
   hasAgentModeSegment,
@@ -41,7 +42,12 @@ export function composerShowsPlaceholder(
   if (opts.composing || opts.attachmentCount > 0) {
     return false;
   }
-  if (hasLoopSegment(segs) || hasAgentModeSegment(segs) || hasSkillSegment(segs)) {
+  if (
+    hasLoopSegment(segs)
+    || hasAgentModeSegment(segs)
+    || hasSkillSegment(segs)
+    || hasInlineAttachmentChipSegments(segs)
+  ) {
     return false;
   }
   return isComposerPlainEmpty(segmentsToPlainText(segs));

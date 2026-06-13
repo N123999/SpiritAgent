@@ -11,6 +11,8 @@ import {
 } from "react";
 
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
+import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
+import { hasInlineAttachmentChipSegments } from "@/lib/composer-inline-chip-dom";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-selection";
 import {
@@ -119,6 +121,7 @@ export type InsertSkillChipOptions = {
 export type ComposerRichInputHandle = {
   focus(): void;
   insertAttachment(a: BrowserElementAttachment): void;
+  insertPrDiffAttachment(attachment: PrDiffAttachment): void;
   insertWorkspaceFileReference(
     path: string,
     query: ActiveWorkspaceFileReferenceQuery,
@@ -379,6 +382,26 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments],
     );
 
+    const insertPrDiffAttachment = useCallback(
+      (attachment: PrDiffAttachment) => {
+        const div = divRef.current;
+        if (!div) return;
+        div.focus();
+        const current = segmentsRef.current;
+        const caret =
+          selectionToCaret(div, current) ?? {
+            segmentIndex: current.length - 1,
+            offset: segmentsToPlainText(current).length,
+          };
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(current, caret, {
+          kind: "prDiff",
+          attachment,
+        });
+        commitSegments(next, nextCaret);
+      },
+      [commitSegments],
+    );
+
     const insertWorkspaceFileReference = useCallback(
       (path: string, query: ActiveWorkspaceFileReferenceQuery, finalize = true) => {
         const div = divRef.current;
@@ -605,6 +628,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       () => ({
         focus: () => divRef.current?.focus(),
         insertAttachment,
+        insertPrDiffAttachment,
         insertWorkspaceFileReference,
         insertLoopChip,
         removeLoopChip,
@@ -622,6 +646,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       }),
       [
         insertAttachment,
+        insertPrDiffAttachment,
         insertWorkspaceFileReference,
         replaceSkillSlashQuery,
         removeSkillSlashQuery,
@@ -793,6 +818,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         // Skill chip 存在时，parent 侧 value 为空（segmentsToPlainText 对 skill 返回 ""），
         // 但 chip 本身应保留，勿清空。
         if (hasSkillSegment(current) && isComposerPlainEmpty(plain)) {
+          return;
+        }
+        // PR diff / 工作区文件 / 元素 chip 不贡献 parent plain；parent value 为空时保留内联 chip。
+        if (hasInlineAttachmentChipSegments(current) && isComposerPlainEmpty(plain)) {
           return;
         }
         commitSegments(emptySegments(), { segmentIndex: 0, offset: 0 });
