@@ -428,6 +428,14 @@ export const GITHUB_PR_CHECKS_DEMO: GitHubPullRequestChecksSnapshot = {
       startedAt: "2024-01-02T20:45:00Z",
       completedAt: "2024-01-02T20:47:35Z",
       url: "https://github.com/octocat/Hello-World/actions/runs/503",
+      required: true,
+    },
+    {
+      id: "expected:Linux / CLI",
+      name: "Linux / CLI",
+      state: "pending",
+      startedAt: new Date(0).toISOString(),
+      required: true,
     },
   ],
 };

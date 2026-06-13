@@ -635,6 +635,7 @@
     "prCheckStateSuccess": "通过",
     "prCheckStateFailure": "失败",
     "prCheckStateInProgress": "进行中",
+    "prCheckStatePending": "未开始",
     "prChangesViewOnGitHub": "在 GitHub 查看",
     "prFileStatusAdded": "新增",
     "prFileStatusRemoved": "删除",

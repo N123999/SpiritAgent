@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, X } from "lucide-react";
+import { Check, Circle, X } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
@@ -33,6 +33,16 @@ function CheckStateIcon({
     return <X className="size-4 shrink-0 text-destructive" aria-label={label} />;
   }
 
+  if (state === "pending") {
+    return (
+      <Circle
+        className="size-4 shrink-0 text-muted-foreground/55"
+        strokeWidth={1.5}
+        aria-label={label}
+      />
+    );
+  }
+
   return <Spinner className="size-3 shrink-0 text-primary" aria-label={label} />;
 }
 
@@ -52,7 +62,9 @@ function PrCheckRow({
       ? t("workspace.prCheckStateSuccess")
       : check.state === "failure"
         ? t("workspace.prCheckStateFailure")
-        : t("workspace.prCheckStateInProgress");
+        : check.state === "pending"
+          ? t("workspace.prCheckStatePending")
+          : t("workspace.prCheckStateInProgress");
 
   const row = (
     <div className="flex min-w-0 items-center gap-2 px-3 py-3">
@@ -61,7 +73,7 @@ function PrCheckRow({
         {check.name}
       </span>
       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/75 dark:text-muted-foreground/65">
-        {timeLabel}
+        {check.state === "pending" ? "—" : timeLabel}
       </span>
     </div>
   );

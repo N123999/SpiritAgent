@@ -1,5 +1,6 @@
 import { githubApiHeaders, githubHasNextPage, readGitHubJson } from './github-api.js';
 import { GITHUB_API_BASE_URL } from './oauth-config.js';
+import { getPullRequestChecksViaGraphQL } from './pull-request-checks-graphql.js';
 import { getPullRequestDetail } from './pull-request.js';
 import type {
   GitHubPullRequestCheck,
@@ -39,9 +40,10 @@ interface GitHubCommitCombinedStatusApiResponse {
 }
 
 const CHECK_STATE_ORDER: Record<GitHubPullRequestCheckState, number> = {
-  in_progress: 0,
-  failure: 1,
-  success: 2,
+  pending: 0,
+  in_progress: 1,
+  failure: 2,
+  success: 3,
 };
 
 function resolveIsoTimestamp(
@@ -206,6 +208,19 @@ async function getLegacyCommitStatuses(
 }
 
 export async function getPullRequestChecks(
+  accessToken: string,
+  repository: GitHubRepositoryRef,
+  number: number,
+  options: GetPullRequestChecksOptions = {},
+): Promise<GitHubPullRequestChecksSnapshot> {
+  try {
+    return await getPullRequestChecksViaGraphQL(accessToken, repository, number, options);
+  } catch {
+    return getPullRequestChecksViaRest(accessToken, repository, number, options);
+  }
+}
+
+async function getPullRequestChecksViaRest(
   accessToken: string,
   repository: GitHubRepositoryRef,
   number: number,
