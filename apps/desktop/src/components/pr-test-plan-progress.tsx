@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { ListChecks } from "lucide-react";
 
 import { FractionProgressRing } from "@/components/fraction-progress-ring";
+import { resolvePrTestPlanProgressVariant } from "@/lib/github-pr-list-ui";
 import { cn } from "@/lib/utils";
 import type { GitHubPullRequestTaskListProgress } from "@/types";
 
@@ -12,13 +13,15 @@ export type PrTestPlanProgressProps = {
 
 export function PrTestPlanProgress({ progress, className }: PrTestPlanProgressProps) {
   const { t } = useTranslation();
-  const { completed, total } = progress;
+  const variant = resolvePrTestPlanProgressVariant(progress);
 
-  if (total <= 0) {
+  if (variant === "none") {
     return null;
   }
 
-  if (completed === 0) {
+  const { completed, total } = progress;
+
+  if (variant === "zero") {
     return (
       <span
         className={cn(
@@ -32,7 +35,7 @@ export function PrTestPlanProgress({ progress, className }: PrTestPlanProgressPr
     );
   }
 
-  if (completed < total) {
+  if (variant === "partial") {
     return (
       <span
         className={cn(

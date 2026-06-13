@@ -3,9 +3,8 @@ import { GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from "lucid
 
 import { PrTestPlanProgress } from "@/components/pr-test-plan-progress";
 import { formatRelativeTime } from "@/lib/format-relative-time";
-import {
-  GITHUB_PR_MERGED_ICON_CLASS,
-} from "@/lib/github-pr-merged-badge-styles";
+import { resolvePullRequestListIconTone } from "@/lib/github-pr-list-ui";
+import { GITHUB_PR_MERGED_ICON_CLASS } from "@/lib/github-pr-merged-badge-styles";
 import { resolveGitHubAvatarUrl } from "@/lib/github-avatar-url";
 import { cn } from "@/lib/utils";
 import type { GitHubPullRequestListItem } from "@/types";
@@ -16,13 +15,14 @@ export type WorkspacePrListRowProps = {
 };
 
 function resolvePullRequestIconClass(item: GitHubPullRequestListItem): string {
-  if (item.merged) {
+  const tone = resolvePullRequestListIconTone(item);
+  if (tone === "merged") {
     return GITHUB_PR_MERGED_ICON_CLASS;
   }
-  if (item.draft) {
+  if (tone === "draft") {
     return "text-foreground/75 dark:text-foreground/70";
   }
-  if (item.state === "open") {
+  if (tone === "open") {
     return "text-[#296837] dark:text-[#57a773]";
   }
   return "text-muted-foreground";
