@@ -1,4 +1,5 @@
 import type { RichSegment, SegmentCaret } from "@/lib/composer-segment-model";
+import { isComposerInlineChipElement } from "@/lib/composer-inline-chip-dom";
 
 type WalkState = {
   segmentIndex: number;
@@ -6,22 +7,7 @@ type WalkState = {
 };
 
 function isChip(el: HTMLElement): boolean {
-  return (
-    el.dataset.elementChip === "true" ||
-    el.getAttribute("data-element-chip") === "true" ||
-    el.dataset.fileChip === "true" ||
-    el.getAttribute("data-file-chip") === "true" ||
-    el.dataset.loopChip === "true" ||
-    el.getAttribute("data-loop-chip") === "true" ||
-    el.dataset.planChip === "true" ||
-    el.getAttribute("data-plan-chip") === "true" ||
-    el.dataset.askChip === "true" ||
-    el.getAttribute("data-ask-chip") === "true" ||
-    el.dataset.debugChip === "true" ||
-    el.getAttribute("data-debug-chip") === "true" ||
-    el.dataset.skillChip === "true" ||
-    el.getAttribute("data-skill-chip") === "true"
-  );
+  return isComposerInlineChipElement(el);
 }
 
 function childIndex(parent: Node, child: Node): number {
