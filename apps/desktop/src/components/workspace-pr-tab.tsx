@@ -183,6 +183,7 @@ export function WorkspacePrTab({
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [prActionBusy, setPrActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repositoryLoadError, setRepositoryLoadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
 
   const checksLoadMoreInFlightRef = useRef(false);
@@ -304,12 +305,15 @@ export function WorkspacePrTab({
       setLoadingBranch(true);
     }
     setError(null);
+    setRepositoryLoadError(null);
     try {
       const result = await getGitHubPullRequestForCurrentBranch();
       setBranchResult(result);
     } catch (loadError) {
       setBranchResult(null);
-      setError(describeError(loadError));
+      const message = describeError(loadError);
+      setRepositoryLoadError(message);
+      setError(message);
       await refreshAuthStatus();
     } finally {
       if (!background) {
@@ -782,6 +786,8 @@ export function WorkspacePrTab({
             />
           ) : !gitSnapshot?.isRepository ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoRepo")}</p>
+          ) : repositoryLoadError && branchResult == null ? (
+            <p className="px-3 pt-3 text-destructive">{repositoryLoadError}</p>
           ) : branchResult?.repository == null ? (
             <p className="px-3 pt-3 text-muted-foreground">{t("workspace.prNoGitHubOrigin")}</p>
           ) : viewMode === "list" ? (
