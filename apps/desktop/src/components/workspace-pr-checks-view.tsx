@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useRef, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Circle, X } from "lucide-react";
+import { Check, Circle, LoaderCircle, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { formatCiDuration } from "@/lib/format-ci-duration";
@@ -13,7 +14,9 @@ import type { GitHubPullRequestCheck, GitHubPullRequestCheckState } from "@/type
 export type WorkspacePrChecksViewProps = {
   checks: GitHubPullRequestCheck[];
   loading?: boolean;
+  loadingMore?: boolean;
   hasMore?: boolean;
+  onLoadMore?: () => void;
   onOpenExternal?: (url: string) => void;
   className?: string;
 };
@@ -96,18 +99,55 @@ function PrCheckRow({
 export function WorkspacePrChecksView({
   checks,
   loading = false,
+  loadingMore = false,
   hasMore = false,
+  onLoadMore,
   onOpenExternal,
   className,
 }: WorkspacePrChecksViewProps) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<ComponentRef<typeof ScrollArea>>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreInFlightRef = useRef(false);
   const showList = checks.length > 0;
 
-  useWorkspaceToolsShellRowDividers(listRef, [checks.length, hasMore], {
+  useWorkspaceToolsShellRowDividers(listRef, [checks.length, hasMore, loadingMore], {
     enabled: showList,
-    trailingDivider: !hasMore,
+    trailingDivider: !hasMore && !loadingMore,
   });
+
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || loadingMore) {
+      return;
+    }
+    const root = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) {
+          return;
+        }
+        if (loadMoreInFlightRef.current || loadingMore) {
+          return;
+        }
+        loadMoreInFlightRef.current = true;
+        onLoadMore();
+      },
+      { root, rootMargin: "160px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [checks.length, hasMore, loadingMore, onLoadMore]);
+
+  useEffect(() => {
+    if (!loadingMore) {
+      loadMoreInFlightRef.current = false;
+    }
+  }, [loadingMore]);
 
   if (loading && checks.length === 0) {
     return (
@@ -125,16 +165,36 @@ export function WorkspacePrChecksView({
     );
   }
 
+  const showLoadMoreFooter = hasMore || loadingMore;
+
   return (
-    <ScrollArea className={cn("min-h-0 flex-1", className)} type="auto">
+    <ScrollArea ref={scrollAreaRef} className={cn("min-h-0 flex-1", className)} type="auto">
       <div ref={listRef}>
         {checks.map((check) => (
           <PrCheckRow key={check.id} check={check} onOpenExternal={onOpenExternal} />
         ))}
-        {hasMore ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground/75 dark:text-muted-foreground/65">
-            {t("workspace.prChecksHasMore")}
-          </p>
+        {showLoadMoreFooter ? (
+          <div
+            ref={loadMoreSentinelRef}
+            className="flex min-h-10 items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
+          >
+            {loadingMore ? (
+              <>
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                {t("workspace.prChecksLoadingMore")}
+              </>
+            ) : hasMore && onLoadMore ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={onLoadMore}
+              >
+                {t("workspace.prChecksLoadMore")}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </ScrollArea>

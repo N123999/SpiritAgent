@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  appendPullRequestChecksPages,
   createExpectedRequiredCheck,
   mapGraphQLCheckRunNode,
   mapGraphQLStatusContextNode,
@@ -107,6 +108,40 @@ test('mergeRequiredStatusChecks adds pending placeholders for missing required c
       { name: 'Dependencies Check', state: 'success', required: true },
       { name: 'license/cla', state: 'success', required: false },
     ],
+  );
+});
+
+test('appendPullRequestChecksPages merges checks by name', () => {
+  const merged = appendPullRequestChecksPages(
+    [
+      {
+        id: 'run:1',
+        name: 'build',
+        state: 'success',
+        startedAt: '2026-06-01T12:00:00Z',
+      },
+      {
+        id: 'expected:lint',
+        name: 'lint',
+        state: 'pending',
+        startedAt: new Date(0).toISOString(),
+        required: true,
+      },
+    ],
+    [
+      {
+        id: 'run:2',
+        name: 'test',
+        state: 'in_progress',
+        startedAt: '2026-06-01T12:10:00Z',
+      },
+    ],
+  );
+
+  assert.equal(merged.length, 3);
+  assert.deepEqual(
+    merged.map((check) => check.name),
+    ['lint', 'test', 'build'],
   );
 });
 

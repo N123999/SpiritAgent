@@ -49,7 +49,9 @@ export type WorkspacePrDetailViewProps = {
   commitsHasMore?: boolean;
   checks?: GitHubPullRequestCheck[];
   loadingChecks?: boolean;
+  loadingMoreChecks?: boolean;
   checksHasMore?: boolean;
+  onLoadMoreChecks?: () => void;
   actionBusy?: boolean;
   onOpenExternal: (url: string) => void;
   onMerge?: (method: GitHubPullRequestMergeMethod) => void;
@@ -119,7 +121,9 @@ export function WorkspacePrDetailView({
   commitsHasMore = false,
   checks = [],
   loadingChecks = false,
+  loadingMoreChecks = false,
   checksHasMore = false,
+  onLoadMoreChecks,
   actionBusy = false,
   onOpenExternal,
   onMerge,
@@ -385,7 +389,9 @@ export function WorkspacePrDetailView({
           <WorkspacePrChecksView
             checks={checks}
             loading={loadingChecks}
+            loadingMore={loadingMoreChecks}
             hasMore={checksHasMore}
+            onLoadMore={onLoadMoreChecks}
             onOpenExternal={onOpenExternal}
             className="h-full min-h-0"
           />

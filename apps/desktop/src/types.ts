@@ -950,6 +950,7 @@ export interface GetGitHubPullRequestDetailRequest {
   owner: string;
   repo: string;
   number: number;
+  checksAfter?: string;
 }
 
 export interface MergeGitHubPullRequestRequest extends GetGitHubPullRequestDetailRequest {

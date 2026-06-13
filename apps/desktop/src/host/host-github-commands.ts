@@ -240,10 +240,16 @@ export async function getGitHubPullRequestChecksCommand(
   request: GetGitHubPullRequestDetailRequest,
 ): Promise<GitHubPullRequestChecksSnapshot> {
   const { owner, repo, number } = parsePullRequestRepositoryRequest(request);
+  const checksAfter = request.checksAfter?.trim() || undefined;
 
   try {
     const accessToken = await requireGitHubAccessToken();
-    return await getPullRequestChecks(accessToken, { owner, repo }, number);
+    return await getPullRequestChecks(
+      accessToken,
+      { owner, repo },
+      number,
+      checksAfter ? { after: checksAfter } : {},
+    );
   } catch (error) {
     throw await handleGitHubApiError(error);
   }

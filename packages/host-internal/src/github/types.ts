@@ -204,4 +204,5 @@ export interface GitHubPullRequestChecksSnapshot {
   checks: GitHubPullRequestCheck[];
   hasMore: boolean;
   headSha: string;
+  nextCursor?: string;
 }
