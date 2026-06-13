@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Check, ChevronRight, CircleX, Eye, GitCommit, MessageSquare } from "lucide-react";
 
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
+import { WorkspacePrMarkdown } from "@/components/workspace-pr-markdown";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
@@ -33,7 +34,6 @@ const FILE_THREAD_DIFF_CLASS =
 const FILE_THREAD_BODY_CLASS = "space-y-2 px-3 py-2";
 /** Nested reply text indent (same offset as card spacer). */
 const COMMENT_CARD_INDENT_CLASS = "ml-7";
-const COMMENT_BODY_CLASS = "whitespace-pre-wrap text-xs leading-relaxed text-foreground/80";
 /** Vertical gap between timeline rows (commits, comments, reviews). */
 const TIMELINE_ITEMS_CLASS = "space-y-4";
 
@@ -190,7 +190,7 @@ function IssueCommentTimelineRow({ item }: { item: GitHubPullRequestConversation
       />
       {item.body ? (
         <PrConversationCommentCard>
-          <p className={COMMENT_BODY_CLASS}>{item.body}</p>
+          <WorkspacePrMarkdown content={item.body} />
         </PrConversationCommentCard>
       ) : null}
     </PrConversationTimelineShell>
@@ -234,7 +234,11 @@ function ReviewTimelineRow({ item }: { item: GitHubPullRequestConversationReview
         createdAt={item.createdAt}
       />
       <PrConversationCommentCard>
-        <p className={COMMENT_BODY_CLASS}>{cardText}</p>
+        {item.body?.trim() ? (
+          <WorkspacePrMarkdown content={item.body} />
+        ) : (
+          <p className="text-xs leading-relaxed text-foreground/80">{cardText}</p>
+        )}
       </PrConversationCommentCard>
       {item.threads.length > 0 ? (
         <div className="mt-2 space-y-2">
@@ -256,7 +260,9 @@ function ReviewThreadReply({ comment }: { comment: GitHubPullRequestReviewCommen
         createdAt={comment.createdAt}
       />
       {comment.body ? (
-        <p className={cn(COMMENT_BODY_CLASS, COMMENT_CARD_INDENT_CLASS, "mt-1.5")}>{comment.body}</p>
+        <div className={cn(COMMENT_CARD_INDENT_CLASS, "mt-1.5")}>
+          <WorkspacePrMarkdown content={comment.body} />
+        </div>
       ) : null}
     </div>
   );
@@ -307,7 +313,7 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
                 />
                 {rootBody || replies.length > 0 ? (
                   <div className={FILE_THREAD_BODY_CLASS}>
-                    {rootBody ? <p className={COMMENT_BODY_CLASS}>{rootBody}</p> : null}
+                    {rootBody ? <WorkspacePrMarkdown content={rootBody} /> : null}
                     {replies.length > 0 ? (
                       <div className="space-y-2">
                         {replies.map((comment) => (

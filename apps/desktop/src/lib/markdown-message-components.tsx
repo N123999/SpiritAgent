@@ -14,6 +14,7 @@ import type { WorkspaceMarkdownLinkClickHandler } from "@/components/workspace-m
 import { cn } from "@/lib/utils";
 
 export type MarkdownTone = "default" | "muted";
+export type MarkdownSize = "default" | "compact";
 
 /** Shared element overrides for react-markdown and Streamdown. */
 export function createMarkdownMessageComponents(
@@ -21,23 +22,37 @@ export function createMarkdownMessageComponents(
   tone: MarkdownTone = "default",
   readManagedVideoPreviewUrl?: ReadManagedVideoPreviewUrl,
   onLinkClick?: WorkspaceMarkdownLinkClickHandler,
+  size: MarkdownSize = "default",
 ): Record<string, ComponentType<Record<string, unknown>>> {
+  const compact = size === "compact";
   const muted = tone === "muted";
   const bodyText = muted
-    ? "text-sm leading-relaxed text-muted-foreground"
-    : "text-sm leading-relaxed text-foreground/95";
-  const headingText = muted ? "text-muted-foreground" : "text-foreground";
-  const inlineCodeText = muted ? "text-muted-foreground" : "text-foreground";
-  const blockCodeText = muted ? "text-muted-foreground" : "text-foreground";
-  const tableCellText = muted ? "text-muted-foreground" : "text-foreground/95";
+    ? compact
+      ? "text-xs leading-relaxed text-foreground/80"
+      : "text-sm leading-relaxed text-muted-foreground"
+    : compact
+      ? "text-xs leading-relaxed text-foreground/90"
+      : "text-sm leading-relaxed text-foreground/95";
+  const headingText = muted ? (compact ? "text-foreground/85" : "text-muted-foreground") : "text-foreground";
+  const inlineCodeText = muted ? (compact ? "text-foreground/80" : "text-muted-foreground") : "text-foreground";
+  const blockCodeText = inlineCodeText;
+  const tableCellText = muted
+    ? compact
+      ? "text-foreground/80"
+      : "text-muted-foreground"
+    : compact
+      ? "text-foreground/90"
+      : "text-foreground/95";
 
   return {
     h1: ({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
       <h1
         className={cn(
-          muted
+          compact
             ? "mt-2 mb-1.5 text-sm font-semibold tracking-tight first:mt-0"
-            : "mt-3 mb-2 text-lg font-semibold tracking-tight first:mt-0",
+            : muted
+              ? "mt-2 mb-1.5 text-sm font-semibold tracking-tight first:mt-0"
+              : "mt-3 mb-2 text-lg font-semibold tracking-tight first:mt-0",
           headingText,
           className,
         )}
@@ -47,9 +62,11 @@ export function createMarkdownMessageComponents(
     h2: ({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
       <h2
         className={cn(
-          muted
-            ? "mt-2 mb-1 text-sm font-semibold tracking-tight first:mt-0"
-            : "mt-3 mb-1.5 text-base font-semibold tracking-tight first:mt-0",
+          compact
+            ? "mt-2 mb-1 text-xs font-semibold tracking-tight first:mt-0"
+            : muted
+              ? "mt-2 mb-1 text-sm font-semibold tracking-tight first:mt-0"
+              : "mt-3 mb-1.5 text-base font-semibold tracking-tight first:mt-0",
           headingText,
           className,
         )}
@@ -149,7 +166,8 @@ export function createMarkdownMessageComponents(
     pre: ({ className, children, ...props }: HTMLAttributes<HTMLPreElement>) => (
       <pre
         className={cn(
-          "mb-2 max-w-full overflow-x-auto rounded-md border p-3 font-mono text-xs leading-relaxed last:mb-0",
+          "mb-2 max-w-full overflow-x-auto rounded-md border p-3 font-mono leading-relaxed last:mb-0",
+          compact ? "text-[11px]" : "text-xs",
           muted ? "border-border/30 bg-muted/20" : "border-border/40 bg-muted/30",
           blockCodeText,
           className,
@@ -219,10 +237,18 @@ export function createMarkdownMessageComponents(
 export function markdownMessageRootClassName(
   tone: MarkdownTone,
   className?: string,
+  size: MarkdownSize = "default",
 ): string {
+  const compact = size === "compact";
   return cn(
     "min-w-0 break-words",
-    tone === "muted" ? "font-sans text-sm leading-relaxed text-muted-foreground" : "text-foreground/95",
+    compact
+      ? tone === "muted"
+        ? "text-xs leading-relaxed text-foreground/80"
+        : "text-xs leading-relaxed text-foreground/90"
+      : tone === "muted"
+        ? "font-sans text-sm leading-relaxed text-muted-foreground"
+        : "text-foreground/95",
     className,
   );
 }

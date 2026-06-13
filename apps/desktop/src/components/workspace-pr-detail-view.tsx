@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { PrConversationTimeline } from "@/components/workspace-pr-conversation-timeline";
 import { WorkspacePrChecksView } from "@/components/workspace-pr-checks-view";
 import { WorkspacePrChangesView } from "@/components/workspace-pr-changes-view";
+import { WorkspacePrMarkdown } from "@/components/workspace-pr-markdown";
 import { WorkspacePrCommitsView } from "@/components/workspace-pr-commits-view";
 import { GITHUB_PR_MERGED_BADGE_CLASS } from "@/lib/github-pr-merged-badge-styles";
 import { toolCardSecondaryTextClass } from "@/lib/file-tool-lsp-diagnostics-display";
@@ -128,9 +129,7 @@ export function WorkspacePrDetailView({
             </span>
           </div>
           {detail.body ? (
-            <div className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
-              {detail.body}
-            </div>
+            <WorkspacePrMarkdown content={detail.body} className="mt-2" />
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">{t("workspace.prNoDescription")}</p>
           )}
