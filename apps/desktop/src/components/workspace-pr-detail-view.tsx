@@ -129,8 +129,10 @@ export function WorkspacePrDetailView({
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<WorkspacePrDetailTab>("conversations");
   const actionMode = resolvePrActionMode(detail);
-  const mergeDisabled = detail.mergeable === false;
-  const mergeDisabledTitle = mergeDisabled ? t("workspace.prMergeNotMergeable") : undefined;
+  const mergeHasConflicts = detail.mergeableState === "dirty";
+  const mergeDisabled = mergeHasConflicts;
+  const mergeDisabledTitle = mergeHasConflicts ? t("workspace.prMergeConflicts") : undefined;
+  const mergePrimaryLabel = mergeHasConflicts ? t("workspace.prMergeConflicts") : undefined;
 
   const splitContainerRef = useRef<HTMLElement>(null);
   const overviewPaneRef = useRef<HTMLDivElement>(null);
@@ -313,6 +315,7 @@ export function WorkspacePrDetailView({
                   busy={actionBusy}
                   mergeDisabled={actionMode === "merge" ? mergeDisabled : false}
                   mergeDisabledTitle={mergeDisabledTitle}
+                  mergePrimaryLabel={mergePrimaryLabel}
                   onMerge={onMerge}
                   onMarkReady={onMarkReady}
                 />

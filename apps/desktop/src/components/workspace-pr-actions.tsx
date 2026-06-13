@@ -39,6 +39,7 @@ export type WorkspacePrActionsProps = {
   busy?: boolean;
   mergeDisabled?: boolean;
   mergeDisabledTitle?: string;
+  mergePrimaryLabel?: string;
   onMerge: (method: GitHubPullRequestMergeMethod) => void;
   onMarkReady: () => void;
 };
@@ -48,10 +49,12 @@ export function WorkspacePrActions({
   busy = false,
   mergeDisabled = false,
   mergeDisabledTitle,
+  mergePrimaryLabel,
   onMerge,
   onMarkReady,
 }: WorkspacePrActionsProps) {
   const { t } = useTranslation();
+  const primaryMergeLabel = mergePrimaryLabel ?? t("app.merge");
 
   const busyIcon = busy ? <LoaderCircle className="size-3 animate-spin" aria-hidden /> : null;
 
@@ -84,7 +87,7 @@ export function WorkspacePrActions({
       >
         {busyIcon}
         <GitMerge className="size-3 shrink-0 opacity-80" aria-hidden />
-        <span>{t("app.merge")}</span>
+        <span>{primaryMergeLabel}</span>
       </Button>
       <ButtonGroupSeparator className={DESKTOP_GIT_ACTION_SPLIT} />
       <DropdownMenu modal>
