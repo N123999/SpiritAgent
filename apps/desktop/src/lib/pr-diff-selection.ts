@@ -3,6 +3,29 @@ export type PrDiffLineRange = {
   lineEnd: number;
 };
 
+export function findChangedFileFromNode(node: Node | null, root: HTMLElement): string | null {
+  let current: Node | null = node;
+  while (current && current !== root) {
+    if (current instanceof HTMLElement) {
+      const filename = current.dataset.prChangedFile;
+      if (filename) {
+        return filename;
+      }
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
+export function resolveChangedFileFromSelection(selection: Selection, root: HTMLElement): string | null {
+  const anchorFile = findChangedFileFromNode(selection.anchorNode, root);
+  const focusFile = findChangedFileFromNode(selection.focusNode, root);
+  if (!anchorFile || !focusFile || anchorFile !== focusFile) {
+    return null;
+  }
+  return anchorFile;
+}
+
 function parseGutterLineNumber(gutter: Element): number | null {
   const text = gutter.textContent?.trim() ?? "";
   if (!text || !/^\d+$/u.test(text)) {

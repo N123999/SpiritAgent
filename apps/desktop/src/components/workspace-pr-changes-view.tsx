@@ -16,7 +16,7 @@ import { useTextSelectionActionMenu } from "@/hooks/use-text-selection-action-me
 import { buildPrChangedFilesTree } from "@/lib/pr-changed-files-tree";
 import type { PrDiffAttachment, PullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { buildPrDiffSnippetFromPatch, buildPrDiffSnippetText } from "@/lib/pr-diff-text";
-import { readDiffSelectionText, resolveDiffSelectionLineRange } from "@/lib/pr-diff-selection";
+import { readDiffSelectionText, resolveChangedFileFromSelection, resolveDiffSelectionLineRange } from "@/lib/pr-diff-selection";
 import {
   PR_CHANGES_TREE_MIN_WIDTH_PX,
   computePrChangesTreeMaxWidthPx,
@@ -29,20 +29,6 @@ import type { GitHubPullRequestChangedFile } from "@/types";
 
 export function prChangedFileAnchorId(filename: string): string {
   return `pr-change-file-${encodeURIComponent(filename)}`;
-}
-
-function findChangedFileFromSelection(node: Node | null, root: HTMLElement): string | null {
-  let current: Node | null = node;
-  while (current && current !== root) {
-    if (current instanceof HTMLElement) {
-      const filename = current.dataset.prChangedFile;
-      if (filename) {
-        return filename;
-      }
-    }
-    current = current.parentNode;
-  }
-  return null;
 }
 
 function findDiffRootFromSelection(node: Node | null, root: HTMLElement): HTMLElement | null {
@@ -77,7 +63,8 @@ function isDiffCodeSelection(selection: Selection, root: HTMLElement): boolean {
     }
     return false;
   };
-  return isInDiffCode(anchor) && isInDiffCode(focus);
+  return isInDiffCode(anchor) && isInDiffCode(focus)
+    && resolveChangedFileFromSelection(selection, root) != null;
 }
 
 function PrChangesSelectionMenu({
@@ -109,7 +96,7 @@ function PrChangesSelectionMenu({
       return;
     }
 
-    const filename = findChangedFileFromSelection(selection.anchorNode, root);
+    const filename = resolveChangedFileFromSelection(selection, root);
     if (!filename) {
       dismiss();
       return;
