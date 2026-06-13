@@ -30,7 +30,7 @@ export function PrTestPlanProgress({ progress, className }: PrTestPlanProgressPr
         )}
       >
         <ListChecks className="size-3 shrink-0" aria-hidden />
-        {t("workspace.prListTestsCount", { count: total })}
+        {t("workspace.prListTasksCount", { count: total })}
       </span>
     );
   }
@@ -46,9 +46,9 @@ export function PrTestPlanProgress({ progress, className }: PrTestPlanProgressPr
         <FractionProgressRing
           completed={completed}
           total={total}
-          aria-label={t("workspace.prListTestsProgressAria", { completed, total })}
+          aria-label={t("workspace.prListTasksProgressAria", { completed, total })}
         />
-        {t("workspace.prListTestsPartial", { completed, total })}
+        {t("workspace.prListTasksPartial", { completed, total })}
       </span>
     );
   }
