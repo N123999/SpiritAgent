@@ -206,3 +206,38 @@ export interface GitHubPullRequestChecksSnapshot {
   headSha: string;
   nextCursor?: string;
 }
+
+export type GitHubPullRequestListState = 'open' | 'closed';
+
+export interface GitHubListPullRequestsRequest {
+  owner: string;
+  repo: string;
+  state: GitHubPullRequestListState;
+  page?: number;
+  query?: string;
+}
+
+export interface GitHubPullRequestTaskListProgress {
+  total: number;
+  completed: number;
+}
+
+export interface GitHubPullRequestListItem extends GitHubPullRequestSummary {
+  merged: boolean;
+  createdAt: string;
+  updatedAt: string;
+  authorAvatarUrl?: string;
+  taskListProgress: GitHubPullRequestTaskListProgress | null;
+}
+
+export interface GitHubPullRequestListSnapshot {
+  items: GitHubPullRequestListItem[];
+  totalCount: number;
+  hasMore: boolean;
+  nextPage?: number;
+}
+
+export interface GitHubPullRequestTabCounts {
+  open: number;
+  closed: number;
+}
