@@ -265,23 +265,49 @@ export function WorkspacePrDetailView({
         }
       >
         <header className="space-y-2 px-3 pt-3 pb-3">
-          <div className="min-w-0">
-            <h2 className="m-0">
-              <a
-                href={detail.url}
-                className="min-w-0 text-sm font-medium text-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-                aria-label={t("workspace.prOpenOnGitHub")}
-                onClick={(event) => {
-                  event.preventDefault();
-                  onOpenExternal(detail.url);
-                }}
-              >
-                {detail.title}{" "}
-                <span className="text-[13px] font-normal text-muted-foreground">#{detail.number}</span>
-              </a>
-            </h2>
+          <div className="relative min-w-0">
+            <div
+              className={cn(
+                "min-w-0",
+                actionMode && onMerge && onMarkReady ? "pr-[calc(theme(spacing.28)+0.25rem)]" : null,
+              )}
+            >
+              <h2 className="m-0">
+                <a
+                  href={detail.url}
+                  className="min-w-0 text-sm font-medium text-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  aria-label={t("workspace.prOpenOnGitHub")}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onOpenExternal(detail.url);
+                  }}
+                >
+                  {detail.title}{" "}
+                  <span className="text-[13px] font-normal text-muted-foreground">#{detail.number}</span>
+                </a>
+              </h2>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {detail.merged ? (
+                  <Badge className={GITHUB_PR_MERGED_BADGE_CLASS}>
+                    <GitPullRequest className="size-3 shrink-0" aria-hidden />
+                    {t("workspace.prMerged")}
+                  </Badge>
+                ) : (
+                  <PullRequestStatusBadge detail={detail} />
+                )}
+                <span className="inline-flex flex-wrap items-center gap-x-1">
+                  <span>@{detail.authorLogin}</span>
+                  <span>{detail.headRef}</span>
+                  <ArrowRight
+                    className={cn("size-2.5 shrink-0", toolCardSecondaryTextClass)}
+                    aria-hidden
+                  />
+                  <span>{detail.baseRef}</span>
+                </span>
+              </div>
+            </div>
             {actionMode && onMerge && onMarkReady ? (
-              <div className="flex justify-end pt-1">
+              <div className="absolute right-0 top-1/2 -translate-y-1/2">
                 <WorkspacePrActions
                   mode={actionMode}
                   busy={actionBusy}
@@ -292,31 +318,12 @@ export function WorkspacePrDetailView({
                 />
               </div>
             ) : null}
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {detail.merged ? (
-                <Badge className={GITHUB_PR_MERGED_BADGE_CLASS}>
-                  <GitPullRequest className="size-3 shrink-0" aria-hidden />
-                  {t("workspace.prMerged")}
-                </Badge>
-              ) : (
-                <PullRequestStatusBadge detail={detail} />
-              )}
-              <span className="inline-flex flex-wrap items-center gap-x-1">
-                <span>@{detail.authorLogin}</span>
-                <span>{detail.headRef}</span>
-                <ArrowRight
-                  className={cn("size-2.5 shrink-0", toolCardSecondaryTextClass)}
-                  aria-hidden
-                />
-                <span>{detail.baseRef}</span>
-              </span>
-            </div>
-            {detail.body ? (
-              <WorkspacePrMarkdown content={detail.body} className="mt-2" />
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">{t("workspace.prNoDescription")}</p>
-            )}
           </div>
+          {detail.body ? (
+            <WorkspacePrMarkdown content={detail.body} className="mt-2" />
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">{t("workspace.prNoDescription")}</p>
+          )}
         </header>
       </ScrollArea>
 

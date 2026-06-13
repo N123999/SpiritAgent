@@ -66,17 +66,17 @@ export function WorkspacePrDetailSkeleton({
     >
       <ScrollArea className="shrink-0 overflow-hidden" type="auto" style={{ maxHeight: "38%" }}>
         <header className="space-y-2 px-3 pt-3 pb-3">
-          <div className="min-w-0">
-            <PrSkeletonBlock className="h-4 w-[min(100%,18rem)] max-w-full" />
-          </div>
-          <div className="flex justify-end pt-1">
-            <PrSkeletonBlock className="h-6 w-20 rounded-md" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <PrSkeletonBlock className="h-5 w-16 rounded-full" />
-            <PrSkeletonBlock className="h-3 w-28" />
-            <PrSkeletonBlock className="h-2.5 w-2.5 rounded-sm" />
-            <PrSkeletonBlock className="h-3 w-20" />
+          <div className="relative min-w-0">
+            <div className="min-w-0 pr-[calc(theme(spacing.28)+0.25rem)]">
+              <PrSkeletonBlock className="h-4 w-[min(100%,18rem)] max-w-full" />
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <PrSkeletonBlock className="h-5 w-16 rounded-full" />
+                <PrSkeletonBlock className="h-3 w-28" />
+                <PrSkeletonBlock className="h-2.5 w-2.5 rounded-sm" />
+                <PrSkeletonBlock className="h-3 w-20" />
+              </div>
+            </div>
+            <PrSkeletonBlock className="absolute right-0 top-1/2 h-6 w-20 -translate-y-1/2 rounded-md" />
           </div>
           <div className="space-y-2 pt-1">
             <PrSkeletonBlock className="h-3 w-full" />
