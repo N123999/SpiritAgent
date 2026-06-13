@@ -150,7 +150,7 @@ export function WorkspacePrDetailView({
         contentClassName="min-h-0 flex-1 overflow-hidden"
       >
         {activeTab === "conversations" ? (
-          <ScrollArea className="min-h-0 flex-1" type="auto">
+          <ScrollArea className="h-full min-h-0" type="auto">
             <div className="space-y-2 px-3 pt-3">
               <PrConversationTimeline items={conversationItems} loading={loadingConversation} />
               {conversationHasMore ? (

@@ -7,7 +7,6 @@ import { Check, ChevronRight, CircleX, Eye, GitCommit, MessageSquare } from "luc
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
 import { WorkspacePrMarkdown } from "@/components/workspace-pr-markdown";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { resolveGitHubAvatarUrl } from "@/lib/github-avatar-url";
@@ -395,19 +394,17 @@ export function PrConversationTimeline({
   }
 
   return (
-    <ScrollArea className={cn("min-h-0 flex-1", className)}>
-      <div className="relative pr-1">
-        <div
-          className="pointer-events-none absolute bottom-2 top-2 w-px bg-border/40"
-          style={{ left: NODE_COLUMN_PX / 2 - 0.5 }}
-          aria-hidden
-        />
-        <div className={TIMELINE_ITEMS_CLASS}>
-          {items.map((item) => (
-            <ConversationTimelineItemRow key={item.id} item={item} />
-          ))}
-        </div>
+    <div className={cn("relative pr-1", className)}>
+      <div
+        className="pointer-events-none absolute bottom-2 top-2 w-px bg-border/40"
+        style={{ left: NODE_COLUMN_PX / 2 - 0.5 }}
+        aria-hidden
+      />
+      <div className={TIMELINE_ITEMS_CLASS}>
+        {items.map((item) => (
+          <ConversationTimelineItemRow key={item.id} item={item} />
+        ))}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
