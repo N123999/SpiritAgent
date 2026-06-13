@@ -3,12 +3,20 @@ import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
 import { ReviewCommentHunkView } from "@/components/review-comment-hunk-view";
+import {
+  TextSelectionActionMenu,
+  TextSelectionActionMenuItem,
+} from "@/components/text-selection-action-menu";
 import { EditFileLineDeltaBadge } from "@/components/edit-file-line-delta-badge";
 import { WorkspacePrChangesFileTree } from "@/components/workspace-pr-changes-file-tree";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleChildMount } from "@/hooks/use-collapsible-child-mount";
+import { useTextSelectionActionMenu } from "@/hooks/use-text-selection-action-menu";
 import { buildPrChangedFilesTree } from "@/lib/pr-changed-files-tree";
+import type { PrDiffAttachment, PullRequestChipStatus } from "@/lib/pr-diff-attachment";
+import { buildPrDiffSnippetText } from "@/lib/pr-diff-text";
+import { readDiffSelectionText, resolveDiffSelectionLineRange } from "@/lib/pr-diff-selection";
 import {
   PR_CHANGES_TREE_MIN_WIDTH_PX,
   computePrChangesTreeMaxWidthPx,
@@ -21,6 +29,124 @@ import type { GitHubPullRequestChangedFile } from "@/types";
 
 export function prChangedFileAnchorId(filename: string): string {
   return `pr-change-file-${encodeURIComponent(filename)}`;
+}
+
+function findChangedFileFromSelection(node: Node | null, root: HTMLElement): string | null {
+  let current: Node | null = node;
+  while (current && current !== root) {
+    if (current instanceof HTMLElement) {
+      const filename = current.dataset.prChangedFile;
+      if (filename) {
+        return filename;
+      }
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
+function findDiffRootFromSelection(node: Node | null, root: HTMLElement): HTMLElement | null {
+  let current: Node | null = node;
+  while (current && current !== root) {
+    if (current instanceof HTMLElement && current.classList.contains("tool-call-diff")) {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
+function isDiffCodeSelection(selection: Selection, root: HTMLElement): boolean {
+  const anchor = selection.anchorNode;
+  const focus = selection.focusNode;
+  if (!anchor || !focus) {
+    return false;
+  }
+  const diffRoot =
+    findDiffRootFromSelection(anchor, root) ?? findDiffRootFromSelection(focus, root);
+  if (!diffRoot) {
+    return false;
+  }
+  const isInDiffCode = (node: Node | null): boolean => {
+    let current: Node | null = node;
+    while (current && current !== diffRoot) {
+      if (current instanceof HTMLElement && current.classList.contains("diff-code")) {
+        return true;
+      }
+      current = current.parentNode;
+    }
+    return false;
+  };
+  return isInDiffCode(anchor) && isInDiffCode(focus);
+}
+
+function PrChangesSelectionMenu({
+  rootRef,
+  prUrl,
+  prStatus,
+  onPrDiffAddToSession,
+}: {
+  rootRef: RefObject<HTMLElement | null>;
+  prUrl: string;
+  prStatus: PullRequestChipStatus;
+  onPrDiffAddToSession?: (attachment: PrDiffAttachment) => void;
+}) {
+  const { t } = useTranslation();
+  const enabled = Boolean(onPrDiffAddToSession && prUrl);
+  const { open, setOpen, anchor, dismiss } = useTextSelectionActionMenu({
+    enabled,
+    rootRef,
+    isSelectionAllowed: isDiffCodeSelection,
+  });
+
+  const handleAddToSession = useCallback(() => {
+    const root = rootRef.current;
+    const selection = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!root || !selection || !onPrDiffAddToSession) {
+      dismiss();
+      return;
+    }
+
+    const filename = findChangedFileFromSelection(selection.anchorNode, root);
+    if (!filename) {
+      dismiss();
+      return;
+    }
+
+    const diffRoot = findDiffRootFromSelection(selection.anchorNode, root);
+    const selectedText = readDiffSelectionText(selection);
+    if (!selectedText) {
+      dismiss();
+      return;
+    }
+
+    const lineRange = diffRoot ? resolveDiffSelectionLineRange(diffRoot, selection) : null;
+    const attachment: PrDiffAttachment = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      prUrl,
+      filename,
+      lineStart: lineRange?.lineStart ?? 0,
+      lineEnd: lineRange?.lineEnd ?? 0,
+      diffText: buildPrDiffSnippetText(filename, selectedText),
+      status: prStatus,
+    };
+    onPrDiffAddToSession(attachment);
+    dismiss();
+    selection.removeAllRanges();
+  }, [dismiss, onPrDiffAddToSession, prStatus, prUrl, rootRef]);
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <TextSelectionActionMenu open={open} anchor={anchor} onOpenChange={setOpen}>
+      <TextSelectionActionMenuItem
+        label={t("workspace.prAddDiffToSession")}
+        onSelect={handleAddToSession}
+      />
+    </TextSelectionActionMenu>
+  );
 }
 
 function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLElement | null {
@@ -195,6 +321,9 @@ export type WorkspacePrChangesViewProps = {
   files: GitHubPullRequestChangedFile[];
   loading?: boolean;
   hasMore?: boolean;
+  prUrl?: string;
+  prStatus?: PullRequestChipStatus;
+  onPrDiffAddToSession?: (attachment: PrDiffAttachment) => void;
   onOpenExternal?: (url: string) => void;
   className?: string;
 };
@@ -203,6 +332,9 @@ export function WorkspacePrChangesView({
   files,
   loading = false,
   hasMore = false,
+  prUrl = "",
+  prStatus = "open",
+  onPrDiffAddToSession,
   onOpenExternal,
   className,
 }: WorkspacePrChangesViewProps) {
@@ -415,6 +547,12 @@ export function WorkspacePrChangesView({
           ) : null}
         </div>
       </ScrollArea>
+      <PrChangesSelectionMenu
+        rootRef={cardsListRef}
+        prUrl={prUrl}
+        prStatus={prStatus}
+        onPrDiffAddToSession={onPrDiffAddToSession}
+      />
     </div>
   );
 }

@@ -532,6 +532,7 @@ export default function App() {
               onWorkspaceToolTabsChange: workspaceTools.setWorkspaceToolTabs,
               onActiveWorkspaceToolTabIdChange: workspaceTools.setActiveWorkspaceToolTabId,
               onBrowserElementPicked: composer.handleBrowserElementPicked,
+              onPrDiffAddToSession: composer.handlePrDiffAddToSession,
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
               prTabEnabled: workspaceTools.prTabEnabled,
