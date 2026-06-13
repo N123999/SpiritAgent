@@ -15,6 +15,10 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
+function isGitHubDeviceAuthCancelledError(error: unknown): boolean {
+  return /device authorization was cancel(?:l)?ed/i.test(describeError(error));
+}
+
 export type GitHubDeviceLoginModelState = {
   authStatus: GitHubAuthStatus;
   loadingAuth: boolean;
@@ -27,6 +31,7 @@ export class GitHubDeviceLoginModel {
   loadingAuth = false;
   deviceChallenge: GitHubDeviceAuthChallenge | null = null;
   error: string | null = null;
+  private userCancelled = false;
 
   private readonly runtime: GitHubDeviceLoginRuntime;
 
@@ -59,6 +64,7 @@ export class GitHubDeviceLoginModel {
     this.loadingAuth = true;
     this.error = null;
     this.deviceChallenge = null;
+    this.userCancelled = false;
     notify();
     try {
       const challenge = await this.runtime.beginGitHubDeviceLogin();
@@ -69,17 +75,21 @@ export class GitHubDeviceLoginModel {
       notify();
       return next;
     } catch (connectError) {
-      this.error = describeError(connectError);
-      this.deviceChallenge = null;
+      if (!this.userCancelled && !isGitHubDeviceAuthCancelledError(connectError)) {
+        this.error = describeError(connectError);
+        this.deviceChallenge = null;
+      }
       notify();
       return null;
     } finally {
       this.loadingAuth = false;
+      this.userCancelled = false;
       notify();
     }
   }
 
   async cancelConnect(): Promise<void> {
+    this.userCancelled = true;
     this.error = null;
     try {
       await this.runtime.cancelGitHubDeviceLogin();

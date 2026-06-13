@@ -110,6 +110,29 @@ test("cancelConnect records error from runtime", async () => {
   assert.equal(model.loadingAuth, false);
 });
 
+test("startConnect ignores cancellation after user cancelConnect", async () => {
+  const completeDeferred = createDeferred();
+  const runtime = createRuntime({
+    completeGitHubDeviceLogin: () => completeDeferred.promise,
+  });
+  const model = new GitHubDeviceLoginModel(runtime);
+
+  const connectPromise = model.startConnect();
+  await Promise.resolve();
+  await model.cancelConnect();
+  completeDeferred.reject(
+    new Error(
+      "Error invoking remote method 'desktop:invoke': GitHubOAuthError: GitHub device authorization was cancelled.",
+    ),
+  );
+
+  const result = await connectPromise;
+
+  assert.equal(result, null);
+  assert.equal(model.error, null);
+  assert.equal(model.loadingAuth, false);
+});
+
 test("disconnect updates auth status", async () => {
   const runtime = createRuntime({
     disconnectGitHub: async () => ({ connected: false }),

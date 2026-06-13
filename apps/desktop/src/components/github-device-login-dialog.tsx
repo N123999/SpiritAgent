@@ -81,7 +81,6 @@ export function GitHubDeviceLoginDialog({
             size="sm"
             disabled={loading && !challenge}
             onClick={() => {
-              void onCancel();
               onOpenChange(false);
             }}
           >
