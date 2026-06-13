@@ -4082,6 +4082,23 @@ export function SettingsView({
   cancelGitHubDeviceLogin,
   disconnectGitHub,
 }: SettingsViewProps) {
+  const integrationsRuntime = useMemo(
+    () => ({
+      getGitHubAuthStatus,
+      beginGitHubDeviceLogin,
+      completeGitHubDeviceLogin,
+      cancelGitHubDeviceLogin,
+      disconnectGitHub,
+    }),
+    [
+      getGitHubAuthStatus,
+      beginGitHubDeviceLogin,
+      completeGitHubDeviceLogin,
+      cancelGitHubDeviceLogin,
+      disconnectGitHub,
+    ],
+  );
+
   const { t } = useTranslation();
   const extensionSettingsItem = extensionSettingsId
     ? snapshot?.extensionsList.find((item) => item.id === extensionSettingsId)
@@ -4204,13 +4221,7 @@ export function SettingsView({
             ) : tab === "integrations" ? (
               <IntegrationsSettingsPanel
                 isElectronShell={isElectronShell}
-                runtime={{
-                  getGitHubAuthStatus,
-                  beginGitHubDeviceLogin,
-                  completeGitHubDeviceLogin,
-                  cancelGitHubDeviceLogin,
-                  disconnectGitHub,
-                }}
+                runtime={integrationsRuntime}
               />
             ) : null}
           </div>

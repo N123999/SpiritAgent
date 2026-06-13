@@ -34,11 +34,11 @@ export function IntegrationsSettingsPanel({
   } = useGitHubDeviceLogin(runtime);
 
   useEffect(() => {
-    if (!isElectronShell) {
+    if (!isElectronShell || dialogOpen || loadingAuth) {
       return;
     }
     void refreshAuthStatus();
-  }, [isElectronShell, refreshAuthStatus]);
+  }, [isElectronShell, refreshAuthStatus, dialogOpen, loadingAuth]);
 
   const openExternalUrl = useCallback((url: string) => {
     void window.spiritDesktop?.openExternalUrl(url);

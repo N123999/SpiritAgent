@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
   GitHubDeviceLoginModel,
@@ -16,8 +16,24 @@ function syncModelState(
   setState(model.snapshot());
 }
 
+function createRuntimeProxy(getRuntime: () => GitHubDeviceLoginRuntime): GitHubDeviceLoginRuntime {
+  return {
+    getGitHubAuthStatus: () => getRuntime().getGitHubAuthStatus(),
+    beginGitHubDeviceLogin: () => getRuntime().beginGitHubDeviceLogin(),
+    completeGitHubDeviceLogin: () => getRuntime().completeGitHubDeviceLogin(),
+    cancelGitHubDeviceLogin: () => getRuntime().cancelGitHubDeviceLogin(),
+    disconnectGitHub: () => getRuntime().disconnectGitHub(),
+  };
+}
+
 export function useGitHubDeviceLogin(runtime: GitHubDeviceLoginRuntime) {
-  const model = useMemo(() => new GitHubDeviceLoginModel(runtime), [runtime]);
+  const runtimeRef = useRef(runtime);
+  runtimeRef.current = runtime;
+
+  const model = useMemo(
+    () => new GitHubDeviceLoginModel(createRuntimeProxy(() => runtimeRef.current)),
+    [],
+  );
   const [state, setState] = useState(() => model.snapshot());
 
   const refreshAuthStatus = useCallback(async () => {
@@ -26,8 +42,9 @@ export function useGitHubDeviceLogin(runtime: GitHubDeviceLoginRuntime) {
   }, [model]);
 
   const startConnect = useCallback(async () => {
-    const next = await model.startConnect();
-    syncModelState(model, setState);
+    const sync = () => syncModelState(model, setState);
+    const next = await model.startConnect(sync);
+    sync();
     return next;
   }, [model]);
 

@@ -52,23 +52,30 @@ export class GitHubDeviceLoginModel {
     }
   }
 
-  async startConnect(): Promise<GitHubAuthStatus | null> {
+  async startConnect(onStateChange?: () => void): Promise<GitHubAuthStatus | null> {
+    const notify = () => {
+      onStateChange?.();
+    };
     this.loadingAuth = true;
     this.error = null;
     this.deviceChallenge = null;
+    notify();
     try {
       const challenge = await this.runtime.beginGitHubDeviceLogin();
       this.deviceChallenge = challenge;
+      notify();
       const next = await this.runtime.completeGitHubDeviceLogin();
       this.authStatus = next;
-      this.deviceChallenge = null;
+      notify();
       return next;
     } catch (connectError) {
       this.error = describeError(connectError);
       this.deviceChallenge = null;
+      notify();
       return null;
     } finally {
       this.loadingAuth = false;
+      notify();
     }
   }
 

@@ -59,7 +59,7 @@ test("startConnect transitions loading → challenge → success", async () => {
   assert.deepEqual(result, CONNECTED_STATUS);
   assert.deepEqual(model.authStatus, CONNECTED_STATUS);
   assert.equal(model.loadingAuth, false);
-  assert.equal(model.deviceChallenge, null);
+  assert.deepEqual(model.deviceChallenge, SAMPLE_CHALLENGE);
   assert.equal(model.error, null);
 });
 

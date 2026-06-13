@@ -46,9 +46,7 @@ export function GitHubDeviceLoginDialog({
         </DialogHeader>
 
         <div className="flex min-h-[10rem] flex-col items-center justify-center py-2 text-center">
-          {loading && !challenge ? (
-            <LoaderCircle className="size-8 animate-spin text-muted-foreground" aria-hidden />
-          ) : challenge ? (
+          {challenge ? (
             <div className="space-y-4">
               <p className="text-xs font-medium tracking-wide text-muted-foreground">
                 {t("settings.integrationsDeviceIntro")}
@@ -68,6 +66,8 @@ export function GitHubDeviceLoginDialog({
                 </Button>
               ) : null}
             </div>
+          ) : loading ? (
+            <LoaderCircle className="size-8 animate-spin text-muted-foreground" aria-hidden />
           ) : null}
         </div>
 
