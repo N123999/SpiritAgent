@@ -1,4 +1,5 @@
 import { executeGitHubGraphQL } from './github-graphql.js';
+import { sortPullRequestChecks } from './pull-request-checks-pages.js';
 import type {
   GitHubPullRequestCheck,
   GitHubPullRequestCheckState,
@@ -111,13 +112,6 @@ interface PullRequestChecksGraphQLResponse {
     } | null;
   } | null;
 }
-
-const CHECK_STATE_ORDER: Record<GitHubPullRequestCheckState, number> = {
-  pending: 0,
-  in_progress: 1,
-  failure: 2,
-  success: 3,
-};
 
 function resolveIsoTimestamp(
   primary: string | null | undefined,
@@ -255,35 +249,7 @@ export function mergeRequiredStatusChecks(
     merged.set(name, createExpectedRequiredCheck(name));
   }
 
-  return Array.from(merged.values()).sort(comparePullRequestChecks);
-}
-
-function comparePullRequestChecks(
-  left: GitHubPullRequestCheck,
-  right: GitHubPullRequestCheck,
-): number {
-  const requiredDelta = Number(right.required === true) - Number(left.required === true);
-  if (requiredDelta !== 0) {
-    return requiredDelta;
-  }
-
-  const stateDelta = CHECK_STATE_ORDER[left.state] - CHECK_STATE_ORDER[right.state];
-  if (stateDelta !== 0) {
-    return stateDelta;
-  }
-
-  return left.name.localeCompare(right.name);
-}
-
-export function appendPullRequestChecksPages(
-  existing: GitHubPullRequestCheck[],
-  incoming: GitHubPullRequestCheck[],
-): GitHubPullRequestCheck[] {
-  const merged = new Map(existing.map((check) => [check.name, check]));
-  for (const check of incoming) {
-    merged.set(check.name, check);
-  }
-  return Array.from(merged.values()).sort(comparePullRequestChecks);
+  return sortPullRequestChecks(Array.from(merged.values()));
 }
 
 export async function getPullRequestChecksViaGraphQL(
