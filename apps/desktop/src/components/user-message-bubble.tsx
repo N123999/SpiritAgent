@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool } from "lucide-react";
+import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool } from "lucide-react";
 
 import { BROWSER_ELEMENT_CHIP_CLASS } from "@/components/browser-element-card";
 import { ComposerLocalFileStrip } from "@/components/composer-local-file-strip";
@@ -60,6 +60,9 @@ function prDiffStatusIcon(status: PullRequestChipStatus) {
       return GitPullRequestClosed;
     case "draft":
       return GitPullRequestDraft;
+    case "merged":
+      return GitMerge;
+    case "open":
     default:
       return GitPullRequest;
   }
