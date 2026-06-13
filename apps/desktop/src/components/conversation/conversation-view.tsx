@@ -379,10 +379,6 @@ export function ConversationView({
           browserTabEnabled={workspaceTools.browserTabEnabled}
           prTabEnabled={workspaceTools.prTabEnabled}
           getGitHubAuthStatus={list.runtime.getGitHubAuthStatus}
-          beginGitHubDeviceLogin={list.runtime.beginGitHubDeviceLogin}
-          completeGitHubDeviceLogin={list.runtime.completeGitHubDeviceLogin}
-          cancelGitHubDeviceLogin={list.runtime.cancelGitHubDeviceLogin}
-          disconnectGitHub={list.runtime.disconnectGitHub}
           getGitHubPullRequestForCurrentBranch={list.runtime.getGitHubPullRequestForCurrentBranch}
           getGitHubPullRequestDetail={list.runtime.getGitHubPullRequestDetail}
           getGitHubPullRequestConversation={list.runtime.getGitHubPullRequestConversation}

@@ -13,7 +13,6 @@ import type {
   DesktopGitSnapshot,
   GetGitHubPullRequestDetailRequest,
   GitHubAuthStatus,
-  GitHubDeviceAuthChallenge,
   GitHubPullRequestDetail,
   GitHubPullRequestMergeMethod,
   GitHubPullRequestSummary,
@@ -98,10 +97,6 @@ export type WorkspacePrTabProps = {
   isActive: boolean;
   prTabEnabled: boolean;
   getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
-  beginGitHubDeviceLogin: () => Promise<GitHubDeviceAuthChallenge>;
-  completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>;
-  cancelGitHubDeviceLogin: () => Promise<void>;
-  disconnectGitHub: () => Promise<GitHubAuthStatus>;
   getGitHubPullRequestForCurrentBranch: () => Promise<GitHubPullRequestForBranchResult>;
   getGitHubPullRequestDetail: (
     request: GetGitHubPullRequestDetailRequest,
@@ -136,10 +131,6 @@ export function WorkspacePrTab({
   isActive,
   prTabEnabled,
   getGitHubAuthStatus,
-  beginGitHubDeviceLogin,
-  completeGitHubDeviceLogin,
-  cancelGitHubDeviceLogin,
-  disconnectGitHub,
   getGitHubPullRequestForCurrentBranch,
   getGitHubPullRequestDetail,
   getGitHubPullRequestConversation,
@@ -168,7 +159,6 @@ export function WorkspacePrTab({
   const [checksSnapshot, setChecksSnapshot] = useState<GitHubPullRequestChecksSnapshot | null>(
     null,
   );
-  const [loadingAuth, setLoadingAuth] = useState(false);
   const [loadingBranch, setLoadingBranch] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
@@ -176,7 +166,6 @@ export function WorkspacePrTab({
   const [loadingCommits, setLoadingCommits] = useState(false);
   const [loadingChecks, setLoadingChecks] = useState(false);
   const [loadingMoreChecks, setLoadingMoreChecks] = useState(false);
-  const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [prActionBusy, setPrActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -611,60 +600,6 @@ export function WorkspacePrTab({
     refreshBranchPullRequest,
   ]);
 
-  const handleConnect = async () => {
-    setLoadingAuth(true);
-    setError(null);
-    setDeviceChallenge(null);
-    try {
-      const challenge = await beginGitHubDeviceLogin();
-      setDeviceChallenge(challenge);
-      const next = await completeGitHubDeviceLogin();
-      setAuthStatus(next);
-      setDetailDemoActive(false);
-      setDeviceChallenge(null);
-      if (isActive) {
-        await refreshGitHubPanel();
-      }
-    } catch (connectError) {
-      setError(describeError(connectError));
-      setDeviceChallenge(null);
-    } finally {
-      setLoadingAuth(false);
-    }
-  };
-
-  const handleCancelConnect = async () => {
-    setError(null);
-    try {
-      await cancelGitHubDeviceLogin();
-    } catch (cancelError) {
-      setError(describeError(cancelError));
-    } finally {
-      setLoadingAuth(false);
-      setDeviceChallenge(null);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    setLoadingAuth(true);
-    setError(null);
-    try {
-      const next = await disconnectGitHub();
-      setAuthStatus(next);
-      setBranchResult(null);
-      setDetail(null);
-      setConversation(null);
-      setFilesSnapshot(null);
-      setCommitsSnapshot(null);
-      setChecksSnapshot(null);
-      pinnedPullRequestRequestRef.current = null;
-    } catch (disconnectError) {
-      setError(describeError(disconnectError));
-    } finally {
-      setLoadingAuth(false);
-    }
-  };
-
   const openExternalUrl = (url: string) => {
     void window.spiritDesktop?.openExternalUrl(url);
   };
@@ -681,78 +616,7 @@ export function WorkspacePrTab({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 px-3 pt-3">
-        {authStatus.connected ? (
-          <>
-            <span className="text-foreground">
-              {t("workspace.prConnectedAs", { login: authStatus.login ?? "GitHub" })}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={loadingAuth}
-              onClick={() => {
-                void handleDisconnect();
-              }}
-            >
-              {t("workspace.prDisconnect")}
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              disabled={loadingAuth}
-              onClick={() => {
-                void handleConnect();
-              }}
-            >
-              {loadingAuth && deviceChallenge
-                ? t("workspace.prWaitingForDeviceAuth")
-                : loadingAuth
-                  ? t("workspace.prConnecting")
-                  : t("workspace.prConnect")}
-            </Button>
-            {loadingAuth ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void handleCancelConnect();
-                }}
-              >
-                {t("common.cancel")}
-              </Button>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      {!authStatus.connected && deviceChallenge ? (
-        <section className="px-3 pt-3 text-sm">
-          <p className="text-foreground">{t("workspace.prDeviceIntro")}</p>
-          <p className="mt-2 font-mono text-lg font-semibold tracking-widest text-foreground">
-            {deviceChallenge.userCode}
-          </p>
-          <p className="mt-2 text-muted-foreground">{t("workspace.prDeviceWaiting")}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => {
-              openExternalUrl(deviceChallenge.verificationUri);
-            }}
-          >
-            {t("workspace.prOpenDevicePage")}
-          </Button>
-        </section>
-      ) : null}
-
-      {!authStatus.connected && !deviceChallenge && detailDemoActive ? (
+      {!authStatus.connected && detailDemoActive ? (
         <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 pt-3">
             <p className="text-[11px] font-medium text-muted-foreground">
@@ -785,7 +649,7 @@ export function WorkspacePrTab({
         </section>
       ) : null}
 
-      {!authStatus.connected && !deviceChallenge && !detailDemoActive ? (
+      {!authStatus.connected && !detailDemoActive ? (
         <section className="mx-3 mt-3 rounded-md border border-dashed border-border/80 bg-muted/20 p-3">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t("workspace.prSampleDataLabel")}
