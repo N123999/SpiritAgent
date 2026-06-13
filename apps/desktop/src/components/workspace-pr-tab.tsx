@@ -332,58 +332,6 @@ export function WorkspacePrTab({
     await fetchRepositoryInfo();
   }, [authStatus.connected, fetchRepositoryInfo, prTabEnabled]);
 
-  const refreshBranchPullRequest = useCallback(async () => {
-    if (!prTabEnabled || !authStatus.connected) {
-      setBranchResult(null);
-      setDetail(null);
-      setConversation(null);
-      setFilesSnapshot(null);
-      setCommitsSnapshot(null);
-      setChecksSnapshot(null);
-      return;
-    }
-
-    const background = detailRef.current != null;
-    if (!background) {
-      setLoadingBranch(true);
-    }
-    setError(null);
-    try {
-      const result = await getGitHubPullRequestForCurrentBranch();
-      setBranchResult(result);
-      if (result.pullRequest && result.repository) {
-        await loadPullRequestData(result, { background });
-      } else {
-        setDetail(null);
-        setConversation(null);
-        setFilesSnapshot(null);
-        setCommitsSnapshot(null);
-        setChecksSnapshot(null);
-      }
-    } catch (loadError) {
-      if (!background) {
-        setBranchResult(null);
-        setDetail(null);
-        setConversation(null);
-        setFilesSnapshot(null);
-        setCommitsSnapshot(null);
-        setChecksSnapshot(null);
-      }
-      setError(describeError(loadError));
-      await refreshAuthStatus();
-    } finally {
-      if (!background) {
-        setLoadingBranch(false);
-      }
-    }
-  }, [
-    authStatus.connected,
-    getGitHubPullRequestForCurrentBranch,
-    loadPullRequestData,
-    prTabEnabled,
-    refreshAuthStatus,
-  ]);
-
   const refreshGitHubPanel = useCallback(async () => {
     if (!prTabEnabled) {
       setAuthStatus({ connected: false });
