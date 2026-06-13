@@ -61,6 +61,9 @@ export type WorkspacePrTabProps = {
   getGitHubPullRequestCommits: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<GitHubPullRequestCommitsSnapshot>;
+  getGitHubPullRequestChecks: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<import("@/types").GitHubPullRequestChecksSnapshot>;
   className?: string;
 };
 
@@ -78,9 +81,11 @@ export function WorkspacePrTab({
   getGitHubPullRequestConversation,
   getGitHubPullRequestFiles,
   getGitHubPullRequestCommits,
+  getGitHubPullRequestChecks: _getGitHubPullRequestChecks,
   className,
 }: WorkspacePrTabProps) {
   const { t } = useTranslation();
+  void _getGitHubPullRequestChecks;
   const [authStatus, setAuthStatus] = useState<GitHubAuthStatus>({ connected: false });
   const [branchResult, setBranchResult] = useState<GitHubPullRequestForBranchResult | null>(null);
   const [detail, setDetail] = useState<GitHubPullRequestDetail | null>(null);

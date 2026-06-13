@@ -137,6 +137,9 @@ export type WorkspaceToolsDockProps = {
   getGitHubPullRequestCommits: (
     request: GetGitHubPullRequestDetailRequest,
   ) => Promise<import("@/types").GitHubPullRequestCommitsSnapshot>;
+  getGitHubPullRequestChecks: (
+    request: GetGitHubPullRequestDetailRequest,
+  ) => Promise<import("@/types").GitHubPullRequestChecksSnapshot>;
   /** 右侧面板宽度（像素） */
   widthPx: number;
   minWidthPx?: number;
@@ -191,6 +194,7 @@ function WorkspaceToolsDockInner({
   getGitHubPullRequestConversation,
   getGitHubPullRequestFiles,
   getGitHubPullRequestCommits,
+  getGitHubPullRequestChecks,
   widthPx,
   minWidthPx = WORKSPACE_TOOLS_MIN_WIDTH_PX,
   maxWidthPx: maxWidthPxProp,
@@ -645,6 +649,7 @@ function WorkspaceToolsDockInner({
                         getGitHubPullRequestConversation={getGitHubPullRequestConversation}
                         getGitHubPullRequestFiles={getGitHubPullRequestFiles}
                         getGitHubPullRequestCommits={getGitHubPullRequestCommits}
+                        getGitHubPullRequestChecks={getGitHubPullRequestChecks}
                       />
                     </div>
                   ) : (

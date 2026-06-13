@@ -14,6 +14,7 @@ export const GITHUB_PR_DETAIL_DEMO: GitHubPullRequestDetail = {
   url: "https://github.com/octocat/Hello-World/pull/42",
   authorLogin: "octocat",
   headRef: "fix-login",
+  headSha: "abc123def4567890",
   baseRef: "main",
   draft: false,
   merged: true,

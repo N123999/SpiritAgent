@@ -84,6 +84,7 @@ export interface HostCommandDelegate {
   getGitHubPullRequestConversation(request: CommandPayloads['getGitHubPullRequestConversation']['request']): Promise<unknown>;
   getGitHubPullRequestFiles(request: CommandPayloads['getGitHubPullRequestFiles']['request']): Promise<unknown>;
   getGitHubPullRequestCommits(request: CommandPayloads['getGitHubPullRequestCommits']['request']): Promise<unknown>;
+  getGitHubPullRequestChecks(request: CommandPayloads['getGitHubPullRequestChecks']['request']): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   readHostTextFile(absolutePath: string): Promise<unknown>;
@@ -183,6 +184,7 @@ const hostCommandDispatch = {
     host.getGitHubPullRequestConversation(payload.request),
   getGitHubPullRequestFiles: (host, payload) => host.getGitHubPullRequestFiles(payload.request),
   getGitHubPullRequestCommits: (host, payload) => host.getGitHubPullRequestCommits(payload.request),
+  getGitHubPullRequestChecks: (host, payload) => host.getGitHubPullRequestChecks(payload.request),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   readHostTextFile: (host, payload) => host.readHostTextFile(payload.absolutePath),
