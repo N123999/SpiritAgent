@@ -632,6 +632,8 @@
     "prChecksLoading": "正在加载检查…",
     "prChecksEmpty": "此 Pull Request 暂无检查项。",
     "prChecksHasMore": "更多检查项请在 GitHub 查看。",
+    "prChecksLoadingMore": "正在加载更多检查…",
+    "prChecksLoadMore": "加载更多检查",
     "prCheckStateSuccess": "通过",
     "prCheckStateFailure": "失败",
     "prCheckStateInProgress": "进行中",

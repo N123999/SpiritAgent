@@ -634,6 +634,8 @@
     "prChecksLoading": "Loading checks…",
     "prChecksEmpty": "No checks reported for this pull request.",
     "prChecksHasMore": "More checks are available on GitHub.",
+    "prChecksLoadingMore": "Loading more checks…",
+    "prChecksLoadMore": "Load more checks",
     "prCheckStateSuccess": "Passed",
     "prCheckStateFailure": "Failed",
     "prCheckStateInProgress": "In progress",

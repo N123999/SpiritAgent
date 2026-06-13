@@ -11,7 +11,7 @@ const STATUS_CHECK_CONTEXTS_PAGE_SIZE = 100;
 const EPOCH_ISO = new Date(0).toISOString();
 
 const PULL_REQUEST_CHECKS_GRAPHQL_QUERY = `
-query PullRequestChecks($owner: String!, $repo: String!, $number: Int!, $contextsFirst: Int!) {
+query PullRequestChecks($owner: String!, $repo: String!, $number: Int!, $contextsFirst: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       commits(last: 1) {
@@ -22,7 +22,7 @@ query PullRequestChecks($owner: String!, $repo: String!, $number: Int!, $context
         }
       }
       statusCheckRollup {
-        contexts(first: $contextsFirst) {
+        contexts(first: $contextsFirst, after: $after) {
           nodes {
             __typename
             ... on CheckRun {
@@ -46,6 +46,7 @@ query PullRequestChecks($owner: String!, $repo: String!, $number: Int!, $context
           }
           pageInfo {
             hasNextPage
+            endCursor
           }
         }
       }
@@ -98,6 +99,7 @@ interface PullRequestChecksGraphQLResponse {
           nodes?: Array<GraphQLStatusCheckContextNode | null> | null;
           pageInfo?: {
             hasNextPage?: boolean | null;
+            endCursor?: string | null;
           } | null;
         } | null;
       } | null;
@@ -273,12 +275,26 @@ function comparePullRequestChecks(
   return left.name.localeCompare(right.name);
 }
 
+export function appendPullRequestChecksPages(
+  existing: GitHubPullRequestCheck[],
+  incoming: GitHubPullRequestCheck[],
+): GitHubPullRequestCheck[] {
+  const merged = new Map(existing.map((check) => [check.name, check]));
+  for (const check of incoming) {
+    merged.set(check.name, check);
+  }
+  return Array.from(merged.values()).sort(comparePullRequestChecks);
+}
+
 export async function getPullRequestChecksViaGraphQL(
   accessToken: string,
   repository: GitHubRepositoryRef,
   number: number,
   options: GetPullRequestChecksOptions = {},
 ): Promise<GitHubPullRequestChecksSnapshot> {
+  const after = options.after?.trim() || null;
+  const isContinuation = after != null;
+
   const data = await executeGitHubGraphQL<PullRequestChecksGraphQLResponse>(
     accessToken,
     PULL_REQUEST_CHECKS_GRAPHQL_QUERY,
@@ -287,14 +303,19 @@ export async function getPullRequestChecksViaGraphQL(
       repo: repository.repo,
       number,
       contextsFirst: options.perPage ?? STATUS_CHECK_CONTEXTS_PAGE_SIZE,
+      after,
     },
   );
 
   const pullRequest = data.repository?.pullRequest;
   const headSha = pullRequest?.commits?.nodes?.[0]?.commit?.oid?.trim() ?? '';
   const contextNodes = pullRequest?.statusCheckRollup?.contexts?.nodes ?? [];
-  const hasMore = pullRequest?.statusCheckRollup?.contexts?.pageInfo?.hasNextPage === true;
-  const requiredContexts = pullRequest?.baseRef?.refUpdateRule?.requiredStatusCheckContexts ?? [];
+  const pageInfo = pullRequest?.statusCheckRollup?.contexts?.pageInfo;
+  const hasMore = pageInfo?.hasNextPage === true;
+  const nextCursor = pageInfo?.endCursor?.trim() || undefined;
+  const requiredContexts = isContinuation
+    ? []
+    : (pullRequest?.baseRef?.refUpdateRule?.requiredStatusCheckContexts ?? []);
 
   const reportedChecks = contextNodes
     .filter((node): node is GraphQLStatusCheckContextNode => node != null)
@@ -305,5 +326,6 @@ export async function getPullRequestChecksViaGraphQL(
     checks: mergeRequiredStatusChecks(reportedChecks, requiredContexts),
     hasMore,
     headSha,
+    ...(nextCursor ? { nextCursor } : {}),
   };
 }

@@ -7,6 +7,13 @@ export * from './pull-request.js';
 export * from './pull-request-files.js';
 export * from './pull-request-commits.js';
 export * from './pull-request-checks.js';
+export {
+  appendPullRequestChecksPages,
+  createExpectedRequiredCheck,
+  mapGraphQLCheckRunNode,
+  mapGraphQLStatusContextNode,
+  mergeRequiredStatusChecks,
+} from './pull-request-checks-graphql.js';
 export * from './pull-request-url.js';
 export * from './pull-request-merge.js';
 export * from './pull-request-ready.js';

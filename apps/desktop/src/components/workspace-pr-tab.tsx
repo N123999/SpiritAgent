@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GitPullRequest } from "lucide-react";
+import { appendPullRequestChecksPages } from "@spirit-agent/host-internal";
 
 import { Button } from "@/components/ui/button";
 import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skeleton";
@@ -172,11 +173,13 @@ export function WorkspacePrTab({
   const [loadingChanges, setLoadingChanges] = useState(false);
   const [loadingCommits, setLoadingCommits] = useState(false);
   const [loadingChecks, setLoadingChecks] = useState(false);
+  const [loadingMoreChecks, setLoadingMoreChecks] = useState(false);
   const [deviceChallenge, setDeviceChallenge] = useState<GitHubDeviceAuthChallenge | null>(null);
   const [detailDemoActive, setDetailDemoActive] = useState(false);
   const [prActionBusy, setPrActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const checksLoadMoreInFlightRef = useRef(false);
   const refreshGitHubPanelRef = useRef<() => Promise<void>>(async () => {});
   const prevBranchRef = useRef<string | undefined>(undefined);
   const pinnedPullRequestRequestRef = useRef<GetGitHubPullRequestDetailRequest | null>(null);
@@ -457,6 +460,46 @@ export function WorkspacePrTab({
     },
     [loadPullRequestBundle, mergeGitHubPullRequest, refreshAuthStatus],
   );
+
+  const loadMoreChecks = useCallback(async () => {
+    if (checksLoadMoreInFlightRef.current || loadingMoreChecks || loadingChecks) {
+      return;
+    }
+
+    const request = resolveActivePullRequestRequest(
+      branchResultRef.current,
+      pinnedPullRequestRequestRef.current,
+      detailRef.current,
+    );
+    const cursor = checksSnapshot?.nextCursor;
+    if (!request || !checksSnapshot?.hasMore || !cursor) {
+      return;
+    }
+
+    checksLoadMoreInFlightRef.current = true;
+    setLoadingMoreChecks(true);
+    setError(null);
+    try {
+      const nextPage = await getGitHubPullRequestChecks({
+        ...request,
+        checksAfter: cursor,
+      });
+      setChecksSnapshot({
+        ...nextPage,
+        checks: appendPullRequestChecksPages(checksSnapshot.checks, nextPage.checks),
+      });
+    } catch (loadError) {
+      setError(describeError(loadError));
+    } finally {
+      checksLoadMoreInFlightRef.current = false;
+      setLoadingMoreChecks(false);
+    }
+  }, [
+    checksSnapshot,
+    getGitHubPullRequestChecks,
+    loadingChecks,
+    loadingMoreChecks,
+  ]);
 
   const handleMarkPullRequestReady = useCallback(async () => {
     const request = resolveActivePullRequestRequest(
@@ -801,7 +844,9 @@ export function WorkspacePrTab({
               commitsHasMore={commitsSnapshot?.hasMore ?? false}
               checks={checksSnapshot?.checks ?? []}
               loadingChecks={loadingChecks}
+              loadingMoreChecks={loadingMoreChecks}
               checksHasMore={checksSnapshot?.hasMore ?? false}
+              onLoadMoreChecks={loadMoreChecks}
               actionBusy={prActionBusy}
               onOpenExternal={openExternalUrl}
               onMerge={handleMergePullRequest}
