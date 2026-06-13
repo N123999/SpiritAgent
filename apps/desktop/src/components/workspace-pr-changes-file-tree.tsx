@@ -5,6 +5,9 @@ import { ChevronDown, ChevronRight, FileCode2, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PrChangedFilesTreeNode } from "@/lib/pr-changed-files-tree";
 
+const TREE_ROW_HOVER_CLASS =
+  "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10";
+
 export type WorkspacePrChangesFileTreeProps = {
   nodes: PrChangedFilesTreeNode[];
   onSelectFile: (filename: string) => void;
@@ -24,14 +27,18 @@ function PrChangesTreeNodeRow({
 
   if (node.kind === "file") {
     return (
-      <li role="treeitem">
+      <li role="treeitem" className="min-w-0">
         <button
           type="button"
-          className="flex w-full min-w-0 items-center gap-1 rounded-sm py-1 pr-2 text-left text-xs text-muted-foreground outline-none cursor-pointer hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/50"
-          style={{ paddingLeft: depth * 12 + 8 }}
+          className={cn(
+            "flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
+            TREE_ROW_HOVER_CLASS,
+          )}
+          style={{ paddingLeft: depth * 12 + 4 }}
           onClick={() => onSelectFile(node.path)}
         >
-          <FileCode2 className="size-3 shrink-0 opacity-60" aria-hidden />
+          <span className="inline-block w-4 shrink-0" aria-hidden />
+          <FileCode2 className="size-3.5 shrink-0 opacity-70" aria-hidden />
           <span className="min-w-0 truncate">{node.name}</span>
         </button>
       </li>
@@ -39,23 +46,26 @@ function PrChangesTreeNodeRow({
   }
 
   return (
-    <li role="treeitem" aria-expanded={open}>
+    <li role="treeitem" aria-expanded={open} className="min-w-0">
       <button
         type="button"
-        className="flex w-full min-w-0 items-center gap-1 rounded-sm py-1 pr-2 text-left text-[11px] text-muted-foreground outline-none cursor-pointer hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/50"
+        className={cn(
+          "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-xs outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
+          TREE_ROW_HOVER_CLASS,
+        )}
         style={{ paddingLeft: depth * 12 + 4 }}
         onClick={() => setOpen((value) => !value)}
       >
         {open ? (
-          <ChevronDown className="size-3 shrink-0 opacity-60" aria-hidden />
+          <ChevronDown className="size-3.5 shrink-0 opacity-60" aria-hidden />
         ) : (
-          <ChevronRight className="size-3 shrink-0 opacity-60" aria-hidden />
+          <ChevronRight className="size-3.5 shrink-0 opacity-60" aria-hidden />
         )}
-        <Folder className="size-3 shrink-0 opacity-60" aria-hidden />
-        <span className="min-w-0 truncate">{node.name}</span>
+        <Folder className="size-3.5 shrink-0 opacity-70" aria-hidden />
+        <span className="min-w-0 truncate font-medium">{node.name}</span>
       </button>
       {open ? (
-        <ul role="group" className="list-none">
+        <ul role="group" className="list-none space-y-0.5 p-0">
           {node.children.map((child) => (
             <PrChangesTreeNodeRow
               key={child.kind === "dir" ? `dir:${child.path}` : `file:${child.path}`}
@@ -81,7 +91,7 @@ export function WorkspacePrChangesFileTree({
     <ul
       role="tree"
       aria-label={t("workspace.prChangesFileTreeAria")}
-      className={cn("list-none py-1", className)}
+      className={cn("list-none space-y-0.5 p-0 py-1 text-xs", className)}
     >
       {nodes.map((node) => (
         <PrChangesTreeNodeRow
