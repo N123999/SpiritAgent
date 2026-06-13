@@ -24,18 +24,38 @@ test("prDiffContextText serializes PR URL, filename, line range, status, and dif
   });
 
   assert.match(wire, /Selected diff from https:\/\/github\.com\/o\/r\/pull\/42/);
-  assert.match(wire, /src\/foo\.ts, L12-20, status:open/);
+  assert.match(wire, /src\/foo\.ts\tL12-20\topen/);
   assert.match(wire, /```diff\n/);
   assert.match(wire, /diff --git a\/src\/foo\.ts b\/src\/foo\.ts/);
 });
 
-test("parsePrDiffWireMeta round-trips line range and status", () => {
+test("parsePrDiffWireMeta round-trips tab-separated meta", () => {
+  const parsed = parsePrDiffWireMeta("src/foo.ts\tL12-20\tmerged");
+  assert.deepEqual(parsed, {
+    filename: "src/foo.ts",
+    lineStart: 12,
+    lineEnd: 20,
+    status: "merged",
+  });
+});
+
+test("parsePrDiffWireMeta still parses legacy comma meta", () => {
   const parsed = parsePrDiffWireMeta("src/foo.ts, L12-20, status:merged");
   assert.deepEqual(parsed, {
     filename: "src/foo.ts",
     lineStart: 12,
     lineEnd: 20,
     status: "merged",
+  });
+});
+
+test("parsePrDiffWireMeta parses filename containing comma-like segments via tabs", () => {
+  const parsed = parsePrDiffWireMeta("weird, L1-2, status:open.txt\tL3-4\topen");
+  assert.deepEqual(parsed, {
+    filename: "weird, L1-2, status:open.txt",
+    lineStart: 3,
+    lineEnd: 4,
+    status: "open",
   });
 });
 

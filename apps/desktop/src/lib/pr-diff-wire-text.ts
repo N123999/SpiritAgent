@@ -3,8 +3,8 @@ import type { PrDiffAttachment } from "./pr-diff-attachment.js";
 function formatPrDiffWireMeta(attachment: Pick<PrDiffAttachment, "filename" | "lineStart" | "lineEnd" | "status">): string {
   const normalized = attachment.filename.replace(/\\/gu, "/").trim() || "file";
   const hasLines = attachment.lineStart > 0 && attachment.lineEnd > 0;
-  const linePart = hasLines ? `, L${attachment.lineStart}-${attachment.lineEnd}` : "";
-  return `${normalized}${linePart}, status:${attachment.status}`;
+  const linePart = hasLines ? `L${attachment.lineStart}-${attachment.lineEnd}` : "-";
+  return `${normalized}\t${linePart}\t${attachment.status}`;
 }
 
 const PR_DIFF_HEADER_PREFIX = "Selected diff from ";
@@ -113,6 +113,30 @@ export function parsePrDiffWireMeta(meta: string): {
   status: PrDiffAttachment["status"];
 } | null {
   const trimmed = meta.trim();
+  const tabParts = trimmed.split("\t");
+  if (tabParts.length === 3) {
+    const filename = tabParts[0]?.trim() ?? "";
+    const linePart = tabParts[1]?.trim() ?? "";
+    const statusRaw = tabParts[2]?.trim() ?? "";
+    if (
+      filename
+      && (statusRaw === "open" || statusRaw === "merged" || statusRaw === "closed" || statusRaw === "draft")
+    ) {
+      if (linePart === "-") {
+        return { filename, lineStart: 0, lineEnd: 0, status: statusRaw };
+      }
+      const lineMatch = /^L(\d+)-(\d+)$/u.exec(linePart);
+      if (lineMatch) {
+        return {
+          filename,
+          lineStart: Number(lineMatch[1]),
+          lineEnd: Number(lineMatch[2]),
+          status: statusRaw,
+        };
+      }
+    }
+  }
+
   const statusMatch = /,\s*status:(open|merged|closed|draft)\s*$/u.exec(trimmed);
   if (!statusMatch) {
     return null;
