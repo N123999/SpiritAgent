@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DetailPageTabs } from "@/components/detail-page-tabs";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { WorkspacePrListRow } from "@/components/workspace-pr-list-row";
 import { useWorkspaceToolsShellRowDividers } from "@/lib/use-workspace-tools-shell-row-dividers";
 import { cn } from "@/lib/utils";
 import type {
@@ -32,15 +33,6 @@ export type WorkspacePrListViewProps = {
   onSelectPullRequest?: (item: GitHubPullRequestListItem) => void;
   className?: string;
 };
-
-function PrListPlaceholderRow({ item }: { item: GitHubPullRequestListItem }) {
-  return (
-    <div className="space-y-1 px-3 py-3">
-      <p className="truncate text-xs text-foreground">{item.title}</p>
-      <p className="text-[11px] text-muted-foreground/75">#{item.number}</p>
-    </div>
-  );
-}
 
 export function WorkspacePrListView({
   repository,
@@ -221,20 +213,13 @@ export function WorkspacePrListView({
   ) : (
     <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1" type="auto">
       <div ref={listRef}>
-        {items.map((item) =>
-          onSelectPullRequest ? (
-            <button
-              key={item.number}
-              type="button"
-              className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              onClick={() => onSelectPullRequest(item)}
-            >
-              <PrListPlaceholderRow item={item} />
-            </button>
-          ) : (
-            <PrListPlaceholderRow key={item.number} item={item} />
-          ),
-        )}
+        {items.map((item) => (
+          <WorkspacePrListRow
+            key={item.number}
+            item={item}
+            onSelect={onSelectPullRequest}
+          />
+        ))}
         {hasMore || loadingMore ? (
           <div
             ref={loadMoreSentinelRef}
