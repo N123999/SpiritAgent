@@ -20,6 +20,7 @@ import {
   FolderOpen,
   Layers,
   Code2,
+  Link2,
   LoaderCircle,
   MoonStar,
   Network,
@@ -126,6 +127,7 @@ export type SettingsSidebarTab =
   | "rules"
   | "extensions"
   | "dreams"
+  | "integrations"
   | "developer";
 
 type SessionWorkspaceGroup = {
@@ -709,6 +711,11 @@ const settingsTabs: Array<{
     id: "networks",
     labelKey: "settings.networks",
     icon: Network,
+  },
+  {
+    id: "integrations",
+    labelKey: "settings.integrations",
+    icon: Link2,
   },
   {
     id: "developer",

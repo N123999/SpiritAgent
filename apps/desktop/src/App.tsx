@@ -334,6 +334,11 @@ export default function App() {
               onGenerateRuleNavigate={() => {
                 composer.prefillComposerSkillChip("create-rule");
               }}
+              getGitHubAuthStatus={runtime.getGitHubAuthStatus}
+              beginGitHubDeviceLogin={runtime.beginGitHubDeviceLogin}
+              completeGitHubDeviceLogin={runtime.completeGitHubDeviceLogin}
+              cancelGitHubDeviceLogin={runtime.cancelGitHubDeviceLogin}
+              disconnectGitHub={runtime.disconnectGitHub}
             />
           </div>
         ) : surfaceNav.automationsMode ? (
