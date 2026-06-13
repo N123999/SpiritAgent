@@ -1,7 +1,4 @@
-import { githubApiHeaders, githubHasNextPage, readGitHubJson } from './github-api.js';
-import { GITHUB_API_BASE_URL } from './oauth-config.js';
 import { getPullRequestChecksViaGraphQL } from './pull-request-checks-graphql.js';
-import { getPullRequestDetail } from './pull-request.js';
 import type {
   GitHubPullRequestCheck,
   GitHubPullRequestCheckState,
@@ -9,7 +6,6 @@ import type {
   GitHubRepositoryRef,
 } from './types.js';
 
-const CHECK_RUNS_PAGE_SIZE = 100;
 const EPOCH_ISO = new Date(0).toISOString();
 
 interface GitHubCheckRunApiItem {
@@ -22,10 +18,6 @@ interface GitHubCheckRunApiItem {
   html_url?: string | null;
 }
 
-interface GitHubCheckRunsApiResponse {
-  check_runs?: GitHubCheckRunApiItem[] | null;
-}
-
 interface GitHubCommitStatusApiItem {
   id?: number | null;
   context?: string | null;
@@ -33,10 +25,6 @@ interface GitHubCommitStatusApiItem {
   target_url?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-}
-
-interface GitHubCommitCombinedStatusApiResponse {
-  statuses?: GitHubCommitStatusApiItem[] | null;
 }
 
 const CHECK_STATE_ORDER: Record<GitHubPullRequestCheckState, number> = {
@@ -171,40 +159,8 @@ export function mapPullRequestChecks(
 }
 
 export interface GetPullRequestChecksOptions {
-  page?: number;
   perPage?: number;
-}
-
-async function getCheckRunsForCommit(
-  accessToken: string,
-  repository: GitHubRepositoryRef,
-  headSha: string,
-  options: GetPullRequestChecksOptions,
-): Promise<{ checkRuns: GitHubCheckRunApiItem[]; hasMore: boolean }> {
-  const page = options.page ?? 1;
-  const perPage = options.perPage ?? CHECK_RUNS_PAGE_SIZE;
-  const params = new URLSearchParams({
-    per_page: String(perPage),
-    page: String(page),
-  });
-  const url = `${GITHUB_API_BASE_URL}/repos/${repository.owner}/${repository.repo}/commits/${headSha}/check-runs?${params.toString()}`;
-  const response = await fetch(url, { headers: githubApiHeaders(accessToken) });
-  const payload = await readGitHubJson<GitHubCheckRunsApiResponse>(response);
-  return {
-    checkRuns: payload.check_runs ?? [],
-    hasMore: githubHasNextPage(response),
-  };
-}
-
-async function getLegacyCommitStatuses(
-  accessToken: string,
-  repository: GitHubRepositoryRef,
-  headSha: string,
-): Promise<GitHubCommitStatusApiItem[]> {
-  const url = `${GITHUB_API_BASE_URL}/repos/${repository.owner}/${repository.repo}/commits/${headSha}/status`;
-  const response = await fetch(url, { headers: githubApiHeaders(accessToken) });
-  const payload = await readGitHubJson<GitHubCommitCombinedStatusApiResponse>(response);
-  return payload.statuses ?? [];
+  after?: string;
 }
 
 export async function getPullRequestChecks(
@@ -213,37 +169,5 @@ export async function getPullRequestChecks(
   number: number,
   options: GetPullRequestChecksOptions = {},
 ): Promise<GitHubPullRequestChecksSnapshot> {
-  try {
-    return await getPullRequestChecksViaGraphQL(accessToken, repository, number, options);
-  } catch {
-    return getPullRequestChecksViaRest(accessToken, repository, number, options);
-  }
-}
-
-async function getPullRequestChecksViaRest(
-  accessToken: string,
-  repository: GitHubRepositoryRef,
-  number: number,
-  options: GetPullRequestChecksOptions = {},
-): Promise<GitHubPullRequestChecksSnapshot> {
-  const detail = await getPullRequestDetail(accessToken, repository, number);
-  const headSha = detail.headSha.trim();
-  if (!headSha) {
-    return {
-      checks: [],
-      hasMore: false,
-      headSha: '',
-    };
-  }
-
-  const [{ checkRuns, hasMore }, legacyStatuses] = await Promise.all([
-    getCheckRunsForCommit(accessToken, repository, headSha, options),
-    getLegacyCommitStatuses(accessToken, repository, headSha),
-  ]);
-
-  return {
-    checks: mapPullRequestChecks(checkRuns, legacyStatuses),
-    hasMore,
-    headSha,
-  };
+  return getPullRequestChecksViaGraphQL(accessToken, repository, number, options);
 }

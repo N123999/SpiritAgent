@@ -279,15 +279,6 @@ export async function getPullRequestChecksViaGraphQL(
   number: number,
   options: GetPullRequestChecksOptions = {},
 ): Promise<GitHubPullRequestChecksSnapshot> {
-  const page = options.page ?? 1;
-  if (page > 1) {
-    return {
-      checks: [],
-      hasMore: false,
-      headSha: '',
-    };
-  }
-
   const data = await executeGitHubGraphQL<PullRequestChecksGraphQLResponse>(
     accessToken,
     PULL_REQUEST_CHECKS_GRAPHQL_QUERY,
