@@ -376,7 +376,7 @@ export function PrConversationTimeline({
 }: PrConversationTimelineProps) {
   const { t } = useTranslation();
 
-  if (loading) {
+  if (loading && items.length === 0) {
     return <p className={cn("text-xs text-muted-foreground", className)}>{t("workspace.prLoading")}</p>;
   }
 
