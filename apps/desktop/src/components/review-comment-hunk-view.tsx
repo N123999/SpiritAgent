@@ -1,6 +1,15 @@
 import { useMemo } from "react";
 
-import { Diff, Hunk, parseDiff, type HunkData } from "react-diff-view";
+import {
+  Diff,
+  Hunk,
+  computeNewLineNumber,
+  isDelete,
+  isInsert,
+  parseDiff,
+  type GutterOptions,
+  type HunkData,
+} from "react-diff-view";
 import "react-diff-view/style/index.css";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,6 +23,8 @@ export type ReviewCommentHunkViewProps = {
   className?: string;
   /** Match parent card (`bg-muted`) instead of page background. */
   surface?: "default" | "card";
+  /** Highlight the review comment target line in the new file. */
+  highlightLine?: number | null;
 };
 
 function reviewDiffSurfaceClass(surface: ReviewCommentHunkViewProps["surface"]): string {
@@ -22,9 +33,50 @@ function reviewDiffSurfaceClass(surface: ReviewCommentHunkViewProps["surface"]):
 
 function reviewDiffInnerClass(surface: ReviewCommentHunkViewProps["surface"]): string {
   return cn(
-    "tool-call-diff min-w-0",
+    "tool-call-diff tool-call-diff--single-gutter min-w-0",
     surface === "card" && "tool-call-diff--card-surface",
   );
+}
+
+/** GitHub-style unified gutter: one line number per row (new side, or old on deletes). */
+function renderUnifiedReviewGutter({
+  change,
+  side,
+  renderDefault,
+  wrapInAnchor,
+}: GutterOptions) {
+  if (isDelete(change)) {
+    return side === "old" ? wrapInAnchor(renderDefault()) : null;
+  }
+  if (isInsert(change)) {
+    return side === "new" ? wrapInAnchor(renderDefault()) : null;
+  }
+  return side === "new" ? wrapInAnchor(renderDefault()) : null;
+}
+
+function useReviewDiffLineClassName(highlightLine: number | null | undefined) {
+  return useMemo(() => {
+    if (highlightLine == null) {
+      return undefined;
+    }
+
+    return ({
+      changes,
+      defaultGenerate,
+    }: {
+      changes: readonly (Parameters<typeof computeNewLineNumber>[0] | undefined)[];
+      defaultGenerate: () => string;
+    }) => {
+      const base = defaultGenerate();
+      const highlighted = changes.some((change) => {
+        if (!change) {
+          return false;
+        }
+        return computeNewLineNumber(change) === highlightLine;
+      });
+      return highlighted ? cn(base, "review-diff-target-line") : base;
+    };
+  }, [highlightLine]);
 }
 
 function buildReviewCommentDiffText(path: string, diffHunk: string): string {
@@ -46,7 +98,9 @@ export function ReviewCommentHunkView({
   diffHunk,
   className,
   surface = "default",
+  highlightLine = null,
 }: ReviewCommentHunkViewProps) {
+  const generateLineClassName = useReviewDiffLineClassName(highlightLine);
   const hunks = useMemo((): HunkData[] => {
     const diffText = buildReviewCommentDiffText(path, diffHunk);
     if (!diffText) {
@@ -87,7 +141,14 @@ export function ReviewCommentHunkView({
       type="always"
     >
       <div className={reviewDiffInnerClass(surface)}>
-        <Diff viewType="unified" diffType="modify" hunks={hunks} gutterType="none">
+        <Diff
+          viewType="unified"
+          diffType="modify"
+          hunks={hunks}
+          gutterType="default"
+          renderGutter={renderUnifiedReviewGutter}
+          generateLineClassName={generateLineClassName}
+        >
           {(renderedHunks) =>
             renderedHunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)
           }

@@ -302,6 +302,7 @@ function ReviewFileThreadCard({ thread }: { thread: GitHubPullRequestConversatio
                   path={thread.path || "file"}
                   diffHunk={thread.diffHunk}
                   surface="card"
+                  highlightLine={thread.line}
                   className={FILE_THREAD_DIFF_CLASS}
                 />
                 {rootBody || replies.length > 0 ? (

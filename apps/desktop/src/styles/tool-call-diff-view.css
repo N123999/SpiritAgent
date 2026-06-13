@@ -22,6 +22,7 @@
 
 .tool-call-diff .diff {
   background-color: var(--background);
+  width: 100%;
 }
 
 /* PR review file thread: diff sits flush in a bg-muted card */
@@ -34,8 +35,43 @@
   background-color: var(--muted);
 }
 
+.tool-call-diff--card-surface .diff-gutter-normal,
+.tool-call-diff--card-surface .diff-gutter-omit {
+  background-color: var(--muted);
+}
+
+/* PR review: extend +/- row tint through gutter columns (full row width). */
+.tool-call-diff--single-gutter {
+  --diff-gutter-insert-background-color: var(--diff-code-insert-background-color);
+  --diff-gutter-delete-background-color: var(--diff-code-delete-background-color);
+}
+
 .tool-call-diff .diff-line {
   font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.tool-call-diff .diff-gutter {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  padding-right: 0.625rem;
+  text-align: right;
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  user-select: none;
+}
+
+/* Keep empty unified gutter cells in table layout (display:none breaks column alignment). */
+.tool-call-diff--single-gutter tr.diff-line > td.diff-gutter:empty {
+  color: transparent;
+  user-select: none;
+}
+
+.tool-call-diff .diff-line.review-diff-target-line .diff-gutter {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.tool-call-diff .diff-line.review-diff-target-line .diff-code {
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--foreground) 28%, transparent);
 }
 
 /* refractor / Prism token 着色（react-diff-view 仅生成 span.token，颜色需自行提供） */
