@@ -223,7 +223,10 @@ export function formatScheduleLabel(
     return `${l.dailyPrefix} ${time}`;
   }
   const weekday = l.weekdays[schedule.weekday] ?? String(schedule.weekday);
-  return `每${weekday} ${time}`;
+  if (l.formatWeekly) {
+    return l.formatWeekly(weekday, time);
+  }
+  return `${l.weeklyPrefix} ${weekday} ${time}`;
 }
 
 export interface ScheduleFormatLabels {
@@ -236,10 +239,11 @@ export interface ScheduleFormatLabels {
 
 function defaultScheduleFormatLabels(): ScheduleFormatLabels {
   return {
-    hourly: '每小时',
-    dailyPrefix: '每天',
-    weeklyPrefix: '每周',
-    weekdays: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
+    hourly: 'Hourly',
+    dailyPrefix: 'Daily',
+    weeklyPrefix: 'Weekly',
+    weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    formatWeekly: (weekday, time) => `Weekly ${weekday} ${time}`,
   };
 }
 

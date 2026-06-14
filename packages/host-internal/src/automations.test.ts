@@ -32,7 +32,7 @@ test('automation store create list get update delete', async () => {
     const summaries = await store.listSummaries();
     assert.equal(summaries.length, 1);
     assert.equal(summaries[0]?.title, 'GitHub 日报');
-    assert.equal(summaries[0]?.scheduleLabel, '每天 20:00');
+    assert.equal(summaries[0]?.scheduleLabel, 'Daily 20:00');
 
     const loaded = await store.get(created.id);
     assert.ok(loaded);
@@ -126,9 +126,9 @@ test('computeNextRunAt advances schedule', () => {
 test('formatScheduleLabel renders weekly label', () => {
   assert.equal(
     formatScheduleLabel({ kind: 'weekly', weekday: 1, hour: 9, minute: 0 }),
-    '每周一 09:00',
+    'Weekly Mon 09:00',
   );
-  assert.equal(formatScheduleLabel({ kind: 'hourly' }), '每小时');
+  assert.equal(formatScheduleLabel({ kind: 'hourly' }), 'Hourly');
 });
 
 test('formatTriggerLabel renders GitHub trigger', () => {
