@@ -72,6 +72,46 @@ test('buildPrChangedFilesTree collapses deep passthrough dir chains', () => {
   ]);
 });
 
+test('buildPrChangedFilesTree collapses single-child dir even when it contains root files', () => {
+  const electronBuilder = {
+    filename: 'apps/desktop/electron-builder.yml',
+    status: 'modified',
+    additions: 8,
+    deletions: 0,
+    changes: 8,
+  };
+  const mainTs = {
+    filename: 'apps/desktop/electron/main.ts',
+    status: 'added',
+    additions: 20,
+    deletions: 0,
+    changes: 20,
+  };
+  const hostTools = {
+    filename: 'packages/agent-core/src/host-tools.ts',
+    status: 'modified',
+    additions: 1,
+    deletions: 0,
+    changes: 1,
+  };
+
+  const tree = buildPrChangedFilesTree([electronBuilder, mainTs, hostTools]);
+
+  assert.deepEqual(tree, [
+    dir('apps/desktop', 'apps/desktop', [
+      dir('electron', 'apps/desktop/electron', [
+        { kind: 'file', name: 'main.ts', path: mainTs.filename, file: mainTs },
+      ]),
+      { kind: 'file', name: 'electron-builder.yml', path: electronBuilder.filename, file: electronBuilder },
+    ]),
+    dir('packages/agent-core', 'packages/agent-core', [
+      dir('src', 'packages/agent-core/src', [
+        { kind: 'file', name: 'host-tools.ts', path: hostTools.filename, file: hostTools },
+      ]),
+    ]),
+  ]);
+});
+
 test('buildPrChangedFilesTree does not collapse when a dir contains a file sibling', () => {
   const tree = buildPrChangedFilesTree([
     { filename: 'apps/README.md', status: 'modified', additions: 1, deletions: 0, changes: 1 },

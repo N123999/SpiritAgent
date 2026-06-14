@@ -73,8 +73,12 @@ export function buildPrChangedFilesTree(
   );
 }
 
-function isPassthroughDir(node: PrChangedFilesTreeDirNode): boolean {
-  return node.children.length > 0 && node.children.every((child) => child.kind === "dir");
+function shouldMergeSingleChildDir(child: PrChangedFilesTreeDirNode): boolean {
+  if (child.children.length !== 1) {
+    return true;
+  }
+
+  return child.children[0]?.kind !== "file";
 }
 
 function collapseSingleChildDirChain(node: PrChangedFilesTreeDirNode): PrChangedFilesTreeDirNode {
@@ -84,12 +88,11 @@ function collapseSingleChildDirChain(node: PrChangedFilesTreeDirNode): PrChanged
 
   let current: PrChangedFilesTreeDirNode = { ...node, children };
 
-  while (
-    current.children.length === 1 &&
-    current.children[0]?.kind === "dir" &&
-    isPassthroughDir(current.children[0])
-  ) {
+  while (current.children.length === 1 && current.children[0]?.kind === "dir") {
     const child = current.children[0];
+    if (!shouldMergeSingleChildDir(child)) {
+      break;
+    }
     current = {
       kind: "dir",
       name: `${current.name}/${child.name}`,
