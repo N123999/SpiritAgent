@@ -8,6 +8,7 @@
  * packager icons from it during release — that strips the black background.
  *
  * Default (no flags): verify the three files exist.
+ * --flatten: flatten build/icon.png to opaque black edge-to-edge; sync .ico files.
  * --force: regenerate from spirit-agent-icon.png (dev only; needs review).
  */
 import fs from 'node:fs';
@@ -35,6 +36,29 @@ const PACKAGER_ICONS = [
 const ICO_SIZES = [16, 32, 48, 256];
 const force = process.argv.includes('--force');
 
+async function assertOpaqueBlackCanvas(pngPath) {
+  const { data, info } = await sharp(pngPath).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+  const w = info.width;
+  const h = info.height;
+  const corners = [
+    [0, 0],
+    [w - 1, 0],
+    [0, h - 1],
+    [w - 1, h - 1],
+  ];
+  for (const [x, y] of corners) {
+    const i = (y * w + x) * 4;
+    const alpha = data[i + 3];
+    if (alpha === undefined || alpha < 255) {
+      throw new Error(
+        `${path.relative(desktopRoot, pngPath)} has transparent corners (e.g. ${x},${y} alpha=${alpha}). `
+        + 'macOS fills transparency with a light icon plate — flatten to opaque black (#000) edge-to-edge. '
+        + 'Run: npm run gen:icons -- --flatten',
+      );
+    }
+  }
+}
+
 function verifyPackagerIcons() {
   const missing = PACKAGER_ICONS.filter(({ path: filePath }) => !fs.existsSync(filePath));
   if (missing.length > 0) {
@@ -49,6 +73,32 @@ function verifyPackagerIcons() {
   }
 }
 
+async function verifyPackagerIconsAsync() {
+  verifyPackagerIcons();
+  await assertOpaqueBlackCanvas(iconPngPath);
+}
+
+async function flattenPackagerIcons() {
+  if (!fs.existsSync(iconPngPath)) {
+    throw new Error(`Missing ${path.relative(desktopRoot, iconPngPath)}`);
+  }
+  fs.mkdirSync(buildDir, { recursive: true });
+  await sharp(iconPngPath)
+    .flatten({ background: { r: 0, g: 0, b: 0 } })
+    .png()
+    .toFile(iconPngPath);
+  const source = await readPNG(iconPngPath);
+  const images = await Promise.all(
+    ICO_SIZES.map((size) => resize(source, size, size)),
+  );
+  const ico = await imagesToIco(images);
+  fs.writeFileSync(iconIcoPath, ico);
+  fs.writeFileSync(faviconIcoPath, ico);
+  console.log(`Flattened ${path.relative(desktopRoot, iconPngPath)} to opaque black canvas`);
+  console.log(`Synced ${path.relative(desktopRoot, iconIcoPath)} and ${path.relative(desktopRoot, faviconIcoPath)}`);
+  await assertOpaqueBlackCanvas(iconPngPath);
+}
+
 async function regenerateFromUiSource() {
   if (!fs.existsSync(sourcePng)) {
     throw new Error(`Missing source PNG: ${sourcePng}`);
@@ -61,23 +111,14 @@ async function regenerateFromUiSource() {
     .png()
     .toFile(iconPngPath);
 
-  const source = await readPNG(iconPngPath);
-  const images = await Promise.all(
-    ICO_SIZES.map((size) => resize(source, size, size)),
-  );
-  const ico = await imagesToIco(images);
-  fs.writeFileSync(iconIcoPath, ico);
-  fs.writeFileSync(faviconIcoPath, ico);
-
-  const meta = await sharp(iconPngPath).metadata();
-  console.log(`Wrote ${path.relative(desktopRoot, iconPngPath)} (${meta.width}x${meta.height})`);
-  console.log(`Wrote ${path.relative(desktopRoot, iconIcoPath)} (${ICO_SIZES.at(-1)}px max)`);
-  console.log(`Synced ${path.relative(desktopRoot, faviconIcoPath)}`);
-  console.warn('Regenerated packager icons from UI source — review black canvas / logo sizing before commit.');
+  await flattenPackagerIcons();
 }
 
-if (force) {
+if (process.argv.includes('--flatten')) {
+  await flattenPackagerIcons();
+} else if (force) {
   await regenerateFromUiSource();
+  console.warn('Regenerated packager icons from UI source — review logo sizing before commit.');
 } else {
-  verifyPackagerIcons();
+  await verifyPackagerIconsAsync();
 }
