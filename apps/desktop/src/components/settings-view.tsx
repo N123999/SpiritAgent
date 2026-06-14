@@ -18,9 +18,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { DesktopFormInput, DesktopFormTextarea } from "@/components/ui/desktop-form-field";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -51,7 +50,6 @@ import {
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
 import {
   DESKTOP_FORM_FIELD_TRIGGER_INNER,
-  DESKTOP_FORM_INPUT_INNER,
   DESKTOP_FORM_INPUT_SHELL,
 } from "@/lib/desktop-chrome";
 import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
@@ -477,17 +475,6 @@ function modelDefaultActionLabel(roles: readonly ModelDefaultRole[]): string {
   }
 
   return i18n.t('settings.selectDefaultRole');
-}
-
-function ProviderFormInput({
-  className,
-  ...props
-}: ComponentProps<typeof Input>) {
-  return (
-    <div className={DESKTOP_FORM_INPUT_SHELL}>
-      <Input className={cn(DESKTOP_FORM_INPUT_INNER, className)} {...props} />
-    </div>
-  );
 }
 
 function ModelCapabilitiesCombobox({
@@ -1026,7 +1013,7 @@ function SkillsSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-skill-name">{t('settings.name')}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-skill-name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -1036,7 +1023,7 @@ function SkillsSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-skill-desc">{t('settings.description')}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-skill-desc"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
@@ -1352,7 +1339,7 @@ function RulesSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-rule-desc">{t('settings.description')}</Label>
-              <Textarea
+              <DesktopFormTextarea
                 id="new-rule-desc"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
@@ -1544,8 +1531,9 @@ function ExtensionConfigurationPanel({
                 htmlFor={fieldKey}
               >
                 <div className="flex w-full gap-2 sm:max-w-md">
-                  <Input
+                  <DesktopFormInput
                     id={fieldKey}
+                    shellClassName="min-w-0 flex-1"
                     value={currentText}
                     disabled={extensionsBusy}
                     type={setting.type === "number" ? "number" : "text"}
@@ -1594,14 +1582,14 @@ function ExtensionConfigurationPanel({
                   <Badge variant={configured ? "secondary" : "outline"} className="h-9 px-3 text-muted-foreground">
                     {configured ? t('settings.configured') : t('settings.notConfigured')}
                   </Badge>
-                  <Input
+                  <DesktopFormInput
                     id={fieldKey}
+                    shellClassName="min-w-0 flex-1"
                     type="password"
                     value={secretDrafts[fieldKey] ?? ""}
                     disabled={extensionsBusy}
                     placeholder={configured ? t('settings.enterNewValue') : t('settings.enterSecret')}
                     onChange={(event) => updateSecretDraft(item.id, slot.key, event.target.value)}
-                    className="min-w-0 flex-1"
                   />
                   <Button
                     type="button"
@@ -2183,7 +2171,7 @@ function McpsSettingsPanel({
 
             <div className="grid gap-2">
               <Label htmlFor="new-mcp-name">{t('settings.name')}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-mcp-name"
                 value={newName}
                 onChange={(event) => setNewName(event.target.value)}
@@ -2194,7 +2182,7 @@ function McpsSettingsPanel({
 
             <div className="grid gap-2">
               <Label htmlFor="new-mcp-endpoint">{mcpEndpointLabel(transportType)}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-mcp-endpoint"
                 value={newEndpoint}
                 onChange={(event) => setNewEndpoint(event.target.value)}
@@ -2205,7 +2193,7 @@ function McpsSettingsPanel({
 
             <div className="grid gap-2">
               <Label htmlFor="new-mcp-metadata">{mcpMetadataLabel(transportType)}</Label>
-              <Textarea
+              <DesktopFormTextarea
                 id="new-mcp-metadata"
                 value={newMetadata}
                 onChange={(event) => setNewMetadata(event.target.value)}
@@ -3367,7 +3355,7 @@ function ModelsSettingsPanel({
             <DialogDescription>{t('settings.selectProviderDescription')}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
-            <ProviderFormInput
+            <DesktopFormInput
               value={providerQuery}
               onChange={(e) => setProviderQuery(e.target.value)}
               placeholder={t('common.search')}
@@ -3487,7 +3475,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" && customConnectMode === "single" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-model-name">{t('settings.modelName')}</Label>
-                <ProviderFormInput
+                <DesktopFormInput
                   id="connect-model-name"
                   value={connectName}
                   onChange={(e) => setConnectName(e.target.value)}
@@ -3509,7 +3497,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" && customConnectMode === "single" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-context-length">{t('settings.contextLength')}</Label>
-                <ProviderFormInput
+                <DesktopFormInput
                   id="connect-context-length"
                   type="number"
                   min={1}
@@ -3524,7 +3512,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-base">{t('settings.endpoint')}</Label>
-                <ProviderFormInput
+                <DesktopFormInput
                   id="connect-api-base"
                   value={connectApiBase}
                   onChange={(e) => setConnectApiBase(e.target.value)}
@@ -3538,7 +3526,7 @@ function ModelsSettingsPanel({
             ) : null}
             <div className="grid gap-2">
               <Label htmlFor="connect-api-key">API Key</Label>
-              <ProviderFormInput
+              <DesktopFormInput
                 id="connect-api-key"
                 type="password"
                 value={connectApiKey}
@@ -3720,7 +3708,7 @@ function NetworksSettingsPanel({
             description={t('settings.listenAddressDescription')}
             htmlFor="settings-web-host-host"
           >
-            <Input
+            <DesktopFormInput
               id="settings-web-host-host"
               className="sm:text-right"
               value={webHostHostDraft}
@@ -3737,7 +3725,7 @@ function NetworksSettingsPanel({
           </SettingsRow>
 
           <SettingsRow label={t('settings.listenPort')} htmlFor="settings-web-host-port">
-            <Input
+            <DesktopFormInput
               id="settings-web-host-port"
               className="sm:text-right"
               type="number"

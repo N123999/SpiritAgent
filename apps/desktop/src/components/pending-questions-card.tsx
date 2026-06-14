@@ -4,14 +4,14 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DesktopFormInput } from "@/components/ui/desktop-form-field";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { QuestionDraft } from "@/hooks/useDesktopRuntime";
 import {
   DESKTOP_CHROME_TOGGLE_ICON_BTN,
-  DESKTOP_FORM_INPUT_INNER,
   DESKTOP_FORM_INPUT_SHELL,
+  DESKTOP_FORM_TEXTAREA_INNER,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
@@ -240,7 +240,7 @@ export function PendingQuestionsCard({
             <Label htmlFor={`${question.id}-text`} className="text-xs">
               {question.customInputLabel ?? t("app.answer")}
             </Label>
-            <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20">
+            <div className={DESKTOP_FORM_INPUT_SHELL}>
               <Textarea
                 id={`${question.id}-text`}
                 value={draft.text}
@@ -251,7 +251,7 @@ export function PendingQuestionsCard({
                   }))
                 }
                 placeholder={question.customInputPlaceholder ?? t("app.enterAnswer")}
-                className="min-h-20 flex-1 resize-none rounded-none border-0 bg-transparent px-2.5 py-2 text-sm shadow-none focus-visible:ring-0"
+                className={cn(DESKTOP_FORM_TEXTAREA_INNER, "min-h-20")}
                 disabled={questionsBusy}
               />
             </div>
@@ -269,21 +269,18 @@ export function PendingQuestionsCard({
             <Label htmlFor={`${question.id}-custom`} className="text-xs">
               {question.customInputLabel ?? t("app.customInput")}
             </Label>
-            <div className={DESKTOP_FORM_INPUT_SHELL}>
-              <Input
-                id={`${question.id}-custom`}
-                value={draft.customInput}
-                onChange={(event) =>
-                  onUpdateDraft(question.id, (current) => ({
-                    ...current,
-                    customInput: event.target.value,
-                  }))
-                }
-                placeholder={question.customInputPlaceholder ?? t("app.supplementOption")}
-                className={DESKTOP_FORM_INPUT_INNER}
-                disabled={questionsBusy}
-              />
-            </div>
+            <DesktopFormInput
+              id={`${question.id}-custom`}
+              value={draft.customInput}
+              onChange={(event) =>
+                onUpdateDraft(question.id, (current) => ({
+                  ...current,
+                  customInput: event.target.value,
+                }))
+              }
+              placeholder={question.customInputPlaceholder ?? t("app.supplementOption")}
+              disabled={questionsBusy}
+            />
           </div>
         ) : null}
 

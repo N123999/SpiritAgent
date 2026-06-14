@@ -108,6 +108,9 @@ export const DESKTOP_FORM_INPUT_SHELL = DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL;
 export const DESKTOP_FORM_INPUT_INNER =
   "h-8 w-full min-w-0 rounded-none border-0 bg-transparent px-2.5 py-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
 
+export const DESKTOP_FORM_TEXTAREA_INNER =
+  "min-h-9 w-full min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent px-2.5 py-2 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
+
 /** 置于 DESKTOP_FORM_INPUT_SHELL 内的 Select / 自定义触发器 */
 export const DESKTOP_FORM_FIELD_TRIGGER_INNER =
   "h-8 min-h-8 w-full rounded-none border-0 bg-transparent px-2.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
