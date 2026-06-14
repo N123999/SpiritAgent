@@ -51,6 +51,7 @@ import {
 import {
   createHostAutomationStore,
   formatTriggerLabel,
+  type HostAutomationDefinition,
   type HostAutomationTrigger,
 } from './automations.js';
 import type { ModelReasoningEffort } from './reasoning-effort.js';

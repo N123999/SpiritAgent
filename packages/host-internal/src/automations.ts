@@ -230,6 +230,7 @@ export interface ScheduleFormatLabels {
   dailyPrefix: string;
   weeklyPrefix: string;
   weekdays: readonly string[];
+  formatWeekly?(weekday: string, time: string): string;
 }
 
 function defaultScheduleFormatLabels(): ScheduleFormatLabels {

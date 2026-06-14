@@ -1,7 +1,6 @@
 import { githubApiHeaders, readGitHubJson } from './github-api.js';
 import { GITHUB_API_BASE_URL } from './oauth-config.js';
-
-export type HostAutomationGitHubEvent = 'pull_request_created' | 'issue_created';
+import type { HostAutomationGitHubEvent } from '../automations.js';
 
 export interface GitHubAutomationIssueItem {
   number: number;
