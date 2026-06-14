@@ -26,3 +26,4 @@ export * from './conversation.js';
 export * from './github-api.js';
 export * from './automation-repositories.js';
 export * from './automation-events.js';
+export * from './automation-poller.js';

@@ -340,6 +340,23 @@ export class HostAutomationStore {
     return { ...definition };
   }
 
+  async ensureGitHubTriggerBaseline(
+    automationId: string,
+    lastSeenNumber: number,
+  ): Promise<HostAutomationDefinition> {
+    const file = await this.requireFile(automationId);
+    if (file.definition.trigger.kind !== 'github') {
+      throw new Error('Automation trigger is not GitHub.');
+    }
+    file.definition.trigger = {
+      ...file.definition.trigger,
+      poll: { lastSeenNumber },
+    };
+    file.definition.updatedAtUnixMs = Date.now();
+    await this.saveFile(automationId, file);
+    return { ...file.definition };
+  }
+
   async update(automationId: string, patch: HostAutomationUpdateInput): Promise<HostAutomationDefinition> {
     const file = await this.requireFile(automationId);
     const now = Date.now();
