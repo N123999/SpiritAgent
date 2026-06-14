@@ -580,6 +580,7 @@
     "openSystemTerminal": "打开系统终端",
     "files": "文件",
     "shell": "Shell",
+    "terminalChipDefaultName": "Terminal",
     "gitTab": "Git",
     "browser": "浏览器",
     "browserPlaceholder": "浏览器选项卡加载中…",
