@@ -20,6 +20,7 @@ import {
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
+import { clearGitHubAutomationRepositoriesCache } from "@/lib/github-automation-repositories-cache";
 import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
 import { useDesktopSystemNotifications } from "@/hooks/useDesktopSystemNotifications";
 import type {
@@ -2581,7 +2582,9 @@ export function useDesktopRuntime() {
     if (!api) {
       return { connected: false };
     }
-    return api.disconnectGitHub();
+    const status = await api.disconnectGitHub();
+    clearGitHubAutomationRepositoriesCache();
+    return status;
   }, [api]);
 
   const getGitHubPullRequestForCurrentBranch = useCallback(async () => {

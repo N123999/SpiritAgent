@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Clock } from "lucide-react";
 
 import { AutomationTimeScheduleOptions } from "@/components/automation-schedule-menu";
 import { GitHubMarkIcon } from "@/components/github-mark-icon";
+import { useGitHubAutomationRepositories } from "@/hooks/use-github-automation-repositories";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -163,33 +164,11 @@ function AutomationGitHubRepositoryList({
   ): void;
 }) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState("");
-  const [items, setItems] = useState<DesktopGitHubAutomationRepositoryItem[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const loadRepositories = useCallback(async (searchQuery: string) => {
-    setLoading(true);
-    try {
-      const snapshot = searchQuery.trim()
-        ? await searchGitHubRepositories(searchQuery.trim())
-        : await listGitHubRepositories();
-      setItems(snapshot.items);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [listGitHubRepositories, searchGitHubRepositories]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handle = window.setTimeout(() => {
-      void loadRepositories(query);
-    }, query.trim() ? 300 : 0);
-    return () => window.clearTimeout(handle);
-  }, [loadRepositories, open, query]);
+  const { query, setQuery, items, loading } = useGitHubAutomationRepositories({
+    open,
+    listGitHubRepositories,
+    searchGitHubRepositories,
+  });
 
   return (
     <>
