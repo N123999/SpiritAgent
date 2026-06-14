@@ -1030,3 +1030,17 @@ test("syncSegmentsFromExternalValue preserves fileSnippet chip", () => {
   assert.equal(synced.some((s) => s.kind === "fileSnippet"), true);
   assert.equal(synced.some((s) => s.kind === "text" && s.value === "follow up"), true);
 });
+
+test("insertSegmentAtCaret adds trailing space after fileSnippet at caret", () => {
+  const { segments, caret } = insertSegmentAtCaret(
+    [{ kind: "text", value: "" }],
+    { segmentIndex: 0, offset: 0 },
+    { kind: "fileSnippet", attachment: sampleFileSnippetAttachment },
+  );
+  assert.deepEqual(segments, [
+    { kind: "fileSnippet", attachment: sampleFileSnippetAttachment },
+    { kind: "text", value: " " },
+  ]);
+  assert.equal(caret.segmentIndex, 1);
+  assert.equal(caret.offset, 1);
+});
