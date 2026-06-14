@@ -1,6 +1,6 @@
 {
   "name": "@spirit-agent/host-internal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Internal TypeScript host implementation boundaries for Spirit Agent",
   "type": "module",
