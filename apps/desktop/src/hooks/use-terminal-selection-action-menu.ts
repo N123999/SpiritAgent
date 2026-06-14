@@ -131,12 +131,23 @@ export function useTerminalSelectionActionMenu({
       }
     };
 
+    const onTouchEnd = (event: TouchEvent) => {
+      const touch = event.changedTouches[0];
+      if (!touch) {
+        return;
+      }
+      lastPointerRef.current = { x: touch.clientX, y: touch.clientY };
+      scheduleSync();
+    };
+
     container.addEventListener("mouseup", onPointerUp);
+    container.addEventListener("touchend", onTouchEnd);
     container.addEventListener("keyup", onKeyUp);
     const selectionDisposable = term.onSelectionChange(onSelectionChange);
     return () => {
       cancelAnimationFrame(raf);
       container.removeEventListener("mouseup", onPointerUp);
+      container.removeEventListener("touchend", onTouchEnd);
       container.removeEventListener("keyup", onKeyUp);
       selectionDisposable.dispose();
     };
