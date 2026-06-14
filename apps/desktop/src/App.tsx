@@ -375,6 +375,9 @@ export default function App() {
                 getAutomation={runtime.getAutomation}
                 updateAutomation={(id, patch) => void runtime.updateAutomation(id, patch)}
                 settingsDisabled={!runtime.apiReady || runtime.busyAction === "automation"}
+                githubConnected={gitHubAuthConnected === true}
+                listGitHubRepositories={runtime.listGitHubAutomationRepositories}
+                searchGitHubRepositories={runtime.searchGitHubAutomationRepositories}
                 onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
                   if (path) {
                     void runtime.rememberWorkspaceRoot(path);
@@ -406,6 +409,9 @@ export default function App() {
               onOpenChange={surfaceNav.setCreateAutomationDialogOpen}
               snapshot={snapshot}
               disabled={!runtime.apiReady || runtime.busyAction === "automation"}
+              githubConnected={gitHubAuthConnected === true}
+              listGitHubRepositories={runtime.listGitHubAutomationRepositories}
+              searchGitHubRepositories={runtime.searchGitHubAutomationRepositories}
               onSubmit={(request) => void runtime.createAutomation(request)}
               onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
                 if (path) {

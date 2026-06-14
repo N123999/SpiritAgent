@@ -2,11 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ApprovalLevelMenu } from "@/components/approval-level-menu";
-import { AutomationScheduleMenu } from "@/components/automation-schedule-menu";
+import {
+  AutomationTriggerMenu,
+  defaultDesktopTimeTrigger,
+} from "@/components/automation-trigger-menu";
 import { ModelPickerMenu } from "@/components/model-picker-menu";
 import { WorkspaceSelectorMenu } from "@/components/workspace-selector-menu";
 import { Button } from "@/components/ui/button";
-import type { DesktopAutomationSchedule } from "@/lib/automation-schedule";
+import {
+  isValidDesktopAutomationTrigger,
+  type DesktopAutomationTrigger,
+} from "@/lib/automation-trigger";
 import { cn } from "@/lib/utils";
 import type {
   ApprovalLevel,
@@ -14,6 +20,8 @@ import type {
   DesktopModelReasoningEffort,
   DesktopSnapshot,
   DesktopUpdateAutomationRequest,
+  GitHubAutomationRepositoriesSnapshot,
+  SearchGitHubAutomationRepositoriesSnapshot,
 } from "@/types";
 
 type AutomationSettingsPanelProps = {
@@ -21,14 +29,17 @@ type AutomationSettingsPanelProps = {
   definition: DesktopAutomationDefinition | undefined;
   snapshot: DesktopSnapshot | null;
   disabled?: boolean;
+  githubConnected: boolean;
   onSave(patch: DesktopUpdateAutomationRequest): void | Promise<void>;
   onAddWorkspace?(): void | Promise<void>;
+  listGitHubRepositories(page?: number): Promise<GitHubAutomationRepositoriesSnapshot>;
+  searchGitHubRepositories(
+    query: string,
+    page?: number,
+  ): Promise<SearchGitHubAutomationRepositoriesSnapshot>;
 };
 
-function schedulesEqual(
-  left: DesktopAutomationSchedule,
-  right: DesktopAutomationSchedule,
-): boolean {
+function triggersEqual(left: DesktopAutomationTrigger, right: DesktopAutomationTrigger): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
@@ -41,14 +52,17 @@ export function AutomationSettingsPanel({
   definition,
   snapshot,
   disabled,
+  githubConnected,
   onSave,
   onAddWorkspace,
+  listGitHubRepositories,
+  searchGitHubRepositories,
 }: AutomationSettingsPanelProps) {
   const { t } = useTranslation();
   const initializedForAutomationIdRef = useRef<string | null>(null);
   const [title, setTitle] = useState("");
   const [overview, setOverview] = useState("");
-  const [schedule, setSchedule] = useState<DesktopAutomationSchedule>({ kind: "daily", hour: 20, minute: 0 });
+  const [trigger, setTrigger] = useState<DesktopAutomationTrigger>(defaultDesktopTimeTrigger());
   const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [modelName, setModelName] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState<DesktopModelReasoningEffort | undefined>();
@@ -66,7 +80,7 @@ export function AutomationSettingsPanel({
     initializedForAutomationIdRef.current = automationId;
     setTitle(definition.title);
     setOverview(definition.overview);
-    setSchedule(definition.schedule);
+    setTrigger(definition.trigger);
     setWorkspaceRoot(definition.workspaceRoot);
     setModelName(definition.modelName);
     setReasoningEffort(definition.reasoningEffort);
@@ -88,8 +102,8 @@ export function AutomationSettingsPanel({
     if (trimmedOverview !== definition.overview) {
       next.overview = trimmedOverview;
     }
-    if (!schedulesEqual(schedule, definition.schedule)) {
-      next.schedule = schedule;
+    if (!triggersEqual(trigger, definition.trigger)) {
+      next.trigger = trigger;
     }
     if (workspaceRoot !== definition.workspaceRoot) {
       next.workspaceRoot = workspaceRoot;
@@ -105,13 +119,15 @@ export function AutomationSettingsPanel({
     }
 
     return Object.keys(next).length > 0 ? next : null;
-  }, [approvalLevel, definition, modelName, overview, reasoningEffort, schedule, title, workspaceRoot]);
+  }, [approvalLevel, definition, modelName, overview, reasoningEffort, trigger, title, workspaceRoot]);
 
   const canSave =
     title.trim().length > 0
     && overview.trim().length > 0
     && workspaceRoot.trim().length > 0
     && modelName.trim().length > 0
+    && isValidDesktopAutomationTrigger(trigger)
+    && (trigger.kind !== "github" || githubConnected)
     && patch !== null;
 
   if (!definition) {
@@ -144,10 +160,13 @@ export function AutomationSettingsPanel({
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-            <AutomationScheduleMenu
-              schedule={schedule}
+            <AutomationTriggerMenu
+              trigger={trigger}
               disabled={disabled}
-              onScheduleChange={setSchedule}
+              githubConnected={githubConnected}
+              onTriggerChange={setTrigger}
+              listGitHubRepositories={listGitHubRepositories}
+              searchGitHubRepositories={searchGitHubRepositories}
             />
             {snapshot ? (
               <>

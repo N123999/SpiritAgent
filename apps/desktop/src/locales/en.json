@@ -398,6 +398,17 @@
     "dialogTitlePlaceholder": "Automation title",
     "dialogOverviewPlaceholder": "Briefly explain what this automation should do",
     "dialogEvent": "Event",
+    "trigger": {
+      "github": "GitHub",
+      "time": "Time",
+      "event": "Event",
+      "repository": "Repository",
+      "repositorySearchPlaceholder": "Search repositories…",
+      "repositoryEmpty": "No repositories found",
+      "connectGitHubHint": "Connect GitHub in Settings → Integrations to use repository triggers.",
+      "pullRequestCreated": "Pull request created",
+      "issueCreated": "Issue created"
+    },
     "schedule": {
       "hourly": "Hourly",
       "daily": "Daily",

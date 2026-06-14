@@ -73,6 +73,35 @@ type AutomationScheduleMenuProps = {
   onScheduleChange(schedule: DesktopAutomationSchedule): void;
 };
 
+export function AutomationTimeScheduleOptions({
+  schedule,
+  disabled,
+  onScheduleChange,
+}: AutomationScheduleMenuProps) {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      <DropdownMenuItem
+        disabled={disabled}
+        onSelect={() => onScheduleChange({ kind: "hourly" })}
+      >
+        {t("automations.schedule.hourly")}
+      </DropdownMenuItem>
+      <DailyScheduleSub
+        title={t("automations.schedule.daily")}
+        schedule={schedule}
+        onScheduleChange={onScheduleChange}
+      />
+      <WeeklyScheduleSub
+        title={t("automations.schedule.weekly")}
+        schedule={schedule}
+        onScheduleChange={onScheduleChange}
+      />
+    </>
+  );
+}
+
 export function AutomationScheduleMenu({
   schedule,
   disabled,
@@ -102,17 +131,9 @@ export function AutomationScheduleMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[120]")}>
-        <DropdownMenuItem onSelect={() => onScheduleChange({ kind: "hourly" })}>
-          {t("automations.schedule.hourly")}
-        </DropdownMenuItem>
-        <DailyScheduleSub
-          title={t("automations.schedule.daily")}
+        <AutomationTimeScheduleOptions
           schedule={schedule}
-          onScheduleChange={onScheduleChange}
-        />
-        <WeeklyScheduleSub
-          title={t("automations.schedule.weekly")}
-          schedule={schedule}
+          disabled={disabled}
           onScheduleChange={onScheduleChange}
         />
       </DropdownMenuContent>

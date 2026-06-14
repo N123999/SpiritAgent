@@ -43,3 +43,10 @@ export function defaultDesktopTimeTrigger(
 ): DesktopAutomationTrigger {
   return { kind: 'time', schedule };
 }
+
+export function isValidDesktopAutomationTrigger(trigger: DesktopAutomationTrigger): boolean {
+  if (trigger.kind === 'time') {
+    return true;
+  }
+  return Boolean(trigger.owner.trim() && trigger.repo.trim());
+}

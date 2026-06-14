@@ -8,6 +8,8 @@ import type {
   DesktopAutomationDetail,
   DesktopSnapshot,
   DesktopUpdateAutomationRequest,
+  GitHubAutomationRepositoriesSnapshot,
+  SearchGitHubAutomationRepositoriesSnapshot,
   SessionListItem,
 } from "@/types";
 import { cn } from "@/lib/utils";
@@ -25,6 +27,12 @@ type AutomationDetailViewProps = {
   ): void | Promise<void>;
   onAddWorkspace?(): void | Promise<void>;
   settingsDisabled?: boolean;
+  githubConnected: boolean;
+  listGitHubRepositories(page?: number): Promise<GitHubAutomationRepositoriesSnapshot>;
+  searchGitHubRepositories(
+    query: string,
+    page?: number,
+  ): Promise<SearchGitHubAutomationRepositoriesSnapshot>;
 };
 
 type AutomationDetailTab = "kanban" | "settings";
@@ -84,6 +92,9 @@ export function AutomationDetailView({
   updateAutomation,
   onAddWorkspace,
   settingsDisabled,
+  githubConnected,
+  listGitHubRepositories,
+  searchGitHubRepositories,
 }: AutomationDetailViewProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<AutomationDetailTab>("kanban");
@@ -154,7 +165,10 @@ export function AutomationDetailView({
                 definition={definition}
                 snapshot={snapshot}
                 disabled={settingsDisabled}
+                githubConnected={githubConnected}
                 onAddWorkspace={onAddWorkspace}
+                listGitHubRepositories={listGitHubRepositories}
+                searchGitHubRepositories={searchGitHubRepositories}
                 onSave={async (patch) => {
                   await updateAutomation(automationId, patch);
                   await refresh({ silent: true });

@@ -79,7 +79,9 @@ import type {
   ReadGitHistoryRequest,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
+  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
+  SearchGitHubAutomationRepositoriesRequest,
   MergeGitHubPullRequestRequest,
 } from "@/types";
 
@@ -2669,6 +2671,26 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const listGitHubAutomationRepositories = useCallback(
+    async (request: ListGitHubAutomationRepositoriesRequest = {}) => {
+      if (!api) {
+        return { items: [], hasNextPage: false };
+      }
+      return api.listGitHubAutomationRepositories(request);
+    },
+    [api],
+  );
+
+  const searchGitHubAutomationRepositories = useCallback(
+    async (query: string, page?: number) => {
+      if (!api) {
+        return { items: [], totalCount: 0 };
+      }
+      return api.searchGitHubAutomationRepositories({ query, ...(page ? { page } : {}) });
+    },
+    [api],
+  );
+
   const getGitHubPullRequestTabCounts = useCallback(
     async (request: GetGitHubPullRequestTabCountsRequest) => {
       if (!api) {
@@ -2924,6 +2946,8 @@ export function useDesktopRuntime() {
     disconnectGitHub,
     getGitHubPullRequestForCurrentBranch,
     listGitHubPullRequests,
+    listGitHubAutomationRepositories,
+    searchGitHubAutomationRepositories,
     getGitHubPullRequestTabCounts,
     getGitHubPullRequestDetail,
     getGitHubPullRequestConversation,
