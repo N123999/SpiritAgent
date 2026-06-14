@@ -25,7 +25,7 @@
 
 ## Desktop 内置 Git Skill
 
-首次启动 Desktop Host 时，会将 `apps/desktop/builtin-skills/` 下的 `git-commit`、`git-push`、`git-merge` 种子到 `%APPDATA%/SpiritAgent/skills/`（已存在则不覆盖，可自行编辑）。Git 选项卡按钮与输入框斜杠菜单一致（如 `/git-commit`），在当前会话激活对应 Skill；不再使用后台 ephemeral 会话生成提交信息。
+首次启动 Desktop Host 时，会将 `apps/desktop/built-in-skills/` 下的 `git-commit`、`git-push`、`git-merge` 种子到 `%APPDATA%/SpiritAgent/skills/`（已存在则不覆盖，可自行编辑）。Git 选项卡按钮与输入框斜杠菜单一致（如 `/git-commit`），在当前会话激活对应 Skill；不再使用后台 ephemeral 会话生成提交信息。
 
 ## Shell 流式执行
 

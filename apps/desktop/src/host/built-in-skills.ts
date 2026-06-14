@@ -16,8 +16,8 @@ export type BuiltinGitSkillName = (typeof BUILTIN_GIT_SKILL_NAMES)[number];
 function resolveDesktopBuiltinSkillsTemplateRoot(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.join(here, '../../builtin-skills'),
-    path.join(here, '../../../builtin-skills'),
+    path.join(here, '../../built-in-skills'),
+    path.join(here, '../../../built-in-skills'),
   ];
   for (const candidate of candidates) {
     if (existsSync(path.join(candidate, 'git-commit', SKILL_FILE_NAME))) {

@@ -82,7 +82,7 @@
   },
   "files": [
     "dist",
-    "builtin-skills"
+    "built-in-skills"
   ],
   "engines": {
     "node": ">=22"

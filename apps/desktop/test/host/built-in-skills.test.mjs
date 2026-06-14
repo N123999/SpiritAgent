@@ -8,7 +8,7 @@ import {
   BUILTIN_GIT_SKILL_NAMES,
   ensureBuiltinUserSkills,
   gitChipActionToSkillName,
-} from '../../src/host/builtin-skills.ts';
+} from '../../src/host/built-in-skills.ts';
 
 test('gitChipActionToSkillName maps actions', () => {
   assert.equal(gitChipActionToSkillName('commit'), 'git-commit');
@@ -17,7 +17,7 @@ test('gitChipActionToSkillName maps actions', () => {
 });
 
 test('ensureBuiltinUserSkills seeds missing skills without overwriting', async () => {
-  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-builtin-skills-'));
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-built-in-skills-'));
   try {
     await ensureBuiltinUserSkills(spiritDataDir);
     for (const name of BUILTIN_GIT_SKILL_NAMES) {

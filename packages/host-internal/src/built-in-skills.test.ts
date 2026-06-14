@@ -8,7 +8,7 @@ import {
   BUILTIN_AUTHORING_SKILL_NAMES,
   ensureBuiltinAuthoringSkills,
   resolveBuiltinSkillsTemplateRoot,
-} from './builtin-skills.js';
+} from './built-in-skills.js';
 
 test('resolveBuiltinSkillsTemplateRoot finds the shared template directory', async () => {
   const templateRoot = resolveBuiltinSkillsTemplateRoot();
@@ -17,7 +17,7 @@ test('resolveBuiltinSkillsTemplateRoot finds the shared template directory', asy
 });
 
 test('ensureBuiltinAuthoringSkills seeds shared builtin skills without overwriting', async () => {
-  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-host-internal-builtin-skills-'));
+  const spiritDataDir = await mkdtemp(join(tmpdir(), 'spirit-host-internal-built-in-skills-'));
   try {
     await ensureBuiltinAuthoringSkills(spiritDataDir);
     for (const name of BUILTIN_AUTHORING_SKILL_NAMES) {

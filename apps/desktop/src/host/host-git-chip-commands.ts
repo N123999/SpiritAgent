@@ -1,5 +1,5 @@
 import i18n from '../lib/i18n-host.js';
-import { gitChipActionToSkillName } from './builtin-skills.js';
+import { gitChipActionToSkillName } from './built-in-skills.js';
 import { buildActiveSkillPayload, buildActivateSkillUserTurn } from './skills.js';
 import type { HostExtensionCommandContext } from './host-extension-commands.js';
 import type { DesktopGitSnapshot, DesktopSnapshot, SubmitGitChipRequest } from '../types.js';

@@ -11,7 +11,7 @@ export type BuiltinAuthoringSkillName = (typeof BUILTIN_AUTHORING_SKILL_NAMES)[n
 
 export function resolveBuiltinSkillsTemplateRoot(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [path.join(here, '../builtin-skills'), path.join(here, '../../builtin-skills')];
+  const candidates = [path.join(here, '../built-in-skills'), path.join(here, '../../built-in-skills')];
   for (const candidate of candidates) {
     if (existsSync(path.join(candidate, 'create-skill', SKILL_FILE_NAME))) {
       return candidate;

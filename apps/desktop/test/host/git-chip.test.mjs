@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { gitChipActionToSkillName } from '../../src/host/builtin-skills.ts';
+import { gitChipActionToSkillName } from '../../src/host/built-in-skills.ts';
 
 test('gitChipActionToSkillName maps host actions to builtin skills', () => {
   assert.equal(gitChipActionToSkillName('commit'), 'git-commit');

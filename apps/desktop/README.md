@@ -93,7 +93,7 @@ Shared logic lives in monorepo packages:
 - `packages/agent-core` — agent runtime, tool definitions, prompts
 - `packages/host-internal` — host contracts, workspace/git helpers, shared authoring builtin skills
 
-Desktop-only Git builtin skills are seeded from `apps/desktop/builtin-skills/`.
+Desktop-only Git builtin skills are seeded from `apps/desktop/built-in-skills/`.
 
 ## License
 
