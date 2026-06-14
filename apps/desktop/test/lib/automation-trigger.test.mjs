@@ -36,6 +36,27 @@ test('isValidDesktopAutomationTrigger requires github owner and repo', () => {
   assert.equal(isValidDesktopAutomationTrigger({ kind: 'time', schedule: { kind: 'hourly' } }), true);
   assert.equal(
     isValidDesktopAutomationTrigger({
+      kind: 'time',
+      schedule: { kind: 'daily', hour: 9, minute: 30 },
+    }),
+    true,
+  );
+  assert.equal(
+    isValidDesktopAutomationTrigger({
+      kind: 'time',
+      schedule: { kind: 'daily', hour: 25, minute: 0 },
+    }),
+    false,
+  );
+  assert.equal(
+    isValidDesktopAutomationTrigger({
+      kind: 'time',
+      schedule: { kind: 'weekly', weekday: 1, hour: 9, minute: 60 },
+    }),
+    false,
+  );
+  assert.equal(
+    isValidDesktopAutomationTrigger({
       kind: 'github',
       owner: 'acme',
       repo: 'app',
