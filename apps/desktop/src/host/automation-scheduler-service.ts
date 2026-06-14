@@ -221,7 +221,7 @@ async function tickGitHubAutomationTriggers(
   }
 }
 
-function groupGitHubPollMatchesByAutomation(
+export function groupGitHubPollMatchesByAutomation(
   matches: GitHubAutomationPollMatch[],
 ): Map<string, GitHubAutomationPollMatch[]> {
   const grouped = new Map<string, GitHubAutomationPollMatch[]>();
