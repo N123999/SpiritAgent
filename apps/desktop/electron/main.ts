@@ -580,7 +580,9 @@ async function createMainWindow(): Promise<BrowserWindow> {
     minHeight: 720,
     ...(windowIcon ? { icon: windowIcon } : {}),
     backgroundColor: initialBg,
-    ...(process.platform === 'darwin' && blurOnDisk
+    // macOS：构造时始终挂载 vibrancy 层，使运行时 setVibrancy 与透明背景切换走同一合成路径；
+    // 关 Blur 时在 load 前立即 setVibrancy(null)，避免首帧误显模糊。
+    ...(process.platform === 'darwin'
       ? {
           vibrancy: MACOS_WINDOW_VIBRANCY,
           visualEffectState: 'followWindow',
@@ -604,6 +606,14 @@ async function createMainWindow(): Promise<BrowserWindow> {
       spellcheck: false,
     },
   });
+
+  if (process.platform === 'darwin' && !blurOnDisk) {
+    try {
+      window.setVibrancy(null);
+    } catch (err) {
+      console.error('[spirit-desktop] setVibrancy(null) during create failed', err);
+    }
+  }
 
   if (DEV_SERVER_URL) {
     await window.loadURL(DEV_SERVER_URL);
