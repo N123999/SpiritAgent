@@ -33,6 +33,7 @@ import {
   type DesktopAutomationSchedule,
   type DesktopAutomationTrigger,
 } from "@/lib/automation-trigger";
+import { buildAutomationTriggerFormatLabels } from "@/lib/automation-trigger-i18n";
 import type {
   DesktopGitHubAutomationRepositoryItem,
   GitHubAutomationRepositoriesSnapshot,
@@ -62,24 +63,10 @@ export function AutomationTriggerMenu({
 }: AutomationTriggerMenuProps) {
   const { t } = useTranslation();
   const [githubSubOpen, setGithubSubOpen] = useState(false);
-  const label = formatDesktopAutomationTriggerLabel(trigger, {
-    hourly: t("automations.schedule.hourly"),
-    dailyPrefix: t("automations.schedule.daily"),
-    weeklyPrefix: t("automations.schedule.weekly"),
-    weekdays: [
-      t("automations.schedule.weekday0"),
-      t("automations.schedule.weekday1"),
-      t("automations.schedule.weekday2"),
-      t("automations.schedule.weekday3"),
-      t("automations.schedule.weekday4"),
-      t("automations.schedule.weekday5"),
-      t("automations.schedule.weekday6"),
-    ],
-    formatWeekly: (weekday, time) => t("automations.schedule.weeklyAt", { weekday, time }),
-    githubPrefix: t("automations.trigger.github"),
-    githubPullRequestCreated: t("automations.trigger.pullRequestCreated"),
-    githubIssueCreated: t("automations.trigger.issueCreated"),
-  });
+  const label = formatDesktopAutomationTriggerLabel(
+    trigger,
+    buildAutomationTriggerFormatLabels(t),
+  );
 
   const timeSchedule: DesktopAutomationSchedule =
     trigger.kind === "time" ? trigger.schedule : { kind: "daily", hour: 20, minute: 0 };

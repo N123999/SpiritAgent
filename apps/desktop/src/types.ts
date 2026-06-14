@@ -3,6 +3,7 @@ import type { ModelReasoningEffort } from '@spirit-agent/core/reasoning-effort';
 import type { LspWriteDiagnosticsUi } from '@spirit-agent/core';
 
 import type { DesktopAgentMode } from './lib/agent-mode.js';
+import type { DesktopAutomationTrigger } from './lib/automation-trigger.js';
 
 export type { DesktopAgentMode };
 import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult, ApprovalLevel, GitHubPullRequestCommit } from '@spirit-agent/host-internal';
@@ -781,6 +782,7 @@ export interface DesktopAutomationListItem {
   id: string;
   title: string;
   scheduleLabel: string;
+  trigger: DesktopAutomationTrigger;
   enabled: boolean;
   lastRunAtUnixMs?: number;
   updatedAtUnixMs: number;

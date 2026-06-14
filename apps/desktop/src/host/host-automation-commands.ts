@@ -63,6 +63,7 @@ export function toDesktopAutomationListItem(
     id: definition.id,
     title: definition.title,
     scheduleLabel: formatTriggerLabel(definition.trigger),
+    trigger: definition.trigger,
     enabled: definition.enabled,
     updatedAtUnixMs: definition.updatedAtUnixMs,
     ...(lastRunAtUnixMs !== undefined ? { lastRunAtUnixMs } : {}),

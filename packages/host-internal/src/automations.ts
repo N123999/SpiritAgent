@@ -59,6 +59,7 @@ export interface HostAutomationListItem {
   id: string;
   title: string;
   scheduleLabel: string;
+  trigger: HostAutomationTrigger;
   enabled: boolean;
   lastRunAtUnixMs?: number;
   updatedAtUnixMs: number;
@@ -298,6 +299,7 @@ export class HostAutomationStore {
         id: file.definition.id,
         title: file.definition.title,
         scheduleLabel: formatTriggerLabel(file.definition.trigger),
+        trigger: file.definition.trigger,
         enabled: file.definition.enabled,
         ...(lastRun ? { lastRunAtUnixMs: lastRun.startedAtUnixMs } : {}),
         updatedAtUnixMs: file.definition.updatedAtUnixMs,

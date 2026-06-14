@@ -17,6 +17,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { DesktopAutomationListItem, DesktopSnapshot } from "@/types";
+import { buildAutomationTriggerFormatLabels } from "@/lib/automation-trigger-i18n";
+import { formatDesktopAutomationTriggerLabel } from "@/lib/automation-trigger";
 import { cn } from "@/lib/utils";
 
 type AutomationsViewProps = {
@@ -268,6 +270,9 @@ function AutomationListRow({
   onOpen: () => void;
 }) {
   const { t } = useTranslation();
+  const triggerLabel = item.trigger
+    ? formatDesktopAutomationTriggerLabel(item.trigger, buildAutomationTriggerFormatLabels(t))
+    : item.scheduleLabel;
 
   return (
     <button
@@ -287,7 +292,7 @@ function AutomationListRow({
           </span>
         ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">{item.scheduleLabel}</p>
+      <p className="text-xs text-muted-foreground">{triggerLabel}</p>
     </button>
   );
 }
