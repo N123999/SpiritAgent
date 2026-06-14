@@ -276,6 +276,12 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   listGitHubPullRequests(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'listGitHubPullRequests', { request });
   },
+  listGitHubAutomationRepositories(request: unknown = {}) {
+    return ipcRenderer.invoke('desktop:invoke', 'listGitHubAutomationRepositories', { request });
+  },
+  searchGitHubAutomationRepositories(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'searchGitHubAutomationRepositories', { request });
+  },
   getGitHubPullRequestTabCounts(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'getGitHubPullRequestTabCounts', { request });
   },

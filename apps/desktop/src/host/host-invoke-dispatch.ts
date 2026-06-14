@@ -81,6 +81,12 @@ export interface HostCommandDelegate {
   disconnectGitHub(): Promise<unknown>;
   getGitHubPullRequestForCurrentBranch(): Promise<unknown>;
   listGitHubPullRequests(request: CommandPayloads['listGitHubPullRequests']['request']): Promise<unknown>;
+  listGitHubAutomationRepositories(
+    request?: CommandPayloads['listGitHubAutomationRepositories']['request'],
+  ): Promise<unknown>;
+  searchGitHubAutomationRepositories(
+    request: CommandPayloads['searchGitHubAutomationRepositories']['request'],
+  ): Promise<unknown>;
   getGitHubPullRequestTabCounts(
     request: CommandPayloads['getGitHubPullRequestTabCounts']['request'],
   ): Promise<unknown>;
@@ -186,6 +192,10 @@ const hostCommandDispatch = {
   disconnectGitHub: (host) => host.disconnectGitHub(),
   getGitHubPullRequestForCurrentBranch: (host) => host.getGitHubPullRequestForCurrentBranch(),
   listGitHubPullRequests: (host, payload) => host.listGitHubPullRequests(payload.request),
+  listGitHubAutomationRepositories: (host, payload) =>
+    host.listGitHubAutomationRepositories(payload.request),
+  searchGitHubAutomationRepositories: (host, payload) =>
+    host.searchGitHubAutomationRepositories(payload.request),
   getGitHubPullRequestTabCounts: (host, payload) => host.getGitHubPullRequestTabCounts(payload.request),
   getGitHubPullRequestDetail: (host, payload) => host.getGitHubPullRequestDetail(payload.request),
   getGitHubPullRequestConversation: (host, payload) =>

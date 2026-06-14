@@ -37,7 +37,9 @@ import type {
   ForkSessionRequest,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
+  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
+  SearchGitHubAutomationRepositoriesRequest,
   MergeGitHubPullRequestRequest,
   RunExtensionRequest,
   SaveHookEntryRequest,
@@ -75,6 +77,8 @@ export type CommandPayloads = {
   disconnectGitHub: undefined;
   getGitHubPullRequestForCurrentBranch: undefined;
   listGitHubPullRequests: { request: ListGitHubPullRequestsRequest };
+  listGitHubAutomationRepositories: { request?: ListGitHubAutomationRepositoriesRequest };
+  searchGitHubAutomationRepositories: { request: SearchGitHubAutomationRepositoriesRequest };
   getGitHubPullRequestTabCounts: { request: GetGitHubPullRequestTabCountsRequest };
   getGitHubPullRequestDetail: { request: GetGitHubPullRequestDetailRequest };
   getGitHubPullRequestConversation: { request: GetGitHubPullRequestDetailRequest };
