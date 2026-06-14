@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Clock } from "lucide-react";
 
@@ -164,11 +164,35 @@ function AutomationGitHubRepositoryList({
   ): void;
 }) {
   const { t } = useTranslation();
-  const { query, setQuery, items, loading } = useGitHubAutomationRepositories({
+  const scrollAreaRef = useRef<ComponentRef<typeof ScrollArea>>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const { query, setQuery, items, loading, loadingMore, hasMore, loadMore } = useGitHubAutomationRepositories({
     open,
     listGitHubRepositories,
     searchGitHubRepositories,
   });
+
+  useEffect(() => {
+    if (!open || !hasMore || loadingMore) {
+      return;
+    }
+    const root = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) {
+          return;
+        }
+        loadMore();
+      },
+      { root, rootMargin: "160px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, items.length, loadMore, loadingMore, open]);
 
   return (
     <>
@@ -183,6 +207,7 @@ function AutomationGitHubRepositoryList({
         />
       </div>
       <ScrollArea
+        ref={scrollAreaRef}
         type="always"
         className={DESKTOP_OVERLAY_LIST_SCROLL_AREA}
         onWheel={stopOverlayScrollPropagation}
@@ -194,32 +219,39 @@ function AutomationGitHubRepositoryList({
           ) : items.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-foreground">{t("automations.trigger.repositoryEmpty")}</p>
           ) : (
-            items.map((item) => (
-              <DropdownMenuSub key={item.fullName}>
-                <DropdownMenuSubTrigger
-                  disabled={disabled}
-                  className={DESKTOP_OVERLAY_LIST_SUB_TRIGGER}
-                >
-                  <span className="min-w-0 truncate">{item.fullName}</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="z-[140]">
-                  <DropdownMenuItem
+            <>
+              {items.map((item) => (
+                <DropdownMenuSub key={item.fullName}>
+                  <DropdownMenuSubTrigger
                     disabled={disabled}
-                    className="text-xs"
-                    onSelect={() => onSelect(item, "pull_request_created")}
+                    className={DESKTOP_OVERLAY_LIST_SUB_TRIGGER}
                   >
-                    {t("automations.trigger.pullRequestCreated")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={disabled}
-                    className="text-xs"
-                    onSelect={() => onSelect(item, "issue_created")}
-                  >
-                    {t("automations.trigger.issueCreated")}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ))
+                    <span className="min-w-0 truncate">{item.fullName}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="z-[140]">
+                    <DropdownMenuItem
+                      disabled={disabled}
+                      className="text-xs"
+                      onSelect={() => onSelect(item, "pull_request_created")}
+                    >
+                      {t("automations.trigger.pullRequestCreated")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={disabled}
+                      className="text-xs"
+                      onSelect={() => onSelect(item, "issue_created")}
+                    >
+                      {t("automations.trigger.issueCreated")}
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              ))}
+              {hasMore ? (
+                <div ref={loadMoreSentinelRef} className="px-2 py-2 text-xs text-muted-foreground">
+                  {loadingMore ? t("common.loading") : null}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </ScrollArea>
