@@ -201,7 +201,7 @@ export function UserMessageBubble({
         (p) =>
           p.kind === "element"
           || p.kind === "workspaceFile"
-          ||           p.kind === "prDiff"
+          || p.kind === "prDiff"
           || p.kind === "terminalSnippet"
           || p.kind === "fileSnippet",
       )) &&
