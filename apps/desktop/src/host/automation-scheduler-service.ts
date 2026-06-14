@@ -59,7 +59,11 @@ export async function tickAutomationScheduler(ctx: AutomationSchedulerServiceCon
   const definitions = await store.listEnabledDefinitions();
   const now = Date.now();
 
-  await tickGitHubAutomationTriggers(ctx, store, definitions, config);
+  try {
+    await tickGitHubAutomationTriggers(ctx, store, definitions, config);
+  } catch {
+    /* GitHub poll failures must not block time triggers in the same tick. */
+  }
   await tickTimeAutomationTriggers(ctx, store, definitions, config, now);
 }
 
@@ -118,12 +122,16 @@ async function tickGitHubAutomationTriggers(
     if (definition.trigger.kind !== 'github') {
       continue;
     }
-    const lastSeenNumber = await baselineGitHubAutomationWatermark(
-      accessToken,
-      definition.trigger.owner,
-      definition.trigger.repo,
-    );
-    await store.ensureGitHubTriggerBaseline(definition.id, lastSeenNumber);
+    try {
+      const lastSeenNumber = await baselineGitHubAutomationWatermark(
+        accessToken,
+        definition.trigger.owner,
+        definition.trigger.repo,
+      );
+      await store.ensureGitHubTriggerBaseline(definition.id, lastSeenNumber);
+    } catch {
+      /* Skip baseline for this automation; do not abort the rest of the tick. */
+    }
   }
 
   const refreshed = await store.listEnabledDefinitions();
