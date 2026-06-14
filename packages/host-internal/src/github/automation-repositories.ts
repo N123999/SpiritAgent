@@ -41,6 +41,18 @@ function mapRepositoryItem(item: GitHubUserRepoApiItem): GitHubAutomationReposit
   };
 }
 
+/** owner/repo（如 microsoft/vscode）走 repo: 限定；否则全局搜索。空串回退当前用户仓库。 */
+export function buildAutomationRepositorySearchQuery(query: string, login: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return `user:${login}`;
+  }
+  if (/^[^/\s]+\/[^/\s]+$/.test(trimmed)) {
+    return `repo:${trimmed}`;
+  }
+  return trimmed;
+}
+
 export async function listUserGitHubRepositories(
   accessToken: string,
   options?: { page?: number; perPage?: number },
@@ -76,11 +88,9 @@ export async function searchGitHubRepositories(
   const page = options?.page ?? 1;
   const perPage = options?.perPage ?? 30;
   const url = new URL(`${GITHUB_API_BASE_URL}/search/repositories`);
-  const q = trimmedQuery
-    ? `${trimmedQuery} in:name user:${login}`
-    : `user:${login}`;
+  const q = buildAutomationRepositorySearchQuery(trimmedQuery, login);
   url.searchParams.set('q', q);
-  url.searchParams.set('sort', 'updated');
+  url.searchParams.set('sort', trimmedQuery ? 'stars' : 'updated');
   url.searchParams.set('order', 'desc');
   url.searchParams.set('per_page', String(perPage));
   url.searchParams.set('page', String(page));
