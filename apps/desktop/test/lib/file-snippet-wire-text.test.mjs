@@ -91,3 +91,28 @@ test("scanFileSnippetWireBlocks parses body containing standalone fence lines", 
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0]?.selectedText, body);
 });
+
+test("scanFileSnippetWireBlocks ignores header with embedded newline in path", () => {
+  const wire = "Selected text from apps/foo\nbar.ts (L1-2):\n```text\nbody\n```";
+  assert.equal(scanFileSnippetWireBlocks(wire).length, 0);
+});
+
+test("wire round-trips paths containing line-range-like parentheses", () => {
+  const attachment = {
+    id: "file-suffix",
+    filePath: "docs/readme (L1-2)",
+    lineStart: 5,
+    lineEnd: 6,
+    selectedText: "note",
+  };
+  const message = segmentsToMessageText([{ kind: "fileSnippet", attachment }]);
+  const parts = parseMessageContentParts(message);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0]?.kind, "fileSnippet");
+  if (parts[0]?.kind !== "fileSnippet") {
+    return;
+  }
+  assert.equal(parts[0].filePath, "docs/readme (L1-2)");
+  assert.equal(parts[0].lineStart, 5);
+  assert.equal(parts[0].lineEnd, 6);
+});
