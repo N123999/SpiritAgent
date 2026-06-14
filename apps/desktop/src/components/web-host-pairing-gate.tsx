@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DesktopFormInput } from "@/components/ui/desktop-form-field";
 import { Label } from "@/components/ui/label";
 
 export function WebHostPairingGate({
@@ -50,7 +50,7 @@ export function WebHostPairingGate({
         <CardContent className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="web-host-pairing-code">{t('app.pairingCode')}</Label>
-            <Input
+            <DesktopFormInput
               id="web-host-pairing-code"
               value={code}
               inputMode="numeric"

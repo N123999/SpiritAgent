@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { DesktopFormInput } from "@/components/ui/desktop-form-field";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -341,7 +341,7 @@ export function HooksSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="hook-command">{t("settings.hooksCommand")}</Label>
-              <Input
+              <DesktopFormInput
                 id="hook-command"
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
@@ -351,7 +351,7 @@ export function HooksSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="hook-timeout">{t("settings.hooksTimeout")}</Label>
-              <Input
+              <DesktopFormInput
                 id="hook-timeout"
                 value={timeout}
                 onChange={(e) => {
@@ -366,7 +366,7 @@ export function HooksSettingsPanel({
             ) : null}
             <div className="grid gap-2">
               <Label htmlFor="hook-matcher">{t("settings.hooksMatcher")}</Label>
-              <Input
+              <DesktopFormInput
                 id="hook-matcher"
                 value={matcher}
                 onChange={(e) => setMatcher(e.target.value)}
