@@ -58,11 +58,6 @@ export function useMonacoSelectionActionMenu({
   const [selectionText, setSelectionText] = useState("");
   const [lineRange, setLineRange] = useState<{ lineStart: number; lineEnd: number } | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
-  const openRef = useRef(false);
-
-  useEffect(() => {
-    openRef.current = open;
-  }, [open]);
 
   const dismiss = useCallback(() => {
     setOpen(false);
@@ -122,13 +117,11 @@ export function useMonacoSelectionActionMenu({
 
     const onSelectionChange = () => {
       const text = readMonacoSelectionText(activeEditor).trim();
-      if (!text && !openRef.current) {
+      if (!text) {
         dismiss();
         return;
       }
-      if (text) {
-        scheduleSync();
-      }
+      // Selection updated while dragging — wait for pointer up before opening.
     };
 
     const onKeyUp = (event: KeyboardEvent) => {

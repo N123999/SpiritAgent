@@ -44,48 +44,40 @@ export function useTextSelectionActionMenu({
   const [selectionText, setSelectionText] = useState("");
   const selectionRef = useRef<Selection | null>(null);
 
+  const dismiss = useCallback(() => {
+    setOpen(false);
+    setAnchor(null);
+    setSelectionText("");
+    selectionRef.current = null;
+  }, []);
+
   const syncFromSelection = useCallback(() => {
     const root = rootRef.current;
     const selection = typeof window !== "undefined" ? window.getSelection() : null;
     if (!enabled || !root || !selection || selection.isCollapsed) {
-      setOpen(false);
-      setAnchor(null);
-      setSelectionText("");
-      selectionRef.current = null;
+      dismiss();
       return;
     }
 
     const text = readSelectionText(selection);
     if (!text) {
-      setOpen(false);
-      setAnchor(null);
-      setSelectionText("");
-      selectionRef.current = null;
+      dismiss();
       return;
     }
 
     if (!root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) {
-      setOpen(false);
-      setAnchor(null);
-      setSelectionText("");
-      selectionRef.current = null;
+      dismiss();
       return;
     }
 
     if (isSelectionAllowed && !isSelectionAllowed(selection, root)) {
-      setOpen(false);
-      setAnchor(null);
-      setSelectionText("");
-      selectionRef.current = null;
+      dismiss();
       return;
     }
 
     const nextAnchor = readSelectionAnchor(selection);
     if (!nextAnchor) {
-      setOpen(false);
-      setAnchor(null);
-      setSelectionText("");
-      selectionRef.current = null;
+      dismiss();
       return;
     }
 
@@ -93,11 +85,11 @@ export function useTextSelectionActionMenu({
     setSelectionText(text);
     setAnchor(nextAnchor);
     setOpen(true);
-  }, [enabled, isSelectionAllowed, readSelectionText, rootRef]);
+  }, [dismiss, enabled, isSelectionAllowed, readSelectionText, rootRef]);
 
   useEffect(() => {
     if (!enabled) {
-      setOpen(false);
+      dismiss();
       return;
     }
 
@@ -110,8 +102,29 @@ export function useTextSelectionActionMenu({
     const onMouseUp = () => {
       scheduleSync();
     };
-    const onSelectionChange = () => {
+    const onTouchEnd = () => {
       scheduleSync();
+    };
+    /** Dismiss when selection clears; do not open while the user is still dragging. */
+    const onSelectionChange = () => {
+      const selection = typeof window !== "undefined" ? window.getSelection() : null;
+      const root = rootRef.current;
+      if (!selection || selection.isCollapsed) {
+        dismiss();
+        return;
+      }
+      if (!root) {
+        return;
+      }
+      const text = readSelectionText(selection);
+      if (
+        !text
+        || !root.contains(selection.anchorNode)
+        || !root.contains(selection.focusNode)
+        || (isSelectionAllowed && !isSelectionAllowed(selection, root))
+      ) {
+        dismiss();
+      }
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (
@@ -127,22 +140,17 @@ export function useTextSelectionActionMenu({
     };
 
     document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("touchend", onTouchEnd);
     document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("keyup", onKeyUp);
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("keyup", onKeyUp);
     };
-  }, [enabled, syncFromSelection]);
-
-  const dismiss = useCallback(() => {
-    setOpen(false);
-    setAnchor(null);
-    setSelectionText("");
-    selectionRef.current = null;
-  }, []);
+  }, [dismiss, enabled, isSelectionAllowed, readSelectionText, rootRef, syncFromSelection]);
 
   return {
     open,
