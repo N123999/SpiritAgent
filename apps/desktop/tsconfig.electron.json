@@ -24,6 +24,7 @@
     "src/lib/fork-session-utils.ts",
     "src/lib/tool-call-shimmer.ts",
     "src/lib/tool-verb-context.ts",
+    "src/lib/i18n-host.ts",
     "src/types.ts"
   ],
   "exclude": ["electron/preload.ts"]

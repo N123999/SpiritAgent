@@ -1,27 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import i18n from 'i18next';
 
-function loadLocaleFile(name: string): Record<string, unknown> {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(__dirname, '../../../src/locales', `${name}.json`),
-    join(__dirname, '../locales', `${name}.json`),
-  ];
-  for (const p of candidates) {
-    try {
-      return JSON.parse(readFileSync(p, 'utf8'));
-    } catch {
-      // try next path
-    }
-  }
-  return {};
-}
+import en from '../locales/en.json' with { type: 'json' };
+import zhCN from '../locales/zh-CN.json' with { type: 'json' };
 
 const resources = {
-  'zh-CN': { translation: loadLocaleFile('zh-CN') },
-  en: { translation: loadLocaleFile('en') },
+  'zh-CN': { translation: zhCN },
+  en: { translation: en },
 };
 
 const instance = i18n.createInstance();

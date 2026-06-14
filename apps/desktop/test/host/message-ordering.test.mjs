@@ -171,6 +171,21 @@ test('toolCallSummaryCopyForRequest: ask_questions and subagent', () => {
   });
 });
 
+test('toolCallSummaryCopyForRequest: todo_create uses item count detail', () => {
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('todo_create', {
+      items: [{ title: 'Create index.html' }, { title: 'Verify page renders' }],
+    }),
+    { headline: '创建 TODO', headlineDetail: '2 项' },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('todo_create', {
+      items: [{ title: 'Only one item' }],
+    }),
+    { headline: '创建 TODO', headlineDetail: 'Only one item' },
+  );
+});
+
 test('toolCallSummaryForPhase: read_file splits headline and path detail', () => {
   assert.deepEqual(
     toolCallSummaryForPhase('succeeded', 'read_file', {
