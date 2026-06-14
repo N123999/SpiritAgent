@@ -46,7 +46,7 @@ import {
   deriveAutomationTitle,
   formatCreateAutomationApprovalLabel,
   parseCreateAutomationApprovalLevel,
-  parseCreateAutomationSchedule,
+  parseCreateAutomationTriggerInput,
 } from './automation-host-tool.js';
 import {
   createHostAutomationStore,
@@ -756,15 +756,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       case CREATE_AUTOMATION_TOOL_NAME: {
         const overview = requiredString(parsed, 'overview');
         const explicitTitle = optionalStringStrict(parsed, 'title');
-        const scheduleValue = parsed.schedule;
-        if (scheduleValue === undefined) {
-          throw new Error('create_automation 缺少 schedule。');
-        }
         return {
           name: CREATE_AUTOMATION_TOOL_NAME,
           title: deriveAutomationTitle(overview, explicitTitle),
           overview,
-          trigger: { kind: 'time', schedule: parseCreateAutomationSchedule(scheduleValue) },
+          trigger: parseCreateAutomationTriggerInput(parsed),
           approval_level: parseCreateAutomationApprovalLevel(parsed.approval_level),
         };
       }

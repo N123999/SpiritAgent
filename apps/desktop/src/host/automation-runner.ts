@@ -16,6 +16,7 @@ import {
   buildAutomationTriggerMessage,
   createHostAutomationStore,
   defaultAutomationRunTriggerContext,
+  readGitWorkspaceSnapshot,
   type AutomationRunTriggerContext,
   type HostAutomationDefinition,
   type HostAutomationRun,

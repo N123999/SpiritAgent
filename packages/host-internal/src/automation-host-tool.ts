@@ -5,8 +5,8 @@ import {
   type JsonValue,
 } from '@spirit-agent/core';
 
-import type { HostAutomationSchedule } from './automations.js';
-import { normalizeAutomationSchedule } from './automations.js';
+import type { HostAutomationSchedule, HostAutomationTrigger } from './automations.js';
+import { normalizeAutomationSchedule, normalizeAutomationTrigger } from './automations.js';
 
 export type CreateAutomationApprovalLevel = 'default' | 'full-approval';
 
@@ -54,21 +54,40 @@ export function parseCreateAutomationSchedule(value: unknown): HostAutomationSch
   return schedule;
 }
 
+export function parseCreateAutomationTrigger(value: unknown): HostAutomationTrigger {
+  const trigger = normalizeAutomationTrigger(value);
+  if (!trigger) {
+    throw new Error('Invalid automation trigger.');
+  }
+  return trigger;
+}
+
+export function parseCreateAutomationTriggerInput(parsed: Record<string, unknown>): HostAutomationTrigger {
+  if (parsed.trigger !== undefined) {
+    return parseCreateAutomationTrigger(parsed.trigger);
+  }
+  const scheduleValue = parsed.schedule;
+  if (scheduleValue === undefined) {
+    throw new Error('create_automation 缺少 trigger 或 schedule。');
+  }
+  return parseCreateAutomationTrigger({ kind: 'time', schedule: parseCreateAutomationSchedule(scheduleValue) });
+}
+
 export const CREATE_AUTOMATION_CONTRIBUTED_TOOL: ContributedHostToolDefinition = {
   name: CREATE_AUTOMATION_TOOL_NAME,
   excludeFromAskMode: true,
   agentModeExposure: 'agent',
   description:
-    'Create a scheduled Desktop automation that runs an agent turn with your prompt on the current workspace. ' +
-    'Use when the user asks to automate recurring work (daily reports, weekly checks, hourly monitoring). ' +
-    'Schedule times use the host local timezone.',
+    'Create a Desktop automation that runs an agent turn with your prompt on the current workspace. ' +
+    'Triggers may be time-based (hourly/daily/weekly local time) or GitHub repository events (new pull request or issue). ' +
+    'Use when the user asks to automate recurring work or react to GitHub activity.',
   inputSchema: {
     type: 'object',
     properties: {
       overview: {
         type: 'string',
         description:
-          'Agent prompt executed on each scheduled run. Write a self-contained instruction the automation agent can follow without extra context.',
+          'Agent prompt executed on each run. Write a self-contained instruction the automation agent can follow without extra context.',
       },
       title: {
         type: 'string',
@@ -81,10 +100,42 @@ export const CREATE_AUTOMATION_CONTRIBUTED_TOOL: ContributedHostToolDefinition =
         description:
           'Approval policy when the automation runs. default: normal tool approval prompts; full-approval: skip high-risk approval prompts for that automation run. Omit to use default.',
       },
+      trigger: {
+        type: 'object',
+        description:
+          'Preferred trigger definition. kind=time uses schedule; kind=github listens for new pull requests or issues in a repository.',
+        properties: {
+          kind: {
+            type: 'string',
+            enum: ['time', 'github'],
+          },
+          schedule: {
+            type: 'object',
+            description: 'Required when kind=time.',
+            properties: {
+              kind: { type: 'string', enum: ['hourly', 'daily', 'weekly'] },
+              hour: { type: 'integer', minimum: 0, maximum: 23 },
+              minute: { type: 'integer', minimum: 0, maximum: 59 },
+              weekday: { type: 'integer', minimum: 0, maximum: 6 },
+            },
+            required: ['kind'],
+            additionalProperties: false,
+          },
+          owner: { type: 'string', description: 'GitHub owner/org. Required when kind=github.' },
+          repo: { type: 'string', description: 'GitHub repository name. Required when kind=github.' },
+          event: {
+            type: 'string',
+            enum: ['pull_request_created', 'issue_created'],
+            description: 'GitHub event to watch when kind=github.',
+          },
+        },
+        required: ['kind'],
+        additionalProperties: false,
+      },
       schedule: {
         type: 'object',
         description:
-          'When to fire the automation (host local time). kind=hourly ignores hour/minute/weekday; kind=weekly requires weekday.',
+          'Legacy time-only trigger. Prefer trigger instead. When provided alone, treated as { kind: "time", schedule }.',
         properties: {
           kind: {
             type: 'string',
@@ -114,7 +165,7 @@ export const CREATE_AUTOMATION_CONTRIBUTED_TOOL: ContributedHostToolDefinition =
         additionalProperties: false,
       },
     },
-    required: ['overview', 'schedule'],
+    required: ['overview'],
     additionalProperties: false,
   } satisfies JsonObject,
 };

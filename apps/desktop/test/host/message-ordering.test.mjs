@@ -28,12 +28,12 @@ test('toolCallSummaryCopyForRequest: write tools use verb headline + basename de
   );
 });
 
-test('toolCallSummaryCopyForRequest: create_automation uses title and schedule detail', () => {
+test('toolCallSummaryCopyForRequest: create_automation uses title and trigger detail', () => {
   assert.deepEqual(
     toolCallSummaryCopyForRequest('create_automation', {
       title: 'CI check',
       overview: 'Summarize CI failures.',
-      schedule: { kind: 'weekly', weekday: 1, hour: 9, minute: 0 },
+      trigger: { kind: 'time', schedule: { kind: 'weekly', weekday: 1, hour: 9, minute: 0 } },
     }),
     { headline: '创建自动化', headlineDetail: 'CI check · 每周一 09:00' },
   );
