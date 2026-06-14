@@ -18,10 +18,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DesktopFormInput } from "@/components/ui/desktop-form-field";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DesktopFormInput, DesktopFormTextarea } from "@/components/ui/desktop-form-field";
 import {
   Select,
   SelectContent,
@@ -1015,7 +1012,7 @@ function SkillsSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-skill-name">{t('settings.name')}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-skill-name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -1025,7 +1022,7 @@ function SkillsSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-skill-desc">{t('settings.description')}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-skill-desc"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
@@ -1341,7 +1338,7 @@ function RulesSettingsPanel({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new-rule-desc">{t('settings.description')}</Label>
-              <Textarea
+              <DesktopFormTextarea
                 id="new-rule-desc"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
@@ -1533,8 +1530,9 @@ function ExtensionConfigurationPanel({
                 htmlFor={fieldKey}
               >
                 <div className="flex w-full gap-2 sm:max-w-md">
-                  <Input
+                  <DesktopFormInput
                     id={fieldKey}
+                    shellClassName="min-w-0 flex-1"
                     value={currentText}
                     disabled={extensionsBusy}
                     type={setting.type === "number" ? "number" : "text"}
@@ -1583,14 +1581,14 @@ function ExtensionConfigurationPanel({
                   <Badge variant={configured ? "secondary" : "outline"} className="h-9 px-3 text-muted-foreground">
                     {configured ? t('settings.configured') : t('settings.notConfigured')}
                   </Badge>
-                  <Input
+                  <DesktopFormInput
                     id={fieldKey}
+                    shellClassName="min-w-0 flex-1"
                     type="password"
                     value={secretDrafts[fieldKey] ?? ""}
                     disabled={extensionsBusy}
                     placeholder={configured ? t('settings.enterNewValue') : t('settings.enterSecret')}
                     onChange={(event) => updateSecretDraft(item.id, slot.key, event.target.value)}
-                    className="min-w-0 flex-1"
                   />
                   <Button
                     type="button"
@@ -2172,7 +2170,7 @@ function McpsSettingsPanel({
 
             <div className="grid gap-2">
               <Label htmlFor="new-mcp-name">{t('settings.name')}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-mcp-name"
                 value={newName}
                 onChange={(event) => setNewName(event.target.value)}
@@ -2183,7 +2181,7 @@ function McpsSettingsPanel({
 
             <div className="grid gap-2">
               <Label htmlFor="new-mcp-endpoint">{mcpEndpointLabel(transportType)}</Label>
-              <Input
+              <DesktopFormInput
                 id="new-mcp-endpoint"
                 value={newEndpoint}
                 onChange={(event) => setNewEndpoint(event.target.value)}
@@ -2194,7 +2192,7 @@ function McpsSettingsPanel({
 
             <div className="grid gap-2">
               <Label htmlFor="new-mcp-metadata">{mcpMetadataLabel(transportType)}</Label>
-              <Textarea
+              <DesktopFormTextarea
                 id="new-mcp-metadata"
                 value={newMetadata}
                 onChange={(event) => setNewMetadata(event.target.value)}
@@ -3709,7 +3707,7 @@ function NetworksSettingsPanel({
             description={t('settings.listenAddressDescription')}
             htmlFor="settings-web-host-host"
           >
-            <Input
+            <DesktopFormInput
               id="settings-web-host-host"
               className="sm:text-right"
               value={webHostHostDraft}
@@ -3726,7 +3724,7 @@ function NetworksSettingsPanel({
           </SettingsRow>
 
           <SettingsRow label={t('settings.listenPort')} htmlFor="settings-web-host-port">
-            <Input
+            <DesktopFormInput
               id="settings-web-host-port"
               className="sm:text-right"
               type="number"
