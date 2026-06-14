@@ -222,7 +222,7 @@ export function WorkspaceFilesPanel({
                   <ChevronRight className="size-3.5 shrink-0 opacity-60" aria-hidden />
                 )}
                 <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                <span className="min-w-0 truncate font-medium">{entry.name}</span>
+                <span className="min-w-0 truncate">{entry.name}</span>
               </button>
               {open ? <div className="min-w-0">{renderDirBody(childRel, depth + 1)}</div> : null}
             </li>
@@ -237,7 +237,7 @@ export function WorkspaceFilesPanel({
       <button
         type="button"
         className={cn(
-          "mb-1 flex w-full min-w-0 shrink-0 items-center gap-1 rounded px-1 py-1 text-left font-medium",
+          "mb-1 flex w-full min-w-0 shrink-0 items-center gap-1 rounded px-1 py-1 text-left",
           "text-foreground hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
         )}
         aria-expanded={rootOpen}
