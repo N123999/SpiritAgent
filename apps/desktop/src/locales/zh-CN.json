@@ -122,7 +122,7 @@
     "fontDescription": "默认 Geist。",
     "selectTheme": "选择主题",
     "themeDescription": "立即生效。",
-    "blurEffectDescription": "Windows 为 Mica，macOS 为系统模糊；关闭后为实色背景。",
+    "blurEffectDescription": "开启后主界面背景半透明模糊，可透出桌面。",
     "llmHttpVersion": "LLM HTTP 版本",
     "llmHttpVersionDescription": "LLM API 出站请求使用的协议",
     "llmHttpVersionHttp11": "HTTP/1.1",

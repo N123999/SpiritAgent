@@ -122,7 +122,7 @@
     "fontDescription": "Defaults to Geist.",
     "selectTheme": "Select Theme",
     "themeDescription": "Applied immediately.",
-    "blurEffectDescription": "Mica on Windows, system vibrancy on macOS. Solid background when off.",
+    "blurEffectDescription": "When enabled, the main UI uses a translucent blurred background.",
     "llmHttpVersion": "LLM HTTP Version",
     "llmHttpVersionDescription": "Protocol for outbound LLM API requests",
     "llmHttpVersionHttp11": "HTTP/1.1",
