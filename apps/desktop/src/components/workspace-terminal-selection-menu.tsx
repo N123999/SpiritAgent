@@ -1,4 +1,4 @@
-import { useCallback, useRef, type RefObject } from "react";
+import { useCallback, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -11,12 +11,12 @@ import type { Terminal } from "@xterm/xterm";
 
 function TerminalSelectionMenu({
   containerRef,
-  terminalRef,
+  terminal,
   terminalDisplayName,
   onTerminalAddToSession,
 }: {
   containerRef: RefObject<HTMLElement | null>;
-  terminalRef: RefObject<Terminal | null>;
+  terminal: Terminal | null;
   terminalDisplayName: string;
   onTerminalAddToSession?: (attachment: TerminalSnippetAttachment) => void;
 }) {
@@ -25,11 +25,11 @@ function TerminalSelectionMenu({
   const { open, setOpen, anchor, selectionText, lineRange, dismiss } = useTerminalSelectionActionMenu({
     enabled,
     containerRef,
-    terminalRef,
+    terminal,
   });
 
   const handleAddToSession = useCallback(() => {
-    const term = terminalRef.current;
+    const term = terminal;
     if (!term || !onTerminalAddToSession) {
       dismiss();
       return;
@@ -52,7 +52,7 @@ function TerminalSelectionMenu({
     onTerminalAddToSession(attachment);
     dismiss();
     term.clearSelection();
-  }, [dismiss, lineRange, onTerminalAddToSession, terminalDisplayName, terminalRef]);
+  }, [dismiss, lineRange, onTerminalAddToSession, terminal, terminalDisplayName]);
 
   if (!enabled) {
     return null;

@@ -6,7 +6,8 @@ import type { Terminal } from "@xterm/xterm";
 type UseTerminalSelectionActionMenuOptions = {
   enabled?: boolean;
   containerRef: RefObject<HTMLElement | null>;
-  terminalRef: RefObject<Terminal | null>;
+  /** xterm instance; use state (not ref) so listeners re-bind when terminal becomes ready. */
+  terminal: Terminal | null;
 };
 
 export function readTerminalSelectionLineRange(
@@ -28,7 +29,7 @@ function pointAnchor(x: number, y: number): SelectionAnchorRect {
 export function useTerminalSelectionActionMenu({
   enabled = true,
   containerRef,
-  terminalRef,
+  terminal,
 }: UseTerminalSelectionActionMenuOptions) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<SelectionAnchorRect | null>(null);
@@ -45,7 +46,7 @@ export function useTerminalSelectionActionMenu({
 
   const syncFromTerminal = useCallback(() => {
     const container = containerRef.current;
-    const term = terminalRef.current;
+    const term = terminal;
     if (!enabled || !container || !term) {
       dismiss();
       return;
@@ -68,7 +69,7 @@ export function useTerminalSelectionActionMenu({
     setLineRange(range);
     setAnchor(pointAnchor(pointer.x, pointer.y));
     setOpen(true);
-  }, [containerRef, dismiss, enabled, terminalRef]);
+  }, [containerRef, dismiss, enabled, terminal]);
 
   useEffect(() => {
     if (!enabled) {
@@ -77,7 +78,7 @@ export function useTerminalSelectionActionMenu({
     }
 
     const container = containerRef.current;
-    const term = terminalRef.current;
+    const term = terminal;
     if (!container || !term) {
       return;
     }
@@ -106,7 +107,7 @@ export function useTerminalSelectionActionMenu({
       container.removeEventListener("mouseup", onPointerUp);
       selectionDisposable.dispose();
     };
-  }, [containerRef, dismiss, enabled, syncFromTerminal, terminalRef]);
+  }, [containerRef, dismiss, enabled, syncFromTerminal, terminal]);
 
   return {
     open,

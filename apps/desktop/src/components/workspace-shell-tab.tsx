@@ -35,7 +35,7 @@ export function WorkspaceShellTab({
 }: WorkspaceShellTabProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
+  const [terminal, setTerminal] = useState<Terminal | null>(null);
   const sessionScheduleFitRef = useRef<(() => void) | null>(null);
   const [embedError, setEmbedError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
@@ -57,7 +57,7 @@ export function WorkspaceShellTab({
 
   useEffect(() => {
     setEmbedError(null);
-    termRef.current = null;
+    setTerminal(null);
     const b = typeof window !== "undefined" ? window.spiritDesktop : undefined;
     if (!trimmed || !b?.ptyCreate || !b.ptySubscribe) {
       return;
@@ -78,12 +78,12 @@ export function WorkspaceShellTab({
         tRef.current("workspace.shellExited", { exitCode }),
       isResizeSuspended: () => suspendResizeRef.current,
     });
-    termRef.current = session.terminal;
+    setTerminal(session.terminal);
     sessionScheduleFitRef.current = session.scheduleFit;
 
     return () => {
       session.dispose();
-      termRef.current = null;
+      setTerminal(null);
       sessionScheduleFitRef.current = null;
     };
   }, [trimmed, canEmbed, retryNonce]);
@@ -142,7 +142,7 @@ export function WorkspaceShellTab({
       />
       <TerminalSelectionMenu
         containerRef={containerRef}
-        terminalRef={termRef}
+        terminal={terminal}
         terminalDisplayName={terminalDisplayName}
         onTerminalAddToSession={onTerminalAddToSession}
       />
