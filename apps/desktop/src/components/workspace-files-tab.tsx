@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
+import type * as Monaco from "monaco-editor";
 
 import { Eye, Loader2, Play, Save, SquarePen, X } from "lucide-react";
 
@@ -9,6 +10,10 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { WorkspaceFilesPanel } from "@/components/workspace-files-panel";
 import {
+  FileDomSelectionMenu,
+  FileMonacoSelectionMenu,
+} from "@/components/workspace-file-selection-menu";
+import {
   WorkspaceMonacoEditor,
   type WorkspaceMonacoEditorHandle,
 } from "@/components/workspace-monaco-editor";
@@ -17,6 +22,7 @@ import type {
   EditorFileTarget,
   WorkspaceEditorViewMode,
 } from "@/lib/workspace-editor-navigation";
+import type { FileSnippetAttachment } from "@/lib/file-snippet-attachment";
 import type {
   PlanSnapshot,
   WorkspaceExplorerListResult,
@@ -54,6 +60,10 @@ function isMarkdownPath(rel: string): boolean {
   return /\.(md|mdx|markdown|mdown|mkd|mkdn|mdwn)$/i.test(rel);
 }
 
+function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLElement | null {
+  return root?.querySelector("[data-radix-scroll-area-viewport]") ?? null;
+}
+
 export type WorkspaceFilesTabProps = {
   workspaceRoot: string;
   plan: PlanSnapshot;
@@ -78,6 +88,7 @@ export type WorkspaceFilesTabProps = {
   fileRevealDirectoryOnly?: boolean;
   /** 当前打开文件名变化时通知父层，用于选项卡标题显示；无选中时传 undefined */
   onTitleChange?: (title: string | undefined) => void;
+  onFileSnippetAddToSession?: (attachment: FileSnippetAttachment) => void;
 };
 
 export function WorkspaceFilesTab({
@@ -101,8 +112,10 @@ export function WorkspaceFilesTab({
   fileRevealViewMode = "edit",
   fileRevealDirectoryOnly = false,
   onTitleChange,
+  onFileSnippetAddToSession,
 }: WorkspaceFilesTabProps) {
   const { t } = useTranslation();
+  type MonacoEditor = Monaco.editor.IStandaloneCodeEditor;
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
   const [doc, setDoc] = useState<LoadedDoc | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -111,7 +124,11 @@ export function WorkspaceFilesTab({
   const [draftText, setDraftText] = useState("");
   const [savedText, setSavedText] = useState("");
   const [markdownViewMode, setMarkdownViewMode] = useState<MarkdownViewMode>("edit");
+  const [monacoEditor, setMonacoEditor] = useState<MonacoEditor | null>(null);
   const editorRef = useRef<WorkspaceMonacoEditorHandle>(null);
+  const previewScrollRef = useRef<ComponentRef<typeof ScrollArea>>(null);
+  const previewRootRef = useRef<HTMLElement | null>(null);
+  const monacoContainerRef = useRef<HTMLDivElement>(null);
   const onTitleChangeRef = useRef(onTitleChange);
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;
@@ -333,6 +350,22 @@ export function WorkspaceFilesTab({
   const isPreviewVisible =
     doc?.status === "ready" && isMarkdownDocument && markdownViewMode === "preview";
 
+  useLayoutEffect(() => {
+    if (!isPreviewVisible) {
+      previewRootRef.current = null;
+      return;
+    }
+    previewRootRef.current = scrollAreaViewport(previewScrollRef.current);
+  }, [isPreviewVisible, draftText, selectedPath]);
+
+  useEffect(() => {
+    if (isPreviewVisible) {
+      setMonacoEditor(null);
+    }
+  }, [isPreviewVisible]);
+
+  const selectionEnabled = doc?.status === "ready" && Boolean(onFileSnippetAddToSession && selectedPath);
+
   const onClickSave = useCallback(() => {
     if (isPreviewVisible) {
       void persistEditorText(draftText);
@@ -485,37 +518,60 @@ export function WorkspaceFilesTab({
               </div>
             ) : doc?.status === "ready" ? (
               isPreviewVisible ? (
-                <ScrollArea className="h-full min-h-0 w-full bg-background/30">
-                  <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-4 sm:px-6">
-                    {draftText.trim() ? (
-                      <MarkdownMessage
-                        content={draftText}
-                        className="text-sm"
-                        readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
-                      />
-                    ) : (
-                      <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-border/50 bg-background/35 px-4 text-center text-xs text-muted-foreground">
-                        {t('workspace.emptyMarkdownDoc')}
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                <>
+                  <ScrollArea ref={previewScrollRef} className="h-full min-h-0 w-full bg-background/30">
+                    <div
+                      className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-4 sm:px-6"
+                      data-workspace-file-path={selectedPath}
+                    >
+                      {draftText.trim() ? (
+                        <MarkdownMessage
+                          content={draftText}
+                          className="text-sm"
+                          readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
+                        />
+                      ) : (
+                        <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-border/50 bg-background/35 px-4 text-center text-xs text-muted-foreground">
+                          {t('workspace.emptyMarkdownDoc')}
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                  {selectionEnabled ? (
+                    <FileDomSelectionMenu
+                      rootRef={previewRootRef}
+                      filePath={selectedPath}
+                      onFileSnippetAddToSession={onFileSnippetAddToSession}
+                    />
+                  ) : null}
+                </>
               ) : (
-                <WorkspaceMonacoEditor
-                  key={selectedEntryKey}
-                  ref={editorRef}
-                  relativePath={
-                    doc.readOnly
-                      ? (plan.path.split(/[/\\]/).pop() ?? "plan")
-                      : doc.subtitle
-                  }
-                  initialText={draftText}
-                  baselineText={savedText}
-                  onSave={onEditorSave}
-                  onDirtyChange={setDirty}
-                  onTextChange={isMarkdownDocument ? setDraftText : undefined}
-                  readOnly={doc.readOnly}
-                />
+                <div ref={monacoContainerRef} className="relative h-full min-h-0 w-full">
+                  <WorkspaceMonacoEditor
+                    key={selectedEntryKey}
+                    ref={editorRef}
+                    relativePath={
+                      doc.readOnly
+                        ? (plan.path.split(/[/\\]/).pop() ?? "plan")
+                        : doc.subtitle
+                    }
+                    initialText={draftText}
+                    baselineText={savedText}
+                    onSave={onEditorSave}
+                    onDirtyChange={setDirty}
+                    onTextChange={isMarkdownDocument ? setDraftText : undefined}
+                    readOnly={doc.readOnly}
+                    onEditorReady={setMonacoEditor}
+                  />
+                  {selectionEnabled ? (
+                    <FileMonacoSelectionMenu
+                      containerRef={monacoContainerRef}
+                      editor={monacoEditor}
+                      filePath={selectedPath}
+                      onFileSnippetAddToSession={onFileSnippetAddToSession}
+                    />
+                  ) : null}
+                </div>
               )
             ) : null}
           </div>

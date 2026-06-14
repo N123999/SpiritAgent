@@ -87,6 +87,7 @@ function PrChangesSelectionMenu({
     enabled,
     rootRef,
     isSelectionAllowed: isDiffCodeSelection,
+    readSelectionText: readDiffSelectionText,
   });
 
   const handleAddToSession = useCallback(() => {

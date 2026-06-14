@@ -16,6 +16,7 @@ import { syncMonacoThemeFromDocument } from "@/lib/monaco-theme";
 export type WorkspaceMonacoEditorHandle = {
   /** 将当前缓冲区写入磁盘；成功后会清除脏标记。 */
   save: () => Promise<void>;
+  getEditor: () => monaco.editor.IStandaloneCodeEditor | null;
 };
 
 export type WorkspaceMonacoEditorProps = {
@@ -26,6 +27,7 @@ export type WorkspaceMonacoEditorProps = {
   onDirtyChange?: (dirty: boolean) => void;
   onTextChange?: (text: string) => void;
   readOnly?: boolean;
+  onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor | null) => void;
 };
 
 export const WorkspaceMonacoEditor = forwardRef<
@@ -40,6 +42,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     onDirtyChange,
     onTextChange,
     readOnly = false,
+    onEditorReady,
   },
   ref,
 ) {
@@ -49,9 +52,11 @@ export const WorkspaceMonacoEditor = forwardRef<
   const onSaveRef = useRef(onSave);
   const onDirtyChangeRef = useRef(onDirtyChange);
   const onTextChangeRef = useRef(onTextChange);
+  const onEditorReadyRef = useRef(onEditorReady);
   onSaveRef.current = onSave;
   onDirtyChangeRef.current = onDirtyChange;
   onTextChangeRef.current = onTextChange;
+  onEditorReadyRef.current = onEditorReady;
 
   useEffect(() => {
     if (baselineText !== undefined) {
@@ -79,6 +84,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     ref,
     () => ({
       save: () => runSave(),
+      getEditor: () => editorRef.current,
     }),
     [runSave],
   );
@@ -107,6 +113,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
     });
     editorRef.current = editor;
+    onEditorReadyRef.current?.(editor);
 
     const dirtyDisposable = editor.onDidChangeModelContent(() => {
       const value = editor.getValue();
@@ -128,6 +135,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     return () => {
       obs.disconnect();
       dirtyDisposable.dispose();
+      onEditorReadyRef.current?.(null);
       editor.dispose();
       editorRef.current = null;
     };

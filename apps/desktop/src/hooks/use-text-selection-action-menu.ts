@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
-import { readDiffSelectionText } from "@/lib/pr-diff-selection";
+import { readPlainSelectionText } from "@/lib/pr-diff-selection";
 
 export type SelectionAnchorRect = {
   x: number;
@@ -13,6 +13,7 @@ type UseTextSelectionActionMenuOptions = {
   enabled?: boolean;
   rootRef: RefObject<HTMLElement | null>;
   isSelectionAllowed?: (selection: Selection, root: HTMLElement) => boolean;
+  readSelectionText?: (selection: Selection) => string;
 };
 
 function readSelectionAnchor(selection: Selection): SelectionAnchorRect | null {
@@ -36,6 +37,7 @@ export function useTextSelectionActionMenu({
   enabled = true,
   rootRef,
   isSelectionAllowed,
+  readSelectionText = readPlainSelectionText,
 }: UseTextSelectionActionMenuOptions) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<SelectionAnchorRect | null>(null);
@@ -53,7 +55,7 @@ export function useTextSelectionActionMenu({
       return;
     }
 
-    const text = readDiffSelectionText(selection);
+    const text = readSelectionText(selection);
     if (!text) {
       setOpen(false);
       setAnchor(null);
@@ -91,7 +93,7 @@ export function useTextSelectionActionMenu({
     setSelectionText(text);
     setAnchor(nextAnchor);
     setOpen(true);
-  }, [enabled, isSelectionAllowed, rootRef]);
+  }, [enabled, isSelectionAllowed, readSelectionText, rootRef]);
 
   useEffect(() => {
     if (!enabled) {

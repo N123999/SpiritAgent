@@ -666,6 +666,7 @@ function WorkspaceToolsDockInner({
                         fileRevealViewMode={fileRevealViewMode}
                         fileRevealDirectoryOnly={fileRevealDirectoryOnly}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                        onFileSnippetAddToSession={onFileSnippetAddToSession}
                       />
                     </div>
                   ) : item.kind === "shell" ? (
