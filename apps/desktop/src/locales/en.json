@@ -582,6 +582,7 @@
     "openSystemTerminal": "Open System Terminal",
     "files": "Files",
     "shell": "Shell",
+    "terminalChipDefaultName": "Terminal",
     "gitTab": "Git",
     "browser": "Browser",
     "browserPlaceholder": "Browser tab loading…",

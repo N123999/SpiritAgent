@@ -12,6 +12,7 @@ import {
   focusFirstTabOfKind,
   isBrowserNewTabUrl,
   normalizeWorkspaceToolTabsForHost,
+  workspaceTerminalChipDisplayName,
   workspaceToolTabLabel,
 } from "../src/lib/workspace-tool-tabs.ts";
 
@@ -21,6 +22,7 @@ const t = (key) =>
     "workspace.shell": "Shell",
     "workspace.browser": "浏览器",
     "workspace.prTab": "Pull Request",
+    "workspace.terminalChipDefaultName": "Terminal",
   })[key] ?? key;
 
 test("createDefaultWorkspaceToolTabs has files, shell, and git", () => {
@@ -38,6 +40,15 @@ test("workspaceToolTabLabel numbers duplicate kinds", () => {
   assert.equal(workspaceToolTabLabel("files", tabs, a.id, t), "文件");
   assert.equal(workspaceToolTabLabel("files", tabs, b.id, t), "文件 2");
   assert.equal(workspaceToolTabLabel("shell", tabs, createWorkspaceToolTab("shell").id, t), "Shell");
+});
+
+test("workspaceTerminalChipDisplayName prefers tab title then default label", () => {
+  const shellA = createWorkspaceToolTab("shell");
+  const shellB = createWorkspaceToolTab("shell");
+  shellA.tabTitle = "npm run dev";
+  const tabs = [shellA, shellB];
+  assert.equal(workspaceTerminalChipDisplayName(shellA, tabs, t), "npm run dev");
+  assert.equal(workspaceTerminalChipDisplayName(shellB, tabs, t), "Terminal 2");
 });
 
 test("createWorkspaceToolTab browser defaults to new-tab sentinel", () => {
