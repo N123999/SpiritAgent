@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="https://github.com/user-attachments/assets/fa10cc7d-381c-4a70-b4ab-d145ba1363f1" alt="Spirit Agent" />
+<img width="1552" height="1032" alt="Spirit Agent Desktop" src="https://github.com/user-attachments/assets/7b07e79d-c800-405a-bee6-40dda9d75b13" />
+
 
 # Spirit Agent
 
@@ -101,6 +102,9 @@ The [Desktop app](apps/desktop) is the primary graphical host: a workspace-bound
 See [apps/desktop/README.md](apps/desktop/README.md) for Desktop-specific development and layout.
 
 ## CLI
+
+<img width="1014" height="744" alt="Spirit Agent CLI" src="https://github.com/user-attachments/assets/ecf4fcec-6a9b-4562-b0da-cc14816f36d3" />
+
 
 The [Rust CLI](apps/cli) (`spirit-agent`) provides a terminal-first host with an optional Ratatui UI. It shares the same Agent Core runtime via the Node bridge and suits scripting, SSH sessions, and minimal environments.
 
