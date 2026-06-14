@@ -4,7 +4,10 @@ import type {
   DesktopAutomationSchedule,
   DesktopAutomationScheduleFormatLabels,
 } from './automation-schedule.js';
-import { formatDesktopAutomationScheduleLabel } from './automation-schedule.js';
+import {
+  formatDesktopAutomationScheduleLabel,
+  isValidDesktopAutomationSchedule,
+} from './automation-schedule.js';
 
 export type DesktopAutomationGitHubEvent = 'pull_request_created' | 'issue_created';
 
@@ -46,7 +49,7 @@ export function defaultDesktopTimeTrigger(
 
 export function isValidDesktopAutomationTrigger(trigger: DesktopAutomationTrigger): boolean {
   if (trigger.kind === 'time') {
-    return true;
+    return isValidDesktopAutomationSchedule(trigger.schedule);
   }
   return Boolean(trigger.owner.trim() && trigger.repo.trim());
 }
