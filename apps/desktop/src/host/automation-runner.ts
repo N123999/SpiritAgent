@@ -13,8 +13,10 @@ import {
   resolveOpenAiTransportReasoningEffortForContext,
 } from '@spirit-agent/core/reasoning-effort';
 import {
+  buildAutomationTriggerMessage,
   createHostAutomationStore,
-  readGitWorkspaceSnapshot,
+  defaultAutomationRunTriggerContext,
+  type AutomationRunTriggerContext,
   type HostAutomationDefinition,
   type HostAutomationRun,
 } from '@spirit-agent/host-internal';
@@ -44,6 +46,7 @@ export const AUTOMATION_RUN_MAX_GUARD_ROUNDS = 200;
 export interface RunDesktopAutomationOnceInput {
   definition: HostAutomationDefinition;
   config: DesktopConfigFile;
+  triggerContext?: AutomationRunTriggerContext;
 }
 
 export interface RunDesktopAutomationOnceDeps {
@@ -120,6 +123,13 @@ export async function runDesktopAutomationOnce(
       workspaceRoot: input.definition.workspaceRoot,
       basicInfo: buildDesktopRuntimeBasicInfo(input.definition.workspaceRoot, toolExecutor),
     });
+    const triggerContext = input.triggerContext ?? defaultAutomationRunTriggerContext(input.definition);
+    const llmUserMessage = buildAutomationTriggerMessage({
+      overview: input.definition.overview,
+      trigger: input.definition.trigger,
+      context: triggerContext,
+    });
+
     const projection = AutomationConversationProjection.create();
     projection.bindRuntime(runtime);
     projection.beginUserTurn(input.definition.overview);
@@ -141,7 +151,7 @@ export async function runDesktopAutomationOnce(
       runtime,
       projection,
       async () => {
-        await runtime.startUserTurnStreaming(input.definition.overview);
+        await runtime.startUserTurnStreaming(llmUserMessage);
       },
     );
 
