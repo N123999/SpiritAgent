@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { DesktopFormInput } from "@/components/ui/desktop-form-field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DEFAULT_FONT_ID,
@@ -178,11 +178,10 @@ export function FontSelect({
           className="w-max min-w-[var(--radix-dropdown-menu-trigger-width)] max-w-[min(22rem,calc(100vw-1.25rem))] p-0"
         >
           <div className="border-b border-border/40 p-1.5">
-            <Input
+            <DesktopFormInput
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
               placeholder={t('settings.searchFont')}
-              className="h-8 w-full min-w-0 text-sm"
               onKeyDown={(event) => event.stopPropagation()}
               autoComplete="off"
             />
