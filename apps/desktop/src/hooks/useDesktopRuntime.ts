@@ -80,7 +80,6 @@ import type {
   ReadGitHistoryRequest,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
-  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
   SearchGitHubAutomationRepositoriesRequest,
   MergeGitHubPullRequestRequest,
@@ -2675,11 +2674,11 @@ export function useDesktopRuntime() {
   );
 
   const listGitHubAutomationRepositories = useCallback(
-    async (request: ListGitHubAutomationRepositoriesRequest = {}) => {
+    async (page?: number) => {
       if (!api) {
         return { items: [], hasNextPage: false };
       }
-      return api.listGitHubAutomationRepositories(request);
+      return api.listGitHubAutomationRepositories(page !== undefined ? { page } : {});
     },
     [api],
   );

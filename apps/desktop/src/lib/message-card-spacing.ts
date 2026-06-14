@@ -7,7 +7,7 @@ import { isMinimalToolCallMessage } from './tool-call-display.js';
 
 export function isStandaloneAssistantAuxMessage(
   message: ConversationMessageSnapshot | undefined,
-): boolean {
+): message is ConversationMessageSnapshot {
   return Boolean(
     message &&
       message.role === 'assistant' &&
