@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Clock } from "lucide-react";
 
 import { AutomationTimeScheduleOptions } from "@/components/automation-schedule-menu";
+import { GitHubMarkIcon } from "@/components/github-mark-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -115,7 +116,10 @@ export function AutomationTriggerMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[120]")}>
         <DropdownMenuSub open={githubSubOpen} onOpenChange={setGithubSubOpen}>
-          <DropdownMenuSubTrigger disabled={disabled}>{t("automations.trigger.github")}</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
+            <GitHubMarkIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+            {t("automations.trigger.github")}
+          </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
             className={cn(DESKTOP_OVERLAY_LIST_CONTENT, DESKTOP_OVERLAY_LIST_SHELL, "z-[130] w-72")}
           >
@@ -135,7 +139,10 @@ export function AutomationTriggerMenu({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={disabled}>{t("automations.trigger.time")}</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
+            <Clock className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
+            {t("automations.trigger.time")}
+          </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[130]")}>
             <AutomationTimeScheduleOptions
               schedule={timeSchedule}
