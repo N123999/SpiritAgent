@@ -181,6 +181,7 @@ async function tickGitHubAutomationTriggers(
           event: latestDefinition.trigger.event,
           eventUrl: match.item.htmlUrl,
         },
+        advanceGitHubPollOnSuccess: match.item.number,
       });
     }
   }
@@ -194,6 +195,7 @@ function launchAutomationRun(
     config: DesktopConfigFile;
     context: AutomationRunTriggerContext;
     markFiredAtUnixMs?: number;
+    advanceGitHubPollOnSuccess?: number;
   },
 ): void {
   ctx.markAutomationRunning(input.definition.id, true);
@@ -210,6 +212,9 @@ function launchAutomationRun(
     },
   )
     .then(async (run) => {
+      if (run?.status === 'completed' && input.advanceGitHubPollOnSuccess !== undefined) {
+        await store.updateGitHubPollState(input.definition.id, input.advanceGitHubPollOnSuccess);
+      }
       if (run && input.markFiredAtUnixMs !== undefined) {
         await store.markFired(input.definition.id, input.markFiredAtUnixMs);
       }
