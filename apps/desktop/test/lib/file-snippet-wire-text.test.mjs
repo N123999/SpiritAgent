@@ -120,3 +120,15 @@ test("wire round-trips paths containing line-range-like parentheses", () => {
   assert.equal(parts[0].lineStart, 5);
   assert.equal(parts[0].lineEnd, 6);
 });
+
+test("parseMessageContentParts treats wire-shaped plain text as fileSnippet block", () => {
+  const wireLike = fileSnippetContextText({
+    filePath: "src/example.ts",
+    lineStart: 2,
+    lineEnd: 4,
+    selectedText: "hello",
+  });
+  const parts = parseMessageContentParts(wireLike);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0]?.kind, "fileSnippet");
+});
