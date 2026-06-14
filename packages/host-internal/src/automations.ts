@@ -554,7 +554,8 @@ export class HostAutomationStore {
     if (!definition) {
       return undefined;
     }
-    return {
+    const needsTriggerMigration = automationDefinitionNeedsTriggerMigration(parsed.definition);
+    const file: HostAutomationFile = {
       version: 1,
       definition,
       runs: Array.isArray(parsed.runs)
@@ -563,6 +564,10 @@ export class HostAutomationStore {
             .filter((run): run is HostAutomationRun => run !== undefined)
         : [],
     };
+    if (needsTriggerMigration) {
+      await this.saveFile(definition.id, file);
+    }
+    return file;
   }
 
   private async saveFile(automationId: string, file: HostAutomationFile): Promise<void> {
@@ -570,6 +575,14 @@ export class HostAutomationStore {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, 'utf8');
   }
+}
+
+function automationDefinitionNeedsTriggerMigration(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return record.schedule !== undefined && record.trigger === undefined;
 }
 
 function normalizeAutomationDefinition(value: unknown): HostAutomationDefinition | undefined {
