@@ -46,9 +46,12 @@ import type {
   ForkSessionRequest,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
+  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
+  SearchGitHubAutomationRepositoriesRequest,
   MergeGitHubPullRequestRequest,
   GitHubAuthStatus,
+  GitHubAutomationRepositoriesSnapshot,
   GitHubDeviceAuthChallenge,
   GitHubPullRequestDetail,
   GitHubPullRequestListSnapshot,
@@ -59,6 +62,7 @@ import type {
   GitHubPullRequestCommitsSnapshot,
   GitHubPullRequestChecksSnapshot,
   GitHubPullRequestForBranchResult,
+  SearchGitHubAutomationRepositoriesSnapshot,
   SubmitUserTurnRequest,
   SessionListItem,
   WorkspaceExplorerListResult,
@@ -134,6 +138,12 @@ export interface HostApi {
   listGitHubPullRequests(
     request: ListGitHubPullRequestsRequest,
   ): Promise<GitHubPullRequestListSnapshot>;
+  listGitHubAutomationRepositories(
+    request?: ListGitHubAutomationRepositoriesRequest,
+  ): Promise<GitHubAutomationRepositoriesSnapshot>;
+  searchGitHubAutomationRepositories(
+    request: SearchGitHubAutomationRepositoriesRequest,
+  ): Promise<SearchGitHubAutomationRepositoriesSnapshot>;
   getGitHubPullRequestTabCounts(
     request: GetGitHubPullRequestTabCountsRequest,
   ): Promise<GitHubPullRequestTabCounts>;

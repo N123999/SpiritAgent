@@ -46,13 +46,13 @@ import {
   deriveAutomationTitle,
   formatCreateAutomationApprovalLabel,
   parseCreateAutomationApprovalLevel,
-  parseCreateAutomationSchedule,
+  parseCreateAutomationTriggerInput,
 } from './automation-host-tool.js';
 import {
   createHostAutomationStore,
-  formatScheduleLabel,
+  formatTriggerLabel,
   type HostAutomationDefinition,
-  type HostAutomationSchedule,
+  type HostAutomationTrigger,
 } from './automations.js';
 import type { ModelReasoningEffort } from './reasoning-effort.js';
 import { resolveInstructionPaths, type InstructionDiscoveryContext } from './storage.js';
@@ -305,7 +305,7 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       name: typeof CREATE_AUTOMATION_TOOL_NAME;
       title: string;
       overview: string;
-      schedule: HostAutomationSchedule;
+      trigger: HostAutomationTrigger;
       approval_level: ApprovalLevel;
     };
 
@@ -756,15 +756,11 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       case CREATE_AUTOMATION_TOOL_NAME: {
         const overview = requiredString(parsed, 'overview');
         const explicitTitle = optionalStringStrict(parsed, 'title');
-        const scheduleValue = parsed.schedule;
-        if (scheduleValue === undefined) {
-          throw new Error('create_automation 缺少 schedule。');
-        }
         return {
           name: CREATE_AUTOMATION_TOOL_NAME,
           title: deriveAutomationTitle(overview, explicitTitle),
           overview,
-          schedule: parseCreateAutomationSchedule(scheduleValue),
+          trigger: parseCreateAutomationTriggerInput(parsed),
           approval_level: parseCreateAutomationApprovalLevel(parsed.approval_level),
         };
       }
@@ -956,7 +952,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           prompt:
             `高风险工具调用: 创建自动化\n` +
             `标题: ${request.title}\n` +
-            `调度: ${formatScheduleLabel(request.schedule)}\n` +
+            `调度: ${formatTriggerLabel(request.trigger)}\n` +
             `运行审批: ${formatCreateAutomationApprovalLabel(request.approval_level)}\n` +
             `概述长度: ${[...request.overview].length} 字符`,
         };
@@ -1972,7 +1968,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const definition = await store.create({
       title: request.title,
       overview: request.overview,
-      schedule: request.schedule,
+      trigger: request.trigger,
       workspaceRoot: defaults.workspaceRoot,
       modelName: defaults.modelName,
       ...(defaults.reasoningEffort ? { reasoningEffort: defaults.reasoningEffort } : {}),
@@ -1985,7 +1981,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       `action: create_automation\n` +
       `id: ${definition.id}\n` +
       `title: ${definition.title}\n` +
-      `schedule: ${formatScheduleLabel(definition.schedule)}\n` +
+      `trigger: ${formatTriggerLabel(definition.trigger)}\n` +
       `workspace: ${definition.workspaceRoot}`
     );
   }

@@ -87,7 +87,9 @@ import type {
   DesktopGitSnapshot,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
+  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
+  SearchGitHubAutomationRepositoriesRequest,
   MergeGitHubPullRequestRequest,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
@@ -197,7 +199,9 @@ import {
   getGitHubPullRequestCommitsCommand,
   getGitHubPullRequestChecksCommand,
   getGitHubPullRequestForCurrentBranchCommand,
+  listGitHubAutomationRepositoriesCommand,
   listGitHubPullRequestsCommand,
+  searchGitHubAutomationRepositoriesCommand,
   getGitHubPullRequestTabCountsCommand,
   markGitHubPullRequestReadyCommand,
   mergeGitHubPullRequestCommand,
@@ -1735,6 +1739,14 @@ class DesktopHostService {
 
   async listGitHubPullRequests(request: ListGitHubPullRequestsRequest) {
     return listGitHubPullRequestsCommand(request);
+  }
+
+  async listGitHubAutomationRepositories(request: ListGitHubAutomationRepositoriesRequest = {}) {
+    return listGitHubAutomationRepositoriesCommand(request);
+  }
+
+  async searchGitHubAutomationRepositories(request: SearchGitHubAutomationRepositoriesRequest) {
+    return searchGitHubAutomationRepositoriesCommand(request);
   }
 
   async getGitHubPullRequestTabCounts(request: GetGitHubPullRequestTabCountsRequest) {

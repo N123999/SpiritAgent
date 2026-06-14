@@ -6,6 +6,7 @@ export * from './git-log-graph.js';
 export * from './github/index.js';
 export * from './dreams.js';
 export * from './automations.js';
+export * from './automation-trigger-message.js';
 export * from './automation-host-tool.js';
 export * from './builtin-skills.js';
 export * from './compaction-archive.js';

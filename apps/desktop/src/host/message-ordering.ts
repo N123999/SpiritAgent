@@ -1,4 +1,4 @@
-import { formatScheduleLabel, normalizeAutomationSchedule } from '@spirit-agent/host-internal';
+import { formatTriggerLabel, normalizeAutomationTrigger } from '@spirit-agent/host-internal';
 
 import i18n from '../lib/i18n-host.js';
 import type {
@@ -251,9 +251,13 @@ export function toolCallSummaryCopyForRequest(
     }
     case 'create_automation': {
       const title = typeof record.title === 'string' ? record.title.trim() : '';
-      const schedule = normalizeAutomationSchedule(record.schedule);
-      const scheduleLabel = schedule ? formatScheduleLabel(schedule) : '';
-      const detail = [title, scheduleLabel].filter((part) => part.length > 0).join(' · ');
+      const trigger =
+        normalizeAutomationTrigger(record.trigger)
+        ?? (record.schedule !== undefined
+          ? normalizeAutomationTrigger({ kind: 'time', schedule: record.schedule })
+          : undefined);
+      const triggerLabel = trigger ? formatTriggerLabel(trigger) : '';
+      const detail = [title, triggerLabel].filter((part) => part.length > 0).join(' · ');
       return {
         headline: i18n.t('automations.create', tOpts),
         headlineDetail: truncateSummaryDetail(detail || 'automation'),

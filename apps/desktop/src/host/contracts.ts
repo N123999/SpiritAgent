@@ -65,6 +65,8 @@ export type HostCommandName =
   | 'disconnectGitHub'
   | 'getGitHubPullRequestForCurrentBranch'
   | 'listGitHubPullRequests'
+  | 'listGitHubAutomationRepositories'
+  | 'searchGitHubAutomationRepositories'
   | 'getGitHubPullRequestTabCounts'
   | 'getGitHubPullRequestDetail'
   | 'getGitHubPullRequestConversation'

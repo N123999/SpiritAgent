@@ -258,6 +258,12 @@ export async function createElectronHostApi(): Promise<HostApi> {
     listGitHubPullRequests(request) {
       return bridge.listGitHubPullRequests(request);
     },
+    listGitHubAutomationRepositories(request = {}) {
+      return bridge.listGitHubAutomationRepositories(request);
+    },
+    searchGitHubAutomationRepositories(request) {
+      return bridge.searchGitHubAutomationRepositories(request);
+    },
     getGitHubPullRequestTabCounts(request) {
       return bridge.getGitHubPullRequestTabCounts(request);
     },

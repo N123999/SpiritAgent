@@ -17,12 +17,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { DesktopAutomationListItem, DesktopSnapshot } from "@/types";
+import { buildAutomationTriggerFormatLabels } from "@/lib/automation-trigger-i18n";
+import { formatDesktopAutomationTriggerLabel } from "@/lib/automation-trigger";
 import { cn } from "@/lib/utils";
 
 type AutomationsViewProps = {
   snapshot: DesktopSnapshot | null;
   apiReady: boolean;
   busyAction: string;
+  githubConnected: boolean;
   onCreateAutomation: () => void;
   onGenerateAutomation: () => void;
   onOpenAutomation: (automationId: string) => void;
@@ -33,6 +36,7 @@ export function AutomationsView({
   snapshot,
   apiReady,
   busyAction,
+  githubConnected,
   onCreateAutomation,
   onGenerateAutomation,
   onOpenAutomation,
@@ -143,6 +147,7 @@ export function AutomationsView({
                   <AutomationListRow
                     key={item.id}
                     item={item}
+                    githubConnected={githubConnected}
                     onOpen={() => onOpenAutomation(item.id)}
                   />
                 ))
@@ -262,12 +267,17 @@ function AutomationListNav({
 
 function AutomationListRow({
   item,
+  githubConnected,
   onOpen,
 }: {
   item: DesktopAutomationListItem;
+  githubConnected: boolean;
   onOpen: () => void;
 }) {
   const { t } = useTranslation();
+  const triggerLabel = item.trigger
+    ? formatDesktopAutomationTriggerLabel(item.trigger, buildAutomationTriggerFormatLabels(t))
+    : item.scheduleLabel;
 
   return (
     <button
@@ -286,8 +296,16 @@ function AutomationListRow({
             {t("automations.disabled")}
           </span>
         ) : null}
+        {!githubConnected && item.trigger?.kind === "github" ? (
+          <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">
+            {t("automations.githubDisconnectedPause")}
+          </span>
+        ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">{item.scheduleLabel}</p>
+      <p className="text-xs text-muted-foreground">{triggerLabel}</p>
+      {item.githubPollError ? (
+        <p className="text-xs text-destructive">{item.githubPollError}</p>
+      ) : null}
     </button>
   );
 }

@@ -3,6 +3,7 @@ import type { ModelReasoningEffort } from '@spirit-agent/core/reasoning-effort';
 import type { LspWriteDiagnosticsUi } from '@spirit-agent/core';
 
 import type { DesktopAgentMode } from './lib/agent-mode.js';
+import type { DesktopAutomationTrigger } from './lib/automation-trigger.js';
 
 export type { DesktopAgentMode };
 import type { WorkspaceFileReferenceSuggestionsResult as HostWorkspaceFileReferenceSuggestionsResult, ApprovalLevel, GitHubPullRequestCommit } from '@spirit-agent/host-internal';
@@ -781,7 +782,9 @@ export interface DesktopAutomationListItem {
   id: string;
   title: string;
   scheduleLabel: string;
+  trigger: DesktopAutomationTrigger;
   enabled: boolean;
+  githubPollError?: string;
   lastRunAtUnixMs?: number;
   updatedAtUnixMs: number;
 }
@@ -790,6 +793,38 @@ export type {
   DesktopAutomationSchedule,
   DesktopAutomationWeekday,
 } from './lib/automation-schedule.js';
+export type {
+  DesktopAutomationGitHubEvent,
+  DesktopAutomationTrigger,
+} from './lib/automation-trigger.js';
+
+export interface DesktopGitHubAutomationRepositoryItem {
+  owner: string;
+  repo: string;
+  fullName: string;
+  htmlUrl: string;
+  private: boolean;
+  updatedAt: string;
+}
+
+export interface ListGitHubAutomationRepositoriesRequest {
+  page?: number;
+}
+
+export interface SearchGitHubAutomationRepositoriesRequest {
+  query: string;
+  page?: number;
+}
+
+export interface GitHubAutomationRepositoriesSnapshot {
+  items: DesktopGitHubAutomationRepositoryItem[];
+  hasNextPage: boolean;
+}
+
+export interface SearchGitHubAutomationRepositoriesSnapshot {
+  items: DesktopGitHubAutomationRepositoryItem[];
+  totalCount: number;
+}
 
 export type DesktopAutomationRunStatus = 'running' | 'blocked' | 'completed' | 'failed';
 
@@ -807,7 +842,7 @@ export interface DesktopAutomationDefinition {
   id: string;
   title: string;
   overview: string;
-  schedule: import('./lib/automation-schedule.js').DesktopAutomationSchedule;
+  trigger: import('./lib/automation-trigger.js').DesktopAutomationTrigger;
   workspaceRoot: string;
   modelName: string;
   reasoningEffort?: DesktopModelReasoningEffort;
@@ -826,7 +861,7 @@ export interface DesktopAutomationDetail {
 export interface DesktopCreateAutomationRequest {
   title: string;
   overview: string;
-  schedule: import('./lib/automation-schedule.js').DesktopAutomationSchedule;
+  trigger: import('./lib/automation-trigger.js').DesktopAutomationTrigger;
   workspaceRoot: string;
   modelName: string;
   reasoningEffort?: DesktopModelReasoningEffort;
@@ -837,7 +872,7 @@ export interface DesktopCreateAutomationRequest {
 export interface DesktopUpdateAutomationRequest {
   title?: string;
   overview?: string;
-  schedule?: import('./lib/automation-schedule.js').DesktopAutomationSchedule;
+  trigger?: import('./lib/automation-trigger.js').DesktopAutomationTrigger;
   workspaceRoot?: string;
   modelName?: string;
   reasoningEffort?: DesktopModelReasoningEffort;

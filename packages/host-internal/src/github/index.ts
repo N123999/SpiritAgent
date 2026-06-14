@@ -24,3 +24,6 @@ export * from './repository-permissions.js';
 export * from './github-graphql.js';
 export * from './conversation.js';
 export * from './github-api.js';
+export * from './automation-repositories.js';
+export * from './automation-events.js';
+export * from './automation-poller.js';

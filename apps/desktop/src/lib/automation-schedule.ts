@@ -36,3 +36,29 @@ export function formatDesktopAutomationScheduleLabel(
   }
   return `${labels.weeklyPrefix} ${weekday} ${time}`;
 }
+
+function isValidHour(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 23;
+}
+
+function isValidMinute(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 59;
+}
+
+function isValidWeekday(value: unknown): value is DesktopAutomationWeekday {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 6;
+}
+
+export function isValidDesktopAutomationSchedule(schedule: DesktopAutomationSchedule): boolean {
+  if (schedule.kind === 'hourly') {
+    return true;
+  }
+  if (schedule.kind === 'daily') {
+    return isValidHour(schedule.hour) && isValidMinute(schedule.minute);
+  }
+  return (
+    isValidWeekday(schedule.weekday)
+    && isValidHour(schedule.hour)
+    && isValidMinute(schedule.minute)
+  );
+}

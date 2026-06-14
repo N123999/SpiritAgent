@@ -1,6 +1,6 @@
 import {
   createHostAutomationStore,
-  formatScheduleLabel,
+  formatTriggerLabel,
   type HostAutomationCreateInput,
   type HostAutomationDefinition,
   type HostAutomationRun,
@@ -62,9 +62,11 @@ export function toDesktopAutomationListItem(
   return {
     id: definition.id,
     title: definition.title,
-    scheduleLabel: formatScheduleLabel(definition.schedule),
+    scheduleLabel: formatTriggerLabel(definition.trigger),
+    trigger: definition.trigger,
     enabled: definition.enabled,
     updatedAtUnixMs: definition.updatedAtUnixMs,
+    ...(definition.githubPollError ? { githubPollError: definition.githubPollError } : {}),
     ...(lastRunAtUnixMs !== undefined ? { lastRunAtUnixMs } : {}),
   };
 }

@@ -145,6 +145,12 @@ declare global {
     listGitHubPullRequests(
       request: import('./types').ListGitHubPullRequestsRequest,
     ): Promise<import('./types').GitHubPullRequestListSnapshot>;
+    listGitHubAutomationRepositories(
+      request?: import('./types').ListGitHubAutomationRepositoriesRequest,
+    ): Promise<import('./types').GitHubAutomationRepositoriesSnapshot>;
+    searchGitHubAutomationRepositories(
+      request: import('./types').SearchGitHubAutomationRepositoriesRequest,
+    ): Promise<import('./types').SearchGitHubAutomationRepositoriesSnapshot>;
     getGitHubPullRequestTabCounts(
       request: import('./types').GetGitHubPullRequestTabCountsRequest,
     ): Promise<import('./types').GitHubPullRequestTabCounts>;

@@ -8,16 +8,31 @@ import { normalizeApprovalLevel, type ApprovalLevel } from './tools.js';
 
 export type HostAutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
+/** @deprecated Use HostAutomationTimeSchedule via HostAutomationTrigger.kind === 'time'. */
 export type HostAutomationSchedule =
   | { kind: 'hourly' }
   | { kind: 'daily'; hour: number; minute: number }
   | { kind: 'weekly'; weekday: HostAutomationWeekday; hour: number; minute: number };
 
+export type HostAutomationTimeSchedule = HostAutomationSchedule;
+
+export type HostAutomationGitHubEvent = 'pull_request_created' | 'issue_created';
+
+export type HostAutomationTrigger =
+  | { kind: 'time'; schedule: HostAutomationTimeSchedule }
+  | {
+      kind: 'github';
+      owner: string;
+      repo: string;
+      event: HostAutomationGitHubEvent;
+      poll?: { lastSeenNumber: number };
+    };
+
 export interface HostAutomationDefinition {
   id: string;
   title: string;
   overview: string;
-  schedule: HostAutomationSchedule;
+  trigger: HostAutomationTrigger;
   workspaceRoot: string;
   modelName: string;
   reasoningEffort?: ModelReasoningEffort;
@@ -26,6 +41,8 @@ export interface HostAutomationDefinition {
   createdAtUnixMs: number;
   updatedAtUnixMs: number;
   lastFiredAtUnixMs?: number;
+  /** Set when GitHub issue/PR polling fails for this automation's repository. */
+  githubPollError?: string;
 }
 
 export type HostAutomationRunStatus = 'running' | 'blocked' | 'completed' | 'failed';
@@ -44,7 +61,9 @@ export interface HostAutomationListItem {
   id: string;
   title: string;
   scheduleLabel: string;
+  trigger: HostAutomationTrigger;
   enabled: boolean;
+  githubPollError?: string;
   lastRunAtUnixMs?: number;
   updatedAtUnixMs: number;
 }
@@ -52,7 +71,7 @@ export interface HostAutomationListItem {
 export interface HostAutomationCreateInput {
   title: string;
   overview: string;
-  schedule: HostAutomationSchedule;
+  trigger: HostAutomationTrigger;
   workspaceRoot: string;
   modelName: string;
   reasoningEffort?: ModelReasoningEffort;
@@ -63,7 +82,7 @@ export interface HostAutomationCreateInput {
 export interface HostAutomationUpdateInput {
   title?: string;
   overview?: string;
-  schedule?: HostAutomationSchedule;
+  trigger?: HostAutomationTrigger;
   workspaceRoot?: string;
   modelName?: string;
   reasoningEffort?: ModelReasoningEffort;
@@ -91,11 +110,11 @@ export function createHostAutomationStore(spiritDataDir: string): HostAutomation
   return new HostAutomationStore(spiritDataDir);
 }
 
-export function normalizeAutomationSchedule(value: unknown): HostAutomationSchedule | undefined {
+export function normalizeAutomationSchedule(value: unknown): HostAutomationTimeSchedule | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  const schedule = value as Partial<HostAutomationSchedule>;
+  const schedule = value as Partial<HostAutomationTimeSchedule>;
   if (schedule.kind === 'hourly') {
     return { kind: 'hourly' };
   }
@@ -119,8 +138,113 @@ export function normalizeAutomationSchedule(value: unknown): HostAutomationSched
   return undefined;
 }
 
+export function normalizeAutomationTrigger(value: unknown): HostAutomationTrigger | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Partial<HostAutomationTrigger> & { schedule?: unknown };
+  if (record.kind === 'time') {
+    const schedule = normalizeAutomationSchedule(record.schedule);
+    if (!schedule) {
+      return undefined;
+    }
+    return { kind: 'time', schedule };
+  }
+  if (record.kind === 'github') {
+    const owner = typeof record.owner === 'string' ? record.owner.trim() : '';
+    const repo = typeof record.repo === 'string' ? record.repo.trim() : '';
+    if (!owner || !repo) {
+      return undefined;
+    }
+    const event = normalizeGitHubEvent(record.event);
+    if (!event) {
+      return undefined;
+    }
+    const poll = normalizeGitHubPoll(record.poll);
+    return {
+      kind: 'github',
+      owner,
+      repo,
+      event,
+      ...(poll ? { poll } : {}),
+    };
+  }
+  // Legacy bare time schedule object.
+  const legacySchedule = normalizeAutomationSchedule(value);
+  if (legacySchedule) {
+    return { kind: 'time', schedule: legacySchedule };
+  }
+  return undefined;
+}
+
+export function reconcileGitHubTriggerPollState(
+  previous: HostAutomationTrigger,
+  next: HostAutomationTrigger,
+): HostAutomationTrigger {
+  if (next.kind !== 'github') {
+    return next;
+  }
+  if (previous.kind !== 'github') {
+    return {
+      kind: 'github',
+      owner: next.owner,
+      repo: next.repo,
+      event: next.event,
+    };
+  }
+  if (
+    previous.owner !== next.owner
+    || previous.repo !== next.repo
+    || previous.event !== next.event
+  ) {
+    return {
+      kind: 'github',
+      owner: next.owner,
+      repo: next.repo,
+      event: next.event,
+    };
+  }
+  return next;
+}
+
+export function automationTimeScheduleFromTrigger(
+  trigger: HostAutomationTrigger,
+): HostAutomationTimeSchedule | undefined {
+  return trigger.kind === 'time' ? trigger.schedule : undefined;
+}
+
+export interface TriggerFormatLabels extends ScheduleFormatLabels {
+  githubPrefix: string;
+  githubPullRequestCreated: string;
+  githubIssueCreated: string;
+}
+
+function defaultTriggerFormatLabels(): TriggerFormatLabels {
+  return {
+    ...defaultScheduleFormatLabels(),
+    githubPrefix: 'GitHub',
+    githubPullRequestCreated: 'PR created',
+    githubIssueCreated: 'Issue created',
+  };
+}
+
+export function formatTriggerLabel(
+  trigger: HostAutomationTrigger,
+  labels?: Partial<TriggerFormatLabels>,
+): string {
+  const l = { ...defaultTriggerFormatLabels(), ...labels };
+  if (trigger.kind === 'time') {
+    return formatScheduleLabel(trigger.schedule, l);
+  }
+  const eventLabel =
+    trigger.event === 'pull_request_created'
+      ? l.githubPullRequestCreated
+      : l.githubIssueCreated;
+  return `${l.githubPrefix} · ${trigger.owner}/${trigger.repo} · ${eventLabel}`;
+}
+
 export function formatScheduleLabel(
-  schedule: HostAutomationSchedule,
+  schedule: HostAutomationTimeSchedule,
   labels?: Partial<ScheduleFormatLabels>,
 ): string {
   const l = { ...defaultScheduleFormatLabels(), ...labels };
@@ -132,7 +256,10 @@ export function formatScheduleLabel(
     return `${l.dailyPrefix} ${time}`;
   }
   const weekday = l.weekdays[schedule.weekday] ?? String(schedule.weekday);
-  return `每${weekday} ${time}`;
+  if (l.formatWeekly) {
+    return l.formatWeekly(weekday, time);
+  }
+  return `${l.weeklyPrefix} ${weekday} ${time}`;
 }
 
 export interface ScheduleFormatLabels {
@@ -140,18 +267,20 @@ export interface ScheduleFormatLabels {
   dailyPrefix: string;
   weeklyPrefix: string;
   weekdays: readonly string[];
+  formatWeekly?(weekday: string, time: string): string;
 }
 
 function defaultScheduleFormatLabels(): ScheduleFormatLabels {
   return {
-    hourly: '每小时',
-    dailyPrefix: '每天',
-    weeklyPrefix: '每周',
-    weekdays: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
+    hourly: 'Hourly',
+    dailyPrefix: 'Daily',
+    weeklyPrefix: 'Weekly',
+    weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    formatWeekly: (weekday, time) => `Weekly ${weekday} ${time}`,
   };
 }
 
-export function computeNextRunAt(schedule: HostAutomationSchedule, afterMs: number): number {
+export function computeNextRunAt(schedule: HostAutomationTimeSchedule, afterMs: number): number {
   const after = new Date(afterMs);
   if (schedule.kind === 'hourly') {
     const next = new Date(after);
@@ -167,7 +296,7 @@ export function computeNextRunAt(schedule: HostAutomationSchedule, afterMs: numb
 }
 
 export function shouldFireNow(
-  schedule: HostAutomationSchedule,
+  schedule: HostAutomationTimeSchedule,
   lastFiredMs: number | undefined,
   nowMs: number,
 ): boolean {
@@ -206,8 +335,12 @@ export class HostAutomationStore {
       summaries.push({
         id: file.definition.id,
         title: file.definition.title,
-        scheduleLabel: formatScheduleLabel(file.definition.schedule),
+        scheduleLabel: formatTriggerLabel(file.definition.trigger),
+        trigger: file.definition.trigger,
         enabled: file.definition.enabled,
+        ...(file.definition.githubPollError
+          ? { githubPollError: file.definition.githubPollError }
+          : {}),
         ...(lastRun ? { lastRunAtUnixMs: lastRun.startedAtUnixMs } : {}),
         updatedAtUnixMs: file.definition.updatedAtUnixMs,
       });
@@ -228,15 +361,15 @@ export class HostAutomationStore {
 
   async create(input: HostAutomationCreateInput): Promise<HostAutomationDefinition> {
     const now = Date.now();
-    const schedule = normalizeAutomationSchedule(input.schedule);
-    if (!schedule) {
-      throw new Error('Invalid automation schedule.');
+    const trigger = normalizeAutomationTrigger(input.trigger);
+    if (!trigger) {
+      throw new Error('Invalid automation trigger.');
     }
     const definition: HostAutomationDefinition = {
       id: randomUUID(),
       title: normalizeNonEmpty(input.title, 'title'),
       overview: normalizeNonEmpty(input.overview, 'overview'),
-      schedule,
+      trigger,
       workspaceRoot: path.resolve(normalizeNonEmpty(input.workspaceRoot, 'workspaceRoot')),
       modelName: normalizeNonEmpty(input.modelName, 'modelName'),
       ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
@@ -250,6 +383,23 @@ export class HostAutomationStore {
     return { ...definition };
   }
 
+  async ensureGitHubTriggerBaseline(
+    automationId: string,
+    lastSeenNumber: number,
+  ): Promise<HostAutomationDefinition> {
+    const file = await this.requireFile(automationId);
+    if (file.definition.trigger.kind !== 'github') {
+      throw new Error('Automation trigger is not GitHub.');
+    }
+    file.definition.trigger = {
+      ...file.definition.trigger,
+      poll: { lastSeenNumber },
+    };
+    file.definition.updatedAtUnixMs = Date.now();
+    await this.saveFile(automationId, file);
+    return { ...file.definition };
+  }
+
   async update(automationId: string, patch: HostAutomationUpdateInput): Promise<HostAutomationDefinition> {
     const file = await this.requireFile(automationId);
     const now = Date.now();
@@ -259,12 +409,12 @@ export class HostAutomationStore {
     if (patch.overview !== undefined) {
       file.definition.overview = normalizeNonEmpty(patch.overview, 'overview');
     }
-    if (patch.schedule !== undefined) {
-      const schedule = normalizeAutomationSchedule(patch.schedule);
-      if (!schedule) {
-        throw new Error('Invalid automation schedule.');
+    if (patch.trigger !== undefined) {
+      const trigger = normalizeAutomationTrigger(patch.trigger);
+      if (!trigger) {
+        throw new Error('Invalid automation trigger.');
       }
-      file.definition.schedule = schedule;
+      file.definition.trigger = reconcileGitHubTriggerPollState(file.definition.trigger, trigger);
     }
     if (patch.workspaceRoot !== undefined) {
       file.definition.workspaceRoot = path.resolve(normalizeNonEmpty(patch.workspaceRoot, 'workspaceRoot'));
@@ -307,6 +457,42 @@ export class HostAutomationStore {
       }
     }
     return definitions;
+  }
+
+  async updateGitHubPollState(
+    automationId: string,
+    lastSeenNumber: number,
+  ): Promise<HostAutomationDefinition> {
+    const file = await this.requireFile(automationId);
+    if (file.definition.trigger.kind !== 'github') {
+      throw new Error('Automation trigger is not GitHub.');
+    }
+    file.definition.trigger = {
+      ...file.definition.trigger,
+      poll: { lastSeenNumber },
+    };
+    delete file.definition.githubPollError;
+    file.definition.updatedAtUnixMs = Date.now();
+    await this.saveFile(automationId, file);
+    return { ...file.definition };
+  }
+
+  async setGitHubPollError(
+    automationId: string,
+    error: string | undefined,
+  ): Promise<HostAutomationDefinition> {
+    const file = await this.requireFile(automationId);
+    if (file.definition.trigger.kind !== 'github') {
+      throw new Error('Automation trigger is not GitHub.');
+    }
+    if (error?.trim()) {
+      file.definition.githubPollError = error.trim();
+    } else {
+      delete file.definition.githubPollError;
+    }
+    file.definition.updatedAtUnixMs = Date.now();
+    await this.saveFile(automationId, file);
+    return { ...file.definition };
   }
 
   async markFired(automationId: string, firedAtUnixMs: number): Promise<void> {
@@ -398,7 +584,8 @@ export class HostAutomationStore {
     if (!definition) {
       return undefined;
     }
-    return {
+    const needsTriggerMigration = automationDefinitionNeedsTriggerMigration(parsed.definition);
+    const file: HostAutomationFile = {
       version: 1,
       definition,
       runs: Array.isArray(parsed.runs)
@@ -407,6 +594,10 @@ export class HostAutomationStore {
             .filter((run): run is HostAutomationRun => run !== undefined)
         : [],
     };
+    if (needsTriggerMigration) {
+      await this.saveFile(definition.id, file);
+    }
+    return file;
   }
 
   private async saveFile(automationId: string, file: HostAutomationFile): Promise<void> {
@@ -416,16 +607,27 @@ export class HostAutomationStore {
   }
 }
 
+function automationDefinitionNeedsTriggerMigration(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return record.schedule !== undefined && record.trigger === undefined;
+}
+
 function normalizeAutomationDefinition(value: unknown): HostAutomationDefinition | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  const record = value as Partial<HostAutomationDefinition>;
+  const record = value as Partial<HostAutomationDefinition> & { schedule?: unknown };
   if (typeof record.id !== 'string' || !record.id.trim()) {
     return undefined;
   }
-  const schedule = normalizeAutomationSchedule(record.schedule);
-  if (!schedule) {
+  const trigger =
+    normalizeAutomationTrigger(record.trigger)
+    ?? (record.schedule !== undefined ? normalizeAutomationTrigger({ kind: 'time', schedule: record.schedule }) : undefined)
+    ?? normalizeAutomationTrigger(record.schedule);
+  if (!trigger) {
     return undefined;
   }
   if (typeof record.title !== 'string' || !record.title.trim()) {
@@ -448,7 +650,7 @@ function normalizeAutomationDefinition(value: unknown): HostAutomationDefinition
     id: record.id.trim(),
     title: record.title.trim(),
     overview: record.overview.trim(),
-    schedule,
+    trigger,
     workspaceRoot: path.resolve(record.workspaceRoot.trim()),
     modelName: record.modelName.trim(),
     ...(record.reasoningEffort ? { reasoningEffort: record.reasoningEffort } : {}),
@@ -458,6 +660,9 @@ function normalizeAutomationDefinition(value: unknown): HostAutomationDefinition
     updatedAtUnixMs,
     ...(typeof record.lastFiredAtUnixMs === 'number'
       ? { lastFiredAtUnixMs: record.lastFiredAtUnixMs }
+      : {}),
+    ...(typeof record.githubPollError === 'string' && record.githubPollError.trim()
+      ? { githubPollError: record.githubPollError.trim() }
       : {}),
   };
 }
@@ -531,6 +736,28 @@ function normalizeWeekday(value: unknown): HostAutomationWeekday | undefined {
     return undefined;
   }
   return value as HostAutomationWeekday;
+}
+
+function normalizeGitHubEvent(value: unknown): HostAutomationGitHubEvent | undefined {
+  if (value === 'pull_request_created' || value === 'issue_created') {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeGitHubPoll(value: unknown): { lastSeenNumber: number } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as { lastSeenNumber?: unknown };
+  if (
+    typeof record.lastSeenNumber !== 'number'
+    || !Number.isInteger(record.lastSeenNumber)
+    || record.lastSeenNumber < 0
+  ) {
+    return undefined;
+  }
+  return { lastSeenNumber: record.lastSeenNumber };
 }
 
 function formatTimeOfDay(hour: number, minute: number): string {

@@ -8,16 +8,18 @@ import {
   deriveAutomationTitle,
   parseCreateAutomationApprovalLevel,
   parseCreateAutomationSchedule,
+  parseCreateAutomationTrigger,
+  parseCreateAutomationTriggerInput,
 } from './automation-host-tool.js';
 
-test('CREATE_AUTOMATION_CONTRIBUTED_TOOL exposes required overview and schedule', () => {
+test('CREATE_AUTOMATION_CONTRIBUTED_TOOL exposes required overview', () => {
   assert.equal(CREATE_AUTOMATION_CONTRIBUTED_TOOL.name, CREATE_AUTOMATION_TOOL_NAME);
   const schema = CREATE_AUTOMATION_CONTRIBUTED_TOOL.inputSchema;
-  assert.deepEqual(schema.required, ['overview', 'schedule']);
+  assert.deepEqual(schema.required, ['overview']);
   const properties = schema.properties;
   assert.ok(properties && typeof properties === 'object' && !Array.isArray(properties));
-  const schedule = properties.schedule;
-  assert.equal(schedule && typeof schedule === 'object' && !Array.isArray(schedule) ? schedule.type : undefined, 'object');
+  const trigger = properties.trigger;
+  assert.equal(trigger && typeof trigger === 'object' && !Array.isArray(trigger) ? trigger.type : undefined, 'object');
 });
 
 test('buildAutomationHostToolDefinitions returns one function tool', () => {
@@ -52,6 +54,51 @@ test('parseCreateAutomationSchedule accepts hourly daily weekly', () => {
 
 test('parseCreateAutomationSchedule rejects invalid input', () => {
   assert.throws(() => parseCreateAutomationSchedule({ kind: 'monthly' }), /Invalid automation schedule/);
+});
+
+test('parseCreateAutomationTrigger accepts github trigger', () => {
+  assert.deepEqual(
+    parseCreateAutomationTrigger({
+      kind: 'github',
+      owner: 'acme',
+      repo: 'app',
+      event: 'issue_created',
+    }),
+    {
+      kind: 'github',
+      owner: 'acme',
+      repo: 'app',
+      event: 'issue_created',
+    },
+  );
+});
+
+test('parseCreateAutomationTriggerInput prefers trigger and falls back to legacy schedule', () => {
+  assert.deepEqual(
+    parseCreateAutomationTriggerInput({
+      trigger: {
+        kind: 'github',
+        owner: 'acme',
+        repo: 'app',
+        event: 'pull_request_created',
+      },
+    }),
+    {
+      kind: 'github',
+      owner: 'acme',
+      repo: 'app',
+      event: 'pull_request_created',
+    },
+  );
+  assert.deepEqual(
+    parseCreateAutomationTriggerInput({
+      schedule: { kind: 'daily', hour: 8, minute: 15 },
+    }),
+    {
+      kind: 'time',
+      schedule: { kind: 'daily', hour: 8, minute: 15 },
+    },
+  );
 });
 
 test('parseCreateAutomationApprovalLevel defaults to default and accepts full-approval', () => {

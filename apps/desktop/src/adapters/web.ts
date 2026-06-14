@@ -213,6 +213,12 @@ export function createWebHostApi(): HostApi {
     listGitHubPullRequests() {
       return Promise.reject(new Error('GitHub pull requests are only available in the Electron desktop app.'));
     },
+    listGitHubAutomationRepositories() {
+      return Promise.reject(new Error('GitHub repositories are only available in the Electron desktop app.'));
+    },
+    searchGitHubAutomationRepositories() {
+      return Promise.reject(new Error('GitHub repositories are only available in the Electron desktop app.'));
+    },
     getGitHubPullRequestTabCounts() {
       return Promise.reject(new Error('GitHub pull requests are only available in the Electron desktop app.'));
     },

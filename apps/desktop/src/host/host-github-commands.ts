@@ -13,6 +13,8 @@ import {
   markPullRequestReadyForReview,
   listPullRequests,
   getPullRequestTabCounts,
+  listUserGitHubRepositories,
+  searchGitHubRepositories,
   GitHubOAuthError,
   parseGitHubRemoteUrl,
   type GitHubAuthStatus,
@@ -33,8 +35,12 @@ import type {
   DesktopGitSnapshot,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
+  GitHubAutomationRepositoriesSnapshot,
+  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
   MergeGitHubPullRequestRequest,
+  SearchGitHubAutomationRepositoriesRequest,
+  SearchGitHubAutomationRepositoriesSnapshot,
 } from '../types.js';
 import {
   clearGitHubOAuthCredentials,
@@ -348,6 +354,43 @@ export async function getGitHubPullRequestTabCountsCommand(
   try {
     const accessToken = await requireGitHubAccessToken();
     return await getPullRequestTabCounts(accessToken, repository);
+  } catch (error) {
+    throw await handleGitHubApiError(error);
+  }
+}
+
+export async function listGitHubAutomationRepositoriesCommand(
+  request: ListGitHubAutomationRepositoriesRequest = {},
+): Promise<GitHubAutomationRepositoriesSnapshot> {
+  try {
+    const accessToken = await requireGitHubAccessToken();
+    const page = request.page && request.page > 0 ? request.page : 1;
+    const result = await listUserGitHubRepositories(accessToken, { page });
+    return {
+      items: result.items,
+      hasNextPage: result.hasNextPage,
+    };
+  } catch (error) {
+    throw await handleGitHubApiError(error);
+  }
+}
+
+export async function searchGitHubAutomationRepositoriesCommand(
+  request: SearchGitHubAutomationRepositoriesRequest,
+): Promise<SearchGitHubAutomationRepositoriesSnapshot> {
+  try {
+    const accessToken = await requireGitHubAccessToken();
+    const status = await getGitHubAuthStatusFromStorage();
+    const login = status.login?.trim();
+    if (!login) {
+      throw new GitHubOAuthError('GitHub login is unavailable.', 401);
+    }
+    const page = request.page && request.page > 0 ? request.page : 1;
+    const result = await searchGitHubRepositories(accessToken, request.query ?? '', login, { page });
+    return {
+      items: result.items,
+      totalCount: result.totalCount,
+    };
   } catch (error) {
     throw await handleGitHubApiError(error);
   }

@@ -20,6 +20,7 @@ import {
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
+import { clearGitHubAutomationRepositoriesCache } from "@/lib/github-automation-repositories-cache";
 import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
 import { useDesktopSystemNotifications } from "@/hooks/useDesktopSystemNotifications";
 import type {
@@ -79,7 +80,9 @@ import type {
   ReadGitHistoryRequest,
   GetGitHubPullRequestDetailRequest,
   GetGitHubPullRequestTabCountsRequest,
+  ListGitHubAutomationRepositoriesRequest,
   ListGitHubPullRequestsRequest,
+  SearchGitHubAutomationRepositoriesRequest,
   MergeGitHubPullRequestRequest,
 } from "@/types";
 
@@ -2579,7 +2582,9 @@ export function useDesktopRuntime() {
     if (!api) {
       return { connected: false };
     }
-    return api.disconnectGitHub();
+    const status = await api.disconnectGitHub();
+    clearGitHubAutomationRepositoriesCache();
+    return status;
   }, [api]);
 
   const getGitHubPullRequestForCurrentBranch = useCallback(async () => {
@@ -2665,6 +2670,26 @@ export function useDesktopRuntime() {
         return { items: [], totalCount: 0, hasMore: false };
       }
       return api.listGitHubPullRequests(request);
+    },
+    [api],
+  );
+
+  const listGitHubAutomationRepositories = useCallback(
+    async (request: ListGitHubAutomationRepositoriesRequest = {}) => {
+      if (!api) {
+        return { items: [], hasNextPage: false };
+      }
+      return api.listGitHubAutomationRepositories(request);
+    },
+    [api],
+  );
+
+  const searchGitHubAutomationRepositories = useCallback(
+    async (query: string, page?: number) => {
+      if (!api) {
+        return { items: [], totalCount: 0 };
+      }
+      return api.searchGitHubAutomationRepositories({ query, ...(page ? { page } : {}) });
     },
     [api],
   );
@@ -2924,6 +2949,8 @@ export function useDesktopRuntime() {
     disconnectGitHub,
     getGitHubPullRequestForCurrentBranch,
     listGitHubPullRequests,
+    listGitHubAutomationRepositories,
+    searchGitHubAutomationRepositories,
     getGitHubPullRequestTabCounts,
     getGitHubPullRequestDetail,
     getGitHubPullRequestConversation,
