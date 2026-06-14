@@ -10,6 +10,7 @@ import { WorkspacePrDetailSkeleton } from "@/components/workspace-pr-detail-skel
 import { WorkspacePrDetailView } from "@/components/workspace-pr-detail-view";
 import { WorkspacePrListView, type WorkspacePrListViewHandle } from "@/components/workspace-pr-list-view";
 import type { GitHubPullRequestRevealRequest } from "@/lib/workspace-pr-navigation";
+import { instantHoverMotionClass } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 import type {
   DesktopGitSnapshot,
@@ -771,7 +772,10 @@ export function WorkspacePrTab({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
+                  className={cn(
+                    "h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground",
+                    instantHoverMotionClass,
+                  )}
                   onClick={handleBackToList}
                 >
                   <ChevronLeft className="size-3.5" aria-hidden />
